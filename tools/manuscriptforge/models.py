@@ -568,7 +568,148 @@ def toggle_ack_block(block_id: str) -> bool:
 
 # ── Section generation ────────────────────────────────────────────────────────
 
-def _transform_for_additional(text: str) -> str:
+# Canonical category order for acknowledgments narrative
+_ACK_CATEGORY_ORDER = [
+    "core_facility",
+    "technical_staff",
+    "external_collaborator",
+    "sample_donor",
+    "infrastructure",
+    "other",
+]
+
+# Texts belonging to "other" that should use "would also like to acknowledge"
+_ALSO_ACKNOWLEDGE_LABELS = {"past lab members", "past members"}
+
+
+def _ack_sentence(text: str) -> str:
+    """Ensure a text ends with a period."""
+    t = text.strip()
+    return t if t.endswith(".") else t + "."
+
+
+def generate_acknowledgments(block_ids: list[str]) -> dict:
+    """Build the Acknowledgments section text for a manuscript.
+
+    Blocks are grouped by category in a predefined logical order. Within each
+    category blocks are separated by '; '. Categories are separated by '. '.
+    Blocks in the 'other' category with a 'past lab members' label are always
+    appended last with a 'would also like to acknowledge' lead-in.
+
+    Returns a dict with keys: acknowledgments_text, blocks_info,
+    categories_used, warnings.
+    Raises ValueError if the input is invalid.
+    """
+    if not block_ids:
+        raise ValueError("At least one acknowledgment block must be selected.")
+
+    all_blocks = load_ack_blocks()
+    known_ids = set(all_blocks["block_id"].tolist())
+    missing = [bid for bid in block_ids if bid not in known_ids]
+    if missing:
+        raise ValueError(f"Unknown block(s): {', '.join(missing)}")
+
+    warnings: list[str] = []
+    selected: list[dict] = []
+
+    for bid in block_ids:
+        row = all_blocks[all_blocks["block_id"] == bid].iloc[0].to_dict()
+        if str(row.get("is_active", "true")).lower() != "true":
+            warnings.append(f"Block '{row['short_label']}' is inactive but included in generation.")
+        text = row.get("text", "").strip()
+        if not text:
+            warnings.append(f"Block '{row['short_label']}' has no text — skipped.")
+            continue
+        selected.append(row)
+
+    if not selected:
+        raise ValueError("None of the selected blocks have text.")
+
+    # Separate "past lab members / also acknowledge" blocks (always go last)
+    also_blocks: list[dict] = []
+    main_blocks: list[dict] = []
+    for blk in selected:
+        label_lower = blk.get("short_label", "").lower()
+        if blk.get("category") == "other" and any(k in label_lower for k in _ALSO_ACKNOWLEDGE_LABELS):
+            also_blocks.append(blk)
+        else:
+            main_blocks.append(blk)
+
+    # Sort main blocks by canonical category order, preserving selection order within category
+    cat_rank = {cat: i for i, cat in enumerate(_ACK_CATEGORY_ORDER)}
+    main_blocks.sort(key=lambda b: cat_rank.get(b.get("category", ""), 99))
+
+    # Group main blocks by category (preserving order)
+    from collections import OrderedDict
+    groups: OrderedDict[str, list[str]] = OrderedDict()
+    for blk in main_blocks:
+        cat = blk.get("category", "other")
+        groups.setdefault(cat, [])
+        groups[cat].append(blk["text"].strip())
+
+    # Build main acknowledgment paragraphs
+    sentences: list[str] = []
+    for cat, texts in groups.items():
+        if len(texts) == 1:
+            sentences.append(_ack_sentence(texts[0]))
+        else:
+            # Join multiple blocks in same category with "; "
+            joined = "; ".join(t.rstrip(".") for t in texts)
+            sentences.append(_ack_sentence(joined))
+
+    # Assemble body: "The authors would like to thank..." lead-in + sentences
+    if sentences:
+        # Prepend standard opener if it doesn't already start with "The authors"
+        first = sentences[0]
+        first_lower = first.lower()
+        if not first_lower.startswith("the authors"):
+            body = "The authors would like to thank the following for their support: " + first[0].lower() + first[1:]
+        else:
+            body = first
+        parts = [body] + sentences[1:]
+        main_text = " ".join(parts)
+    else:
+        main_text = ""
+
+    # Append "also acknowledge" blocks
+    also_parts: list[str] = []
+    for blk in also_blocks:
+        text = blk["text"].strip()
+        text_lower = text.lower()
+        if text_lower.startswith("the authors would also like to acknowledge"):
+            also_parts.append(_ack_sentence(text))
+        elif text_lower.startswith("the authors"):
+            also_parts.append(_ack_sentence(text))
+        else:
+            also_parts.append("The authors would also like to acknowledge " + text[0].lower() + text[1:] if not text.endswith(".") else "The authors would also like to acknowledge " + text[0].lower() + text[1:])
+            also_parts[-1] = _ack_sentence(also_parts[-1])
+
+    if main_text and also_parts:
+        acknowledgments_text = main_text.rstrip(".") + ". " + " ".join(also_parts)
+    elif also_parts:
+        acknowledgments_text = " ".join(also_parts)
+    else:
+        acknowledgments_text = main_text
+
+    categories_used = list(dict.fromkeys(
+        b.get("category", "other") for b in (main_blocks + also_blocks)
+    ))
+
+    blocks_info = [
+        {
+            "category":    b.get("category", ""),
+            "short_label": b.get("short_label", ""),
+            "is_active":   str(b.get("is_active", "true")).lower() == "true",
+        }
+        for b in (main_blocks + also_blocks)
+    ]
+
+    return {
+        "acknowledgments_text": acknowledgments_text,
+        "blocks_info":          blocks_info,
+        "categories_used":      categories_used,
+        "warnings":             warnings,
+    }
     """Rewrite a grant acknowledgment text for use after the first grant."""
     t = text.lower()
     if t.startswith("this work was partially funded by grant"):
