@@ -104,6 +104,8 @@ def bootstrap_schema() -> None:
             pd.DataFrame(columns=cols).to_csv(filepath, index=False)
             logger.info("Created empty %s", os.path.basename(filepath))
     _seed_ack_blocks_if_empty()
+    _seed_grants_if_empty()
+    _seed_affiliations_if_empty()
     _bootstrap_papers_dir()
 
 
@@ -640,3 +642,229 @@ def _bootstrap_papers_dir() -> None:
             logger.info("Created Dropbox papers folder: %s", DROPBOX_PAPERS_FOLDER)
     except Exception as e:
         logger.debug("Could not bootstrap Dropbox papers folder: %s", e)
+
+
+_GRANTS_SEED = [
+    ("g001", "PID2021-122201OB-C21",
+     "Understanding the key features of spontaneous prion formation",
+     "Ministerio de Ciencia e Innovación", "Plan Estatal", "Joaquín Castilla",
+     "2022-01-01", "2025-12-31", "active",
+     "This work was partially funded by grant PID2021-122201OB-C21, funded by "
+     "MCIN/AEI/10.13039/501100011033 and co-financed by the European Regional "
+     "Development Fund (ERDF)."),
+    ("g002", "PID2021-1222010B-C22",
+     "Prion misfolding mechanisms",
+     "Ministerio de Ciencia e Innovación", "Plan Estatal", "Enric Vidal",
+     "2022-01-01", "2025-12-31", "active",
+     "This work was partially funded by grant PID2021-1222010B-C22, funded by "
+     "MCIN/AEI/10.13039/501100011033 and co-financed by the European Regional "
+     "Development Fund (ERDF)."),
+    ("g003", "PID2020-117465GB-I00",
+     "Prion protein structural studies",
+     "Ministerio de Ciencia e Innovación", "Plan Estatal", "Jesús R. Requena",
+     "2021-01-01", "2024-12-31", "active",
+     "This work was partially funded by grant PID2020-117465GB-I00, funded by "
+     "MCIN/AEI/10.13039/501100011033 and co-financed by the European Regional "
+     "Development Fund (ERDF)."),
+    ("g004", "CEX2021-001136-S",
+     "Severo Ochoa Excellence accreditation",
+     "Ministerio de Ciencia e Innovación", "Severo Ochoa", "Joaquín Castilla",
+     "2022-01-01", "2026-12-31", "active",
+     "CIC bioGUNE currently holds a Severo Ochoa Excellence accreditation, "
+     "CEX2021-001136-S, also funded by Ministerio de Ciencia e Innovación/"
+     "AEI/10.13039/501100011033."),
+    ("g005", "AC21_2/00024",
+     "Neurodegenerative diseases research",
+     "Instituto de Salud Carlos III", "JPND", "Joaquín Castilla",
+     "2021-01-01", "2024-12-31", "active",
+     "Additional funding was provided by the Instituto de Salud Carlos III "
+     "(ISCIII), grant number AC21_2/00024, as part of a JPND grant "
+     "(JPND-2021-650-130)."),
+    ("g006", "EFA031/01",
+     "NEURO-COOP cross-border research",
+     "European Union", "Interreg VI-A España-Francia-Andorra",
+     "Joaquín Castilla / Hasier Eraña",
+     "2022-01-01", "2027-12-31", "active",
+     "EFA031/01 NEURO-COOP, which is co-funded at 65% by the European Union "
+     "through Programa Interreg VI-A España-Francia-Andorra (POCTEFA 2021-2027)."),
+    ("g007", "PID2024-160022OB-I00",
+     "Next-generation prion research",
+     "Ministerio de Ciencia e Innovación", "Plan Estatal", "Joaquín Castilla",
+     "2025-01-01", "2028-12-31", "active",
+     "This work was partially funded by grant PID2024-160022OB-I00, funded by "
+     "MCIN/AEI/10.13039/501100011033 and co-financed by the European Regional "
+     "Development Fund (ERDF)."),
+    ("g008", "PID2021-125946OB-I00",
+     "Advanced protein studies",
+     "Ministerio de Ciencia e Innovación", "Plan Estatal", "Gonzalo José Otaegui",
+     "2022-01-01", "2025-12-31", "active",
+     "This work was funded by grant PID2021-125946OB-I00, funded by "
+     "MCIN/AEI/10.13039/501100011033 and co-financed by the European Regional "
+     "Development Fund (ERDF)."),
+    ("g009", "IJC2020-045506-I",
+     "Young researcher grant",
+     "Ministerio de Ciencia e Innovación", "Juan de la Cierva", "",
+     "2021-01-01", "2023-12-31", "closed",
+     "This work was funded by grant IJC2020-045506-I, funded by "
+     "MCIN/AEI/10.13039/501100011033 and co-financed by the European Regional "
+     "Development Fund (ERDF)."),
+    ("g010", "RYC2022-036457-I",
+     "Ramón y Cajal fellowship",
+     "Ministerio de Ciencia e Innovación", "Ramón y Cajal", "F.P.",
+     "2023-01-01", "2028-12-31", "active",
+     "This work was funded by grant RYC2022-036457-I, funded by "
+     "MCIN/AEI/10.13039/501100011033."),
+    ("g011", "PT23/00123",
+     "Transgenic facility support",
+     "Instituto de Salud Carlos III", "ISCIII", "",
+     "2023-01-01", "2026-12-31", "active",
+     "Transgenic Facility is supported by Instituto de Salud Carlos III (ISCIII), "
+     "co-funded by the European Union grant PT23/00123."),
+]
+
+
+def _seed_grants_if_empty() -> None:
+    if not os.path.exists(GRANTS_FILE):
+        logger.info("Grants CSV missing, skipping seed (will be created by bootstrap_schema)")
+        return
+    try:
+        existing = pd.read_csv(GRANTS_FILE, dtype=str, keep_default_na=False)
+        if not existing.empty:
+            logger.info("Grants CSV not empty, skipping seed")
+            return
+    except Exception:
+        return
+
+    now = _now()
+    rows = []
+    for (gid, code, title, agency, program, pi,
+         start, end, status, ack_text) in _GRANTS_SEED:
+        rows.append({
+            "grant_id":               gid,
+            "code":                   code,
+            "title":                  title,
+            "funding_agency":         agency,
+            "funding_program":        program,
+            "principal_investigator": pi,
+            "start_date":             start,
+            "end_date":               end,
+            "amount_eur":             "",
+            "status":                 status,
+            "acknowledgment_text":    ack_text,
+            "notes":                  "",
+            "created_at":             now,
+            "updated_at":             now,
+        })
+    df = pd.DataFrame(rows, columns=GRANTS_COLS)
+    _write(df, GRANTS_FILE, "grants.csv")
+    assert len(pd.read_csv(GRANTS_FILE, dtype=str, keep_default_na=False)) == len(rows)
+    logger.info("Seed complete: added %d grants to grants.csv", len(rows))
+
+
+_AFFILIATIONS_SEED = [
+    ("aff_001", "CIC BioGUNE",
+     "Basque Research and Technology Alliance (BRTA) - CIC BioGUNE",
+     "", "Derio", "Bizkaia", "Spain", "ES"),
+    ("aff_002", "CIBERINFEC",
+     "Centro de Investigación Biomédica en Red de Enfermedades infecciosas",
+     "Instituto de Salud Carlos III", "Madrid", "Madrid", "Spain", "ES"),
+    ("aff_003", "CISA-INIA-CSIC",
+     "Centro de Investigación en Sanidad Animal",
+     "", "Valdeolmos", "Madrid", "Spain", "ES"),
+    ("aff_004", "Istituto Superiore di Sanità",
+     "Istituto Superiore di Sanità",
+     "Department of Food Safety, Nutrition and Veterinary Public Health",
+     "Rome", "Lazio", "Italy", "IT"),
+    ("aff_005", "UKE Hamburg",
+     "University Medical Center Hamburg-Eppendorf",
+     "Institute of Neuropathology", "Hamburg", "Hamburg", "Germany", "DE"),
+    ("aff_006", "Mario Negri IRCCS",
+     "Istituto di Ricerche Farmacologiche Mario Negri IRCCS",
+     "", "Milan", "Lombardy", "Italy", "IT"),
+    ("aff_007", "University of Insubria",
+     "University of Insubria",
+     "Department of Biotechnology and Life Sciences",
+     "Varese", "Lombardy", "Italy", "IT"),
+    ("aff_008", "IKERBasque",
+     "Basque Foundation for Science",
+     "", "Bilbao", "Bizkaia", "Spain", "ES"),
+    ("aff_009", "IRTA-CReSA",
+     "IRTA, Programa de Sanitat Animal",
+     "Centre de Recerca en Sanitat Animal (CReSA), Campus UAB",
+     "Bellaterra", "Barcelona", "Spain", "ES"),
+    ("aff_010", "IRTA-UAB",
+     "Unitat mixta d'Investigación IRTA-UAB en Sanitat Animal",
+     "", "Bellaterra", "Barcelona", "Spain", "ES"),
+    ("aff_011", "ATLAS Molecular Pharma",
+     "ATLAS Molecular Pharma S. L.",
+     "", "Derio", "Bizkaia", "Spain", "ES"),
+    ("aff_012", "CIMUS-USC",
+     "CIMUS Biomedical Research Institute",
+     "University of Santiago de Compostela-IDIS",
+     "Santiago de Compostela", "Galicia", "Spain", "ES"),
+    ("aff_013", "Colorado State University",
+     "Colorado State University",
+     "Prion Research Center (PRC), Department of Biomedical Sciences",
+     "Fort Collins", "Colorado", "USA", "US"),
+    ("aff_014", "Universidad de Salamanca",
+     "Universidad de Salamanca",
+     "Departamento de Medicina", "Salamanca", "Castilla y León", "Spain", "ES"),
+    ("aff_015", "INRAE Toulouse",
+     "INRAE, ENVT",
+     "UMR 1225, Interactions Hôtes Agents Pathogènes",
+     "Toulouse", "Occitanie", "France", "FR"),
+    ("aff_016", "Norwegian Veterinary Institute",
+     "Norwegian Veterinary Institute (NVI)",
+     "", "Oslo", "Oslo", "Norway", "NO"),
+    ("aff_017", "APHA UK",
+     "Animal and Plant Health Agency (APHA)",
+     "", "Addlestone, Weybridge", "Surrey", "United Kingdom", "GB"),
+    ("aff_018", "Nottingham Trent University",
+     "Nottingham Trent University",
+     "School of Science and Technology",
+     "Nottingham", "England", "United Kingdom", "GB"),
+    ("aff_019", "Slovak Medical University",
+     "Slovak Medical University",
+     "", "Bratislava", "Bratislava", "Slovakia", "SK"),
+    ("aff_020", "CNRS Toulouse",
+     "Université de Toulouse, CNRS",
+     "Centre de Recherche Cerveau et Cognition",
+     "Toulouse", "Occitanie", "France", "FR"),
+]
+
+
+def _seed_affiliations_if_empty() -> None:
+    if not os.path.exists(AFFILIATIONS_FILE):
+        logger.info("Affiliations CSV missing, skipping seed (will be created by bootstrap_schema)")
+        return
+    try:
+        existing = pd.read_csv(AFFILIATIONS_FILE, dtype=str, keep_default_na=False)
+        if not existing.empty:
+            logger.info("Affiliations CSV not empty, skipping seed")
+            return
+    except Exception:
+        return
+
+    now = _now()
+    rows = []
+    for (aff_id, short_name, full_name, department,
+         city, region, country, country_code) in _AFFILIATIONS_SEED:
+        rows.append({
+            "affiliation_id": aff_id,
+            "short_name":     short_name,
+            "full_name":      full_name,
+            "department":     department,
+            "address_line":   "",
+            "postal_code":    "",
+            "city":           city,
+            "region":         region,
+            "country":        country,
+            "country_code":   country_code,
+            "notes":          "",
+            "created_at":     now,
+            "updated_at":     now,
+        })
+    df = pd.DataFrame(rows, columns=AFFILIATIONS_COLS)
+    _write(df, AFFILIATIONS_FILE, "affiliations.csv")
+    assert len(pd.read_csv(AFFILIATIONS_FILE, dtype=str, keep_default_na=False)) == len(rows)
+    logger.info("Seed complete: added %d affiliations to affiliations.csv", len(rows))
