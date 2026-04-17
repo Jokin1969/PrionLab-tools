@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-17 20:59+0000\n"
+"POT-Creation-Date: 2026-04-17 21:21+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -21,19 +21,24 @@ msgstr ""
 msgid "Incorrect username or password."
 msgstr ""
 
-#: templates/base.html:39
+#: templates/base.html:19 tools/methods/templates/methods/index.html:2
+#: tools/methods/templates/methods/index.html:6
+msgid "Methods Library"
+msgstr ""
+
+#: templates/base.html:40
 msgid "Admin"
 msgstr ""
 
-#: templates/base.html:41
+#: templates/base.html:42
 msgid "Log out"
 msgstr ""
 
-#: templates/base.html:45 templates/login.html:3
+#: templates/base.html:46 templates/login.html:3
 msgid "Login"
 msgstr ""
 
-#: templates/base.html:68
+#: templates/base.html:69
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:30
 msgid "Contact"
 msgstr ""
@@ -954,6 +959,7 @@ msgstr ""
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:199
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:323
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:459
+#: tools/methods/templates/methods/index.html:63
 msgid "Copy to clipboard"
 msgstr ""
 
@@ -1064,6 +1070,7 @@ msgstr ""
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:100
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:121
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:189
+#: tools/methods/templates/methods/index.html:85
 msgid "Remove"
 msgstr ""
 
@@ -1078,14 +1085,17 @@ msgid "Move down"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:478
+#: tools/methods/templates/methods/index.html:77
 msgid "Copied to clipboard."
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:479
+#: tools/methods/templates/methods/index.html:78
 msgid "Could not copy. Select the text manually."
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:480
+#: tools/methods/templates/methods/index.html:79
 msgid "Network error. Please try again."
 msgstr ""
 
@@ -1106,6 +1116,7 @@ msgid "1 grant selected"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:485
+#: tools/methods/templates/methods/index.html:81
 msgid "Warning:"
 msgstr ""
 
@@ -1329,6 +1340,7 @@ msgstr ""
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:133
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:148
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:225
+#: tools/methods/templates/methods/index.html:83
 msgid "Add"
 msgstr ""
 
@@ -1723,5 +1735,65 @@ msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:91
 msgid "No publications found."
+msgstr ""
+
+#: tools/methods/routes.py:33
+msgid "Protocol ID is required."
+msgstr ""
+
+#: tools/methods/routes.py:49 tools/methods/templates/methods/index.html:80
+msgid "Select at least one protocol."
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:8
+msgid ""
+"Select and parametrize experimental protocols to generate Methods "
+"sections for manuscripts."
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:14
+msgid ""
+"You can browse and configure protocols, but generating the Methods "
+"section requires editor or admin access."
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:22
+msgid "Available Protocols"
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:24
+msgid "Loading…"
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:31
+msgid "Selected Methods"
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:39
+msgid "Select protocols from the left panel to get started."
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:47
+msgid "Generate Methods Section"
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:50
+msgid "Clear All"
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:61
+msgid "Generated Methods Section"
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:82
+msgid "Suggestion"
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:84
+msgid "PK digestion is typically performed before this protocol."
+msgstr ""
+
+#: tools/methods/templates/methods/index.html:86
+msgid "Preview"
 msgstr ""
 

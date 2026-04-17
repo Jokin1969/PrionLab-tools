@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PrionLab-tools 0.2.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-17 20:59+0000\n"
+"POT-Creation-Date: 2026-04-17 21:21+0000\n"
 "PO-Revision-Date: 2024-01-01 00:00+0000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: es\n"
@@ -19,19 +19,24 @@ msgstr ""
 msgid "Incorrect username or password."
 msgstr "Usuario o contraseña incorrectos."
 
-#: templates/base.html:39
+#: templates/base.html:19 tools/methods/templates/methods/index.html:2
+#: tools/methods/templates/methods/index.html:6
+msgid "Methods Library"
+msgstr "Biblioteca de Métodos"
+
+#: templates/base.html:40
 msgid "Admin"
 msgstr "Admin"
 
-#: templates/base.html:41
+#: templates/base.html:42
 msgid "Log out"
 msgstr "Cerrar sesión"
 
-#: templates/base.html:45 templates/login.html:3
+#: templates/base.html:46 templates/login.html:3
 msgid "Login"
 msgstr "Iniciar sesión"
 
-#: templates/base.html:68
+#: templates/base.html:69
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:30
 msgid "Contact"
 msgstr "Contacto"
@@ -958,6 +963,7 @@ msgstr "Texto generado"
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:199
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:323
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:459
+#: tools/methods/templates/methods/index.html:63
 msgid "Copy to clipboard"
 msgstr "Copiar al portapapeles"
 
@@ -1044,8 +1050,8 @@ msgid ""
 "Assign CRediT roles to authors and generate the Author Contributions "
 "section."
 msgstr ""
-"Asigna roles CRediT a los autores y genera la sección de Contribuciones de "
-"Autoría."
+"Asigna roles CRediT a los autores y genera la sección de Contribuciones "
+"de Autoría."
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:414
 msgid "Role assignment matrix"
@@ -1079,6 +1085,7 @@ msgstr "Generar CRediT"
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:100
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:121
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:189
+#: tools/methods/templates/methods/index.html:85
 msgid "Remove"
 msgstr "Quitar"
 
@@ -1093,14 +1100,17 @@ msgid "Move down"
 msgstr "Bajar"
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:478
+#: tools/methods/templates/methods/index.html:77
 msgid "Copied to clipboard."
 msgstr "Copiado al portapapeles."
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:479
+#: tools/methods/templates/methods/index.html:78
 msgid "Could not copy. Select the text manually."
 msgstr "No se pudo copiar. Selecciona el texto manualmente."
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:480
+#: tools/methods/templates/methods/index.html:79
 msgid "Network error. Please try again."
 msgstr "Error de red. Inténtalo de nuevo."
 
@@ -1121,6 +1131,7 @@ msgid "1 grant selected"
 msgstr "1 proyecto seleccionado"
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:485
+#: tools/methods/templates/methods/index.html:81
 msgid "Warning:"
 msgstr "Aviso:"
 
@@ -1345,6 +1356,7 @@ msgstr "Miembro"
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:133
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:148
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:225
+#: tools/methods/templates/methods/index.html:83
 msgid "Add"
 msgstr "Añadir"
 
@@ -1747,6 +1759,70 @@ msgstr "Buscar título, autores, revista…"
 #: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:91
 msgid "No publications found."
 msgstr "No se han encontrado publicaciones."
+
+#: tools/methods/routes.py:33
+msgid "Protocol ID is required."
+msgstr "El ID de protocolo es obligatorio."
+
+#: tools/methods/routes.py:49 tools/methods/templates/methods/index.html:80
+msgid "Select at least one protocol."
+msgstr "Selecciona al menos un protocolo."
+
+#: tools/methods/templates/methods/index.html:8
+msgid ""
+"Select and parametrize experimental protocols to generate Methods "
+"sections for manuscripts."
+msgstr ""
+"Selecciona y parametriza protocolos experimentales para generar secciones "
+"de Métodos para manuscritos."
+
+#: tools/methods/templates/methods/index.html:14
+msgid ""
+"You can browse and configure protocols, but generating the Methods "
+"section requires editor or admin access."
+msgstr ""
+"Puedes explorar y configurar protocolos, pero generar la sección de Métodos "
+"requiere acceso de editor o administrador."
+
+#: tools/methods/templates/methods/index.html:22
+msgid "Available Protocols"
+msgstr "Protocolos Disponibles"
+
+#: tools/methods/templates/methods/index.html:24
+msgid "Loading…"
+msgstr "Cargando…"
+
+#: tools/methods/templates/methods/index.html:31
+msgid "Selected Methods"
+msgstr "Métodos Seleccionados"
+
+#: tools/methods/templates/methods/index.html:39
+msgid "Select protocols from the left panel to get started."
+msgstr "Selecciona protocolos del panel izquierdo para comenzar."
+
+#: tools/methods/templates/methods/index.html:47
+msgid "Generate Methods Section"
+msgstr "Generar Sección de Métodos"
+
+#: tools/methods/templates/methods/index.html:50
+msgid "Clear All"
+msgstr "Limpiar Todo"
+
+#: tools/methods/templates/methods/index.html:61
+msgid "Generated Methods Section"
+msgstr "Sección de Métodos Generada"
+
+#: tools/methods/templates/methods/index.html:82
+msgid "Suggestion"
+msgstr "Sugerencia"
+
+#: tools/methods/templates/methods/index.html:84
+msgid "PK digestion is typically performed before this protocol."
+msgstr "La digestión con PK se realiza habitualmente antes de este protocolo."
+
+#: tools/methods/templates/methods/index.html:86
+msgid "Preview"
+msgstr "Vista previa"
 
 #~ msgid "Unauthorized. Admin access required."
 #~ msgstr "Acceso no autorizado. Se requiere rol de administrador."
