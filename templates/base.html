@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_locale }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,20 +8,50 @@
 </head>
 <body>
   <header class="site-header">
-    <div class="container">
+    <div class="container header-inner">
+
       <a href="{{ url_for('home') }}" class="site-title">PrionLab Tools</a>
+
       <nav class="site-nav">
         {% if session.get('logged_in') %}
-          <a href="{{ url_for('auth.logout') }}" class="nav-link">Log out</a>
+          <a href="{{ url_for('manuscriptforge_placeholder') }}" class="nav-link">ManuscriptForge</a>
         {% endif %}
       </nav>
+
+      <div class="header-right">
+        <!-- Language flags -->
+        <div class="lang-switcher">
+          <a href="{{ lang_url('es') }}" class="flag-link {% if current_locale == 'es' %}active{% endif %}" title="Español">
+            <img src="{{ url_for('static', filename='img/flags/es.png') }}" alt="ES" onerror="this.replaceWith(document.createTextNode('ES'))" />
+          </a>
+          <a href="{{ lang_url('en') }}" class="flag-link {% if current_locale == 'en' %}active{% endif %}" title="English">
+            <img src="{{ url_for('static', filename='img/flags/en.png') }}" alt="EN" onerror="this.replaceWith(document.createTextNode('EN'))" />
+          </a>
+        </div>
+
+        <!-- User menu -->
+        {% if session.get('logged_in') %}
+          <details class="user-menu">
+            <summary class="user-menu__toggle">{{ session.get('full_name', session.get('username', '')) }}</summary>
+            <div class="user-menu__dropdown">
+              {% if session.get('role') == 'admin' %}
+                <a href="{{ url_for('admin.index') }}" class="user-menu__item">⚙ {{ _('Admin') }}</a>
+              {% endif %}
+              <a href="{{ url_for('auth.logout') }}" class="user-menu__item">{{ _('Log out') }}</a>
+            </div>
+          </details>
+        {% else %}
+          <a href="{{ url_for('auth.login') }}" class="nav-link">{{ _('Login') }}</a>
+        {% endif %}
+      </div>
+
     </div>
   </header>
 
   <main class="site-main">
     <div class="container">
       {% with messages = get_flashed_messages(with_categories=true) %}
-        {% for category, message in messages %}
+        {% for category, message in messages if category != 'password_reset' %}
           <div class="alert alert--{{ category }}">{{ message }}</div>
         {% endfor %}
       {% endwith %}
@@ -31,10 +61,10 @@
 
   <footer class="site-footer">
     <div class="container">
-      <span>PrionLab Tools v{{ version | default('0.1.0') }}</span>
-      {% if contact | default('') %}
+      <span>PrionLab Tools v{{ version }}</span>
+      {% if contact %}
         &nbsp;·&nbsp;
-        <a href="mailto:{{ contact }}">Contact</a>
+        <a href="mailto:{{ contact }}">{{ _('Contact') }}</a>
       {% endif %}
     </div>
   </footer>

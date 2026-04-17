@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}
+  {{ _('Edit user') if mode == 'edit' else _('New user') }} — PrionLab Tools
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ _('Edit user') if mode == 'edit' else _('New user') }}</h1>
+</div>
+
+<div class="form-card">
+  <form method="POST" class="form-stacked">
+
+    {% if mode == 'add' %}
+    <div class="form-group">
+      <label for="username" class="form-label">{{ _('Username') }}</label>
+      <input type="text" id="username" name="username"
+             class="form-input" value="{{ form.get('username', '') }}"
+             pattern="[a-z0-9_\-]+" title="Lowercase letters, numbers, _ and - only"
+             autocomplete="off" required />
+      <p class="form-hint">Lowercase ASCII only, no spaces.</p>
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+      <label for="full_name" class="form-label">{{ _('Full name') }}</label>
+      <input type="text" id="full_name" name="full_name"
+             class="form-input" value="{{ form.get('full_name', '') }}" required />
+    </div>
+
+    <div class="form-group">
+      <label for="email" class="form-label">{{ _('Email') }}</label>
+      <input type="email" id="email" name="email"
+             class="form-input" value="{{ form.get('email', '') }}" />
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="role" class="form-label">{{ _('Role') }}</label>
+        <select id="role" name="role" class="form-input">
+          <option value="admin"  {{ 'selected' if form.get('role') == 'admin' }}>Admin</option>
+          <option value="editor" {{ 'selected' if form.get('role') == 'editor' }}>Editor</option>
+          <option value="reader" {{ 'selected' if form.get('role', 'reader') == 'reader' }}>{{ _('Reader') }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="language" class="form-label">{{ _('Language') }}</label>
+        <select id="language" name="language" class="form-input">
+          <option value="es" {{ 'selected' if form.get('language', 'es') == 'es' }}>Español</option>
+          <option value="en" {{ 'selected' if form.get('language') == 'en' }}>English</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group form-group--inline">
+      <input type="checkbox" id="active" name="active"
+             class="form-checkbox"
+             {{ 'checked' if form.get('active', 'true') == 'true' }} />
+      <label for="active" class="form-label form-label--inline">{{ _('Active') }}</label>
+    </div>
+
+    <hr class="form-divider" />
+
+    <div class="form-group">
+      <label for="password" class="form-label">{{ _('Password') }}</label>
+      <input type="password" id="password" name="password"
+             class="form-input" autocomplete="new-password"
+             {{ 'required' if mode == 'add' }} />
+      {% if mode == 'edit' %}
+        <p class="form-hint">{{ _('Leave blank to keep current password') }}</p>
+      {% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="confirm_password" class="form-label">{{ _('Confirm password') }}</label>
+      <input type="password" id="confirm_password" name="confirm_password"
+             class="form-input" autocomplete="new-password"
+             {{ 'required' if mode == 'add' }} />
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ _('Save') }}</button>
+      <a href="{{ url_for('admin.index') }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

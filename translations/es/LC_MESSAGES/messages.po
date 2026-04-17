@@ -1,0 +1,232 @@
+# Spanish translations for PrionLab-tools
+# Copyright (C) 2024
+msgid ""
+msgstr ""
+"Project-Id-Version: PrionLab-tools 0.2.0\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2024-01-01 00:00+0000\n"
+"PO-Revision-Date: 2024-01-01 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: es\n"
+"Language-Team: Spanish\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.x\n"
+
+msgid "Incorrect username or password."
+msgstr "Usuario o contraseña incorrectos."
+
+msgid "Admin"
+msgstr "Admin"
+
+msgid "Log out"
+msgstr "Cerrar sesión"
+
+msgid "Login"
+msgstr "Iniciar sesión"
+
+msgid "Contact"
+msgstr "Contacto"
+
+msgid "Internal tools for the prion research group"
+msgstr "Herramientas internas del grupo de investigación en priones"
+
+msgid "Automate boilerplate sections of research manuscripts."
+msgstr "Automatiza las secciones estándar de manuscritos de investigación."
+
+msgid "Coming soon"
+msgstr "Próximamente"
+
+msgid "Username"
+msgstr "Usuario"
+
+msgid "Password"
+msgstr "Contraseña"
+
+msgid "Sign in"
+msgstr "Iniciar sesión"
+
+msgid "This tool is under development and will be available soon."
+msgstr "Esta herramienta está en desarrollo y estará disponible próximamente."
+
+msgid "Back to Home"
+msgstr "Volver al inicio"
+
+msgid "Admin Panel"
+msgstr "Panel de administración"
+
+msgid "New password:"
+msgstr "Nueva contraseña:"
+
+msgid "Copy this password now — it will not be shown again."
+msgstr "Copia esta contraseña ahora; no se mostrará de nuevo."
+
+msgid "Users"
+msgstr "Usuarios"
+
+msgid "Add user"
+msgstr "Añadir usuario"
+
+msgid "Full name"
+msgstr "Nombre completo"
+
+msgid "Email"
+msgstr "Correo electrónico"
+
+msgid "Role"
+msgstr "Rol"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Active"
+msgstr "Activo"
+
+msgid "Last login"
+msgstr "Último acceso"
+
+msgid "Actions"
+msgstr "Acciones"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Reset password for"
+msgstr "Restablecer contraseña de"
+
+msgid "Reset password"
+msgstr "Restablecer contraseña"
+
+msgid "Deactivate"
+msgstr "Desactivar"
+
+msgid "Activate"
+msgstr "Activar"
+
+msgid "Are you sure you want to delete this user?"
+msgstr "¿Estás seguro de que quieres eliminar este usuario?"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Cannot delete this user."
+msgstr "No se puede eliminar este usuario."
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "Dropbox status"
+msgstr "Estado de Dropbox"
+
+msgid "Connected"
+msgstr "Conectado"
+
+msgid "Not configured"
+msgstr "No configurado"
+
+msgid "SMTP status"
+msgstr "Estado de SMTP"
+
+msgid "Configured"
+msgstr "Configurado"
+
+msgid "Last sync"
+msgstr "Última sincronización"
+
+msgid "Never"
+msgstr "Nunca"
+
+msgid "Disk usage"
+msgstr "Espacio en disco"
+
+msgid "App version"
+msgstr "Versión de la aplicación"
+
+msgid "Force sync"
+msgstr "Forzar sincronización"
+
+msgid "Send test email"
+msgstr "Enviar correo de prueba"
+
+msgid "Recent logs"
+msgstr "Registros recientes"
+
+msgid "Refresh"
+msgstr "Actualizar"
+
+msgid "Edit user"
+msgstr "Editar usuario"
+
+msgid "New user"
+msgstr "Nuevo usuario"
+
+msgid "Reader"
+msgstr "Lector"
+
+msgid "Leave blank to keep current password"
+msgstr "Deja en blanco para mantener la contraseña actual"
+
+msgid "Confirm password"
+msgstr "Confirmar contraseña"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Page not found."
+msgstr "Página no encontrada."
+
+msgid "An internal error occurred. Please try again later."
+msgstr "Se ha producido un error interno. Por favor, inténtalo de nuevo más tarde."
+
+msgid "Password is required for new users."
+msgstr "La contraseña es obligatoria para los nuevos usuarios."
+
+msgid "Passwords do not match."
+msgstr "Las contraseñas no coinciden."
+
+msgid "Username already exists."
+msgstr "El nombre de usuario ya existe."
+
+msgid "User created successfully."
+msgstr "Usuario creado correctamente."
+
+msgid "User not found."
+msgstr "Usuario no encontrado."
+
+msgid "User updated successfully."
+msgstr "Usuario actualizado correctamente."
+
+msgid "User deleted successfully."
+msgstr "Usuario eliminado correctamente."
+
+msgid "User activated."
+msgstr "Usuario activado."
+
+msgid "User deactivated."
+msgstr "Usuario desactivado."
+
+msgid "Sync completed: %(n)d file(s) updated."
+msgstr "Sincronización completada: %(n)d archivo(s) actualizado(s)."
+
+msgid "Sync completed. All files are up to date."
+msgstr "Sincronización completada. Todos los archivos están al día."
+
+msgid "Test email sent successfully."
+msgstr "Correo de prueba enviado correctamente."
+
+msgid "Failed to send test email."
+msgstr "No se pudo enviar el correo de prueba."
+
+msgid "Password reset. Copy the password shown above — it will not be displayed again."
+msgstr "Contraseña restablecida. Copia la contraseña mostrada arriba; no se volverá a mostrar."
+
+msgid "Unauthorized. Admin access required."
+msgstr "Acceso no autorizado. Se requiere rol de administrador."
+
+msgid "Unauthorized. Editor access required."
+msgstr "Acceso no autorizado. Se requiere rol de editor."

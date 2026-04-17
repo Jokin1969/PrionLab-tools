@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Admin Panel') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ _('Admin Panel') }}</h1>
+</div>
+
+{# ── Password reset — shown prominently, once ────────────────────────────── #}
+{% with pw_msgs = get_flashed_messages(category_filter=['password_reset']) %}
+  {% if pw_msgs %}
+    <div class="alert-password-reset">
+      <p class="alert-password-reset__label">{{ _('New password:') }}</p>
+      <code class="alert-password-reset__value">{{ pw_msgs[0] }}</code>
+      <p class="alert-password-reset__warn">{{ _('Copy this password now — it will not be shown again.') }}</p>
+    </div>
+  {% endif %}
+{% endwith %}
+
+{# ── Section A: Users ────────────────────────────────────────────────────── #}
+<section class="admin-section">
+  <div class="admin-section__header">
+    <h2>{{ _('Users') }}</h2>
+    <a href="{{ url_for('admin.add_user') }}" class="btn btn--primary btn--sm">+ {{ _('Add user') }}</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('Username') }}</th>
+          <th>{{ _('Full name') }}</th>
+          <th>{{ _('Email') }}</th>
+          <th>{{ _('Role') }}</th>
+          <th>{{ _('Language') }}</th>
+          <th>{{ _('Active') }}</th>
+          <th>{{ _('Last login') }}</th>
+          <th>{{ _('Actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr class="{{ 'row--inactive' if user.active == 'false' else '' }}">
+          <td><code>{{ user.username }}</code></td>
+          <td>{{ user.full_name }}</td>
+          <td>{{ user.email }}</td>
+          <td><span class="badge badge--{{ user.role }}">{{ user.role }}</span></td>
+          <td>{{ user.language }}</td>
+          <td class="text-center">
+            {{ '✓' if user.active == 'true' else '✗' }}
+          </td>
+          <td>{{ user.last_login or '—' }}</td>
+          <td class="actions-cell">
+            <a href="{{ url_for('admin.edit_user', username=user.username) }}"
+               class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+
+            <form method="POST"
+                  action="{{ url_for('admin.reset_password', username=user.username) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('{{ _('Reset password for') }} {{ user.username }}?')">
+              <button type="submit" class="btn btn--sm btn--warning">{{ _('Reset password') }}</button>
+            </form>
+
+            <form method="POST"
+                  action="{{ url_for('admin.toggle_user', username=user.username) }}"
+                  style="display:inline">
+              <button type="submit" class="btn btn--sm">
+                {{ _('Deactivate') if user.active == 'true' else _('Activate') }}
+              </button>
+            </form>
+
+            {% if user.username != 'admin' and user.username != session.get('username') %}
+              <form method="POST"
+                    action="{{ url_for('admin.delete_user_route', username=user.username) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('{{ _('Are you sure you want to delete this user?') }}')">
+                <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+              </form>
+            {% else %}
+              <button class="btn btn--sm btn--danger" disabled
+                      title="{{ _('Cannot delete this user.') }}">{{ _('Delete') }}</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted">—</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── Section B: System ───────────────────────────────────────────────────── #}
+<section class="admin-section">
+  <h2>{{ _('System') }}</h2>
+
+  <div class="system-grid">
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Dropbox status') }}</div>
+      <div class="system-card__value {{ 'value--ok' if dropbox_ok else 'value--err' }}">
+        {% if dropbox_ok %}✓ {{ _('Connected') }}{% else %}✗ {{ _('Not configured') }}{% endif %}
+      </div>
+    </div>
+
+    <div class="system-card">
+      <div class="system-card__label">{{ _('SMTP status') }}</div>
+      <div class="system-card__value {{ 'value--ok' if smtp_ok else 'value--err' }}">
+        {% if smtp_ok %}✓ {{ _('Configured') }}{% else %}✗ {{ _('Not configured') }}{% endif %}
+      </div>
+    </div>
+
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Last sync') }}</div>
+      <div class="system-card__value">{{ last_sync or _('Never') }}</div>
+    </div>
+
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Disk usage') }}</div>
+      <div class="system-card__value">{{ disk_mb }} MB</div>
+    </div>
+
+    <div class="system-card">
+      <div class="system-card__label">{{ _('App version') }}</div>
+      <div class="system-card__value">{{ version }}</div>
+    </div>
+  </div>
+
+  <div class="system-actions">
+    <form method="POST" action="{{ url_for('admin.force_sync') }}" style="display:inline">
+      <button type="submit" class="btn btn--secondary">{{ _('Force sync') }}</button>
+    </form>
+    <form method="POST" action="{{ url_for('admin.test_email') }}" style="display:inline">
+      <button type="submit" class="btn btn--secondary">{{ _('Send test email') }}</button>
+    </form>
+  </div>
+</section>
+
+{# ── Section C: Logs ─────────────────────────────────────────────────────── #}
+<section class="admin-section">
+  <div class="admin-section__header">
+    <h2>{{ _('Recent logs') }}</h2>
+    <a href="{{ url_for('admin.index') }}" class="btn btn--sm btn--secondary">{{ _('Refresh') }}</a>
+  </div>
+  <pre class="log-viewer">{{ log_lines }}</pre>
+</section>
+
+{% endblock %}

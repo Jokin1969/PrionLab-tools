@@ -25,7 +25,13 @@ DB_PATH = os.path.join(DATA_DIR, "prionlab.db")
 
 DROPBOX_REMOTE_FOLDER = "/Web-tools/PrionLab tools"
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
+
+# i18n
+LANGUAGES = ["es", "en"]
+DEFAULT_LANGUAGE = "es"
+BABEL_DEFAULT_LOCALE = "es"
+BABEL_TRANSLATION_DIRECTORIES = "translations"
 
 def _derive_secret_key(password: str) -> str:
     if not password:

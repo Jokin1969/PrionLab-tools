@@ -1,29 +1,33 @@
 {% extends "base.html" %}
 
-{% block title %}Login — PrionLab Tools{% endblock %}
+{% block title %}{{ _('Login') }} — PrionLab Tools{% endblock %}
 
 {% block content %}
 <div class="auth-wrapper">
   <div class="auth-card">
     <h1 class="auth-title">PrionLab Tools</h1>
-    <p class="auth-subtitle">Internal tools for the prion research group</p>
+    <p class="auth-subtitle">{{ _('Internal tools for the prion research group') }}</p>
 
-    <form method="POST" action="{{ url_for('auth.login') }}{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}" class="auth-form">
+    <form method="POST"
+          action="{{ url_for('auth.login') }}{% if request.args.get('next') %}?next={{ request.args.get('next') | urlencode }}{% endif %}"
+          class="auth-form">
       {% if error %}
         <div class="alert alert--error">{{ error }}</div>
       {% endif %}
+
       <div class="form-group">
-        <label for="password" class="form-label">Password</label>
-        <input
-          type="password"
-          id="password"
-          name="password"
-          class="form-input"
-          autofocus
-          required
-        />
+        <label for="username" class="form-label">{{ _('Username') }}</label>
+        <input type="text" id="username" name="username"
+               class="form-input" autocomplete="username" autofocus required />
       </div>
-      <button type="submit" class="btn btn--primary btn--full">Sign in</button>
+
+      <div class="form-group">
+        <label for="password" class="form-label">{{ _('Password') }}</label>
+        <input type="password" id="password" name="password"
+               class="form-input" autocomplete="current-password" required />
+      </div>
+
+      <button type="submit" class="btn btn--primary btn--full">{{ _('Sign in') }}</button>
     </form>
   </div>
 </div>

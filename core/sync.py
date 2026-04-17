@@ -9,11 +9,14 @@ from config import CSV_DIR, DROPBOX_REMOTE_FOLDER
 
 logger = logging.getLogger(__name__)
 
+
 def _ensure_csv_dir():
     os.makedirs(CSV_DIR, exist_ok=True)
 
+
 def _remote_path(filename: str) -> str:
     return f"{DROPBOX_REMOTE_FOLDER}/{filename}"
+
 
 def list_remote_csvs() -> list[dict]:
     client = get_client()
@@ -39,8 +42,8 @@ def list_remote_csvs() -> list[dict]:
         logger.error("Error listing remote CSVs: %s", e)
         return []
 
+
 def _local_content_hash(filepath: str) -> str | None:
-    """Compute Dropbox-compatible content hash for a local file."""
     try:
         import hashlib
         BLOCK_SIZE = 4 * 1024 * 1024
@@ -53,10 +56,10 @@ def _local_content_hash(filepath: str) -> str | None:
                 block_hashes.append(hashlib.sha256(block).digest())
         if not block_hashes:
             return hashlib.sha256(b"").hexdigest()
-        combined = b"".join(block_hashes)
-        return hashlib.sha256(combined).hexdigest()
+        return hashlib.sha256(b"".join(block_hashes)).hexdigest()
     except Exception:
         return None
+
 
 def pull_from_dropbox() -> list[str]:
     _ensure_csv_dir()
@@ -66,22 +69,18 @@ def pull_from_dropbox() -> list[str]:
         return []
 
     updated = []
-    remote_files = list_remote_csvs()
-
-    for meta in remote_files:
+    for meta in list_remote_csvs():
         name = meta["name"]
         local_path = os.path.join(CSV_DIR, name)
         remote_hash = meta.get("content_hash")
 
         if os.path.exists(local_path) and remote_hash:
-            local_hash = _local_content_hash(local_path)
-            if local_hash == remote_hash:
+            if _local_content_hash(local_path) == remote_hash:
                 logger.debug("Skipping %s (unchanged)", name)
                 continue
 
         try:
-            remote = _remote_path(name)
-            _, response = client.files_download(remote)
+            _, response = client.files_download(_remote_path(name))
             with open(local_path, "wb") as f:
                 f.write(response.content)
             logger.info("Downloaded %s from Dropbox", name)
@@ -89,7 +88,9 @@ def pull_from_dropbox() -> list[str]:
         except ApiError as e:
             logger.error("Failed to download %s: %s", name, e)
 
+    _record_sync_time()
     return updated
+
 
 def push_to_dropbox(filename: str) -> bool:
     client = get_client()
@@ -104,17 +105,14 @@ def push_to_dropbox(filename: str) -> bool:
 
     remote = _remote_path(filename)
 
-    # Backup existing remote file before overwriting
     try:
         client.files_get_metadata(remote)
         timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
         stem = filename.rsplit(".", 1)[0] if "." in filename else filename
-        backup_name = f"{stem}.bak.{timestamp}.csv"
-        backup_remote = _remote_path(backup_name)
-        client.files_copy_v2(remote, backup_remote)
-        logger.info("Backed up %s to %s", filename, backup_name)
+        client.files_copy_v2(remote, _remote_path(f"{stem}.bak.{timestamp}.csv"))
+        logger.info("Backed up %s in Dropbox", filename)
     except ApiError:
-        pass  # File doesn't exist yet; no backup needed
+        pass
 
     try:
         with open(local_path, "rb") as f:
@@ -127,7 +125,6 @@ def push_to_dropbox(filename: str) -> bool:
 
 
 def initial_sync():
-    """Called at app startup to pull all CSVs from Dropbox."""
     try:
         updated = pull_from_dropbox()
         if updated:
@@ -136,3 +133,17 @@ def initial_sync():
             logger.info("Initial sync: all files up to date")
     except Exception as e:
         logger.warning("Initial sync failed (app will continue): %s", e)
+
+
+def _record_sync_time():
+    try:
+        from core.db import get_connection
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value, updated_at) "
+                "VALUES (?, ?, CURRENT_TIMESTAMP)",
+                ("last_dropbox_sync", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")),
+            )
+            conn.commit()
+    except Exception as e:
+        logger.debug("Could not record sync time: %s", e)

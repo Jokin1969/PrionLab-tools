@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}500 Server Error — PrionLab Tools{% endblock %}
+{% block title %}500 — PrionLab Tools{% endblock %}
 {% block content %}
 <div class="error-page">
   <h1 class="error-page__code">500</h1>
-  <p class="error-page__msg">An internal error occurred. Please try again later.</p>
-  <a href="{{ url_for('home') }}" class="btn btn--secondary">Back to Home</a>
+  <p class="error-page__msg">{{ _('An internal error occurred. Please try again later.') }}</p>
+  <a href="{{ url_for('home') }}" class="btn btn--secondary">{{ _('Back to Home') }}</a>
 </div>
 {% endblock %}

@@ -6,8 +6,8 @@
 <div class="coming-soon">
   <div class="coming-soon__icon">&#9203;</div>
   <h1 class="coming-soon__title">{{ tool_name }}</h1>
-  <p class="coming-soon__tag">Coming soon</p>
-  <p class="coming-soon__msg">This tool is under development and will be available soon.</p>
-  <a href="{{ url_for('home') }}" class="btn btn--secondary">Back to Home</a>
+  <p class="coming-soon__tag">{{ _('Coming soon') }}</p>
+  <p class="coming-soon__msg">{{ _('This tool is under development and will be available soon.') }}</p>
+  <a href="{{ url_for('home') }}" class="btn btn--secondary">{{ _('Back to Home') }}</a>
 </div>
 {% endblock %}
