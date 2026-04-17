@@ -54,6 +54,12 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("CSV schema bootstrap failed: %s", e)
 
+    try:
+        from tools.methods.models import bootstrap_methods_schema
+        bootstrap_methods_schema()
+    except Exception as e:
+        app.logger.warning("Methods schema bootstrap failed: %s", e)
+
     # ── Babel / i18n ────────────────────────────────────────────────────────
 
     def get_locale() -> str:
@@ -103,6 +109,9 @@ def create_app() -> Flask:
 
     from tools.manuscriptforge import manuscriptforge_bp
     app.register_blueprint(manuscriptforge_bp)
+
+    from tools.methods import methods_bp
+    app.register_blueprint(methods_bp)
 
     # ── Routes ───────────────────────────────────────────────────────────────
 

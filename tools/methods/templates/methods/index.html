@@ -1,0 +1,483 @@
+{% extends 'base.html' %}
+{% block title %}{{ _('Methods Library') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:1.5rem">
+  <h1 style="margin:0">{{ _('Methods Library') }}</h1>
+  <p class="text-muted" style="margin:.4rem 0 0">
+    {{ _('Select and parametrize experimental protocols to generate Methods sections for manuscripts.') }}
+  </p>
+</div>
+
+{% if not can_generate %}
+<div class="alert alert--info" style="margin-bottom:1.25rem">
+  {{ _('You can browse and configure protocols, but generating the Methods section requires editor or admin access.') }}
+</div>
+{% endif %}
+
+<div class="methods-layout">
+
+  {# ── Left: Protocol selector ── #}
+  <div class="methods-left">
+    <h3 class="methods-panel-title">{{ _('Available Protocols') }}</h3>
+    <div id="protocol-accordion" class="methods-accordion">
+      <p class="text-muted" style="font-size:.85rem">{{ _('Loading…') }}</p>
+    </div>
+  </div>
+
+  {# ── Right: Composer ── #}
+  <div class="methods-right">
+    <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem">
+      <h3 class="methods-panel-title" style="margin:0">{{ _('Selected Methods') }}</h3>
+      <span class="methods-count-badge" id="selected-count">0</span>
+    </div>
+
+    <div id="methods-suggestion-area"></div>
+
+    <div id="selected-protocols-container">
+      <p class="text-muted" id="empty-state" style="font-size:.9rem">
+        {{ _('Select protocols from the left panel to get started.') }}
+      </p>
+    </div>
+
+    <div id="composer-actions" style="display:none;margin-top:1.25rem;display:none">
+      <button type="button" class="btn btn--primary" id="generate-btn"
+              onclick="generateSection()"
+              {% if not can_generate %}disabled{% endif %}>
+        {{ _('Generate Methods Section') }}
+      </button>
+      <button type="button" class="btn btn--secondary" onclick="clearAllProtocols()" style="margin-left:.5rem">
+        {{ _('Clear All') }}
+      </button>
+    </div>
+
+    <div id="methods-error" class="alert alert--error" style="display:none;margin-top:.75rem"></div>
+  </div>
+</div>
+
+{# ── Output ── #}
+<div id="methods-output" style="display:none;margin-top:2rem">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+    <h3 style="margin:0">{{ _('Generated Methods Section') }}</h3>
+    <button type="button" class="btn btn--secondary btn--sm" onclick="copyMethodsOutput()">
+      {{ _('Copy to clipboard') }}
+    </button>
+  </div>
+  <div id="methods-warnings" style="margin-bottom:.5rem"></div>
+  <textarea id="methods-textarea" class="form-input generate-output" rows="12" readonly></textarea>
+  <div id="copy-feedback" class="text-muted" style="font-size:.8rem;margin-top:.25rem">&nbsp;</div>
+</div>
+
+<script>
+const PROTOCOLS_DATA = {{ protocols_data | tojson }};
+const CAN_GENERATE   = {{ 'true' if can_generate else 'false' }};
+const GENERATE_URL   = "{{ url_for('methods.generate_section') }}";
+
+const I18N = {
+  copied:              "{{ _('Copied to clipboard.') }}",
+  copyFailed:          "{{ _('Could not copy. Select the text manually.') }}",
+  networkError:        "{{ _('Network error. Please try again.') }}",
+  noProtocolsSelected: "{{ _('Select at least one protocol.') }}",
+  warningPrefix:       "{{ _('Warning:') }}",
+  suggestion:          "{{ _('Suggestion') }}",
+  addProtocol:         "{{ _('Add') }}",
+  pkDigestionTypically:"{{ _('PK digestion is typically performed before this protocol.') }}",
+  remove:              "{{ _('Remove') }}",
+  preview:             "{{ _('Preview') }}",
+};
+
+// ── Build flat protocol lookup map ───────────────────────────────────────────
+const PROTOCOLS_MAP = {};
+PROTOCOLS_DATA.categories.forEach(cat => {
+  cat.subcategories.forEach(sub => {
+    sub.protocols.forEach(prot => {
+      PROTOCOLS_MAP[prot.protocol_id] = prot;
+    });
+  });
+});
+
+// ── Dependency suggestions ────────────────────────────────────────────────────
+const PROTOCOL_DEPS = {
+  'prot_003': 'prot_002',
+  'prot_005': 'prot_002',
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedProtocols = {};
+let selectedOrder     = [];
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  renderAccordion();
+  updateComposerActions();
+});
+
+// ── Accordion ─────────────────────────────────────────────────────────────────
+function renderAccordion() {
+  const container = document.getElementById('protocol-accordion');
+  container.innerHTML = '';
+
+  PROTOCOLS_DATA.categories.forEach((cat, cidx) => {
+    const catDiv = document.createElement('div');
+    catDiv.className = 'methods-cat';
+
+    const header = document.createElement('div');
+    header.className = 'methods-cat-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.innerHTML =
+      '<span class="methods-cat-name">' + _esc(cat.name) + '</span>' +
+      '<span class="methods-cat-toggle" id="toggle-' + cat.category_id + '">▶</span>';
+    header.addEventListener('click', () => toggleCat(cat.category_id));
+    header.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') toggleCat(cat.category_id); });
+    catDiv.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'methods-cat-body';
+    body.id = 'cat-body-' + cat.category_id;
+    body.style.display = 'none';
+
+    cat.subcategories.forEach(sub => {
+      const subLabel = document.createElement('div');
+      subLabel.className = 'methods-subcat-name';
+      subLabel.textContent = sub.name;
+      body.appendChild(subLabel);
+
+      sub.protocols.forEach(prot => {
+        const item = document.createElement('div');
+        item.className = 'methods-protocol-item';
+        item.id = 'proto-item-' + prot.protocol_id;
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'methods-protocol-item-title';
+        titleSpan.textContent = prot.title;
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn btn--sm btn--secondary methods-add-btn';
+        addBtn.id = 'add-btn-' + prot.protocol_id;
+        addBtn.textContent = '+ ' + I18N.addProtocol;
+        addBtn.addEventListener('click', () => addProtocol(prot.protocol_id));
+
+        item.appendChild(titleSpan);
+        item.appendChild(addBtn);
+        body.appendChild(item);
+      });
+    });
+
+    catDiv.appendChild(body);
+    container.appendChild(catDiv);
+  });
+
+  // Open first category
+  if (PROTOCOLS_DATA.categories.length > 0) {
+    toggleCat(PROTOCOLS_DATA.categories[0].category_id);
+  }
+}
+
+function toggleCat(catId) {
+  const body   = document.getElementById('cat-body-' + catId);
+  const toggle = document.getElementById('toggle-' + catId);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  if (toggle) toggle.textContent = open ? '▶' : '▼';
+}
+
+// ── Protocol management ───────────────────────────────────────────────────────
+function addProtocol(protocolId) {
+  if (selectedProtocols[protocolId]) return;
+  const prot = PROTOCOLS_MAP[protocolId];
+  if (!prot) return;
+
+  const params = {};
+  prot.parameters.forEach(p => { params[p.name] = p.default_value; });
+  selectedProtocols[protocolId] = { params };
+  selectedOrder.push(protocolId);
+
+  updateAddButton(protocolId, true);
+  renderProtocolCard(protocolId);
+  updateComposerActions();
+  checkDependencies(protocolId);
+  document.getElementById('methods-output').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'none';
+}
+
+function removeProtocol(protocolId) {
+  delete selectedProtocols[protocolId];
+  selectedOrder = selectedOrder.filter(id => id !== protocolId);
+
+  const card = document.getElementById('card-' + protocolId);
+  if (card) card.remove();
+
+  updateAddButton(protocolId, false);
+  updateComposerActions();
+  document.getElementById('methods-output').style.display = 'none';
+
+  if (selectedOrder.length === 0) {
+    document.getElementById('empty-state').style.display = '';
+  }
+}
+
+function updateAddButton(protocolId, added) {
+  const btn = document.getElementById('add-btn-' + protocolId);
+  if (!btn) return;
+  if (added) {
+    btn.textContent = '✓ Added';
+    btn.disabled = true;
+  } else {
+    btn.textContent = '+ ' + I18N.addProtocol;
+    btn.disabled = false;
+  }
+}
+
+function updateComposerActions() {
+  const actions = document.getElementById('composer-actions');
+  const count   = document.getElementById('selected-count');
+  const n = selectedOrder.length;
+  count.textContent = n;
+  actions.style.display = n > 0 ? '' : 'none';
+}
+
+// ── Card rendering ────────────────────────────────────────────────────────────
+function renderProtocolCard(protocolId) {
+  const prot  = PROTOCOLS_MAP[protocolId];
+  const state = selectedProtocols[protocolId];
+  if (!prot || !state) return;
+
+  const idx = selectedOrder.indexOf(protocolId) + 1;
+  const container = document.getElementById('selected-protocols-container');
+
+  const card = document.createElement('div');
+  card.className = 'methods-protocol-card';
+  card.id = 'card-' + protocolId;
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'methods-card-header';
+
+  const numBadge = document.createElement('span');
+  numBadge.className = 'methods-card-num';
+  numBadge.textContent = idx;
+
+  const titleEl = document.createElement('strong');
+  titleEl.className = 'methods-card-title';
+  titleEl.textContent = prot.title;
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn btn--sm methods-remove-btn';
+  removeBtn.title = I18N.remove;
+  removeBtn.textContent = '✕';
+  removeBtn.addEventListener('click', () => removeProtocol(protocolId));
+
+  header.appendChild(numBadge);
+  header.appendChild(titleEl);
+  header.appendChild(removeBtn);
+  card.appendChild(header);
+
+  // Parameters
+  const paramsDiv = document.createElement('div');
+  paramsDiv.className = 'methods-params';
+
+  prot.parameters.forEach(param => {
+    const group = document.createElement('div');
+    group.className = 'methods-param-group';
+
+    const label = document.createElement('label');
+    label.className = 'form-label form-label--sm methods-param-label';
+    label.textContent = param.description || param.name;
+    group.appendChild(label);
+
+    let input;
+    if (param.type === 'dropdown' && param.options && param.options.length > 0) {
+      input = document.createElement('select');
+      input.className = 'form-input form-input--sm';
+      param.options.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt;
+        option.textContent = opt;
+        option.selected = (opt === state.params[param.name]);
+        input.appendChild(option);
+      });
+    } else if (param.type === 'number') {
+      input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'form-input form-input--sm';
+      input.value = state.params[param.name];
+      input.step = 'any';
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'form-input form-input--sm';
+      input.value = state.params[param.name];
+    }
+
+    const updateParam = () => {
+      selectedProtocols[protocolId].params[param.name] = input.value;
+      updatePreview(protocolId);
+    };
+    input.addEventListener('input',  updateParam);
+    input.addEventListener('change', updateParam);
+
+    group.appendChild(input);
+    paramsDiv.appendChild(group);
+  });
+
+  card.appendChild(paramsDiv);
+
+  // Preview
+  const previewSection = document.createElement('details');
+  previewSection.className = 'methods-preview-details';
+  previewSection.open = true;
+  const summary = document.createElement('summary');
+  summary.className = 'methods-preview-label';
+  summary.textContent = I18N.preview;
+  previewSection.appendChild(summary);
+  const previewText = document.createElement('p');
+  previewText.id = 'preview-' + protocolId;
+  previewText.className = 'methods-preview-text';
+  previewSection.appendChild(previewText);
+  card.appendChild(previewSection);
+
+  container.appendChild(card);
+  updatePreview(protocolId);
+}
+
+function updatePreview(protocolId) {
+  const prot  = PROTOCOLS_MAP[protocolId];
+  const state = selectedProtocols[protocolId];
+  if (!prot || !state) return;
+
+  const text = prot.template_text.replace(/\{(\w+)\}/g, (_, key) => {
+    return (state.params[key] !== undefined && state.params[key] !== '')
+      ? state.params[key]
+      : '\u2753' + key;
+  });
+
+  const el = document.getElementById('preview-' + protocolId);
+  if (el) el.textContent = text;
+}
+
+// ── Dependencies ──────────────────────────────────────────────────────────────
+function checkDependencies(protocolId) {
+  const depId = PROTOCOL_DEPS[protocolId];
+  if (!depId || selectedProtocols[depId]) return;
+
+  const depProt = PROTOCOLS_MAP[depId];
+  if (!depProt) return;
+
+  const area = document.getElementById('methods-suggestion-area');
+  if (document.getElementById('suggestion-' + depId)) return;
+
+  const banner = document.createElement('div');
+  banner.className = 'alert alert--info methods-suggestion';
+  banner.id = 'suggestion-' + depId;
+  banner.style.marginBottom = '.75rem';
+
+  const msg = document.createElement('span');
+  msg.innerHTML = '<strong>' + _esc(I18N.suggestion) + ':</strong> ' +
+    _esc(I18N.pkDigestionTypically) + ' ';
+
+  const addSugBtn = document.createElement('button');
+  addSugBtn.type = 'button';
+  addSugBtn.className = 'btn btn--sm btn--secondary';
+  addSugBtn.textContent = I18N.addProtocol + ' "' + depProt.title + '"';
+  addSugBtn.addEventListener('click', () => {
+    addProtocol(depId);
+    banner.remove();
+  });
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.type = 'button';
+  dismissBtn.className = 'btn btn--sm';
+  dismissBtn.style.marginLeft = '.5rem';
+  dismissBtn.textContent = '✕';
+  dismissBtn.addEventListener('click', () => banner.remove());
+
+  banner.appendChild(msg);
+  banner.appendChild(addSugBtn);
+  banner.appendChild(dismissBtn);
+  area.appendChild(banner);
+}
+
+// ── Clear all ─────────────────────────────────────────────────────────────────
+function clearAllProtocols() {
+  const ids = [...selectedOrder];
+  ids.forEach(id => removeProtocol(id));
+  document.getElementById('methods-suggestion-area').innerHTML = '';
+  document.getElementById('methods-output').style.display = 'none';
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+async function generateSection() {
+  const errEl = document.getElementById('methods-error');
+  errEl.style.display = 'none';
+
+  if (selectedOrder.length === 0) {
+    errEl.textContent = I18N.noProtocolsSelected;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const protocols = selectedOrder.map(id => ({
+    protocol_id: id,
+    parameters: selectedProtocols[id].params,
+  }));
+
+  try {
+    const resp = await fetch(GENERATE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ protocols }),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      errEl.textContent = data.error || I18N.networkError;
+      errEl.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('methods-textarea').value = data.methods_text;
+
+    const warnContainer = document.getElementById('methods-warnings');
+    warnContainer.innerHTML = '';
+    (data.warnings || []).forEach(w => {
+      const div = document.createElement('div');
+      div.className = 'alert alert--warning';
+      div.style.marginBottom = '.5rem';
+      div.textContent = I18N.warningPrefix + ' ' + w;
+      warnContainer.appendChild(div);
+    });
+
+    const outEl = document.getElementById('methods-output');
+    outEl.style.display = '';
+    outEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    errEl.textContent = I18N.networkError;
+    errEl.style.display = 'block';
+  }
+}
+
+// ── Copy ─────────────────────────────────────────────────────────────────────
+async function copyMethodsOutput() {
+  const ta = document.getElementById('methods-textarea');
+  const fb = document.getElementById('copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    fb.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); fb.textContent = I18N.copied; }
+    catch (e2) { fb.textContent = I18N.copyFailed; }
+  }
+  setTimeout(() => { fb.innerHTML = '&nbsp;'; }, 3000);
+}
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}
