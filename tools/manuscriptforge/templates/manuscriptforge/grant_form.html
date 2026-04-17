@@ -1,0 +1,97 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Edit grant') if mode == 'edit' else _('New grant') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="form-card" style="max-width:720px">
+  <h2>{{ _('Edit grant') if mode == 'edit' else _('New grant') }}</h2>
+
+  <form method="POST" class="form-stacked" style="margin-top:1.25rem">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Grant code') }} *</label>
+        <input type="text" name="code" class="form-input" required
+               placeholder="PID2022-138890OB-I00"
+               value="{{ form.get('code', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Status') }} *</label>
+        <select name="status" class="form-input">
+          {% for st in ['active', 'pending', 'closed'] %}
+          <option value="{{ st }}" {% if form.get('status', 'active') == st %}selected{% endif %}>{{ st }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Title') }} *</label>
+      <input type="text" name="title" class="form-input" required
+             value="{{ form.get('title', '') }}" />
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Funding agency') }} *</label>
+        <input type="text" name="funding_agency" class="form-input" required
+               placeholder="Ministerio de Ciencia…"
+               value="{{ form.get('funding_agency', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Program') }}</label>
+        <input type="text" name="funding_program" class="form-input"
+               placeholder="Horizon Europe, Plan Estatal…"
+               value="{{ form.get('funding_program', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Principal investigator') }}</label>
+        <input type="text" name="principal_investigator" class="form-input"
+               value="{{ form.get('principal_investigator', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Amount (€)') }}</label>
+        <input type="number" name="amount_eur" class="form-input" min="0" step="0.01"
+               value="{{ form.get('amount_eur', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Start date') }}</label>
+        <input type="date" name="start_date" class="form-input"
+               value="{{ form.get('start_date', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('End date') }}</label>
+        <input type="date" name="end_date" class="form-input"
+               value="{{ form.get('end_date', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Acknowledgment text') }} *</label>
+      <textarea name="acknowledgment_text" class="form-input ack-textarea" rows="8"
+                required placeholder="{{ _('Exact text required by the funding agency…') }}">{{ form.get('acknowledgment_text', '') }}</textarea>
+      <p class="form-hint">{{ _('Paste the exact wording required by the funding agency.') }}</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Internal notes') }}</label>
+      <textarea name="notes" class="form-input" rows="2">{{ form.get('notes', '') }}</textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ _('Save') }}</button>
+      {% if mode == 'edit' %}
+        <a href="{{ url_for('manuscriptforge.grant_detail', grant_id=grant.grant_id) }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+      {% else %}
+        <a href="{{ url_for('manuscriptforge.grants_list') }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+      {% endif %}
+    </div>
+
+  </form>
+</div>
+{% endblock %}

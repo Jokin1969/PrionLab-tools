@@ -1,0 +1,74 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ pub.title[:60] }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title" style="font-size:1.1rem">{{ pub.title }}</h2>
+    <small class="text-muted">{{ pub.pub_id }}</small>
+    <span class="badge badge--pub-{{ pub.pub_type }}" style="margin-left:.5rem">{{ pub.pub_type }}</span>
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin','editor') %}
+      <a href="{{ url_for('manuscriptforge.edit_publication', pub_id=pub.pub_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+    {% endif %}
+    {% if session.get('role') == 'admin' %}
+      <form method="POST" action="{{ url_for('manuscriptforge.delete_publication_route', pub_id=pub.pub_id) }}"
+            style="display:inline" onsubmit="return confirm('{{ _('Delete this publication?') }}')">
+        <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+      </form>
+    {% endif %}
+    <a href="{{ url_for('manuscriptforge.publications_list') }}" class="btn btn--sm">← {{ _('Back') }}</a>
+  </div>
+</div>
+
+{% if pub.pdf_path %}
+<div style="margin:1rem 0">
+  <a href="{{ url_for('manuscriptforge.download_pdf', pub_id=pub.pub_id) }}"
+     class="btn btn--primary" style="font-size:1rem;padding:.6rem 1.4rem">
+    ⬇ {{ _('Download PDF') }}
+  </a>
+</div>
+{% endif %}
+
+<div class="detail-grid">
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Authors & journal') }}</h3>
+    <dl class="detail-dl">
+      <dt>{{ _('Authors') }}</dt><dd>{{ pub.authors_raw }}</dd>
+      <dt>{{ _('Journal') }}</dt><dd>{{ pub.journal }}</dd>
+      <dt>{{ _('Year') }}</dt><dd>{{ pub.year }}</dd>
+      {% if pub.volume %}<dt>{{ _('Volume') }}</dt><dd>{{ pub.volume }}</dd>{% endif %}
+      {% if pub.issue  %}<dt>{{ _('Issue') }}</dt><dd>{{ pub.issue }}</dd>{% endif %}
+      {% if pub.pages  %}<dt>{{ _('Pages') }}</dt><dd>{{ pub.pages }}</dd>{% endif %}
+    </dl>
+  </div>
+
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Identifiers') }}</h3>
+    <dl class="detail-dl">
+      <dt>DOI</dt>
+      <dd>
+        {% if pub.doi %}
+          <a href="https://doi.org/{{ pub.doi }}" target="_blank" rel="noopener">{{ pub.doi }}</a>
+        {% else %}—{% endif %}
+      </dd>
+      <dt>PMID</dt><dd>{{ pub.pmid or '—' }}</dd>
+      <dt>{{ _('Type') }}</dt><dd>{{ pub.pub_type }}</dd>
+      <dt>{{ _('Group publication') }}</dt>
+      <dd>{% if pub.is_group_pub == 'true' %}✓{% else %}✗{% endif %}</dd>
+    </dl>
+  </div>
+
+  {% if pub.notes and session.get('role') in ('admin','editor') %}
+  <div class="detail-section" style="grid-column:1/-1">
+    <h3 class="detail-section__title">{{ _('Internal notes') }}</h3>
+    <p class="text-muted">{{ pub.notes }}</p>
+  </div>
+  {% endif %}
+
+  <div class="detail-section" style="grid-column:1/-1;font-size:0.8rem;color:var(--color-text-muted)">
+    {{ _('Created') }}: {{ pub.created_at }} · {{ _('Updated') }}: {{ pub.updated_at }}
+  </div>
+</div>
+{% endblock %}

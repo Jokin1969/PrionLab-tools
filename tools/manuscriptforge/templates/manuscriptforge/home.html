@@ -18,6 +18,21 @@
       <div class="system-card__value" style="font-size:1.5rem;font-weight:700">{{ affiliation_count }}</div>
       <a href="{{ url_for('manuscriptforge.affiliations_list') }}" class="btn btn--secondary btn--sm" style="margin-top:0.75rem">{{ _('View affiliations') }}</a>
     </div>
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Grants') }}</div>
+      <div class="system-card__value" style="font-size:1.5rem;font-weight:700">{{ grant_count }}</div>
+      <a href="{{ url_for('manuscriptforge.grants_list') }}" class="btn btn--secondary btn--sm" style="margin-top:0.75rem">{{ _('View grants') }}</a>
+    </div>
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Publications') }}</div>
+      <div class="system-card__value" style="font-size:1.5rem;font-weight:700">{{ publication_count }}</div>
+      <a href="{{ url_for('manuscriptforge.publications_list') }}" class="btn btn--secondary btn--sm" style="margin-top:0.75rem">{{ _('View publications') }}</a>
+    </div>
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Ack. blocks') }}</div>
+      <div class="system-card__value" style="font-size:1.5rem;font-weight:700">{{ ack_count }}</div>
+      <a href="{{ url_for('manuscriptforge.acks_list') }}" class="btn btn--secondary btn--sm" style="margin-top:0.75rem">{{ _('View blocks') }}</a>
+    </div>
   </div>
 </div>
 {% endblock %}

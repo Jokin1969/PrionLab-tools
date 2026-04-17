@@ -14,7 +14,7 @@ from core.sync import initial_sync
 
 
 def _ensure_data_dirs():
-    for d in [config.CSV_DIR, config.CACHE_DIR, config.LOGS_DIR]:
+    for d in [config.CSV_DIR, config.PAPERS_DIR, config.CACHE_DIR, config.LOGS_DIR]:
         os.makedirs(d, exist_ok=True)
 
 

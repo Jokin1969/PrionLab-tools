@@ -19,6 +19,18 @@
      class="subnav__link {% if 'affiliation' in request.endpoint %}active{% endif %}">
     {{ _('Affiliations') }}
   </a>
+  <a href="{{ url_for('manuscriptforge.grants_list') }}"
+     class="subnav__link {% if 'grant' in request.endpoint %}active{% endif %}">
+    {{ _('Grants') }}
+  </a>
+  <a href="{{ url_for('manuscriptforge.publications_list') }}"
+     class="subnav__link {% if 'publication' in request.endpoint or 'doi_lookup' == request.endpoint %}active{% endif %}">
+    {{ _('Publications') }}
+  </a>
+  <a href="{{ url_for('manuscriptforge.acks_list') }}"
+     class="subnav__link {% if 'ack' in request.endpoint %}active{% endif %}">
+    {{ _('Ack. blocks') }}
+  </a>
   <span class="subnav__link subnav__link--disabled">
     {{ _('Generate section') }} <span class="badge badge--reader" style="font-size:0.65rem">{{ _('Coming soon') }}</span>
   </span>

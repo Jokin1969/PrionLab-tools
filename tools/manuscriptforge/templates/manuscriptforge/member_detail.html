@@ -150,4 +150,87 @@
   </form>
 </dialog>
 {% endif %}
+
+{# ── Linked grants ─────────────────────────────────────────────────────────── #}
+<div class="admin-section" style="margin-top:1.5rem">
+  <div class="admin-section__header">
+    <h2>{{ _('Grants') }} ({{ grants | length }})</h2>
+    {% if session.get('role') in ('admin','editor') and available_grants %}
+      <button onclick="document.getElementById('add-grant-dialog').showModal()" class="btn btn--primary btn--sm">
+        + {{ _('Add to grant') }}
+      </button>
+    {% endif %}
+  </div>
+  {% if grants %}
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('Code') }}</th>
+          <th>{{ _('Title') }}</th>
+          <th>{{ _('Role') }}</th>
+          <th>{{ _('Status') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in grants %}
+        <tr>
+          <td><code>{{ g.code }}</code></td>
+          <td>{{ g.title }}</td>
+          <td>{{ g.grant_role or '—' }}</td>
+          <td><span class="badge badge--grant-{{ g.status }}">{{ g.status }}</span></td>
+          <td class="actions-cell">
+            <a href="{{ url_for('manuscriptforge.grant_detail', grant_id=g.grant_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+            {% if session.get('role') in ('admin','editor') %}
+            <form method="POST" action="{{ url_for('manuscriptforge.remove_member_from_grant', grant_id=g.grant_id, member_id=member.member_id) }}"
+                  style="display:inline" onsubmit="return confirm('{{ _('Remove from this grant?') }}')">
+              <button type="submit" class="btn btn--sm btn--danger">{{ _('Remove') }}</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">{{ _('No grants linked to this member.') }}</p>
+  {% endif %}
+</div>
+
+{# ── Add grant dialog ──────────────────────────────────────────────────────── #}
+{% if session.get('role') in ('admin','editor') and available_grants %}
+<dialog id="add-grant-dialog" class="mf-dialog">
+  <form method="POST" id="add-grant-form" action="">
+    <input type="hidden" name="member_id" value="{{ member.member_id }}" />
+    <h3>{{ _('Add to grant') }}</h3>
+    <div class="form-group" style="margin-top:1rem">
+      <label class="form-label">{{ _('Grant') }}</label>
+      <select id="grant-select" class="form-input" required>
+        <option value="">—</option>
+        {% for g in available_grants %}
+        <option value="{{ url_for('manuscriptforge.add_member_to_grant', grant_id=g.grant_id) }}">
+          {{ g.code }} — {{ g.title[:60] }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin-top:.75rem">
+      <label class="form-label">{{ _('Role in grant') }}</label>
+      <input type="text" name="role" class="form-input" placeholder="PI, Co-PI, Researcher…" />
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ _('Add') }}</button>
+      <button type="button" class="btn btn--secondary"
+              onclick="document.getElementById('add-grant-dialog').close()">{{ _('Cancel') }}</button>
+    </div>
+  </form>
+</dialog>
+<script>
+document.getElementById('grant-select').addEventListener('change', function() {
+  document.getElementById('add-grant-form').action = this.value;
+});
+</script>
+{% endif %}
 {% endblock %}

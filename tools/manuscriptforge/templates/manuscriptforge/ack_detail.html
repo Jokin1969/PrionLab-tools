@@ -1,0 +1,63 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ block.short_label }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ block.short_label }}</h2>
+    <small class="text-muted">{{ block.block_id }} · {{ block.category }}</small>
+    {% if block.is_active == 'true' %}
+      <span class="badge badge--status-active" style="margin-left:.5rem">{{ _('Active') }}</span>
+    {% else %}
+      <span class="badge" style="margin-left:.5rem;background:var(--color-text-muted);color:#fff">{{ _('Inactive') }}</span>
+    {% endif %}
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin','editor') %}
+      <a href="{{ url_for('manuscriptforge.edit_ack_block', block_id=block.block_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+      <form method="POST" action="{{ url_for('manuscriptforge.toggle_ack_block_route', block_id=block.block_id) }}" style="display:inline">
+        <button type="submit" class="btn btn--sm btn--secondary">
+          {% if block.is_active == 'true' %}{{ _('Deactivate') }}{% else %}{{ _('Activate') }}{% endif %}
+        </button>
+      </form>
+    {% endif %}
+    {% if session.get('role') == 'admin' %}
+      <form method="POST" action="{{ url_for('manuscriptforge.delete_ack_block_route', block_id=block.block_id) }}"
+            style="display:inline" onsubmit="return confirm('{{ _('Delete this block?') }}')">
+        <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+      </form>
+    {% endif %}
+    <a href="{{ url_for('manuscriptforge.acks_list') }}" class="btn btn--sm">← {{ _('Back') }}</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Category') }}</h3>
+    <p>
+      {% if block.category == 'technical_staff' %}{{ _('Technical staff') }}
+      {% elif block.category == 'core_facility' %}{{ _('Core facility') }}
+      {% elif block.category == 'external_collaborator' %}{{ _('External collaborator') }}
+      {% elif block.category == 'sample_donor' %}{{ _('Sample donors') }}
+      {% elif block.category == 'infrastructure' %}{{ _('Infrastructure') }}
+      {% else %}{{ _('Other') }}{% endif %}
+    </p>
+  </div>
+
+  {% if block.notes and session.get('role') in ('admin','editor') %}
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Internal notes') }}</h3>
+    <p class="text-muted">{{ block.notes }}</p>
+  </div>
+  {% endif %}
+
+  <div class="detail-section" style="grid-column:1/-1">
+    <h3 class="detail-section__title">{{ _('Acknowledgment text') }}</h3>
+    <pre class="ack-text-block">{{ block.text }}</pre>
+  </div>
+
+  <div class="detail-section" style="grid-column:1/-1;font-size:0.8rem;color:var(--color-text-muted)">
+    {{ _('Created') }}: {{ block.created_at }} · {{ _('Updated') }}: {{ block.updated_at }}
+  </div>
+</div>
+{% endblock %}

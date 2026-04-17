@@ -1,0 +1,93 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Acknowledgment blocks') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ _('Acknowledgment blocks') }}</h2>
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin','editor') %}
+      <a href="{{ url_for('manuscriptforge.new_ack_block') }}" class="btn btn--primary btn--sm">+ {{ _('Add block') }}</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="filter-bar">
+  <form method="GET" style="display:contents">
+    <select name="category" class="filter-bar__select" onchange="this.form.submit()">
+      <option value="" {% if not cat_filter %}selected{% endif %}>{{ _('All categories') }}</option>
+      <option value="technical_staff"       {% if cat_filter == 'technical_staff'       %}selected{% endif %}>{{ _('Technical staff') }}</option>
+      <option value="core_facility"         {% if cat_filter == 'core_facility'         %}selected{% endif %}>{{ _('Core facility') }}</option>
+      <option value="external_collaborator" {% if cat_filter == 'external_collaborator' %}selected{% endif %}>{{ _('External collaborator') }}</option>
+      <option value="sample_donor"          {% if cat_filter == 'sample_donor'          %}selected{% endif %}>{{ _('Sample donors') }}</option>
+      <option value="infrastructure"        {% if cat_filter == 'infrastructure'        %}selected{% endif %}>{{ _('Infrastructure') }}</option>
+      <option value="other"                 {% if cat_filter == 'other'                 %}selected{% endif %}>{{ _('Other') }}</option>
+    </select>
+  </form>
+</div>
+
+{% if grouped %}
+  {% for category, blocks in grouped.items() %}
+  <div class="admin-section" style="margin-top:1.5rem">
+    <h3 class="category-group-header">
+      {% if category == 'technical_staff' %}{{ _('Technical staff') }}
+      {% elif category == 'core_facility' %}{{ _('Core facility') }}
+      {% elif category == 'external_collaborator' %}{{ _('External collaborator') }}
+      {% elif category == 'sample_donor' %}{{ _('Sample donors') }}
+      {% elif category == 'infrastructure' %}{{ _('Infrastructure') }}
+      {% else %}{{ _('Other') }}{% endif %}
+      <small class="text-muted">({{ blocks | length }})</small>
+    </h3>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _('Label') }}</th>
+            <th>{{ _('Text') }}</th>
+            <th>{{ _('Active') }}</th>
+            <th>{{ _('Actions') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in blocks %}
+          <tr {% if b.is_active != 'true' %}style="opacity:.55"{% endif %}>
+            <td>{{ b.short_label }}</td>
+            <td class="text-muted" title="{{ b.text }}">
+              {{ b.text[:120] }}{% if b.text|length > 120 %}…{% endif %}
+            </td>
+            <td>
+              {% if session.get('role') in ('admin','editor') %}
+              <form method="POST" action="{{ url_for('manuscriptforge.toggle_ack_block_route', block_id=b.block_id) }}" style="display:inline">
+                <button type="submit" class="btn btn--sm {% if b.is_active == 'true' %}btn--secondary{% endif %}"
+                        title="{{ _('Toggle active') }}">
+                  {% if b.is_active == 'true' %}✓{% else %}✗{% endif %}
+                </button>
+              </form>
+              {% else %}
+                {% if b.is_active == 'true' %}✓{% else %}✗{% endif %}
+              {% endif %}
+            </td>
+            <td class="actions-cell">
+              <a href="{{ url_for('manuscriptforge.ack_detail', block_id=b.block_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+              {% if session.get('role') in ('admin','editor') %}
+                <a href="{{ url_for('manuscriptforge.edit_ack_block', block_id=b.block_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+              {% endif %}
+              {% if session.get('role') == 'admin' %}
+                <form method="POST" action="{{ url_for('manuscriptforge.delete_ack_block_route', block_id=b.block_id) }}"
+                      style="display:inline" onsubmit="return confirm('{{ _('Delete this block?') }}')">
+                  <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="text-muted" style="margin-top:1.5rem">{{ _('No acknowledgment blocks found.') }}</p>
+{% endif %}
+{% endblock %}

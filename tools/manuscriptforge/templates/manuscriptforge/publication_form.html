@@ -1,0 +1,181 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Edit publication') if mode == 'edit' else _('New publication') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="form-card" style="max-width:760px">
+  <h2>{{ _('Edit publication') if mode == 'edit' else _('New publication') }}</h2>
+
+  {# ── DOI lookup ── #}
+  <div class="doi-lookup-bar" style="margin-top:1.25rem">
+    <label class="form-label">{{ _('Import from DOI') }}</label>
+    <div style="display:flex;gap:.5rem;align-items:center">
+      <input type="text" id="doi-input" class="form-input" style="max-width:340px"
+             placeholder="10.1038/s41586-…"
+             value="{{ form.get('doi', '') }}" />
+      <button type="button" id="doi-fetch-btn" class="btn btn--secondary btn--sm">{{ _('Search') }}</button>
+    </div>
+    <p id="doi-status" class="form-hint" style="min-height:1.2em"></p>
+  </div>
+
+  <form method="POST" class="form-stacked" enctype="multipart/form-data" style="margin-top:1rem">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">DOI</label>
+        <input type="text" name="doi" id="f-doi" class="form-input"
+               placeholder="10.1038/…"
+               value="{{ form.get('doi', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">PMID</label>
+        <input type="text" name="pmid" id="f-pmid" class="form-input"
+               value="{{ form.get('pmid', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Title') }} *</label>
+      <input type="text" name="title" id="f-title" class="form-input" required
+             value="{{ form.get('title', '') }}" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Authors') }} *</label>
+      <input type="text" name="authors_raw" id="f-authors" class="form-input" required
+             placeholder="García A., Martínez B., …"
+             value="{{ form.get('authors_raw', '') }}" />
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Journal') }} *</label>
+        <input type="text" name="journal" id="f-journal" class="form-input" required
+               value="{{ form.get('journal', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Year') }} *</label>
+        <input type="number" name="year" id="f-year" class="form-input" required
+               min="1900" max="2100"
+               value="{{ form.get('year', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Volume') }}</label>
+        <input type="text" name="volume" id="f-volume" class="form-input"
+               value="{{ form.get('volume', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Issue') }}</label>
+        <input type="text" name="issue" id="f-issue" class="form-input"
+               value="{{ form.get('issue', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Pages') }}</label>
+        <input type="text" name="pages" id="f-pages" class="form-input"
+               value="{{ form.get('pages', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Type') }}</label>
+        <select name="pub_type" id="f-pub-type" class="form-input">
+          {% for t in ['article','review','preprint','book_chapter','conference','other'] %}
+          <option value="{{ t }}" {% if form.get('pub_type', 'article') == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.5rem">
+        <input type="checkbox" name="is_group_pub" id="f-group" value="1"
+               {% if form.get('is_group_pub', 'true') == 'true' %}checked{% endif %} />
+        <label for="f-group" class="form-label" style="margin-bottom:0">{{ _('Group publication') }}</label>
+      </div>
+    </div>
+
+    {# PDF upload #}
+    <div class="form-group">
+      <label class="form-label">PDF</label>
+      {% if mode == 'edit' and form.get('pdf_path') %}
+        <p class="form-hint">{{ _('Current file:') }} <code>{{ form.get('pdf_path') }}</code></p>
+      {% endif %}
+      <input type="file" name="pdf_file" class="form-input" accept="application/pdf" />
+      <p class="form-hint">{{ _('Max %(mb)d MB. Leave empty to keep current file.', mb=config.MAX_PDF_SIZE_MB) }}</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Internal notes') }}</label>
+      <textarea name="notes" class="form-input" rows="2">{{ form.get('notes', '') }}</textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ _('Save') }}</button>
+      {% if mode == 'edit' %}
+        <a href="{{ url_for('manuscriptforge.publication_detail', pub_id=pub.pub_id) }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+      {% else %}
+        <a href="{{ url_for('manuscriptforge.publications_list') }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+      {% endif %}
+    </div>
+
+  </form>
+</div>
+
+<script>
+(function() {
+  var btn    = document.getElementById('doi-fetch-btn');
+  var input  = document.getElementById('doi-input');
+  var status = document.getElementById('doi-status');
+  var fields = {
+    doi:     document.getElementById('f-doi'),
+    title:   document.getElementById('f-title'),
+    authors_raw: document.getElementById('f-authors'),
+    journal: document.getElementById('f-journal'),
+    year:    document.getElementById('f-year'),
+    volume:  document.getElementById('f-volume'),
+    issue:   document.getElementById('f-issue'),
+    pages:   document.getElementById('f-pages'),
+    pub_type: document.getElementById('f-pub-type'),
+  };
+
+  btn.addEventListener('click', function() {
+    var doi = input.value.trim();
+    if (!doi) return;
+    btn.disabled = true;
+    status.textContent = '{{ _("Searching…") }}';
+    status.style.color = 'inherit';
+
+    fetch('{{ url_for("manuscriptforge.doi_lookup") }}?doi=' + encodeURIComponent(doi))
+      .then(function(r) {
+        if (r.status === 404) {
+          status.textContent = '{{ _("DOI not found. Enter data manually.") }}';
+          status.style.color = 'var(--color-warning, #b45309)';
+          return null;
+        }
+        if (!r.ok) throw new Error('network');
+        return r.json();
+      })
+      .then(function(data) {
+        if (!data) return;
+        if (data.status === 'ok') {
+          ['doi','title','authors_raw','journal','year','volume','issue','pages'].forEach(function(k) {
+            if (fields[k] && data[k]) fields[k].value = data[k];
+          });
+          if (fields.doi && doi) fields.doi.value = doi;
+          if (fields.pub_type && data.pub_type) fields.pub_type.value = data.pub_type;
+          status.textContent = '{{ _("Data imported from CrossRef. Review before saving.") }}';
+          status.style.color = 'var(--color-success, #15803d)';
+        } else {
+          status.textContent = '{{ _("Could not connect to CrossRef.") }}';
+          status.style.color = 'var(--color-error, #b91c1c)';
+        }
+      })
+      .catch(function() {
+        status.textContent = '{{ _("Could not connect to CrossRef.") }}';
+        status.style.color = 'var(--color-error, #b91c1c)';
+      })
+      .finally(function() { btn.disabled = false; });
+  });
+})();
+</script>
+{% endblock %}

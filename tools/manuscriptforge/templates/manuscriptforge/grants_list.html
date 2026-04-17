@@ -1,0 +1,73 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Grants') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ _('Grants') }}</h2>
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin','editor') %}
+      <a href="{{ url_for('manuscriptforge.new_grant') }}" class="btn btn--primary btn--sm">+ {{ _('Add grant') }}</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="filter-bar">
+  <form method="GET" style="display:contents">
+    <select name="status" class="filter-bar__select" onchange="this.form.submit()">
+      <option value="all" {% if status_filter == 'all' %}selected{% endif %}>{{ _('All statuses') }}</option>
+      <option value="active"  {% if status_filter == 'active'  %}selected{% endif %}>{{ _('Active') }}</option>
+      <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>{{ _('Pending') }}</option>
+      <option value="closed"  {% if status_filter == 'closed'  %}selected{% endif %}>{{ _('Closed') }}</option>
+    </select>
+    <input type="text" name="q" class="filter-bar__search" placeholder="{{ _('Search code, title, agency, PI…') }}"
+           value="{{ search }}">
+    <button type="submit" class="btn btn--sm">{{ _('Search') }}</button>
+  </form>
+</div>
+
+{% if grants %}
+<div class="table-responsive">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>{{ _('Code') }}</th>
+        <th>{{ _('Title') }}</th>
+        <th>{{ _('Agency') }}</th>
+        <th>{{ _('PI') }}</th>
+        <th>{{ _('Status') }}</th>
+        <th>{{ _('End date') }}</th>
+        <th>{{ _('Actions') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for g in grants %}
+      <tr>
+        <td><code>{{ g.grant_id }}</code><br><small class="text-muted">{{ g.code }}</small></td>
+        <td title="{{ g.title }}">{{ g.title[:60] }}{% if g.title|length > 60 %}…{% endif %}</td>
+        <td>{{ g.funding_agency }}</td>
+        <td>{{ g.principal_investigator or '—' }}</td>
+        <td><span class="badge badge--grant-{{ g.status }}">{{ g.status }}</span></td>
+        <td>{{ g.end_date or '—' }}</td>
+        <td class="actions-cell">
+          <a href="{{ url_for('manuscriptforge.grant_detail', grant_id=g.grant_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+          {% if session.get('role') in ('admin','editor') %}
+            <a href="{{ url_for('manuscriptforge.edit_grant', grant_id=g.grant_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+          {% endif %}
+          {% if session.get('role') == 'admin' %}
+            <form method="POST" action="{{ url_for('manuscriptforge.delete_grant_route', grant_id=g.grant_id) }}"
+                  style="display:inline" onsubmit="return confirm('{{ _('Delete this grant?') }}')">
+              <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted" style="margin-top:1.5rem">{{ _('No grants found.') }}</p>
+{% endif %}
+{% endblock %}

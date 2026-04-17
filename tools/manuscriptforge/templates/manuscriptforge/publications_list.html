@@ -1,0 +1,93 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Publications') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ _('Publications') }}</h2>
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin','editor') %}
+      <a href="{{ url_for('manuscriptforge.new_publication') }}" class="btn btn--primary btn--sm">+ {{ _('Add publication') }}</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="filter-bar" style="flex-wrap:wrap;gap:.5rem">
+  <form method="GET" style="display:contents">
+    <select name="pub_type" class="filter-bar__select" onchange="this.form.submit()">
+      <option value="" {% if not pub_type_filter %}selected{% endif %}>{{ _('All types') }}</option>
+      {% for t in ['article','review','preprint','book_chapter','conference','other'] %}
+      <option value="{{ t }}" {% if pub_type_filter == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <select name="group" class="filter-bar__select" onchange="this.form.submit()">
+      <option value="true"  {% if group_filter == 'true'  %}selected{% endif %}>{{ _('Group pubs only') }}</option>
+      <option value="false" {% if group_filter == 'false' %}selected{% endif %}>{{ _('All publications') }}</option>
+    </select>
+    <input type="number" name="year_min" class="filter-bar__search" style="width:6rem"
+           placeholder="{{ _('From year') }}" value="{{ year_min }}">
+    <input type="number" name="year_max" class="filter-bar__search" style="width:6rem"
+           placeholder="{{ _('To year') }}" value="{{ year_max }}">
+    <input type="text" name="q" class="filter-bar__search"
+           placeholder="{{ _('Search title, authors, journal…') }}" value="{{ search }}">
+    <button type="submit" class="btn btn--sm">{{ _('Search') }}</button>
+  </form>
+</div>
+
+{% if publications %}
+<div class="table-responsive">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>{{ _('Year') }}</th>
+        <th>{{ _('Authors') }}</th>
+        <th>{{ _('Title') }}</th>
+        <th>{{ _('Journal') }}</th>
+        <th>{{ _('Type') }}</th>
+        <th>DOI</th>
+        <th>PDF</th>
+        <th>{{ _('Actions') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in publications %}
+      <tr>
+        <td>{{ p.year }}</td>
+        <td title="{{ p.authors_raw }}">{{ p.authors_raw[:80] }}{% if p.authors_raw|length > 80 %}…{% endif %}</td>
+        <td title="{{ p.title }}">{{ p.title[:80] }}{% if p.title|length > 80 %}…{% endif %}</td>
+        <td>{{ p.journal }}</td>
+        <td><span class="badge badge--pub-{{ p.pub_type }}">{{ p.pub_type }}</span></td>
+        <td>
+          {% if p.doi %}
+          <a href="https://doi.org/{{ p.doi }}" target="_blank" rel="noopener" class="text-muted" style="font-size:.8rem">
+            {{ p.doi[:25] }}{% if p.doi|length > 25 %}…{% endif %}
+          </a>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if p.pdf_path %}
+          <a href="{{ url_for('manuscriptforge.download_pdf', pub_id=p.pub_id) }}" title="{{ _('Download PDF') }}">📄</a>
+          {% else %}—{% endif %}
+        </td>
+        <td class="actions-cell">
+          <a href="{{ url_for('manuscriptforge.publication_detail', pub_id=p.pub_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+          {% if session.get('role') in ('admin','editor') %}
+            <a href="{{ url_for('manuscriptforge.edit_publication', pub_id=p.pub_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+          {% endif %}
+          {% if session.get('role') == 'admin' %}
+            <form method="POST" action="{{ url_for('manuscriptforge.delete_publication_route', pub_id=p.pub_id) }}"
+                  style="display:inline" onsubmit="return confirm('{{ _('Delete this publication?') }}')">
+              <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted" style="margin-top:1.5rem">{{ _('No publications found.') }}</p>
+{% endif %}
+{% endblock %}

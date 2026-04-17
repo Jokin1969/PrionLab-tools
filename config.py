@@ -19,13 +19,17 @@ SMTP_SECURE = os.environ.get("SMTP_SECURE", "tls").lower()
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 CSV_DIR = os.path.join(DATA_DIR, "csv")
+PAPERS_DIR = os.path.join(DATA_DIR, "papers")
 CACHE_DIR = os.path.join(DATA_DIR, "cache")
 LOGS_DIR = os.path.join(DATA_DIR, "logs")
 DB_PATH = os.path.join(DATA_DIR, "prionlab.db")
 
 DROPBOX_REMOTE_FOLDER = "/Web-tools/PrionLab tools"
+DROPBOX_PAPERS_FOLDER = "/Web-tools/PrionLab tools/papers"
 
-APP_VERSION = "0.2.0"
+MAX_PDF_SIZE_MB = int(os.environ.get("MAX_PDF_SIZE_MB", "30"))
+
+APP_VERSION = "0.3.0"
 
 # i18n
 LANGUAGES = ["es", "en"]

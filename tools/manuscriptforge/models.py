@@ -24,9 +24,35 @@ AFFILIATIONS_COLS = [
 ]
 MEMBER_AFF_COLS = ["member_id", "affiliation_id", "priority"]
 
-MEMBERS_FILE     = os.path.join(CSV_DIR, "members.csv")
+MEMBERS_FILE      = os.path.join(CSV_DIR, "members.csv")
 AFFILIATIONS_FILE = os.path.join(CSV_DIR, "affiliations.csv")
-MEMBER_AFF_FILE  = os.path.join(CSV_DIR, "member_affiliations.csv")
+MEMBER_AFF_FILE   = os.path.join(CSV_DIR, "member_affiliations.csv")
+
+GRANTS_COLS = [
+    "grant_id", "code", "title", "funding_agency", "funding_program",
+    "principal_investigator", "start_date", "end_date", "amount_eur",
+    "status", "acknowledgment_text", "notes", "created_at", "updated_at",
+]
+GRANT_MEMBERS_COLS = ["grant_id", "member_id", "role"]
+GRANTS_FILE       = os.path.join(CSV_DIR, "grants.csv")
+GRANT_MEMBERS_FILE = os.path.join(CSV_DIR, "grant_members.csv")
+
+PUBLICATIONS_COLS = [
+    "pub_id", "doi", "title", "authors_raw", "journal", "year",
+    "volume", "issue", "pages", "pmid", "pdf_path", "pub_type",
+    "is_group_pub", "notes", "created_at", "updated_at",
+]
+PUBLICATIONS_FILE = os.path.join(CSV_DIR, "publications.csv")
+
+ACK_BLOCKS_COLS = [
+    "block_id", "category", "short_label", "text", "is_active",
+    "notes", "created_at", "updated_at",
+]
+ACK_VALID_CATEGORIES = {
+    "technical_staff", "core_facility", "external_collaborator",
+    "sample_donor", "infrastructure", "other",
+}
+ACK_BLOCKS_FILE = os.path.join(CSV_DIR, "acknowledgment_blocks.csv")
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -68,11 +94,17 @@ def bootstrap_schema() -> None:
         (MEMBERS_FILE, MEMBERS_COLS),
         (AFFILIATIONS_FILE, AFFILIATIONS_COLS),
         (MEMBER_AFF_FILE, MEMBER_AFF_COLS),
+        (GRANTS_FILE, GRANTS_COLS),
+        (GRANT_MEMBERS_FILE, GRANT_MEMBERS_COLS),
+        (PUBLICATIONS_FILE, PUBLICATIONS_COLS),
+        (ACK_BLOCKS_FILE, ACK_BLOCKS_COLS),
     ]:
         if not os.path.exists(filepath):
             os.makedirs(CSV_DIR, exist_ok=True)
             pd.DataFrame(columns=cols).to_csv(filepath, index=False)
             logger.info("Created empty %s", os.path.basename(filepath))
+    _seed_ack_blocks_if_empty()
+    _bootstrap_papers_dir()
 
 
 # ── Members ───────────────────────────────────────────────────────────────────
@@ -126,6 +158,9 @@ def delete_member(member_id: str) -> bool:
     # Cascade: remove member's affiliations
     ma = load_member_affiliations()
     save_member_affiliations(ma[ma["member_id"] != member_id])
+    # Cascade: remove member's grants
+    gm = load_grant_members()
+    save_grant_members(gm[gm["member_id"] != member_id])
     return True
 
 
@@ -293,3 +328,315 @@ def _renumber_priorities(df: pd.DataFrame, member_id: str) -> pd.DataFrame:
     for i, idx in enumerate(rows.index, start=1):
         df.loc[idx, "priority"] = str(i)
     return df
+
+
+# ── Grants ────────────────────────────────────────────────────────────────────
+
+def load_grants() -> pd.DataFrame:
+    return _read(GRANTS_FILE, GRANTS_COLS)
+
+
+def save_grants(df: pd.DataFrame, sync: bool = True) -> None:
+    _write(df, GRANTS_FILE, "grants.csv" if sync else None)
+
+
+def get_grant(grant_id: str) -> dict | None:
+    df = load_grants()
+    rows = df[df["grant_id"] == grant_id]
+    return rows.iloc[0].to_dict() if not rows.empty else None
+
+
+def _next_grant_id(df: pd.DataFrame) -> str:
+    nums = df["grant_id"].str.extract(r"^g(\d+)$")[0].dropna().astype(int)
+    return f"g{nums.max() + 1:03d}" if not nums.empty else "g001"
+
+
+def create_grant(data: dict) -> dict:
+    df = load_grants()
+    data["grant_id"] = _next_grant_id(df)
+    data["created_at"] = data["updated_at"] = _now()
+    row = {col: data.get(col, "") for col in GRANTS_COLS}
+    save_grants(pd.concat([df, pd.DataFrame([row])], ignore_index=True))
+    return data
+
+
+def update_grant(grant_id: str, updates: dict) -> bool:
+    df = load_grants()
+    mask = df["grant_id"] == grant_id
+    if not mask.any():
+        return False
+    for k, v in updates.items():
+        if k in GRANTS_COLS:
+            df.loc[mask, k] = v
+    df.loc[mask, "updated_at"] = _now()
+    save_grants(df)
+    return True
+
+
+def delete_grant(grant_id: str) -> bool:
+    df = load_grants()
+    if not (df["grant_id"] == grant_id).any():
+        return False
+    save_grants(df[df["grant_id"] != grant_id])
+    gm = load_grant_members()
+    save_grant_members(gm[gm["grant_id"] != grant_id])
+    return True
+
+
+# ── Grant ↔ Member bridge ─────────────────────────────────────────────────────
+
+def load_grant_members() -> pd.DataFrame:
+    return _read(GRANT_MEMBERS_FILE, GRANT_MEMBERS_COLS)
+
+
+def save_grant_members(df: pd.DataFrame, sync: bool = True) -> None:
+    _write(df, GRANT_MEMBERS_FILE, "grant_members.csv" if sync else None)
+
+
+def get_grant_members(grant_id: str) -> list[dict]:
+    gm = load_grant_members()
+    rows = gm[gm["grant_id"] == grant_id]
+    if rows.empty:
+        return []
+    members = load_members()
+    result = []
+    for _, r in rows.iterrows():
+        m_rows = members[members["member_id"] == r["member_id"]]
+        if not m_rows.empty:
+            item = m_rows.iloc[0].to_dict()
+            item["grant_role"] = r["role"]
+            result.append(item)
+    return result
+
+
+def get_member_grants(member_id: str) -> list[dict]:
+    gm = load_grant_members()
+    rows = gm[gm["member_id"] == member_id]
+    if rows.empty:
+        return []
+    grants = load_grants()
+    result = []
+    for _, r in rows.iterrows():
+        g_rows = grants[grants["grant_id"] == r["grant_id"]]
+        if not g_rows.empty:
+            item = g_rows.iloc[0].to_dict()
+            item["grant_role"] = r["role"]
+            result.append(item)
+    return result
+
+
+def add_grant_member(grant_id: str, member_id: str, role: str = "") -> tuple[bool, str]:
+    gm = load_grant_members()
+    if not gm[(gm["grant_id"] == grant_id) & (gm["member_id"] == member_id)].empty:
+        return False, "Member already linked to this grant."
+    new_row = pd.DataFrame([{"grant_id": grant_id, "member_id": member_id, "role": role}])
+    save_grant_members(pd.concat([gm, new_row], ignore_index=True))
+    return True, ""
+
+
+def remove_grant_member(grant_id: str, member_id: str) -> bool:
+    gm = load_grant_members()
+    mask = (gm["grant_id"] == grant_id) & (gm["member_id"] == member_id)
+    if not mask.any():
+        return False
+    save_grant_members(gm[~mask])
+    return True
+
+
+# ── Publications ──────────────────────────────────────────────────────────────
+
+def load_publications() -> pd.DataFrame:
+    return _read(PUBLICATIONS_FILE, PUBLICATIONS_COLS)
+
+
+def save_publications(df: pd.DataFrame, sync: bool = True) -> None:
+    _write(df, PUBLICATIONS_FILE, "publications.csv" if sync else None)
+
+
+def get_publication(pub_id: str) -> dict | None:
+    df = load_publications()
+    rows = df[df["pub_id"] == pub_id]
+    return rows.iloc[0].to_dict() if not rows.empty else None
+
+
+def _next_pub_id(df: pd.DataFrame) -> str:
+    nums = df["pub_id"].str.extract(r"^pub_(\d+)$")[0].dropna().astype(int)
+    return f"pub_{nums.max() + 1:03d}" if not nums.empty else "pub_001"
+
+
+def create_publication(data: dict) -> dict:
+    df = load_publications()
+    data["pub_id"] = _next_pub_id(df)
+    data["created_at"] = data["updated_at"] = _now()
+    row = {col: data.get(col, "") for col in PUBLICATIONS_COLS}
+    save_publications(pd.concat([df, pd.DataFrame([row])], ignore_index=True))
+    return data
+
+
+def update_publication(pub_id: str, updates: dict) -> bool:
+    df = load_publications()
+    mask = df["pub_id"] == pub_id
+    if not mask.any():
+        return False
+    for k, v in updates.items():
+        if k in PUBLICATIONS_COLS:
+            df.loc[mask, k] = v
+    df.loc[mask, "updated_at"] = _now()
+    save_publications(df)
+    return True
+
+
+def delete_publication(pub_id: str) -> tuple[bool, str]:
+    df = load_publications()
+    rows = df[df["pub_id"] == pub_id]
+    if rows.empty:
+        return False, ""
+    pdf_path = rows.iloc[0].get("pdf_path", "")
+    save_publications(df[df["pub_id"] != pub_id])
+    return True, pdf_path
+
+
+# ── Acknowledgment Blocks ─────────────────────────────────────────────────────
+
+def load_ack_blocks() -> pd.DataFrame:
+    return _read(ACK_BLOCKS_FILE, ACK_BLOCKS_COLS)
+
+
+def save_ack_blocks(df: pd.DataFrame, sync: bool = True) -> None:
+    _write(df, ACK_BLOCKS_FILE, "acknowledgment_blocks.csv" if sync else None)
+
+
+def get_ack_block(block_id: str) -> dict | None:
+    df = load_ack_blocks()
+    rows = df[df["block_id"] == block_id]
+    return rows.iloc[0].to_dict() if not rows.empty else None
+
+
+def _next_ack_id(df: pd.DataFrame) -> str:
+    nums = df["block_id"].str.extract(r"^ack_(\d+)$")[0].dropna().astype(int)
+    return f"ack_{nums.max() + 1:03d}" if not nums.empty else "ack_001"
+
+
+def create_ack_block(data: dict) -> dict:
+    df = load_ack_blocks()
+    data["block_id"] = _next_ack_id(df)
+    data["created_at"] = data["updated_at"] = _now()
+    row = {col: data.get(col, "") for col in ACK_BLOCKS_COLS}
+    save_ack_blocks(pd.concat([df, pd.DataFrame([row])], ignore_index=True))
+    return data
+
+
+def update_ack_block(block_id: str, updates: dict) -> bool:
+    df = load_ack_blocks()
+    mask = df["block_id"] == block_id
+    if not mask.any():
+        return False
+    for k, v in updates.items():
+        if k in ACK_BLOCKS_COLS:
+            df.loc[mask, k] = v
+    df.loc[mask, "updated_at"] = _now()
+    save_ack_blocks(df)
+    return True
+
+
+def delete_ack_block(block_id: str) -> bool:
+    df = load_ack_blocks()
+    if not (df["block_id"] == block_id).any():
+        return False
+    save_ack_blocks(df[df["block_id"] != block_id])
+    return True
+
+
+def toggle_ack_block(block_id: str) -> bool:
+    df = load_ack_blocks()
+    mask = df["block_id"] == block_id
+    if not mask.any():
+        return False
+    current = str(df.loc[mask, "is_active"].iloc[0]).lower()
+    df.loc[mask, "is_active"] = "false" if current == "true" else "true"
+    df.loc[mask, "updated_at"] = _now()
+    save_ack_blocks(df)
+    return True
+
+
+# ── Seed & bootstrap helpers ──────────────────────────────────────────────────
+
+_ACK_SEED = [
+    ("core_facility",          "Core support CIC bioGUNE + IKERBasque",
+     "The authors would like to thank the following for their support: IKERBasque foundation, "
+     "vivarium, maintenance and IT services from CIC bioGUNE for outstanding assistance."),
+    ("core_facility",          "Electron Microscopy Platform CIC bioGUNE",
+     "The Electron Microscopy Platform from CIC bioGUNE for excellent service and assistance."),
+    ("technical_staff",        "IRTA-CReSA BSL3 facility",
+     "María de la Sierra Espinar and the rest of the IRTA-CReSA BSL3 facility personnel "
+     "for their excellent technical support."),
+    ("technical_staff",        "Neiker biocontainment unit",
+     "The staff of the biocontainment units at Neiker for their excellent care and maintenance "
+     "of the animals."),
+    ("technical_staff",        "CEBEGA biocontainment unit",
+     "The staff of the biocontainment units at CEBEGA for their excellent care and maintenance "
+     "of the animals."),
+    ("other",                  "Past lab members (coletilla)",
+     "The authors would also like to acknowledge the work from past laboratory members of the "
+     "Prion Research Lab from CIC bioGUNE, that despite not being directly involved in the "
+     "manuscript have contributed along the years to the development of all the methods and "
+     "techniques currently used in the laboratory."),
+    ("sample_donor",           "Spanish Foundation of Prion Diseases",
+     "The families of the Spanish Foundation of prion diseases (www.fundacionprionicas.org), "
+     "for their participation in this project and for their collaboration in describing their "
+     "genealogies."),
+    ("sample_donor",           "CJD Foundation (USA + Spain) + families",
+     "The Creutzfeldt-Jakob Disease Foundation (USA and Spain) and the families affected by "
+     "prion diseases, whose generosity and support have made it possible to obtain and study "
+     "human GSS samples."),
+    ("sample_donor",           "Biobanks (generic)",
+     "The biobanks that provided access to key biological samples essential for this work."),
+    ("external_collaborator",  "Jesús R. Requena (scientific discussion)",
+     "Jesús R. Requena for always-useful scientific discussions and advice."),
+]
+
+
+def _seed_ack_blocks_if_empty() -> None:
+    if not os.path.exists(ACK_BLOCKS_FILE):
+        return
+    try:
+        existing = pd.read_csv(ACK_BLOCKS_FILE, dtype=str, keep_default_na=False)
+        if not existing.empty:
+            return
+    except Exception:
+        return
+
+    now = _now()
+    rows = []
+    for i, (category, short_label, text) in enumerate(_ACK_SEED, start=1):
+        rows.append({
+            "block_id":    f"ack_{i:03d}",
+            "category":    category,
+            "short_label": short_label,
+            "text":        text,
+            "is_active":   "true",
+            "notes":       "",
+            "created_at":  now,
+            "updated_at":  now,
+        })
+    df = pd.DataFrame(rows, columns=ACK_BLOCKS_COLS)
+    _write(df, ACK_BLOCKS_FILE, "acknowledgment_blocks.csv")
+    logger.info("Seeded %d acknowledgment blocks", len(rows))
+
+
+def _bootstrap_papers_dir() -> None:
+    from config import PAPERS_DIR
+    os.makedirs(PAPERS_DIR, exist_ok=True)
+    try:
+        from core.dropbox_client import get_client
+        from config import DROPBOX_PAPERS_FOLDER
+        client = get_client()
+        if client is None:
+            return
+        try:
+            client.files_get_metadata(DROPBOX_PAPERS_FOLDER)
+        except Exception:
+            client.files_create_folder_v2(DROPBOX_PAPERS_FOLDER)
+            logger.info("Created Dropbox papers folder: %s", DROPBOX_PAPERS_FOLDER)
+    except Exception as e:
+        logger.debug("Could not bootstrap Dropbox papers folder: %s", e)

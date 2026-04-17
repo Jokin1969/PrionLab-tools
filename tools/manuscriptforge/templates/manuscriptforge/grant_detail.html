@@ -1,0 +1,140 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ grant.code }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ grant.code }}</h2>
+    <small class="text-muted">{{ grant.grant_id }}</small>
+    <span class="badge badge--grant-{{ grant.status }}" style="margin-left:.5rem">{{ grant.status }}</span>
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin','editor') %}
+      <a href="{{ url_for('manuscriptforge.edit_grant', grant_id=grant.grant_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+    {% endif %}
+    {% if session.get('role') == 'admin' %}
+      <form method="POST" action="{{ url_for('manuscriptforge.delete_grant_route', grant_id=grant.grant_id) }}"
+            style="display:inline" onsubmit="return confirm('{{ _('Delete this grant?') }}')">
+        <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+      </form>
+    {% endif %}
+    <a href="{{ url_for('manuscriptforge.grants_list') }}" class="btn btn--sm">← {{ _('Back') }}</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Identification') }}</h3>
+    <dl class="detail-dl">
+      <dt>{{ _('Code') }}</dt><dd><code>{{ grant.code }}</code></dd>
+      <dt>{{ _('Title') }}</dt><dd>{{ grant.title }}</dd>
+      <dt>{{ _('Funding agency') }}</dt><dd>{{ grant.funding_agency }}</dd>
+      {% if grant.funding_program %}<dt>{{ _('Program') }}</dt><dd>{{ grant.funding_program }}</dd>{% endif %}
+      {% if grant.principal_investigator %}<dt>{{ _('PI') }}</dt><dd>{{ grant.principal_investigator }}</dd>{% endif %}
+    </dl>
+  </div>
+
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Dates & amount') }}</h3>
+    <dl class="detail-dl">
+      <dt>{{ _('Start date') }}</dt><dd>{{ grant.start_date or '—' }}</dd>
+      <dt>{{ _('End date') }}</dt><dd>{{ grant.end_date or '—' }}</dd>
+      {% if grant.amount_eur %}<dt>{{ _('Amount (€)') }}</dt><dd>{{ grant.amount_eur }}</dd>{% endif %}
+    </dl>
+  </div>
+
+  <div class="detail-section" style="grid-column:1/-1">
+    <h3 class="detail-section__title">{{ _('Acknowledgment text') }}</h3>
+    <pre class="ack-text-block">{{ grant.acknowledgment_text }}</pre>
+  </div>
+
+  {% if grant.notes and session.get('role') in ('admin','editor') %}
+  <div class="detail-section" style="grid-column:1/-1">
+    <h3 class="detail-section__title">{{ _('Internal notes') }}</h3>
+    <p class="text-muted">{{ grant.notes }}</p>
+  </div>
+  {% endif %}
+
+  <div class="detail-section" style="grid-column:1/-1;font-size:0.8rem;color:var(--color-text-muted)">
+    {{ _('Created') }}: {{ grant.created_at }} · {{ _('Updated') }}: {{ grant.updated_at }}
+  </div>
+</div>
+
+{# ── Linked members ────────────────────────────────────────────────────────── #}
+<div class="admin-section" style="margin-top:1.5rem">
+  <div class="admin-section__header">
+    <h2>{{ _('Linked members') }} ({{ members | length }})</h2>
+    {% if session.get('role') in ('admin','editor') and available_members %}
+      <button onclick="document.getElementById('add-member-dialog').showModal()" class="btn btn--primary btn--sm">
+        + {{ _('Add member') }}
+      </button>
+    {% endif %}
+  </div>
+
+  {% if members %}
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('Display name') }}</th>
+          <th>{{ _('Position') }}</th>
+          <th>{{ _('Role in grant') }}</th>
+          <th>{{ _('Status') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td>{{ m.display_name }}</td>
+          <td>{{ m.current_position or '—' }}</td>
+          <td>{{ m.grant_role or '—' }}</td>
+          <td><span class="badge badge--status-{{ m.status }}">{{ m.status }}</span></td>
+          <td class="actions-cell">
+            <a href="{{ url_for('manuscriptforge.member_detail', member_id=m.member_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+            {% if session.get('role') in ('admin','editor') %}
+            <form method="POST"
+                  action="{{ url_for('manuscriptforge.remove_member_from_grant', grant_id=grant.grant_id, member_id=m.member_id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('{{ _('Remove this member from the grant?') }}')">
+              <button type="submit" class="btn btn--sm btn--danger">{{ _('Remove') }}</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">{{ _('No members linked to this grant.') }}</p>
+  {% endif %}
+</div>
+
+{# ── Add member dialog ─────────────────────────────────────────────────────── #}
+{% if session.get('role') in ('admin','editor') and available_members %}
+<dialog id="add-member-dialog" class="mf-dialog">
+  <form method="POST" action="{{ url_for('manuscriptforge.add_member_to_grant', grant_id=grant.grant_id) }}">
+    <h3>{{ _('Add member') }}</h3>
+    <div class="form-group" style="margin-top:1rem">
+      <label class="form-label">{{ _('Member') }}</label>
+      <select name="member_id" class="form-input" required>
+        <option value="">—</option>
+        {% for m in available_members %}
+        <option value="{{ m.member_id }}">{{ m.display_name }} ({{ m.status }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin-top:.75rem">
+      <label class="form-label">{{ _('Role in grant') }}</label>
+      <input type="text" name="role" class="form-input" placeholder="PI, Co-PI, Researcher…" />
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ _('Add') }}</button>
+      <button type="button" class="btn btn--secondary"
+              onclick="document.getElementById('add-member-dialog').close()">{{ _('Cancel') }}</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

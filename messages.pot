@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-17 16:20+0000\n"
+"POT-Creation-Date: 2026-04-17 18:50+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -61,7 +61,7 @@ msgid "Sign in"
 msgstr ""
 
 #: templates/tools_coming_soon.html:9
-#: tools/manuscriptforge/templates/manuscriptforge/base.html:23
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:35
 msgid "Coming soon"
 msgstr ""
 
@@ -109,6 +109,7 @@ msgid "Email"
 msgstr ""
 
 #: templates/admin/index.html:35 templates/admin/user_form.html:40
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:171
 msgid "Role"
 msgstr ""
 
@@ -117,6 +118,10 @@ msgid "Language"
 msgstr ""
 
 #: templates/admin/index.html:37 templates/admin/user_form.html:61
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:10
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:31
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:48
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:20
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:17
 msgid "Active"
 msgstr ""
@@ -126,16 +131,25 @@ msgid "Last login"
 msgstr ""
 
 #: templates/admin/index.html:39
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:49
 #: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:31
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:41
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:39
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:50
 msgid "Actions"
 msgstr ""
 
 #: templates/admin/index.html:56
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:17
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:74
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:12
 #: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:45
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:13
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:56
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:16
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:53
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:13
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:76
 msgid "Edit"
 msgstr ""
 
@@ -148,10 +162,12 @@ msgid "Reset password"
 msgstr ""
 
 #: templates/admin/index.html:69
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:20
 msgid "Deactivate"
 msgstr ""
 
 #: templates/admin/index.html:69
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:20
 msgid "Activate"
 msgstr ""
 
@@ -160,10 +176,16 @@ msgid "Are you sure you want to delete this user?"
 msgstr ""
 
 #: templates/admin/index.html:78 templates/admin/index.html:82
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:27
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:79
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:17
 #: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:51
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:18
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:61
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:21
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:58
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:18
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:81
 msgid "Delete"
 msgstr ""
 
@@ -248,17 +270,28 @@ msgid "Confirm password"
 msgstr ""
 
 #: templates/admin/user_form.html:84
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:54
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:77
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:87
 #: tools/manuscriptforge/templates/manuscriptforge/member_form.html:143
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:113
 msgid "Save"
 msgstr ""
 
 #: templates/admin/user_form.html:85
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:56
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:58
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:79
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:81
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:135
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:89
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:91
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:148
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:226
 #: tools/manuscriptforge/templates/manuscriptforge/member_form.html:145
 #: tools/manuscriptforge/templates/manuscriptforge/member_form.html:147
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:115
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:117
 msgid "Cancel"
 msgstr ""
 
@@ -330,59 +363,301 @@ msgstr ""
 msgid "Failed to send test email."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:124 tools/manuscriptforge/routes.py:175
-#: tools/manuscriptforge/routes.py:204
+#: tools/manuscriptforge/routes.py:150 tools/manuscriptforge/routes.py:212
+#: tools/manuscriptforge/routes.py:241
 msgid "Member not found."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:163
+#: tools/manuscriptforge/routes.py:200
 msgid "Member created successfully."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:190
+#: tools/manuscriptforge/routes.py:227
 msgid "Member updated successfully."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:202
+#: tools/manuscriptforge/routes.py:239
 msgid "Member deleted successfully."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:215
+#: tools/manuscriptforge/routes.py:252
 msgid "Please select an affiliation."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:218
+#: tools/manuscriptforge/routes.py:255
 msgid "Affiliation added."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:226
+#: tools/manuscriptforge/routes.py:263
 msgid "Affiliation removed."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:271 tools/manuscriptforge/routes.py:305
+#: tools/manuscriptforge/routes.py:308 tools/manuscriptforge/routes.py:342
 msgid "Affiliation not found."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:293
+#: tools/manuscriptforge/routes.py:330
 msgid "Affiliation created successfully."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:318
+#: tools/manuscriptforge/routes.py:355
 msgid "Affiliation updated successfully."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:333
+#: tools/manuscriptforge/routes.py:370
 msgid "Affiliation deleted successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:429 tools/manuscriptforge/routes.py:472
+#: tools/manuscriptforge/routes.py:497
+msgid "Grant not found."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:460
+msgid "Grant created successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:484
+msgid "Grant updated successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:495
+msgid "Grant deleted successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:509
+msgid "Please select a member."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:512
+msgid "Member added to grant."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:520
+msgid "Member removed from grant."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:557
+msgid "Only PDF files are accepted."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:562
+msgid "File does not appear to be a valid PDF."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:567
+#, python-format
+msgid "PDF exceeds maximum size (%(mb)d MB)."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:741 tools/manuscriptforge/routes.py:775
+#: tools/manuscriptforge/routes.py:805
+msgid "Publication not found."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:763
+msgid "Publication created successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:789
+msgid "Publication updated successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:803
+msgid "Publication deleted successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:816
+msgid "No PDF available for this publication."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:835
+msgid "PDF file not found."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:871 tools/manuscriptforge/routes.py:907
+#: tools/manuscriptforge/routes.py:938
+msgid "Block not found."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:895
+msgid "Block created successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:925
+msgid "Block updated successfully."
+msgstr ""
+
+#: tools/manuscriptforge/routes.py:936
+msgid "Block deleted successfully."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:12
+msgid "Inactive"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:26
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:78
+msgid "Delete this block?"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:30
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:20
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:21
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:24
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:21
+msgid "Back"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:36
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:12
+msgid "Category"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:38
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:16
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:20
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:34
+msgid "Technical staff"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:39
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:17
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:21
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:35
+msgid "Core facility"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:40
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:18
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:22
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:36
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:20
+msgid "External collaborator"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:41
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:19
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:23
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:37
+msgid "Sample donors"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:42
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:20
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:24
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:38
+msgid "Infrastructure"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:43
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:21
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:25
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:39
+msgid "Other"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:49
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:49
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:72
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:53
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:82
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:77
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:136
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:65
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:108
+msgid "Internal notes"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:55
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:43
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:47
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:75
+msgid "Acknowledgment text"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:60
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:53
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:59
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:71
+msgid "Created"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:60
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:53
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:59
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:71
+msgid "Updated"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:6
+msgid "Edit block"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:2
+msgid "New block"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:6
+msgid "New acknowledgment block"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:36
+msgid "Short label"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:38
+msgid "e.g. BSL3 facility IRTA-CReSA"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:45
+msgid "Exact text to include in the acknowledgments section…"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:7
+msgid "Acknowledgment blocks"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:11
+msgid "Add block"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:19
+msgid "All categories"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:46
+msgid "Label"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:47
+msgid "Text"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:63
+msgid "Toggle active"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:72
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:78
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:43
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:94
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:54
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:184
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:51
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:74
+msgid "View"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:91
+msgid "No acknowledgment blocks found."
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:16
 #: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:49
 msgid "Delete this affiliation?"
-msgstr ""
-
-#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:20
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:24
-msgid "Back"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:26
@@ -433,41 +708,34 @@ msgstr ""
 msgid "Notes"
 msgstr ""
 
-#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:53
-msgid "Created"
-msgstr ""
-
-#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:53
-msgid "Updated"
-msgstr ""
-
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:59
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:66
 msgid "Linked members"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:65
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:79
 #: tools/manuscriptforge/templates/manuscriptforge/member_form.html:24
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:34
 msgid "Display name"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:66
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:82
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:18
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:39
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:172
 #: tools/manuscriptforge/templates/manuscriptforge/member_form.html:55
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:37
 msgid "Status"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:67
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:80
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:34
 #: tools/manuscriptforge/templates/manuscriptforge/member_form.html:63
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:36
 msgid "Position"
-msgstr ""
-
-#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:78
-#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:43
-#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:51
-msgid "View"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:86
@@ -496,12 +764,6 @@ msgstr ""
 msgid "Region / Province"
 msgstr ""
 
-#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:72
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:77
-#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:136
-msgid "Internal notes"
-msgstr ""
-
 #: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:2
 #: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:7
 #: tools/manuscriptforge/templates/manuscriptforge/base.html:20
@@ -521,7 +783,10 @@ msgid "Search name or city…"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:16
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:26
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:24
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:15
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:34
 msgid "Search"
 msgstr ""
 
@@ -545,8 +810,178 @@ msgstr ""
 msgid "Overview"
 msgstr ""
 
-#: tools/manuscriptforge/templates/manuscriptforge/base.html:23
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:24
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:7
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:22
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:157
+msgid "Grants"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:28
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:27
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:7
+msgid "Publications"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:32
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:32
+msgid "Ack. blocks"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:35
 msgid "Generate section"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:17
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:60
+msgid "Delete this grant?"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:27
+msgid "Identification"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:29
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:35
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:169
+msgid "Code"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:30
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:28
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:36
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:170
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:37
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:45
+msgid "Title"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:31
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:35
+msgid "Funding agency"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:32
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:41
+msgid "Program"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:33
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:38
+msgid "PI"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:38
+msgid "Dates & amount"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:40
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:63
+msgid "Start date"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:41
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:68
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:40
+msgid "End date"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:42
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:55
+msgid "Amount (€)"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:69
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:118
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:9
+msgid "Add member"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:81
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:129
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:220
+msgid "Role in grant"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:99
+msgid "Remove this member from the grant?"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:100
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:120
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:188
+msgid "Remove"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:110
+msgid "No members linked to this grant."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:120
+msgid "Member"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:133
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:147
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:224
+msgid "Add"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:6
+msgid "Edit grant"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:6
+msgid "New grant"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:12
+msgid "Grant code"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:50
+msgid "Principal investigator"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:77
+msgid "Exact text required by the funding agency…"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grant_form.html:78
+msgid "Paste the exact wording required by the funding agency."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:11
+msgid "Add grant"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:19
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:16
+msgid "All statuses"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:21
+msgid "Pending"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:22
+msgid "Closed"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:24
+msgid "Search code, title, agency, PI…"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:37
+msgid "Agency"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:71
+msgid "No grants found."
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/home.html:7
@@ -563,6 +998,18 @@ msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/home.html:19
 msgid "View affiliations"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:24
+msgid "View grants"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:29
+msgid "View publications"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:34
+msgid "View blocks"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:11
@@ -615,10 +1062,6 @@ msgstr ""
 msgid "Remove this affiliation?"
 msgstr ""
 
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:120
-msgid "Remove"
-msgstr ""
-
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:128
 msgid "No affiliations assigned yet."
 msgstr ""
@@ -627,8 +1070,21 @@ msgstr ""
 msgid "Affiliation"
 msgstr ""
 
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:147
-msgid "Add"
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:160
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:207
+msgid "Add to grant"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:187
+msgid "Remove from this grant?"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:198
+msgid "No grants linked to this member."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:209
+msgid "Grant"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/member_form.html:2
@@ -711,24 +1167,12 @@ msgstr ""
 msgid "Not exported to manuscripts."
 msgstr ""
 
-#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:9
-msgid "Add member"
-msgstr ""
-
-#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:16
-msgid "All statuses"
-msgstr ""
-
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:18
 msgid "Alumni"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:19
 msgid "Visiting"
-msgstr ""
-
-#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:20
-msgid "External collaborator"
 msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:22
@@ -741,5 +1185,139 @@ msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/members_list.html:64
 msgid "No members found."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:17
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:80
+msgid "Delete this publication?"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:29
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:70
+msgid "Download PDF"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:36
+msgid "Authors & journal"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:38
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:43
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:44
+msgid "Authors"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:39
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:51
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:46
+msgid "Journal"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:40
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:56
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:43
+msgid "Year"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:41
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:65
+msgid "Volume"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:42
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:70
+msgid "Issue"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:43
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:75
+msgid "Pages"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:48
+msgid "Identifiers"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:57
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:83
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:47
+msgid "Type"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_detail.html:58
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:93
+msgid "Group publication"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:6
+msgid "Edit publication"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:6
+msgid "New publication"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:10
+msgid "Import from DOI"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:101
+msgid "Current file:"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:104
+#, python-format
+msgid "Max %(mb)d MB. Leave empty to keep current file."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:145
+msgid "Searching…"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:151
+msgid "DOI not found. Enter data manually."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:166
+msgid "Data imported from CrossRef. Review before saving."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:169
+#: tools/manuscriptforge/templates/manuscriptforge/publication_form.html:174
+msgid "Could not connect to CrossRef."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:11
+msgid "Add publication"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:19
+msgid "All types"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:25
+msgid "Group pubs only"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:26
+msgid "All publications"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:29
+msgid "From year"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:31
+msgid "To year"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:33
+msgid "Search title, authors, journal…"
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/publications_list.html:91
+msgid "No publications found."
 msgstr ""
 
