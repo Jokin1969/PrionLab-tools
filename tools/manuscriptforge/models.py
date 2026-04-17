@@ -106,6 +106,7 @@ def bootstrap_schema() -> None:
     _seed_ack_blocks_if_empty()
     _seed_grants_if_empty()
     _seed_affiliations_if_empty()
+    _seed_members_if_empty()
     _bootstrap_papers_dir()
 
 
@@ -868,3 +869,173 @@ def _seed_affiliations_if_empty() -> None:
     _write(df, AFFILIATIONS_FILE, "affiliations.csv")
     assert len(pd.read_csv(AFFILIATIONS_FILE, dtype=str, keep_default_na=False)) == len(rows)
     logger.info("Seed complete: added %d affiliations to affiliations.csv", len(rows))
+
+
+_MEMBERS_SEED = [
+    # (member_id, first_name, last_name, display_name, email, current_position,
+    #  status, is_corresponding_default, has_competing_interests, notes)
+    ("m001", "Joaquín",   "Castilla",                    "J. Castilla",
+     "jcastilla@cicbiogune.es",      "PI",                       "active",
+     "true",  "false", "Lab PI, corresponding author by default"),
+    ("m002", "Hasier",    "Eraña",                       "H. Eraña",
+     "herana.atlas@cicbiogune.es",   "Senior Researcher",        "active",
+     "false", "false", "Senior researcher, multiple affiliations"),
+    ("m003", "Enric",     "Vidal",                       "E. Vidal",
+     "enric.vidal@irta.cat",         "External Collaborator",    "collaborator_external",
+     "false", "false", "IRTA-CReSA collaborator"),
+    ("m004", "Natalia",   "Fernández-Borges",             "N. Fernández-Borges",
+     "natalia.fernandez@inia.csic.es","External Collaborator",   "collaborator_external",
+     "false", "false", "CISA-INIA-CSIC collaborator"),
+    ("m005", "Jorge M.",  "Charco",                      "J.M. Charco",
+     "jmoreno@cicbiogune.es",        "Postdoc",                  "active",
+     "false", "false", "Core group member"),
+    ("m006", "Carlos M.", "Díaz-Domínguez",              "C.M. Díaz-Domínguez",
+     "cdiaz@cicbiogune.es",          "Postdoc",                  "active",
+     "false", "false", "Core group member"),
+    ("m007", "Cristina",  "Sampedro-Torres-Quevedo",     "C. Sampedro-Torres-Quevedo",
+     "csampedro@cicbiogune.es",      "PhD student",              "active",
+     "false", "false", "PhD student"),
+    ("m008", "Josu",      "Galarza-Ahumada",             "J. Galarza-Ahumada",
+     "jgalarza@cicbiogune.es",       "PhD student",              "active",
+     "false", "false", "PhD student"),
+    ("m009", "Eva",       "Fernández-Muñoz",             "E. Fernández-Muñoz",
+     "efernandez@cicbiogune.es",     "PhD student",              "active",
+     "false", "false", "PhD student"),
+    ("m010", "Maitena",   "San-Juan-Ansoleaga",          "M. San-Juan-Ansoleaga",
+     "msanjuan@cicbiogune.es",       "Lab Technician",           "active",
+     "false", "false", "Technical staff"),
+    ("m011", "Miguel Ángel", "Pérez-Castro",             "M.Á. Pérez-Castro",
+     "mperez@lunenfeld.ca",          "External Collaborator",    "collaborator_external",
+     "false", "false", "Currently at Lunenfeld"),
+    ("m012", "Nuno",      "Gonçalves-Anjo",              "N. Gonçalves-Anjo",
+     "nanjo@cicbiogune.es",          "Postdoc",                  "active",
+     "false", "false", "Postdoc"),
+    ("m013", "Patricia",  "Piñeiro",                     "P. Piñeiro",
+     "ppineiro@cicbiogune.es",       "Lab Technician",           "active",
+     "false", "false", "Technical staff"),
+    ("m014", "Samanta",   "Giler",                       "S. Giler",
+     "samanta.giler@irta.cat",       "External Collaborator",    "collaborator_external",
+     "false", "false", "IRTA collaboration"),
+    ("m015", "Nora",      "González-Martín",             "N. González-Martín",
+     "noragonz@usal.es",             "External Collaborator",    "collaborator_external",
+     "false", "false", "Universidad de Salamanca"),
+    ("m016", "Nuria L.",  "Lorenzo",                     "N.L. Lorenzo",
+     "nuria_2l_92@hotmail.com",      "PhD student",              "active",
+     "false", "false", "PhD student"),
+    ("m017", "Africa",    "Manero-Azua",                 "A. Manero-Azua",
+     "africa.maneroruizdeazua@bio-araba.eus", "External Collaborator", "collaborator_external",
+     "false", "false", "Bioaraba collaboration"),
+    ("m018", "Guiomar",   "Perez de Nanclares",          "G. Perez de Nanclares",
+     "guiomar.perezdenanclaresleal@osakidetza.eus", "External Collaborator", "collaborator_external",
+     "false", "false", "Bioaraba/Biobizkaia collaboration"),
+    ("m019", "Mariví",    "Geijo",                       "M. Geijo",
+     "mgeijo@neiker.eus",            "External Collaborator",    "collaborator_external",
+     "false", "false", "Neiker collaboration"),
+    ("m020", "Manuel A.", "Sánchez-Martín",              "M.A. Sánchez-Martín",
+     "adolsan@usal.es",              "External Collaborator",    "collaborator_external",
+     "false", "false", "Universidad de Salamanca, transgenic facility"),
+    ("m021", "Jesús R.",  "Requena",                     "J.R. Requena",
+     "jesus.requena@usc.es",         "External Collaborator",    "collaborator_external",
+     "false", "false", "CIMUS-USC collaboration"),
+]
+
+_MEMBER_AFF_SEED = [
+    # (member_id, affiliation_id, priority)
+    ("m001", "aff_001", "1"),
+    ("m001", "aff_008", "2"),
+    ("m001", "aff_002", "3"),
+    ("m002", "aff_001", "1"),
+    ("m002", "aff_002", "2"),
+    ("m002", "aff_011", "3"),
+    ("m003", "aff_009", "1"),
+    ("m003", "aff_010", "2"),
+    ("m004", "aff_003", "1"),
+    ("m005", "aff_001", "1"),
+    ("m005", "aff_002", "2"),
+    ("m005", "aff_011", "3"),
+    ("m006", "aff_001", "1"),
+    ("m006", "aff_002", "2"),
+    ("m007", "aff_001", "1"),
+    ("m007", "aff_002", "2"),
+    ("m008", "aff_001", "1"),
+    ("m009", "aff_001", "1"),
+    ("m010", "aff_001", "1"),
+    ("m011", "aff_001", "1"),
+    ("m011", "aff_002", "2"),
+    ("m012", "aff_001", "1"),
+    ("m013", "aff_001", "1"),
+    ("m014", "aff_001", "1"),
+    ("m014", "aff_009", "2"),
+    ("m015", "aff_014", "1"),
+    ("m016", "aff_001", "1"),
+    ("m016", "aff_002", "2"),
+    ("m020", "aff_014", "1"),
+    ("m021", "aff_012", "1"),
+]
+
+
+def _seed_members_if_empty() -> None:
+    if not os.path.exists(MEMBERS_FILE):
+        logger.info("Members CSV missing, skipping seed (will be created by bootstrap_schema)")
+        return
+    try:
+        existing = pd.read_csv(MEMBERS_FILE, dtype=str, keep_default_na=False)
+        if not existing.empty:
+            logger.info("Members CSV not empty, skipping seed")
+            return
+    except Exception:
+        return
+
+    now = _now()
+    rows = []
+    for (mid, first, last, display, email, position,
+         status, is_corr, has_ci, notes) in _MEMBERS_SEED:
+        rows.append({
+            "member_id":                mid,
+            "first_name":               first,
+            "last_name":                last,
+            "display_name":             display,
+            "email":                    email,
+            "orcid":                    "",
+            "dni":                      "",
+            "is_corresponding_default": is_corr,
+            "status":                   status,
+            "current_position":         position,
+            "joined_date":              "",
+            "left_date":                "",
+            "short_bio":                "",
+            "long_bio":                 "",
+            "expertise_areas":          "",
+            "has_competing_interests":  has_ci,
+            "competing_interests_text": "",
+            "linked_username":          "",
+            "notes":                    notes,
+            "created_at":               now,
+            "updated_at":               now,
+        })
+    df = pd.DataFrame(rows, columns=MEMBERS_COLS)
+    _write(df, MEMBERS_FILE, "members.csv")
+    assert len(pd.read_csv(MEMBERS_FILE, dtype=str, keep_default_na=False)) == len(rows)
+    logger.info("Seed complete: added %d members to members.csv", len(rows))
+
+    _seed_member_affiliations_if_empty()
+
+
+def _seed_member_affiliations_if_empty() -> None:
+    if not os.path.exists(MEMBER_AFF_FILE):
+        logger.info("Member affiliations CSV missing, skipping seed")
+        return
+    try:
+        existing = pd.read_csv(MEMBER_AFF_FILE, dtype=str, keep_default_na=False)
+        if not existing.empty:
+            logger.info("Member affiliations CSV not empty, skipping seed")
+            return
+    except Exception:
+        return
+
+    rows = [{"member_id": m, "affiliation_id": a, "priority": p}
+            for m, a, p in _MEMBER_AFF_SEED]
+    df = pd.DataFrame(rows, columns=MEMBER_AFF_COLS)
+    _write(df, MEMBER_AFF_FILE, "member_affiliations.csv")
+    assert len(pd.read_csv(MEMBER_AFF_FILE, dtype=str, keep_default_na=False)) == len(rows)
+    logger.info("Seed complete: added %d member-affiliation links to member_affiliations.csv", len(rows))
