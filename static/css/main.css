@@ -950,3 +950,160 @@ select.form-input { cursor: pointer; }
 .ci-analysis-author { display: inline; }
 .ci-analysis-author--conflict { font-weight: 600; }
 .ci-analysis-citext { font-size: .8rem; }
+
+/* ── CRediT Generation matrix ──────────────────────────────────────────────── */
+.credit-matrix-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.credit-matrix {
+  border-collapse: collapse;
+  font-size: .8rem;
+  min-width: 900px;
+  width: 100%;
+}
+
+.credit-matrix th,
+.credit-matrix td {
+  border: 1px solid var(--color-border);
+  padding: .25rem .3rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.credit-th-author {
+  text-align: left !important;
+  min-width: 160px;
+  padding-left: .5rem !important;
+  background: var(--color-bg);
+  font-weight: 600;
+}
+
+.credit-th-template {
+  min-width: 120px;
+  background: var(--color-bg);
+  font-weight: 600;
+}
+
+.credit-role-header {
+  width: 58px;
+  min-width: 58px;
+  background: var(--color-bg);
+  font-weight: 600;
+  font-size: .72rem;
+  cursor: help;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.credit-th-count {
+  width: 36px;
+  background: var(--color-bg);
+  font-weight: 600;
+  font-size: .75rem;
+}
+
+.credit-bulk-row td {
+  background: var(--color-surface, #f8f9fa);
+  padding: .15rem .2rem;
+}
+
+.credit-bulk-cell { white-space: nowrap; }
+
+.credit-bulk-btn {
+  font-size: .65rem;
+  padding: .1rem .25rem;
+  margin: .05rem;
+  line-height: 1;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-bg);
+  cursor: pointer;
+}
+.credit-bulk-btn:hover { background: var(--color-primary-light, #e0f0ff); }
+
+.btn--xs {
+  font-size: .68rem;
+  padding: .1rem .3rem;
+  line-height: 1.2;
+}
+
+.credit-author-row:nth-child(even) { background: var(--color-surface, #f8f9fa); }
+.credit-author-row:hover { background: var(--color-primary-light, #e8f4ff); }
+
+.credit-td-author {
+  text-align: left !important;
+  padding-left: .5rem !important;
+  white-space: nowrap;
+}
+
+.credit-initials-badge {
+  font-size: .7rem;
+  color: var(--color-text-muted, #666);
+  font-style: italic;
+}
+
+.credit-td-template { padding: .2rem .3rem; }
+
+.credit-template-select {
+  font-size: .75rem;
+  padding: .15rem .25rem;
+  height: auto;
+  width: 115px;
+}
+
+.credit-checkbox-cell input[type="checkbox"] {
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+}
+
+.credit-count-cell {
+  font-weight: 600;
+  color: var(--color-primary, #0066cc);
+  font-size: .8rem;
+}
+
+/* ── Summary grid ── */
+.credit-summary {
+  font-size: .8rem;
+  margin-top: .75rem;
+}
+.credit-summary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .75rem;
+  padding: .5rem .75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: .5rem;
+}
+.credit-summary-item {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+}
+.credit-summary-role {
+  color: var(--color-text-muted, #555);
+}
+.credit-summary-count {
+  font-weight: 700;
+  background: var(--color-primary, #0066cc);
+  color: #fff;
+  border-radius: 10px;
+  padding: .05rem .4rem;
+  font-size: .72rem;
+}
+.credit-summary-warn {
+  color: #92400e;
+  margin-top: .25rem;
+}
+.credit-summary-info {
+  color: var(--color-text-muted, #555);
+  margin-top: .1rem;
+}

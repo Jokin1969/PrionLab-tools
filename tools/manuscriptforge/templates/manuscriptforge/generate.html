@@ -23,6 +23,7 @@
       <option value="funding">{{ _('Funding') }}</option>
       <option value="acknowledgments">{{ _('Acknowledgments') }}</option>
       <option value="competing_interests">{{ _('Competing Interests') }}</option>
+      <option value="credit_generation">{{ _('Author Contributions (CRediT)') }}</option>
     </select>
   </div>
 
@@ -327,11 +328,148 @@
   </div>
 </div>
 
+{# ── CRediT Generation Panel ─────────────────────────────────────────────── #}
+<div id="panel-credit-generation" class="generate-panel" style="margin-top:1.5rem;display:none">
+  <h3 style="margin-bottom:.5rem">{{ _('Author Contributions (CRediT)') }}</h3>
+  <p class="text-muted" style="margin-bottom:1.25rem">
+    {{ _('Assign CRediT roles to authors and generate the Author Contributions section.') }}
+  </p>
+
+  {# ── Author source ── #}
+  <div class="ci-source-section" style="margin-bottom:1.25rem">
+    <div class="ci-source-option">
+      <label class="ci-radio-label">
+        <input type="radio" name="credit-author-source" id="credit-source-previous" value="previous"
+               class="form-checkbox" onchange="creditSourceChanged()" />
+        <strong>{{ _('Load authors from most recent Author Order generation') }}</strong>
+      </label>
+      <div id="credit-previous-info" style="margin:.5rem 0 0 1.5rem;display:none">
+        <span id="credit-previous-text" class="text-muted"></span>
+        <button type="button" class="btn btn--sm btn--secondary" onclick="loadCreditFromPrevious()" style="margin-left:.5rem">
+          {{ _('Load') }}
+        </button>
+      </div>
+      <div id="credit-no-previous" style="margin:.5rem 0 0 1.5rem;display:none">
+        <span class="text-muted">{{ _('No recent Author Order generation found. Generate Author Order first, or select manually.') }}</span>
+      </div>
+    </div>
+    <div class="ci-source-option" style="margin-top:.75rem">
+      <label class="ci-radio-label">
+        <input type="radio" name="credit-author-source" id="credit-source-manual" value="manual"
+               class="form-checkbox" onchange="creditSourceChanged()" checked />
+        <strong>{{ _('Select authors manually') }}</strong>
+      </label>
+    </div>
+  </div>
+
+  {# ── Manual author selector ── #}
+  <div id="credit-manual-selector">
+    <div class="author-selector" style="grid-template-columns:1fr">
+      {% if active_members %}
+      <div class="author-selector__group">
+        <div class="author-selector__group-label">{{ _('Active members') }}</div>
+        <ul class="author-selector__list" id="credit-available-active">
+          {% for m in active_members %}
+          <li class="author-selector__item">
+            <label class="author-selector__label">
+              <input type="checkbox" class="credit-author-checkbox" value="{{ m.member_id }}"
+                     data-display="{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     data-initials="{{ m.initials or m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     data-position="{{ m.current_position or '' }}"
+                     onchange="creditAuthorSelectionChanged()" />
+              <span>{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}</span>
+              {% if m.initials %}<span class="text-muted" style="font-size:.75rem;margin-left:.3rem">({{ m.initials }})</span>{% endif %}
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if external_members %}
+      <div class="author-selector__group">
+        <div class="author-selector__group-label">{{ _('External collaborators') }}</div>
+        <ul class="author-selector__list" id="credit-available-external">
+          {% for m in external_members %}
+          <li class="author-selector__item">
+            <label class="author-selector__label">
+              <input type="checkbox" class="credit-author-checkbox" value="{{ m.member_id }}"
+                     data-display="{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     data-initials="{{ m.initials or m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     data-position="{{ m.current_position or '' }}"
+                     onchange="creditAuthorSelectionChanged()" />
+              <span>{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}</span>
+              {% if m.initials %}<span class="text-muted" style="font-size:.75rem;margin-left:.3rem">({{ m.initials }})</span>{% endif %}
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Matrix section (rendered dynamically) ── #}
+  <div id="credit-matrix-section" style="display:none;margin-top:1.5rem">
+    <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;flex-wrap:wrap">
+      <strong id="credit-matrix-header">{{ _('Role assignment matrix') }}</strong>
+      <span class="text-muted" style="font-size:.8rem">{{ _('Scroll right to see all 14 roles →') }}</span>
+      <button type="button" class="btn btn--sm" onclick="clearCreditMatrix()" style="margin-left:auto">{{ _('Clear all') }}</button>
+    </div>
+    <div class="credit-matrix-wrapper">
+      <table class="credit-matrix" id="credit-matrix-table">
+        <thead>
+          <tr id="credit-matrix-header-row"></tr>
+          <tr id="credit-bulk-row" class="credit-bulk-row"></tr>
+        </thead>
+        <tbody id="credit-matrix-body"></tbody>
+      </table>
+    </div>
+
+    {# ── Assignment summary ── #}
+    <div id="credit-summary" class="credit-summary" style="margin-top:1rem"></div>
+
+    {# ── Format selector ── #}
+    <div style="margin-top:1rem;display:flex;gap:1.5rem;flex-wrap:wrap">
+      <label class="ci-radio-label">
+        <input type="radio" name="credit-format" value="by_role" checked class="form-checkbox"
+               onchange="creditFormat='by_role'" />
+        <span>{{ _('By role') }} <span class="text-muted" style="font-size:.8rem">({{ _('standard') }})</span></span>
+      </label>
+      <label class="ci-radio-label">
+        <input type="radio" name="credit-format" value="by_author" class="form-checkbox"
+               onchange="creditFormat='by_author'" />
+        <span>{{ _('By author') }}</span>
+      </label>
+    </div>
+
+    <div class="form-actions" style="margin-top:1.25rem">
+      <button type="button" class="btn btn--primary" id="credit-generate-btn"
+              onclick="runCreditGenerate()"
+              {% if session.get('role') not in ('admin', 'editor') %}disabled{% endif %}>
+        {{ _('Generate CRediT') }}
+      </button>
+    </div>
+
+    <div id="credit-error" class="alert alert--error" style="margin-top:1rem;display:none"></div>
+
+    <div id="credit-output" style="margin-top:1.5rem;display:none">
+      <div id="credit-warnings-container"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <h4 style="margin:0">{{ _('Generated output') }}</h4>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="copyCreditOutput()">{{ _('Copy to clipboard') }}</button>
+      </div>
+      <textarea id="credit-textarea" class="form-input generate-output" rows="8" readonly></textarea>
+      <div id="credit-copy-feedback" class="text-muted" style="font-size:.8rem;margin-top:.25rem">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
 <script>
 const POST_URL          = "{{ url_for('manuscriptforge.generate_author_order_route') }}";
 const FUNDING_POST_URL  = "{{ url_for('manuscriptforge.generate_funding_route') }}";
 const ACK_POST_URL      = "{{ url_for('manuscriptforge.generate_acknowledgments_route') }}";
 const CI_POST_URL       = "{{ url_for('manuscriptforge.generate_competing_interests_route') }}";
+const CREDIT_POST_URL   = "{{ url_for('manuscriptforge.generate_credit_route') }}";
 const I18N = {
   remove: "{{ _('Remove') }}",
   up: "{{ _('Move up') }}",
@@ -359,6 +497,18 @@ const I18N = {
   ciWithConflicts: "{{ _('With competing interests') }}",
   ciWithoutConflicts: "{{ _('No competing interests') }}",
   ciNone: "{{ _('None') }}",
+  creditRolesWithout: "{{ _('Roles with no authors assigned') }}",
+  creditAuthorsWithout: "{{ _('Authors with no roles assigned') }}",
+  creditNone: "{{ _('None') }}",
+  creditAllAuthors: "{{ _('All authors') }}",
+  creditNoAssignments: "{{ _('No roles assigned. Assign at least one role to continue.') }}",
+  creditTpl_pi: "{{ _('PI roles') }}",
+  creditTpl_senior: "{{ _('Senior author') }}",
+  creditTpl_first: "{{ _('First author') }}",
+  creditTpl_contributing: "{{ _('Contributing author') }}",
+  creditTpl_clear: "{{ _('Clear all roles') }}",
+  creditSelectAll: "{{ _('All') }}",
+  creditClearRole: "{{ _('Clear') }}",
   catLabels: {
     core_facility:          "{{ _('Core Facilities') }}",
     technical_staff:        "{{ _('Technical Staff') }}",
@@ -374,7 +524,7 @@ const ACK_BLOCKS_DATA = {{ ack_blocks | tojson }};
 
 let selectedIds = [];
 
-const ALL_PANELS = ['author-order', 'funding', 'acknowledgments', 'competing-interests'];
+const ALL_PANELS = ['author-order', 'funding', 'acknowledgments', 'competing-interests', 'credit-generation'];
 
 function switchSection(kind) {
   ALL_PANELS.forEach(p => {
@@ -386,6 +536,7 @@ function switchSection(kind) {
   if (kind === 'funding') renderGrantGroups();
   if (kind === 'acknowledgments') renderAckGroups();
   if (kind === 'competing_interests') initCiPanel();
+  if (kind === 'credit_generation') initCreditPanel();
 }
 
 // ── Funding section ───────────────────────────────────────────────────────────
@@ -1045,6 +1196,426 @@ function _esc(s) {
 async function copyCiOutput() {
   const ta = document.getElementById('ci-textarea');
   const feedback = document.getElementById('ci-copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    feedback.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); feedback.textContent = I18N.copied; }
+    catch (e2) { feedback.textContent = I18N.copyFailed; }
+  }
+  setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
+}
+
+// ── CRediT Generation section ─────────────────────────────────────────────────
+
+const CREDIT_ROLES = [
+  { key: 'conceptualization',      label: 'Conceptualization',         short: 'Concept.',   tooltip: 'Ideas; formulation or evolution of overarching research goals and aims' },
+  { key: 'data_curation',          label: 'Data curation',             short: 'Data cur.',  tooltip: 'Management activities to annotate, scrub data and maintain research data' },
+  { key: 'formal_analysis',        label: 'Formal analysis',           short: 'Formal A.',  tooltip: 'Statistical, mathematical, computational or other formal analysis techniques' },
+  { key: 'funding_acquisition',    label: 'Funding acquisition',       short: 'Funding A.', tooltip: 'Acquisition of the financial support for the project leading to this publication' },
+  { key: 'investigation',          label: 'Investigation',             short: 'Investig.',  tooltip: 'Conducting a research and investigation process, specifically performing experiments' },
+  { key: 'methodology',            label: 'Methodology',               short: 'Methodol.',  tooltip: 'Development or design of methodology; creation of models' },
+  { key: 'project_administration', label: 'Project administration',    short: 'Proj. adm.', tooltip: 'Management and coordination responsibility for research activity planning and execution' },
+  { key: 'resources',              label: 'Resources',                 short: 'Resources',  tooltip: 'Provision of study materials, reagents, materials, patients, laboratory samples, animals, instrumentation, computing resources, or other analysis tools' },
+  { key: 'software',               label: 'Software',                  short: 'Software',   tooltip: 'Programming, software development; designing computer programs; implementation of the computer code and supporting algorithms; testing of existing code components' },
+  { key: 'supervision',            label: 'Supervision',               short: 'Supervis.',  tooltip: 'Oversight and leadership responsibility for the research activity planning and execution' },
+  { key: 'validation',             label: 'Validation',                short: 'Validat.',   tooltip: 'Verification, whether as a part of the activity or separate, of the overall replication/reproducibility of results/experiments and other research outputs' },
+  { key: 'visualization',          label: 'Visualization',             short: 'Visualiz.',  tooltip: 'Preparation, creation and/or presentation of the published work, specifically visualization/data presentation' },
+  { key: 'writing_original_draft', label: 'Writing \u2013 original draft',      short: 'Writing OD', tooltip: 'Preparation, creation and/or presentation of the published work, specifically writing the initial draft' },
+  { key: 'writing_review_editing', label: 'Writing \u2013 review & editing', short: 'Writing RE', tooltip: 'Preparation, creation and/or presentation of the published work by those from the original research group, specifically critical review, commentary or revision' },
+];
+
+const CREDIT_TEMPLATES = {
+  pi:          ['conceptualization', 'funding_acquisition', 'methodology', 'project_administration', 'supervision', 'writing_review_editing'],
+  senior:      ['conceptualization', 'methodology', 'supervision', 'writing_review_editing'],
+  first_author:['formal_analysis', 'investigation', 'methodology', 'visualization', 'writing_original_draft', 'writing_review_editing'],
+  contributing:['investigation', 'writing_review_editing'],
+};
+
+let creditAuthorIds  = [];   // ordered list of member IDs
+let creditAssignments = {};   // { member_id: Set<role_key> }
+let creditFormat = 'by_role';
+let creditMembersData = {};   // { member_id: { display, initials, position } }
+
+function initCreditPanel() {
+  // Build member data lookup from checkboxes
+  creditMembersData = {};
+  document.querySelectorAll('.credit-author-checkbox').forEach(cb => {
+    creditMembersData[cb.value] = {
+      display:  cb.dataset.display  || cb.value,
+      initials: cb.dataset.initials || cb.dataset.display || cb.value,
+      position: cb.dataset.position || '',
+    };
+  });
+
+  const stored = _ciGetStored();
+  const prevInfo = document.getElementById('credit-previous-info');
+  const noPrev   = document.getElementById('credit-no-previous');
+  if (stored) {
+    const count = stored.ids.length;
+    document.getElementById('credit-previous-text').textContent = count + ' ' + I18N.authorsSelected;
+    prevInfo.style.display = 'block';
+    noPrev.style.display   = 'none';
+    document.getElementById('credit-source-previous').checked = true;
+    creditSourceChanged();
+    loadCreditFromPrevious();
+  } else {
+    prevInfo.style.display = 'none';
+    noPrev.style.display   = 'block';
+    document.getElementById('credit-source-manual').checked = true;
+    creditSourceChanged();
+  }
+}
+
+function creditSourceChanged() {
+  const isPrev = document.getElementById('credit-source-previous').checked;
+  document.getElementById('credit-manual-selector').style.display = isPrev ? 'none' : '';
+}
+
+function loadCreditFromPrevious() {
+  const stored = _ciGetStored();
+  if (!stored) return;
+  document.querySelectorAll('.credit-author-checkbox').forEach(cb => { cb.checked = false; });
+  stored.ids.forEach(id => {
+    const cb = document.querySelector('.credit-author-checkbox[value="' + id + '"]');
+    if (cb) cb.checked = true;
+  });
+  _rebuildCreditAuthorIds();
+  renderCreditMatrix(true);
+}
+
+function creditAuthorSelectionChanged() {
+  _rebuildCreditAuthorIds();
+  renderCreditMatrix(false);
+}
+
+function _rebuildCreditAuthorIds() {
+  // Maintain order: preserve existing order for already-selected, append new ones at end
+  const checked = new Set(
+    [...document.querySelectorAll('.credit-author-checkbox:checked')].map(cb => cb.value)
+  );
+  // Remove unchecked
+  creditAuthorIds = creditAuthorIds.filter(id => checked.has(id));
+  // Append newly checked in DOM order
+  document.querySelectorAll('.credit-author-checkbox:checked').forEach(cb => {
+    if (!creditAuthorIds.includes(cb.value)) creditAuthorIds.push(cb.value);
+  });
+  // Remove assignments for deselected
+  Object.keys(creditAssignments).forEach(id => {
+    if (!checked.has(id)) delete creditAssignments[id];
+  });
+}
+
+function renderCreditMatrix(applyAutoTemplates) {
+  const section = document.getElementById('credit-matrix-section');
+  if (creditAuthorIds.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  // Ensure assignments map exists for all current authors
+  creditAuthorIds.forEach(id => {
+    if (!creditAssignments[id]) creditAssignments[id] = new Set();
+  });
+
+  // Apply auto-templates for newly added authors when loading from previous
+  if (applyAutoTemplates) {
+    const n = creditAuthorIds.length;
+    creditAuthorIds.forEach((id, idx) => {
+      if (creditAssignments[id].size === 0) {
+        const template = _getAutoTemplate(idx, n, creditMembersData[id]?.position || '');
+        (CREDIT_TEMPLATES[template] || []).forEach(r => creditAssignments[id].add(r));
+      }
+    });
+  }
+
+  _renderMatrixHeader();
+  _renderMatrixBulkRow();
+  _renderMatrixBody();
+  updateCreditSummary();
+}
+
+function _getAutoTemplate(idx, total, position) {
+  const pos = (position || '').toLowerCase();
+  if (pos.includes('pi') || pos.includes('director') || pos.includes('principal investigator')) return 'pi';
+  if (pos.includes('postdoc') || pos.includes('senior researcher')) return 'senior';
+  if (pos.includes('phd') || pos.includes('student') || pos.includes('predoctoral')) return 'first_author';
+  if (idx === 0) return 'first_author';
+  if (idx === total - 1 && total > 1) return 'pi';
+  return 'contributing';
+}
+
+function _renderMatrixHeader() {
+  const row = document.getElementById('credit-matrix-header-row');
+  row.innerHTML = '';
+
+  const thAuthor = document.createElement('th');
+  thAuthor.className = 'credit-th-author';
+  thAuthor.textContent = '{{ _("Author") }}';
+  row.appendChild(thAuthor);
+
+  const thTpl = document.createElement('th');
+  thTpl.className = 'credit-th-template';
+  thTpl.textContent = '{{ _("Quick set") }}';
+  row.appendChild(thTpl);
+
+  CREDIT_ROLES.forEach(role => {
+    const th = document.createElement('th');
+    th.className = 'credit-role-header';
+    th.title = role.tooltip;
+    const span = document.createElement('span');
+    span.textContent = role.short;
+    th.appendChild(span);
+    row.appendChild(th);
+  });
+
+  const thCount = document.createElement('th');
+  thCount.className = 'credit-th-count';
+  thCount.textContent = '#';
+  row.appendChild(thCount);
+}
+
+function _renderMatrixBulkRow() {
+  const row = document.getElementById('credit-bulk-row');
+  row.innerHTML = '';
+
+  const tdLabel = document.createElement('td');
+  tdLabel.colSpan = 2;
+  tdLabel.className = 'credit-bulk-label text-muted';
+  tdLabel.style.fontSize = '.75rem';
+  tdLabel.textContent = '{{ _("Column actions:") }}';
+  row.appendChild(tdLabel);
+
+  CREDIT_ROLES.forEach(role => {
+    const td = document.createElement('td');
+    td.className = 'credit-bulk-cell';
+
+    const selAll = document.createElement('button');
+    selAll.type = 'button';
+    selAll.className = 'btn btn--xs credit-bulk-btn';
+    selAll.title = '{{ _("Select all authors for this role") }}';
+    selAll.textContent = I18N.creditSelectAll;
+    selAll.addEventListener('click', () => bulkCreditRole(role.key, true));
+
+    const clrRole = document.createElement('button');
+    clrRole.type = 'button';
+    clrRole.className = 'btn btn--xs credit-bulk-btn';
+    clrRole.title = '{{ _("Clear all authors for this role") }}';
+    clrRole.textContent = I18N.creditClearRole;
+    clrRole.addEventListener('click', () => bulkCreditRole(role.key, false));
+
+    td.appendChild(selAll);
+    td.appendChild(clrRole);
+    row.appendChild(td);
+  });
+
+  const tdCount = document.createElement('td');
+  row.appendChild(tdCount);
+}
+
+function _renderMatrixBody() {
+  const tbody = document.getElementById('credit-matrix-body');
+  tbody.innerHTML = '';
+
+  creditAuthorIds.forEach((mid, idx) => {
+    const info = creditMembersData[mid] || { display: mid, initials: mid, position: '' };
+    const assigned = creditAssignments[mid] || new Set();
+    const count = assigned.size;
+
+    const tr = document.createElement('tr');
+    tr.className = 'credit-author-row';
+
+    // Author name cell
+    const tdName = document.createElement('td');
+    tdName.className = 'credit-td-author';
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = info.display;
+    const initialsSpan = document.createElement('span');
+    initialsSpan.className = 'credit-initials-badge';
+    initialsSpan.textContent = info.initials;
+    tdName.appendChild(nameSpan);
+    tdName.appendChild(document.createElement('br'));
+    tdName.appendChild(initialsSpan);
+    tr.appendChild(tdName);
+
+    // Template dropdown cell
+    const tdTpl = document.createElement('td');
+    tdTpl.className = 'credit-td-template';
+    const sel = document.createElement('select');
+    sel.className = 'form-input credit-template-select';
+    sel.innerHTML =
+      '<option value="">— ' + '{{ _("Quick set") }}' + ' —</option>' +
+      '<option value="pi">'           + _esc(I18N.creditTpl_pi)          + '</option>' +
+      '<option value="senior">'       + _esc(I18N.creditTpl_senior)      + '</option>' +
+      '<option value="first_author">' + _esc(I18N.creditTpl_first)       + '</option>' +
+      '<option value="contributing">' + _esc(I18N.creditTpl_contributing) + '</option>' +
+      '<option value="clear">'        + _esc(I18N.creditTpl_clear)       + '</option>';
+    sel.addEventListener('change', () => {
+      const tpl = sel.value;
+      sel.value = '';
+      if (!tpl) return;
+      if (tpl === 'clear') {
+        creditAssignments[mid] = new Set();
+      } else {
+        creditAssignments[mid] = new Set(CREDIT_TEMPLATES[tpl] || []);
+      }
+      renderCreditMatrix(false);
+    });
+    tdTpl.appendChild(sel);
+    tr.appendChild(tdTpl);
+
+    // Role checkbox cells
+    CREDIT_ROLES.forEach(role => {
+      const td = document.createElement('td');
+      td.className = 'credit-checkbox-cell';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'form-checkbox';
+      cb.checked = assigned.has(role.key);
+      cb.addEventListener('change', () => {
+        if (cb.checked) creditAssignments[mid].add(role.key);
+        else creditAssignments[mid].delete(role.key);
+        updateCreditSummary();
+        _updateRowCount(tr, mid);
+      });
+      td.appendChild(cb);
+      tr.appendChild(td);
+    });
+
+    // Count cell
+    const tdCount = document.createElement('td');
+    tdCount.className = 'credit-count-cell';
+    tdCount.textContent = count;
+    tr.appendChild(tdCount);
+
+    tbody.appendChild(tr);
+  });
+}
+
+function _updateRowCount(tr, mid) {
+  const countCell = tr.querySelector('.credit-count-cell');
+  if (countCell) countCell.textContent = (creditAssignments[mid] || new Set()).size;
+}
+
+function bulkCreditRole(roleKey, selectAll) {
+  creditAuthorIds.forEach(mid => {
+    if (!creditAssignments[mid]) creditAssignments[mid] = new Set();
+    if (selectAll) creditAssignments[mid].add(roleKey);
+    else creditAssignments[mid].delete(roleKey);
+  });
+  renderCreditMatrix(false);
+}
+
+function clearCreditMatrix() {
+  creditAuthorIds.forEach(mid => { creditAssignments[mid] = new Set(); });
+  renderCreditMatrix(false);
+  document.getElementById('credit-output').style.display = 'none';
+  document.getElementById('credit-error').style.display = 'none';
+}
+
+function updateCreditSummary() {
+  const summary = document.getElementById('credit-summary');
+  if (!summary) return;
+
+  const roleCounts = {};
+  CREDIT_ROLES.forEach(r => { roleCounts[r.key] = 0; });
+  creditAuthorIds.forEach(mid => {
+    (creditAssignments[mid] || new Set()).forEach(rk => {
+      if (roleCounts[rk] !== undefined) roleCounts[rk]++;
+    });
+  });
+
+  const authorsWithout = creditAuthorIds.filter(id => !(creditAssignments[id] || new Set()).size);
+  const rolesWithout   = CREDIT_ROLES.filter(r => roleCounts[r.key] === 0).map(r => r.label);
+
+  let html = '<div class="credit-summary-grid">';
+  CREDIT_ROLES.forEach(r => {
+    const c = roleCounts[r.key];
+    if (c === 0) return;
+    html += '<div class="credit-summary-item">';
+    html += '<span class="credit-summary-role">' + _esc(r.short) + '</span>';
+    html += '<span class="credit-summary-count">' + c + '</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  if (authorsWithout.length > 0) {
+    const names = authorsWithout.map(id => _esc((creditMembersData[id] || {}).initials || id));
+    html += '<div class="credit-summary-warn">\u26A0\uFE0F ' + _esc(I18N.creditAuthorsWithout) + ': ' + names.join(', ') + '</div>';
+  }
+  if (rolesWithout.length > 0) {
+    html += '<div class="credit-summary-info">\u2139\uFE0F ' + _esc(I18N.creditRolesWithout) + ': ' + rolesWithout.map(_esc).join(', ') + '</div>';
+  }
+
+  summary.innerHTML = html;
+
+  const btn = document.getElementById('credit-generate-btn');
+  const totalAssigned = creditAuthorIds.reduce((s, id) => s + (creditAssignments[id] || new Set()).size, 0);
+  if (btn && CAN_GENERATE) btn.disabled = totalAssigned === 0;
+}
+
+async function runCreditGenerate() {
+  const errEl = document.getElementById('credit-error');
+  const outEl = document.getElementById('credit-output');
+  errEl.style.display = 'none';
+  outEl.style.display = 'none';
+
+  const totalAssigned = creditAuthorIds.reduce((s, id) => s + (creditAssignments[id] || new Set()).size, 0);
+  if (creditAuthorIds.length === 0) {
+    errEl.textContent = I18N.noAuthorsSelected;
+    errEl.style.display = 'block';
+    return;
+  }
+  if (totalAssigned === 0) {
+    errEl.textContent = I18N.creditNoAssignments;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const body = new URLSearchParams();
+  creditAuthorIds.forEach(id => body.append('member_ids', id));
+  creditAuthorIds.forEach(id => {
+    const roles = [...(creditAssignments[id] || new Set())];
+    if (roles.length > 0) body.set('assignment_' + id, roles.join(','));
+  });
+  body.set('format_type', creditFormat);
+
+  try {
+    const resp = await fetch(CREDIT_POST_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = data.error || I18N.networkError;
+      errEl.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('credit-textarea').value = data.credit_text;
+    outEl.style.display = 'block';
+
+    const warnContainer = document.getElementById('credit-warnings-container');
+    warnContainer.innerHTML = '';
+    (data.warnings || []).forEach(w => {
+      const div = document.createElement('div');
+      div.className = 'alert alert--warning';
+      div.style.marginBottom = '.5rem';
+      div.textContent = I18N.warningPrefix + ' ' + w;
+      warnContainer.appendChild(div);
+    });
+  } catch (e) {
+    errEl.textContent = I18N.networkError;
+    errEl.style.display = 'block';
+  }
+}
+
+async function copyCreditOutput() {
+  const ta = document.getElementById('credit-textarea');
+  const feedback = document.getElementById('credit-copy-feedback');
   try {
     await navigator.clipboard.writeText(ta.value);
     feedback.textContent = I18N.copied;
