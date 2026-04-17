@@ -31,9 +31,10 @@
      class="subnav__link {% if 'ack' in request.endpoint %}active{% endif %}">
     {{ _('Ack. blocks') }}
   </a>
-  <span class="subnav__link subnav__link--disabled">
-    {{ _('Generate section') }} <span class="badge badge--reader" style="font-size:0.65rem">{{ _('Coming soon') }}</span>
-  </span>
+  <a href="{{ url_for('manuscriptforge.generate_section') }}"
+     class="subnav__link {% if 'generate' in request.endpoint %}active{% endif %}">
+    {{ _('Generate section') }}
+  </a>
 </nav>
 
 {% block mf_content %}{% endblock %}

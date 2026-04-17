@@ -1,0 +1,258 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Generate section') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="generate-page">
+  <div class="detail-header">
+    <div>
+      <h2 class="detail-title">{{ _('Generate section') }}</h2>
+      <small class="text-muted">{{ _('Build standard manuscript sections from your directory.') }}</small>
+    </div>
+  </div>
+
+  {% if session.get('role') not in ('admin', 'editor') %}
+  <div class="alert alert--info" style="margin-top:1rem">
+    {{ _('Only admins and editors can generate sections. You can preview the selector below.') }}
+  </div>
+  {% endif %}
+
+  <div class="form-group" style="margin-top:1.25rem;max-width:480px">
+    <label class="form-label" for="section-type">{{ _('Section type') }}</label>
+    <select id="section-type" class="form-input" onchange="switchSection(this.value)">
+      <option value="author_order" selected>Author Order &amp; Affiliations</option>
+      <option value="funding" disabled>{{ _('Funding') }} — {{ _('Coming soon') }}</option>
+      <option value="acknowledgments" disabled>{{ _('Acknowledgments') }} — {{ _('Coming soon') }}</option>
+      <option value="competing_interests" disabled>{{ _('Competing Interests') }} — {{ _('Coming soon') }}</option>
+    </select>
+  </div>
+
+  <div id="panel-author-order" class="generate-panel" style="margin-top:1.5rem">
+    <h3 style="margin-bottom:.75rem">Author Order &amp; Affiliations</h3>
+    <p class="text-muted" style="margin-bottom:1rem">
+      {{ _('Select authors in the order they will appear in the manuscript. Affiliations are numbered automatically by first appearance.') }}
+    </p>
+
+    <div class="author-selector">
+      <div class="author-selector__column">
+        <h4 class="author-selector__heading">{{ _('Available members') }}</h4>
+
+        {% if active_members %}
+        <div class="author-selector__group">
+          <div class="author-selector__group-label">{{ _('Active members') }}</div>
+          <ul class="author-selector__list" id="available-active">
+            {% for m in active_members %}
+            <li class="author-selector__item" data-member-id="{{ m.member_id }}">
+              <label class="author-selector__label">
+                <input type="checkbox" class="author-checkbox" value="{{ m.member_id }}"
+                       data-display-name="{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                       onchange="toggleAuthor(this)" />
+                <span>{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}</span>
+              </label>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if external_members %}
+        <div class="author-selector__group">
+          <div class="author-selector__group-label">{{ _('External collaborators') }}</div>
+          <ul class="author-selector__list" id="available-external">
+            {% for m in external_members %}
+            <li class="author-selector__item" data-member-id="{{ m.member_id }}">
+              <label class="author-selector__label">
+                <input type="checkbox" class="author-checkbox" value="{{ m.member_id }}"
+                       data-display-name="{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                       onchange="toggleAuthor(this)" />
+                <span>{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}</span>
+              </label>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if not active_members and not external_members %}
+        <p class="text-muted">{{ _('No members available.') }}</p>
+        {% endif %}
+      </div>
+
+      <div class="author-selector__column">
+        <h4 class="author-selector__heading">{{ _('Selected authors (in order)') }}</h4>
+        <ol id="selected-list" class="author-selector__selected">
+          <li class="author-selector__placeholder" id="selected-placeholder">
+            {{ _('No authors selected yet. Check members on the left to add them.') }}
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:1.25rem">
+      <button type="button" class="btn btn--primary" id="generate-btn" onclick="runGenerate()"
+              {% if session.get('role') not in ('admin', 'editor') %}disabled{% endif %}>
+        {{ _('Generate') }}
+      </button>
+      <button type="button" class="btn btn--secondary" onclick="clearSelection()">
+        {{ _('Clear selection') }}
+      </button>
+    </div>
+
+    <div id="generate-error" class="alert alert--error" style="margin-top:1rem;display:none"></div>
+
+    <div id="generate-output" style="margin-top:1.5rem;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <h4 style="margin:0">{{ _('Generated output') }}</h4>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="copyOutput()">
+          {{ _('Copy to clipboard') }}
+        </button>
+      </div>
+      <textarea id="generate-textarea" class="form-input generate-output" rows="14" readonly></textarea>
+      <div id="copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
+      <div id="unaffiliated-warning" class="alert alert--warning" style="margin-top:.75rem;display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const POST_URL = "{{ url_for('manuscriptforge.generate_author_order_route') }}";
+const I18N = {
+  remove: "{{ _('Remove') }}",
+  up: "{{ _('Move up') }}",
+  down: "{{ _('Move down') }}",
+  placeholder: "{{ _('No authors selected yet. Check members on the left to add them.') }}",
+  copied: "{{ _('Copied to clipboard.') }}",
+  copyFailed: "{{ _('Could not copy. Select the text manually.') }}",
+  networkError: "{{ _('Network error. Please try again.') }}",
+  unaffiliatedPrefix: "{{ _('Note: these authors were included without affiliations:') }}",
+};
+
+let selectedIds = [];
+
+function switchSection(kind) {
+  // Only author_order is implemented for now; others are disabled.
+  // Hook for future section types.
+}
+
+function toggleAuthor(checkbox) {
+  const id = checkbox.value;
+  if (checkbox.checked) {
+    if (!selectedIds.includes(id)) selectedIds.push(id);
+  } else {
+    selectedIds = selectedIds.filter(x => x !== id);
+  }
+  renderSelected();
+}
+
+function removeAuthor(id) {
+  selectedIds = selectedIds.filter(x => x !== id);
+  const cb = document.querySelector('.author-checkbox[value="' + id + '"]');
+  if (cb) cb.checked = false;
+  renderSelected();
+}
+
+function moveAuthor(index, delta) {
+  const j = index + delta;
+  if (j < 0 || j >= selectedIds.length) return;
+  [selectedIds[index], selectedIds[j]] = [selectedIds[j], selectedIds[index]];
+  renderSelected();
+}
+
+function clearSelection() {
+  selectedIds = [];
+  document.querySelectorAll('.author-checkbox').forEach(cb => cb.checked = false);
+  renderSelected();
+  document.getElementById('generate-output').style.display = 'none';
+  document.getElementById('generate-error').style.display = 'none';
+}
+
+function renderSelected() {
+  const list = document.getElementById('selected-list');
+  list.innerHTML = '';
+  if (selectedIds.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'author-selector__placeholder';
+    li.textContent = I18N.placeholder;
+    list.appendChild(li);
+    return;
+  }
+  selectedIds.forEach((id, idx) => {
+    const cb = document.querySelector('.author-checkbox[value="' + id + '"]');
+    const name = cb ? cb.dataset.displayName : id;
+    const li = document.createElement('li');
+    li.className = 'author-selector__selected-item';
+    li.innerHTML =
+      '<span class="author-selector__order">' + (idx + 1) + '.</span>' +
+      '<span class="author-selector__name"></span>' +
+      '<span class="author-selector__controls">' +
+        '<button type="button" class="btn btn--sm" title="' + I18N.up + '" ' +
+          (idx === 0 ? 'disabled' : '') + '>↑</button>' +
+        '<button type="button" class="btn btn--sm" title="' + I18N.down + '" ' +
+          (idx === selectedIds.length - 1 ? 'disabled' : '') + '>↓</button>' +
+        '<button type="button" class="btn btn--sm btn--danger" title="' + I18N.remove + '">✕</button>' +
+      '</span>';
+    li.querySelector('.author-selector__name').textContent = name;
+    const [upBtn, downBtn, removeBtn] = li.querySelectorAll('button');
+    upBtn.addEventListener('click', () => moveAuthor(idx, -1));
+    downBtn.addEventListener('click', () => moveAuthor(idx, +1));
+    removeBtn.addEventListener('click', () => removeAuthor(id));
+    list.appendChild(li);
+  });
+}
+
+async function runGenerate() {
+  const errEl = document.getElementById('generate-error');
+  const outEl = document.getElementById('generate-output');
+  errEl.style.display = 'none';
+  outEl.style.display = 'none';
+
+  const body = new URLSearchParams();
+  selectedIds.forEach(id => body.append('member_ids', id));
+
+  try {
+    const resp = await fetch(POST_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = data.error || I18N.networkError;
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('generate-textarea').value = data.full_text;
+    outEl.style.display = 'block';
+
+    const warn = document.getElementById('unaffiliated-warning');
+    if (data.unaffiliated && data.unaffiliated.length > 0) {
+      warn.textContent = I18N.unaffiliatedPrefix + ' ' + data.unaffiliated.join(', ');
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+  } catch (e) {
+    errEl.textContent = I18N.networkError;
+    errEl.style.display = 'block';
+  }
+}
+
+async function copyOutput() {
+  const ta = document.getElementById('generate-textarea');
+  const feedback = document.getElementById('copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    feedback.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      feedback.textContent = I18N.copied;
+    } catch (e2) {
+      feedback.textContent = I18N.copyFailed;
+    }
+  }
+  setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
+}
+</script>
+{% endblock %}

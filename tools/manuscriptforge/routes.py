@@ -27,6 +27,8 @@ from .models import (
     # Ack blocks
     create_ack_block, delete_ack_block, get_ack_block,
     load_ack_blocks, toggle_ack_block, update_ack_block,
+    # Generation
+    generate_author_order,
 )
 from .validators import (
     validate_affiliation, validate_ack_block, validate_grant,
@@ -946,3 +948,47 @@ def delete_ack_block_route(block_id):
 def toggle_ack_block_route(block_id):
     toggle_ack_block(block_id)
     return redirect(url_for("manuscriptforge.acks_list"))
+
+
+# ── Section generation ────────────────────────────────────────────────────────
+
+@manuscriptforge_bp.route("/generate")
+@login_required
+def generate_section():
+    members = load_members()
+    members = members[members["status"].isin(["active", "collaborator_external"])]
+    members = members.sort_values(["status", "last_name", "first_name"])
+
+    active = members[members["status"] == "active"].to_dict("records")
+    external = members[members["status"] == "collaborator_external"].to_dict("records")
+
+    return render_template(
+        "manuscriptforge/generate.html",
+        active_members=active,
+        external_members=external,
+    )
+
+
+@manuscriptforge_bp.route("/generate/author-order", methods=["POST"])
+@editor_required
+def generate_author_order_route():
+    raw_ids = request.form.getlist("member_ids")
+    member_ids = [mid.strip() for mid in raw_ids if mid and mid.strip()]
+
+    if not member_ids:
+        return jsonify({"error": _("Please select at least one author.")}), 400
+
+    try:
+        result = generate_author_order(member_ids)
+    except ValueError as e:
+        msg = str(e)
+        if "Unknown member" in msg:
+            return jsonify({"error": _("One or more selected members were not found.")}), 400
+        if "no affiliations" in msg.lower() or "None of the selected" in msg:
+            return jsonify({
+                "error": _("None of the selected authors have affiliations. "
+                           "Assign affiliations before generating.")
+            }), 400
+        return jsonify({"error": msg}), 400
+
+    return jsonify(result)

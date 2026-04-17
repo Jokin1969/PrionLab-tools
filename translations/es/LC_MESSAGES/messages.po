@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PrionLab-tools 0.2.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-17 18:50+0000\n"
+"POT-Creation-Date: 2026-04-17 19:54+0000\n"
 "PO-Revision-Date: 2024-01-01 00:00+0000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: es\n"
@@ -59,7 +59,9 @@ msgid "Sign in"
 msgstr "Iniciar sesión"
 
 #: templates/tools_coming_soon.html:9
-#: tools/manuscriptforge/templates/manuscriptforge/base.html:35
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:23
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:24
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:25
 msgid "Coming soon"
 msgstr "Próximamente"
 
@@ -363,134 +365,148 @@ msgstr "Correo de prueba enviado correctamente."
 msgid "Failed to send test email."
 msgstr "No se pudo enviar el correo de prueba."
 
-#: tools/manuscriptforge/routes.py:150 tools/manuscriptforge/routes.py:212
-#: tools/manuscriptforge/routes.py:241
+#: tools/manuscriptforge/routes.py:152 tools/manuscriptforge/routes.py:214
+#: tools/manuscriptforge/routes.py:243
 msgid "Member not found."
 msgstr "Miembro no encontrado."
 
-#: tools/manuscriptforge/routes.py:200
+#: tools/manuscriptforge/routes.py:202
 msgid "Member created successfully."
 msgstr "Miembro creado correctamente."
 
-#: tools/manuscriptforge/routes.py:227
+#: tools/manuscriptforge/routes.py:229
 msgid "Member updated successfully."
 msgstr "Miembro actualizado correctamente."
 
-#: tools/manuscriptforge/routes.py:239
+#: tools/manuscriptforge/routes.py:241
 msgid "Member deleted successfully."
 msgstr "Miembro eliminado correctamente."
 
-#: tools/manuscriptforge/routes.py:252
+#: tools/manuscriptforge/routes.py:254
 msgid "Please select an affiliation."
 msgstr "Selecciona una afiliación."
 
-#: tools/manuscriptforge/routes.py:255
+#: tools/manuscriptforge/routes.py:257
 msgid "Affiliation added."
 msgstr "Afiliación añadida."
 
-#: tools/manuscriptforge/routes.py:263
+#: tools/manuscriptforge/routes.py:265
 msgid "Affiliation removed."
 msgstr "Afiliación eliminada."
 
-#: tools/manuscriptforge/routes.py:308 tools/manuscriptforge/routes.py:342
+#: tools/manuscriptforge/routes.py:310 tools/manuscriptforge/routes.py:344
 msgid "Affiliation not found."
 msgstr "Afiliación no encontrada."
 
-#: tools/manuscriptforge/routes.py:330
+#: tools/manuscriptforge/routes.py:332
 msgid "Affiliation created successfully."
 msgstr "Afiliación creada correctamente."
 
-#: tools/manuscriptforge/routes.py:355
+#: tools/manuscriptforge/routes.py:357
 msgid "Affiliation updated successfully."
 msgstr "Afiliación actualizada correctamente."
 
-#: tools/manuscriptforge/routes.py:370
+#: tools/manuscriptforge/routes.py:372
 msgid "Affiliation deleted successfully."
 msgstr "Afiliación eliminada correctamente."
 
-#: tools/manuscriptforge/routes.py:429 tools/manuscriptforge/routes.py:472
-#: tools/manuscriptforge/routes.py:497
+#: tools/manuscriptforge/routes.py:431 tools/manuscriptforge/routes.py:474
+#: tools/manuscriptforge/routes.py:499
 msgid "Grant not found."
 msgstr "Proyecto no encontrado."
 
-#: tools/manuscriptforge/routes.py:460
+#: tools/manuscriptforge/routes.py:462
 msgid "Grant created successfully."
 msgstr "Proyecto creado correctamente."
 
-#: tools/manuscriptforge/routes.py:484
+#: tools/manuscriptforge/routes.py:486
 msgid "Grant updated successfully."
 msgstr "Proyecto actualizado correctamente."
 
-#: tools/manuscriptforge/routes.py:495
+#: tools/manuscriptforge/routes.py:497
 msgid "Grant deleted successfully."
 msgstr "Proyecto eliminado correctamente."
 
-#: tools/manuscriptforge/routes.py:509
+#: tools/manuscriptforge/routes.py:511
 msgid "Please select a member."
 msgstr "Selecciona un miembro."
 
-#: tools/manuscriptforge/routes.py:512
+#: tools/manuscriptforge/routes.py:514
 msgid "Member added to grant."
 msgstr "Miembro añadido al proyecto."
 
-#: tools/manuscriptforge/routes.py:520
+#: tools/manuscriptforge/routes.py:522
 msgid "Member removed from grant."
 msgstr "Miembro eliminado del proyecto."
 
-#: tools/manuscriptforge/routes.py:557
+#: tools/manuscriptforge/routes.py:559
 msgid "Only PDF files are accepted."
 msgstr "Solo se aceptan archivos PDF."
 
-#: tools/manuscriptforge/routes.py:562
+#: tools/manuscriptforge/routes.py:564
 msgid "File does not appear to be a valid PDF."
 msgstr "El archivo no parece ser un PDF válido."
 
-#: tools/manuscriptforge/routes.py:567
+#: tools/manuscriptforge/routes.py:569
 #, python-format
 msgid "PDF exceeds maximum size (%(mb)d MB)."
 msgstr "El PDF supera el tamaño máximo (%(mb)d MB)."
 
-#: tools/manuscriptforge/routes.py:741 tools/manuscriptforge/routes.py:775
-#: tools/manuscriptforge/routes.py:805
+#: tools/manuscriptforge/routes.py:743 tools/manuscriptforge/routes.py:777
+#: tools/manuscriptforge/routes.py:807
 msgid "Publication not found."
 msgstr "Publicación no encontrada."
 
-#: tools/manuscriptforge/routes.py:763
+#: tools/manuscriptforge/routes.py:765
 msgid "Publication created successfully."
 msgstr "Publicación creada correctamente."
 
-#: tools/manuscriptforge/routes.py:789
+#: tools/manuscriptforge/routes.py:791
 msgid "Publication updated successfully."
 msgstr "Publicación actualizada correctamente."
 
-#: tools/manuscriptforge/routes.py:803
+#: tools/manuscriptforge/routes.py:805
 msgid "Publication deleted successfully."
 msgstr "Publicación eliminada correctamente."
 
-#: tools/manuscriptforge/routes.py:816
+#: tools/manuscriptforge/routes.py:818
 msgid "No PDF available for this publication."
 msgstr "No hay PDF disponible para esta publicación."
 
-#: tools/manuscriptforge/routes.py:835
+#: tools/manuscriptforge/routes.py:837
 msgid "PDF file not found."
 msgstr "Archivo PDF no encontrado."
 
-#: tools/manuscriptforge/routes.py:871 tools/manuscriptforge/routes.py:907
-#: tools/manuscriptforge/routes.py:938
+#: tools/manuscriptforge/routes.py:873 tools/manuscriptforge/routes.py:909
+#: tools/manuscriptforge/routes.py:940
 msgid "Block not found."
 msgstr "Bloque no encontrado."
 
-#: tools/manuscriptforge/routes.py:895
+#: tools/manuscriptforge/routes.py:897
 msgid "Block created successfully."
 msgstr "Bloque creado correctamente."
 
-#: tools/manuscriptforge/routes.py:925
+#: tools/manuscriptforge/routes.py:927
 msgid "Block updated successfully."
 msgstr "Bloque actualizado correctamente."
 
-#: tools/manuscriptforge/routes.py:936
+#: tools/manuscriptforge/routes.py:938
 msgid "Block deleted successfully."
 msgstr "Bloque eliminado correctamente."
+
+#: tools/manuscriptforge/routes.py:979
+msgid "Please select at least one author."
+msgstr "Selecciona al menos un autor."
+
+#: tools/manuscriptforge/routes.py:986
+msgid "One or more selected members were not found."
+msgstr "Uno o más miembros seleccionados no se han encontrado."
+
+#: tools/manuscriptforge/routes.py:989
+msgid ""
+"None of the selected authors have affiliations. Assign affiliations "
+"before generating."
+msgstr ""
 
 #: tools/manuscriptforge/templates/manuscriptforge/ack_detail.html:12
 msgid "Inactive"
@@ -830,9 +846,117 @@ msgstr "Publicaciones"
 msgid "Ack. blocks"
 msgstr "Bloques Agr."
 
-#: tools/manuscriptforge/templates/manuscriptforge/base.html:35
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:36
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:8
 msgid "Generate section"
 msgstr "Generar sección"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:9
+msgid "Build standard manuscript sections from your directory."
+msgstr "Construye secciones estándar de manuscritos a partir de tu directorio."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:15
+msgid ""
+"Only admins and editors can generate sections. You can preview the "
+"selector below."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:20
+msgid "Section type"
+msgstr "Tipo de sección"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:23
+msgid "Funding"
+msgstr "Financiación"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:24
+msgid "Acknowledgments"
+msgstr "Agradecimientos"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:25
+msgid "Competing Interests"
+msgstr "Conflictos de interés"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:32
+msgid ""
+"Select authors in the order they will appear in the manuscript. "
+"Affiliations are numbered automatically by first appearance."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:37
+msgid "Available members"
+msgstr "Miembros disponibles"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:41
+msgid "Active members"
+msgstr "Miembros activos"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:59
+msgid "External collaborators"
+msgstr "Colaboradores externos"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:76
+msgid "No members available."
+msgstr "No hay miembros disponibles."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:81
+msgid "Selected authors (in order)"
+msgstr "Autores seleccionados (en orden)"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:84
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:122
+msgid "No authors selected yet. Check members on the left to add them."
+msgstr "Aún no hay autores seleccionados. Marca miembros en la columna izquierda para añadirlos."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:93
+msgid "Generate"
+msgstr "Generar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:96
+msgid "Clear selection"
+msgstr "Limpiar selección"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:104
+msgid "Generated output"
+msgstr "Texto generado"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:106
+msgid "Copy to clipboard"
+msgstr "Copiar al portapapeles"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:119
+#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:100
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:120
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:188
+msgid "Remove"
+msgstr "Quitar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:120
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:113
+msgid "Move up"
+msgstr "Subir"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:121
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:116
+msgid "Move down"
+msgstr "Bajar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:123
+msgid "Copied to clipboard."
+msgstr "Copiado al portapapeles."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:124
+msgid "Could not copy. Select the text manually."
+msgstr "No se pudo copiar. Selecciona el texto manualmente."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:125
+msgid "Network error. Please try again."
+msgstr "Error de red. Inténtalo de nuevo."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:126
+msgid "Note: these authors were included without affiliations:"
+msgstr "Nota: estos autores se incluyeron sin afiliaciones:"
 
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:17
 #: tools/manuscriptforge/templates/manuscriptforge/grants_list.html:60
@@ -908,12 +1032,6 @@ msgstr "Rol en el proyecto"
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:99
 msgid "Remove this member from the grant?"
 msgstr "¿Quitar este miembro del proyecto?"
-
-#: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:100
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:120
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:188
-msgid "Remove"
-msgstr "Quitar"
 
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:110
 msgid "No members linked to this grant."
@@ -1054,14 +1172,6 @@ msgstr "Conflictos de interés"
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:84
 msgid "Linked account"
 msgstr "Cuenta vinculada"
-
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:113
-msgid "Move up"
-msgstr "Subir"
-
-#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:116
-msgid "Move down"
-msgstr "Bajar"
 
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:119
 msgid "Remove this affiliation?"

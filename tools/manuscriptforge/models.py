@@ -562,6 +562,107 @@ def toggle_ack_block(block_id: str) -> bool:
     return True
 
 
+# ── Section generation ────────────────────────────────────────────────────────
+
+_SUPERSCRIPT_DIGITS = {
+    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+}
+
+
+def _to_superscript(n: int) -> str:
+    return "".join(_SUPERSCRIPT_DIGITS[d] for d in str(n))
+
+
+def _format_affiliation(aff: dict) -> str:
+    """Format an affiliation as 'short_name, city, country' (skip empty parts)."""
+    parts = [aff.get("short_name", "").strip(),
+             aff.get("city", "").strip(),
+             aff.get("country", "").strip()]
+    return ", ".join(p for p in parts if p)
+
+
+def generate_author_order(member_ids: list[str]) -> dict:
+    """Build the Author Order & Affiliations section for a manuscript.
+
+    Affiliations are numbered by first appearance, walking authors in the
+    given order and each author's affiliations by their individual priority.
+    Shared affiliations keep the same number across authors.
+
+    Returns a dict with keys: authors_line, affiliations_list,
+    affiliations_text, full_text, unaffiliated (list of display names).
+    Raises ValueError if the input is invalid.
+    """
+    if not member_ids:
+        raise ValueError("At least one author must be selected.")
+
+    members_df = load_members()
+    known_ids = set(members_df["member_id"].tolist())
+    missing = [mid for mid in member_ids if mid not in known_ids]
+    if missing:
+        raise ValueError(f"Unknown member(s): {', '.join(missing)}")
+
+    affiliation_number: dict[str, int] = {}
+    affiliation_data: dict[str, dict] = {}
+    next_number = 1
+
+    author_entries: list[tuple[str, list[int]]] = []
+    unaffiliated: list[str] = []
+
+    for mid in member_ids:
+        member = get_member(mid)
+        display = (member.get("display_name") or "").strip() or \
+                  f"{member.get('first_name', '').strip()} {member.get('last_name', '').strip()}".strip()
+
+        affs = get_member_affiliations(mid)
+        if not affs:
+            author_entries.append((display, []))
+            unaffiliated.append(display)
+            logger.warning("Author %s (%s) has no affiliations", mid, display)
+            continue
+
+        nums: list[int] = []
+        for aff in affs:
+            aff_id = aff["affiliation_id"]
+            if aff_id not in affiliation_number:
+                affiliation_number[aff_id] = next_number
+                affiliation_data[aff_id] = aff
+                next_number += 1
+            nums.append(affiliation_number[aff_id])
+        author_entries.append((display, nums))
+
+    if not affiliation_number:
+        raise ValueError("None of the selected authors have affiliations.")
+
+    # Build author line: "Name¹'²'³"
+    author_tokens = []
+    for display, nums in author_entries:
+        if nums:
+            sups = "'".join(_to_superscript(n) for n in nums)
+            author_tokens.append(f"{display}{sups}")
+        else:
+            author_tokens.append(display)
+    authors_line = ", ".join(author_tokens)
+
+    # Build affiliations list in numbering order
+    by_number = sorted(affiliation_number.items(), key=lambda kv: kv[1])
+    affiliations_list = []
+    for aff_id, number in by_number:
+        line = f"{_to_superscript(number)}{_format_affiliation(affiliation_data[aff_id])}"
+        affiliations_list.append(line)
+
+    affiliations_text = "\n".join(affiliations_list)
+    full_text = f"{authors_line}\n\n{affiliations_text}"
+
+    return {
+        "authors_line":       authors_line,
+        "affiliations_list":  affiliations_list,
+        "affiliations_text":  affiliations_text,
+        "full_text":          full_text,
+        "unaffiliated":       unaffiliated,
+    }
+
+
 # ── Seed & bootstrap helpers ──────────────────────────────────────────────────
 
 _ACK_SEED = [
