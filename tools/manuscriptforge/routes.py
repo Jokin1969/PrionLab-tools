@@ -30,6 +30,7 @@ from .models import (
     # Generation
     generate_author_order,
     generate_funding,
+    generate_acknowledgments,
 )
 from .validators import (
     validate_affiliation, validate_ack_block, validate_grant,
@@ -967,11 +968,14 @@ def generate_section():
     grants_df = load_grants().sort_values(["funding_agency", "code"])
     grants = grants_df.to_dict("records")
 
+    ack_blocks = load_ack_blocks().sort_values("block_id").to_dict("records")
+
     return render_template(
         "manuscriptforge/generate.html",
         active_members=active,
         external_members=external,
         grants=grants,
+        ack_blocks=ack_blocks,
     )
 
 
@@ -1011,6 +1015,23 @@ def generate_funding_route():
 
     try:
         result = generate_funding(grant_ids)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify(result)
+
+
+@manuscriptforge_bp.route("/generate/acknowledgments", methods=["POST"])
+@editor_required
+def generate_acknowledgments_route():
+    raw_ids = request.form.getlist("block_ids")
+    block_ids = [bid.strip() for bid in raw_ids if bid and bid.strip()]
+
+    if not block_ids:
+        return jsonify({"error": _("Please select at least one acknowledgment block.")}), 400
+
+    try:
+        result = generate_acknowledgments(block_ids)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 

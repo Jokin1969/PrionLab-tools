@@ -21,7 +21,7 @@
     <select id="section-type" class="form-input" onchange="switchSection(this.value)">
       <option value="author_order" selected>Author Order &amp; Affiliations</option>
       <option value="funding">{{ _('Funding') }}</option>
-      <option value="acknowledgments" disabled>{{ _('Acknowledgments') }} — {{ _('Coming soon') }}</option>
+      <option value="acknowledgments">{{ _('Acknowledgments') }}</option>
       <option value="competing_interests" disabled>{{ _('Competing Interests') }} — {{ _('Coming soon') }}</option>
     </select>
   </div>
@@ -158,9 +158,55 @@
   </div>
 </div>
 
+{# ── Acknowledgments panel ─────────────────────────────────────────────────── #}
+<div id="panel-acknowledgments" class="generate-panel" style="margin-top:1.5rem;display:none">
+  <h3 style="margin-bottom:.75rem">{{ _('Acknowledgments') }}</h3>
+  <p class="text-muted" style="margin-bottom:1rem">
+    {{ _('Select acknowledgment blocks by category. Texts are joined automatically in a natural narrative order.') }}
+  </p>
+
+  <div class="form-group--inline" style="margin-bottom:1.25rem">
+    <input type="checkbox" id="include-inactive-blocks" class="form-checkbox"
+           onchange="renderAckGroups()" />
+    <label for="include-inactive-blocks" class="form-label form-label--inline">
+      {{ _('Include inactive blocks') }}
+    </label>
+  </div>
+
+  <div id="ack-groups-container" class="ack-selector"></div>
+
+  <div id="ack-summary" class="funding-summary" style="margin-top:.75rem"></div>
+
+  <div class="form-actions" style="margin-top:1.25rem">
+    <button type="button" class="btn btn--primary" id="ack-generate-btn"
+            onclick="runAckGenerate()"
+            {% if session.get('role') not in ('admin', 'editor') %}disabled{% endif %}>
+      {{ _('Generate') }}
+    </button>
+    <button type="button" class="btn btn--secondary" onclick="clearAckSelection()">
+      {{ _('Clear selection') }}
+    </button>
+  </div>
+
+  <div id="ack-error" class="alert alert--error" style="margin-top:1rem;display:none"></div>
+
+  <div id="ack-output" style="margin-top:1.5rem;display:none">
+    <div id="ack-warnings-container"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;margin-top:.75rem">
+      <h4 style="margin:0">{{ _('Generated output') }}</h4>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="copyAckOutput()">
+        {{ _('Copy to clipboard') }}
+      </button>
+    </div>
+    <textarea id="ack-textarea" class="form-input generate-output" rows="10" readonly></textarea>
+    <div id="ack-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
+  </div>
+</div>
+
 <script>
 const POST_URL          = "{{ url_for('manuscriptforge.generate_author_order_route') }}";
 const FUNDING_POST_URL  = "{{ url_for('manuscriptforge.generate_funding_route') }}";
+const ACK_POST_URL      = "{{ url_for('manuscriptforge.generate_acknowledgments_route') }}";
 const I18N = {
   remove: "{{ _('Remove') }}",
   up: "{{ _('Move up') }}",
@@ -174,13 +220,28 @@ const I18N = {
   grantsSelected: "{{ _('grants selected') }}",
   oneGrantSelected: "{{ _('1 grant selected') }}",
   warningPrefix: "{{ _('Warning:') }}",
+  noBlocksSelected: "{{ _('No blocks selected.') }}",
+  blocksSelected: "{{ _('blocks selected from') }}",
+  oneBlockSelected: "{{ _('1 block selected') }}",
+  categories: "{{ _('categories') }}",
+  selectAll: "{{ _('Select all') }}",
+  deselectAll: "{{ _('Deselect all') }}",
+  catLabels: {
+    core_facility:          "{{ _('Core Facilities') }}",
+    technical_staff:        "{{ _('Technical Staff') }}",
+    external_collaborator:  "{{ _('External Collaborators') }}",
+    sample_donor:           "{{ _('Sample Donors') }}",
+    infrastructure:         "{{ _('Infrastructure') }}",
+    other:                  "{{ _('Other') }}",
+  },
 };
 const CAN_GENERATE = {{ 'true' if session.get('role') in ('admin', 'editor') else 'false' }};
-const GRANTS_DATA = {{ grants | tojson }};
+const GRANTS_DATA    = {{ grants | tojson }};
+const ACK_BLOCKS_DATA = {{ ack_blocks | tojson }};
 
 let selectedIds = [];
 
-const ALL_PANELS = ['author-order', 'funding'];
+const ALL_PANELS = ['author-order', 'funding', 'acknowledgments'];
 
 function switchSection(kind) {
   ALL_PANELS.forEach(p => {
@@ -190,6 +251,7 @@ function switchSection(kind) {
   const target = document.getElementById('panel-' + kind.replace('_', '-'));
   if (target) target.style.display = '';
   if (kind === 'funding') renderGrantGroups();
+  if (kind === 'acknowledgments') renderAckGroups();
 }
 
 // ── Funding section ───────────────────────────────────────────────────────────
@@ -469,6 +531,200 @@ async function copyOutput() {
     } catch (e2) {
       feedback.textContent = I18N.copyFailed;
     }
+  }
+  setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
+}
+
+// ── Acknowledgments section ───────────────────────────────────────────────────
+
+const ACK_CATEGORY_ORDER = [
+  'core_facility', 'technical_staff', 'external_collaborator',
+  'sample_donor', 'infrastructure', 'other',
+];
+// Categories expanded by default
+const ACK_DEFAULT_OPEN = new Set(['core_facility', 'technical_staff']);
+
+let selectedBlockIds = new Set();
+let ackExpandedCats  = new Set(ACK_DEFAULT_OPEN);
+
+function renderAckGroups() {
+  const includeInactive = document.getElementById('include-inactive-blocks').checked;
+  const container = document.getElementById('ack-groups-container');
+
+  const visible = ACK_BLOCKS_DATA.filter(
+    b => includeInactive || String(b.is_active).toLowerCase() === 'true'
+  );
+
+  // Group by category in canonical order
+  const catMap = {};
+  visible.forEach(b => {
+    const cat = b.category || 'other';
+    (catMap[cat] = catMap[cat] || []).push(b);
+  });
+
+  const orderedCats = ACK_CATEGORY_ORDER.filter(c => catMap[c]);
+  // Add any unknown categories at end
+  Object.keys(catMap).forEach(c => { if (!orderedCats.includes(c)) orderedCats.push(c); });
+
+  container.innerHTML = '';
+
+  orderedCats.forEach(cat => {
+    const blocks = catMap[cat];
+    const isOpen = ackExpandedCats.has(cat);
+    const catLabel = I18N.catLabels[cat] || cat;
+    const allChecked = blocks.every(b => selectedBlockIds.has(b.block_id));
+
+    const section = document.createElement('div');
+    section.className = 'ack-category-section';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'ack-category-header';
+    header.innerHTML =
+      '<span class="ack-category-toggle">' + (isOpen ? '▼' : '▶') + '</span>' +
+      '<span class="ack-category-name">' + catLabel + ' <span class="ack-category-count">(' + blocks.length + ')</span></span>';
+
+    const selAllBtn = document.createElement('button');
+    selAllBtn.type = 'button';
+    selAllBtn.className = 'btn btn--sm';
+    selAllBtn.textContent = allChecked ? I18N.deselectAll : I18N.selectAll;
+    selAllBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nowAll = blocks.every(b => selectedBlockIds.has(b.block_id));
+      blocks.forEach(b => {
+        if (nowAll) selectedBlockIds.delete(b.block_id);
+        else selectedBlockIds.add(b.block_id);
+      });
+      renderAckGroups();
+    });
+    header.appendChild(selAllBtn);
+    header.addEventListener('click', (e) => {
+      if (e.target === selAllBtn) return;
+      if (ackExpandedCats.has(cat)) ackExpandedCats.delete(cat);
+      else ackExpandedCats.add(cat);
+      renderAckGroups();
+    });
+    section.appendChild(header);
+
+    // Block list
+    const list = document.createElement('div');
+    list.className = 'ack-block-list';
+    list.style.display = isOpen ? '' : 'none';
+
+    blocks.forEach(block => {
+      const label = document.createElement('label');
+      label.className = 'ack-block-item' + (String(block.is_active).toLowerCase() !== 'true' ? ' ack-block-item--inactive' : '');
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'form-checkbox';
+      cb.value = block.block_id;
+      cb.checked = selectedBlockIds.has(block.block_id);
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedBlockIds.add(block.block_id);
+        else selectedBlockIds.delete(block.block_id);
+        updateAckSummary();
+        // Refresh select-all button text
+        renderAckGroups();
+      });
+
+      const lbl = document.createElement('span');
+      lbl.className = 'ack-block-item__label';
+      lbl.textContent = block.short_label;
+
+      label.appendChild(cb);
+      label.appendChild(lbl);
+      list.appendChild(label);
+    });
+
+    section.appendChild(list);
+    container.appendChild(section);
+  });
+
+  updateAckSummary();
+}
+
+function updateAckSummary() {
+  const count = selectedBlockIds.size;
+  const summary = document.getElementById('ack-summary');
+  if (count === 0) {
+    summary.textContent = I18N.noBlocksSelected;
+  } else if (count === 1) {
+    summary.textContent = I18N.oneBlockSelected;
+  } else {
+    // Count unique categories among selected
+    const selCats = new Set(
+      ACK_BLOCKS_DATA.filter(b => selectedBlockIds.has(b.block_id)).map(b => b.category)
+    );
+    summary.textContent = count + ' ' + I18N.blocksSelected + ' ' + selCats.size + ' ' + I18N.categories;
+  }
+  const btn = document.getElementById('ack-generate-btn');
+  if (btn && CAN_GENERATE) btn.disabled = count === 0;
+}
+
+function clearAckSelection() {
+  selectedBlockIds.clear();
+  renderAckGroups();
+  document.getElementById('ack-output').style.display = 'none';
+  document.getElementById('ack-error').style.display = 'none';
+}
+
+async function runAckGenerate() {
+  const errEl = document.getElementById('ack-error');
+  const outEl = document.getElementById('ack-output');
+  errEl.style.display = 'none';
+  outEl.style.display = 'none';
+
+  if (selectedBlockIds.size === 0) {
+    errEl.textContent = I18N.noBlocksSelected;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const body = new URLSearchParams();
+  selectedBlockIds.forEach(id => body.append('block_ids', id));
+
+  try {
+    const resp = await fetch(ACK_POST_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = data.error || I18N.networkError;
+      errEl.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('ack-textarea').value = data.acknowledgments_text;
+    outEl.style.display = 'block';
+
+    const warnContainer = document.getElementById('ack-warnings-container');
+    warnContainer.innerHTML = '';
+    (data.warnings || []).forEach(w => {
+      const div = document.createElement('div');
+      div.className = 'alert alert--warning';
+      div.style.marginBottom = '.5rem';
+      div.textContent = I18N.warningPrefix + ' ' + w;
+      warnContainer.appendChild(div);
+    });
+  } catch (e) {
+    errEl.textContent = I18N.networkError;
+    errEl.style.display = 'block';
+  }
+}
+
+async function copyAckOutput() {
+  const ta = document.getElementById('ack-textarea');
+  const feedback = document.getElementById('ack-copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    feedback.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); feedback.textContent = I18N.copied; }
+    catch (e2) { feedback.textContent = I18N.copyFailed; }
   }
   setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
 }
