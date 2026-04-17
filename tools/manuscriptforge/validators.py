@@ -31,6 +31,10 @@ def validate_member(data: dict, existing_usernames: list[str] | None = None) -> 
     if not data.get('display_name', '').strip():
         errors.append("Display name is required.")
 
+    initials = data.get('initials', '').strip()
+    if initials and len(initials) > 20:
+        errors.append("Initials must be 20 characters or fewer.")
+
     email = data.get('email', '').strip()
     if not email:
         errors.append("Email is required.")
