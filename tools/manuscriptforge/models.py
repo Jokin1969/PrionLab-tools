@@ -568,6 +568,82 @@ def toggle_ack_block(block_id: str) -> bool:
 
 # ── Section generation ────────────────────────────────────────────────────────
 
+def _transform_for_additional(text: str) -> str:
+    """Rewrite a grant acknowledgment text for use after the first grant."""
+    t = text.lower()
+    if t.startswith("this work was partially funded by grant"):
+        return "Additional funding was provided by grant" + text[len("this work was partially funded by grant"):]
+    if t.startswith("this work was funded by grant"):
+        return "Additional funding was provided by grant" + text[len("this work was funded by grant"):]
+    if t.startswith("additional"):
+        return text
+    return "Additionally, " + text
+
+
+def generate_funding(grant_ids: list[str]) -> dict:
+    """Build the Funding section text for a manuscript.
+
+    Grants are sorted by funding_agency then code so same-agency grants are
+    grouped together. The first grant's text is used verbatim; subsequent
+    grants receive an "Additional funding..." or "Additionally, " prefix.
+
+    Returns a dict with keys: funding_text, grants_info, warnings.
+    Raises ValueError if the input is invalid.
+    """
+    if not grant_ids:
+        raise ValueError("At least one grant must be selected.")
+
+    all_grants = load_grants()
+    known_ids = set(all_grants["grant_id"].tolist())
+    missing = [gid for gid in grant_ids if gid not in known_ids]
+    if missing:
+        raise ValueError(f"Unknown grant(s): {', '.join(missing)}")
+
+    warnings: list[str] = []
+    selected: list[dict] = []
+
+    for gid in grant_ids:
+        row = all_grants[all_grants["grant_id"] == gid].iloc[0].to_dict()
+        if row.get("status", "") not in ("active", "pending"):
+            warnings.append(f"Grant {row['code']} is closed but included in the generation.")
+        ack = row.get("acknowledgment_text", "").strip()
+        if not ack:
+            warnings.append(f"Grant {row['code']} has no acknowledgment text — skipped.")
+            continue
+        selected.append(row)
+
+    if not selected:
+        raise ValueError("None of the selected grants have acknowledgment text.")
+
+    # Sort to group same-agency grants together, then by code within each agency
+    selected.sort(key=lambda g: (g.get("funding_agency", ""), g.get("code", "")))
+
+    texts: list[str] = []
+    for i, grant in enumerate(selected):
+        text = grant["acknowledgment_text"].strip()
+        if i > 0:
+            text = _transform_for_additional(text)
+        texts.append(text)
+
+    funding_text = " ".join(texts)
+
+    grants_info = [
+        {
+            "code":   g.get("code", ""),
+            "title":  g.get("title", ""),
+            "agency": g.get("funding_agency", ""),
+            "status": g.get("status", ""),
+        }
+        for g in selected
+    ]
+
+    return {
+        "funding_text": funding_text,
+        "grants_info":  grants_info,
+        "warnings":     warnings,
+    }
+
+
 _SUPERSCRIPT_DIGITS = {
     "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
     "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",

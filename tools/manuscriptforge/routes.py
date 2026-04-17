@@ -29,6 +29,7 @@ from .models import (
     load_ack_blocks, toggle_ack_block, update_ack_block,
     # Generation
     generate_author_order,
+    generate_funding,
 )
 from .validators import (
     validate_affiliation, validate_ack_block, validate_grant,
@@ -963,10 +964,14 @@ def generate_section():
     active = members[members["status"] == "active"].to_dict("records")
     external = members[members["status"] == "collaborator_external"].to_dict("records")
 
+    grants_df = load_grants().sort_values(["funding_agency", "code"])
+    grants = grants_df.to_dict("records")
+
     return render_template(
         "manuscriptforge/generate.html",
         active_members=active,
         external_members=external,
+        grants=grants,
     )
 
 
@@ -991,5 +996,22 @@ def generate_author_order_route():
                            "Assign affiliations before generating.")
             }), 400
         return jsonify({"error": msg}), 400
+
+    return jsonify(result)
+
+
+@manuscriptforge_bp.route("/generate/funding", methods=["POST"])
+@editor_required
+def generate_funding_route():
+    raw_ids = request.form.getlist("grant_ids")
+    grant_ids = [gid.strip() for gid in raw_ids if gid and gid.strip()]
+
+    if not grant_ids:
+        return jsonify({"error": _("Please select at least one grant.")}), 400
+
+    try:
+        result = generate_funding(grant_ids)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     return jsonify(result)

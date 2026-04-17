@@ -20,7 +20,7 @@
     <label class="form-label" for="section-type">{{ _('Section type') }}</label>
     <select id="section-type" class="form-input" onchange="switchSection(this.value)">
       <option value="author_order" selected>Author Order &amp; Affiliations</option>
-      <option value="funding" disabled>{{ _('Funding') }} — {{ _('Coming soon') }}</option>
+      <option value="funding">{{ _('Funding') }}</option>
       <option value="acknowledgments" disabled>{{ _('Acknowledgments') }} — {{ _('Coming soon') }}</option>
       <option value="competing_interests" disabled>{{ _('Competing Interests') }} — {{ _('Coming soon') }}</option>
     </select>
@@ -113,8 +113,54 @@
   </div>
 </div>
 
+{# ── Funding panel ─────────────────────────────────────────────────────────── #}
+<div id="panel-funding" class="generate-panel" style="margin-top:1.5rem;display:none">
+  <h3 style="margin-bottom:.75rem">{{ _('Funding') }}</h3>
+  <p class="text-muted" style="margin-bottom:1rem">
+    {{ _('Select grants to include in the Funding section. Texts are concatenated automatically.') }}
+  </p>
+
+  <div class="form-group--inline" style="margin-bottom:1.25rem">
+    <input type="checkbox" id="include-closed-grants" class="form-checkbox"
+           onchange="renderGrantGroups()" />
+    <label for="include-closed-grants" class="form-label form-label--inline">
+      {{ _('Include closed grants') }}
+    </label>
+  </div>
+
+  <div id="grant-groups-container" class="funding-selector"></div>
+
+  <div id="funding-summary" class="funding-summary" style="margin-top:.75rem"></div>
+
+  <div class="form-actions" style="margin-top:1.25rem">
+    <button type="button" class="btn btn--primary" id="funding-generate-btn"
+            onclick="runFundingGenerate()"
+            {% if session.get('role') not in ('admin', 'editor') %}disabled{% endif %}>
+      {{ _('Generate') }}
+    </button>
+    <button type="button" class="btn btn--secondary" onclick="clearFundingSelection()">
+      {{ _('Clear selection') }}
+    </button>
+  </div>
+
+  <div id="funding-error" class="alert alert--error" style="margin-top:1rem;display:none"></div>
+
+  <div id="funding-output" style="margin-top:1.5rem;display:none">
+    <div id="funding-warnings-container"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;margin-top:.75rem">
+      <h4 style="margin:0">{{ _('Generated output') }}</h4>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="copyFundingOutput()">
+        {{ _('Copy to clipboard') }}
+      </button>
+    </div>
+    <textarea id="funding-textarea" class="form-input generate-output" rows="10" readonly></textarea>
+    <div id="funding-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
+  </div>
+</div>
+
 <script>
-const POST_URL = "{{ url_for('manuscriptforge.generate_author_order_route') }}";
+const POST_URL          = "{{ url_for('manuscriptforge.generate_author_order_route') }}";
+const FUNDING_POST_URL  = "{{ url_for('manuscriptforge.generate_funding_route') }}";
 const I18N = {
   remove: "{{ _('Remove') }}",
   up: "{{ _('Move up') }}",
@@ -124,13 +170,185 @@ const I18N = {
   copyFailed: "{{ _('Could not copy. Select the text manually.') }}",
   networkError: "{{ _('Network error. Please try again.') }}",
   unaffiliatedPrefix: "{{ _('Note: these authors were included without affiliations:') }}",
+  noGrantsSelected: "{{ _('No grants selected.') }}",
+  grantsSelected: "{{ _('grants selected') }}",
+  oneGrantSelected: "{{ _('1 grant selected') }}",
+  warningPrefix: "{{ _('Warning:') }}",
 };
+const CAN_GENERATE = {{ 'true' if session.get('role') in ('admin', 'editor') else 'false' }};
+const GRANTS_DATA = {{ grants | tojson }};
 
 let selectedIds = [];
 
+const ALL_PANELS = ['author-order', 'funding'];
+
 function switchSection(kind) {
-  // Only author_order is implemented for now; others are disabled.
-  // Hook for future section types.
+  ALL_PANELS.forEach(p => {
+    const el = document.getElementById('panel-' + p.replace('_', '-'));
+    if (el) el.style.display = 'none';
+  });
+  const target = document.getElementById('panel-' + kind.replace('_', '-'));
+  if (target) target.style.display = '';
+  if (kind === 'funding') renderGrantGroups();
+}
+
+// ── Funding section ───────────────────────────────────────────────────────────
+
+let selectedGrantIds = new Set();
+
+function renderGrantGroups() {
+  const includeClosed = document.getElementById('include-closed-grants').checked;
+  const container = document.getElementById('grant-groups-container');
+
+  const visible = GRANTS_DATA.filter(g => includeClosed || g.status !== 'closed');
+
+  // Group by agency, preserving sorted order
+  const agencyOrder = [];
+  const agencyMap = {};
+  visible.forEach(g => {
+    const agency = g.funding_agency || '—';
+    if (!agencyMap[agency]) { agencyMap[agency] = []; agencyOrder.push(agency); }
+    agencyMap[agency].push(g);
+  });
+
+  container.innerHTML = '';
+  if (agencyOrder.length === 0) {
+    container.textContent = '{{ _("No grants available.") }}';
+    updateFundingSummary();
+    return;
+  }
+
+  agencyOrder.forEach(agency => {
+    const group = document.createElement('div');
+    group.className = 'funding-grant-group';
+
+    const heading = document.createElement('div');
+    heading.className = 'funding-grant-group__heading';
+    heading.textContent = agency;
+    group.appendChild(heading);
+
+    agencyMap[agency].forEach(grant => {
+      const label = document.createElement('label');
+      label.className = 'funding-grant-item' + (grant.status === 'closed' ? ' funding-grant-item--closed' : '');
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'form-checkbox';
+      cb.value = grant.grant_id;
+      cb.checked = selectedGrantIds.has(grant.grant_id);
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedGrantIds.add(grant.grant_id);
+        else selectedGrantIds.delete(grant.grant_id);
+        updateFundingSummary();
+      });
+
+      const code = document.createElement('span');
+      code.className = 'funding-grant-item__code';
+      code.textContent = grant.code;
+
+      const title = document.createElement('span');
+      title.className = 'funding-grant-item__title';
+      const t = grant.title || '';
+      title.textContent = t.length > 55 ? t.slice(0, 55) + '…' : t;
+
+      const badge = document.createElement('span');
+      badge.className = 'badge badge--grant-' + grant.status;
+      badge.textContent = grant.status;
+
+      label.appendChild(cb);
+      label.appendChild(code);
+      label.appendChild(title);
+      label.appendChild(badge);
+      group.appendChild(label);
+    });
+
+    container.appendChild(group);
+  });
+
+  updateFundingSummary();
+}
+
+function updateFundingSummary() {
+  const count = selectedGrantIds.size;
+  const summary = document.getElementById('funding-summary');
+  if (count === 0) {
+    summary.textContent = I18N.noGrantsSelected;
+  } else if (count === 1) {
+    summary.textContent = I18N.oneGrantSelected;
+  } else {
+    summary.textContent = count + ' ' + I18N.grantsSelected;
+  }
+  const btn = document.getElementById('funding-generate-btn');
+  if (btn && CAN_GENERATE) btn.disabled = count === 0;
+}
+
+function clearFundingSelection() {
+  selectedGrantIds.clear();
+  renderGrantGroups();
+  document.getElementById('funding-output').style.display = 'none';
+  document.getElementById('funding-error').style.display = 'none';
+}
+
+async function runFundingGenerate() {
+  const errEl = document.getElementById('funding-error');
+  const outEl = document.getElementById('funding-output');
+  errEl.style.display = 'none';
+  outEl.style.display = 'none';
+
+  if (selectedGrantIds.size === 0) {
+    errEl.textContent = I18N.noGrantsSelected;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const body = new URLSearchParams();
+  selectedGrantIds.forEach(id => body.append('grant_ids', id));
+
+  try {
+    const resp = await fetch(FUNDING_POST_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = data.error || I18N.networkError;
+      errEl.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('funding-textarea').value = data.funding_text;
+    outEl.style.display = 'block';
+
+    const warnContainer = document.getElementById('funding-warnings-container');
+    warnContainer.innerHTML = '';
+    if (data.warnings && data.warnings.length > 0) {
+      data.warnings.forEach(w => {
+        const div = document.createElement('div');
+        div.className = 'alert alert--warning';
+        div.style.marginBottom = '.5rem';
+        div.textContent = I18N.warningPrefix + ' ' + w;
+        warnContainer.appendChild(div);
+      });
+    }
+  } catch (e) {
+    errEl.textContent = I18N.networkError;
+    errEl.style.display = 'block';
+  }
+}
+
+async function copyFundingOutput() {
+  const ta = document.getElementById('funding-textarea');
+  const feedback = document.getElementById('funding-copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    feedback.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); feedback.textContent = I18N.copied; }
+    catch (e2) { feedback.textContent = I18N.copyFailed; }
+  }
+  setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
 }
 
 function toggleAuthor(checkbox) {
