@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}PrionLab Tools{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a href="{{ url_for('home') }}" class="site-title">PrionLab Tools</a>
+      <nav class="site-nav">
+        {% if session.get('logged_in') %}
+          <a href="{{ url_for('auth.logout') }}" class="nav-link">Log out</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="site-main">
+    <div class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="alert alert--{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>PrionLab Tools v{{ version | default('0.1.0') }}</span>
+      {% if contact | default('') %}
+        &nbsp;·&nbsp;
+        <a href="mailto:{{ contact }}">Contact</a>
+      {% endif %}
+    </div>
+  </footer>
+</body>
+</html>

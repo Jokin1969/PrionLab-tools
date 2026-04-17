@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Home — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>PrionLab Tools</h1>
+  <p class="page-subtitle">Internal tools for the prion research group</p>
+</div>
+
+<section class="tools-section">
+  <div class="tools-grid">
+
+    <a href="{{ url_for('manuscriptforge_placeholder') }}" class="tool-card">
+      <div class="tool-card__icon">&#9998;</div>
+      <div class="tool-card__body">
+        <h2 class="tool-card__title">ManuscriptForge</h2>
+        <p class="tool-card__desc">Automate boilerplate sections of research manuscripts.</p>
+      </div>
+      <span class="tool-card__badge tool-card__badge--soon">Coming soon</span>
+    </a>
+
+    <!-- Future tools go here -->
+
+  </div>
+</section>
+{% endblock %}

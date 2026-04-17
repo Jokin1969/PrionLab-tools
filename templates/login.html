@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Login — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <h1 class="auth-title">PrionLab Tools</h1>
+    <p class="auth-subtitle">Internal tools for the prion research group</p>
+
+    <form method="POST" action="{{ url_for('auth.login') }}{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}" class="auth-form">
+      {% if error %}
+        <div class="alert alert--error">{{ error }}</div>
+      {% endif %}
+      <div class="form-group">
+        <label for="password" class="form-label">Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          class="form-input"
+          autofocus
+          required
+        />
+      </div>
+      <button type="submit" class="btn btn--primary btn--full">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
