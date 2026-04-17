@@ -45,6 +45,7 @@ def _member_form_data(form) -> dict:
         "first_name":               form.get("first_name", "").strip(),
         "last_name":                form.get("last_name", "").strip(),
         "display_name":             form.get("display_name", "").strip(),
+        "initials":                 form.get("initials", "").strip(),
         "email":                    form.get("email", "").strip(),
         "orcid":                    form.get("orcid", "").strip(),
         "dni":                      form.get("dni", "").strip(),

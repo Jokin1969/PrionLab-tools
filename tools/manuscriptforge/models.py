@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # ── Column schemas ────────────────────────────────────────────────────────────
 
 MEMBERS_COLS = [
-    "member_id", "first_name", "last_name", "display_name", "email", "orcid", "dni",
+    "member_id", "first_name", "last_name", "display_name", "initials", "email", "orcid", "dni",
     "is_corresponding_default", "status", "current_position", "joined_date", "left_date",
     "short_bio", "long_bio", "expertise_areas", "has_competing_interests",
     "competing_interests_text", "linked_username", "notes", "created_at", "updated_at",
@@ -107,6 +107,10 @@ def bootstrap_schema() -> None:
     _seed_grants_if_empty()
     _seed_affiliations_if_empty()
     _seed_members_if_empty()
+    _seed_extra_affiliations()
+    _seed_extra_member_affiliations()
+    _seed_extra_ack_blocks()
+    _patch_members_initials()
     _bootstrap_papers_dir()
 
 
@@ -973,69 +977,69 @@ def _seed_affiliations_if_empty() -> None:
 
 
 _MEMBERS_SEED = [
-    # (member_id, first_name, last_name, display_name, email, current_position,
+    # (member_id, first_name, last_name, display_name, initials, email, current_position,
     #  status, is_corresponding_default, has_competing_interests, notes)
-    ("m001", "Joaquín",   "Castilla",                    "J. Castilla",
+    ("m001", "Joaquín",   "Castilla",                    "J. Castilla",      "J.C.",
      "jcastilla@cicbiogune.es",      "PI",                       "active",
      "true",  "false", "Lab PI, corresponding author by default"),
-    ("m002", "Hasier",    "Eraña",                       "H. Eraña",
+    ("m002", "Hasier",    "Eraña",                       "H. Eraña",         "H.E.",
      "herana.atlas@cicbiogune.es",   "Senior Researcher",        "active",
      "false", "false", "Senior researcher, multiple affiliations"),
-    ("m003", "Enric",     "Vidal",                       "E. Vidal",
+    ("m003", "Enric",     "Vidal",                       "E. Vidal",         "E.V.",
      "enric.vidal@irta.cat",         "External Collaborator",    "collaborator_external",
      "false", "false", "IRTA-CReSA collaborator"),
-    ("m004", "Natalia",   "Fernández-Borges",             "N. Fernández-Borges",
+    ("m004", "Natalia",   "Fernández-Borges",             "N. Fernández-Borges", "N.F.B.",
      "natalia.fernandez@inia.csic.es","External Collaborator",   "collaborator_external",
      "false", "false", "CISA-INIA-CSIC collaborator"),
-    ("m005", "Jorge M.",  "Charco",                      "J.M. Charco",
+    ("m005", "Jorge M.",  "Charco",                      "J.M. Charco",      "J.M.C.",
      "jmoreno@cicbiogune.es",        "Postdoc",                  "active",
      "false", "false", "Core group member"),
-    ("m006", "Carlos M.", "Díaz-Domínguez",              "C.M. Díaz-Domínguez",
+    ("m006", "Carlos M.", "Díaz-Domínguez",              "C.M. Díaz-Domínguez", "C.M.D.D.",
      "cdiaz@cicbiogune.es",          "Postdoc",                  "active",
      "false", "false", "Core group member"),
-    ("m007", "Cristina",  "Sampedro-Torres-Quevedo",     "C. Sampedro-Torres-Quevedo",
+    ("m007", "Cristina",  "Sampedro-Torres-Quevedo",     "C. Sampedro-Torres-Quevedo", "C.S.T.Q.",
      "csampedro@cicbiogune.es",      "PhD student",              "active",
      "false", "false", "PhD student"),
-    ("m008", "Josu",      "Galarza-Ahumada",             "J. Galarza-Ahumada",
+    ("m008", "Josu",      "Galarza-Ahumada",             "J. Galarza-Ahumada", "J.G.A.",
      "jgalarza@cicbiogune.es",       "PhD student",              "active",
      "false", "false", "PhD student"),
-    ("m009", "Eva",       "Fernández-Muñoz",             "E. Fernández-Muñoz",
+    ("m009", "Eva",       "Fernández-Muñoz",             "E. Fernández-Muñoz", "E.F.M.",
      "efernandez@cicbiogune.es",     "PhD student",              "active",
      "false", "false", "PhD student"),
-    ("m010", "Maitena",   "San-Juan-Ansoleaga",          "M. San-Juan-Ansoleaga",
+    ("m010", "Maitena",   "San-Juan-Ansoleaga",          "M. San-Juan-Ansoleaga", "M.S.J.A.",
      "msanjuan@cicbiogune.es",       "Lab Technician",           "active",
      "false", "false", "Technical staff"),
-    ("m011", "Miguel Ángel", "Pérez-Castro",             "M.Á. Pérez-Castro",
+    ("m011", "Miguel Ángel", "Pérez-Castro",             "M.Á. Pérez-Castro", "M.A.P.C.",
      "mperez@lunenfeld.ca",          "External Collaborator",    "collaborator_external",
      "false", "false", "Currently at Lunenfeld"),
-    ("m012", "Nuno",      "Gonçalves-Anjo",              "N. Gonçalves-Anjo",
+    ("m012", "Nuno",      "Gonçalves-Anjo",              "N. Gonçalves-Anjo", "N.G.A.",
      "nanjo@cicbiogune.es",          "Postdoc",                  "active",
      "false", "false", "Postdoc"),
-    ("m013", "Patricia",  "Piñeiro",                     "P. Piñeiro",
+    ("m013", "Patricia",  "Piñeiro",                     "P. Piñeiro",       "P.P.",
      "ppineiro@cicbiogune.es",       "Lab Technician",           "active",
      "false", "false", "Technical staff"),
-    ("m014", "Samanta",   "Giler",                       "S. Giler",
+    ("m014", "Samanta",   "Giler",                       "S. Giler",         "S.G.",
      "samanta.giler@irta.cat",       "External Collaborator",    "collaborator_external",
      "false", "false", "IRTA collaboration"),
-    ("m015", "Nora",      "González-Martín",             "N. González-Martín",
+    ("m015", "Nora",      "González-Martín",             "N. González-Martín", "N.G.M.",
      "noragonz@usal.es",             "External Collaborator",    "collaborator_external",
      "false", "false", "Universidad de Salamanca"),
-    ("m016", "Nuria L.",  "Lorenzo",                     "N.L. Lorenzo",
+    ("m016", "Nuria L.",  "Lorenzo",                     "N.L. Lorenzo",     "N.L.L.",
      "nuria_2l_92@hotmail.com",      "PhD student",              "active",
      "false", "false", "PhD student"),
-    ("m017", "Africa",    "Manero-Azua",                 "A. Manero-Azua",
+    ("m017", "Africa",    "Manero-Azua",                 "A. Manero-Azua",   "A.M.A.",
      "africa.maneroruizdeazua@bio-araba.eus", "External Collaborator", "collaborator_external",
      "false", "false", "Bioaraba collaboration"),
-    ("m018", "Guiomar",   "Perez de Nanclares",          "G. Perez de Nanclares",
+    ("m018", "Guiomar",   "Perez de Nanclares",          "G. Perez de Nanclares", "G.P.N.",
      "guiomar.perezdenanclaresleal@osakidetza.eus", "External Collaborator", "collaborator_external",
      "false", "false", "Bioaraba/Biobizkaia collaboration"),
-    ("m019", "Mariví",    "Geijo",                       "M. Geijo",
+    ("m019", "Mariví",    "Geijo",                       "M. Geijo",         "M.G.",
      "mgeijo@neiker.eus",            "External Collaborator",    "collaborator_external",
      "false", "false", "Neiker collaboration"),
-    ("m020", "Manuel A.", "Sánchez-Martín",              "M.A. Sánchez-Martín",
+    ("m020", "Manuel A.", "Sánchez-Martín",              "M.A. Sánchez-Martín", "M.A.S.M.",
      "adolsan@usal.es",              "External Collaborator",    "collaborator_external",
      "false", "false", "Universidad de Salamanca, transgenic facility"),
-    ("m021", "Jesús R.",  "Requena",                     "J.R. Requena",
+    ("m021", "Jesús R.",  "Requena",                     "J.R. Requena",     "J.R.R.",
      "jesus.requena@usc.es",         "External Collaborator",    "collaborator_external",
      "false", "false", "CIMUS-USC collaboration"),
 ]
@@ -1089,13 +1093,14 @@ def _seed_members_if_empty() -> None:
 
     now = _now()
     rows = []
-    for (mid, first, last, display, email, position,
+    for (mid, first, last, display, initials, email, position,
          status, is_corr, has_ci, notes) in _MEMBERS_SEED:
         rows.append({
             "member_id":                mid,
             "first_name":               first,
             "last_name":                last,
             "display_name":             display,
+            "initials":                 initials,
             "email":                    email,
             "orcid":                    "",
             "dni":                      "",
@@ -1140,3 +1145,220 @@ def _seed_member_affiliations_if_empty() -> None:
     _write(df, MEMBER_AFF_FILE, "member_affiliations.csv")
     assert len(pd.read_csv(MEMBER_AFF_FILE, dtype=str, keep_default_na=False)) == len(rows)
     logger.info("Seed complete: added %d member-affiliation links to member_affiliations.csv", len(rows))
+
+
+# ── Extra seed data (added in prompt-05-5) ───────────────────────────────────
+
+_EXTRA_AFFILIATIONS_SEED = [
+    ("aff_021", "Bioaraba Neurology",
+     "Department of Neurology, Bioaraba Health Research Institute",
+     "Araba University Hospital - Txagorritxu",
+     "Vitoria-Gasteiz", "Araba", "Spain", "ES"),
+    ("aff_022", "Bioaraba Molecular Genetics",
+     "Molecular (Epi) Genetics Laboratory, Bioaraba Health Research Institute",
+     "Araba University Hospital",
+     "Vitoria-Gasteiz", "Araba", "Spain", "ES"),
+    ("aff_023", "Biobizkaia Genetics",
+     "(Epi)genetics of Rare Disorders, Biobizkaia Health Research Institute",
+     "Cruces University Hospital",
+     "Barakaldo", "Bizkaia", "Spain", "ES"),
+    ("aff_024", "Osakidetza Research Unit",
+     "Research Unit, Osakidetza Basque Health Service",
+     "Barrualde-Galdakao Integrated Health Organisation",
+     "Galdakao", "Bizkaia", "Spain", "ES"),
+    ("aff_025", "Kronikgune Institute",
+     "Kronikgune Institute for Health Services Research",
+     "",
+     "Barakaldo", "Bizkaia", "Spain", "ES"),
+    ("aff_026", "RICAPPS Network",
+     "Network for Research on Chronicity, Primary Care, and Health Promotion (RICAPPS)",
+     "",
+     "Galdakao", "Bizkaia", "Spain", "ES"),
+]
+
+
+def _seed_extra_affiliations() -> None:
+    """Add Basque health ecosystem affiliations (aff_021–aff_026) if not present."""
+    if not os.path.exists(AFFILIATIONS_FILE):
+        return
+    try:
+        df = pd.read_csv(AFFILIATIONS_FILE, dtype=str, keep_default_na=False)
+    except Exception:
+        return
+
+    existing_ids = set(df["affiliation_id"].tolist())
+    now = _now()
+    new_rows = []
+    for (aff_id, short_name, full_name, department,
+         city, region, country, country_code) in _EXTRA_AFFILIATIONS_SEED:
+        if aff_id in existing_ids:
+            continue
+        new_rows.append({
+            "affiliation_id": aff_id,
+            "short_name":     short_name,
+            "full_name":      full_name,
+            "department":     department,
+            "address_line":   "",
+            "postal_code":    "",
+            "city":           city,
+            "region":         region,
+            "country":        country,
+            "country_code":   country_code,
+            "notes":          "",
+            "created_at":     now,
+            "updated_at":     now,
+        })
+    if not new_rows:
+        logger.info("Extra affiliations already present, skipping")
+        return
+    for col in AFFILIATIONS_COLS:
+        if col not in df.columns:
+            df[col] = ""
+    df = df[AFFILIATIONS_COLS]
+    df_new = pd.DataFrame(new_rows, columns=AFFILIATIONS_COLS)
+    df = pd.concat([df, df_new], ignore_index=True)
+    _write(df, AFFILIATIONS_FILE, "affiliations.csv")
+    logger.info("Seeded %d extra affiliations (aff_021–aff_026)", len(new_rows))
+
+
+_EXTRA_MEMBER_AFF_SEED = [
+    ("m017", "aff_021", "1"),
+    ("m017", "aff_022", "2"),
+    ("m018", "aff_022", "1"),
+    ("m018", "aff_023", "2"),
+]
+
+
+def _seed_extra_member_affiliations() -> None:
+    """Add missing member-affiliation links for m017 and m018."""
+    if not os.path.exists(MEMBER_AFF_FILE):
+        return
+    try:
+        df = pd.read_csv(MEMBER_AFF_FILE, dtype=str, keep_default_na=False)
+    except Exception:
+        return
+
+    new_rows = []
+    for (mid, aff_id, priority) in _EXTRA_MEMBER_AFF_SEED:
+        mask = (df["member_id"] == mid) & (df["affiliation_id"] == aff_id)
+        if mask.any():
+            continue
+        new_rows.append({"member_id": mid, "affiliation_id": aff_id, "priority": priority})
+    if not new_rows:
+        logger.info("Extra member-affiliation links already present, skipping")
+        return
+    df_new = pd.DataFrame(new_rows, columns=MEMBER_AFF_COLS)
+    df = pd.concat([df, df_new], ignore_index=True)
+    _write(df, MEMBER_AFF_FILE, "member_affiliations.csv")
+    logger.info("Seeded %d extra member-affiliation links", len(new_rows))
+
+
+_EXTRA_ACK_SEED = [
+    ("ack_011", "core_facility", "SGIker UPV/EHU Electron Microscopy",
+     "Technical and human support provided by SGIker (UPV/EHU/ERDF, EU), specifically "
+     "the Scanning Electron Microscopy service."),
+    ("ack_012", "technical_staff", "Sara Gómez Ramos IT support",
+     "Sara Gómez Ramos for her assistance with the PrPdex webpage."),
+    ("ack_013", "other", "Past members Tomás Barrio and Leire Hervá",
+     "Tomás Barrio and Leire Hervá for their efforts at the initial and end stages of "
+     "the work, respectively."),
+    ("ack_014", "external_collaborator", "Dr. José Castresana Pyrenean desman",
+     "Dr. José Castresana for providing the Pyrenean desman (Galemys pyrenaicus) sample."),
+    ("ack_015", "external_collaborator", "Dr. Wilfred Goldmann carnivore samples",
+     "Dr. Wilfred Goldmann for providing samples from several carnivores."),
+    ("ack_016", "external_collaborator", "Manuel de la Riva Eva Martínez Zoo samples",
+     "Manuel de la Riva and Eva Martínez for the samples obtained from Faunia and the "
+     "Zoo from Madrid."),
+    ("ack_017", "technical_staff", "César P. Díaz-Domínguez cervid images",
+     "César P. Díaz-Domínguez for his invaluable contribution through the generation of "
+     "cervid images for the manuscript."),
+    ("ack_018", "sample_donor", "Dr. Isidre Ferrer GSS isolate",
+     "Dr. Isidre Ferrer for the GSS-P102L-129V isolate."),
+    ("ack_019", "sample_donor", "Dr. Susana Teijeira IISGS GSS sample",
+     "Dr. Susana Teijeira from the Grupo de Enfermedades Raras y Medicina Pediátrica, "
+     "Instituto de Investigación Sanitaria Galicia Sur (IISGS), for providing the "
+     "GSS-A117V sample from a Spanish patient."),
+    ("ack_020", "other", "AI-generated clipart disclosure",
+     "Use of a generative AI tool to generate the clipart: A drawing used in figures was "
+     "generated using the Copilot Designer generative AI tool (Microsoft365). The prompt "
+     "introduced was: \"I need a realistic cartoon of a mouse in black and white or "
+     "greyscale to illustrate a figure in a scientific paper.\""),
+]
+
+
+def _seed_extra_ack_blocks() -> None:
+    """Add ack_011–ack_020 blocks if they are not already present."""
+    if not os.path.exists(ACK_BLOCKS_FILE):
+        return
+    try:
+        df = pd.read_csv(ACK_BLOCKS_FILE, dtype=str, keep_default_na=False)
+    except Exception:
+        return
+
+    existing_ids = set(df["block_id"].tolist())
+    now = _now()
+    new_rows = []
+    for (bid, category, short_label, text) in _EXTRA_ACK_SEED:
+        if bid in existing_ids:
+            continue
+        new_rows.append({
+            "block_id":    bid,
+            "category":    category,
+            "short_label": short_label,
+            "text":        text,
+            "is_active":   "true",
+            "notes":       "",
+            "created_at":  now,
+            "updated_at":  now,
+        })
+    if not new_rows:
+        logger.info("Extra ack blocks already present, skipping")
+        return
+    df_new = pd.DataFrame(new_rows, columns=ACK_BLOCKS_COLS)
+    df = pd.concat([df, df_new], ignore_index=True)
+    _write(df, ACK_BLOCKS_FILE, "acknowledgment_blocks.csv")
+    logger.info("Seeded %d extra acknowledgment blocks (ack_011–ack_020)", len(new_rows))
+
+
+_MEMBER_INITIALS_MAP = {
+    "m001": "J.C.",    "m002": "H.E.",    "m003": "E.V.",
+    "m004": "N.F.B.",  "m005": "J.M.C.",  "m006": "C.M.D.D.",
+    "m007": "C.S.T.Q.","m008": "J.G.A.",  "m009": "E.F.M.",
+    "m010": "M.S.J.A.","m011": "M.A.P.C.","m012": "N.G.A.",
+    "m013": "P.P.",    "m014": "S.G.",    "m015": "N.G.M.",
+    "m016": "N.L.L.",  "m017": "A.M.A.",  "m018": "G.P.N.",
+    "m019": "M.G.",    "m020": "M.A.S.M.","m021": "J.R.R.",
+}
+
+
+def _patch_members_initials() -> None:
+    """Backfill initials column for existing member records that lack it."""
+    if not os.path.exists(MEMBERS_FILE):
+        return
+    try:
+        df = pd.read_csv(MEMBERS_FILE, dtype=str, keep_default_na=False)
+    except Exception:
+        return
+    if df.empty:
+        return
+
+    if "initials" not in df.columns:
+        df["initials"] = ""
+
+    patched = 0
+    for mid, initials in _MEMBER_INITIALS_MAP.items():
+        mask = (df["member_id"] == mid) & (df["initials"].str.strip() == "")
+        if mask.any():
+            df.loc[mask, "initials"] = initials
+            patched += 1
+
+    if not patched:
+        logger.info("Members initials already populated, skipping patch")
+        return
+
+    for col in MEMBERS_COLS:
+        if col not in df.columns:
+            df[col] = ""
+    df = df[MEMBERS_COLS]
+    _write(df, MEMBERS_FILE, "members.csv")
+    logger.info("Patched initials for %d members", patched)

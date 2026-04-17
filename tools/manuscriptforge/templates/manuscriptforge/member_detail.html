@@ -31,6 +31,7 @@
     <dl class="detail-dl">
       <dt>{{ _('Email') }}</dt><dd>{{ member.email or '—' }}</dd>
       <dt>ORCID</dt><dd>{{ member.orcid or '—' }}</dd>
+      <dt>{{ _('Initials') }}</dt><dd>{{ member.initials or '—' }}</dd>
       <dt>{{ _('Position') }}</dt><dd>{{ member.current_position or '—' }}</dd>
       {% if member.get('dni') is not none %}
         <dt>DNI</dt><dd>{{ member.get('dni') or '—' }}</dd>
