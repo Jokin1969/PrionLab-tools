@@ -931,3 +931,22 @@ select.form-input { cursor: pointer; }
 .ack-block-item__label {
   flex: 1;
 }
+/* ── Competing Interests section ──────────────────────────────────────────── */
+.ci-source-section { display: flex; flex-direction: column; gap: .5rem; }
+.ci-source-option { padding: .35rem 0; }
+.ci-radio-label { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+
+.ci-analysis-preview {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: .75rem 1rem;
+  font-size: .875rem;
+  margin-bottom: .5rem;
+}
+.ci-analysis-row { line-height: 1.6; }
+.ci-analysis-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--color-text-muted); }
+.ci-analysis-label--conflict { color: #991B1B; }
+.ci-analysis-author { display: inline; }
+.ci-analysis-author--conflict { font-weight: 600; }
+.ci-analysis-citext { font-size: .8rem; }

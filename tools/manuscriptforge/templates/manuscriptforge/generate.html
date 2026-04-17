@@ -22,7 +22,7 @@
       <option value="author_order" selected>Author Order &amp; Affiliations</option>
       <option value="funding">{{ _('Funding') }}</option>
       <option value="acknowledgments">{{ _('Acknowledgments') }}</option>
-      <option value="competing_interests" disabled>{{ _('Competing Interests') }} — {{ _('Coming soon') }}</option>
+      <option value="competing_interests">{{ _('Competing Interests') }}</option>
     </select>
   </div>
 
@@ -203,10 +203,135 @@
   </div>
 </div>
 
+{# ── Competing Interests panel ─────────────────────────────────────────────── #}
+<div id="panel-competing-interests" class="generate-panel" style="margin-top:1.5rem;display:none">
+  <h3 style="margin-bottom:.75rem">{{ _('Competing Interests') }}</h3>
+  <p class="text-muted" style="margin-bottom:1rem">
+    {{ _('Select the authors for this manuscript. Competing interests are detected automatically from member records.') }}
+  </p>
+
+  {# ── Author source ── #}
+  <div class="ci-source-section" style="margin-bottom:1.25rem">
+    <div class="ci-source-option">
+      <label class="ci-radio-label">
+        <input type="radio" name="ci-author-source" id="ci-source-previous" value="previous"
+               class="form-checkbox" onchange="ciSourceChanged()" />
+        <strong>{{ _('Load authors from most recent Author Order generation') }}</strong>
+      </label>
+      <div id="ci-previous-info" style="margin:.5rem 0 0 1.5rem;display:none">
+        <span id="ci-previous-text" class="text-muted"></span>
+        <button type="button" class="btn btn--sm btn--secondary" onclick="loadFromPrevious()" style="margin-left:.5rem">
+          {{ _('Load') }}
+        </button>
+      </div>
+      <div id="ci-no-previous" style="margin:.5rem 0 0 1.5rem;display:none">
+        <span class="text-muted">{{ _('No recent Author Order generation found. Generate Author Order first, or select manually.') }}</span>
+      </div>
+    </div>
+
+    <div class="ci-source-option" style="margin-top:.75rem">
+      <label class="ci-radio-label">
+        <input type="radio" name="ci-author-source" id="ci-source-manual" value="manual"
+               class="form-checkbox" onchange="ciSourceChanged()" checked />
+        <strong>{{ _('Select authors manually') }}</strong>
+      </label>
+    </div>
+  </div>
+
+  {# ── Manual selector ── #}
+  <div id="ci-manual-selector">
+    <div class="author-selector" style="grid-template-columns:1fr">
+      {% if active_members %}
+      <div class="author-selector__group">
+        <div class="author-selector__group-label">{{ _('Active members') }}</div>
+        <ul class="author-selector__list" id="ci-available-active">
+          {% for m in active_members %}
+          <li class="author-selector__item">
+            <label class="author-selector__label">
+              <input type="checkbox" class="ci-author-checkbox" value="{{ m.member_id }}"
+                     data-display="{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     data-initials="{{ m.initials or m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     onchange="ciSelectionChanged()" />
+              <span>{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}</span>
+              {% if m.has_competing_interests == 'true' %}
+                <span class="badge" style="background:#FEE2E2;color:#991B1B;font-size:.7rem;margin-left:.25rem">CI</span>
+              {% endif %}
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if external_members %}
+      <div class="author-selector__group">
+        <div class="author-selector__group-label">{{ _('External collaborators') }}</div>
+        <ul class="author-selector__list" id="ci-available-external">
+          {% for m in external_members %}
+          <li class="author-selector__item">
+            <label class="author-selector__label">
+              <input type="checkbox" class="ci-author-checkbox" value="{{ m.member_id }}"
+                     data-display="{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     data-initials="{{ m.initials or m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}"
+                     onchange="ciSelectionChanged()" />
+              <span>{{ m.display_name or (m.first_name ~ ' ' ~ m.last_name)|trim }}</span>
+              {% if m.has_competing_interests == 'true' %}
+                <span class="badge" style="background:#FEE2E2;color:#991B1B;font-size:.7rem;margin-left:.25rem">CI</span>
+              {% endif %}
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div id="ci-loaded-summary" style="display:none;margin-top:.5rem">
+    <span id="ci-loaded-text" class="text-muted"></span>
+    <button type="button" class="btn btn--sm" onclick="clearCiLoaded()" style="margin-left:.5rem">{{ _('Clear') }}</button>
+  </div>
+
+  {# ── Options ── #}
+  <div class="form-group--inline" style="margin-top:1.25rem">
+    <input type="checkbox" id="ci-extended-disclaimer" class="form-checkbox" />
+    <label for="ci-extended-disclaimer" class="form-label form-label--inline">
+      {{ _('Include extended disclaimer') }}
+      <small class="text-muted">({{ _('adds: "given that the company had no role in study design, funding, and data analysis"') }})</small>
+    </label>
+  </div>
+
+  <div class="form-actions" style="margin-top:1.25rem">
+    <button type="button" class="btn btn--primary" id="ci-generate-btn"
+            onclick="runCiGenerate()"
+            {% if session.get('role') not in ('admin', 'editor') %}disabled{% endif %}>
+      {{ _('Analyze & Generate') }}
+    </button>
+    <button type="button" class="btn btn--secondary" onclick="clearCiSelection()">
+      {{ _('Clear') }}
+    </button>
+  </div>
+
+  <div id="ci-error" class="alert alert--error" style="margin-top:1rem;display:none"></div>
+
+  {# ── Analysis preview + output ── #}
+  <div id="ci-output" style="margin-top:1.5rem;display:none">
+    <div id="ci-analysis-preview" class="ci-analysis-preview"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;margin-top:.75rem">
+      <h4 style="margin:0">{{ _('Generated output') }}</h4>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="copyCiOutput()">
+        {{ _('Copy to clipboard') }}
+      </button>
+    </div>
+    <textarea id="ci-textarea" class="form-input generate-output" rows="6" readonly></textarea>
+    <div id="ci-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
+  </div>
+</div>
+
 <script>
 const POST_URL          = "{{ url_for('manuscriptforge.generate_author_order_route') }}";
 const FUNDING_POST_URL  = "{{ url_for('manuscriptforge.generate_funding_route') }}";
 const ACK_POST_URL      = "{{ url_for('manuscriptforge.generate_acknowledgments_route') }}";
+const CI_POST_URL       = "{{ url_for('manuscriptforge.generate_competing_interests_route') }}";
 const I18N = {
   remove: "{{ _('Remove') }}",
   up: "{{ _('Move up') }}",
@@ -226,6 +351,14 @@ const I18N = {
   categories: "{{ _('categories') }}",
   selectAll: "{{ _('Select all') }}",
   deselectAll: "{{ _('Deselect all') }}",
+  noAuthorsSelected: "{{ _('No authors selected.') }}",
+  oneAuthorSelected: "{{ _('1 author selected') }}",
+  authorsSelected: "{{ _('authors selected') }}",
+  ciNoRecentGeneration: "{{ _('No recent Author Order generation found. Generate Author Order first, or select manually.') }}",
+  ciLoadedFrom: "{{ _('Loaded from Author Order:') }}",
+  ciWithConflicts: "{{ _('With competing interests') }}",
+  ciWithoutConflicts: "{{ _('No competing interests') }}",
+  ciNone: "{{ _('None') }}",
   catLabels: {
     core_facility:          "{{ _('Core Facilities') }}",
     technical_staff:        "{{ _('Technical Staff') }}",
@@ -241,7 +374,7 @@ const ACK_BLOCKS_DATA = {{ ack_blocks | tojson }};
 
 let selectedIds = [];
 
-const ALL_PANELS = ['author-order', 'funding', 'acknowledgments'];
+const ALL_PANELS = ['author-order', 'funding', 'acknowledgments', 'competing-interests'];
 
 function switchSection(kind) {
   ALL_PANELS.forEach(p => {
@@ -252,6 +385,7 @@ function switchSection(kind) {
   if (target) target.style.display = '';
   if (kind === 'funding') renderGrantGroups();
   if (kind === 'acknowledgments') renderAckGroups();
+  if (kind === 'competing_interests') initCiPanel();
 }
 
 // ── Funding section ───────────────────────────────────────────────────────────
@@ -502,6 +636,7 @@ async function runGenerate() {
     }
     document.getElementById('generate-textarea').value = data.full_text;
     outEl.style.display = 'block';
+    sessionStorage.setItem('mf_last_author_ids', JSON.stringify({ids: [...selectedIds], ts: Date.now()}));
 
     const warn = document.getElementById('unaffiliated-warning');
     if (data.unaffiliated && data.unaffiliated.length > 0) {
@@ -718,6 +853,198 @@ async function runAckGenerate() {
 async function copyAckOutput() {
   const ta = document.getElementById('ack-textarea');
   const feedback = document.getElementById('ack-copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    feedback.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); feedback.textContent = I18N.copied; }
+    catch (e2) { feedback.textContent = I18N.copyFailed; }
+  }
+  setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
+}
+
+// ── Competing Interests section ───────────────────────────────────────────────
+
+const CI_SESSION_KEY = 'mf_last_author_ids';
+const CI_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 h
+
+function initCiPanel() {
+  const stored = _ciGetStored();
+  const prevInfo = document.getElementById('ci-previous-info');
+  const noPrev   = document.getElementById('ci-no-previous');
+  if (stored) {
+    const count = stored.ids.length;
+    document.getElementById('ci-previous-text').textContent =
+      count + ' ' + I18N.authorsSelected;
+    prevInfo.style.display = 'block';
+    noPrev.style.display = 'none';
+    // Auto-select "previous" radio and load
+    const radioPrev = document.getElementById('ci-source-previous');
+    if (radioPrev) radioPrev.checked = true;
+    ciSourceChanged();
+    loadFromPrevious();
+  } else {
+    prevInfo.style.display = 'none';
+    noPrev.style.display = 'block';
+    const radioManual = document.getElementById('ci-source-manual');
+    if (radioManual) radioManual.checked = true;
+    ciSourceChanged();
+  }
+  updateCiSummary();
+}
+
+function _ciGetStored() {
+  try {
+    const raw = sessionStorage.getItem(CI_SESSION_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!Array.isArray(obj.ids) || !obj.ts) return null;
+    if (Date.now() - obj.ts > CI_SESSION_MAX_AGE_MS) return null;
+    return obj;
+  } catch (e) { return null; }
+}
+
+function ciSourceChanged() {
+  const isPrev = document.getElementById('ci-source-previous').checked;
+  document.getElementById('ci-manual-selector').style.display = isPrev ? 'none' : '';
+}
+
+function loadFromPrevious() {
+  const stored = _ciGetStored();
+  if (!stored) return;
+  // Uncheck all first
+  document.querySelectorAll('.ci-author-checkbox').forEach(cb => { cb.checked = false; });
+  // Check matching IDs (preserving order doesn't matter for CI)
+  stored.ids.forEach(id => {
+    const cb = document.querySelector('.ci-author-checkbox[value="' + id + '"]');
+    if (cb) cb.checked = true;
+  });
+  const checkedCount = document.querySelectorAll('.ci-author-checkbox:checked').length;
+  const summary = document.getElementById('ci-loaded-summary');
+  const text    = document.getElementById('ci-loaded-text');
+  if (checkedCount > 0) {
+    text.textContent = I18N.ciLoadedFrom + ' ' + checkedCount + ' ' + I18N.authorsSelected;
+    summary.style.display = 'block';
+  } else {
+    summary.style.display = 'none';
+  }
+  updateCiSummary();
+}
+
+function ciSelectionChanged() {
+  const summary = document.getElementById('ci-loaded-summary');
+  summary.style.display = 'none';
+  updateCiSummary();
+}
+
+function updateCiSummary() {
+  const count = document.querySelectorAll('.ci-author-checkbox:checked').length;
+  const btn = document.getElementById('ci-generate-btn');
+  if (btn && CAN_GENERATE) btn.disabled = count === 0;
+}
+
+function clearCiLoaded() {
+  document.querySelectorAll('.ci-author-checkbox').forEach(cb => { cb.checked = false; });
+  document.getElementById('ci-loaded-summary').style.display = 'none';
+  document.getElementById('ci-output').style.display = 'none';
+  document.getElementById('ci-error').style.display = 'none';
+  updateCiSummary();
+}
+
+function clearCiSelection() {
+  document.querySelectorAll('.ci-author-checkbox').forEach(cb => { cb.checked = false; });
+  document.getElementById('ci-loaded-summary').style.display = 'none';
+  document.getElementById('ci-output').style.display = 'none';
+  document.getElementById('ci-error').style.display = 'none';
+  updateCiSummary();
+}
+
+async function runCiGenerate() {
+  const errEl = document.getElementById('ci-error');
+  const outEl = document.getElementById('ci-output');
+  errEl.style.display = 'none';
+  outEl.style.display = 'none';
+
+  const checkedBoxes = document.querySelectorAll('.ci-author-checkbox:checked');
+  if (checkedBoxes.length === 0) {
+    errEl.textContent = I18N.noAuthorsSelected;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const body = new URLSearchParams();
+  checkedBoxes.forEach(cb => body.append('member_ids', cb.value));
+  if (document.getElementById('ci-extended-disclaimer').checked) {
+    body.append('extended_disclaimer', '1');
+  }
+
+  try {
+    const resp = await fetch(CI_POST_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = data.error || I18N.networkError;
+      errEl.style.display = 'block';
+      return;
+    }
+
+    // Render analysis preview
+    const preview = document.getElementById('ci-analysis-preview');
+    preview.innerHTML = _renderCiAnalysis(data.analysis || {});
+
+    document.getElementById('ci-textarea').value = data.competing_interests_text;
+    outEl.style.display = 'block';
+  } catch (e) {
+    errEl.textContent = I18N.networkError;
+    errEl.style.display = 'block';
+  }
+}
+
+function _renderCiAnalysis(analysis) {
+  const withConflicts    = analysis.with_conflicts    || [];
+  const withoutConflicts = analysis.without_conflicts || [];
+
+  let html = '<div class="ci-analysis-preview">';
+
+  html += '<div class="ci-analysis-row">';
+  html += '<strong class="ci-analysis-label ci-analysis-label--conflict">' + _esc(I18N.ciWithConflicts) + ':</strong> ';
+  if (withConflicts.length === 0) {
+    html += '<span class="text-muted">' + _esc(I18N.ciNone) + '</span>';
+  } else {
+    html += withConflicts.map(a => {
+      const name = _esc(a.display_name || a.member_id);
+      const text = a.ci_text ? ' <span class="text-muted ci-analysis-citext">(' + _esc(a.ci_text) + ')</span>' : '';
+      return '<span class="ci-analysis-author ci-analysis-author--conflict">' + name + text + '</span>';
+    }).join(', ');
+  }
+  html += '</div>';
+
+  html += '<div class="ci-analysis-row" style="margin-top:.35rem">';
+  html += '<strong class="ci-analysis-label">' + _esc(I18N.ciWithoutConflicts) + ':</strong> ';
+  if (withoutConflicts.length === 0) {
+    html += '<span class="text-muted">' + _esc(I18N.ciNone) + '</span>';
+  } else {
+    html += withoutConflicts.map(a =>
+      '<span class="ci-analysis-author">' + _esc(a.display_name || a.member_id) + '</span>'
+    ).join(', ');
+  }
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function copyCiOutput() {
+  const ta = document.getElementById('ci-textarea');
+  const feedback = document.getElementById('ci-copy-feedback');
   try {
     await navigator.clipboard.writeText(ta.value);
     feedback.textContent = I18N.copied;
