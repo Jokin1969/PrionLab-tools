@@ -1768,3 +1768,117 @@ def generate_competing_interests(
         "template_used":      template_used,
         "extended_disclaimer": extended_disclaimer,
     }
+
+
+# ── CRediT Generation ─────────────────────────────────────────────────────────
+
+CREDIT_ROLES: dict[str, str] = {
+    "conceptualization":      "Conceptualization",
+    "data_curation":          "Data curation",
+    "formal_analysis":        "Formal analysis",
+    "funding_acquisition":    "Funding acquisition",
+    "investigation":          "Investigation",
+    "methodology":            "Methodology",
+    "project_administration": "Project administration",
+    "resources":              "Resources",
+    "software":               "Software",
+    "supervision":            "Supervision",
+    "validation":             "Validation",
+    "visualization":          "Visualization",
+    "writing_original_draft": "Writing \u2013 original draft",
+    "writing_review_editing": "Writing \u2013 review & editing",
+}
+
+
+def generate_credit(
+    member_ids: list[str],
+    assignments: dict[str, list[str]],
+    format_type: str = "by_role",
+) -> dict:
+    if not member_ids:
+        raise ValueError("At least one author must be selected.")
+
+    df = load_members()
+    warnings: list[str] = []
+    member_map: dict[str, dict] = {}
+
+    for mid in member_ids:
+        row = df[df["member_id"] == mid]
+        if row.empty:
+            raise ValueError(f"Unknown member: {mid}")
+        r = row.iloc[0]
+        initials = str(r.get("initials", "") or "").strip()
+        display = str(r.get("display_name", "") or "").strip() or (
+            f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+        )
+        if not initials:
+            initials = display
+            warnings.append(f"Author {display} has no initials \u2014 using display name instead.")
+        member_map[mid] = {"display_name": display, "initials": initials}
+
+    # Validate role keys
+    invalid: set[str] = set()
+    for roles in assignments.values():
+        for r in (roles or []):
+            if r not in CREDIT_ROLES:
+                invalid.add(r)
+    if invalid:
+        raise ValueError(f"Invalid CRediT role(s): {', '.join(sorted(invalid))}")
+
+    total_assigned = sum(len(v) for v in assignments.values() if v)
+    if total_assigned == 0:
+        raise ValueError("At least one role must be assigned.")
+
+    # Authors without roles
+    authors_without_roles = [mid for mid in member_ids if not assignments.get(mid)]
+    for mid in authors_without_roles:
+        warnings.append(f"Author {member_map[mid]['display_name']} has no roles assigned.")
+
+    # Build role → ordered initials mapping
+    role_authors: dict[str, list[str]] = {}
+    assignments_summary: dict[str, list[str]] = {}
+    for role_key in CREDIT_ROLES:
+        initials_list = [
+            member_map[mid]["initials"]
+            for mid in member_ids
+            if role_key in (assignments.get(mid) or [])
+        ]
+        if initials_list:
+            role_authors[role_key] = initials_list
+            assignments_summary[role_key] = initials_list
+
+    roles_without_authors = [k for k in CREDIT_ROLES if k not in role_authors]
+
+    # Generate text
+    lines: list[str] = []
+    n_authors = len(member_ids)
+
+    if format_type == "by_role":
+        for role_key, initials_list in role_authors.items():
+            label = CREDIT_ROLES[role_key]
+            if len(initials_list) == n_authors and n_authors > 1:
+                author_str = "All authors"
+            else:
+                author_str = ", ".join(initials_list)
+            trailing = "." if author_str == "All authors" else ""
+            lines.append(f"{label}: {author_str}{trailing}")
+
+    elif format_type == "by_author":
+        for mid in member_ids:
+            roles_for = [r for r in (assignments.get(mid) or []) if r in CREDIT_ROLES]
+            if not roles_for:
+                continue
+            # Sort role labels alphabetically
+            role_labels = sorted(CREDIT_ROLES[r] for r in roles_for)
+            lines.append(f"{member_map[mid]['initials']}: {', '.join(role_labels)}.")
+    else:
+        raise ValueError(f"Unknown format_type: {format_type!r}")
+
+    return {
+        "credit_text": "\n".join(lines),
+        "format_used": format_type,
+        "assignments_summary": assignments_summary,
+        "authors_without_roles": authors_without_roles,
+        "roles_without_authors": roles_without_authors,
+        "warnings": warnings,
+    }

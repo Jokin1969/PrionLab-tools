@@ -32,6 +32,7 @@ from .models import (
     generate_funding,
     generate_acknowledgments,
     generate_competing_interests,
+    generate_credit,
 )
 from .validators import (
     validate_affiliation, validate_ack_block, validate_grant,
@@ -1051,6 +1052,29 @@ def generate_competing_interests_route():
 
     try:
         result = generate_competing_interests(member_ids, extended_disclaimer=extended)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify(result)
+
+
+@manuscriptforge_bp.route("/generate/credit", methods=["POST"])
+@editor_required
+def generate_credit_route():
+    raw_ids = request.form.getlist("member_ids")
+    member_ids = [mid.strip() for mid in raw_ids if mid and mid.strip()]
+    format_type = request.form.get("format_type", "by_role")
+
+    if not member_ids:
+        return jsonify({"error": _("Please select at least one author.")}), 400
+
+    assignments: dict[str, list[str]] = {}
+    for mid in member_ids:
+        raw = request.form.get(f"assignment_{mid}", "")
+        assignments[mid] = [r.strip() for r in raw.split(",") if r.strip()] if raw else []
+
+    try:
+        result = generate_credit(member_ids, assignments, format_type)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
