@@ -1,0 +1,63 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Affiliations') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="admin-section">
+  <div class="admin-section__header">
+    <h2>{{ _('Affiliations') }}</h2>
+    {% if session.get('role') in ('admin', 'editor') %}
+      <a href="{{ url_for('manuscriptforge.new_affiliation') }}" class="btn btn--primary btn--sm">+ {{ _('Add affiliation') }}</a>
+    {% endif %}
+  </div>
+
+  <form method="GET" class="filter-bar">
+    <input type="text" name="q" value="{{ search }}" placeholder="{{ _('Search name or city…') }}"
+           class="form-input filter-bar__search" />
+    <button type="submit" class="btn btn--secondary btn--sm">{{ _('Search') }}</button>
+    {% if search %}
+      <a href="{{ url_for('manuscriptforge.affiliations_list') }}" class="btn btn--sm">✕</a>
+    {% endif %}
+  </form>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('Short name') }}</th>
+          <th>{{ _('Full name') }}</th>
+          <th>{{ _('City') }}</th>
+          <th>{{ _('Country') }}</th>
+          <th>{{ _('Members') }}</th>
+          <th>{{ _('Actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in affiliations %}
+        <tr>
+          <td><strong>{{ a.short_name }}</strong></td>
+          <td>{{ a.full_name }}</td>
+          <td>{{ a.city }}</td>
+          <td>{{ a.country }}</td>
+          <td class="text-center">{{ a.member_count }}</td>
+          <td class="actions-cell">
+            <a href="{{ url_for('manuscriptforge.affiliation_detail', affiliation_id=a.affiliation_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+            {% if session.get('role') in ('admin', 'editor') %}
+              <a href="{{ url_for('manuscriptforge.edit_affiliation', affiliation_id=a.affiliation_id) }}" class="btn btn--sm">{{ _('Edit') }}</a>
+            {% endif %}
+            {% if session.get('role') == 'admin' %}
+              <form method="POST" action="{{ url_for('manuscriptforge.delete_affiliation_route', affiliation_id=a.affiliation_id) }}"
+                    style="display:inline" onsubmit="return confirm('{{ _('Delete this affiliation?') }}')">
+                <button type="submit" class="btn btn--sm btn--danger" {{ 'disabled' if a.member_count > 0 }}
+                        title="{{ _('Remove all linked members first.') if a.member_count > 0 }}">{{ _('Delete') }}</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted">{{ _('No affiliations found.') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ affiliation.short_name }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ affiliation.short_name }}</h2>
+    <small class="text-muted">{{ affiliation.affiliation_id }}</small>
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin', 'editor') %}
+      <a href="{{ url_for('manuscriptforge.edit_affiliation', affiliation_id=affiliation.affiliation_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+    {% endif %}
+    {% if session.get('role') == 'admin' %}
+      <form method="POST" action="{{ url_for('manuscriptforge.delete_affiliation_route', affiliation_id=affiliation.affiliation_id) }}"
+            style="display:inline" onsubmit="return confirm('{{ _('Delete this affiliation?') }}')">
+        <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+      </form>
+    {% endif %}
+    <a href="{{ url_for('manuscriptforge.affiliations_list') }}" class="btn btn--sm">← {{ _('Back') }}</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Name') }}</h3>
+    <dl class="detail-dl">
+      <dt>{{ _('Short name') }}</dt><dd>{{ affiliation.short_name }}</dd>
+      <dt>{{ _('Full name') }}</dt><dd>{{ affiliation.full_name }}</dd>
+      {% if affiliation.department %}<dt>{{ _('Department') }}</dt><dd>{{ affiliation.department }}</dd>{% endif %}
+    </dl>
+  </div>
+
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Address') }}</h3>
+    <dl class="detail-dl">
+      {% if affiliation.address_line %}<dt>{{ _('Street') }}</dt><dd>{{ affiliation.address_line }}</dd>{% endif %}
+      {% if affiliation.postal_code %}<dt>{{ _('Postal code') }}</dt><dd>{{ affiliation.postal_code }}</dd>{% endif %}
+      <dt>{{ _('City') }}</dt><dd>{{ affiliation.city }}</dd>
+      {% if affiliation.region %}<dt>{{ _('Region') }}</dt><dd>{{ affiliation.region }}</dd>{% endif %}
+      <dt>{{ _('Country') }}</dt><dd>{{ affiliation.country }}{% if affiliation.country_code %} ({{ affiliation.country_code }}){% endif %}</dd>
+    </dl>
+  </div>
+
+  {% if affiliation.notes and session.get('role') in ('admin','editor') %}
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Notes') }}</h3>
+    <p class="text-muted">{{ affiliation.notes }}</p>
+  </div>
+  {% endif %}
+
+  <div class="detail-section" style="grid-column:1/-1;font-size:0.8rem;color:var(--color-text-muted)">
+    {{ _('Created') }}: {{ affiliation.created_at }} · {{ _('Updated') }}: {{ affiliation.updated_at }}
+  </div>
+</div>
+
+{# ── Linked members ────────────────────────────────────────────────────────── #}
+<div class="admin-section" style="margin-top:1.5rem">
+  <h2>{{ _('Linked members') }} ({{ members | length }})</h2>
+  {% if members %}
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('Display name') }}</th>
+          <th>{{ _('Status') }}</th>
+          <th>{{ _('Position') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td>{{ m.display_name }}</td>
+          <td><span class="badge badge--status-{{ m.status }}">{{ m.status }}</span></td>
+          <td>{{ m.current_position or '—' }}</td>
+          <td>
+            <a href="{{ url_for('manuscriptforge.member_detail', member_id=m.member_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">{{ _('No members linked to this affiliation.') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

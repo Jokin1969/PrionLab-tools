@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}PrionLab Tools{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
 </head>
 <body>
@@ -14,7 +15,7 @@
 
       <nav class="site-nav">
         {% if session.get('logged_in') %}
-          <a href="{{ url_for('manuscriptforge_placeholder') }}" class="nav-link">ManuscriptForge</a>
+          <a href="{{ url_for('manuscriptforge.home') }}" class="nav-link">ManuscriptForge</a>
         {% endif %}
       </nav>
 

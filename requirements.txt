@@ -4,3 +4,4 @@ dropbox>=11.36
 python-dotenv>=1.0
 Flask-Babel>=4.0
 bcrypt>=4.0
+pandas>=2.0

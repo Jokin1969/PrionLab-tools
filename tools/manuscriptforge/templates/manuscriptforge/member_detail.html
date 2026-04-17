@@ -1,0 +1,153 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ member.display_name }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ member.display_name }}</h2>
+    <small class="text-muted">{{ member.first_name }} {{ member.last_name }} · {{ member.member_id }}</small>
+    <span class="badge badge--status-{{ member.status }}" style="margin-left:.5rem">{{ member.status }}</span>
+    {% if member.is_corresponding_default == 'true' %}
+      <span class="badge badge--admin" style="margin-left:.25rem">{{ _('Corresponding') }}</span>
+    {% endif %}
+  </div>
+  <div class="actions-cell">
+    {% if session.get('role') in ('admin', 'editor') %}
+      <a href="{{ url_for('manuscriptforge.edit_member', member_id=member.member_id) }}" class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+    {% endif %}
+    {% if session.get('role') == 'admin' %}
+      <form method="POST" action="{{ url_for('manuscriptforge.delete_member_route', member_id=member.member_id) }}"
+            style="display:inline" onsubmit="return confirm('{{ _('Delete this member?') }}')">
+        <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+      </form>
+    {% endif %}
+    <a href="{{ url_for('manuscriptforge.members_list') }}" class="btn btn--sm">← {{ _('Back') }}</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Contact') }}</h3>
+    <dl class="detail-dl">
+      <dt>{{ _('Email') }}</dt><dd>{{ member.email or '—' }}</dd>
+      <dt>ORCID</dt><dd>{{ member.orcid or '—' }}</dd>
+      <dt>{{ _('Position') }}</dt><dd>{{ member.current_position or '—' }}</dd>
+      {% if member.get('dni') is not none %}
+        <dt>DNI</dt><dd>{{ member.get('dni') or '—' }}</dd>
+      {% endif %}
+    </dl>
+  </div>
+
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Dates') }}</h3>
+    <dl class="detail-dl">
+      <dt>{{ _('Joined') }}</dt><dd>{{ member.joined_date or '—' }}</dd>
+      <dt>{{ _('Left') }}</dt><dd>{{ member.left_date or '—' }}</dd>
+    </dl>
+  </div>
+
+  {% if member.short_bio or member.long_bio %}
+  <div class="detail-section" style="grid-column: 1 / -1">
+    <h3 class="detail-section__title">{{ _('Bio') }}</h3>
+    {% if member.short_bio %}<p><em>{{ member.short_bio }}</em></p>{% endif %}
+    {% if member.long_bio %}<p style="margin-top:.5rem;white-space:pre-wrap">{{ member.long_bio }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if member.expertise_areas %}
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Expertise areas') }}</h3>
+    <div>
+      {% for tag in member.expertise_areas.split(';') %}
+        <span class="badge badge--reader" style="margin:.1rem">{{ tag.strip() }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if member.has_competing_interests == 'true' %}
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Competing interests') }}</h3>
+    <p>{{ member.competing_interests_text or '—' }}</p>
+  </div>
+  {% endif %}
+
+  {% if member.get('notes') and session.get('role') in ('admin','editor') %}
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Internal notes') }}</h3>
+    <p class="text-muted">{{ member.notes }}</p>
+  </div>
+  {% endif %}
+
+  {% if member.linked_username %}
+  <div class="detail-section">
+    <h3 class="detail-section__title">{{ _('Linked account') }}</h3>
+    <p><code>{{ member.linked_username }}</code></p>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Affiliations ──────────────────────────────────────────────────────────── #}
+<div class="admin-section" style="margin-top:1.5rem">
+  <div class="admin-section__header">
+    <h2>{{ _('Affiliations') }}</h2>
+    {% if session.get('role') in ('admin','editor') and available_affs %}
+      <button onclick="document.getElementById('add-aff-dialog').showModal()" class="btn btn--primary btn--sm">
+        + {{ _('Add affiliation') }}
+      </button>
+    {% endif %}
+  </div>
+
+  {% if affiliations %}
+  <ol class="aff-list">
+    {% for aff in affiliations %}
+    <li class="aff-list__item">
+      <div class="aff-list__info">
+        <strong>{{ aff.short_name }}</strong> — {{ aff.full_name }}
+        {% if aff.city %}, {{ aff.city }}{% endif %}
+        {% if aff.country %}, {{ aff.country }}{% endif %}
+      </div>
+      {% if session.get('role') in ('admin','editor') %}
+      <div class="aff-list__actions">
+        <form method="POST" action="{{ url_for('manuscriptforge.affiliation_priority_up', member_id=member.member_id, affiliation_id=aff.affiliation_id) }}" style="display:inline">
+          <button type="submit" class="btn btn--sm" title="{{ _('Move up') }}">▲</button>
+        </form>
+        <form method="POST" action="{{ url_for('manuscriptforge.affiliation_priority_down', member_id=member.member_id, affiliation_id=aff.affiliation_id) }}" style="display:inline">
+          <button type="submit" class="btn btn--sm" title="{{ _('Move down') }}">▼</button>
+        </form>
+        <form method="POST" action="{{ url_for('manuscriptforge.remove_affiliation_from_member', member_id=member.member_id, affiliation_id=aff.affiliation_id) }}"
+              style="display:inline" onsubmit="return confirm('{{ _('Remove this affiliation?') }}')">
+          <button type="submit" class="btn btn--sm btn--danger">{{ _('Remove') }}</button>
+        </form>
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="text-muted">{{ _('No affiliations assigned yet.') }}</p>
+  {% endif %}
+</div>
+
+{# ── Add affiliation dialog ────────────────────────────────────────────────── #}
+{% if session.get('role') in ('admin','editor') and available_affs %}
+<dialog id="add-aff-dialog" class="mf-dialog">
+  <form method="POST" action="{{ url_for('manuscriptforge.add_affiliation_to_member', member_id=member.member_id) }}">
+    <h3>{{ _('Add affiliation') }}</h3>
+    <div class="form-group" style="margin-top:1rem">
+      <label class="form-label">{{ _('Affiliation') }}</label>
+      <select name="affiliation_id" class="form-input" required>
+        <option value="">—</option>
+        {% for aff in available_affs %}
+        <option value="{{ aff.affiliation_id }}">{{ aff.short_name }} — {{ aff.city }}, {{ aff.country }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ _('Add') }}</button>
+      <button type="button" class="btn btn--secondary" onclick="document.getElementById('add-aff-dialog').close()">{{ _('Cancel') }}</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

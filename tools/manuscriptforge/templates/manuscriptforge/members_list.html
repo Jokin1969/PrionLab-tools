@@ -1,0 +1,70 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Members') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="admin-section">
+  <div class="admin-section__header">
+    <h2>{{ _('Members') }}</h2>
+    {% if session.get('role') in ('admin', 'editor') %}
+      <a href="{{ url_for('manuscriptforge.new_member') }}" class="btn btn--primary btn--sm">+ {{ _('Add member') }}</a>
+    {% endif %}
+  </div>
+
+  {# Filters #}
+  <form method="GET" class="filter-bar">
+    <select name="status" class="form-input filter-bar__select" onchange="this.form.submit()">
+      <option value="all"                    {{ 'selected' if status_filter == 'all' }}>{{ _('All statuses') }}</option>
+      <option value="active"                 {{ 'selected' if status_filter == 'active' }}>{{ _('Active') }}</option>
+      <option value="alumni"                 {{ 'selected' if status_filter == 'alumni' }}>{{ _('Alumni') }}</option>
+      <option value="visiting"               {{ 'selected' if status_filter == 'visiting' }}>{{ _('Visiting') }}</option>
+      <option value="collaborator_external"  {{ 'selected' if status_filter == 'collaborator_external' }}>{{ _('External collaborator') }}</option>
+    </select>
+    <input type="text" name="q" value="{{ search }}" placeholder="{{ _('Search name or email…') }}"
+           class="form-input filter-bar__search" />
+    <button type="submit" class="btn btn--secondary btn--sm">{{ _('Search') }}</button>
+    {% if search or status_filter != 'active' %}
+      <a href="{{ url_for('manuscriptforge.members_list') }}" class="btn btn--sm">✕</a>
+    {% endif %}
+  </form>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('Display name') }}</th>
+          <th>{{ _('Email') }}</th>
+          <th>{{ _('Position') }}</th>
+          <th>{{ _('Status') }}</th>
+          <th>{{ _('Corresponding') }}</th>
+          <th>{{ _('Actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td><strong>{{ m.display_name }}</strong><br><small class="text-muted">{{ m.first_name }} {{ m.last_name }}</small></td>
+          <td>{{ m.email }}</td>
+          <td>{{ m.current_position or '—' }}</td>
+          <td><span class="badge badge--status-{{ m.status }}">{{ m.status }}</span></td>
+          <td class="text-center">{{ '✓' if m.is_corresponding_default == 'true' else '' }}</td>
+          <td class="actions-cell">
+            <a href="{{ url_for('manuscriptforge.member_detail', member_id=m.member_id) }}" class="btn btn--sm btn--secondary">{{ _('View') }}</a>
+            {% if session.get('role') in ('admin', 'editor') %}
+              <a href="{{ url_for('manuscriptforge.edit_member', member_id=m.member_id) }}" class="btn btn--sm">{{ _('Edit') }}</a>
+            {% endif %}
+            {% if session.get('role') == 'admin' %}
+              <form method="POST" action="{{ url_for('manuscriptforge.delete_member_route', member_id=m.member_id) }}"
+                    style="display:inline" onsubmit="return confirm('{{ _('Delete member') }} {{ m.display_name }}?')">
+                <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted">{{ _('No members found.') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

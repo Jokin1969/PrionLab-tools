@@ -45,9 +45,14 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("DB init failed: %s", e)
 
-    # Pull CSVs from Dropbox (non-fatal), then bootstrap admin if needed
+    # Pull CSVs from Dropbox, bootstrap admin user, ensure CSV schemas exist
     initial_sync()
     bootstrap_admin_user()
+    try:
+        from tools.manuscriptforge.models import bootstrap_schema
+        bootstrap_schema()
+    except Exception as e:
+        app.logger.warning("CSV schema bootstrap failed: %s", e)
 
     # ── Babel / i18n ────────────────────────────────────────────────────────
 
@@ -96,6 +101,9 @@ def create_app() -> Flask:
     from tools.admin import admin_bp
     app.register_blueprint(admin_bp)
 
+    from tools.manuscriptforge import manuscriptforge_bp
+    app.register_blueprint(manuscriptforge_bp)
+
     # ── Routes ───────────────────────────────────────────────────────────────
 
     @app.route("/")
@@ -110,11 +118,6 @@ def create_app() -> Flask:
             "dropbox": config.dropbox_configured(),
             "smtp": config.smtp_configured(),
         })
-
-    @app.route("/tools/manuscriptforge/")
-    @login_required
-    def manuscriptforge_placeholder():
-        return render_template("tools_coming_soon.html", tool_name="ManuscriptForge")
 
     @app.errorhandler(404)
     def not_found(e):

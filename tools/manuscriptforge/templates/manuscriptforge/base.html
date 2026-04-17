@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <h1>ManuscriptForge</h1>
+  <p class="page-subtitle">{{ _('Automate boilerplate sections of research manuscripts.') }}</p>
+</div>
+
+<nav class="subnav">
+  <a href="{{ url_for('manuscriptforge.home') }}"
+     class="subnav__link {% if request.endpoint == 'manuscriptforge.home' %}active{% endif %}">
+    {{ _('Overview') }}
+  </a>
+  <a href="{{ url_for('manuscriptforge.members_list') }}"
+     class="subnav__link {% if 'member' in request.endpoint %}active{% endif %}">
+    {{ _('Members') }}
+  </a>
+  <a href="{{ url_for('manuscriptforge.affiliations_list') }}"
+     class="subnav__link {% if 'affiliation' in request.endpoint %}active{% endif %}">
+    {{ _('Affiliations') }}
+  </a>
+  <span class="subnav__link subnav__link--disabled">
+    {{ _('Generate section') }} <span class="badge badge--reader" style="font-size:0.65rem">{{ _('Coming soon') }}</span>
+  </span>
+</nav>
+
+{% block mf_content %}{% endblock %}
+{% endblock %}

@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PrionLab-tools 0.2.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2024-01-01 00:00+0000\n"
+"POT-Creation-Date: 2026-04-17 16:20+0000\n"
 "PO-Revision-Date: 2024-01-01 00:00+0000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: es\n"
@@ -13,220 +13,745 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.x\n"
+"Generated-By: Babel 2.18.0\n"
 
+#: core/auth.py:118
 msgid "Incorrect username or password."
 msgstr "Usuario o contraseña incorrectos."
 
+#: templates/base.html:39
 msgid "Admin"
 msgstr "Admin"
 
+#: templates/base.html:41
 msgid "Log out"
 msgstr "Cerrar sesión"
 
+#: templates/base.html:45 templates/login.html:3
 msgid "Login"
 msgstr "Iniciar sesión"
 
+#: templates/base.html:68
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:30
 msgid "Contact"
 msgstr "Contacto"
 
+#: templates/home.html:8 templates/login.html:9
 msgid "Internal tools for the prion research group"
 msgstr "Herramientas internas del grupo de investigación en priones"
 
+#: templates/home.html:18
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:6
 msgid "Automate boilerplate sections of research manuscripts."
 msgstr "Automatiza las secciones estándar de manuscritos de investigación."
 
-msgid "Coming soon"
-msgstr "Próximamente"
-
+#: templates/admin/index.html:32 templates/admin/user_form.html:17
+#: templates/login.html:19
 msgid "Username"
 msgstr "Usuario"
 
+#: templates/admin/user_form.html:67 templates/login.html:25
 msgid "Password"
 msgstr "Contraseña"
 
+#: templates/login.html:30
 msgid "Sign in"
 msgstr "Iniciar sesión"
 
+#: templates/tools_coming_soon.html:9
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:23
+msgid "Coming soon"
+msgstr "Próximamente"
+
+#: templates/tools_coming_soon.html:10
 msgid "This tool is under development and will be available soon."
 msgstr "Esta herramienta está en desarrollo y estará disponible próximamente."
 
+#: templates/errors/404.html:7 templates/errors/500.html:7
+#: templates/tools_coming_soon.html:11
 msgid "Back to Home"
 msgstr "Volver al inicio"
 
+#: templates/admin/index.html:3 templates/admin/index.html:7
 msgid "Admin Panel"
 msgstr "Panel de administración"
 
+#: templates/admin/index.html:14
 msgid "New password:"
 msgstr "Nueva contraseña:"
 
+#: templates/admin/index.html:16
 msgid "Copy this password now — it will not be shown again."
 msgstr "Copia esta contraseña ahora; no se mostrará de nuevo."
 
+#: templates/admin/index.html:24
 msgid "Users"
 msgstr "Usuarios"
 
+#: templates/admin/index.html:25
 msgid "Add user"
 msgstr "Añadir usuario"
 
+#: templates/admin/index.html:33 templates/admin/user_form.html:27
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:29
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:28
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:27
 msgid "Full name"
 msgstr "Nombre completo"
 
+#: templates/admin/index.html:34 templates/admin/user_form.html:33
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:32
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:32
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:35
 msgid "Email"
 msgstr "Correo electrónico"
 
+#: templates/admin/index.html:35 templates/admin/user_form.html:40
 msgid "Role"
 msgstr "Rol"
 
+#: templates/admin/index.html:36 templates/admin/user_form.html:49
 msgid "Language"
 msgstr "Idioma"
 
+#: templates/admin/index.html:37 templates/admin/user_form.html:61
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:17
 msgid "Active"
 msgstr "Activo"
 
+#: templates/admin/index.html:38
 msgid "Last login"
 msgstr "Último acceso"
 
+#: templates/admin/index.html:39
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:31
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:39
 msgid "Actions"
 msgstr "Acciones"
 
+#: templates/admin/index.html:56
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:12
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:45
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:16
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:53
 msgid "Edit"
 msgstr "Editar"
 
+#: templates/admin/index.html:61
 msgid "Reset password for"
 msgstr "Restablecer contraseña de"
 
+#: templates/admin/index.html:62
 msgid "Reset password"
 msgstr "Restablecer contraseña"
 
+#: templates/admin/index.html:69
 msgid "Deactivate"
 msgstr "Desactivar"
 
+#: templates/admin/index.html:69
 msgid "Activate"
 msgstr "Activar"
 
+#: templates/admin/index.html:77
 msgid "Are you sure you want to delete this user?"
 msgstr "¿Estás seguro de que quieres eliminar este usuario?"
 
+#: templates/admin/index.html:78 templates/admin/index.html:82
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:17
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:51
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:21
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:58
 msgid "Delete"
 msgstr "Eliminar"
 
+#: templates/admin/index.html:82 tools/admin/__init__.py:166
 msgid "Cannot delete this user."
 msgstr "No se puede eliminar este usuario."
 
+#: templates/admin/index.html:96
 msgid "System"
 msgstr "Sistema"
 
+#: templates/admin/index.html:100
 msgid "Dropbox status"
 msgstr "Estado de Dropbox"
 
+#: templates/admin/index.html:102
 msgid "Connected"
 msgstr "Conectado"
 
+#: templates/admin/index.html:102 templates/admin/index.html:109
 msgid "Not configured"
 msgstr "No configurado"
 
+#: templates/admin/index.html:107
 msgid "SMTP status"
 msgstr "Estado de SMTP"
 
+#: templates/admin/index.html:109
 msgid "Configured"
 msgstr "Configurado"
 
+#: templates/admin/index.html:114
 msgid "Last sync"
 msgstr "Última sincronización"
 
+#: templates/admin/index.html:115
 msgid "Never"
 msgstr "Nunca"
 
+#: templates/admin/index.html:119
 msgid "Disk usage"
 msgstr "Espacio en disco"
 
+#: templates/admin/index.html:124
 msgid "App version"
 msgstr "Versión de la aplicación"
 
+#: templates/admin/index.html:131
 msgid "Force sync"
 msgstr "Forzar sincronización"
 
+#: templates/admin/index.html:134
 msgid "Send test email"
 msgstr "Enviar correo de prueba"
 
+#: templates/admin/index.html:142
 msgid "Recent logs"
 msgstr "Registros recientes"
 
+#: templates/admin/index.html:143
 msgid "Refresh"
 msgstr "Actualizar"
 
+#: templates/admin/user_form.html:4 templates/admin/user_form.html:9
 msgid "Edit user"
 msgstr "Editar usuario"
 
+#: templates/admin/user_form.html:4 templates/admin/user_form.html:9
 msgid "New user"
 msgstr "Nuevo usuario"
 
+#: templates/admin/user_form.html:44
 msgid "Reader"
 msgstr "Lector"
 
+#: templates/admin/user_form.html:72
 msgid "Leave blank to keep current password"
 msgstr "Deja en blanco para mantener la contraseña actual"
 
+#: templates/admin/user_form.html:77
 msgid "Confirm password"
 msgstr "Confirmar contraseña"
 
+#: templates/admin/user_form.html:84
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:77
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:143
 msgid "Save"
 msgstr "Guardar"
 
+#: templates/admin/user_form.html:85
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:79
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:81
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:148
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:145
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:147
 msgid "Cancel"
 msgstr "Cancelar"
 
+#: templates/errors/404.html:6
 msgid "Page not found."
 msgstr "Página no encontrada."
 
+#: templates/errors/500.html:6
 msgid "An internal error occurred. Please try again later."
 msgstr "Se ha producido un error interno. Por favor, inténtalo de nuevo más tarde."
 
+#: tools/admin/__init__.py:97
 msgid "Password is required for new users."
 msgstr "La contraseña es obligatoria para los nuevos usuarios."
 
+#: tools/admin/__init__.py:100 tools/admin/__init__.py:151
 msgid "Passwords do not match."
 msgstr "Las contraseñas no coinciden."
 
+#: tools/admin/__init__.py:103
 msgid "Username already exists."
 msgstr "El nombre de usuario ya existe."
 
+#: tools/admin/__init__.py:118
 msgid "User created successfully."
 msgstr "Usuario creado correctamente."
 
+#: tools/admin/__init__.py:129 tools/admin/__init__.py:171
+#: tools/admin/__init__.py:180 tools/admin/__init__.py:196
 msgid "User not found."
 msgstr "Usuario no encontrado."
 
+#: tools/admin/__init__.py:156
 msgid "User updated successfully."
 msgstr "Usuario actualizado correctamente."
 
+#: tools/admin/__init__.py:169
 msgid "User deleted successfully."
 msgstr "Usuario eliminado correctamente."
 
+#: tools/admin/__init__.py:185
 msgid "User activated."
 msgstr "Usuario activado."
 
+#: tools/admin/__init__.py:187
 msgid "User deactivated."
 msgstr "Usuario desactivado."
 
+#: tools/admin/__init__.py:202
+msgid ""
+"Password reset. Copy the password shown above — it will not be displayed "
+"again."
+msgstr ""
+"Contraseña restablecida. Copia la contraseña mostrada arriba; no se "
+"volverá a mostrar."
+
+#: tools/admin/__init__.py:216
+#, python-format
 msgid "Sync completed: %(n)d file(s) updated."
 msgstr "Sincronización completada: %(n)d archivo(s) actualizado(s)."
 
+#: tools/admin/__init__.py:218
 msgid "Sync completed. All files are up to date."
 msgstr "Sincronización completada. Todos los archivos están al día."
 
+#: tools/admin/__init__.py:234
 msgid "Test email sent successfully."
 msgstr "Correo de prueba enviado correctamente."
 
+#: tools/admin/__init__.py:236
 msgid "Failed to send test email."
 msgstr "No se pudo enviar el correo de prueba."
 
-msgid "Password reset. Copy the password shown above — it will not be displayed again."
-msgstr "Contraseña restablecida. Copia la contraseña mostrada arriba; no se volverá a mostrar."
+#: tools/manuscriptforge/routes.py:124 tools/manuscriptforge/routes.py:175
+#: tools/manuscriptforge/routes.py:204
+msgid "Member not found."
+msgstr "Miembro no encontrado."
 
-msgid "Unauthorized. Admin access required."
-msgstr "Acceso no autorizado. Se requiere rol de administrador."
+#: tools/manuscriptforge/routes.py:163
+msgid "Member created successfully."
+msgstr "Miembro creado correctamente."
 
-msgid "Unauthorized. Editor access required."
-msgstr "Acceso no autorizado. Se requiere rol de editor."
+#: tools/manuscriptforge/routes.py:190
+msgid "Member updated successfully."
+msgstr "Miembro actualizado correctamente."
+
+#: tools/manuscriptforge/routes.py:202
+msgid "Member deleted successfully."
+msgstr "Miembro eliminado correctamente."
+
+#: tools/manuscriptforge/routes.py:215
+msgid "Please select an affiliation."
+msgstr "Selecciona una afiliación."
+
+#: tools/manuscriptforge/routes.py:218
+msgid "Affiliation added."
+msgstr "Afiliación añadida."
+
+#: tools/manuscriptforge/routes.py:226
+msgid "Affiliation removed."
+msgstr "Afiliación eliminada."
+
+#: tools/manuscriptforge/routes.py:271 tools/manuscriptforge/routes.py:305
+msgid "Affiliation not found."
+msgstr "Afiliación no encontrada."
+
+#: tools/manuscriptforge/routes.py:293
+msgid "Affiliation created successfully."
+msgstr "Afiliación creada correctamente."
+
+#: tools/manuscriptforge/routes.py:318
+msgid "Affiliation updated successfully."
+msgstr "Afiliación actualizada correctamente."
+
+#: tools/manuscriptforge/routes.py:333
+msgid "Affiliation deleted successfully."
+msgstr "Afiliación eliminada correctamente."
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:16
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:49
+msgid "Delete this affiliation?"
+msgstr "¿Eliminar esta afiliación?"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:20
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:24
+msgid "Back"
+msgstr "Atrás"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:26
+msgid "Name"
+msgstr "Nombre"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:28
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:12
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:26
+msgid "Short name"
+msgstr "Nombre corto"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:30
+msgid "Department"
+msgstr "Departamento"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:35
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:40
+msgid "Address"
+msgstr "Dirección"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:37
+msgid "Street"
+msgstr "Calle"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:38
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:47
+msgid "Postal code"
+msgstr "Código postal"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:39
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:52
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:28
+msgid "City"
+msgstr "Ciudad"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:40
+msgid "Region"
+msgstr "Región"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:41
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:65
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:29
+msgid "Country"
+msgstr "País"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:47
+msgid "Notes"
+msgstr "Notas"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:53
+msgid "Created"
+msgstr "Creado"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:53
+msgid "Updated"
+msgstr "Actualizado"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:59
+msgid "Linked members"
+msgstr "Miembros vinculados"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:65
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:24
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:34
+msgid "Display name"
+msgstr "Nombre para mostrar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:66
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:55
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:37
+msgid "Status"
+msgstr "Estado"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:67
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:34
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:63
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:36
+msgid "Position"
+msgstr "Cargo"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:78
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:43
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:51
+msgid "View"
+msgstr "Ver"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_detail.html:86
+msgid "No members linked to this affiliation."
+msgstr "No hay miembros vinculados a esta afiliación."
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:6
+msgid "Edit affiliation"
+msgstr "Editar afiliación"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:6
+msgid "New affiliation"
+msgstr "Nueva afiliación"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:18
+msgid "Country code"
+msgstr "Código de país"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:34
+msgid "Department / Unit"
+msgstr "Departamento / Unidad"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:60
+msgid "Region / Province"
+msgstr "Región / Provincia"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliation_form.html:72
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:77
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:136
+msgid "Internal notes"
+msgstr "Notas internas"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:7
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:20
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:17
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:93
+msgid "Affiliations"
+msgstr "Afiliaciones"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:9
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:96
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:136
+msgid "Add affiliation"
+msgstr "Añadir afiliación"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:14
+msgid "Search name or city…"
+msgstr "Buscar nombre o ciudad…"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:16
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:24
+msgid "Search"
+msgstr "Buscar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:30
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:16
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:12
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:7
+msgid "Members"
+msgstr "Miembros"
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:51
+msgid "Remove all linked members first."
+msgstr "Elimina primero todos los miembros vinculados."
+
+#: tools/manuscriptforge/templates/manuscriptforge/affiliations_list.html:57
+msgid "No affiliations found."
+msgstr "No se han encontrado afiliaciones."
+
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:12
+msgid "Overview"
+msgstr "Resumen"
+
+#: tools/manuscriptforge/templates/manuscriptforge/base.html:23
+msgid "Generate section"
+msgstr "Generar sección"
+
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:7
+msgid ""
+"ManuscriptForge helps the team build the standard sections of research "
+"manuscripts: author lists, affiliations, funding, acknowledgements, and "
+"declarations. Manage the group directory here, then generate ready-to-"
+"paste text for any manuscript."
+msgstr ""
+"ManuscriptForge ayuda al equipo a construir las secciones estándar de los "
+"manuscritos de investigación: listas de autores, afiliaciones, financiación, "
+"agradecimientos y declaraciones. Gestiona aquí el directorio del grupo y "
+"genera texto listo para pegar en cualquier manuscrito."
+
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:14
+msgid "View members"
+msgstr "Ver miembros"
+
+#: tools/manuscriptforge/templates/manuscriptforge/home.html:19
+msgid "View affiliations"
+msgstr "Ver afiliaciones"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:11
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:38
+msgid "Corresponding"
+msgstr "Correspondiente"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:20
+msgid "Delete this member?"
+msgstr "¿Eliminar este miembro?"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:42
+msgid "Dates"
+msgstr "Fechas"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:44
+msgid "Joined"
+msgstr "Incorporación"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:45
+msgid "Left"
+msgstr "Salida"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:51
+msgid "Bio"
+msgstr "Biografía"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:59
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:104
+msgid "Expertise areas"
+msgstr "Áreas de especialización"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:70
+msgid "Competing interests"
+msgstr "Conflictos de interés"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:84
+msgid "Linked account"
+msgstr "Cuenta vinculada"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:113
+msgid "Move up"
+msgstr "Subir"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:116
+msgid "Move down"
+msgstr "Bajar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:119
+msgid "Remove this affiliation?"
+msgstr "¿Quitar esta afiliación?"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:120
+msgid "Remove"
+msgstr "Quitar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:128
+msgid "No affiliations assigned yet."
+msgstr "Aún no hay afiliaciones asignadas."
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:138
+msgid "Affiliation"
+msgstr "Afiliación"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:147
+msgid "Add"
+msgstr "Añadir"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:6
+msgid "Edit member"
+msgstr "Editar miembro"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:2
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:6
+msgid "New member"
+msgstr "Nuevo miembro"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:12
+msgid "First name"
+msgstr "Nombre"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:17
+msgid "Last name"
+msgstr "Apellidos"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:27
+msgid ""
+"How this person appears in author lists. E.g. \"J. Castilla\" or "
+"\"Joaquín Castilla\"."
+msgstr ""
+"Cómo aparece esta persona en las listas de autores. P. ej. \"J. Castilla\" o "
+"\"Joaquín Castilla\"."
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:46
+msgid "Passport"
+msgstr "Pasaporte / DNI"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:49
+msgid "Sensitive — not visible to readers."
+msgstr "Sensible — no visible para lectores."
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:72
+msgid "Joined date"
+msgstr "Fecha de incorporación"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:77
+msgid "Left date"
+msgstr "Fecha de salida"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:87
+msgid "Default corresponding author"
+msgstr "Autor de correspondencia por defecto"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:92
+msgid "Short bio"
+msgstr "Biografía breve"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:94
+msgid "1–2 sentences, ~200 chars"
+msgstr "1–2 frases, ~200 caracteres"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:99
+msgid "Long bio"
+msgstr "Biografía extensa"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:106
+msgid "Semicolon-separated: biochemistry;cell_culture"
+msgstr "Separado por punto y coma: bioquímica;cultivo_celular"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:116
+msgid "Has competing interests"
+msgstr "Tiene conflictos de interés"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:121
+msgid "Competing interests declaration"
+msgstr "Declaración de conflictos de interés"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:128
+msgid "Linked username"
+msgstr "Usuario vinculado"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:130
+msgid "Username in this app (optional)"
+msgstr "Usuario en esta aplicación (opcional)"
+
+#: tools/manuscriptforge/templates/manuscriptforge/member_form.html:138
+msgid "Not exported to manuscripts."
+msgstr "No se exporta a los manuscritos."
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:9
+msgid "Add member"
+msgstr "Añadir miembro"
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:16
+msgid "All statuses"
+msgstr "Todos los estados"
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:18
+msgid "Alumni"
+msgstr "Alumni"
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:19
+msgid "Visiting"
+msgstr "Visitante"
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:20
+msgid "External collaborator"
+msgstr "Colaborador externo"
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:22
+msgid "Search name or email…"
+msgstr "Buscar nombre o correo…"
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:57
+msgid "Delete member"
+msgstr "Eliminar miembro"
+
+#: tools/manuscriptforge/templates/manuscriptforge/members_list.html:64
+msgid "No members found."
+msgstr "No se han encontrado miembros."
+
+#~ msgid "Unauthorized. Admin access required."
+#~ msgstr "Acceso no autorizado. Se requiere rol de administrador."
+
+#~ msgid "Unauthorized. Editor access required."
+#~ msgstr "Acceso no autorizado. Se requiere rol de editor."
+

@@ -524,4 +524,106 @@ select.form-input { cursor: pointer; }
   .system-grid { grid-template-columns: 1fr 1fr; }
   .header-right { gap: 0.4rem; }
   .actions-cell { flex-direction: column; align-items: flex-start; }
+  .detail-grid { grid-template-columns: 1fr; }
 }
+
+/* ── ManuscriptForge — sub-nav ────────────── */
+.subnav {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--color-border);
+  margin-bottom: 1.75rem;
+  flex-wrap: wrap;
+}
+.subnav__link {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.subnav__link:hover { color: var(--color-text); text-decoration: none; }
+.subnav__link.active { color: var(--color-accent); border-bottom-color: var(--color-accent); font-weight: 600; }
+.subnav__link--disabled { opacity: 0.5; cursor: default; }
+
+/* ── Filter bar ──────────────────────────── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.filter-bar__select { width: auto; max-width: 200px; }
+.filter-bar__search { flex: 1; min-width: 160px; }
+
+/* ── Detail view ─────────────────────────── */
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.detail-title { font-size: 1.4rem; font-weight: 700; color: var(--color-accent); }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+.detail-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+.detail-section__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-bottom: 0.75rem;
+}
+.detail-dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; font-size: 0.875rem; }
+.detail-dl dt { color: var(--color-text-muted); white-space: nowrap; }
+.detail-dl dd { word-break: break-word; }
+
+/* ── Status badges ───────────────────────── */
+.badge--status-active             { background: #E6F7EC; color: #1A7A3A; }
+.badge--status-alumni             { background: #EFEFEF; color: #555; }
+.badge--status-visiting           { background: #E6F0FF; color: #1A5A9A; }
+.badge--status-collaborator_external { background: #FFF0E0; color: #B05010; }
+
+/* ── Affiliation list in member detail ───── */
+.aff-list { list-style: none; padding: 0; }
+.aff-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--color-border);
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.aff-list__item:last-child { border-bottom: none; }
+.aff-list__info { flex: 1; font-size: 0.9rem; }
+.aff-list__actions { display: flex; gap: 0.3rem; }
+
+/* ── Native dialog ───────────────────────── */
+.mf-dialog {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  padding: 1.5rem;
+  min-width: 320px;
+  max-width: 480px;
+}
+.mf-dialog::backdrop { background: rgba(0,0,0,0.4); }
+.mf-dialog h3 { font-size: 1rem; font-weight: 700; color: var(--color-accent); }

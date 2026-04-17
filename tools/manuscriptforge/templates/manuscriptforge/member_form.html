@@ -1,0 +1,163 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Edit member') if mode == 'edit' else _('New member') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<div class="form-card" style="max-width:680px">
+  <h2>{{ _('Edit member') if mode == 'edit' else _('New member') }}</h2>
+
+  <form method="POST" class="form-stacked" style="margin-top:1.25rem">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('First name') }} *</label>
+        <input type="text" name="first_name" class="form-input" required
+               value="{{ form.get('first_name', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Last name') }} *</label>
+        <input type="text" name="last_name" class="form-input" required
+               value="{{ form.get('last_name', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Display name') }} *</label>
+      <input type="text" name="display_name" class="form-input" required
+             value="{{ form.get('display_name', '') }}" />
+      <p class="form-hint">{{ _('How this person appears in author lists. E.g. "J. Castilla" or "Joaquín Castilla".') }}</p>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Email') }} *</label>
+        <input type="email" name="email" class="form-input" required
+               value="{{ form.get('email', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">ORCID</label>
+        <input type="text" name="orcid" class="form-input"
+               placeholder="0000-0000-0000-0000"
+               value="{{ form.get('orcid', '') }}" />
+      </div>
+    </div>
+
+    {% if session.get('role') in ('admin', 'editor') %}
+    <div class="form-group">
+      <label class="form-label">DNI / NIE / {{ _('Passport') }}</label>
+      <input type="text" name="dni" class="form-input"
+             value="{{ form.get('dni', '') }}" />
+      <p class="form-hint">{{ _('Sensitive — not visible to readers.') }}</p>
+    </div>
+    {% endif %}
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Status') }} *</label>
+        <select name="status" class="form-input" required>
+          {% for s in ['active','alumni','visiting','collaborator_external'] %}
+          <option value="{{ s }}" {{ 'selected' if form.get('status', 'active') == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Position') }}</label>
+        <input type="text" name="current_position" class="form-input"
+               placeholder="PI, Postdoc, PhD student…"
+               value="{{ form.get('current_position', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ _('Joined date') }}</label>
+        <input type="date" name="joined_date" class="form-input"
+               value="{{ form.get('joined_date', '') }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Left date') }}</label>
+        <input type="date" name="left_date" class="form-input"
+               value="{{ form.get('left_date', '') }}" />
+      </div>
+    </div>
+
+    <div class="form-group form-group--inline">
+      <input type="checkbox" id="is_corresponding_default" name="is_corresponding_default"
+             class="form-checkbox" {{ 'checked' if form.get('is_corresponding_default') == 'true' }} />
+      <label for="is_corresponding_default" class="form-label form-label--inline">
+        {{ _('Default corresponding author') }}
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Short bio') }}</label>
+      <input type="text" name="short_bio" class="form-input"
+             placeholder="{{ _('1–2 sentences, ~200 chars') }}"
+             value="{{ form.get('short_bio', '') }}" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Long bio') }}</label>
+      <textarea name="long_bio" class="form-input" rows="4">{{ form.get('long_bio', '') }}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Expertise areas') }}</label>
+      <input type="text" name="expertise_areas" class="form-input"
+             placeholder="{{ _('Semicolon-separated: biochemistry;cell_culture') }}"
+             value="{{ form.get('expertise_areas', '') }}" />
+    </div>
+
+    <hr class="form-divider" />
+
+    <div class="form-group form-group--inline">
+      <input type="checkbox" id="has_competing_interests" name="has_competing_interests"
+             class="form-checkbox" {{ 'checked' if form.get('has_competing_interests') == 'true' }} />
+      <label for="has_competing_interests" class="form-label form-label--inline">
+        {{ _('Has competing interests') }}
+      </label>
+    </div>
+
+    <div id="ci_text_group" class="form-group" style="display:none">
+      <label class="form-label">{{ _('Competing interests declaration') }} *</label>
+      <textarea name="competing_interests_text" class="form-input" rows="3">{{ form.get('competing_interests_text', '') }}</textarea>
+    </div>
+
+    <hr class="form-divider" />
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Linked username') }}</label>
+      <input type="text" name="linked_username" class="form-input"
+             placeholder="{{ _('Username in this app (optional)') }}"
+             value="{{ form.get('linked_username', '') }}" />
+    </div>
+
+    {% if session.get('role') in ('admin', 'editor') %}
+    <div class="form-group">
+      <label class="form-label">{{ _('Internal notes') }}</label>
+      <textarea name="notes" class="form-input" rows="2">{{ form.get('notes', '') }}</textarea>
+      <p class="form-hint">{{ _('Not exported to manuscripts.') }}</p>
+    </div>
+    {% endif %}
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ _('Save') }}</button>
+      {% if mode == 'edit' %}
+        <a href="{{ url_for('manuscriptforge.member_detail', member_id=member.member_id) }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+      {% else %}
+        <a href="{{ url_for('manuscriptforge.members_list') }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+      {% endif %}
+    </div>
+
+  </form>
+</div>
+
+<script>
+(function () {
+  const cb = document.getElementById('has_competing_interests');
+  const grp = document.getElementById('ci_text_group');
+  function sync() { grp.style.display = cb.checked ? '' : 'none'; }
+  cb.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endblock %}

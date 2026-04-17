@@ -1,0 +1,23 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}ManuscriptForge — PrionLab Tools{% endblock %}
+
+{% block mf_content %}
+<div class="mf-overview">
+  <p class="mf-overview__desc">
+    {{ _('ManuscriptForge helps the team build the standard sections of research manuscripts: author lists, affiliations, funding, acknowledgements, and declarations. Manage the group directory here, then generate ready-to-paste text for any manuscript.') }}
+  </p>
+
+  <div class="system-grid" style="margin-top:1.5rem">
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Members') }}</div>
+      <div class="system-card__value" style="font-size:1.5rem;font-weight:700">{{ member_count }}</div>
+      <a href="{{ url_for('manuscriptforge.members_list') }}" class="btn btn--secondary btn--sm" style="margin-top:0.75rem">{{ _('View members') }}</a>
+    </div>
+    <div class="system-card">
+      <div class="system-card__label">{{ _('Affiliations') }}</div>
+      <div class="system-card__value" style="font-size:1.5rem;font-weight:700">{{ affiliation_count }}</div>
+      <a href="{{ url_for('manuscriptforge.affiliations_list') }}" class="btn btn--secondary btn--sm" style="margin-top:0.75rem">{{ _('View affiliations') }}</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
