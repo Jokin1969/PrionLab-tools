@@ -31,6 +31,7 @@ from .models import (
     generate_author_order,
     generate_funding,
     generate_acknowledgments,
+    generate_competing_interests,
 )
 from .validators import (
     validate_affiliation, validate_ack_block, validate_grant,
@@ -1032,6 +1033,24 @@ def generate_acknowledgments_route():
 
     try:
         result = generate_acknowledgments(block_ids)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify(result)
+
+
+@manuscriptforge_bp.route("/generate/competing-interests", methods=["POST"])
+@editor_required
+def generate_competing_interests_route():
+    raw_ids = request.form.getlist("member_ids")
+    member_ids = [mid.strip() for mid in raw_ids if mid and mid.strip()]
+    extended = request.form.get("extended_disclaimer") == "1"
+
+    if not member_ids:
+        return jsonify({"error": _("Please select at least one author.")}), 400
+
+    try:
+        result = generate_competing_interests(member_ids, extended_disclaimer=extended)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 

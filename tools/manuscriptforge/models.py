@@ -111,6 +111,7 @@ def bootstrap_schema() -> None:
     _seed_extra_member_affiliations()
     _seed_extra_ack_blocks()
     _patch_members_initials()
+    _patch_competing_interests()
     _bootstrap_papers_dir()
 
 
@@ -1579,3 +1580,191 @@ def _patch_members_initials() -> None:
     df = df[MEMBERS_COLS]
     _write(df, MEMBERS_FILE, "members.csv")
     logger.info("Patched initials for %d members", patched)
+
+
+# ── Competing-interests seed patch ────────────────────────────────────────────
+
+_ATLAS_CI_TEXT = "Employed by the commercial company ATLAS Molecular Pharma SL."
+
+_MEMBER_CI_PATCH = {
+    "m002": ("true", _ATLAS_CI_TEXT),
+    "m005": ("true", _ATLAS_CI_TEXT),
+}
+
+
+def _patch_competing_interests() -> None:
+    """Set has_competing_interests and competing_interests_text for ATLAS members."""
+    if not os.path.exists(MEMBERS_FILE):
+        return
+    try:
+        df = pd.read_csv(MEMBERS_FILE, dtype=str, keep_default_na=False)
+    except Exception:
+        return
+    if df.empty:
+        return
+
+    for col in ("has_competing_interests", "competing_interests_text"):
+        if col not in df.columns:
+            df[col] = ""
+
+    patched = 0
+    for mid, (has_ci, ci_text) in _MEMBER_CI_PATCH.items():
+        mask = (df["member_id"] == mid) & (
+            (df["has_competing_interests"].str.lower() != "true") |
+            (df["competing_interests_text"].str.strip() == "")
+        )
+        if mask.any():
+            df.loc[mask, "has_competing_interests"] = has_ci
+            df.loc[mask, "competing_interests_text"] = ci_text
+            patched += 1
+
+    if not patched:
+        logger.info("Competing interests already patched, skipping")
+        return
+
+    for col in MEMBERS_COLS:
+        if col not in df.columns:
+            df[col] = ""
+    df = df[MEMBERS_COLS]
+    _write(df, MEMBERS_FILE, "members.csv")
+    logger.info("Patched competing interests for %d ATLAS members", patched)
+
+
+# ── Competing Interests generation ────────────────────────────────────────────
+
+def _format_initials_list(initials: list[str]) -> str:
+    """Format a list of initials as 'A.', 'A. and B.' or 'A., B. and C.'"""
+    if not initials:
+        return ""
+    if len(initials) == 1:
+        return initials[0]
+    if len(initials) == 2:
+        return f"{initials[0]} and {initials[1]}"
+    return ", ".join(initials[:-1]) + f" and {initials[-1]}"
+
+
+def generate_competing_interests(
+    member_ids: list[str],
+    extended_disclaimer: bool = False,
+) -> dict:
+    """Build the Competing Interests section text for a manuscript.
+
+    Auto-detects which authors have competing interests from member data
+    (has_competing_interests + competing_interests_text). ATLAS Molecular
+    Pharma is the primary template; other conflict types fall back to a
+    generic per-author statement.
+
+    Returns a dict with: competing_interests_text, analysis,
+    template_used, extended_disclaimer.
+    Raises ValueError if input is invalid.
+    """
+    if not member_ids:
+        raise ValueError("At least one author must be selected.")
+
+    members_df = load_members()
+    known_ids = set(members_df["member_id"].tolist())
+    missing = [mid for mid in member_ids if mid not in known_ids]
+    if missing:
+        raise ValueError(f"Unknown member(s): {', '.join(missing)}")
+
+    with_conflicts: list[dict] = []
+    without_conflicts: list[dict] = []
+
+    for mid in member_ids:
+        row = members_df[members_df["member_id"] == mid].iloc[0].to_dict()
+        has_ci = str(row.get("has_competing_interests", "false")).lower() in ("true", "1", "yes")
+        initials = row.get("initials", "").strip()
+        display = (row.get("display_name") or "").strip() or \
+                  f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+        ci_text = row.get("competing_interests_text", "").strip()
+
+        if has_ci:
+            with_conflicts.append({
+                "member_id": mid,
+                "initials":  initials or display,
+                "display":   display,
+                "ci_text":   ci_text,
+            })
+        else:
+            without_conflicts.append({
+                "member_id": mid,
+                "initials":  initials or display,
+                "display":   display,
+            })
+
+    # Separate ATLAS authors from others
+    atlas_authors = [a for a in with_conflicts if "atlas" in a["ci_text"].lower()]
+    other_authors = [a for a in with_conflicts if "atlas" not in a["ci_text"].lower()]
+
+    disclaimer_base = (
+        "This does not alter our adherence to all Journal policies on sharing "
+        "data and materials and did not influence in any way the work reported "
+        "in this manuscript"
+    )
+    if extended_disclaimer:
+        disclaimer_base += (
+            ", given that the company had no role in study design, "
+            "funding, and data analysis"
+        )
+    disclaimer = disclaimer_base + "."
+
+    # ── Build text ────────────────────────────────────────────────────────────
+    if not with_conflicts:
+        text = "The authors declare that they have no competing interests."
+        template_used = "no_conflicts"
+
+    elif not without_conflicts and not other_authors:
+        # All selected authors are ATLAS employees
+        name_str = _format_initials_list([a["initials"] for a in atlas_authors])
+        if len(atlas_authors) == 1:
+            text = (f"The author {name_str} is employed by the commercial company "
+                    f"ATLAS Molecular Pharma SL. {disclaimer}")
+        else:
+            text = (f"Authors {name_str} are employed by the commercial company "
+                    f"ATLAS Molecular Pharma SL. {disclaimer}")
+        template_used = "atlas_only"
+
+    else:
+        # Mixed: some with conflicts, some without
+        parts: list[str] = []
+        if atlas_authors:
+            name_str = _format_initials_list([a["initials"] for a in atlas_authors])
+            if len(atlas_authors) == 1:
+                parts.append(f"Author {name_str} is employed by the commercial company "
+                             f"ATLAS Molecular Pharma SL")
+            else:
+                parts.append(f"Authors {name_str} are employed by the commercial company "
+                             f"ATLAS Molecular Pharma SL")
+        for a in other_authors:
+            stmt = a["ci_text"] if a["ci_text"] else f"has a competing interest"
+            parts.append(f"Author {a['initials']}: {stmt}")
+
+        text = ". ".join(parts) + f". {disclaimer}"
+        if without_conflicts:
+            text += " The rest of the authors declare that they have no competing interests."
+        template_used = "atlas_standard"
+
+    return {
+        "competing_interests_text": text,
+        "analysis": {
+            "with_conflicts": [
+                {
+                    "member_id":    a["member_id"],
+                    "initials":     a["initials"],
+                    "display":      a["display"],
+                    "conflict_type": a["ci_text"],
+                }
+                for a in with_conflicts
+            ],
+            "without_conflicts": [
+                {
+                    "member_id": a["member_id"],
+                    "initials":  a["initials"],
+                    "display":   a["display"],
+                }
+                for a in without_conflicts
+            ],
+        },
+        "template_used":      template_used,
+        "extended_disclaimer": extended_disclaimer,
+    }

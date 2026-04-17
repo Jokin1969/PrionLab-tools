@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PrionLab-tools 0.2.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-17 20:26+0000\n"
+"POT-Creation-Date: 2026-04-17 20:40+0000\n"
 "PO-Revision-Date: 2024-01-01 00:00+0000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -59,7 +59,6 @@ msgid "Sign in"
 msgstr "Sign in"
 
 #: templates/tools_coming_soon.html:9
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:25
 msgid "Coming soon"
 msgstr "Coming soon"
 
@@ -363,155 +362,155 @@ msgstr "Test email sent successfully."
 msgid "Failed to send test email."
 msgstr "Failed to send test email."
 
-#: tools/manuscriptforge/routes.py:155 tools/manuscriptforge/routes.py:217
-#: tools/manuscriptforge/routes.py:246
+#: tools/manuscriptforge/routes.py:156 tools/manuscriptforge/routes.py:218
+#: tools/manuscriptforge/routes.py:247
 msgid "Member not found."
 msgstr "Member not found."
 
-#: tools/manuscriptforge/routes.py:205
+#: tools/manuscriptforge/routes.py:206
 msgid "Member created successfully."
 msgstr "Member created successfully."
 
-#: tools/manuscriptforge/routes.py:232
+#: tools/manuscriptforge/routes.py:233
 msgid "Member updated successfully."
 msgstr "Member updated successfully."
 
-#: tools/manuscriptforge/routes.py:244
+#: tools/manuscriptforge/routes.py:245
 msgid "Member deleted successfully."
 msgstr "Member deleted successfully."
 
-#: tools/manuscriptforge/routes.py:257
+#: tools/manuscriptforge/routes.py:258
 msgid "Please select an affiliation."
 msgstr "Please select an affiliation."
 
-#: tools/manuscriptforge/routes.py:260
+#: tools/manuscriptforge/routes.py:261
 msgid "Affiliation added."
 msgstr "Affiliation added."
 
-#: tools/manuscriptforge/routes.py:268
+#: tools/manuscriptforge/routes.py:269
 msgid "Affiliation removed."
 msgstr "Affiliation removed."
 
-#: tools/manuscriptforge/routes.py:313 tools/manuscriptforge/routes.py:347
+#: tools/manuscriptforge/routes.py:314 tools/manuscriptforge/routes.py:348
 msgid "Affiliation not found."
 msgstr "Affiliation not found."
 
-#: tools/manuscriptforge/routes.py:335
+#: tools/manuscriptforge/routes.py:336
 msgid "Affiliation created successfully."
 msgstr "Affiliation created successfully."
 
-#: tools/manuscriptforge/routes.py:360
+#: tools/manuscriptforge/routes.py:361
 msgid "Affiliation updated successfully."
 msgstr "Affiliation updated successfully."
 
-#: tools/manuscriptforge/routes.py:375
+#: tools/manuscriptforge/routes.py:376
 msgid "Affiliation deleted successfully."
 msgstr "Affiliation deleted successfully."
 
-#: tools/manuscriptforge/routes.py:434 tools/manuscriptforge/routes.py:477
-#: tools/manuscriptforge/routes.py:502
+#: tools/manuscriptforge/routes.py:435 tools/manuscriptforge/routes.py:478
+#: tools/manuscriptforge/routes.py:503
 msgid "Grant not found."
 msgstr "Grant not found."
 
-#: tools/manuscriptforge/routes.py:465
+#: tools/manuscriptforge/routes.py:466
 msgid "Grant created successfully."
 msgstr "Grant created successfully."
 
-#: tools/manuscriptforge/routes.py:489
+#: tools/manuscriptforge/routes.py:490
 msgid "Grant updated successfully."
 msgstr "Grant updated successfully."
 
-#: tools/manuscriptforge/routes.py:500
+#: tools/manuscriptforge/routes.py:501
 msgid "Grant deleted successfully."
 msgstr "Grant deleted successfully."
 
-#: tools/manuscriptforge/routes.py:514
+#: tools/manuscriptforge/routes.py:515
 msgid "Please select a member."
 msgstr "Please select a member."
 
-#: tools/manuscriptforge/routes.py:517
+#: tools/manuscriptforge/routes.py:518
 msgid "Member added to grant."
 msgstr "Member added to grant."
 
-#: tools/manuscriptforge/routes.py:525
+#: tools/manuscriptforge/routes.py:526
 msgid "Member removed from grant."
 msgstr "Member removed from grant."
 
-#: tools/manuscriptforge/routes.py:562
+#: tools/manuscriptforge/routes.py:563
 msgid "Only PDF files are accepted."
 msgstr "Only PDF files are accepted."
 
-#: tools/manuscriptforge/routes.py:567
+#: tools/manuscriptforge/routes.py:568
 msgid "File does not appear to be a valid PDF."
 msgstr "File does not appear to be a valid PDF."
 
-#: tools/manuscriptforge/routes.py:572
+#: tools/manuscriptforge/routes.py:573
 #, python-format
 msgid "PDF exceeds maximum size (%(mb)d MB)."
 msgstr "PDF exceeds maximum size (%(mb)d MB)."
 
-#: tools/manuscriptforge/routes.py:746 tools/manuscriptforge/routes.py:780
-#: tools/manuscriptforge/routes.py:810
+#: tools/manuscriptforge/routes.py:747 tools/manuscriptforge/routes.py:781
+#: tools/manuscriptforge/routes.py:811
 msgid "Publication not found."
 msgstr "Publication not found."
 
-#: tools/manuscriptforge/routes.py:768
+#: tools/manuscriptforge/routes.py:769
 msgid "Publication created successfully."
 msgstr "Publication created successfully."
 
-#: tools/manuscriptforge/routes.py:794
+#: tools/manuscriptforge/routes.py:795
 msgid "Publication updated successfully."
 msgstr "Publication updated successfully."
 
-#: tools/manuscriptforge/routes.py:808
+#: tools/manuscriptforge/routes.py:809
 msgid "Publication deleted successfully."
 msgstr "Publication deleted successfully."
 
-#: tools/manuscriptforge/routes.py:821
+#: tools/manuscriptforge/routes.py:822
 msgid "No PDF available for this publication."
 msgstr "No PDF available for this publication."
 
-#: tools/manuscriptforge/routes.py:840
+#: tools/manuscriptforge/routes.py:841
 msgid "PDF file not found."
 msgstr "PDF file not found."
 
-#: tools/manuscriptforge/routes.py:876 tools/manuscriptforge/routes.py:912
-#: tools/manuscriptforge/routes.py:943
+#: tools/manuscriptforge/routes.py:877 tools/manuscriptforge/routes.py:913
+#: tools/manuscriptforge/routes.py:944
 msgid "Block not found."
 msgstr "Block not found."
 
-#: tools/manuscriptforge/routes.py:900
+#: tools/manuscriptforge/routes.py:901
 msgid "Block created successfully."
 msgstr "Block created successfully."
 
-#: tools/manuscriptforge/routes.py:930
+#: tools/manuscriptforge/routes.py:931
 msgid "Block updated successfully."
 msgstr "Block updated successfully."
 
-#: tools/manuscriptforge/routes.py:941
+#: tools/manuscriptforge/routes.py:942
 msgid "Block deleted successfully."
 msgstr "Block deleted successfully."
 
-#: tools/manuscriptforge/routes.py:989
+#: tools/manuscriptforge/routes.py:990 tools/manuscriptforge/routes.py:1050
 msgid "Please select at least one author."
 msgstr "Please select at least one author."
 
-#: tools/manuscriptforge/routes.py:996
+#: tools/manuscriptforge/routes.py:997
 msgid "One or more selected members were not found."
 msgstr "One or more selected members were not found."
 
-#: tools/manuscriptforge/routes.py:999
+#: tools/manuscriptforge/routes.py:1000
 msgid ""
 "None of the selected authors have affiliations. Assign affiliations "
 "before generating."
 msgstr ""
 
-#: tools/manuscriptforge/routes.py:1014
+#: tools/manuscriptforge/routes.py:1015
 #, fuzzy
 msgid "Please select at least one grant."
 msgstr "Please select at least one author."
 
-#: tools/manuscriptforge/routes.py:1031
+#: tools/manuscriptforge/routes.py:1032
 #, fuzzy
 msgid "Please select at least one acknowledgment block."
 msgstr "Please select at least one author."
@@ -571,7 +570,7 @@ msgstr "Sample donors"
 #: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:20
 #: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:24
 #: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:38
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:234
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:367
 msgid "Infrastructure"
 msgstr "Infrastructure"
 
@@ -579,7 +578,7 @@ msgstr "Infrastructure"
 #: tools/manuscriptforge/templates/manuscriptforge/ack_form.html:21
 #: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:25
 #: tools/manuscriptforge/templates/manuscriptforge/acks_list.html:39
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:235
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:368
 msgid "Other"
 msgstr "Other"
 
@@ -887,6 +886,7 @@ msgid "Acknowledgments"
 msgstr "Acknowledgments"
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:25
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:208
 msgid "Competing Interests"
 msgstr "Competing Interests"
 
@@ -901,10 +901,12 @@ msgid "Available members"
 msgstr "Available members"
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:41
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:246
 msgid "Active members"
 msgstr "Active members"
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:59
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:267
 msgid "External collaborators"
 msgstr "External collaborators"
 
@@ -917,7 +919,7 @@ msgid "Selected authors (in order)"
 msgstr "Selected authors (in order)"
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:84
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:214
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:339
 msgid "No authors selected yet. Check members on the left to add them."
 msgstr "No authors selected yet. Check members on the left to add them."
 
@@ -936,12 +938,14 @@ msgstr "Clear selection"
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:104
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:151
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:196
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:320
 msgid "Generated output"
 msgstr "Generated output"
 
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:106
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:153
 #: tools/manuscriptforge/templates/manuscriptforge/generate.html:198
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:322
 msgid "Copy to clipboard"
 msgstr "Copy to clipboard"
 
@@ -969,96 +973,173 @@ msgstr ""
 msgid "Include inactive blocks"
 msgstr "Include inactive blocks"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:211
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:210
+msgid ""
+"Select the authors for this manuscript. Competing interests are detected "
+"automatically from member records."
+msgstr ""
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:219
+msgid "Load authors from most recent Author Order generation"
+msgstr "Load authors from most recent Author Order generation"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:224
+msgid "Load"
+msgstr "Load"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:228
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:357
+msgid ""
+"No recent Author Order generation found. Generate Author Order first, or "
+"select manually."
+msgstr ""
+"No recent Author Order generation found. Generate Author Order first, or "
+"select manually."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:236
+msgid "Select authors manually"
+msgstr "Select authors manually"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:291
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:310
+#, fuzzy
+msgid "Clear"
+msgstr "Year"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:298
+msgid "Include extended disclaimer"
+msgstr "Include extended disclaimer"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:299
+msgid ""
+"adds: \"given that the company had no role in study design, funding, and "
+"data analysis\""
+msgstr ""
+"adds: \"given that the company had no role in study design, funding, and "
+"data analysis\""
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:307
+msgid "Analyze & Generate"
+msgstr "Analyze & Generate"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:336
 #: tools/manuscriptforge/templates/manuscriptforge/grant_detail.html:100
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:121
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:189
 msgid "Remove"
 msgstr "Remove"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:212
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:337
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:114
 msgid "Move up"
 msgstr "Move up"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:213
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:338
 #: tools/manuscriptforge/templates/manuscriptforge/member_detail.html:117
 msgid "Move down"
 msgstr "Move down"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:215
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:340
 msgid "Copied to clipboard."
 msgstr "Copied to clipboard."
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:216
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:341
 msgid "Could not copy. Select the text manually."
 msgstr "Could not copy. Select the text manually."
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:217
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:342
 msgid "Network error. Please try again."
 msgstr "Network error. Please try again."
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:218
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:343
 msgid "Note: these authors were included without affiliations:"
 msgstr "Note: these authors were included without affiliations:"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:219
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:344
 msgid "No grants selected."
 msgstr "No grants selected."
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:220
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:345
 msgid "grants selected"
 msgstr "grants selected"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:221
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:346
 msgid "1 grant selected"
 msgstr "1 grant selected"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:222
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:347
 msgid "Warning:"
 msgstr "Warning:"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:223
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:348
 msgid "No blocks selected."
 msgstr "No blocks selected."
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:224
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:349
 msgid "blocks selected from"
 msgstr "blocks selected from"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:225
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:350
 msgid "1 block selected"
 msgstr "1 block selected"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:226
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:351
 msgid "categories"
 msgstr "categories"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:227
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:352
 msgid "Select all"
 msgstr "Select all"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:228
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:353
 msgid "Deselect all"
 msgstr "Deselect all"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:230
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:354
+msgid "No authors selected."
+msgstr "No authors selected."
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:355
+msgid "1 author selected"
+msgstr "1 author selected"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:356
+msgid "authors selected"
+msgstr "authors selected"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:358
+msgid "Loaded from Author Order:"
+msgstr "Loaded from Author Order:"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:359
+msgid "With competing interests"
+msgstr "With competing interests"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:360
+msgid "No competing interests"
+msgstr "No competing interests"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:361
+msgid "None"
+msgstr "None"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:363
 msgid "Core Facilities"
 msgstr "Core Facilities"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:231
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:364
 msgid "Technical Staff"
 msgstr "Technical Staff"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:232
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:365
 msgid "External Collaborators"
 msgstr "External Collaborators"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:233
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:366
 msgid "Sample Donors"
 msgstr "Sample Donors"
 
-#: tools/manuscriptforge/templates/manuscriptforge/generate.html:278
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html:412
 msgid "No grants available."
 msgstr "No grants available."
 
