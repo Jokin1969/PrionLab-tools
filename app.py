@@ -207,6 +207,9 @@ def create_app() -> Flask:
     from tools.manuscript_dashboard import manuscript_dashboard_bp
     app.register_blueprint(manuscript_dashboard_bp)
 
+    from tools.references import references_bp
+    app.register_blueprint(references_bp)
+
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:
         from tools.export.models import init_scheduler
@@ -263,6 +266,11 @@ def create_app() -> Flask:
     @login_required
     def manuscript_edit_page(manuscript_id):
         return render_template("manuscripts/edit.html", manuscript_id=manuscript_id)
+
+    @app.route("/manuscripts/<manuscript_id>/references")
+    @login_required
+    def manuscript_references_page(manuscript_id):
+        return render_template("references/manage.html", manuscript_id=manuscript_id)
 
     @app.route("/health")
     def health():

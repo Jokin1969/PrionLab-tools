@@ -582,6 +582,59 @@ class ManuscriptStatus(Base):
     __table_args__ = (Index("idx_mstatus_manuscript", "manuscript_id"),)
 
 
+class ReferenceEntry(Base, TimestampMixin):
+    """Bibliography reference entry linked to a manuscript."""
+    __tablename__ = "reference_entries"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    manuscript_id = Column(UUID(as_uuid=True), ForeignKey("manuscripts.id"), nullable=True)
+    title = Column(Text, nullable=False, default="")
+    authors = Column(Text)
+    journal = Column(String(300))
+    year = Column(Integer)
+    volume = Column(String(50))
+    issue = Column(String(50))
+    pages = Column(String(100))
+    doi = Column(String(255), index=True)
+    pmid = Column(String(50))
+    isbn = Column(String(50))
+    url = Column(String(512))
+    abstract = Column(Text)
+    keywords = Column(Text)
+    research_area = Column(String(100))
+    entry_type = Column(String(50), default="article")
+    bibtex_key = Column(String(255))
+    raw_bibtex = Column(Text)
+    created_by = Column(String(100))
+    manuscript = relationship("Manuscript", foreign_keys=[manuscript_id])
+    __table_args__ = (
+        Index("idx_refentry_manuscript", "manuscript_id"),
+        Index("idx_refentry_doi", "doi"),
+    )
+
+    def to_dict(self):
+        import json as _j
+        def _load(v):
+            try:
+                return _j.loads(v) if v else []
+            except Exception:
+                return []
+        return {
+            "id": str(self.id), "manuscript_id": str(self.manuscript_id) if self.manuscript_id else None,
+            "title": self.title or "", "authors": _load(self.authors),
+            "journal": self.journal or "", "year": self.year,
+            "volume": self.volume or "", "issue": self.issue or "",
+            "pages": self.pages or "", "doi": self.doi or "",
+            "pmid": self.pmid or "", "isbn": self.isbn or "",
+            "url": self.url or "", "abstract": self.abstract or "",
+            "keywords": _load(self.keywords),
+            "research_area": self.research_area or "general",
+            "entry_type": self.entry_type or "article",
+            "bibtex_key": self.bibtex_key or "",
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 # ── Module-level performance indexes ──────────────────────────────────────────
 Index("idx_user_created_at", User.created_at)
 Index("idx_pub_created_at", Publication.created_at)
