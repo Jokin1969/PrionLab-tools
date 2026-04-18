@@ -33,6 +33,32 @@ def _setup_logging(app: Flask):
         root.addHandler(logging.StreamHandler())
 
 
+def _init_postgresql(app: Flask) -> None:
+    """Optionally initialise PostgreSQL if DATABASE_URL is configured."""
+    from database.config import db
+    if not db.is_configured():
+        app.logger.info("DATABASE_URL not set — running in CSV-only mode")
+        return
+    try:
+        if not db.test_connection():
+            app.logger.warning("PostgreSQL connection test failed — CSV fallback active")
+            return
+        db.create_all_tables()
+        # Run CSV migration only when tables are newly empty
+        from database.migration import run_migration
+        result = run_migration()
+        if result.get("success"):
+            app.logger.info(
+                "PostgreSQL ready — users=%d labs=%d",
+                result.get("users_migrated", 0),
+                result.get("labs_migrated", 0),
+            )
+        else:
+            app.logger.warning("Migration reported: %s", result.get("error", "unknown"))
+    except Exception as e:
+        app.logger.warning("PostgreSQL init failed (CSV fallback active): %s", e)
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = config.SECRET_KEY
@@ -89,6 +115,9 @@ def create_app() -> Flask:
         bootstrap_demo_users()
     except Exception as e:
         app.logger.warning("Demo users bootstrap failed: %s", e)
+
+    # PostgreSQL initialisation — graceful fallback to CSV if unavailable
+    _init_postgresql(app)
 
     # ── Babel / i18n ────────────────────────────────────────────────────────
 

@@ -1,0 +1,197 @@
+"""
+CSV → PostgreSQL migration.
+
+Reads the existing CSV files and inserts records into PostgreSQL.
+Safe to run multiple times — skips records that already exist.
+"""
+import logging
+import os
+import uuid
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+def _split_full_name(full_name: str) -> tuple[str, str]:
+    """Split 'First Last' into (first, last)."""
+    parts = (full_name or "").strip().split(" ", 1)
+    return parts[0], parts[1] if len(parts) > 1 else ""
+
+
+def _migrate_users(session) -> dict[str, uuid.UUID]:
+    """Migrate users.csv → users table.  Returns {username: uuid} map."""
+    from core.users import load_users
+    from database.models import User
+
+    username_to_id: dict[str, uuid.UUID] = {}
+    existing = {u.username for u in session.query(User.username).all()}
+
+    for row in load_users():
+        uname = row.get("username", "").strip().lower()
+        if not uname or uname in existing:
+            if uname:
+                obj = session.query(User).filter_by(username=uname).first()
+                if obj:
+                    username_to_id[uname] = obj.id
+            continue
+
+        email = row.get("email", "").strip().lower() or f"{uname}@prionlab.local"
+        first, last = _split_full_name(row.get("full_name", uname))
+
+        last_login = None
+        raw_ll = row.get("last_login", "")
+        if raw_ll:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+                try:
+                    last_login = datetime.strptime(raw_ll, fmt)
+                    break
+                except ValueError:
+                    pass
+
+        created_at = None
+        raw_ca = row.get("created_at", "")
+        if raw_ca:
+            try:
+                created_at = datetime.strptime(raw_ca[:10], "%Y-%m-%d")
+            except ValueError:
+                pass
+
+        user = User(
+            username=uname,
+            email=email,
+            password_hash=row.get("password_hash", ""),
+            first_name=first,
+            last_name=last,
+            affiliation=row.get("affiliation", ""),
+            position=row.get("position", ""),
+            research_areas=row.get("research_areas", ""),
+            orcid=row.get("orcid", "") or None,
+            bio=row.get("bio", ""),
+            role=row.get("role", "reader"),
+            language=row.get("language", "es"),
+            is_active=row.get("active", "true").lower() == "true",
+            last_login=last_login,
+            created_at=created_at or datetime.utcnow(),
+        )
+        session.add(user)
+        session.flush()
+        username_to_id[uname] = user.id
+        existing.add(uname)
+        logger.info("Migrated user: %s", uname)
+
+    return username_to_id
+
+
+def _migrate_labs(session, username_to_id: dict[str, uuid.UUID]) -> dict[str, uuid.UUID]:
+    """Migrate labs.csv → labs table.  Returns {lab_code: uuid} map."""
+    try:
+        from tools.userprofile.models import _read, LABS_CSV, _LAB_COLS
+    except Exception:
+        logger.info("No labs CSV found — skipping labs migration")
+        return {}
+
+    from database.models import Lab
+
+    lab_code_to_id: dict[str, uuid.UUID] = {}
+    existing_codes = {l.lab_code for l in session.query(Lab.lab_code).all()}
+
+    rows = _read(LABS_CSV, _LAB_COLS)
+    for row in rows:
+        code = row.get("lab_code", "").upper()
+        if not code or code in existing_codes:
+            if code:
+                obj = session.query(Lab).filter_by(lab_code=code).first()
+                if obj:
+                    lab_code_to_id[code] = obj.id
+            continue
+
+        pi_uname = row.get("pi_username", "").lower()
+        pi_uuid = username_to_id.get(pi_uname)
+        max_m = 20
+        try:
+            max_m = int(row.get("max_members", 20))
+        except (ValueError, TypeError):
+            pass
+
+        created_at = None
+        raw = row.get("created_at", "")
+        if raw:
+            try:
+                created_at = datetime.fromisoformat(raw[:19])
+            except ValueError:
+                pass
+
+        lab = Lab(
+            name=row.get("lab_name", "").strip(),
+            institution=row.get("institution", "").strip(),
+            department=row.get("department", "").strip(),
+            description=row.get("description", "").strip(),
+            website=row.get("website", "").strip(),
+            location=row.get("location", "").strip(),
+            lab_code=code,
+            pi_user_id=pi_uuid,
+            max_members=max_m,
+            is_active=row.get("is_active", "true").lower() != "false",
+            created_at=created_at or datetime.utcnow(),
+        )
+        session.add(lab)
+        session.flush()
+        lab_code_to_id[code] = lab.id
+        existing_codes.add(code)
+        logger.info("Migrated lab: %s (%s)", lab.name, code)
+
+    return lab_code_to_id
+
+
+def _assign_user_labs(session, username_to_id: dict[str, uuid.UUID],
+                      lab_code_to_id: dict[str, uuid.UUID]) -> None:
+    """Update User.lab_id from the original CSV lab_id/lab_code mapping."""
+    from core.users import load_users
+    from database.models import Lab, User
+
+    for row in load_users():
+        uname = row.get("username", "").strip().lower()
+        csv_lab_id = row.get("lab_id", "").strip()
+        if not uname or not csv_lab_id:
+            continue
+        user = session.query(User).filter_by(username=uname).first()
+        if not user or user.lab_id:
+            continue
+        # csv lab_id is like "lab_abc12345" — match by lab_code or by position lookup
+        lab = (session.query(Lab).filter_by(lab_code=csv_lab_id.upper()).first()
+               or session.query(Lab).first())
+        if lab:
+            user.lab_id = lab.id
+
+
+def run_migration() -> dict:
+    """Run full CSV → PostgreSQL migration.  Returns {'success': bool, ...}."""
+    from database.config import db
+
+    if not db.is_configured():
+        return {"success": False, "error": "DATABASE_URL not set"}
+
+    try:
+        db.create_all_tables()
+        logger.info("Schema created / verified")
+    except Exception as e:
+        return {"success": False, "error": f"Schema creation failed: {e}"}
+
+    try:
+        with db.get_session() as session:
+            username_to_id = _migrate_users(session)
+            lab_code_to_id = _migrate_labs(session, username_to_id)
+            _assign_user_labs(session, username_to_id, lab_code_to_id)
+
+        logger.info(
+            "Migration complete — %d users, %d labs",
+            len(username_to_id), len(lab_code_to_id),
+        )
+        return {
+            "success": True,
+            "users_migrated": len(username_to_id),
+            "labs_migrated": len(lab_code_to_id),
+        }
+    except Exception as e:
+        logger.error("Migration failed: %s", e)
+        return {"success": False, "error": str(e)}

@@ -9,3 +9,8 @@ requests>=2.31
 python-docx>=1.1
 weasyprint>=61.0
 apscheduler>=3.10
+
+# Database dependencies
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.23
+alembic==1.12.1
