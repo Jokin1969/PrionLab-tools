@@ -219,6 +219,15 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("Maintenance scheduler init failed: %s", e)
 
+    # Background job manager for external API enrichment
+    try:
+        import atexit as _atexit
+        from tools.external_apis.background_jobs import start_background_jobs, stop_background_jobs
+        start_background_jobs()
+        _atexit.register(stop_background_jobs)
+    except Exception as e:
+        app.logger.warning("Background job manager init failed: %s", e)
+
     # ── Routes ───────────────────────────────────────────────────────────────
 
     @app.route("/")

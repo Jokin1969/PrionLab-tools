@@ -212,3 +212,249 @@ def pubmed_by_doi(doi: str):
     except Exception as exc:
         logger.error("PubMed DOI lookup: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500
+
+# ── arXiv ─────────────────────────────────────────────────────────────────────
+
+@external_api_bp.route("/arxiv/search", methods=["POST"])
+@login_required
+def arxiv_search():
+    """Search arXiv preprints."""
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"success": False, "error": "query is required"}), 400
+
+    from .arxiv_client import get_arxiv_client
+
+    try:
+        client = get_arxiv_client()
+
+        async def _search():
+            async with client:
+                return await client.search_preprints(
+                    query=query,
+                    author=data.get("author", ""),
+                    title=data.get("title", ""),
+                    categories=data.get("categories"),
+                    max_results=int(data.get("max_results", 20)),
+                )
+
+        resp = _run(_search())
+        return jsonify({
+            "success": resp.success,
+            "data": resp.data if resp.success else None,
+            "error": resp.error if not resp.success else None,
+            "cached": resp.cached,
+        })
+    except Exception as exc:
+        logger.error("arXiv search: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/arxiv/<path:arxiv_id>")
+@login_required
+def arxiv_paper(arxiv_id: str):
+    """Get a single arXiv paper by ID."""
+    from .arxiv_client import get_arxiv_client
+
+    try:
+        client = get_arxiv_client()
+
+        async def _fetch():
+            async with client:
+                return await client.get_paper_by_id(arxiv_id)
+
+        resp = _run(_fetch())
+        return jsonify({
+            "success": resp.success,
+            "data": resp.data if resp.success else None,
+            "error": resp.error if not resp.success else None,
+            "cached": resp.cached,
+        })
+    except Exception as exc:
+        logger.error("arXiv paper lookup: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ── Enrichment ────────────────────────────────────────────────────────────────
+
+@external_api_bp.route("/enrich/doi/<path:doi>")
+@login_required
+def enrich_by_doi(doi: str):
+    """Enrich a publication record using its DOI."""
+    from .enrichment_service import EnrichmentService
+
+    try:
+        service = EnrichmentService()
+        result = _run(service.enrich_by_doi(doi))
+        return jsonify(result)
+    except Exception as exc:
+        logger.error("enrich_by_doi: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/enrich/author", methods=["POST"])
+@login_required
+def enrich_author():
+    """Verify an author via ORCID."""
+    from .enrichment_service import EnrichmentService
+
+    data = request.get_json(silent=True) or {}
+    author_name = data.get("author_name", "").strip()
+    if not author_name:
+        return jsonify({"success": False, "error": "author_name is required"}), 400
+
+    try:
+        service = EnrichmentService()
+        result = _run(service.verify_author(author_name, affiliation=data.get("affiliation", "")))
+        return jsonify(result)
+    except Exception as exc:
+        logger.error("enrich_author: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/enrich/bulk", methods=["POST"])
+@login_required
+def enrich_bulk():
+    """Start a bulk enrichment background job."""
+    from .background_jobs import get_job_manager, _bulk_enrichment_worker
+
+    data = request.get_json(silent=True) or {}
+    criteria = data.get("criteria", {})
+    max_publications = int(data.get("max_publications", 50))
+    max_concurrent = int(data.get("max_concurrent", 3))
+
+    try:
+        jm = get_job_manager()
+        job_id = jm.submit(
+            "bulk_enrichment",
+            _bulk_enrichment_worker,
+            criteria=criteria,
+            max_publications=max_publications,
+            max_concurrent=max_concurrent,
+        )
+        return jsonify({"success": True, "job_id": job_id})
+    except Exception as exc:
+        logger.error("enrich_bulk: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ── Jobs ──────────────────────────────────────────────────────────────────────
+
+@external_api_bp.route("/jobs/history")
+@login_required
+def jobs_history():
+    """Return recent job history."""
+    from .background_jobs import get_job_manager
+
+    try:
+        limit = int(request.args.get("limit", 20))
+        jobs = get_job_manager().list_recent(limit=limit)
+        return jsonify({"success": True, "jobs": jobs})
+    except Exception as exc:
+        logger.error("jobs_history: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/jobs/<job_id>/cancel", methods=["POST"])
+@login_required
+def cancel_job(job_id: str):
+    """Cancel a running job."""
+    from .background_jobs import get_job_manager
+
+    try:
+        ok = get_job_manager().cancel(job_id)
+        if ok:
+            return jsonify({"success": True, "message": "Job cancelled"})
+        return jsonify({"success": False, "error": "Job not found or already finished"}), 404
+    except Exception as exc:
+        logger.error("cancel_job: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ── Test / diagnostics ────────────────────────────────────────────────────────
+
+@external_api_bp.route("/test/basic")
+@login_required
+def test_basic():
+    """Verify the external API integration is wired up correctly."""
+    from datetime import datetime as _dt
+    return jsonify({
+        "success": True,
+        "message": "External API integration is working",
+        "timestamp": _dt.utcnow().isoformat(),
+        "components": {
+            "orcid_client": "initialised",
+            "crossref_client": "initialised",
+            "pubmed_client": "initialised",
+            "arxiv_client": "initialised",
+            "enrichment_service": "ready",
+            "background_jobs": "ready",
+        },
+    })
+
+
+@external_api_bp.route("/test/apis", methods=["POST"])
+@login_required
+def test_apis():
+    """Probe live connectivity to each external API (1-result search)."""
+    results = {}
+
+    # ORCID
+    try:
+        from .orcid_client import get_orcid_client
+        client = get_orcid_client()
+
+        async def _orcid():
+            async with client:
+                return await client.search_person(name="Smith")
+
+        resp = _run(_orcid())
+        results["orcid"] = {"success": resp.success, "cached": resp.cached, "error": resp.error}
+    except Exception as exc:
+        results["orcid"] = {"success": False, "error": str(exc)}
+
+    # CrossRef
+    try:
+        from .crossref_client import get_crossref_client
+        client = get_crossref_client()
+
+        async def _crossref():
+            async with client:
+                return await client.search_works(query="prion", limit=1)
+
+        resp = _run(_crossref())
+        results["crossref"] = {"success": resp.success, "cached": resp.cached, "error": resp.error}
+    except Exception as exc:
+        results["crossref"] = {"success": False, "error": str(exc)}
+
+    # PubMed
+    try:
+        from .pubmed_client import get_pubmed_client
+        client = get_pubmed_client()
+
+        async def _pubmed():
+            async with client:
+                return await client.search_literature("prion", max_results=1)
+
+        resp = _run(_pubmed())
+        results["pubmed"] = {"success": resp.success, "cached": resp.cached, "error": resp.error}
+    except Exception as exc:
+        results["pubmed"] = {"success": False, "error": str(exc)}
+
+    # arXiv
+    try:
+        from .arxiv_client import get_arxiv_client
+        client = get_arxiv_client()
+
+        async def _arxiv():
+            async with client:
+                return await client.search_preprints(query="prion", max_results=1)
+
+        resp = _run(_arxiv())
+        results["arxiv"] = {"success": resp.success, "cached": resp.cached, "error": resp.error}
+    except Exception as exc:
+        results["arxiv"] = {"success": False, "error": str(exc)}
+
+    overall = all(r.get("success", False) for r in results.values())
+    return jsonify({"success": overall, "api_tests": results})

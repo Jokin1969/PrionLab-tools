@@ -2333,3 +2333,26 @@ select.form-input { cursor: pointer; }
 .text-sm { font-size: .85rem; }
 .text-muted { color: #777; }
 .font-bold { font-weight: 600; }
+
+/* ── API Admin Dashboard ───────────────────────────────────────────────────── */
+.api-health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; }
+.api-health-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem; }
+.api-health-card--available { border-color: #28a745; background: #f0fff4; }
+.api-health-card--degraded { border-color: #ffc107; background: #fffbf0; }
+.api-health-card--unavailable { border-color: #dc3545; background: #fff5f5; }
+.api-health-name { font-weight: 700; font-size: 1rem; margin-bottom: .4rem; }
+.api-health-status { display: inline-block; margin-bottom: .4rem; }
+.api-health-url { word-break: break-all; }
+.job-status { display: inline-block; padding: .15rem .5rem; border-radius: 4px; font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.job-status--pending { background: #e9ecef; color: #495057; }
+.job-status--running { background: #cce5ff; color: #004085; }
+.job-status--completed { background: #d4edda; color: #155724; }
+.job-status--failed { background: #f8d7da; color: #721c24; }
+.job-status--cancelled { background: #e2e3e5; color: #383d41; }
+.progress-bar { height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; margin-bottom: .2rem; }
+.progress-fill { height: 100%; background: #4a90d9; transition: width .3s; }
+.activity-feed { display: flex; flex-direction: column; gap: .5rem; }
+.activity-item { display: flex; justify-content: space-between; align-items: flex-start; padding: .6rem .75rem; background: #f8f9fa; border-radius: 6px; font-size: .9rem; }
+.activity-time { font-size: .8rem; color: #777; white-space: nowrap; margin-left: 1rem; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 9000; }
+.modal-box { background: #fff; border-radius: 12px; padding: 1.75rem; width: min(520px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,.2); }

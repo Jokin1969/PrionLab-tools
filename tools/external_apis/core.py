@@ -326,4 +326,10 @@ API_RATE_LIMITS = {
         requests_per_hour=5000,
         burst_limit=10,
     ),
+    "arxiv": RateLimitConfig(
+        requests_per_second=0.33,
+        requests_per_minute=20,
+        requests_per_hour=1000,
+        burst_limit=3,
+    ),
 }
