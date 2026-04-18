@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Lab Management') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="lab-page">
+
+  <!-- ── Profile header ─────────────────────────────────────────────── -->
+  {% if user %}
+  <div class="lab-profile-header">
+    <div class="lab-avatar">{{ (user.full_name or session.get('username', '?'))[0].upper() }}</div>
+    <div class="lab-profile-info">
+      <h1 class="lab-profile-name">{{ user.full_name or session.get('username') }}</h1>
+      <p class="lab-profile-meta">
+        {{ user.position or '' }}{% if user.position and user.affiliation %} · {% endif %}{{ user.affiliation or '' }}
+      </p>
+      <span class="badge badge--{{ user.role or 'reader' }}">{{ _(user.role or 'reader') }}</span>
+    </div>
+    <a href="{{ url_for('auth.profile') }}" class="btn btn--secondary btn--sm">{{ _('Edit Profile') }}</a>
+  </div>
+  {% endif %}
+
+  <!-- ── My Lab ─────────────────────────────────────────────────────── -->
+  {% if lab %}
+  <section class="lab-section">
+    <div class="lab-section__header">
+      <h2 class="lab-section__title">{{ lab.lab_name }}</h2>
+      <span class="lab-code-badge">{{ _('Code') }}: <strong>{{ lab.lab_code }}</strong></span>
+    </div>
+
+    <div class="lab-meta-grid">
+      {% if lab.institution %}<div class="lab-meta-item"><span class="lab-meta-label">{{ _('Institution') }}</span><span>{{ lab.institution }}</span></div>{% endif %}
+      {% if lab.department %}<div class="lab-meta-item"><span class="lab-meta-label">{{ _('Department') }}</span><span>{{ lab.department }}</span></div>{% endif %}
+      {% if lab.location %}<div class="lab-meta-item"><span class="lab-meta-label">{{ _('Location') }}</span><span>{{ lab.location }}</span></div>{% endif %}
+      {% if lab.website %}<div class="lab-meta-item"><span class="lab-meta-label">{{ _('Website') }}</span><a href="{{ lab.website }}" target="_blank" rel="noopener">{{ lab.website }}</a></div>{% endif %}
+    </div>
+    {% if lab.description %}<p class="lab-description">{{ lab.description }}</p>{% endif %}
+
+    <!-- Members table -->
+    <h3 class="lab-subtitle">{{ _('Members') }} ({{ members|length }})</h3>
+    {% if members %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _('Name') }}</th>
+            <th>{{ _('Username') }}</th>
+            <th>{{ _('Position') }}</th>
+            <th>{{ _('Research Areas') }}</th>
+            <th>{{ _('Role') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td>{{ m.full_name }}</td>
+            <td><code>{{ m.username }}</code></td>
+            <td>{{ m.position or '—' }}</td>
+            <td class="td-areas">{{ m.research_areas or '—' }}</td>
+            <td><span class="badge badge--{{ m.role }}">{{ _(m.role) }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="empty-state">{{ _('No members yet.') }}</p>
+    {% endif %}
+
+    <!-- PI controls -->
+    {% if session.get('username') == lab.pi_username or session.get('role') == 'admin' %}
+    <details class="collapsible-form">
+      <summary>{{ _('Edit Lab Details') }}</summary>
+      <form method="POST" action="{{ url_for('userprofile.update_lab_route', lab_id=lab.lab_id) }}" class="form-compact">
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label">{{ _('Lab Name') }} *</label>
+            <input type="text" name="lab_name" class="form-input" required value="{{ lab.lab_name }}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Institution') }}</label>
+            <input type="text" name="institution" class="form-input" value="{{ lab.institution }}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Department') }}</label>
+            <input type="text" name="department" class="form-input" value="{{ lab.department }}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Location') }}</label>
+            <input type="text" name="location" class="form-input" value="{{ lab.location }}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Website') }}</label>
+            <input type="url" name="website" class="form-input" value="{{ lab.website }}" />
+          </div>
+          <div class="form-group form-group--full">
+            <label class="form-label">{{ _('Description') }}</label>
+            <textarea name="description" class="form-input" rows="2">{{ lab.description }}</textarea>
+          </div>
+        </div>
+        <button type="submit" class="btn btn--primary btn--sm">{{ _('Save Changes') }}</button>
+      </form>
+    </details>
+    {% endif %}
+
+    <!-- Leave lab -->
+    {% if session.get('username') != lab.pi_username %}
+    <form method="POST" action="{{ url_for('userprofile.leave_lab') }}" class="leave-form"
+          onsubmit="return confirm('{{ _('Leave this lab?') }}')">
+      <button type="submit" class="btn btn--danger btn--sm">{{ _('Leave Lab') }}</button>
+    </form>
+    {% endif %}
+  </section>
+
+  {% else %}
+  <!-- ── No lab: create or join ───────────────────────────────────── -->
+  <div class="lab-no-lab">
+    <h2>{{ _('You are not in a lab yet') }}</h2>
+    <p>{{ _('Create a new lab or join an existing one with a lab code.') }}</p>
+
+    <div class="lab-actions-grid">
+      <!-- Create lab -->
+      <div class="lab-action-card">
+        <h3>{{ _('Create a Lab') }}</h3>
+        <form method="POST" action="{{ url_for('userprofile.create_lab_route') }}" class="form-compact">
+          <div class="form-group">
+            <label class="form-label">{{ _('Lab Name') }} *</label>
+            <input type="text" name="lab_name" class="form-input" required
+                   placeholder="{{ _('e.g. Prion Diseases Research Lab') }}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Institution') }}</label>
+            <input type="text" name="institution" class="form-input" placeholder="CReSA-IRTA" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Department') }}</label>
+            <input type="text" name="department" class="form-input" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Location') }}</label>
+            <input type="text" name="location" class="form-input" placeholder="{{ _('City, Country') }}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Website') }}</label>
+            <input type="url" name="website" class="form-input" placeholder="https://" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ _('Description') }}</label>
+            <textarea name="description" class="form-input" rows="2"></textarea>
+          </div>
+          <button type="submit" class="btn btn--primary">{{ _('Create Lab') }}</button>
+        </form>
+      </div>
+
+      <!-- Join lab -->
+      <div class="lab-action-card">
+        <h3>{{ _('Join a Lab') }}</h3>
+        <p class="hint-text">{{ _('Ask your PI for the lab code.') }}</p>
+        <form method="POST" action="{{ url_for('userprofile.join_lab_route') }}" class="form-compact">
+          <div class="form-group">
+            <label class="form-label">{{ _('Lab Code') }}</label>
+            <input type="text" name="lab_code" class="form-input" required
+                   placeholder="PL042" style="text-transform:uppercase;letter-spacing:.1em" />
+          </div>
+          <button type="submit" class="btn btn--secondary">{{ _('Join Lab') }}</button>
+        </form>
+
+        {% if all_labs %}
+        <h4 class="mt-1">{{ _('Active Labs') }}</h4>
+        <ul class="labs-list">
+          {% for l in all_labs %}
+          <li class="labs-list__item">
+            <span class="labs-list__name">{{ l.lab_name }}</span>
+            <span class="labs-list__inst">{{ l.institution }}</span>
+            <code class="labs-list__code">{{ l.lab_code }}</code>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Recent Activity ────────────────────────────────────────────── -->
+  {% if activity %}
+  <section class="lab-section lab-section--activity">
+    <h3 class="lab-section__title">{{ _('Recent Activity') }}</h3>
+    <ul class="activity-list">
+      {% for a in activity %}
+      <li class="activity-item">
+        <span class="activity-dot"></span>
+        <span class="activity-text">{{ a.details }}</span>
+        <span class="activity-time">{{ a.timestamp[:10] }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

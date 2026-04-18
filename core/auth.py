@@ -2,11 +2,12 @@ import logging
 from datetime import date, datetime
 
 import bcrypt
-from flask import (Blueprint, make_response, redirect, render_template,
-                   request, session, url_for)
+from flask import (Blueprint, flash, make_response, redirect,
+                   render_template, request, session, url_for)
 from flask_babel import gettext as _
 
 from config import ADMIN_PASSWORD, CONTACT_EMAIL
+from core.decorators import login_required
 
 logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
@@ -126,3 +127,87 @@ def logout():
     resp = make_response(redirect(url_for("auth.login")))
     resp.delete_cookie("prionlab_lang")
     return resp
+
+
+@auth_bp.route("/register", methods=["GET", "POST"])
+def register():
+    if session.get("logged_in"):
+        return redirect(url_for("home"))
+    error = None
+    if request.method == "POST":
+        from core.users import create_user, email_exists, user_exists
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip()
+        affiliation = request.form.get("affiliation", "").strip()
+        position = request.form.get("position", "").strip()
+        research_areas = request.form.get("research_areas", "").strip()
+        orcid = request.form.get("orcid", "").strip()
+        bio = request.form.get("bio", "").strip()
+        if not username or not password or not full_name:
+            error = _("Username, full name and password are required.")
+        elif len(username) < 3:
+            error = _("Username must be at least 3 characters.")
+        elif len(password) < 6:
+            error = _("Password must be at least 6 characters.")
+        elif user_exists(username):
+            error = _("Username already taken.")
+        elif email and email_exists(email):
+            error = _("Email already registered.")
+        else:
+            create_user({
+                "username": username,
+                "password_hash": hash_password(password),
+                "full_name": full_name,
+                "email": email,
+                "role": "reader",
+                "language": "es",
+                "active": "true",
+                "created_at": date.today().isoformat(),
+                "last_login": "",
+                "affiliation": affiliation,
+                "position": position,
+                "research_areas": research_areas,
+                "orcid": orcid,
+                "bio": bio,
+                "lab_id": "",
+            }, sync=False)
+            flash(_("Account created. You can now log in."), "success")
+            return redirect(url_for("auth.login"))
+    return render_template("auth/register.html", error=error)
+
+
+@auth_bp.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    from core.users import get_user, update_user
+    username = session.get("username", "")
+    user = get_user(username) or {}
+    error = None
+    if request.method == "POST":
+        updates = {
+            "full_name": request.form.get("full_name", "").strip(),
+            "email": request.form.get("email", "").strip(),
+            "affiliation": request.form.get("affiliation", "").strip(),
+            "position": request.form.get("position", "").strip(),
+            "research_areas": request.form.get("research_areas", "").strip(),
+            "orcid": request.form.get("orcid", "").strip(),
+            "bio": request.form.get("bio", "").strip(),
+        }
+        new_password = request.form.get("new_password", "")
+        if new_password:
+            if len(new_password) < 6:
+                error = _("New password must be at least 6 characters.")
+            else:
+                current_pwd = request.form.get("current_password", "")
+                if not verify_password(current_pwd, user.get("password_hash", "")):
+                    error = _("Current password is incorrect.")
+                else:
+                    updates["password_hash"] = hash_password(new_password)
+        if not error:
+            update_user(username, updates, sync=False)
+            session["full_name"] = updates["full_name"]
+            flash(_("Profile updated successfully."), "success")
+            return redirect(url_for("auth.profile"))
+    return render_template("auth/profile.html", user=user, error=error)
