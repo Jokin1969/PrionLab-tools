@@ -233,11 +233,10 @@
     </div>
   </div>
 
-  <!-- Citation Manager button -->
-  <div class="fab-container">
-    <button class="fab-btn" onclick="openCiteModal()" title="{{ _('Open Citation Manager') }}">
-      &#128196;
-    </button>
+  <!-- Toolbar: Analytics link + Citation Manager FAB -->
+  <div class="library-actions" style="display:flex;gap:.75rem;margin-top:1.5rem;flex-wrap:wrap">
+    <a href="{{ url_for('research.analytics_page') }}" class="btn btn-secondary">&#128202; {{ _('Research Analytics') }}</a>
+    <button class="btn btn-primary open-citation-modal">&#128196; {{ _('Citation Manager') }}</button>
   </div>
 
 </div><!-- end .research-library -->

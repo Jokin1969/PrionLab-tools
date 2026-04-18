@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+{% block title %}Research Analytics — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="research-analytics-container">
+
+  <div class="analytics-header">
+    <div class="header-content">
+      <h1>Research Analytics</h1>
+      <p class="analytics-subtitle">Comprehensive research metrics and insights</p>
+    </div>
+    <div class="analytics-actions">
+      <button id="refreshAnalyticsBtn" class="btn btn-primary">&#8635; {{ _('Refresh') }}</button>
+      <a href="{{ url_for('research.library') }}" class="btn btn-secondary">&#8592; {{ _('Library') }}</a>
+      <select id="analyticsTimeRange" class="form-control" style="min-width:140px">
+        <option value="30">{{ _('Last 30 days') }}</option>
+        <option value="90">{{ _('Last 90 days') }}</option>
+        <option value="365">{{ _('Last year') }}</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Overview metrics -->
+  <div class="analytics-overview">
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-icon metric-icon--pubs">&#128218;</div>
+        <div class="metric-content">
+          <h3 id="totalPublications">—</h3>
+          <p>{{ _('Publications') }}</p>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon metric-icon--cites">&#128200;</div>
+        <div class="metric-content">
+          <h3 id="totalCitations">—</h3>
+          <p>{{ _('Total Citations') }}</p>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon metric-icon--h">&#127942;</div>
+        <div class="metric-content">
+          <h3 id="hIndex">—</h3>
+          <p>H-Index</p>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon metric-icon--trend">&#128202;</div>
+        <div class="metric-content">
+          <h3 id="growthTrend">—</h3>
+          <p>{{ _('Growth Trend') }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab navigation -->
+  <div class="analytics-tabs">
+    <nav class="tabs-nav">
+      <button class="tab-button active" data-tab="trends">&#128202; {{ _('Publication Trends') }}</button>
+      <button class="tab-button" data-tab="impact">&#127919; {{ _('Impact Analysis') }}</button>
+      <button class="tab-button" data-tab="collaboration">&#129309; {{ _('Collaboration Network') }}</button>
+      <button class="tab-button" data-tab="usage">&#128203; {{ _('Usage Statistics') }}</button>
+    </nav>
+
+    <!-- Trends tab -->
+    <div id="trendsTab" class="tab-content active">
+      <h3>{{ _('Publication Trends') }}</h3>
+      <div class="chart-container">
+        <h4>{{ _('Publications by Year') }}</h4>
+        <canvas id="publicationsByYearChart"></canvas>
+      </div>
+      <div class="distribution-grid">
+        <div class="distribution-container">
+          <h4>{{ _('Top Journals') }}</h4>
+          <div id="journalDistribution" class="distribution-list"></div>
+        </div>
+        <div class="distribution-container">
+          <h4>{{ _('Publication Types') }}</h4>
+          <div id="pubTypesDistribution" class="distribution-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Impact tab -->
+    <div id="impactTab" class="tab-content">
+      <h3>{{ _('Impact Analysis') }}</h3>
+      <div class="impact-grid">
+        <div class="top-cited-container">
+          <h4>{{ _('Most Cited Publications') }}</h4>
+          <div id="topCitedPublications" class="cited-publications-list"></div>
+        </div>
+        <div class="distribution-container">
+          <h4>{{ _('Citations per Journal') }}</h4>
+          <div id="journalImpactAnalysis" class="distribution-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collaboration tab -->
+    <div id="collaborationTab" class="tab-content">
+      <h3>{{ _('Collaboration Network') }}</h3>
+      <div class="collaboration-metrics">
+        <div class="collab-metric">
+          <h4 id="collaborationRate">—</h4>
+          <p>{{ _('Collaboration Rate (%)') }}</p>
+        </div>
+        <div class="collab-metric">
+          <h4 id="uniqueCollaborators">—</h4>
+          <p>{{ _('Unique Authors') }}</p>
+        </div>
+        <div class="collab-metric">
+          <h4 id="totalCollaborations">—</h4>
+          <p>{{ _('Author Pairs') }}</p>
+        </div>
+      </div>
+      <div class="collaboration-grid">
+        <div class="top-collaborations-container">
+          <h4>{{ _('Most Frequent Author Pairs') }}</h4>
+          <div id="topCollaborations" class="collaborations-list"></div>
+        </div>
+        <div class="author-productivity-container">
+          <h4>{{ _('Author Productivity') }}</h4>
+          <div id="authorProductivity" class="productivity-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage tab -->
+    <div id="usageTab" class="tab-content">
+      <h3>{{ _('Usage Statistics') }}</h3>
+      <div class="usage-metrics">
+        <div class="usage-metric">
+          <h4 id="totalExports">—</h4>
+          <p>{{ _('Total Exports') }}</p>
+        </div>
+        <div class="usage-metric">
+          <h4 id="avgDailyExports">—</h4>
+          <p>{{ _('Avg Daily Exports') }}</p>
+        </div>
+        <div class="usage-metric">
+          <h4 id="mostUsedStyle">—</h4>
+          <p>{{ _('Top Citation Style') }}</p>
+        </div>
+      </div>
+      <div class="distribution-container" style="margin-top:1.5rem">
+        <h4>{{ _('Citation Style Preferences') }}</h4>
+        <div id="stylePreferences" class="distribution-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="analyticsLoadingOverlay" class="loading-overlay" style="display:none">
+    <div class="loading-content">
+      <div class="spinner-large"></div>
+      <p>{{ _('Generating analytics…') }}</p>
+    </div>
+  </div>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const charts = {};
+let analyticsData = {};
+let currentRange = 30;
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab-button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab + 'Tab').classList.add('active');
+      loadTabData(btn.dataset.tab);
+    });
+  });
+  document.getElementById('refreshAnalyticsBtn').addEventListener('click', loadAll);
+  document.getElementById('analyticsTimeRange').addEventListener('change', e => {
+    currentRange = parseInt(e.target.value) || 30;
+    loadAll();
+  });
+  loadAll();
+});
+
+function showOverlay(on) {
+  document.getElementById('analyticsLoadingOverlay').style.display = on ? 'flex' : 'none';
+}
+
+async function loadAll() {
+  showOverlay(true);
+  await loadOverview();
+  const active = document.querySelector('.tab-button.active')?.dataset.tab || 'trends';
+  await loadTabData(active);
+  showOverlay(false);
+}
+
+async function loadOverview() {
+  try {
+    const r = await fetch('/research/analytics/overview', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({time_range: currentRange})
+    });
+    const d = await r.json();
+    if (d.success) {
+      analyticsData.overview = d.overview;
+      document.getElementById('totalPublications').textContent = d.overview.overview?.total_publications ?? '0';
+      document.getElementById('totalCitations').textContent = d.overview.overview?.total_citations ?? '0';
+      document.getElementById('hIndex').textContent = d.overview.overview?.h_index ?? '0';
+      document.getElementById('growthTrend').textContent = d.overview.trends?.growth_trend ?? '—';
+    }
+  } catch(e) { console.error('Overview error', e); }
+}
+
+async function loadTabData(tab) {
+  if (tab === 'trends') await loadTrends();
+  else if (tab === 'impact') await loadImpact();
+  else if (tab === 'collaboration') await loadCollaboration();
+  else if (tab === 'usage') await loadUsage();
+}
+
+async function loadTrends() {
+  if (!analyticsData.overview) return;
+  const ov = analyticsData.overview;
+  // Year chart
+  const yearData = ov.trends?.publications_by_year || {};
+  const years = Object.keys(yearData).sort();
+  const counts = years.map(y => yearData[y]);
+  const ctx = document.getElementById('publicationsByYearChart');
+  if (charts.year) charts.year.destroy();
+  if (ctx && years.length) {
+    charts.year = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: years,
+        datasets: [{label: 'Publications', data: counts,
+          backgroundColor: 'rgba(0,119,182,0.7)', borderColor: '#0077b6', borderWidth: 1}]
+      },
+      options: {responsive: true, plugins: {legend: {display: false}},
+        scales: {y: {beginAtZero: true, ticks: {stepSize: 1}}}}
+    });
+  } else if (ctx) {
+    ctx.parentElement.innerHTML += '<p class="no-results">No year data yet.</p>';
+  }
+  // Journals
+  renderDistribution('journalDistribution', ov.distribution?.top_journals || {});
+  // Types
+  renderDistribution('pubTypesDistribution', ov.distribution?.publication_types || {});
+}
+
+function renderDistribution(containerId, data) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const entries = Object.entries(data).sort((a,b) => b[1]-a[1]);
+  if (!entries.length) { el.innerHTML = '<p class="no-results">No data.</p>'; return; }
+  const max = entries[0][1];
+  el.innerHTML = entries.slice(0,8).map(([label, count]) => `
+    <div class="distribution-item">
+      <span class="distribution-label">${label}</span>
+      <span class="distribution-count">${count}</span>
+      <div class="distribution-bar"><div class="distribution-fill" style="width:${(count/max)*100}%"></div></div>
+    </div>`).join('');
+}
+
+async function loadImpact() {
+  try {
+    const r = await fetch('/research/analytics/impact', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+    });
+    const d = await r.json();
+    if (!d.success) return;
+    const data = d.impact;
+    const topCited = document.getElementById('topCitedPublications');
+    const pubs = data.top_cited_publications || [];
+    topCited.innerHTML = pubs.length
+      ? pubs.slice(0,10).map(p => `
+          <div class="cited-publication-item">
+            <div class="cited-content">
+              <h5 class="cited-title">${p.title}</h5>
+              <p class="cited-meta"><em>${p.journal}</em> (${p.year})</p>
+            </div>
+            <span class="cited-badge">${p.citations}</span>
+          </div>`).join('')
+      : '<p class="no-results">No citation data yet.</p>';
+    renderDistribution('journalImpactAnalysis', data.journal_impact_factors || {});
+  } catch(e) { console.error('Impact error', e); }
+}
+
+async function loadCollaboration() {
+  try {
+    const r = await fetch('/research/analytics/collaboration', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+    });
+    const d = await r.json();
+    if (!d.success) return;
+    const col = d.collaboration;
+    document.getElementById('collaborationRate').textContent =
+      col.collaboration?.collaboration_rate ?? col.collaboration_network?.total_unique_collaborations ?? '—';
+    document.getElementById('uniqueCollaborators').textContent =
+      col.author_analysis?.total_unique_authors ?? '—';
+    document.getElementById('totalCollaborations').textContent =
+      col.collaboration_network?.total_unique_collaborations ?? '—';
+    const collabEl = document.getElementById('topCollaborations');
+    const topC = col.collaboration_network?.top_collaborations || [];
+    collabEl.innerHTML = topC.length
+      ? topC.map(c => `<div class="collaboration-item">
+          <span class="collab-authors">${c.authors.join(' &amp; ')}</span>
+          <span class="collab-count">${c.count} paper${c.count!==1?'s':''}</span>
+        </div>`).join('')
+      : '<p class="no-results">No collaboration data yet.</p>';
+    const authEl = document.getElementById('authorProductivity');
+    const topA = col.author_analysis?.most_productive_authors || [];
+    authEl.innerHTML = topA.length
+      ? topA.map(a => `<div class="productivity-item">
+          <span class="author-name">${a.author}</span>
+          <span class="author-pubs">${a.publication_count} pub${a.publication_count!==1?'s':''}</span>
+        </div>`).join('')
+      : '<p class="no-results">No author data yet.</p>';
+  } catch(e) { console.error('Collab error', e); }
+}
+
+async function loadUsage() {
+  try {
+    const r = await fetch('/research/analytics/usage', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({days: currentRange})
+    });
+    const d = await r.json();
+    if (!d.success) return;
+    const u = d.usage;
+    document.getElementById('totalExports').textContent = u.usage_summary?.total_exports ?? '0';
+    document.getElementById('avgDailyExports').textContent = u.usage_summary?.average_daily_exports ?? '0.0';
+    const styles = u.style_preferences || {};
+    const topStyle = Object.entries(styles).sort((a,b)=>b[1]-a[1])[0];
+    document.getElementById('mostUsedStyle').textContent = topStyle ? topStyle[0] : 'N/A';
+    renderDistribution('stylePreferences', styles);
+  } catch(e) { console.error('Usage error', e); }
+}
+</script>
+{% endblock %}

@@ -19,7 +19,14 @@
           <a href="{{ url_for('methods.index') }}" class="nav-link">{{ _('Methods Library') }}</a>
           <a href="{{ url_for('introduction.generator') }}" class="nav-link">{{ _('Introduction') }}</a>
           <a href="{{ url_for('export.composer') }}" class="nav-link">{{ _('Export') }}</a>
-          <a href="{{ url_for('research.library') }}" class="nav-link">{{ _('Research') }}</a>
+          <details class="nav-dropdown">
+            <summary class="nav-link nav-dropdown__toggle">{{ _('Research') }} &#9660;</summary>
+            <div class="nav-dropdown__menu">
+              <a href="{{ url_for('research.library') }}" class="nav-dropdown__item">&#128218; {{ _('Publications Library') }}</a>
+              <a href="{{ url_for('research.analytics_page') }}" class="nav-dropdown__item">&#128202; {{ _('Research Analytics') }}</a>
+              <button class="nav-dropdown__item open-citation-modal" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:.5rem 1rem;font-size:.9rem">&#128196; {{ _('Citation Manager') }}</button>
+            </div>
+          </details>
         {% endif %}
       </nav>
 
@@ -63,6 +70,10 @@
       {% block content %}{% endblock %}
     </div>
   </main>
+
+  {% if session.get('logged_in') %}
+  <script src="{{ url_for('static', filename='js/research-citations.js') }}"></script>
+  {% endif %}
 
   <footer class="site-footer">
     <div class="container">
