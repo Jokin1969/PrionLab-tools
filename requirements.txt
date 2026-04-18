@@ -15,3 +15,7 @@ psycopg2-binary==2.9.9
 SQLAlchemy==2.0.23
 alembic==1.12.1
 anthropic>=0.40.0
+
+# External API dependencies
+aiohttp>=3.8.0
+redis>=4.5.0
