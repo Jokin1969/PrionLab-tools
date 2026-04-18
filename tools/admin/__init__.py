@@ -235,3 +235,59 @@ def test_email():
     else:
         flash(_("Failed to send test email."), "error")
     return redirect(url_for("admin.index"))
+
+
+# ── Database admin ───────────────────────────────────────────────────────────
+
+@admin_bp.route("/database")
+@admin_required
+def database_dashboard():
+    from database.services import DatabaseHealthService
+    health = DatabaseHealthService.get_metrics()
+    table_stats = DatabaseHealthService.get_table_stats() if health.get("connected") else []
+    from database.backup import BackupManager
+    backups = BackupManager().list_backups()
+    return render_template("admin/database.html",
+                           health=health, table_stats=table_stats, backups=backups)
+
+
+@admin_bp.route("/database/backup", methods=["POST"])
+@admin_required
+def trigger_backup():
+    from database.backup import BackupManager
+    result = BackupManager().create_backup()
+    if result.get("success"):
+        flash(_("Backup created: %(f)s (%(s)s MB)",
+                f=result["filename"], s=result["size_mb"]), "success")
+    else:
+        flash(_("Backup failed: %(e)s", e=result.get("error", "unknown")), "danger")
+    return redirect(url_for("admin.database_dashboard"))
+
+
+@admin_bp.route("/database/vacuum", methods=["POST"])
+@admin_required
+def trigger_vacuum():
+    from database.services import DatabaseHealthService
+    ok = DatabaseHealthService.vacuum_analyze()
+    if ok:
+        flash(_("VACUUM ANALYZE completed."), "success")
+    else:
+        flash(_("VACUUM ANALYZE failed or DB not configured."), "warning")
+    return redirect(url_for("admin.database_dashboard"))
+
+
+@admin_bp.route("/database/backups/<filename>/delete", methods=["POST"])
+@admin_required
+def delete_backup(filename):
+    import re
+    from database.backup import BACKUP_DIR
+    if not re.match(r"^[\w\-\.]+$", filename):
+        flash(_("Invalid backup filename."), "danger")
+        return redirect(url_for("admin.database_dashboard"))
+    path = BACKUP_DIR / filename
+    if path.exists() and path.parent == BACKUP_DIR:
+        path.unlink()
+        flash(_("Backup deleted."), "success")
+    else:
+        flash(_("Backup not found."), "warning")
+    return redirect(url_for("admin.database_dashboard"))
