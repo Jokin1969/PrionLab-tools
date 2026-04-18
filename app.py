@@ -210,6 +210,9 @@ def create_app() -> Flask:
     from tools.references import references_bp
     app.register_blueprint(references_bp)
 
+    from tools.analytics import analytics_bp
+    app.register_blueprint(analytics_bp)
+
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:
         from tools.export.models import init_scheduler
@@ -271,6 +274,16 @@ def create_app() -> Flask:
     @login_required
     def manuscript_references_page(manuscript_id):
         return render_template("references/manage.html", manuscript_id=manuscript_id)
+
+    @app.route("/analytics")
+    @login_required
+    def analytics_page():
+        return render_template("analytics/dashboard.html")
+
+    @app.route("/analytics/settings")
+    @login_required
+    def analytics_settings_page():
+        return render_template("analytics/settings.html")
 
     @app.route("/health")
     def health():
