@@ -1527,3 +1527,105 @@ select.form-input { cursor: pointer; }
 .format-badge--tex  { background: #f3e8ff; color: #6b21a8; }
 .format-badge--html { background: #dcfce7; color: #166534; }
 .format-badge--txt  { background: #f1f5f9; color: #475569; }
+
+/* ── Introduction Module ───────────────────────────────────────────────────── */
+
+.intro-steps {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: 2rem;
+}
+.intro-step {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .4rem .9rem;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: .875rem;
+  font-weight: 500;
+}
+.intro-step.active { background: #0077b6; color: #fff; }
+.intro-step.done   { background: #e0f2fe; color: #0369a1; }
+.intro-step-sep    { color: #94a3b8; font-size: .8rem; }
+.step-num          { font-weight: 700; }
+
+.step-panel { display: none; }
+.step-panel.active { display: block; }
+.step-title { font-size: 1.15rem; margin-bottom: 1.25rem; color: #1e293b; }
+
+.approach-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.approach-card {
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.1rem;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s;
+  background: #fff;
+}
+.approach-card:hover { border-color: #0077b6; box-shadow: 0 3px 10px rgba(0,119,182,.12); }
+.approach-card.selected { border-color: #0077b6; background: #f0f8ff; }
+.approach-icon { font-size: 2rem; text-align: center; margin-bottom: .5rem; }
+.approach-card h4 { margin: .4rem 0; font-size: 1rem; color: #1e293b; }
+.approach-card p  { color: #64748b; font-size: .875rem; line-height: 1.45; margin: .3rem 0; }
+.approach-meta    { font-size: .8rem; color: #475569; margin-top: .5rem; }
+.approach-keywords{ color: #94a3b8; }
+
+.approach-detail-box {
+  background: #f0f8ff;
+  border-left: 3px solid #0077b6;
+  padding: .9rem 1.1rem;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 1rem;
+  font-size: .9rem;
+}
+.approach-detail-box p { margin: .3rem 0; }
+
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.params-group {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 1.1rem;
+}
+.params-group h4 { margin: 0 0 .9rem; color: #0077b6; font-size: .95rem; }
+
+.params-preview {
+  background: #e8f4fd;
+  border-left: 3px solid #0077b6;
+  padding: .7rem 1rem;
+  border-radius: 0 6px 6px 0;
+  font-size: .875rem;
+  color: #1e293b;
+  margin-bottom: 1.25rem;
+}
+
+.step-actions {
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+
+.intro-text-display {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem 2rem;
+  font-family: 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #1e293b;
+}
+.intro-text-display p { margin: 0 0 1em; text-align: justify; }
