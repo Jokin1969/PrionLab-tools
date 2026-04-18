@@ -209,3 +209,118 @@ def api_import_references():
     if not result["success"]:
         return jsonify(result), 400
     return jsonify(result)
+
+
+# ── Analytics routes ───────────────────────────────────────────────────────────
+
+@research_bp.route("/analytics")
+@login_required
+def analytics_page():
+    return render_template("research/analytics.html")
+
+
+@research_bp.route("/analytics/overview", methods=["POST"])
+@login_required
+def analytics_overview():
+    from tools.research.analytics import ResearchAnalytics
+    data = ResearchAnalytics().generate_overview_dashboard()
+    if "error" in data:
+        return jsonify({"success": False, "error": data["error"]}), 500
+    return jsonify({"success": True, "overview": data})
+
+
+@research_bp.route("/analytics/impact", methods=["POST"])
+@login_required
+def analytics_impact():
+    from tools.research.analytics import ResearchAnalytics
+    data = ResearchAnalytics().generate_impact_analysis()
+    if "error" in data:
+        return jsonify({"success": False, "error": data["error"]}), 500
+    return jsonify({"success": True, "impact": data})
+
+
+@research_bp.route("/analytics/collaboration", methods=["POST"])
+@login_required
+def analytics_collaboration():
+    from tools.research.analytics import ResearchAnalytics
+    data = ResearchAnalytics().generate_collaboration_network()
+    if "error" in data:
+        return jsonify({"success": False, "error": data["error"]}), 500
+    return jsonify({"success": True, "collaboration": data})
+
+
+@research_bp.route("/analytics/usage", methods=["POST"])
+@login_required
+def analytics_usage():
+    from tools.research.analytics import ExportAnalytics
+    days = (request.get_json(force=True) or {}).get("days", 30)
+    data = ExportAnalytics().generate_usage_report(int(days))
+    if "error" in data:
+        return jsonify({"success": False, "error": data["error"]}), 500
+    return jsonify({"success": True, "usage": data})
+
+
+# ── Enhanced citation search / bibliography endpoints ──────────────────────────
+
+@research_bp.route("/search-citations", methods=["POST"])
+@login_required
+def search_citations():
+    data = request.get_json(force=True) or {}
+    query = data.get("query", "")
+    filters = data.get("filters", {})
+    pubs = get_all_publications({"query": query})
+    if filters.get("year_from"):
+        try:
+            yr = int(filters["year_from"])
+            pubs = [p for p in pubs if int(p.get("year", 0) or 0) >= yr]
+        except (ValueError, TypeError):
+            pass
+    result = [
+        {
+            "publication_id": p["pub_id"],
+            "title": p.get("title", ""),
+            "authors": p.get("author_string", ""),
+            "journal": p.get("journal", ""),
+            "year": p.get("year", ""),
+            "citation_preview": CitationManager.format_citation(p, "Vancouver"),
+            "is_lab_publication": True,
+        }
+        for p in pubs
+    ]
+    return jsonify({"success": True, "publications": result, "total_count": len(result)})
+
+
+@research_bp.route("/preview-bibliography", methods=["POST"])
+@login_required
+def preview_bibliography():
+    data = request.get_json(force=True) or {}
+    pub_ids = data.get("publication_ids", [])
+    style = data.get("style", "Vancouver")
+    if not pub_ids:
+        return jsonify({"success": False, "error": "No publications selected."}), 400
+    bib_text = CitationManager.generate_bibliography(pub_ids, style)
+    bib_lines = [{"citation": line.lstrip("0123456789. ")} for line in bib_text.split("\n") if line.strip()]
+    return jsonify({"success": True, "bibliography": bib_lines, "style": style,
+                    "total_references": len(bib_lines)})
+
+
+@research_bp.route("/generate-bibliography", methods=["POST"])
+@login_required
+def generate_bibliography_download():
+    user_id = session.get("username", "")
+    role = session.get("role", "reader")
+    if role == "reader" and not check_citation_rate_limit(user_id):
+        return jsonify({"error": "Daily limit reached (20 citations/day for readers)."}), 429
+    data = request.get_json(force=True) or {}
+    pub_ids = data.get("publication_ids", [])
+    style = data.get("style", "Vancouver")
+    if not pub_ids:
+        return jsonify({"success": False, "error": "No publications selected."}), 400
+    bib_text = CitationManager.generate_bibliography(pub_ids, style)
+    try:
+        from tools.research.analytics import ExportAnalytics, USAGE_CSV, _USAGE_COLS
+        ExportAnalytics().track_citation_export(user_id, "bibliography", len(pub_ids), style)
+    except Exception:
+        pass
+    return jsonify({"success": True, "bibliography_text": bib_text,
+                    "style": style, "total_references": len(pub_ids)})

@@ -1079,3 +1079,38 @@ def generate_credit_route():
         return jsonify({"error": str(e)}), 400
 
     return jsonify(result)
+
+
+@manuscriptforge_bp.route("/import-references", methods=["POST"])
+@login_required
+def import_references():
+    """Import formatted bibliography from Research Library."""
+    data = request.get_json(force=True) or {}
+    pub_ids = data.get("publication_ids", [])
+    style = data.get("style", "Vancouver")
+    if not pub_ids:
+        return jsonify({"error": "No publications selected."}), 400
+    try:
+        from tools.research.models import CitationManager, get_publication
+        bibliography_lines = []
+        for i, pub_id in enumerate(pub_ids, start=1):
+            pub = get_publication(pub_id)
+            if pub:
+                citation = CitationManager.format_citation(pub, style, i)
+                bibliography_lines.append(f"{i}. {citation}")
+        references_formatted = "\n".join(bibliography_lines)
+        session["manuscript_references"] = {
+            "references_formatted": references_formatted,
+            "style_used": style,
+            "total_references": len(bibliography_lines),
+            "export_timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+        }
+        return jsonify({
+            "success": True,
+            "message": f"Imported {len(pub_ids)} reference(s).",
+            "references_preview": references_formatted[:500] + ("…" if len(references_formatted) > 500 else ""),
+            "style": style,
+        })
+    except Exception as e:
+        logger.error("References import error: %s", e)
+        return jsonify({"error": "Failed to import references."}), 500

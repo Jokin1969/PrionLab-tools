@@ -594,3 +594,30 @@ def generate_introduction_content(params, user_id):
     except Exception as e:
         logger.error("Introduction generation failed: %s", e)
         raise IntroductionGenerationError(f"Generation failed: {e}")
+
+
+def enhance_with_lab_publications(approach_content: dict, research_context: dict) -> dict:
+    """Enhance introduction content dict with relevant lab publications context."""
+    try:
+        from tools.research.models import get_relevant_lab_publications
+        approach_id = research_context.get("approach", "")
+        keywords = research_context.get("keywords", "")
+        lab_pubs = get_relevant_lab_publications(approach_id, keywords)
+        if not lab_pubs:
+            return approach_content
+        approach_content["lab_publications_context"] = {
+            "relevant_papers": [
+                {"title": p.get("title", ""), "journal": p.get("journal", ""), "year": p.get("year", "")}
+                for p in lab_pubs[:3]
+            ],
+            "total_lab_papers": len(lab_pubs),
+            "enhancement_applied": True,
+        }
+        background = approach_content.get("background", "")
+        if background and lab_pubs:
+            titles = [p.get("title", "")[:60] for p in lab_pubs[:2]]
+            note = " Recent lab work includes: " + "; ".join(titles) + "."
+            approach_content["background"] = background + note
+    except Exception as e:
+        logger.error("Lab publications enhancement error: %s", e)
+    return approach_content
