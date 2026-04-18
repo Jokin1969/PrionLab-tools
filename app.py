@@ -201,6 +201,9 @@ def create_app() -> Flask:
     from tools.external_apis import external_api_bp
     app.register_blueprint(external_api_bp)
 
+    from tools.lab_integration import lab_integration_bp
+    app.register_blueprint(lab_integration_bp)
+
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:
         from tools.export.models import init_scheduler
@@ -234,6 +237,14 @@ def create_app() -> Flask:
     @login_required
     def home():
         return render_template("home.html")
+
+    @app.route("/lab/integration")
+    @login_required
+    def lab_integration_page():
+        return render_template(
+            "lab_integration/lab_import.html",
+            is_admin=(session.get("role") == "admin"),
+        )
 
     @app.route("/health")
     def health():

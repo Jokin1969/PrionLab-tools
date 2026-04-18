@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Lab Integration') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="lab-int-page">
+  <h1 class="page-title">&#129710; {{ _('Lab Publication Integration') }}</h1>
+  <p class="page-subtitle">{{ _('Import and discover all lab publications automatically') }}</p>
+
+  <div class="lab-int-grid">
+
+    <!-- ── ORCID import ──────────────────────────────────────────────────── -->
+    <section class="card lab-int-card">
+      <h2 class="card-title">&#128209; {{ _('ORCID Bulk Import') }}</h2>
+      <p class="text-sm text-muted">{{ _('Extract all publications from team ORCID profiles') }}</p>
+
+      <h3 class="lab-int-section-head">{{ _('Principal Investigator') }}</h3>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">{{ _('Name') }}</label>
+          <input type="text" id="piName" class="form-control" value="Joaquín Castilla"></div>
+        <div class="form-group"><label class="form-label">{{ _('ORCID iD') }}</label>
+          <input type="text" id="piOrcid" class="form-control" placeholder="0000-0000-0000-0000"></div>
+      </div>
+
+      <h3 class="lab-int-section-head">{{ _('Lab Members') }}</h3>
+      <div id="labMembers"></div>
+      <button class="btn btn--secondary btn--sm mt-1" onclick="addMember()">+ {{ _('Add Member') }}</button>
+
+      <div class="form-grid-2 mt-1">
+        <div class="form-group"><label class="form-label">{{ _('Years Back') }}</label>
+          <input type="number" id="yearsBack" class="form-control" value="10" min="1" max="20"></div>
+        <div class="form-group"><label class="form-label">{{ _('Min Relevance') }}
+          <span id="relevanceDisplay">0.3</span></label>
+          <input type="range" id="minRelevance" min="0" max="1" step="0.1" value="0.3"
+                 oninput="document.getElementById('relevanceDisplay').textContent=this.value"></div>
+      </div>
+
+      <button class="btn btn--primary mt-1" id="btnOrcid" onclick="startOrcidImport()">
+        &#128640; {{ _('Start ORCID Import') }}
+      </button>
+    </section>
+
+    <!-- ── AI Discovery ──────────────────────────────────────────────────── -->
+    <section class="card lab-int-card">
+      <h2 class="card-title">&#129302; {{ _('AI Publication Discovery') }}</h2>
+      <p class="text-sm text-muted">{{ _('Discover missing publications via PubMed + CrossRef') }}</p>
+
+      <h3 class="lab-int-section-head">{{ _('Search Queries') }}</h3>
+      <div id="aiQueries">
+        <div class="ai-query-row">
+          <input type="text" class="form-control query-author" placeholder="{{ _('Author Name') }}" value="Joaquin Castilla">
+          <input type="text" class="form-control query-inst" placeholder="{{ _('Institution') }}" value="Universidad del País Vasco">
+          <input type="text" class="form-control query-kws" placeholder="{{ _('Keywords (comma-sep)') }}" value="prion, neurodegeneration">
+        </div>
+      </div>
+      <button class="btn btn--secondary btn--sm mt-1" onclick="addQuery()">+ {{ _('Add Query') }}</button>
+
+      <button class="btn btn--primary mt-1" id="btnAI" onclick="startAIDiscovery()">
+        &#128269; {{ _('Start AI Discovery') }}
+      </button>
+    </section>
+
+    <!-- ── CSV import ─────────────────────────────────────────────────────── -->
+    <section class="card lab-int-card">
+      <h2 class="card-title">&#128203; {{ _('CSV Import') }}</h2>
+      <p class="text-sm text-muted">{{ _('Manual import using our neurodegeneration template') }}</p>
+
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap" class="mt-1">
+        <a href="/api/lab/template/csv" class="btn btn--secondary btn--sm" download>
+          &#128229; {{ _('Download Template') }}
+        </a>
+        <label class="btn btn--secondary btn--sm" style="cursor:pointer">
+          &#128193; {{ _('Select CSV File') }}
+          <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="handleCSV(this)">
+        </label>
+      </div>
+
+      <div id="csvPreview" style="display:none" class="mt-1">
+        <div id="csvValidation"></div>
+        <div style="display:flex;gap:.5rem;margin-top:.75rem">
+          <button class="btn btn--secondary btn--sm" onclick="validateCSV()">&#9989; {{ _('Validate') }}</button>
+          <button class="btn btn--primary btn--sm" id="btnImportCsv" style="display:none" onclick="importCSV()">
+            &#128229; {{ _('Import') }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /.lab-int-grid -->
+
+  <!-- ── Results panel ─────────────────────────────────────────────────────── -->
+  <section class="card mt-1" id="resultsPanel" style="display:none">
+    <h2 class="card-title" id="resultsTitle">{{ _('Results') }}</h2>
+    <div id="resultsBody"></div>
+  </section>
+
+  <!-- ── Analytics summary ─────────────────────────────────────────────────── -->
+  <section class="card mt-1">
+    <div class="card-header-row">
+      <h2 class="card-title">&#128202; {{ _('Lab Analytics') }}</h2>
+      <button class="btn btn--secondary btn--sm" onclick="loadAnalytics()">&#8635;</button>
+    </div>
+    <div id="analyticsBody" class="db-stats-grid">
+      <p class="empty-state">{{ _('Click refresh to load analytics') }}</p>
+    </div>
+  </section>
+
+</div><!-- /.lab-int-page -->
+
+<!-- ── Progress overlay ────────────────────────────────────────────────────── -->
+<div id="progressOverlay" class="modal-overlay" style="display:none">
+  <div class="modal-box" style="text-align:center">
+    <div class="ai-spinner" style="margin:0 auto .75rem"></div>
+    <p id="progressMsg">{{ _('Processing…') }}</p>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showProgress(msg) {
+  document.getElementById('progressMsg').textContent = msg;
+  document.getElementById('progressOverlay').style.display = 'flex';
+}
+function hideProgress() { document.getElementById('progressOverlay').style.display = 'none'; }
+function showResults(title, html) {
+  document.getElementById('resultsTitle').textContent = title;
+  document.getElementById('resultsBody').innerHTML = html;
+  const panel = document.getElementById('resultsPanel');
+  panel.style.display = '';
+  panel.scrollIntoView({behavior: 'smooth'});
+}
+function toast(msg, ok) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:20px;right:20px;background:' + (ok ? '#28a745' : '#dc3545') +
+    ';color:#fff;padding:12px 18px;border-radius:6px;z-index:10000;font-weight:600;max-width:360px';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.parentNode && el.parentNode.removeChild(el), 5000);
+}
+async function post(url, body) {
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  return r.json();
+}
+
+// ── ORCID Import ──────────────────────────────────────────────────────────
+window.addMember = function () {
+  const row = document.createElement('div');
+  row.className = 'form-grid-2 mt-1 ai-query-row';
+  row.innerHTML =
+    '<input type="text" class="form-control member-name" placeholder="Name">' +
+    '<div style="display:flex;gap:.5rem"><input type="text" class="form-control member-orcid" placeholder="ORCID iD" style="flex:1">' +
+    '<button class="btn btn--danger btn--sm" onclick="this.closest(\'.ai-query-row\').remove()">×</button></div>';
+  document.getElementById('labMembers').appendChild(row);
+};
+// Add one member row by default
+window.addMember();
+
+window.startOrcidImport = async function () {
+  const pi = {
+    name: document.getElementById('piName').value,
+    orcid_id: document.getElementById('piOrcid').value,
+  };
+  if (!pi.orcid_id) { toast('Principal Investigator ORCID iD required', false); return; }
+  const members = [];
+  document.querySelectorAll('#labMembers .ai-query-row').forEach(row => {
+    const name = row.querySelector('.member-name').value.trim();
+    const orcid = row.querySelector('.member-orcid').value.trim();
+    if (name && orcid) members.push({name, orcid_id: orcid});
+  });
+  showProgress('Running ORCID import… this may take a few minutes');
+  try {
+    const d = await post('/api/lab/import/orcid', {
+      principal_investigator: pi,
+      lab_members: members,
+      years_back: parseInt(document.getElementById('yearsBack').value) || 10,
+      min_relevance_score: parseFloat(document.getElementById('minRelevance').value) || 0.3,
+    });
+    hideProgress();
+    if (d.success) {
+      showResults('ORCID Import Results',
+        '<div class="db-stats-grid">' +
+        metric('Publications Found', d.publications_found) +
+        metric('Imported', d.publications_imported) +
+        metric('Duplicates Skipped', d.duplicates_found) +
+        metric('Lab Collaborations', d.lab_collaborations) +
+        metric('External Collaborations', d.external_collaborations) +
+        '</div>' +
+        (d.processed_members.length ? '<p class="text-sm mt-1">Processed: ' + esc(d.processed_members.join(', ')) + '</p>' : '') +
+        errList(d.errors)
+      );
+    } else {
+      showResults('ORCID Import Failed', '<p class="alert alert--danger">' + esc(d.error || 'Unknown error') + '</p>');
+    }
+  } catch (e) { hideProgress(); toast('ORCID import error: ' + e.message, false); }
+};
+
+// ── AI Discovery ─────────────────────────────────────────────────────────
+window.addQuery = function () {
+  const row = document.createElement('div');
+  row.className = 'ai-query-row mt-1';
+  row.innerHTML =
+    '<input type="text" class="form-control query-author" placeholder="Author Name">' +
+    '<input type="text" class="form-control query-inst" placeholder="Institution">' +
+    '<input type="text" class="form-control query-kws" placeholder="Keywords (comma-sep)">';
+  document.getElementById('aiQueries').appendChild(row);
+};
+
+window.startAIDiscovery = async function () {
+  const queries = [];
+  document.querySelectorAll('#aiQueries .ai-query-row').forEach(row => {
+    const author = row.querySelector('.query-author').value.trim();
+    const inst   = row.querySelector('.query-inst').value.trim();
+    const kws    = row.querySelector('.query-kws').value.trim();
+    if (author) queries.push({
+      author_name: author, institution: inst,
+      research_keywords: kws ? kws.split(',').map(k => k.trim()).filter(Boolean) : [],
+    });
+  });
+  if (!queries.length) { toast('At least one author name is required', false); return; }
+  showProgress('Running AI discovery… searching PubMed & CrossRef');
+  try {
+    const d = await post('/api/lab/discover/ai', {queries});
+    hideProgress();
+    if (d.success) {
+      let rows = '';
+      (d.discoveries || []).slice(0, 30).forEach(p => {
+        rows += '<tr><td>' + esc(p.title || '') + '</td><td>' + esc(String(p.year || '')) + '</td>' +
+          '<td>' + esc(p.journal || '') + '</td>' +
+          '<td><span class="badge badge--reader">' + Math.round((p.confidence_score || 0) * 100) + '%</span></td>' +
+          '<td>' + esc((p.doi ? p.doi : (p.pmid ? 'PMID:' + p.pmid : '—'))) + '</td></tr>';
+      });
+      showResults('AI Discovery Results',
+        '<div class="db-stats-grid">' +
+        metric('Found', d.total_found) + metric('High Confidence (≥80%)', d.high_confidence) +
+        '</div>' +
+        (rows ? '<div class="table-wrapper mt-1"><table class="data-table"><thead><tr>' +
+          '<th>Title</th><th>Year</th><th>Journal</th><th>Confidence</th><th>DOI / PMID</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<p class="empty-state">No publications discovered</p>')
+      );
+    } else {
+      showResults('AI Discovery Failed', '<p class="alert alert--danger">' + esc(d.error || '') + '</p>');
+    }
+  } catch (e) { hideProgress(); toast('AI discovery error: ' + e.message, false); }
+};
+
+// ── CSV Import ────────────────────────────────────────────────────────────
+let _csvContent = '';
+window.handleCSV = function (input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _csvContent = e.target.result;
+    document.getElementById('csvPreview').style.display = '';
+    document.getElementById('csvValidation').innerHTML = '<p class="text-sm">File loaded. Click Validate to check.</p>';
+    document.getElementById('btnImportCsv').style.display = 'none';
+  };
+  reader.readAsText(file);
+};
+
+window.validateCSV = async function () {
+  if (!_csvContent) { toast('No CSV loaded', false); return; }
+  try {
+    const d = await post('/api/lab/import/csv/validate', {csv_content: _csvContent});
+    let html = d.success
+      ? '<p style="color:#28a745">&#9989; ' + d.valid_rows + ' valid rows</p>'
+      : '<p style="color:#dc3545">&#10060; Validation failed</p>';
+    if (d.invalid_rows) html += '<p class="text-sm">&#9888; ' + d.invalid_rows + ' invalid rows</p>';
+    if ((d.warnings || []).length) html += '<details><summary class="text-sm">Warnings (' + d.warnings.length + ')</summary><ul>' + d.warnings.slice(0,10).map(w => '<li class="text-sm">' + esc(w) + '</li>').join('') + '</ul></details>';
+    if ((d.errors || []).length) html += '<ul>' + d.errors.slice(0,5).map(e => '<li class="text-sm" style="color:#dc3545">' + esc(e) + '</li>').join('') + '</ul>';
+    document.getElementById('csvValidation').innerHTML = html;
+    document.getElementById('btnImportCsv').style.display = d.success ? '' : 'none';
+  } catch (e) { toast('Validation error: ' + e.message, false); }
+};
+
+window.importCSV = async function () {
+  if (!_csvContent) { toast('No CSV loaded', false); return; }
+  showProgress('Importing publications from CSV…');
+  try {
+    const d = await post('/api/lab/import/csv/execute', {csv_content: _csvContent});
+    hideProgress();
+    if (d.success) {
+      showResults('CSV Import Results',
+        '<div class="db-stats-grid">' +
+        metric('Total Rows', d.total_rows) + metric('Imported', d.imported) +
+        metric('Updated', d.updated) + metric('Skipped', d.skipped) +
+        '</div>' + errList(d.errors)
+      );
+    } else {
+      showResults('CSV Import Failed', '<p class="alert alert--danger">' + esc(d.error || '') + '</p>');
+    }
+  } catch (e) { hideProgress(); toast('CSV import error: ' + e.message, false); }
+};
+
+// ── Analytics ─────────────────────────────────────────────────────────────
+window.loadAnalytics = async function () {
+  try {
+    const r = await fetch('/api/lab/analytics/lab');
+    const d = await r.json();
+    if (!d.success) return;
+    const a = d.analytics;
+    const el = document.getElementById('analyticsBody');
+    el.innerHTML =
+      stat('Total Publications', a.total_publications) +
+      stat('Total Citations', a.citation_metrics.total_citations) +
+      stat('Avg Citations', (a.citation_metrics.avg_citations || 0).toFixed(1)) +
+      stat('Journals', Object.keys(a.publications_by_year || {}).length + ' years covered');
+  } catch (e) { toast('Analytics error: ' + e.message, false); }
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function metric(label, val) {
+  return '<div class="db-stat"><span class="db-stat__label">' + esc(label) + '</span><strong>' + esc(String(val)) + '</strong></div>';
+}
+function stat(label, val) {
+  return '<div class="db-stat"><span class="db-stat__label">' + esc(label) + '</span><strong>' + esc(String(val)) + '</strong></div>';
+}
+function errList(errors) {
+  if (!errors || !errors.length) return '';
+  return '<details class="mt-1"><summary class="text-sm">Errors (' + errors.length + ')</summary><ul>' +
+    errors.map(e => '<li class="text-sm" style="color:#dc3545">' + esc(e) + '</li>').join('') + '</ul></details>';
+}
+})();
+</script>
+{% endblock %}

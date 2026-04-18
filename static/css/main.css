@@ -2356,3 +2356,44 @@ select.form-input { cursor: pointer; }
 .activity-time { font-size: .8rem; color: #777; white-space: nowrap; margin-left: 1rem; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 9000; }
 .modal-box { background: #fff; border-radius: 12px; padding: 1.75rem; width: min(520px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+
+/* ── Lab Integration ──────────────────────────────────────────────────────── */
+.lab-int-page { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem; }
+.lab-int-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem; }
+@media (max-width: 720px) { .lab-int-grid { grid-template-columns: 1fr; } }
+.lab-int-card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 1.4rem; background: #fff; }
+.lab-int-card h3 { margin: 0 0 .25rem; font-size: 1.05rem; }
+.lab-int-card .card-desc { font-size: .85rem; color: #666; margin: 0 0 1rem; }
+.lab-int-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+.lab-int-section-head h2 { margin: 0; font-size: 1.2rem; }
+.lab-members-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .75rem; }
+.lab-member-row { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: .4rem; align-items: center; }
+.lab-member-row input, .lab-member-row select { padding: .35rem .5rem; border: 1px solid #ccc; border-radius: 5px; font-size: .85rem; }
+.ai-query-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .75rem; }
+.ai-query-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: .4rem; align-items: center; }
+.ai-query-row input { padding: .35rem .5rem; border: 1px solid #ccc; border-radius: 5px; font-size: .85rem; }
+.csv-drop-zone { border: 2px dashed #ccc; border-radius: 8px; padding: 1.5rem; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; font-size: .9rem; color: #777; margin-bottom: .75rem; }
+.csv-drop-zone:hover, .csv-drop-zone.drag-over { border-color: #4a90d9; background: #f0f6ff; color: #4a90d9; }
+.lab-results { margin-top: 1.5rem; }
+.lab-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.lab-result-stat { border: 1px solid #e0e0e0; border-radius: 8px; padding: .75rem; text-align: center; }
+.lab-result-stat__value { font-size: 1.8rem; font-weight: 700; color: #4a90d9; line-height: 1; }
+.lab-result-stat__label { font-size: .78rem; color: #666; margin-top: .25rem; }
+.lab-result-errors { background: #fff5f5; border: 1px solid #f5c6cb; border-radius: 6px; padding: .75rem; font-size: .85rem; }
+.lab-progress-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 9500; }
+.lab-progress-box { background: #fff; border-radius: 12px; padding: 2rem 2.5rem; text-align: center; min-width: 260px; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+.lab-spinner { width: 40px; height: 40px; border: 4px solid #ddd; border-top-color: #4a90d9; border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto .75rem; }
+.lab-analytics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.lab-analytics-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem; }
+.lab-analytics-card h4 { margin: 0 0 .5rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .04em; color: #666; }
+.lab-analytics-card .big-num { font-size: 2rem; font-weight: 700; color: #4a90d9; }
+.lab-journal-list { list-style: none; padding: 0; margin: 0; font-size: .85rem; }
+.lab-journal-list li { display: flex; justify-content: space-between; padding: .2rem 0; border-bottom: 1px solid #f0f0f0; }
+.discovery-list { display: flex; flex-direction: column; gap: .6rem; margin-top: .5rem; }
+.discovery-item { border: 1px solid #e0e0e0; border-radius: 6px; padding: .65rem .85rem; font-size: .88rem; }
+.discovery-item__title { font-weight: 600; margin-bottom: .2rem; }
+.discovery-item__meta { color: #666; font-size: .82rem; }
+.confidence-badge { display: inline-block; padding: .1rem .4rem; border-radius: 4px; font-size: .75rem; font-weight: 700; }
+.confidence-badge--high { background: #d4edda; color: #155724; }
+.confidence-badge--med { background: #fff3cd; color: #856404; }
+.confidence-badge--low { background: #e2e3e5; color: #383d41; }
