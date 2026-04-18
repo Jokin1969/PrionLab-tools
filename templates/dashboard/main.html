@@ -1,0 +1,664 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Manuscript Dashboard') }} — PrionLab Tools{% endblock %}
+{% block content %}
+<div class="ms-dash">
+
+  <!-- Header -->
+  <div class="ms-dash__header">
+    <div>
+      <h1 class="ms-dash__title">{{ _('Manuscript Dashboard') }}</h1>
+      <p class="ms-dash__sub">{{ _('Manage research publications and projects') }}</p>
+    </div>
+    <div class="ms-dash__actions">
+      <button class="btn btn--primary" onclick="openWizard()">+ {{ _('New Manuscript') }}</button>
+      <button class="btn btn--secondary" onclick="openNewProjectModal()">&#128193; {{ _('New Project') }}</button>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="ms-stats-row" id="statsRow">
+    <div class="ms-stat-card">
+      <span class="ms-stat-icon">&#128218;</span>
+      <div><div class="ms-stat-num" id="statTotal">—</div><div class="ms-stat-lbl">{{ _('Total') }}</div></div>
+    </div>
+    <div class="ms-stat-card">
+      <span class="ms-stat-icon">&#9998;</span>
+      <div><div class="ms-stat-num" id="statDraft">—</div><div class="ms-stat-lbl">{{ _('Draft') }}</div></div>
+    </div>
+    <div class="ms-stat-card">
+      <span class="ms-stat-icon">&#128228;</span>
+      <div><div class="ms-stat-num" id="statSubmitted">—</div><div class="ms-stat-lbl">{{ _('Submitted') }}</div></div>
+    </div>
+    <div class="ms-stat-card ms-stat-card--warn">
+      <span class="ms-stat-icon">&#9888;</span>
+      <div><div class="ms-stat-num" id="statOverdue">—</div><div class="ms-stat-lbl">{{ _('Overdue') }}</div></div>
+    </div>
+    <div class="ms-stat-card">
+      <span class="ms-stat-icon">&#128202;</span>
+      <div><div class="ms-stat-num" id="statProgress">—</div><div class="ms-stat-lbl">{{ _('Avg Progress') }}</div></div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="ms-filters">
+    <select id="filterStatus" class="ms-filter-select" onchange="applyFilters()">
+      <option value="all">{{ _('All Status') }}</option>
+      <option value="draft">Draft</option>
+      <option value="writing">Writing</option>
+      <option value="review">Review</option>
+      <option value="revision">Revision</option>
+      <option value="submitted">Submitted</option>
+      <option value="accepted">Accepted</option>
+      <option value="published">Published</option>
+    </select>
+    <select id="filterProject" class="ms-filter-select" onchange="applyFilters()">
+      <option value="all">{{ _('All Projects') }}</option>
+    </select>
+    <input type="text" id="filterSearch" class="ms-filter-input"
+           placeholder="{{ _('Search manuscripts…') }}" oninput="applyFilters()">
+    <div class="ms-view-btns">
+      <button id="btnGrid" class="ms-view-btn ms-view-btn--active" onclick="setView('grid')">&#9646;&#9646;</button>
+      <button id="btnList" class="ms-view-btn" onclick="setView('list')">&#9776;</button>
+    </div>
+  </div>
+
+  <!-- Main layout -->
+  <div class="ms-layout">
+
+    <!-- Manuscripts panel -->
+    <div class="ms-main-panel">
+      <div id="msGrid" class="ms-grid"></div>
+      <div id="msList" class="ms-list" style="display:none"></div>
+      <div id="msEmpty" class="ms-empty" style="display:none">
+        <div class="ms-empty__icon">&#128196;</div>
+        <h3>{{ _('No manuscripts yet') }}</h3>
+        <p>{{ _('Create your first manuscript to get started.') }}</p>
+        <button class="btn btn--primary" onclick="openWizard()">+ {{ _('Create Manuscript') }}</button>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="ms-sidebar">
+      <div class="ms-sidebar__section">
+        <h4>&#128197; {{ _('Upcoming Deadlines') }}</h4>
+        <div id="sideDeadlines" class="ms-deadline-list"></div>
+      </div>
+      <div class="ms-sidebar__section">
+        <h4>&#128336; {{ _('Recent Activity') }}</h4>
+        <div id="sideActivity" class="ms-activity-list"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ═══════════════════════ NEW MANUSCRIPT WIZARD ═══════════════════════════ -->
+<div id="wizardModal" class="ms-modal" style="display:none" role="dialog" aria-modal="true">
+  <div class="ms-modal__box ms-modal__box--lg">
+    <div class="ms-modal__head">
+      <h2>&#128196; {{ _('New Manuscript') }}</h2>
+      <button class="ms-modal__close" onclick="closeWizard()" aria-label="Close">&times;</button>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="ms-wizard-steps">
+      <div class="ms-wizard-step ms-wizard-step--active" id="wsi-1" data-step="1">
+        <span class="ms-wizard-step__num">1</span><span class="ms-wizard-step__lbl">{{ _('Basics') }}</span>
+      </div>
+      <div class="ms-wizard-connector"></div>
+      <div class="ms-wizard-step" id="wsi-2" data-step="2">
+        <span class="ms-wizard-step__num">2</span><span class="ms-wizard-step__lbl">{{ _('Project') }}</span>
+      </div>
+      <div class="ms-wizard-connector"></div>
+      <div class="ms-wizard-step" id="wsi-3" data-step="3">
+        <span class="ms-wizard-step__num">3</span><span class="ms-wizard-step__lbl">{{ _('Authors') }}</span>
+      </div>
+      <div class="ms-wizard-connector"></div>
+      <div class="ms-wizard-step" id="wsi-4" data-step="4">
+        <span class="ms-wizard-step__num">4</span><span class="ms-wizard-step__lbl">{{ _('Funding') }}</span>
+      </div>
+    </div>
+
+    <div class="ms-modal__body">
+
+      <!-- Step 1: Basics -->
+      <div class="ms-wiz-panel" id="wp-1">
+        <div class="ms-field-full">
+          <label>{{ _('Title') }} *</label>
+          <input id="wTitle" class="ms-input" placeholder="{{ _('Enter manuscript title') }}" required>
+        </div>
+        <div class="ms-field-row">
+          <div class="ms-field">
+            <label>{{ _('Research Area') }} *</label>
+            <select id="wArea" class="ms-input" required>
+              <option value="">— {{ _('select') }} —</option>
+              <option value="neuroscience">Neuroscience</option>
+              <option value="biochemistry">Biochemistry</option>
+              <option value="molecular_biology">Molecular Biology</option>
+              <option value="pathology">Pathology</option>
+              <option value="therapeutics">Therapeutics</option>
+              <option value="diagnostics">Diagnostics</option>
+            </select>
+          </div>
+          <div class="ms-field">
+            <label>{{ _('Type') }}</label>
+            <select id="wType" class="ms-input">
+              <option value="research_article">Research Article</option>
+              <option value="review">Review</option>
+              <option value="commentary">Commentary</option>
+              <option value="case_report">Case Report</option>
+              <option value="letter">Letter</option>
+            </select>
+          </div>
+          <div class="ms-field">
+            <label>{{ _('Priority') }}</label>
+            <select id="wPriority" class="ms-input">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+        <div class="ms-field-row">
+          <div class="ms-field">
+            <label>{{ _('Target Journal') }}</label>
+            <input id="wJournal" class="ms-input" placeholder="Nature Neuroscience…">
+          </div>
+          <div class="ms-field">
+            <label>{{ _('Deadline') }}</label>
+            <input id="wDeadline" class="ms-input" type="date">
+          </div>
+        </div>
+        <div class="ms-field-full">
+          <label>{{ _('Keywords') }}</label>
+          <input id="wKeywords" class="ms-input" placeholder="{{ _('prion, neurodegeneration, … (comma-separated)') }}">
+        </div>
+      </div>
+
+      <!-- Step 2: Project -->
+      <div class="ms-wiz-panel" id="wp-2" style="display:none">
+        <div class="ms-radio-group" id="projOptions">
+          <label class="ms-radio"><input type="radio" name="projOpt" value="none" checked> {{ _('No project') }}</label>
+          <label class="ms-radio"><input type="radio" name="projOpt" value="existing"> {{ _('Existing project') }}</label>
+          <label class="ms-radio"><input type="radio" name="projOpt" value="new"> {{ _('Create new project') }}</label>
+        </div>
+        <div id="projExisting" class="ms-proj-sub" style="display:none">
+          <select id="wExistingProject" class="ms-input"><option value="">— {{ _('select project') }} —</option></select>
+        </div>
+        <div id="projNew" class="ms-proj-sub" style="display:none">
+          <div class="ms-field-full"><label>{{ _('Project Name') }} *</label>
+            <input id="wNewProjectName" class="ms-input" placeholder="{{ _('Project name') }}">
+          </div>
+          <div class="ms-field-full"><label>{{ _('Description') }}</label>
+            <textarea id="wProjDesc" class="ms-input" rows="2" placeholder="{{ _('Brief description') }}"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Authors -->
+      <div class="ms-wiz-panel" id="wp-3" style="display:none">
+        <div class="ms-field-row">
+          <div class="ms-field ms-field--wide">
+            <label>{{ _('Corresponding Author Email') }} *</label>
+            <input id="wCorrespondingAuthor" class="ms-input" placeholder="author@institution.edu" type="email">
+          </div>
+          <div class="ms-field">
+            <label>{{ _('Collaboration') }}</label>
+            <select id="wCollab" class="ms-input">
+              <option value="internal">Internal</option>
+              <option value="external">External</option>
+              <option value="mixed">Mixed</option>
+            </select>
+          </div>
+        </div>
+        <div class="ms-field-full">
+          <label>{{ _('Authors') }}</label>
+          <div id="wAuthorsList" class="ms-dyn-list"></div>
+          <button type="button" class="btn btn--sm btn--secondary" onclick="addAuthorRow()">+ {{ _('Add Author') }}</button>
+        </div>
+      </div>
+
+      <!-- Step 4: Funding & Notes -->
+      <div class="ms-wiz-panel" id="wp-4" style="display:none">
+        <div class="ms-field-full">
+          <label>{{ _('Funding Sources') }}</label>
+          <div id="wFundingList" class="ms-dyn-list"></div>
+          <button type="button" class="btn btn--sm btn--secondary" onclick="addFundingRow()">+ {{ _('Add Funding') }}</button>
+        </div>
+        <div class="ms-field-full">
+          <label>{{ _('Tags') }}</label>
+          <input id="wTags" class="ms-input" placeholder="{{ _('prion-disease, collaboration, … (comma-separated)') }}">
+        </div>
+        <div class="ms-field-full">
+          <label>{{ _('Notes') }}</label>
+          <textarea id="wNotes" class="ms-input" rows="3" placeholder="{{ _('Internal notes…') }}"></textarea>
+        </div>
+      </div>
+
+    </div><!-- /modal body -->
+
+    <!-- Wizard footer -->
+    <div class="ms-modal__foot">
+      <button id="wBtnPrev" class="btn btn--secondary" onclick="wizPrev()" style="display:none">&#8592; {{ _('Back') }}</button>
+      <button id="wBtnNext" class="btn btn--primary" onclick="wizNext()">{{ _('Next') }} &#8594;</button>
+      <button id="wBtnCreate" class="btn btn--success" onclick="wizSubmit()" style="display:none">&#10003; {{ _('Create Manuscript') }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Project Modal (quick) -->
+<div id="newProjectModal" class="ms-modal" style="display:none">
+  <div class="ms-modal__box">
+    <div class="ms-modal__head">
+      <h2>&#128193; {{ _('New Project') }}</h2>
+      <button class="ms-modal__close" onclick="closeProjectModal()">&times;</button>
+    </div>
+    <div class="ms-modal__body">
+      <div class="ms-field-full"><label>{{ _('Name') }} *</label>
+        <input id="npName" class="ms-input" placeholder="{{ _('Project name') }}"></div>
+      <div class="ms-field-full"><label>{{ _('Research Area') }}</label>
+        <select id="npArea" class="ms-input">
+          <option value="">—</option>
+          <option value="neuroscience">Neuroscience</option>
+          <option value="biochemistry">Biochemistry</option>
+          <option value="molecular_biology">Molecular Biology</option>
+        </select>
+      </div>
+      <div class="ms-field-full"><label>{{ _('Description') }}</label>
+        <textarea id="npDesc" class="ms-input" rows="2"></textarea></div>
+    </div>
+    <div class="ms-modal__foot">
+      <button class="btn btn--secondary" onclick="closeProjectModal()">{{ _('Cancel') }}</button>
+      <button class="btn btn--primary" onclick="submitNewProject()">{{ _('Create') }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- Status update modal -->
+<div id="statusModal" class="ms-modal" style="display:none">
+  <div class="ms-modal__box ms-modal__box--sm">
+    <div class="ms-modal__head">
+      <h2>{{ _('Update Status') }}</h2>
+      <button class="ms-modal__close" onclick="closeStatusModal()">&times;</button>
+    </div>
+    <div class="ms-modal__body">
+      <p id="statusModalTitle" class="ms-modal__subtitle"></p>
+      <div class="ms-field-full"><label>{{ _('New Status') }}</label>
+        <select id="newStatusSelect" class="ms-input">
+          <option value="draft">Draft</option>
+          <option value="writing">Writing</option>
+          <option value="review">Review</option>
+          <option value="revision">Revision</option>
+          <option value="submitted">Submitted</option>
+          <option value="accepted">Accepted</option>
+          <option value="published">Published</option>
+        </select>
+      </div>
+      <div class="ms-field-full"><label>{{ _('Notes') }}</label>
+        <input id="statusNotes" class="ms-input" placeholder="{{ _('Optional notes…') }}"></div>
+    </div>
+    <div class="ms-modal__foot">
+      <button class="btn btn--secondary" onclick="closeStatusModal()">{{ _('Cancel') }}</button>
+      <button class="btn btn--primary" onclick="confirmStatus()">{{ _('Update') }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- Overlay spinner -->
+<div id="msOverlay" class="ms-overlay" style="display:none">
+  <div class="ms-overlay__box">
+    <div class="ms-overlay__spinner"></div>
+    <p id="msOverlayMsg">{{ _('Working…') }}</p>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let _dashData = {manuscripts:[], projects:[], statistics:{}, recent_activity:[], upcoming_deadlines:[]};
+let _wizStep = 1;
+let _statusTarget = null;
+let _currentView = 'grid';
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadDashboard();
+  document.querySelectorAll('input[name="projOpt"]').forEach(r =>
+    r.addEventListener('change', e => {
+      document.getElementById('projExisting').style.display = e.target.value === 'existing' ? '' : 'none';
+      document.getElementById('projNew').style.display = e.target.value === 'new' ? '' : 'none';
+    })
+  );
+});
+
+// ── Load ─────────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const r = await fetch('/api/manuscripts/dashboard');
+    const d = await r.json();
+    if (d.success) {
+      _dashData = d;
+      renderStats(d.statistics);
+      populateProjectFilter(d.projects);
+      renderManuscripts(d.manuscripts);
+      renderDeadlines(d.upcoming_deadlines);
+      renderActivity(d.recent_activity);
+    }
+  } catch(e) { console.error('Dashboard load error:', e); }
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function renderStats(s) {
+  document.getElementById('statTotal').textContent = s.total_manuscripts ?? 0;
+  document.getElementById('statDraft').textContent = s.by_status?.draft ?? 0;
+  document.getElementById('statSubmitted').textContent = s.by_status?.submitted ?? 0;
+  document.getElementById('statOverdue').textContent = s.overdue_count ?? 0;
+  document.getElementById('statProgress').textContent = (s.average_progress ?? 0) + '%';
+}
+
+// ── Project filter dropdown ───────────────────────────────────────────────────
+function populateProjectFilter(projects) {
+  const sel = document.getElementById('filterProject');
+  const wSel = document.getElementById('wExistingProject');
+  [sel, wSel].forEach(s => {
+    while (s.children.length > 1) s.removeChild(s.lastChild);
+    projects.forEach(p => { const o = new Option(p.name, p.id); s.appendChild(o.cloneNode(true)); });
+  });
+}
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const status = document.getElementById('filterStatus').value;
+  const project = document.getElementById('filterProject').value;
+  const search = document.getElementById('filterSearch').value.toLowerCase();
+  let items = _dashData.manuscripts || [];
+  if (status !== 'all') items = items.filter(m => m.status === status);
+  if (project !== 'all') items = items.filter(m => m.project_id === project);
+  if (search) items = items.filter(m =>
+    (m.title || '').toLowerCase().includes(search) ||
+    (m.keywords || '').toLowerCase().includes(search) ||
+    (m.tags || '').toLowerCase().includes(search)
+  );
+  renderManuscripts(items);
+}
+
+function setView(v) {
+  _currentView = v;
+  document.getElementById('msGrid').style.display = v === 'grid' ? '' : 'none';
+  document.getElementById('msList').style.display = v === 'list' ? '' : 'none';
+  document.getElementById('btnGrid').classList.toggle('ms-view-btn--active', v === 'grid');
+  document.getElementById('btnList').classList.toggle('ms-view-btn--active', v === 'list');
+  const items = _dashData.manuscripts || [];
+  renderManuscripts(items);
+}
+
+// ── Render manuscripts ────────────────────────────────────────────────────────
+const STATUS_COLOR = {
+  draft:'#888', writing:'#e67e22', review:'#3498db',
+  revision:'#9b59b6', submitted:'#8e44ad', accepted:'#27ae60', published:'#2c3e50'
+};
+
+function renderManuscripts(items) {
+  const grid = document.getElementById('msGrid');
+  const list = document.getElementById('msList');
+  const empty = document.getElementById('msEmpty');
+  if (!items.length) { grid.innerHTML=''; list.innerHTML=''; empty.style.display=''; return; }
+  empty.style.display='none';
+  const color = m => STATUS_COLOR[m.status] || '#888';
+  const fmt = s => { if(!s) return ''; try { return new Date(s).toLocaleDateString('en-GB',{year:'numeric',month:'short',day:'numeric'}); } catch{return s;} };
+  const badge = m => `<span class="ms-badge" style="background:${color(m)}">${m.status}</span>`;
+  const pbar = m => `<div class="ms-pbar"><div class="ms-pbar__fill" style="width:${m.progress_percentage||0}%"></div></div><small>${m.progress_percentage||0}%</small>`;
+  const priorityDot = p => `<span class="ms-pri ms-pri--${p||'medium'}" title="${p||'medium'}"></span>`;
+
+  grid.innerHTML = items.map(m => `
+    <article class="ms-card" style="border-left-color:${color(m)}" onclick="openManuscript('${m.id}')">
+      <div class="ms-card__head">${badge(m)}${priorityDot(m.priority)}</div>
+      <h3 class="ms-card__title">${m.title}</h3>
+      <div class="ms-card__meta">${m.research_area||''} · ${m.manuscript_type||''}</div>
+      ${pbar(m)}
+      <div class="ms-card__foot">
+        <span class="ms-card__date">${m.target_deadline ? '&#128197; '+fmt(m.target_deadline) : ''}</span>
+        <div class="ms-card__btns">
+          <button class="btn btn--xs btn--secondary" onclick="event.stopPropagation();openStatusModal('${m.id}','${(m.title||'').replace(/'/g,"\\'")}','${m.status}')">&#9998;</button>
+        </div>
+      </div>
+    </article>`).join('');
+
+  list.innerHTML = `<table class="ms-table"><thead><tr>
+      <th>{{ _('Title') }}</th><th>{{ _('Status') }}</th><th>{{ _('Area') }}</th>
+      <th>{{ _('Progress') }}</th><th>{{ _('Deadline') }}</th><th></th>
+    </tr></thead><tbody>` +
+    items.map(m => `<tr class="ms-table__row" onclick="openManuscript('${m.id}')">
+      <td><strong>${m.title}</strong></td>
+      <td>${badge(m)}</td>
+      <td>${m.research_area||''}</td>
+      <td>${pbar(m)}</td>
+      <td>${fmt(m.target_deadline)}</td>
+      <td><button class="btn btn--xs btn--secondary" onclick="event.stopPropagation();openStatusModal('${m.id}','${(m.title||'').replace(/'/g,"\\'")}','${m.status}')">&#9998;</button></td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
+// ── Deadlines & Activity ──────────────────────────────────────────────────────
+function renderDeadlines(list) {
+  const el = document.getElementById('sideDeadlines');
+  if (!list?.length) { el.innerHTML='<p class="ms-empty-hint">{{ _("No upcoming deadlines") }}</p>'; return; }
+  el.innerHTML = list.map(d => {
+    const cls = d.is_overdue ? 'ms-deadline--over' : d.days_until <= 7 ? 'ms-deadline--soon' : '';
+    const lbl = d.is_overdue ? `${Math.abs(d.days_until)}d overdue` : `${d.days_until}d left`;
+    return `<div class="ms-deadline ${cls}">
+      <div class="ms-deadline__title">${d.manuscript_title}</div>
+      <div class="ms-deadline__info"><span class="ms-badge" style="background:${STATUS_COLOR[d.status]||'#888'}">${d.status}</span> <span>${lbl}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderActivity(list) {
+  const el = document.getElementById('sideActivity');
+  if (!list?.length) { el.innerHTML='<p class="ms-empty-hint">{{ _("No recent activity") }}</p>'; return; }
+  const fmt = s => { try { return new Date(s).toLocaleDateString('en-GB',{month:'short',day:'numeric'}); } catch{return '';} };
+  el.innerHTML = list.map(a => `
+    <div class="ms-activity">
+      <div class="ms-activity__text">${a.manuscript_title||''}</div>
+      <div class="ms-activity__meta">${a.action||''} · ${fmt(a.timestamp)}</div>
+    </div>`).join('');
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function openManuscript(id) { window.location.href = `/manuscripts/${id}`; }
+
+// ── Status Modal ──────────────────────────────────────────────────────────────
+function openStatusModal(id, title, current) {
+  _statusTarget = id;
+  document.getElementById('statusModalTitle').textContent = title;
+  document.getElementById('newStatusSelect').value = current;
+  document.getElementById('statusNotes').value = '';
+  document.getElementById('statusModal').style.display = 'flex';
+}
+function closeStatusModal() { document.getElementById('statusModal').style.display = 'none'; _statusTarget = null; }
+async function confirmStatus() {
+  if (!_statusTarget) return;
+  const status = document.getElementById('newStatusSelect').value;
+  const notes = document.getElementById('statusNotes').value;
+  showOverlay('{{ _("Updating…") }}');
+  try {
+    const r = await fetch(`/api/manuscripts/${_statusTarget}/status`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status, notes})
+    });
+    const d = await r.json();
+    closeStatusModal();
+    if (d.success) { await loadDashboard(); }
+    else alert('Error: ' + (d.error || 'unknown'));
+  } catch(e) { alert('Error updating status'); } finally { hideOverlay(); }
+}
+</script>
+
+<script>
+// ── Wizard ────────────────────────────────────────────────────────────────────
+function openWizard() {
+  _wizStep = 1;
+  resetWizardForm();
+  updateWizardUI();
+  document.getElementById('wizardModal').style.display = 'flex';
+}
+function closeWizard() { document.getElementById('wizardModal').style.display = 'none'; }
+
+function updateWizardUI() {
+  for (let i = 1; i <= 4; i++) {
+    const panel = document.getElementById(`wp-${i}`);
+    if (panel) panel.style.display = i === _wizStep ? '' : 'none';
+    const ind = document.getElementById(`wsi-${i}`);
+    if (ind) {
+      ind.classList.toggle('ms-wizard-step--active', i === _wizStep);
+      ind.classList.toggle('ms-wizard-step--done', i < _wizStep);
+    }
+  }
+  document.getElementById('wBtnPrev').style.display = _wizStep === 1 ? 'none' : '';
+  document.getElementById('wBtnNext').style.display = _wizStep === 4 ? 'none' : '';
+  document.getElementById('wBtnCreate').style.display = _wizStep === 4 ? '' : 'none';
+}
+
+function wizPrev() { if (_wizStep > 1) { _wizStep--; updateWizardUI(); } }
+function wizNext() {
+  if (!validateWizardStep(_wizStep)) return;
+  if (_wizStep < 4) { _wizStep++; updateWizardUI(); }
+}
+
+function validateWizardStep(step) {
+  if (step === 1) {
+    if (!document.getElementById('wTitle').value.trim()) { alert('{{ _("Title required") }}'); return false; }
+    if (!document.getElementById('wArea').value) { alert('{{ _("Research area required") }}'); return false; }
+  }
+  if (step === 2) {
+    const opt = document.querySelector('input[name="projOpt"]:checked').value;
+    if (opt === 'existing' && !document.getElementById('wExistingProject').value) {
+      alert('{{ _("Select a project or choose another option") }}'); return false;
+    }
+    if (opt === 'new' && !document.getElementById('wNewProjectName').value.trim()) {
+      alert('{{ _("Enter project name") }}'); return false;
+    }
+  }
+  if (step === 3) {
+    const ca = document.getElementById('wCorrespondingAuthor').value.trim();
+    if (!ca) { alert('{{ _("Corresponding author email required") }}'); return false; }
+    if (!ca.includes('@')) { alert('{{ _("Enter a valid email") }}'); return false; }
+  }
+  return true;
+}
+
+function addAuthorRow() {
+  const el = document.createElement('div');
+  el.className = 'ms-dyn-row';
+  el.innerHTML = `
+    <input class="ms-input ms-dyn-row__author-name" placeholder="{{ _('Author name') }}" style="flex:2">
+    <input class="ms-input ms-dyn-row__author-email" placeholder="{{ _('Email') }}" type="email" style="flex:2">
+    <button type="button" class="btn btn--xs btn--danger" onclick="this.closest('.ms-dyn-row').remove()">&#10005;</button>`;
+  document.getElementById('wAuthorsList').appendChild(el);
+}
+
+function addFundingRow() {
+  const el = document.createElement('div');
+  el.className = 'ms-dyn-row';
+  el.innerHTML = `
+    <input class="ms-input ms-dyn-row__fund-name" placeholder="{{ _('Funding source') }}" style="flex:2">
+    <input class="ms-input ms-dyn-row__fund-grant" placeholder="{{ _('Grant #') }}" style="flex:1">
+    <button type="button" class="btn btn--xs btn--danger" onclick="this.closest('.ms-dyn-row').remove()">&#10005;</button>`;
+  document.getElementById('wFundingList').appendChild(el);
+}
+
+function collectWizardData() {
+  const authors = Array.from(document.querySelectorAll('#wAuthorsList .ms-dyn-row'))
+    .map(r => ({ name: r.querySelector('.ms-dyn-row__author-name')?.value.trim() || '',
+                 email: r.querySelector('.ms-dyn-row__author-email')?.value.trim() || '' }))
+    .filter(a => a.name || a.email);
+
+  const funding = Array.from(document.querySelectorAll('#wFundingList .ms-dyn-row'))
+    .map(r => ({ name: r.querySelector('.ms-dyn-row__fund-name')?.value.trim() || '',
+                 grant_number: r.querySelector('.ms-dyn-row__fund-grant')?.value.trim() || '' }))
+    .filter(f => f.name);
+
+  const projOpt = document.querySelector('input[name="projOpt"]:checked').value;
+  const projData = {};
+  if (projOpt === 'existing') projData.project_id = document.getElementById('wExistingProject').value;
+  else if (projOpt === 'new') {
+    projData.new_project_name = document.getElementById('wNewProjectName').value.trim();
+    projData.project_description = document.getElementById('wProjDesc').value.trim();
+  }
+
+  return {
+    title: document.getElementById('wTitle').value.trim(),
+    research_area: document.getElementById('wArea').value,
+    manuscript_type: document.getElementById('wType').value,
+    priority: document.getElementById('wPriority').value,
+    target_journal: document.getElementById('wJournal').value.trim(),
+    target_deadline: document.getElementById('wDeadline').value || null,
+    keywords: document.getElementById('wKeywords').value.trim(),
+    corresponding_author: document.getElementById('wCorrespondingAuthor').value.trim(),
+    collaboration_type: document.getElementById('wCollab').value,
+    authors, funding_sources: funding,
+    tags: document.getElementById('wTags').value.trim(),
+    notes: document.getElementById('wNotes').value.trim(),
+    ...projData,
+  };
+}
+
+async function wizSubmit() {
+  if (!validateWizardStep(4)) return;
+  showOverlay('{{ _("Creating manuscript…") }}');
+  try {
+    const r = await fetch('/api/manuscripts/create', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(collectWizardData())
+    });
+    const d = await r.json();
+    if (d.success) {
+      closeWizard();
+      await loadDashboard();
+    } else { alert('{{ _("Error") }}: ' + (d.error || 'unknown')); }
+  } catch(e) { alert('{{ _("Error creating manuscript") }}'); } finally { hideOverlay(); }
+}
+
+function resetWizardForm() {
+  ['wTitle','wJournal','wDeadline','wKeywords','wCorrespondingAuthor','wNewProjectName','wTags','wNotes'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+  const pd = document.getElementById('wProjDesc'); if(pd) pd.value='';
+  document.getElementById('wArea').value = '';
+  document.getElementById('wType').value = 'research_article';
+  document.getElementById('wPriority').value = 'medium';
+  document.getElementById('wCollab').value = 'internal';
+  document.querySelector('input[name="projOpt"][value="none"]').checked = true;
+  document.getElementById('projExisting').style.display='none';
+  document.getElementById('projNew').style.display='none';
+  document.getElementById('wAuthorsList').innerHTML = '';
+  document.getElementById('wFundingList').innerHTML = '';
+}
+
+// ── New Project quick modal ───────────────────────────────────────────────────
+function openNewProjectModal() { document.getElementById('newProjectModal').style.display='flex'; }
+function closeProjectModal() { document.getElementById('newProjectModal').style.display='none'; }
+async function submitNewProject() {
+  const name = document.getElementById('npName').value.trim();
+  if (!name) { alert('{{ _("Name required") }}'); return; }
+  showOverlay('{{ _("Creating project…") }}');
+  try {
+    const r = await fetch('/api/manuscripts/projects', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name, research_area: document.getElementById('npArea').value,
+        description: document.getElementById('npDesc').value.trim()
+      })
+    });
+    const d = await r.json();
+    closeProjectModal();
+    if (d.success) { await loadDashboard(); }
+    else alert('{{ _("Error") }}: ' + (d.error || 'unknown'));
+  } catch(e) { alert('{{ _("Error creating project") }}'); } finally { hideOverlay(); }
+}
+
+// ── Overlay ───────────────────────────────────────────────────────────────────
+function showOverlay(msg) {
+  document.getElementById('msOverlayMsg').textContent = msg || '{{ _("Working…") }}';
+  document.getElementById('msOverlay').style.display = 'flex';
+}
+function hideOverlay() { document.getElementById('msOverlay').style.display = 'none'; }
+</script>
+{% endblock %}

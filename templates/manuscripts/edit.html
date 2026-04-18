@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Edit Manuscript') }} — PrionLab Tools{% endblock %}
+{% block content %}
+<div class="ms-dash">
+  <div class="ms-dash__header">
+    <div>
+      <a href="{{ url_for('manuscript_dashboard_page') }}" class="ms-back-link">&#8592; {{ _('Dashboard') }}</a>
+      <h1 class="ms-dash__title">{{ _('Edit Manuscript') }}</h1>
+    </div>
+  </div>
+  <div class="card card--padded" style="max-width:800px">
+    <form id="editForm">
+      <div class="ms-field-full"><label>{{ _('Status') }}</label>
+        <select id="editStatus" class="ms-input">
+          <option value="draft">Draft</option><option value="writing">Writing</option>
+          <option value="review">Review</option><option value="revision">Revision</option>
+          <option value="submitted">Submitted</option><option value="accepted">Accepted</option>
+          <option value="published">Published</option>
+        </select>
+      </div>
+      <div class="ms-field-full"><label>{{ _('Notes on status change') }}</label>
+        <input id="editNotes" class="ms-input" placeholder="{{ _('Optional notes') }}"></div>
+      <div style="margin-top:1.5rem;display:flex;gap:.75rem">
+        <button type="button" class="btn btn--primary" onclick="saveEdit()">{{ _('Save') }}</button>
+        <button type="button" class="btn btn--secondary" onclick="history.back()">{{ _('Cancel') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+const manuscriptId = "{{ manuscript_id }}";
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await fetch(`/api/manuscripts/${manuscriptId}`);
+    const d = await r.json();
+    if (d.success) document.getElementById('editStatus').value = d.manuscript.status;
+  } catch(e) {}
+});
+async function saveEdit() {
+  const status = document.getElementById('editStatus').value;
+  const notes = document.getElementById('editNotes').value;
+  try {
+    const r = await fetch(`/api/manuscripts/${manuscriptId}/status`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status, notes})
+    });
+    const d = await r.json();
+    if (d.success) window.location.href = `/manuscripts/${manuscriptId}`;
+    else alert('{{ _("Error") }}: ' + (d.error||'unknown'));
+  } catch(e) { alert('{{ _("Error saving") }}'); }
+}
+</script>
+{% endblock %}

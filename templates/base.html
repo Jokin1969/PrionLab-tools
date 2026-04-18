@@ -15,6 +15,7 @@
 
       <nav class="site-nav">
         {% if session.get('logged_in') %}
+          <a href="{{ url_for('manuscript_dashboard_page') }}" class="nav-link">&#128218; {{ _('Dashboard') }}</a>
           <a href="{{ url_for('manuscriptforge.home') }}" class="nav-link">ManuscriptForge</a>
           <a href="{{ url_for('methods.index') }}" class="nav-link">{{ _('Methods Library') }}</a>
           <a href="{{ url_for('introduction.generator') }}" class="nav-link">{{ _('Introduction') }}</a>

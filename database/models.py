@@ -469,6 +469,119 @@ class SystemLog(Base):
     )
 
 
+class Project(Base, TimestampMixin):
+    """Project for grouping related manuscripts."""
+    __tablename__ = "projects"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(200), nullable=False)
+    description = Column(Text)
+    status = Column(String(50), default="active")
+    research_area = Column(String(100))
+    priority = Column(String(20), default="medium")
+    start_date = Column(DateTime(timezone=True))
+    target_completion = Column(DateTime(timezone=True))
+    created_by = Column(String(100))
+    manuscripts = relationship("Manuscript", back_populates="project", lazy="dynamic")
+    __table_args__ = (Index("idx_project_status", "status"),)
+
+    def to_dict(self):
+        try:
+            count = self.manuscripts.count()
+        except Exception:
+            count = 0
+        return {
+            "id": str(self.id), "name": self.name, "description": self.description,
+            "status": self.status, "research_area": self.research_area,
+            "priority": self.priority, "created_by": self.created_by,
+            "manuscript_count": count,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "target_completion": self.target_completion.isoformat() if self.target_completion else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
+class Manuscript(Base, TimestampMixin):
+    """Manuscript lifecycle management."""
+    __tablename__ = "manuscripts"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    status = Column(String(50), default="draft")
+    progress_percentage = Column(Float, default=0.0)
+    target_deadline = Column(DateTime(timezone=True))
+    submission_date = Column(DateTime(timezone=True))
+    research_area = Column(String(100))
+    manuscript_type = Column(String(50), default="research_article")
+    priority = Column(String(20), default="medium")
+    abstract = Column(Text)
+    keywords = Column(String(500))
+    target_journal = Column(String(200))
+    corresponding_author = Column(String(200))
+    author_list = Column(Text)
+    funding_sources = Column(Text)
+    word_count = Column(Integer, default=0)
+    figure_count = Column(Integer, default=0)
+    reference_count = Column(Integer, default=0)
+    collaboration_type = Column(String(50), default="internal")
+    external_collaborators = Column(Text)
+    tags = Column(String(500))
+    notes = Column(Text)
+    created_by = Column(String(100))
+    last_modified_by = Column(String(100))
+    project = relationship("Project", back_populates="manuscripts")
+    status_history = relationship("ManuscriptStatus", back_populates="manuscript",
+                                  cascade="all, delete-orphan", lazy="dynamic")
+    __table_args__ = (
+        Index("idx_manuscript_status", "status"),
+        Index("idx_manuscript_project", "project_id"),
+        Index("idx_manuscript_created_by", "created_by"),
+    )
+
+    def to_dict(self):
+        import json as _json
+        def _load(val):
+            try:
+                return _json.loads(val) if val else []
+            except Exception:
+                return []
+        return {
+            "id": str(self.id), "title": self.title, "status": self.status,
+            "progress_percentage": self.progress_percentage or 0,
+            "research_area": self.research_area,
+            "manuscript_type": self.manuscript_type, "priority": self.priority,
+            "abstract": self.abstract, "keywords": self.keywords or "",
+            "target_journal": self.target_journal or "",
+            "corresponding_author": self.corresponding_author or "",
+            "authors": _load(self.author_list),
+            "funding_sources": _load(self.funding_sources),
+            "external_collaborators": _load(self.external_collaborators),
+            "project_id": str(self.project_id) if self.project_id else None,
+            "tags": self.tags or "", "collaboration_type": self.collaboration_type,
+            "word_count": self.word_count or 0,
+            "figure_count": self.figure_count or 0,
+            "reference_count": self.reference_count or 0,
+            "created_by": self.created_by, "last_modified_by": self.last_modified_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "target_deadline": self.target_deadline.isoformat() if self.target_deadline else None,
+            "submission_date": self.submission_date.isoformat() if self.submission_date else None,
+        }
+
+
+class ManuscriptStatus(Base):
+    """Track manuscript status changes."""
+    __tablename__ = "manuscript_status_history"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    manuscript_id = Column(UUID(as_uuid=True), ForeignKey("manuscripts.id"), nullable=False)
+    status = Column(String(50), nullable=False)
+    changed_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    changed_by = Column(String(100))
+    notes = Column(Text)
+    manuscript = relationship("Manuscript", back_populates="status_history")
+    __table_args__ = (Index("idx_mstatus_manuscript", "manuscript_id"),)
+
+
 # ── Module-level performance indexes ──────────────────────────────────────────
 Index("idx_user_created_at", User.created_at)
 Index("idx_pub_created_at", Publication.created_at)
