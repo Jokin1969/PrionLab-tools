@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Reference Manager') }} — PrionLab Tools{% endblock %}
+{% block content %}
+<div class="ref-mgr">
+
+  <!-- Header -->
+  <div class="ref-mgr__header">
+    <div>
+      <a href="{{ url_for('manuscript_dashboard_page') }}" class="ms-back-link">&#8592; {{ _('Dashboard') }}</a>
+      <h1 class="ref-mgr__title">&#128218; {{ _('Reference Manager') }}</h1>
+      <p class="ref-mgr__sub">{{ _('Manuscript') }}: <code>{{ manuscript_id }}</code></p>
+    </div>
+    <div class="ref-mgr__actions">
+      <button class="btn btn--success" onclick="openBibModal()">&#128196; {{ _('Generate Bibliography') }}</button>
+    </div>
+  </div>
+
+  <!-- Import card -->
+  <div class="card card--padded ref-import-card">
+    <h2 class="ref-section-title">&#128229; {{ _('Import from ReadCube Papers') }}</h2>
+    <div class="ref-workflow">
+
+      <div class="ref-step">
+        <span class="ref-step__num">1</span>
+        <div>
+          <strong>{{ _('Export from ReadCube Papers') }}</strong>
+          <p>{{ _('Select references → Export → BibTeX (.bib)') }}</p>
+        </div>
+      </div>
+
+      <div class="ref-step">
+        <span class="ref-step__num">2</span>
+        <div>
+          <strong>{{ _('Upload .bib file') }}</strong>
+          <div class="ref-drop-zone" id="dropZone" onclick="document.getElementById('bibFile').click()">
+            <input type="file" id="bibFile" accept=".bib,.bibtex,.txt" style="display:none">
+            <div id="dropLabel">
+              <div style="font-size:2rem;margin-bottom:.4rem">&#128196;</div>
+              <p>{{ _('Click or drag & drop BibTeX file here') }}</p>
+              <small>.bib · .bibtex · .txt</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ref-step">
+        <span class="ref-step__num">3</span>
+        <div>
+          <strong>{{ _('Import') }}</strong>
+          <button id="importBtn" class="btn btn--primary" disabled onclick="doImport()">
+            &#128218; {{ _('Import References') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="importProgress" style="display:none" class="ref-progress">
+      <div class="ref-pbar"><div id="pbarFill" class="ref-pbar__fill"></div></div>
+      <p id="pbarText" class="ref-pbar__text">{{ _('Processing…') }}</p>
+    </div>
+    <div id="importResult" style="display:none" class="ref-import-result"></div>
+  </div>
+
+  <!-- Library card -->
+  <div class="card card--padded">
+    <div class="ref-lib-head">
+      <h2 class="ref-section-title">&#128209; {{ _('Reference Library') }}</h2>
+      <div class="ref-lib-controls">
+        <input type="text" id="searchInput" class="ms-filter-input"
+               placeholder="{{ _('Search…') }}" oninput="filterRefs()">
+        <select id="areaFilter" class="ms-filter-select" onchange="filterRefs()">
+          <option value="">{{ _('All Areas') }}</option>
+          <option value="neuroscience">Neuroscience</option>
+          <option value="biochemistry">Biochemistry</option>
+          <option value="pathology">Pathology</option>
+          <option value="therapeutics">Therapeutics</option>
+          <option value="general">General</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ref-stats-row">
+      <span>{{ _('Total') }}: <strong id="statTotal">0</strong></span>
+      <span>{{ _('Selected') }}: <strong id="statSelected">0</strong></span>
+    </div>
+
+    <div id="refList"></div>
+    <div id="refEmpty" class="ms-empty" style="display:none">
+      <div class="ms-empty__icon">&#128218;</div>
+      <h3>{{ _('No references yet') }}</h3>
+      <p>{{ _('Import a BibTeX file to get started.') }}</p>
+    </div>
+  </div>
+</div>
+
+<!-- Bibliography modal -->
+<div id="bibModal" class="ms-modal" style="display:none">
+  <div class="ms-modal__box ms-modal__box--lg">
+    <div class="ms-modal__head">
+      <h2>&#128196; {{ _('Generate Bibliography') }}</h2>
+      <button class="ms-modal__close" onclick="closeBibModal()">&times;</button>
+    </div>
+    <div class="ms-modal__body">
+      <div class="ref-bib-opts">
+        <div class="ms-field">
+          <label>{{ _('Citation Style') }}</label>
+          <select id="citeStyle" class="ms-input" onchange="previewChanged()"></select>
+        </div>
+        <label class="ms-radio">
+          <input type="checkbox" id="selectedOnly" checked>
+          {{ _('Selected references only') }}
+        </label>
+      </div>
+      <div id="bibPreview" class="ref-bib-preview">{{ _('Click Generate to preview.') }}</div>
+      <div class="ms-modal__foot" style="border:none;padding-top:.75rem">
+        <button class="btn btn--primary" onclick="generateBib()">&#128196; {{ _('Generate') }}</button>
+        <button id="btnCopyBib" class="btn btn--secondary" style="display:none" onclick="copyBib()">&#128203; {{ _('Copy') }}</button>
+        <button id="btnDlBib" class="btn btn--secondary" style="display:none" onclick="downloadBib()">&#128190; {{ _('Download') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MANUSCRIPT_ID = "{{ manuscript_id | tojson }}";
+let _allRefs = [];
+let _selected = new Set();
+let _bibText = "";
+
+document.addEventListener('DOMContentLoaded', () => {
+  setupDrop();
+  loadRefs();
+  loadStyles();
+});
+
+// ── File upload ────────────────────────────────────────────────────────────
+function setupDrop() {
+  const zone = document.getElementById('dropZone');
+  const input = document.getElementById('bibFile');
+
+  input.addEventListener('change', e => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+  });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('ref-drop-zone--over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('ref-drop-zone--over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('ref-drop-zone--over');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+}
+
+function handleFile(file) {
+  document.getElementById('dropLabel').innerHTML = `
+    <div style="font-size:2rem;margin-bottom:.4rem">&#10003;</div>
+    <p><strong>${file.name}</strong></p>
+    <small>${(file.size/1024).toFixed(1)} KB</small>`;
+  document.getElementById('importBtn').disabled = false;
+}
+
+// ── Import ─────────────────────────────────────────────────────────────────
+async function doImport() {
+  const file = document.getElementById('bibFile').files[0];
+  if (!file) return;
+
+  const prog = document.getElementById('importProgress');
+  const res = document.getElementById('importResult');
+  prog.style.display = ''; res.style.display = 'none';
+  setProgress(15, '{{ _("Uploading…") }}');
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('manuscript_id', MANUSCRIPT_ID.replace(/"/g,''));
+
+  try {
+    setProgress(40, '{{ _("Processing BibTeX…") }}');
+    const r = await fetch('/api/references/import/bibtex', { method: 'POST', body: fd });
+    const d = await r.json();
+    setProgress(100, '{{ _("Done") }}');
+    setTimeout(() => {
+      prog.style.display = 'none';
+      showImportResult(d);
+      if (d.success) { loadRefs(); resetDrop(); }
+    }, 700);
+  } catch(e) {
+    prog.style.display = 'none';
+    showImportResult({ success: false, error: e.message });
+  }
+}
+
+function setProgress(pct, txt) {
+  document.getElementById('pbarFill').style.width = pct + '%';
+  document.getElementById('pbarText').textContent = txt;
+}
+
+function showImportResult(d) {
+  const el = document.getElementById('importResult');
+  let html = '';
+  if (d.success) {
+    html = `<div class="ref-result-ok">&#10003; {{ _("Import complete") }}</div>
+      <div class="ref-result-stats">
+        <div class="ref-rstat"><strong>${d.references_imported||0}</strong><br><small>{{ _("Imported") }}</small></div>
+        <div class="ref-rstat"><strong>${d.duplicates_skipped||0}</strong><br><small>{{ _("Duplicates") }}</small></div>
+        <div class="ref-rstat"><strong>${d.total_parsed||0}</strong><br><small>{{ _("Parsed") }}</small></div>
+      </div>`;
+  } else {
+    html = `<div class="ref-result-err">&#10005; {{ _("Import failed") }}: ${d.error||'unknown'}</div>`;
+  }
+  if ((d.parse_errors||[]).length) {
+    html += `<details><summary>{{ _("Parse warnings") }} (${d.parse_errors.length})</summary>
+      <ul>${d.parse_errors.slice(0,5).map(e=>`<li>${e}</li>`).join('')}</ul></details>`;
+  }
+  el.innerHTML = html;
+  el.style.display = '';
+}
+
+function resetDrop() {
+  document.getElementById('bibFile').value = '';
+  document.getElementById('dropLabel').innerHTML = `
+    <div style="font-size:2rem;margin-bottom:.4rem">&#128196;</div>
+    <p>{{ _("Click or drag & drop BibTeX file here") }}</p>
+    <small>.bib · .bibtex · .txt</small>`;
+  document.getElementById('importBtn').disabled = true;
+}
+
+// ── Reference list ─────────────────────────────────────────────────────────
+async function loadRefs() {
+  try {
+    const r = await fetch(`/api/references/manuscript/${MANUSCRIPT_ID.replace(/"/g,'')}`);
+    const d = await r.json();
+    if (d.success) {
+      _allRefs = d.references;
+      renderRefs(_allRefs);
+    }
+  } catch(e) { console.error(e); }
+}
+
+function renderRefs(refs) {
+  const el = document.getElementById('refList');
+  const empty = document.getElementById('refEmpty');
+  document.getElementById('statTotal').textContent = _allRefs.length;
+  document.getElementById('statSelected').textContent = _selected.size;
+
+  if (!refs.length) { el.innerHTML=''; empty.style.display=''; return; }
+  empty.style.display='none';
+
+  const AREA_CLS = {neuroscience:'ref-area--neuro', biochemistry:'ref-area--bio',
+    pathology:'ref-area--path', therapeutics:'ref-area--ther', general:'ref-area--gen'};
+
+  el.innerHTML = refs.map(r => {
+    const authors = Array.isArray(r.authors) ? r.authors.join(', ') : (r.authors||'');
+    const areaCls = AREA_CLS[r.research_area] || 'ref-area--gen';
+    return `<div class="ref-item" data-id="${r.id}">
+      <input type="checkbox" class="ref-chk" ${_selected.has(r.id)?'checked':''}
+             onchange="toggleSel('${r.id}')">
+      <div class="ref-item__body">
+        <div class="ref-item__title">${r.title||'Untitled'}</div>
+        <div class="ref-item__authors">${authors}</div>
+        <div class="ref-item__journal">
+          <em>${r.journal||''}</em>${r.year?` (${r.year})`:''}${r.volume?` · Vol.${r.volume}`:''}${r.pages?` · ${r.pages}`:''}
+        </div>
+        <div class="ref-item__meta">
+          <span class="ref-area ${areaCls}">${r.research_area||'general'}</span>
+          ${r.doi?`<span>DOI: ${r.doi}</span>`:''}
+          ${r.pmid?`<span>PMID: ${r.pmid}</span>`:''}
+        </div>
+      </div>
+      <button class="btn btn--xs btn--danger" onclick="doDelete('${r.id}')">&#128465;</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleSel(id) {
+  if (_selected.has(id)) _selected.delete(id);
+  else _selected.add(id);
+  document.getElementById('statSelected').textContent = _selected.size;
+}
+
+function filterRefs() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const area = document.getElementById('areaFilter').value;
+  let filtered = _allRefs;
+  if (area) filtered = filtered.filter(r => r.research_area === area);
+  if (q) filtered = filtered.filter(r =>
+    (r.title||'').toLowerCase().includes(q) ||
+    (Array.isArray(r.authors)?r.authors.join(' '):r.authors||'').toLowerCase().includes(q) ||
+    (r.journal||'').toLowerCase().includes(q)
+  );
+  renderRefs(filtered);
+}
+
+async function doDelete(id) {
+  if (!confirm('{{ _("Delete this reference?") }}')) return;
+  const r = await fetch(`/api/references/${id}`, {method:'DELETE'});
+  const d = await r.json();
+  if (d.success) { _selected.delete(id); await loadRefs(); }
+  else alert('{{ _("Error") }}: ' + (d.error||'unknown'));
+}
+
+// ── Bibliography ───────────────────────────────────────────────────────────
+async function loadStyles() {
+  const r = await fetch('/api/references/styles');
+  const d = await r.json();
+  if (d.success) {
+    document.getElementById('citeStyle').innerHTML =
+      d.citation_styles.map(s=>`<option value="${s.id}">${s.name} — ${s.description}</option>`).join('');
+  }
+}
+
+function openBibModal() { document.getElementById('bibModal').style.display='flex'; }
+function closeBibModal() { document.getElementById('bibModal').style.display='none'; }
+function previewChanged() { /* reset preview on style change */ }
+
+async function generateBib() {
+  const style = document.getElementById('citeStyle').value;
+  const onlySel = document.getElementById('selectedOnly').checked;
+  const selIds = onlySel ? Array.from(_selected) : [];
+  if (onlySel && !selIds.length) { alert('{{ _("Select at least one reference") }}'); return; }
+  const mid = MANUSCRIPT_ID.replace(/"/g,'');
+  const r = await fetch(`/api/references/manuscript/${mid}/bibliography`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({citation_style: style, selected_references: selIds.length ? selIds : null})
+  });
+  const d = await r.json();
+  if (d.success) {
+    _bibText = d.bibliography_text;
+    document.getElementById('bibPreview').textContent = _bibText;
+    document.getElementById('btnCopyBib').style.display='';
+    document.getElementById('btnDlBib').style.display='';
+  } else { alert('{{ _("Error") }}: ' + (d.error||'unknown')); }
+}
+
+function copyBib() {
+  navigator.clipboard.writeText(_bibText)
+    .then(() => alert('{{ _("Bibliography copied!") }}'))
+    .catch(() => alert('{{ _("Copy failed — please select text manually") }}'));
+}
+
+function downloadBib() {
+  const style = document.getElementById('citeStyle').value;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([_bibText], {type:'text/plain'}));
+  a.download = `bibliography_${style}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+}
+</script>
+{% endblock %}
