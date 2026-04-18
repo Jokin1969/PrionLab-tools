@@ -204,6 +204,9 @@ def create_app() -> Flask:
     from tools.lab_integration import lab_integration_bp
     app.register_blueprint(lab_integration_bp)
 
+    from tools.manuscript_dashboard import manuscript_dashboard_bp
+    app.register_blueprint(manuscript_dashboard_bp)
+
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:
         from tools.export.models import init_scheduler
@@ -245,6 +248,21 @@ def create_app() -> Flask:
             "lab_integration/lab_import.html",
             is_admin=(session.get("role") == "admin"),
         )
+
+    @app.route("/manuscripts/dashboard")
+    @login_required
+    def manuscript_dashboard_page():
+        return render_template("dashboard/main.html")
+
+    @app.route("/manuscripts/<manuscript_id>")
+    @login_required
+    def manuscript_detail_page(manuscript_id):
+        return render_template("manuscripts/detail.html", manuscript_id=manuscript_id)
+
+    @app.route("/manuscripts/<manuscript_id>/edit")
+    @login_required
+    def manuscript_edit_page(manuscript_id):
+        return render_template("manuscripts/edit.html", manuscript_id=manuscript_id)
 
     @app.route("/health")
     def health():

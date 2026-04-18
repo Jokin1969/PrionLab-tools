@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Manuscript') }} — PrionLab Tools{% endblock %}
+{% block content %}
+<div class="ms-dash">
+  <div class="ms-dash__header">
+    <div>
+      <a href="{{ url_for('manuscript_dashboard_page') }}" class="ms-back-link">&#8592; {{ _('Dashboard') }}</a>
+      <h1 class="ms-dash__title" id="detailTitle">{{ _('Loading…') }}</h1>
+      <p class="ms-dash__sub" id="detailMeta"></p>
+    </div>
+    <div class="ms-dash__actions">
+      <button class="btn btn--secondary" id="detailEditBtn" onclick="goEdit()">&#9998; {{ _('Edit') }}</button>
+    </div>
+  </div>
+
+  <div id="detailContent" class="ms-detail-grid">
+    <div class="ms-detail-main">
+      <div class="card card--padded" id="detailInfo"><p>{{ _('Loading…') }}</p></div>
+    </div>
+    <aside class="ms-detail-side">
+      <div class="card card--padded" id="detailStatus"></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const manuscriptId = "{{ manuscript_id }}";
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await fetch(`/api/manuscripts/${manuscriptId}`);
+    const d = await r.json();
+    if (!d.success) { document.getElementById('detailTitle').textContent = '{{ _("Not found") }}'; return; }
+    const m = d.manuscript;
+    const fmt = s => s ? new Date(s).toLocaleDateString('en-GB',{year:'numeric',month:'short',day:'numeric'}) : '—';
+    const STATUS_COLOR = {draft:'#888',writing:'#e67e22',review:'#3498db',revision:'#9b59b6',submitted:'#8e44ad',accepted:'#27ae60',published:'#2c3e50'};
+    document.getElementById('detailTitle').textContent = m.title;
+    document.getElementById('detailEditBtn').onclick = () => window.location.href = `/manuscripts/${manuscriptId}/edit`;
+    document.getElementById('detailMeta').innerHTML = `
+      <span class="ms-badge" style="background:${STATUS_COLOR[m.status]||'#888'}">${m.status}</span>
+      &nbsp;${m.research_area||''} · ${m.manuscript_type||''}`;
+    document.getElementById('detailInfo').innerHTML = `
+      <h3>{{ _('Details') }}</h3>
+      <dl class="ms-dl">
+        <dt>{{ _('Target Journal') }}</dt><dd>${m.target_journal||'—'}</dd>
+        <dt>{{ _('Corresponding Author') }}</dt><dd>${m.corresponding_author||'—'}</dd>
+        <dt>{{ _('Deadline') }}</dt><dd>${fmt(m.target_deadline)}</dd>
+        <dt>{{ _('Keywords') }}</dt><dd>${m.keywords||'—'}</dd>
+        <dt>{{ _('Tags') }}</dt><dd>${m.tags||'—'}</dd>
+        <dt>{{ _('Created by') }}</dt><dd>${m.created_by||'—'}</dd>
+        <dt>{{ _('Last updated') }}</dt><dd>${fmt(m.updated_at)}</dd>
+      </dl>
+      ${m.notes ? `<h4>{{ _('Notes') }}</h4><p>${m.notes}</p>` : ''}
+      ${m.abstract ? `<h4>{{ _('Abstract') }}</h4><p>${m.abstract}</p>` : ''}`;
+    document.getElementById('detailStatus').innerHTML = `
+      <h4>{{ _('Progress') }}</h4>
+      <div class="ms-pbar"><div class="ms-pbar__fill" style="width:${m.progress_percentage||0}%"></div></div>
+      <p style="text-align:center">${m.progress_percentage||0}%</p>
+      <hr>
+      <dl class="ms-dl">
+        <dt>{{ _('Words') }}</dt><dd>${m.word_count||0}</dd>
+        <dt>{{ _('Figures') }}</dt><dd>${m.figure_count||0}</dd>
+        <dt>{{ _('References') }}</dt><dd>${m.reference_count||0}</dd>
+      </dl>`;
+  } catch(e) { console.error(e); }
+});
+function goEdit() { window.location.href = `/manuscripts/${manuscriptId}/edit`; }
+</script>
+{% endblock %}
