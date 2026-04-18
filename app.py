@@ -198,6 +198,9 @@ def create_app() -> Flask:
     from tools.ai_assistant import ai_bp
     app.register_blueprint(ai_bp)
 
+    from tools.external_apis import external_api_bp
+    app.register_blueprint(external_api_bp)
+
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:
         from tools.export.models import init_scheduler
