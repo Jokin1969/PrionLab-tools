@@ -66,6 +66,12 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("Export schema bootstrap failed: %s", e)
 
+    try:
+        from tools.introduction.models import bootstrap_introduction_schema
+        bootstrap_introduction_schema()
+    except Exception as e:
+        app.logger.warning("Introduction schema bootstrap failed: %s", e)
+
     # ── Babel / i18n ────────────────────────────────────────────────────────
 
     def get_locale() -> str:
@@ -121,6 +127,9 @@ def create_app() -> Flask:
 
     from tools.export import export_bp
     app.register_blueprint(export_bp)
+
+    from tools.introduction import introduction_bp
+    app.register_blueprint(introduction_bp)
 
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:

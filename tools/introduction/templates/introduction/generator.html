@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Introduction Generator') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:1.5rem">
+  <h1 style="margin:0">{{ _('Introduction Generator') }}</h1>
+  <p class="text-muted" style="margin:.4rem 0 0">
+    {{ _('Generate publication-quality introductions with approach-specific content synthesis.') }}
+  </p>
+</div>
+
+{# ── Step indicator ── #}
+<div class="intro-steps" id="step_indicator">
+  <div class="intro-step active" id="ind_step1">
+    <span class="step-num">1</span>
+    <span class="step-label">{{ _('Approach') }}</span>
+  </div>
+  <div class="intro-step-sep">→</div>
+  <div class="intro-step" id="ind_step2">
+    <span class="step-num">2</span>
+    <span class="step-label">{{ _('Parameters') }}</span>
+  </div>
+  <div class="intro-step-sep">→</div>
+  <div class="intro-step" id="ind_step3">
+    <span class="step-num">3</span>
+    <span class="step-label">{{ _('Generate') }}</span>
+  </div>
+</div>
+
+{# ── Step 1: Approach selection ── #}
+<div class="step-panel active" id="step_approach">
+  <h2 class="step-title">{{ _('Step 1: Select Introduction Approach') }}</h2>
+
+  <div class="approach-cards">
+    {% set icons = {"app_001": "🔬", "app_002": "⚡", "app_003": "🧬", "app_004": "🏥", "app_005": "🔄"} %}
+    {% for ap in approaches %}
+    <div class="approach-card" data-approach="{{ ap.approach_id }}" onclick="selectApproach('{{ ap.approach_id }}')">
+      <div class="approach-icon">{{ icons.get(ap.approach_id, '📄') }}</div>
+      <h4>{{ ap.approach_name }}</h4>
+      <p>{{ ap.description }}</p>
+      <div class="approach-meta">
+        <strong>{{ _('Best for') }}:</strong> {{ ap.target_manuscript_type }}
+      </div>
+      <div class="approach-keywords text-muted" style="font-size:.8rem;margin-top:.4rem">
+        {{ ap.focus_keywords.replace(';', ' · ') }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="approach-detail-box" id="approach_detail" style="display:none"></div>
+
+  <div style="margin-top:1.5rem;text-align:right">
+    <button class="btn btn--primary" onclick="proceedToParameters()" id="btn_to_params" disabled>
+      {{ _('Continue to Parameters') }} →
+    </button>
+  </div>
+</div>
+
+{# ── Step 2: Parameters ── #}
+<div class="step-panel" id="step_parameters">
+  <h2 class="step-title">{{ _('Step 2: Configure Parameters') }}</h2>
+
+  <div class="params-grid">
+    <div class="params-group">
+      <h4>{{ _('Manuscript Details') }}</h4>
+      <label class="form-label">{{ _('Manuscript Title') }}</label>
+      <input type="text" id="manuscript_title" class="form-input" maxlength="200"
+             placeholder="{{ _('Enter the manuscript title...') }}" oninput="updatePreview()">
+      <label class="form-label" style="margin-top:.75rem">{{ _('Target Journal') }}</label>
+      <select id="target_journal" class="form-input" onchange="updatePreview()">
+        <option value="PLoS Pathog">PLoS Pathog</option>
+        <option value="PNAS">PNAS</option>
+        <option value="Mol Neurobiol">Mol Neurobiol</option>
+        <option value="Brain Pathol">Brain Pathol</option>
+        <option value="Acta Neuropathol Commun">Acta Neuropathol Commun</option>
+        <option value="Nat Commun">Nat Commun</option>
+      </select>
+      <label class="form-label" style="margin-top:.75rem">{{ _('Manuscript Type') }}</label>
+      <select id="manuscript_type" class="form-input" onchange="updatePreview()">
+        <option value="research_article">Research Article</option>
+        <option value="methods_paper">Methods Paper</option>
+        <option value="clinical_study">Clinical Study</option>
+        <option value="case_report">Case Report</option>
+        <option value="review">Review</option>
+        <option value="short_communication">Short Communication</option>
+      </select>
+    </div>
+
+    <div class="params-group">
+      <h4>{{ _('Research Focus') }}</h4>
+      <label class="form-label">{{ _('Primary Research Focus') }}</label>
+      <select id="research_focus" class="form-input" onchange="updatePreview()"></select>
+      <label class="form-label" style="margin-top:.75rem">{{ _('Study Design') }}</label>
+      <select id="study_design" class="form-input">
+        <option value="experimental">Experimental Study</option>
+        <option value="observational">Observational Study</option>
+        <option value="comparative">Comparative Analysis</option>
+        <option value="methodological">Methodological Development</option>
+        <option value="case_series">Case Series</option>
+      </select>
+      <label class="form-label" style="margin-top:.75rem">{{ _('Population / Model Scope') }}</label>
+      <select id="population_scope" class="form-input">
+        <option value="broad_mammalian">Broad mammalian</option>
+        <option value="human_specific">Human-specific</option>
+        <option value="single_species">Single species</option>
+        <option value="comparative_species">Comparative species</option>
+        <option value="in_vitro_systems">In vitro systems</option>
+      </select>
+    </div>
+
+    <div class="params-group">
+      <h4>{{ _('Content Emphasis') }}</h4>
+      <label class="form-label">{{ _('Methodology Emphasis') }}</label>
+      <select id="methodology_emphasis" class="form-input">
+        <option value="medium">Medium — supports main findings</option>
+        <option value="high">High — methods are central focus</option>
+        <option value="low">Low — standard methodology</option>
+      </select>
+      <label class="form-label" style="margin-top:.75rem">{{ _('Gap Identification Style') }}</label>
+      <select id="gap_emphasis" class="form-input">
+        <option value="strong">Strong — clear knowledge gap</option>
+        <option value="moderate">Moderate — incremental advance</option>
+        <option value="subtle">Subtle — methodological improvement</option>
+      </select>
+      <label class="form-label" style="margin-top:.75rem">{{ _('Objective Presentation') }}</label>
+      <select id="objective_style" class="form-input">
+        <option value="hypothesis_driven">Hypothesis-driven</option>
+        <option value="exploratory">Exploratory research</option>
+        <option value="descriptive">Descriptive study</option>
+        <option value="proof_of_concept">Proof of concept</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="params-preview" id="generation_preview">
+    <strong>{{ _('Generation preview will appear here after selecting parameters.') }}</strong>
+  </div>
+
+  <div class="step-actions">
+    <button class="btn btn--secondary" onclick="showStep('step_approach', 1)">← {{ _('Back') }}</button>
+    <button class="btn btn--primary" onclick="proceedToGeneration()">{{ _('Generate Introduction') }} →</button>
+  </div>
+</div>
+
+{# ── Step 3: Generated introduction ── #}
+<div class="step-panel" id="step_generation">
+  <h2 class="step-title">{{ _('Step 3: Generated Introduction') }}</h2>
+
+  <div id="generation_status"></div>
+  <div id="generated_content"></div>
+
+  <div class="step-actions" id="generation_actions" style="display:none">
+    <button class="btn btn--secondary" onclick="showStep('step_parameters', 2)">← {{ _('Back to Parameters') }}</button>
+    <button class="btn btn--secondary" onclick="doGenerate()">↺ {{ _('Regenerate') }}</button>
+    <button class="btn btn--secondary" onclick="showSectionsModal()">{{ _('Sections Breakdown') }}</button>
+    <button class="btn btn--primary" onclick="exportToManuscriptForge()">→ {{ _('Export to ManuscriptForge') }}</button>
+  </div>
+</div>
+
+{# ── Recent introductions ── #}
+<div style="margin-top:3rem">
+  <h3>{{ _('Recent Introductions') }}</h3>
+  <div id="recent_introductions">
+    <p class="text-muted">{{ _('Loading...') }}</p>
+  </div>
+</div>
+
+{# ── Sections modal ── #}
+<div id="sections_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow:auto">
+  <div style="background:#fff;max-width:700px;margin:3rem auto;border-radius:8px;padding:2rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h3 style="margin:0">{{ _('Introduction Sections') }}</h3>
+      <button class="btn btn--secondary" onclick="document.getElementById('sections_modal').style.display='none'">✕</button>
+    </div>
+    <div id="sections_modal_content"></div>
+  </div>
+</div>
+
+<script>
+const APPROACHES = {{ approaches | tojson }};
+const FOCUS_OPTIONS = {
+  app_001: [{value:"methodology_development",label:"Methodology Development"},{value:"technical_innovation",label:"Technical Innovation"},{value:"system_optimization",label:"System Optimization"},{value:"protocol_advancement",label:"Protocol Advancement"}],
+  app_002: [{value:"molecular_mechanisms",label:"Molecular Mechanisms"},{value:"strain_formation",label:"Strain Formation"},{value:"conversion_process",label:"Conversion Process"},{value:"cofactor_roles",label:"Cofactor Roles"}],
+  app_003: [{value:"species_susceptibility",label:"Species Susceptibility"},{value:"evolutionary_pressure",label:"Evolutionary Pressure"},{value:"phylogenetic_analysis",label:"Phylogenetic Analysis"},{value:"transmission_barriers",label:"Transmission Barriers"}],
+  app_004: [{value:"clinical_characterization",label:"Clinical Characterization"},{value:"diagnostic_improvement",label:"Diagnostic Improvement"},{value:"biomarker_discovery",label:"Biomarker Discovery"},{value:"phenotype_analysis",label:"Phenotype Analysis"}],
+  app_005: [{value:"spontaneous_formation",label:"Spontaneous Formation"},{value:"cofactor_independence",label:"Cofactor Independence"},{value:"stochastic_events",label:"Stochastic Events"},{value:"idiopathic_mechanisms",label:"Idiopathic Mechanisms"}],
+};
+
+let selectedApproach = null;
+let currentGenData = null;
+
+function selectApproach(id) {
+  selectedApproach = id;
+  document.querySelectorAll('.approach-card').forEach(c => c.classList.remove('selected'));
+  document.querySelector(`[data-approach="${id}"]`).classList.add('selected');
+  document.getElementById('btn_to_params').disabled = false;
+  const ap = APPROACHES.find(a => a.approach_id === id);
+  if (ap) {
+    const box = document.getElementById('approach_detail');
+    box.innerHTML = `<p><strong>Opening strategy:</strong> ${ap.opening_strategy}</p>`
+      + `<p><strong>Common gap:</strong> ${ap.common_gaps}</p>`
+      + `<p><strong>Objective bridge:</strong> ${ap.objective_bridge_pattern}</p>`;
+    box.style.display = '';
+  }
+}
+
+function proceedToParameters() {
+  if (!selectedApproach) return;
+  const opts = FOCUS_OPTIONS[selectedApproach] || [];
+  const sel = document.getElementById('research_focus');
+  sel.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+  showStep('step_parameters', 2);
+  updatePreview();
+}
+
+function updatePreview() {
+  const ap = APPROACHES.find(a => a.approach_id === selectedApproach);
+  const title = document.getElementById('manuscript_title').value || '(untitled)';
+  const journal = document.getElementById('target_journal').value;
+  const focus = document.getElementById('research_focus').value || '';
+  const pred = ap ? (selectedApproach === 'app_003' ? 450 : selectedApproach === 'app_001' ? 400 : 350) : 350;
+  document.getElementById('generation_preview').innerHTML =
+    `<strong>Approach:</strong> ${ap ? ap.approach_name : '—'} &nbsp;|&nbsp; `
+    + `<strong>Journal:</strong> ${journal} &nbsp;|&nbsp; `
+    + `<strong>Title:</strong> ${title} &nbsp;|&nbsp; `
+    + `<strong>Predicted length:</strong> ~${pred} words`;
+}
+
+function proceedToGeneration() {
+  const title = document.getElementById('manuscript_title').value.trim();
+  if (!title) { alert('Please enter a manuscript title.'); return; }
+  showStep('step_generation', 3);
+  doGenerate();
+}
+
+function doGenerate() {
+  const statusDiv = document.getElementById('generation_status');
+  const contentDiv = document.getElementById('generated_content');
+  document.getElementById('generation_actions').style.display = 'none';
+  statusDiv.innerHTML = '<p class="text-muted">Generating introduction...</p>';
+  contentDiv.innerHTML = '';
+
+  fetch('/introduction/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      approach_id: selectedApproach,
+      manuscript_title: document.getElementById('manuscript_title').value.trim(),
+      target_journal: document.getElementById('target_journal').value,
+      manuscript_type: document.getElementById('manuscript_type').value,
+      research_focus: document.getElementById('research_focus').value,
+      study_design: document.getElementById('study_design').value,
+      population_scope: document.getElementById('population_scope').value,
+      methodology_emphasis: document.getElementById('methodology_emphasis').value,
+      gap_emphasis: document.getElementById('gap_emphasis').value,
+      objective_style: document.getElementById('objective_style').value,
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    statusDiv.innerHTML = '';
+    if (data.error) {
+      contentDiv.innerHTML = `<div class="alert alert--error">${data.error}</div>`;
+      return;
+    }
+    currentGenData = data;
+    const paragraphs = data.full_text.split('\n\n').map(p => `<p>${p.trim()}</p>`).join('');
+    contentDiv.innerHTML = `
+      <div style="margin-bottom:.75rem">
+        <span class="format-badge format-badge--txt">${data.approach_used}</span>
+        <span class="text-muted" style="margin-left:.5rem">${data.word_count} words</span>
+      </div>
+      <div class="intro-text-display">${paragraphs}</div>`;
+    document.getElementById('generation_actions').style.display = '';
+    loadRecentIntroductions();
+  })
+  .catch(() => {
+    statusDiv.innerHTML = '';
+    contentDiv.innerHTML = '<div class="alert alert--error">Generation failed. Please try again.</div>';
+  });
+}
+
+function showSectionsModal() {
+  if (!currentGenData) return;
+  const sections = currentGenData.sections || {};
+  const labels = {opening:'Opening',background:'Background',literature_note:'Literature Note',gap_identification:'Gap Identification',objective_bridge:'Objective Bridge'};
+  const html = Object.entries(sections).filter(([,v])=>v).map(([k,v])=>
+    `<div style="margin-bottom:1.25rem"><h4 style="color:#0077b6;margin:0 0 .4rem">${labels[k]||k}</h4><p style="margin:0">${v}</p></div>`
+  ).join('');
+  document.getElementById('sections_modal_content').innerHTML = html || '<p class="text-muted">No sections available.</p>';
+  document.getElementById('sections_modal').style.display = '';
+}
+
+function exportToManuscriptForge() {
+  if (!currentGenData) return;
+  if (!currentGenData.generation_id) { alert('No generation ID available.'); return; }
+  const genId = currentGenData.generation_id;
+  sessionStorage.setItem('intro_export_text', currentGenData.full_text);
+  sessionStorage.setItem('intro_export_approach', currentGenData.approach_used);
+  sessionStorage.setItem('generated_introduction', JSON.stringify({text: currentGenData.full_text, ts: Date.now()}));
+  window.location.href = '/tools/manuscriptforge/';
+}
+
+function showStep(stepId, num) {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(stepId).classList.add('active');
+  document.querySelectorAll('.intro-step').forEach((s, i) => {
+    s.classList.toggle('active', i + 1 === num);
+    s.classList.toggle('done', i + 1 < num);
+  });
+}
+
+function loadRecentIntroductions() {
+  fetch('/introduction/api/recent')
+  .then(r => r.json())
+  .then(data => {
+    const div = document.getElementById('recent_introductions');
+    if (!data.length) { div.innerHTML = '<p class="text-muted">{{ _("No recent introductions.") }}</p>'; return; }
+    div.innerHTML = data.map(r => `
+      <div class="download-item" style="margin-bottom:.5rem">
+        <div class="download-info">
+          <div class="download-filename-row">
+            <span class="download-filename">${r.manuscript_title || '(untitled)'}</span>
+            <span class="format-badge format-badge--txt">${r.approach_used}</span>
+          </div>
+          <div class="download-meta">
+            <span>${r.target_journal}</span> · <span>${r.word_count} words</span> · <span>${(r.created_at||'').slice(0,16)}</span>
+          </div>
+        </div>
+        <div class="download-actions">
+          <button class="btn btn--secondary btn--sm" onclick="loadIntroduction('${r.generation_id}')">{{ _('Load') }}</button>
+          <button class="btn btn--secondary btn--sm" onclick="deleteIntroduction('${r.generation_id}')">{{ _('Delete') }}</button>
+        </div>
+      </div>`).join('');
+  })
+  .catch(() => {});
+}
+
+function loadIntroduction(genId) {
+  fetch('/introduction/api/load/' + genId)
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) { alert(data.error); return; }
+    currentGenData = data;
+    const paragraphs = (data.full_text||'').split('\n\n').map(p => `<p>${p.trim()}</p>`).join('');
+    document.getElementById('generated_content').innerHTML = `
+      <div style="margin-bottom:.75rem">
+        <span class="format-badge format-badge--txt">${data.approach_used}</span>
+        <span class="text-muted" style="margin-left:.5rem">${data.word_count} words</span>
+      </div>
+      <div class="intro-text-display">${paragraphs}</div>`;
+    document.getElementById('generation_actions').style.display = '';
+    showStep('step_generation', 3);
+  })
+  .catch(() => alert('Failed to load introduction.'));
+}
+
+function deleteIntroduction(genId) {
+  if (!confirm('Delete this introduction?')) return;
+  fetch('/introduction/api/delete/' + genId, {method: 'DELETE'})
+  .then(r => r.json())
+  .then(data => { if (data.success) loadRecentIntroductions(); else alert(data.error); })
+  .catch(() => alert('Delete failed.'));
+}
+
+document.addEventListener('DOMContentLoaded', loadRecentIntroductions);
+</script>
+{% endblock %}
