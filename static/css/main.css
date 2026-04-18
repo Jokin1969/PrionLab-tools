@@ -1629,3 +1629,352 @@ select.form-input { cursor: pointer; }
   color: #1e293b;
 }
 .intro-text-display p { margin: 0 0 1em; text-align: justify; }
+
+/* ── Research Library ─────────────────────────────────────────────────────── */
+
+.research-library {
+  position: relative;
+}
+
+.research-stats-bar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #0077b6;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.research-toolbar {
+  margin-bottom: 1.5rem;
+}
+
+.research-search-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.research-search {
+  flex: 1;
+}
+
+.research-filters {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.research-filters select {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* ── Publication cards ────────────────────────────────────────────────────── */
+
+.pub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pub-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.25rem;
+  transition: box-shadow 0.15s;
+}
+
+.pub-card:hover {
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.pub-card__meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pub-journal {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #0077b6;
+}
+
+.pub-year {
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.pub-title {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: #1a1a1a;
+}
+
+.pub-title:hover { color: #0077b6; text-decoration: underline; }
+
+.pub-authors {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.pub-doi-row { margin-bottom: 0.5rem; }
+
+.pub-doi {
+  font-size: 0.8rem;
+  color: #0077b6;
+}
+
+.pub-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge--type { background: #f0f0f0; color: #555; }
+.badge--published { background: #d4edda; color: #155724; }
+
+/* ── Modals ───────────────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-box--large { max-width: 800px; }
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem 0;
+}
+
+.modal-header h3 { margin: 0; font-size: 1.1rem; }
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #888;
+  line-height: 1;
+}
+
+.modal-tabs {
+  display: flex;
+  border-bottom: 2px solid #e0e0e0;
+  padding: 0.75rem 1.5rem 0;
+  gap: 0.5rem;
+}
+
+.modal-tab {
+  background: none;
+  border: none;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.modal-tab.active {
+  border-bottom-color: #0077b6;
+  color: #0077b6;
+  font-weight: 600;
+}
+
+.modal-tab-content { padding: 1.25rem 1.5rem; }
+
+.modal-body { padding: 1.25rem 1.5rem; }
+
+.modal-footer {
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.form-group--full { grid-column: 1 / -1; }
+
+.import-panel { padding: 0.5rem 0; }
+.import-preview {
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-size: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+/* ── Citations ────────────────────────────────────────────────────────────── */
+
+.cite-controls { margin-bottom: 1rem; }
+.cite-controls .form-group { max-width: 250px; }
+
+.citation-list { margin-bottom: 1.5rem; }
+
+.cite-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 0.88rem;
+}
+
+.cite-num {
+  min-width: 24px;
+  color: #0077b6;
+  font-weight: 700;
+}
+
+.cite-text { flex: 1; }
+
+.cite-bibliography h4 { margin-bottom: 0.5rem; }
+
+.bibliography-output {
+  background: #f8f8f8;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 1rem;
+  font-family: "Georgia", serif;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  margin-bottom: 1rem;
+  min-height: 80px;
+}
+
+.cite-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+
+/* ── Detail view ──────────────────────────────────────────────────────────── */
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.detail-table th {
+  text-align: left;
+  padding: 0.4rem 0.75rem 0.4rem 0;
+  color: #555;
+  font-weight: 600;
+  width: 140px;
+  vertical-align: top;
+}
+
+.detail-table td {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.detail-abstract {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #333;
+}
+
+.detail-notes {
+  font-size: 0.85rem;
+  color: #888;
+  margin-top: 0.5rem;
+}
+
+/* ── FAB ──────────────────────────────────────────────────────────────────── */
+
+.fab-container {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 900;
+}
+
+.fab-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #0077b6;
+  color: #fff;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,119,182,0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.fab-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 18px rgba(0,119,182,0.5);
+}
+
+.no-results { text-align: center; color: #888; padding: 2rem; }
+
+.research-flash {
+  position: relative;
+  margin-bottom: 1rem;
+}

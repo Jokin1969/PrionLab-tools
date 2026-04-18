@@ -1,0 +1,487 @@
+{% extends 'base.html' %}
+{% block title %}Research Library — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="research-library">
+
+  <!-- Dashboard stats -->
+  <div class="research-stats-bar">
+    <div class="stat-card">
+      <span class="stat-value" id="stat-total">{{ stats.total_publications }}</span>
+      <span class="stat-label">Publications</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-citations">{{ stats.total_citations }}</span>
+      <span class="stat-label">Total Citations</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-journals">{{ stats.by_journal | length }}</span>
+      <span class="stat-label">Journals</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-years">{{ stats.by_year | length }}</span>
+      <span class="stat-label">Years Active</span>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="research-toolbar">
+    <div class="research-search-row">
+      <input type="text" id="search-input" class="form-control research-search"
+             placeholder="{{ _('Search publications by title, abstract, keywords...') }}"
+             oninput="debouncedSearch()" />
+      <button class="btn btn-primary" onclick="openAddModal()">+ {{ _('Add Publication') }}</button>
+    </div>
+    <div class="research-filters">
+      <select id="filter-journal" class="form-control" onchange="loadPublications()">
+        <option value="">{{ _('All journals') }}</option>
+        <option value="Acta Neuropathol Commun">Acta Neuropathol Commun</option>
+        <option value="Nat Commun">Nat Commun</option>
+        <option value="PLoS Pathog">PLoS Pathog</option>
+        <option value="Brain Pathol">Brain Pathol</option>
+        <option value="Mol Neurobiol">Mol Neurobiol</option>
+        <option value="PNAS">PNAS</option>
+      </select>
+      <select id="filter-year" class="form-control" onchange="loadPublications()">
+        <option value="">{{ _('All years') }}</option>
+        {% for y in range(2026, 2018, -1) %}
+        <option value="{{ y }}">{{ y }}</option>
+        {% endfor %}
+      </select>
+      <select id="filter-type" class="form-control" onchange="loadPublications()">
+        <option value="">{{ _('All types') }}</option>
+        <option value="research_article">Research Article</option>
+        <option value="review">Review</option>
+        <option value="methods">Methods</option>
+        <option value="case_report">Case Report</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Publications list -->
+  <div id="pub-list" class="pub-list">
+    <div class="loading-placeholder">{{ _('Loading publications...') }}</div>
+  </div>
+
+  <!-- Add Publication Modal -->
+  <div id="add-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box modal-box--large">
+      <div class="modal-header">
+        <h3>{{ _('Add Publication') }}</h3>
+        <button class="modal-close" onclick="closeAddModal()">&times;</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" onclick="switchTab('manual')">{{ _('Manual Entry') }}</button>
+        <button class="modal-tab" onclick="switchTab('doi')">{{ _('Import by DOI') }}</button>
+        <button class="modal-tab" onclick="switchTab('pmid')">{{ _('Import by PMID') }}</button>
+      </div>
+
+      <!-- Manual tab -->
+      <div id="tab-manual" class="modal-tab-content">
+        <form id="manual-form">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>{{ _('Title') }} *</label>
+              <input type="text" name="title" class="form-control" required />
+            </div>
+            <div class="form-group">
+              <label>{{ _('Journal') }}</label>
+              <input type="text" name="journal" class="form-control" />
+            </div>
+            <div class="form-group form-group--full">
+              <label>{{ _('Abstract') }}</label>
+              <textarea name="abstract" class="form-control" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label>{{ _('Year') }}</label>
+              <input type="number" name="year" class="form-control" min="1900" max="2030" />
+            </div>
+            <div class="form-group">
+              <label>{{ _('Volume') }}</label>
+              <input type="text" name="volume" class="form-control" />
+            </div>
+            <div class="form-group">
+              <label>{{ _('Issue') }}</label>
+              <input type="text" name="issue" class="form-control" />
+            </div>
+            <div class="form-group">
+              <label>{{ _('Pages') }}</label>
+              <input type="text" name="pages" class="form-control" />
+            </div>
+            <div class="form-group">
+              <label>{{ _('DOI') }}</label>
+              <input type="text" name="doi" class="form-control" placeholder="10.xxxx/..." />
+            </div>
+            <div class="form-group">
+              <label>{{ _('PMID') }}</label>
+              <input type="text" name="pmid" class="form-control" />
+            </div>
+            <div class="form-group">
+              <label>{{ _('Type') }}</label>
+              <select name="pub_type" class="form-control">
+                <option value="research_article">Research Article</option>
+                <option value="review">Review</option>
+                <option value="methods">Methods</option>
+                <option value="case_report">Case Report</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group form-group--full">
+              <label>{{ _('Keywords') }} (semicolon-separated)</label>
+              <input type="text" name="keywords" class="form-control" placeholder="prion; PMCA; biomarker" />
+            </div>
+            <div class="form-group form-group--full">
+              <label>{{ _('Authors') }} (one per line: Lastname Initials)</label>
+              <textarea name="authors_raw" class="form-control" rows="3"
+                        placeholder="Garcia J&#10;Martinez M"></textarea>
+            </div>
+            <div class="form-group form-group--full">
+              <label>{{ _('Notes') }}</label>
+              <input type="text" name="notes" class="form-control" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeAddModal()">{{ _('Cancel') }}</button>
+            <button type="button" class="btn btn-primary" onclick="submitManual()">{{ _('Add Publication') }}</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- DOI tab -->
+      <div id="tab-doi" class="modal-tab-content" style="display:none">
+        <div class="import-panel">
+          <p>{{ _('Enter a DOI to automatically import publication metadata from CrossRef.') }}</p>
+          <div class="form-group">
+            <label>{{ _('DOI') }}</label>
+            <input type="text" id="doi-input" class="form-control" placeholder="10.1186/s40478-023-01545-4" />
+          </div>
+          <div id="doi-preview" class="import-preview" style="display:none"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeAddModal()">{{ _('Cancel') }}</button>
+            <button type="button" class="btn btn-primary" onclick="submitDoi()">{{ _('Import from DOI') }}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PMID tab -->
+      <div id="tab-pmid" class="modal-tab-content" style="display:none">
+        <div class="import-panel">
+          <p>{{ _('Enter a PubMed ID (PMID) to import publication metadata from PubMed.') }}</p>
+          <div class="form-group">
+            <label>{{ _('PMID') }}</label>
+            <input type="text" id="pmid-input" class="form-control" placeholder="36934309" />
+          </div>
+          <div id="pmid-preview" class="import-preview" style="display:none"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeAddModal()">{{ _('Cancel') }}</button>
+            <button type="button" class="btn btn-primary" onclick="submitPmid()">{{ _('Import from PMID') }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Citation Manager Modal -->
+  <div id="cite-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box modal-box--large">
+      <div class="modal-header">
+        <h3>{{ _('Citation Manager') }}</h3>
+        <button class="modal-close" onclick="closeCiteModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="cite-controls">
+          <div class="form-group">
+            <label>{{ _('Citation Style') }}</label>
+            <select id="cite-style" class="form-control" onchange="refreshCitations()">
+              <option value="Vancouver">Vancouver</option>
+              <option value="Nature">Nature</option>
+              <option value="PLoS">PLoS</option>
+              <option value="APA">APA</option>
+              <option value="Acta_Neuropathol">Acta Neuropathol</option>
+            </select>
+          </div>
+        </div>
+        <div id="citation-list" class="citation-list"></div>
+        <div class="cite-bibliography">
+          <h4>{{ _('Generated Bibliography') }}</h4>
+          <div id="bibliography-output" class="bibliography-output"></div>
+          <div class="cite-actions">
+            <button class="btn btn-secondary" onclick="copyBibliography()">{{ _('Copy to Clipboard') }}</button>
+            <button class="btn btn-primary" onclick="exportToManuscript()">{{ _('Export to ManuscriptForge') }}</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCiteModal()">{{ _('Close') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="detail-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box modal-box--large">
+      <div class="modal-header">
+        <h3 id="detail-title"></h3>
+        <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div id="detail-body" class="modal-body pub-detail-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDetailModal()">{{ _('Close') }}</button>
+        <button class="btn btn-primary" onclick="addToCitations()">{{ _('Add to Citations') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Citation Manager button -->
+  <div class="fab-container">
+    <button class="fab-btn" onclick="openCiteModal()" title="{{ _('Open Citation Manager') }}">
+      &#128196;
+    </button>
+  </div>
+
+</div><!-- end .research-library -->
+<script>
+let allPubs = [];
+let selectedCitePubs = [];
+let currentDetailPubId = null;
+let searchTimer = null;
+
+// ── Initialisation ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadPublications);
+
+function debouncedSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadPublications, 300);
+}
+
+async function loadPublications() {
+  const q = document.getElementById('search-input').value;
+  const journal = document.getElementById('filter-journal').value;
+  const year = document.getElementById('filter-year').value;
+  const pub_type = document.getElementById('filter-type').value;
+  const params = new URLSearchParams({q, journal, year, pub_type});
+  const resp = await fetch('/research/api/publications?' + params);
+  if (!resp.ok) { showError('Failed to load publications.'); return; }
+  allPubs = await resp.json();
+  renderPubs(allPubs);
+}
+
+function renderPubs(pubs) {
+  const el = document.getElementById('pub-list');
+  if (!pubs.length) {
+    el.innerHTML = '<p class="no-results">{{ _("No publications found.") }}</p>';
+    return;
+  }
+  el.innerHTML = pubs.map(p => {
+    const authStr = p.author_string || '';
+    const doi = p.doi ? `<a href="https://doi.org/${p.doi}" target="_blank" class="pub-doi">${p.doi}</a>` : '';
+    const badges = [
+      p.pub_type ? `<span class="badge badge--type">${p.pub_type.replace('_', ' ')}</span>` : '',
+      p.status === 'published' ? '<span class="badge badge--published">Published</span>' : '',
+    ].join('');
+    return `<div class="pub-card" data-pub-id="${p.pub_id}">
+      <div class="pub-card__meta">
+        <span class="pub-journal">${p.journal}</span>
+        <span class="pub-year">${p.year}</span>
+        ${badges}
+      </div>
+      <h4 class="pub-title" onclick="openDetail('${p.pub_id}')">${p.title}</h4>
+      <p class="pub-authors">${authStr}</p>
+      ${doi ? `<div class="pub-doi-row">${doi}</div>` : ''}
+      <div class="pub-actions">
+        <button class="btn btn-sm btn-secondary" onclick="openDetail('${p.pub_id}')">{{ _('Details') }}</button>
+        <button class="btn btn-sm btn-primary" onclick="addPubToCart('${p.pub_id}')">+ {{ _('Cite') }}</button>
+        <button class="btn btn-sm btn-danger" onclick="deletePub('${p.pub_id}')">{{ _('Delete') }}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Detail modal ───────────────────────────────────────────────────────────
+async function openDetail(pubId) {
+  const resp = await fetch(`/research/api/publications/${pubId}`);
+  if (!resp.ok) return;
+  const p = await resp.json();
+  currentDetailPubId = pubId;
+  document.getElementById('detail-title').textContent = p.title;
+  const authors = (p.authors || []).map(a =>
+    `${a.last_name} ${a.initials || a.first_name || ''}${a.is_corresponding === 'true' ? '*' : ''}`
+  ).join(', ');
+  document.getElementById('detail-body').innerHTML = `
+    <table class="detail-table">
+      <tr><th>Authors</th><td>${authors || p.author_string || '—'}</td></tr>
+      <tr><th>Journal</th><td>${p.journal}</td></tr>
+      <tr><th>Year</th><td>${p.year}</td></tr>
+      <tr><th>Volume/Issue</th><td>${p.volume}${p.issue ? '(' + p.issue + ')' : ''}</td></tr>
+      <tr><th>Pages</th><td>${p.pages}</td></tr>
+      <tr><th>DOI</th><td>${p.doi ? '<a href="https://doi.org/' + p.doi + '" target="_blank">' + p.doi + '</a>' : '—'}</td></tr>
+      <tr><th>PMID</th><td>${p.pmid || '—'}</td></tr>
+      <tr><th>Keywords</th><td>${p.keywords || '—'}</td></tr>
+      <tr><th>Type</th><td>${(p.pub_type || '').replace('_', ' ')}</td></tr>
+      <tr><th>Times cited</th><td>${p.times_cited || '0'}</td></tr>
+    </table>
+    ${p.abstract ? '<h4>Abstract</h4><p class="detail-abstract">' + p.abstract + '</p>' : ''}
+    ${p.notes ? '<p class="detail-notes"><em>' + p.notes + '</em></p>' : ''}
+  `;
+  document.getElementById('detail-modal').style.display = 'flex';
+}
+
+function closeDetailModal() { document.getElementById('detail-modal').style.display = 'none'; }
+
+function addToCitations() {
+  if (currentDetailPubId) { addPubToCart(currentDetailPubId); closeDetailModal(); }
+}
+
+// ── Citations cart ─────────────────────────────────────────────────────────
+function addPubToCart(pubId) {
+  if (!selectedCitePubs.includes(pubId)) {
+    selectedCitePubs.push(pubId);
+    showFlash('Publication added to citation list.');
+  }
+}
+
+async function openCiteModal() {
+  document.getElementById('cite-modal').style.display = 'flex';
+  await refreshCitations();
+}
+
+function closeCiteModal() { document.getElementById('cite-modal').style.display = 'none'; }
+
+async function refreshCitations() {
+  const style = document.getElementById('cite-style').value;
+  if (!selectedCitePubs.length) {
+    document.getElementById('citation-list').innerHTML = '<p>No publications in citation list yet. Click "+ Cite" on any publication.</p>';
+    document.getElementById('bibliography-output').textContent = '';
+    return;
+  }
+  const resp = await fetch('/research/api/citations/bibliography', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({pub_ids: selectedCitePubs, style}),
+  });
+  const data = await resp.json();
+  if (!resp.ok) { showError(data.error || 'Error generating bibliography.'); return; }
+  document.getElementById('bibliography-output').textContent = data.bibliography;
+  // Render individual citations
+  const lines = data.bibliography.split('\n');
+  document.getElementById('citation-list').innerHTML = lines.map((line, i) =>
+    `<div class="cite-item">
+      <span class="cite-num">${i+1}</span>
+      <span class="cite-text">${line}</span>
+      <button class="btn btn-sm btn-danger" onclick="removeCite(${i})">✕</button>
+    </div>`
+  ).join('');
+}
+
+function removeCite(idx) {
+  selectedCitePubs.splice(idx, 1);
+  refreshCitations();
+}
+
+function copyBibliography() {
+  const text = document.getElementById('bibliography-output').textContent;
+  navigator.clipboard.writeText(text).then(() => showFlash('Bibliography copied to clipboard.'));
+}
+
+function exportToManuscript() {
+  const bib = document.getElementById('bibliography-output').textContent;
+  const style = document.getElementById('cite-style').value;
+  sessionStorage.setItem('generated_references', JSON.stringify({
+    bibliography: bib, pub_ids: selectedCitePubs, style, ts: Date.now()
+  }));
+  window.location.href = '/tools/manuscriptforge/';
+}
+
+// ── Add modal ──────────────────────────────────────────────────────────────
+function openAddModal() { document.getElementById('add-modal').style.display = 'flex'; }
+function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
+
+function switchTab(name) {
+  document.querySelectorAll('.modal-tab-content').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.modal-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).style.display = 'block';
+  event.target.classList.add('active');
+}
+
+async function submitManual() {
+  const form = document.getElementById('manual-form');
+  const fd = new FormData(form);
+  const data = Object.fromEntries(fd.entries());
+  const authorsRaw = (data.authors_raw || '').trim();
+  delete data.authors_raw;
+  if (authorsRaw) {
+    data.authors = authorsRaw.split('\n').filter(l => l.trim()).map(line => {
+      const parts = line.trim().split(' ');
+      return {last_name: parts[0] || '', initials: parts.slice(1).join(''), first_name: ''};
+    });
+  }
+  const resp = await fetch('/research/api/publications', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data),
+  });
+  const result = await resp.json();
+  if (!resp.ok) { showError(result.error || 'Failed to add publication.'); return; }
+  closeAddModal();
+  showFlash('Publication added successfully.');
+  loadPublications();
+}
+
+async function submitDoi() {
+  const doi = document.getElementById('doi-input').value.trim();
+  if (!doi) { showError('Please enter a DOI.'); return; }
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Importing...';
+  const resp = await fetch('/research/api/publications/doi', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({doi}),
+  });
+  btn.disabled = false; btn.textContent = 'Import from DOI';
+  const result = await resp.json();
+  if (!resp.ok) { showError(result.error || 'Import failed.'); return; }
+  closeAddModal();
+  showFlash('Publication imported from DOI.');
+  loadPublications();
+}
+
+async function submitPmid() {
+  const pmid = document.getElementById('pmid-input').value.trim();
+  if (!pmid) { showError('Please enter a PMID.'); return; }
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Importing...';
+  const resp = await fetch('/research/api/publications/pmid', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pmid}),
+  });
+  btn.disabled = false; btn.textContent = 'Import from PMID';
+  const result = await resp.json();
+  if (!resp.ok) { showError(result.error || 'Import failed.'); return; }
+  closeAddModal();
+  showFlash('Publication imported from PMID.');
+  loadPublications();
+}
+
+async function deletePub(pubId) {
+  if (!confirm('Delete this publication?')) return;
+  const resp = await fetch(`/research/api/publications/${pubId}`, {method: 'DELETE'});
+  const result = await resp.json();
+  if (!resp.ok) { showError(result.error || 'Delete failed.'); return; }
+  showFlash('Publication deleted.');
+  loadPublications();
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function showFlash(msg) {
+  const el = document.createElement('div');
+  el.className = 'alert alert--success research-flash';
+  el.textContent = msg;
+  document.querySelector('.research-library').prepend(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function showError(msg) {
+  const el = document.createElement('div');
+  el.className = 'alert alert--danger research-flash';
+  el.textContent = msg;
+  document.querySelector('.research-library').prepend(el);
+  setTimeout(() => el.remove(), 5000);
+}
+</script>
+{% endblock %}

@@ -1922,3 +1922,21 @@ def _calculate_introduction_quality(intro_data: dict) -> float:
         score += 0.2
     score += 0.2  # literature integration
     return round(min(score, 1.0), 2)
+
+
+def import_references_section(pub_ids: list, style: str = "Vancouver") -> dict:
+    """Format a reference list from the Research Library for use in ManuscriptForge."""
+    try:
+        from tools.research.models import import_references_section as _import_refs
+        return _import_refs(pub_ids, style)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def get_available_references() -> list:
+    """Return publications from the Research Library for citation in manuscripts."""
+    try:
+        from tools.research.models import get_available_references as _get_refs
+        return _get_refs()
+    except Exception:
+        return []
