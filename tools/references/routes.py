@@ -1,5 +1,6 @@
 """Reference API routes."""
 import logging
+from dataclasses import asdict
 
 from flask import jsonify, request, session
 
@@ -9,6 +10,8 @@ from .service import (
     delete_reference, generate_bibliography,
     get_citation_styles, get_references, import_bibtex, search_references,
 )
+from .smart_recommendations import get_smart_recommendation_engine
+from .citation_network import get_citation_network_service
 
 logger = logging.getLogger(__name__)
 
@@ -81,3 +84,60 @@ def delete_ref(reference_id):
 @login_required
 def styles():
     return jsonify({"success": True, "citation_styles": get_citation_styles()})
+
+
+# ── Intelligence endpoints ────────────────────────────────────────────────────
+
+@references_bp.route("/manuscript/<manuscript_id>/recommendations")
+@login_required
+def recommendations(manuscript_id):
+    username = session.get("username", "")
+    engine = get_smart_recommendation_engine()
+    recs = engine.generate_recommendations(manuscript_id, username, limit=10)
+    return jsonify({
+        "success": True,
+        "recommendations": [
+            {
+                "reference_id": r.reference_id,
+                "title": r.title,
+                "authors": r.authors,
+                "journal": r.journal,
+                "year": r.year,
+                "doi": r.doi,
+                "relevance_score": round(r.relevance_score, 4),
+                "recommendation_type": r.recommendation_type,
+                "explanation": r.explanation,
+                "confidence": round(r.confidence, 3),
+                "source_references": r.source_references,
+            }
+            for r in recs
+        ],
+        "count": len(recs),
+    })
+
+
+@references_bp.route("/manuscript/<manuscript_id>/gaps")
+@login_required
+def research_gaps(manuscript_id):
+    username = session.get("username", "")
+    engine = get_smart_recommendation_engine()
+    gaps = engine.detect_research_gaps(manuscript_id, username)
+    return jsonify({"success": True, "gaps": [asdict(g) for g in gaps], "count": len(gaps)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/network")
+@login_required
+def citation_network(manuscript_id):
+    return jsonify(get_citation_network_service().build_citation_network(manuscript_id))
+
+
+@references_bp.route("/manuscript/<manuscript_id>/author-network")
+@login_required
+def author_network(manuscript_id):
+    return jsonify(get_citation_network_service().get_author_influence_network(manuscript_id))
+
+
+@references_bp.route("/manuscript/<manuscript_id>/landscape")
+@login_required
+def research_landscape(manuscript_id):
+    return jsonify(get_citation_network_service().analyze_research_landscape(manuscript_id))

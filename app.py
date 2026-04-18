@@ -275,6 +275,11 @@ def create_app() -> Flask:
     def manuscript_references_page(manuscript_id):
         return render_template("references/manage.html", manuscript_id=manuscript_id)
 
+    @app.route("/manuscripts/<manuscript_id>/references/intelligence")
+    @login_required
+    def manuscript_intelligence_page(manuscript_id):
+        return render_template("references/intelligence.html", manuscript_id=manuscript_id)
+
     @app.route("/analytics")
     @login_required
     def analytics_page():
