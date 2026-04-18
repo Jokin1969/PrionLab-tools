@@ -61,6 +61,15 @@
     <option value="active">{{ _('Active') }}</option>
     <option value="expired">{{ _('Expired') }}</option>
   </select>
+  <select id="filter_journal" class="form-input" style="width:auto;padding:.35rem .6rem;font-size:.85rem" onchange="applyFilters()">
+    <option value="">{{ _('All Journals') }}</option>
+    <option value="jnl_001">PLoS Pathog</option>
+    <option value="jnl_002">PNAS</option>
+    <option value="jnl_003">Mol Neurobiol</option>
+    <option value="jnl_004">Brain Pathol</option>
+    <option value="jnl_005">Acta Neuropathol Commun</option>
+    <option value="jnl_006">Nat Commun</option>
+  </select>
 </div>
 {% endif %}
 
@@ -73,7 +82,8 @@
   {% for exp in exports %}
   <div class="download-item {% if exp.is_expired %}download-item--expired{% endif %}"
        data-filename="{{ exp.filename }}"
-       data-status="{% if exp.is_expired %}expired{% else %}active{% endif %}">
+       data-status="{% if exp.is_expired %}expired{% else %}active{% endif %}"
+       data-template="{{ exp.template_id or '' }}">
     <div class="download-info">
       <div class="download-filename-row">
         <span class="download-filename">{{ exp.filename }}</span>
@@ -108,12 +118,15 @@
 function applyFilters() {
   const fmtFilter = document.getElementById('filter_format').value.toLowerCase();
   const statusFilter = document.getElementById('filter_status').value;
+  const journalFilter = document.getElementById('filter_journal').value;
   document.querySelectorAll('.download-item').forEach(item => {
     const fn = (item.dataset.filename || '').toLowerCase();
     const st = item.dataset.status || '';
+    const tmpl = item.dataset.template || '';
     const fmtOk = !fmtFilter || fn.endsWith(fmtFilter);
     const stOk  = !statusFilter || st === statusFilter;
-    item.style.display = (fmtOk && stOk) ? '' : 'none';
+    const jOk   = !journalFilter || tmpl === journalFilter;
+    item.style.display = (fmtOk && stOk && jOk) ? '' : 'none';
   });
 }
 

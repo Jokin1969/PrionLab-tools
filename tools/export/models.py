@@ -337,54 +337,80 @@ EXPORT_JOBS_COLS = [
 
 _SEED_JOURNAL_TEMPLATES = [
     {
-        "template_id": "jnl_001", "journal_name": "Nature", "publisher": "Springer Nature",
-        "format": "double_column", "font_family": "Arial", "font_size": "11",
+        "template_id": "jnl_001", "journal_name": "PLoS Pathog", "publisher": "PLOS",
+        "format": "single_column", "font_family": "Arial", "font_size": "11",
+        "line_spacing": "1.5", "margin_top": "25mm", "margin_bottom": "25mm",
+        "margin_left": "20mm", "margin_right": "20mm", "reference_style": "PLOS",
+        "author_format": "Last FM", "affiliation_format": "numbered_list",
+        "abstract_limit": "300", "keywords_required": "true",
+        "competing_interests_format": "Competing Interests",
+        "funding_format": "Funding Information",
+        "sections_order": "author_order,methods,acknowledgments,funding,competing_interests,credit",
+        "special_requirements": "Author summary required after abstract",
+    },
+    {
+        "template_id": "jnl_002", "journal_name": "PNAS", "publisher": "PNAS",
+        "format": "single_column", "font_family": "Times New Roman", "font_size": "10",
+        "line_spacing": "1.0", "margin_top": "20mm", "margin_bottom": "20mm",
+        "margin_left": "20mm", "margin_right": "20mm", "reference_style": "PNAS",
+        "author_format": "F.M. Last", "affiliation_format": "superscript_numbers",
+        "abstract_limit": "250", "keywords_required": "true",
+        "competing_interests_format": "No competing interests section",
+        "funding_format": "Author contributions must include specific roles",
+        "sections_order": "author_order,methods,acknowledgments,credit,funding",
+        "special_requirements": "Significance statement required; max 120 words",
+    },
+    {
+        "template_id": "jnl_003", "journal_name": "Mol Neurobiol", "publisher": "Springer",
+        "format": "single_column", "font_family": "Times New Roman", "font_size": "12",
+        "line_spacing": "1.5", "margin_top": "25mm", "margin_bottom": "25mm",
+        "margin_left": "25mm", "margin_right": "25mm", "reference_style": "Springer",
+        "author_format": "Last FM", "affiliation_format": "superscript_numbers",
+        "abstract_limit": "300", "keywords_required": "true",
+        "competing_interests_format": "Declarations section includes competing interests",
+        "funding_format": "Funding section",
+        "sections_order": "author_order,methods,acknowledgments,funding,competing_interests,credit",
+        "special_requirements": "Springer format with declarations section",
+    },
+    {
+        "template_id": "jnl_004", "journal_name": "Brain Pathol", "publisher": "Wiley",
+        "format": "single_column", "font_family": "Times New Roman", "font_size": "12",
+        "line_spacing": "2.0", "margin_top": "25mm", "margin_bottom": "25mm",
+        "margin_left": "25mm", "margin_right": "25mm", "reference_style": "Wiley",
+        "author_format": "Last F.M.", "affiliation_format": "superscript_numbers",
+        "abstract_limit": "250", "keywords_required": "true",
+        "competing_interests_format": "Conflict of Interest",
+        "funding_format": "Grant Information",
+        "sections_order": "author_order,methods,acknowledgments,competing_interests,funding,credit",
+        "special_requirements": "Medical journal format; structured abstract may be required",
+    },
+    {
+        "template_id": "jnl_005", "journal_name": "Acta Neuropathol Commun", "publisher": "BMC",
+        "format": "single_column", "font_family": "Arial", "font_size": "11",
+        "line_spacing": "1.5", "margin_top": "25mm", "margin_bottom": "25mm",
+        "margin_left": "25mm", "margin_right": "25mm", "reference_style": "BMC",
+        "author_format": "Last FM", "affiliation_format": "affiliation_list",
+        "abstract_limit": "350", "keywords_required": "true",
+        "competing_interests_format": "Competing interests",
+        "funding_format": "Funding",
+        "sections_order": "author_order,methods,acknowledgments,funding,competing_interests,credit",
+        "special_requirements": "BMC open access; background and conclusions sections",
+    },
+    {
+        "template_id": "jnl_006", "journal_name": "Nat Commun", "publisher": "Nature Portfolio",
+        "format": "single_column", "font_family": "Arial", "font_size": "11",
         "line_spacing": "1.5", "margin_top": "25mm", "margin_bottom": "25mm",
         "margin_left": "20mm", "margin_right": "20mm", "reference_style": "Nature",
         "author_format": "Last F.M.", "affiliation_format": "superscript_numbers",
-        "abstract_limit": "150", "keywords_required": "true",
-        "competing_interests_format": "Required section",
-        "funding_format": "Grant funding required",
-        "sections_order": "author_order,methods,acknowledgments,funding,credit,competing_interests",
-        "special_requirements": "Methods can be supplementary",
-    },
-    {
-        "template_id": "jnl_002", "journal_name": "Cell", "publisher": "Cell Press",
-        "format": "single_column", "font_family": "Times New Roman", "font_size": "12",
-        "line_spacing": "2.0", "margin_top": "25mm", "margin_bottom": "25mm",
-        "margin_left": "25mm", "margin_right": "25mm", "reference_style": "Cell",
-        "author_format": "Last F.M.", "affiliation_format": "numbered_footnotes",
-        "abstract_limit": "200", "keywords_required": "true",
-        "competing_interests_format": "Declaration section",
-        "funding_format": "Detailed funding",
-        "sections_order": "author_order,methods,acknowledgments,funding,credit,competing_interests",
-        "special_requirements": "Significance statement required",
-    },
-    {
-        "template_id": "jnl_003", "journal_name": "PLOS ONE", "publisher": "PLOS",
-        "format": "single_column", "font_family": "Arial", "font_size": "11",
-        "line_spacing": "1.5", "margin_top": "25mm", "margin_bottom": "25mm",
-        "margin_left": "25mm", "margin_right": "25mm", "reference_style": "PLOS",
-        "author_format": "Last FM", "affiliation_format": "affiliation_list",
-        "abstract_limit": "300", "keywords_required": "false",
-        "competing_interests_format": "Competing interests section",
-        "funding_format": "Funding information",
-        "sections_order": "author_order,methods,acknowledgments,funding,credit,competing_interests",
-        "special_requirements": "Open access format",
-    },
-    {
-        "template_id": "jnl_004", "journal_name": "Science", "publisher": "AAAS",
-        "format": "double_column", "font_family": "Times New Roman", "font_size": "10",
-        "line_spacing": "1.0", "margin_top": "20mm", "margin_bottom": "20mm",
-        "margin_left": "15mm", "margin_right": "15mm", "reference_style": "Science",
-        "author_format": "F.M. Last", "affiliation_format": "superscript",
-        "abstract_limit": "120", "keywords_required": "false",
-        "competing_interests_format": "No specific section",
-        "funding_format": "Grant acknowledgment",
-        "sections_order": "author_order,methods,acknowledgments,funding,credit,competing_interests",
-        "special_requirements": "Very concise format",
+        "abstract_limit": "200", "keywords_required": "false",
+        "competing_interests_format": "Competing interests",
+        "funding_format": "Funding",
+        "sections_order": "author_order,methods,acknowledgments,competing_interests,funding,credit",
+        "special_requirements": "Nature family format; abstract max 200 words, no subheadings",
     },
 ]
+
+_GENERIC_JOURNAL_NAMES = {"Nature", "Cell", "PLOS ONE", "Science"}
 
 
 def _read_journal_templates() -> pd.DataFrame:
@@ -403,10 +429,30 @@ def _write_export_jobs(df: pd.DataFrame) -> None:
     df.to_csv(EXPORT_JOBS_CSV, index=False, quoting=csv.QUOTE_ALL)
 
 
+def _migrate_to_real_journals() -> None:
+    """Replace generic placeholder journals with real lab journal templates."""
+    if not os.path.exists(JOURNAL_TEMPLATES_CSV):
+        return
+    try:
+        df = pd.read_csv(JOURNAL_TEMPLATES_CSV, dtype=str).fillna("")
+        if df.empty:
+            return
+        names = set(df["journal_name"].tolist())
+        if names & _GENERIC_JOURNAL_NAMES:
+            pd.DataFrame(_SEED_JOURNAL_TEMPLATES).to_csv(
+                JOURNAL_TEMPLATES_CSV, index=False, quoting=csv.QUOTE_ALL
+            )
+            logger.info("Journal templates migrated from generic to real lab journals.")
+    except Exception as e:
+        logger.warning("Journal template migration failed: %s", e)
+
+
 def _seed_journal_templates_if_empty() -> None:
     if os.path.exists(JOURNAL_TEMPLATES_CSV):
         try:
-            if not pd.read_csv(JOURNAL_TEMPLATES_CSV, dtype=str).empty:
+            df = pd.read_csv(JOURNAL_TEMPLATES_CSV, dtype=str).fillna("")
+            if not df.empty:
+                _migrate_to_real_journals()
                 return
         except Exception:
             pass
@@ -513,29 +559,50 @@ def get_journal_css(template_id: str) -> str:
     """
 
     jname = tmpl.get("journal_name", "")
-    if jname == "Nature":
+    if jname == "PLoS Pathog":
+        css += """
+        h1 { text-align: left; }
+        .competing-block { background: #fffacd; padding: 8pt; margin: 10pt 0;
+            border-left: 3pt solid #d4a017; }
+        .funding-block { background: #f0fff0; padding: 8pt; margin: 10pt 0;
+            border-left: 3pt solid #2e7d32; }
+        .author-summary-block { background: #e8f4fd; padding: 8pt; margin: 10pt 0;
+            border-left: 3pt solid #1565c0; }
+        """
+    elif jname == "PNAS":
+        css += """
+        h1 { text-align: center; font-size: calc({size}pt + 3pt); }
+        .author-block { text-align: center; font-size: 9pt; margin: 5pt 0; }
+        .significance-block { background: #f5f5f5; padding: 8pt; margin: 12pt 0;
+            border: 1pt solid #bbb; font-style: italic; }
+        .methods-block { font-size: 9pt; line-height: 1.3; }
+        """
+    elif jname == "Mol Neurobiol":
+        css += """
+        .declarations-block { background: #fafafa; padding: 7pt; margin: 9pt 0;
+            border-left: 3pt solid #555; }
+        .competing-block { background: #fafafa; padding: 7pt; margin: 9pt 0; }
+        """
+    elif jname == "Brain Pathol":
+        css += """
+        h1 { text-align: left; }
+        .conflict-interest-block { background: #fff8e1; padding: 8pt; margin: 10pt 0;
+            border-left: 3pt solid #f9a825; }
+        .grant-info-block { background: #e8f5e9; padding: 7pt; margin: 9pt 0; }
+        """
+    elif jname == "Acta Neuropathol Commun":
+        css += """
+        .competing-block { background: #fffacd; padding: 7pt; margin: 9pt 0; }
+        .funding-block { background: #f0fff0; padding: 7pt; margin: 9pt 0; }
+        .background-block { font-weight: bold; margin-bottom: 6pt; }
+        """
+    elif jname == "Nat Commun":
         css += """
         h1 { text-align: center; }
         .author-block { text-align: center; font-size: 10pt; margin: 6pt 0; }
         .methods-block { font-size: 10pt; }
-        """
-    elif jname == "Cell":
-        css += """
-        .competing-block {
-            background: #f5f5f5; padding: 8pt; margin: 10pt 0;
-            border-left: 3pt solid #0077b6;
-        }
-        """
-    elif jname == "PLOS ONE":
-        css += """
-        .competing-block { background: #fffacd; padding: 7pt; margin: 9pt 0; }
-        .funding-block { background: #f0fff0; padding: 7pt; margin: 9pt 0; }
-        """
-    elif jname == "Science":
-        css += """
-        body { font-size: 9pt; }
-        h1 { font-size: 12pt; }
-        h2 { font-size: 10pt; }
+        .competing-block { background: #f5f5f5; padding: 8pt; margin: 10pt 0;
+            border-left: 3pt solid #0077b6; }
         """
 
     return css
@@ -558,6 +625,18 @@ def export_to_html(sections_data: dict, template_id: str = "jnl_001") -> str:
         "credit": "Author Contributions",
         "competing_interests": "Competing Interests",
     }
+    _journal_competing_headings = {
+        "jnl_004": "Conflict of Interest",
+        "jnl_003": "Declarations",
+    }
+    _journal_funding_headings = {
+        "jnl_004": "Grant Information",
+    }
+    if template_id in _journal_competing_headings:
+        _section_headings["competing_interests"] = _journal_competing_headings[template_id]
+    if template_id in _journal_funding_headings:
+        _section_headings["funding"] = _journal_funding_headings[template_id]
+
     _section_classes = {
         "author_order": "author-block",
         "methods": "methods-block",
@@ -566,6 +645,11 @@ def export_to_html(sections_data: dict, template_id: str = "jnl_001") -> str:
         "credit": "credit-block",
         "competing_interests": "competing-block",
     }
+    if template_id == "jnl_004":
+        _section_classes["competing_interests"] = "conflict-interest-block"
+        _section_classes["funding"] = "grant-info-block"
+    elif template_id == "jnl_003":
+        _section_classes["competing_interests"] = "declarations-block"
 
     for key in order:
         if key not in sections_data or not sections_data[key]:
@@ -620,16 +704,26 @@ def generate_pdf_weasyprint(sections_data: dict, template_id: str = "jnl_001") -
 # ── Journal requirements validation ──────────────────────────────────────────
 
 _JOURNAL_REQUIRED: dict[str, list] = {
-    "jnl_001": ["author_order", "methods", "acknowledgments", "competing_interests"],
-    "jnl_002": ["author_order", "methods", "acknowledgments", "credit", "competing_interests"],
+    # PLoS Pathog — requires author summary, competing interests, funding
+    "jnl_001": ["author_order", "methods", "acknowledgments", "competing_interests", "funding"],
+    # PNAS — requires credit (author contributions), significance statement is editorial
+    "jnl_002": ["author_order", "methods", "acknowledgments", "credit"],
+    # Mol Neurobiol — Springer declarations: competing interests mandatory
     "jnl_003": ["author_order", "methods", "competing_interests"],
+    # Brain Pathol — Wiley: author order and methods required
     "jnl_004": ["author_order", "methods", "acknowledgments"],
+    # Acta Neuropathol Commun — BMC: competing interests mandatory
+    "jnl_005": ["author_order", "methods", "competing_interests"],
+    # Nat Commun — Nature Portfolio: competing interests + funding required
+    "jnl_006": ["author_order", "methods", "competing_interests", "funding"],
 }
 _JOURNAL_RECOMMENDED: dict[str, list] = {
-    "jnl_001": ["funding", "credit"],
-    "jnl_002": ["funding"],
+    "jnl_001": ["credit"],
+    "jnl_002": ["funding", "competing_interests"],
     "jnl_003": ["funding", "credit", "acknowledgments"],
-    "jnl_004": ["funding", "competing_interests"],
+    "jnl_004": ["funding", "competing_interests", "credit"],
+    "jnl_005": ["funding", "acknowledgments", "credit"],
+    "jnl_006": ["acknowledgments", "credit"],
 }
 
 _SECTION_NAMES = {
@@ -678,6 +772,12 @@ def validate_journal_requirements(present_sections: list, template_id: str) -> l
     abstract_limit = tmpl.get("abstract_limit", "")
     if abstract_limit:
         results.append({"status": "info", "message": f"Abstract word limit: {abstract_limit} words."})
+
+    if template_id == "jnl_002":
+        results.append({"status": "warning", "message": "PNAS requires a Significance Statement (max 120 words) — add before submission."})
+
+    if template_id == "jnl_001":
+        results.append({"status": "warning", "message": "PLoS Pathog requires an Author Summary paragraph after the Abstract."})
 
     special = tmpl.get("special_requirements", "").strip()
     if special and special.lower() not in ("", "null"):
