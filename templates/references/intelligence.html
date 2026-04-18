@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+{% block title %}Reference Intelligence — PrionLab Tools{% endblock %}
+{% block content %}
+<style>
+.ri-page{padding:1.5rem 2rem;max-width:1300px;margin:0 auto}
+.ri-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
+.ri-header h1{font-size:1.5rem;font-weight:700;color:#1a202c;margin:0}
+.ri-header h1 span{color:#6b46c1}
+.ri-back{font-size:.85rem;color:#6b46c1;text-decoration:none;font-weight:600}
+.ri-back:hover{text-decoration:underline}
+.ri-tabs{display:flex;gap:.2rem;border-bottom:2px solid #e2e8f0;margin-bottom:1.5rem;overflow-x:auto}
+.ri-tab{padding:.5rem 1rem;font-size:.875rem;font-weight:600;color:#718096;background:none;border:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:all .15s}
+.ri-tab.active,.ri-tab:hover{color:#6b46c1;border-bottom-color:#6b46c1}
+.ri-section{display:none}.ri-section.active{display:block}
+.ri-card{background:#fff;border-radius:.75rem;padding:1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:1.25rem}
+.ri-card-title{font-size:.95rem;font-weight:700;color:#2d3748;margin-bottom:1rem}
+.ri-rec-list{display:flex;flex-direction:column;gap:.75rem}
+.ri-rec-item{border:1px solid #e2e8f0;border-radius:.6rem;padding:1rem;transition:border-color .2s}
+.ri-rec-item:hover{border-color:#6b46c1}
+.ri-rec-title{font-size:.9rem;font-weight:600;color:#2d3748;margin-bottom:.25rem}
+.ri-rec-meta{font-size:.8rem;color:#718096;margin-bottom:.4rem}
+.ri-rec-explain{font-size:.8rem;color:#805ad5;background:#f5f0ff;padding:.3rem .6rem;border-radius:.4rem;display:inline-block}
+.ri-rec-type{display:inline-block;padding:.15rem .5rem;border-radius:9999px;font-size:.72rem;font-weight:700;text-transform:uppercase;margin-right:.4rem}
+.ri-rec-type.collaborative{background:#bee3f8;color:#2a4365}
+.ri-rec-type.content{background:#c6f6d5;color:#276749}
+.ri-rec-type.expertise{background:#e9d8fd;color:#553c9a}
+.ri-rec-type.temporal{background:#feebc8;color:#744210}
+.ri-rec-score{float:right;font-size:.78rem;font-weight:700;color:#6b46c1}
+.ri-score-bar{height:4px;border-radius:9999px;background:#e2e8f0;margin:.25rem 0}
+.ri-score-fill{height:100%;border-radius:9999px;background:linear-gradient(90deg,#6b46c1,#805ad5)}
+.ri-gap-item{border-left:4px solid #e2e8f0;padding:.75rem 1rem;margin-bottom:.75rem;border-radius:0 .5rem .5rem 0}
+.ri-gap-item.critical{border-left-color:#e53e3e;background:#fff5f5}
+.ri-gap-item.high{border-left-color:#dd6b20;background:#fffaf0}
+.ri-gap-item.medium{border-left-color:#d69e2e;background:#fffff0}
+.ri-gap-item.low{border-left-color:#38a169;background:#f0fff4}
+.ri-gap-severity{font-size:.72rem;font-weight:700;text-transform:uppercase;margin-bottom:.25rem}
+.ri-gap-desc{font-size:.88rem;font-weight:600;color:#2d3748;margin-bottom:.4rem}
+.ri-gap-actions{font-size:.8rem;color:#718096}
+.ri-charts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:1.25rem;margin-bottom:1.25rem}
+.ri-chart-wrap{position:relative;height:220px}
+.ri-net-canvas{width:100%;height:420px;border:1px solid #e2e8f0;border-radius:.5rem;background:#fafafa;overflow:hidden}
+.ri-net-info{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.75rem;margin-top:1rem}
+.ri-net-stat{background:#f7fafc;border-radius:.5rem;padding:.75rem;text-align:center}
+.ri-net-stat-val{font-size:1.4rem;font-weight:800;color:#6b46c1}
+.ri-net-stat-lbl{font-size:.72rem;color:#718096;text-transform:uppercase;letter-spacing:.04em}
+.ri-kw-cloud{display:flex;flex-wrap:wrap;gap:.35rem;padding:.5rem 0}
+.ri-kw-tag{padding:.2rem .6rem;border-radius:9999px;font-size:.78rem;background:#e9d8fd;color:#553c9a;font-weight:600}
+.ri-spinner{display:flex;align-items:center;justify-content:center;padding:2.5rem;color:#a0aec0;font-size:.9rem;gap:.5rem}
+.ri-spinner::before{content:"";width:18px;height:18px;border:3px solid #e2e8f0;border-top-color:#6b46c1;border-radius:50%;animation:ri-spin .7s linear infinite;flex-shrink:0}
+@keyframes ri-spin{to{transform:rotate(360deg)}}
+.ri-empty{text-align:center;padding:2.5rem;color:#a0aec0;font-size:.9rem}
+.ri-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .9rem;border-radius:.45rem;font-size:.82rem;font-weight:600;border:none;cursor:pointer;transition:background .2s;text-decoration:none}
+.ri-btn-sm{background:#6b46c1;color:#fff}.ri-btn-sm:hover{background:#553c9a}
+.ri-doi-link{font-size:.75rem;color:#3182ce;text-decoration:none}
+.ri-doi-link:hover{text-decoration:underline}
+.ri-author-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem}
+.ri-author-card{background:#f7fafc;border-radius:.5rem;padding:.75rem;border:1px solid #e2e8f0}
+.ri-author-name{font-size:.85rem;font-weight:700;color:#2d3748;margin-bottom:.25rem}
+.ri-author-stats{font-size:.75rem;color:#718096}
+@media(max-width:640px){.ri-page{padding:1rem}.ri-charts-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="ri-page">
+  <div class="ri-header">
+    <div>
+      <a class="ri-back" href="/manuscripts/{{ manuscript_id }}/references">&#8592; Back to References</a>
+      <h1>Reference <span>Intelligence</span></h1>
+    </div>
+    <button class="ri-btn ri-btn-sm" onclick="refreshAll()">&#8635; Refresh All</button>
+  </div>
+
+  <nav class="ri-tabs">
+    <button class="ri-tab active" data-tab="recommendations">&#129504; Recommendations</button>
+    <button class="ri-tab" data-tab="gaps">&#128270; Research Gaps</button>
+    <button class="ri-tab" data-tab="network">&#127760; Citation Network</button>
+    <button class="ri-tab" data-tab="authors">&#128100; Author Influence</button>
+    <button class="ri-tab" data-tab="landscape">&#128202; Research Landscape</button>
+  </nav>
+
+  <!-- RECOMMENDATIONS -->
+  <div class="ri-section active" id="tab-recommendations">
+    <div class="ri-card">
+      <div class="ri-card-title">AI-Powered Recommendations
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Based on your current references</span>
+      </div>
+      <div id="rec-list"><div class="ri-spinner">Analysing references…</div></div>
+    </div>
+  </div>
+
+  <!-- GAPS -->
+  <div class="ri-section" id="tab-gaps">
+    <div class="ri-card">
+      <div class="ri-card-title">Research Gap Analysis</div>
+      <div id="gaps-list"><div class="ri-spinner">Detecting gaps…</div></div>
+    </div>
+  </div>
+
+  <!-- NETWORK -->
+  <div class="ri-section" id="tab-network">
+    <div class="ri-card">
+      <div class="ri-card-title">Citation Network
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">References grouped by similarity</span>
+      </div>
+      <div id="net-info" class="ri-net-info"></div>
+      <canvas id="net-canvas" class="ri-net-canvas" style="margin-top:1rem"></canvas>
+      <div id="net-clusters" style="margin-top:1rem"></div>
+    </div>
+  </div>
+
+  <!-- AUTHORS -->
+  <div class="ri-section" id="tab-authors">
+    <div class="ri-card">
+      <div class="ri-card-title">Author Influence Network</div>
+      <div id="author-grid" class="ri-author-grid"><div class="ri-spinner">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- LANDSCAPE -->
+  <div class="ri-section" id="tab-landscape">
+    <div class="ri-charts-grid">
+      <div class="ri-card">
+        <div class="ri-card-title">Publication Timeline</div>
+        <div class="ri-chart-wrap"><canvas id="chart-timeline"></canvas></div>
+      </div>
+      <div class="ri-card">
+        <div class="ri-card-title">Top Journals</div>
+        <div class="ri-chart-wrap"><canvas id="chart-journals"></canvas></div>
+      </div>
+      <div class="ri-card">
+        <div class="ri-card-title">Research Areas</div>
+        <div class="ri-chart-wrap"><canvas id="chart-areas"></canvas></div>
+      </div>
+      <div class="ri-card">
+        <div class="ri-card-title">Top Keywords</div>
+        <div class="ri-kw-cloud" id="kw-cloud"><div class="ri-spinner">Loading…</div></div>
+      </div>
+    </div>
+    <div class="ri-card" id="landscape-summary"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const MS_ID = "{{ manuscript_id }}";
+const API = (path) => `/api/references/manuscript/${MS_ID}/${path}`;
+const PAL = ['#6b46c1','#3182ce','#38a169','#dd6b20','#e53e3e','#319795','#d69e2e','#805ad5'];
+const charts = {};
+const loaded = {};
+
+function mkChart(id, cfg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(el, cfg);
+}
+
+document.querySelectorAll('.ri-tab').forEach(t =>
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.ri-tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.ri-section').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+    loadTab(t.dataset.tab);
+  })
+);
+
+function loadTab(name) {
+  if (loaded[name]) return;
+  loaded[name] = true;
+  if (name === 'recommendations') loadRecommendations();
+  else if (name === 'gaps') loadGaps();
+  else if (name === 'network') loadNetwork();
+  else if (name === 'authors') loadAuthors();
+  else if (name === 'landscape') loadLandscape();
+}
+
+// ── Recommendations ──────────────────────────────────────────────────────────
+async function loadRecommendations() {
+  try {
+    const d = await fetch(API('recommendations')).then(r => r.json());
+    const el = document.getElementById('rec-list');
+    if (!d.recommendations || !d.recommendations.length) {
+      el.innerHTML = '<div class="ri-empty">No recommendations yet — import more references to enable suggestions</div>';
+      return;
+    }
+    el.innerHTML = '<div class="ri-rec-list">' + d.recommendations.map(r => `
+      <div class="ri-rec-item">
+        <div>
+          <span class="ri-rec-type ${r.recommendation_type}">${r.recommendation_type}</span>
+          <span class="ri-rec-score">${(r.relevance_score * 100).toFixed(0)}% match</span>
+        </div>
+        <div class="ri-rec-title">${r.title || '(no title)'}</div>
+        <div class="ri-rec-meta">
+          ${(r.authors||[]).slice(0,3).join(', ')}${r.authors&&r.authors.length>3?' et al.':''}
+          · ${r.journal||''} ${r.year||''}
+          ${r.doi ? `· <a class="ri-doi-link" href="https://doi.org/${r.doi}" target="_blank">${r.doi}</a>` : ''}
+        </div>
+        <div class="ri-score-bar"><div class="ri-score-fill" style="width:${Math.min(r.relevance_score*300,100)}%"></div></div>
+        <span class="ri-rec-explain">${r.explanation}</span>
+      </div>`).join('') + '</div>';
+  } catch (e) {
+    document.getElementById('rec-list').innerHTML = '<div class="ri-empty">Failed to load recommendations</div>';
+  }
+}
+
+// ── Research Gaps ────────────────────────────────────────────────────────────
+async function loadGaps() {
+  try {
+    const d = await fetch(API('gaps')).then(r => r.json());
+    const el = document.getElementById('gaps-list');
+    if (!d.gaps || !d.gaps.length) {
+      el.innerHTML = '<div class="ri-empty">&#10003; No significant gaps detected — your reference list looks comprehensive!</div>';
+      return;
+    }
+    const sevColor = {critical:'#e53e3e',high:'#dd6b20',medium:'#d69e2e',low:'#38a169'};
+    el.innerHTML = d.gaps.map(g => `
+      <div class="ri-gap-item ${g.severity}">
+        <div class="ri-gap-severity" style="color:${sevColor[g.severity]||'#718096'}">${g.severity} — ${g.gap_type.replace(/_/g,' ')}</div>
+        <div class="ri-gap-desc">${g.description}</div>
+        <div class="ri-gap-actions">${g.suggested_actions.map(a => '• ' + a).join(' &nbsp; ')}</div>
+      </div>`).join('');
+  } catch (e) {
+    document.getElementById('gaps-list').innerHTML = '<div class="ri-empty">Failed to load gap analysis</div>';
+  }
+}
+
+// ── Citation Network ─────────────────────────────────────────────────────────
+async function loadNetwork() {
+  try {
+    const d = await fetch(API('network')).then(r => r.json());
+    const m = d.metrics || {};
+    document.getElementById('net-info').innerHTML = [
+      ['Nodes', m.node_count||0],
+      ['Edges', m.edge_count||0],
+      ['Avg Degree', m.avg_degree||0],
+      ['Density', m.density||0],
+      ['Clusters', m.cluster_count||0],
+    ].map(([l,v]) => `<div class="ri-net-stat"><div class="ri-net-stat-val">${v}</div><div class="ri-net-stat-lbl">${l}</div></div>`).join('');
+
+    drawNetworkCanvas(d.nodes || [], d.edges || []);
+
+    if (d.clusters && d.clusters.length) {
+      document.getElementById('net-clusters').innerHTML =
+        '<strong style="font-size:.85rem">Clusters:</strong> ' +
+        d.clusters.map(c => `<span style="display:inline-block;margin:.25rem;padding:.2rem .6rem;background:#e9d8fd;border-radius:9999px;font-size:.78rem;color:#553c9a">${c.topic} (${c.size})</span>`).join('');
+    }
+  } catch (e) {
+    document.getElementById('net-canvas').style.display = 'none';
+  }
+}
+
+function drawNetworkCanvas(nodes, edges) {
+  const canvas = document.getElementById('net-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 700;
+  const H = canvas.offsetHeight || 420;
+  canvas.width = W;
+  canvas.height = H;
+
+  if (!nodes.length) {
+    ctx.fillStyle = '#a0aec0';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No network data', W/2, H/2);
+    return;
+  }
+
+  // Random layout with repulsion (simple spring)
+  const pos = {};
+  const COLORS = ['#6b46c1','#3182ce','#38a169','#dd6b20','#e53e3e','#319795','#d69e2e'];
+  nodes.forEach(n => {
+    pos[n.id] = { x: 50 + Math.random() * (W - 100), y: 50 + Math.random() * (H - 100) };
+  });
+
+  // Simple force iteration
+  for (let iter = 0; iter < 30; iter++) {
+    // Repulsion
+    nodes.forEach(a => {
+      nodes.forEach(b => {
+        if (a.id === b.id) return;
+        const dx = pos[a.id].x - pos[b.id].x;
+        const dy = pos[a.id].y - pos[b.id].y;
+        const dist = Math.max(Math.sqrt(dx*dx+dy*dy), 1);
+        const f = 800 / (dist*dist);
+        pos[a.id].x += dx/dist*f; pos[a.id].y += dy/dist*f;
+      });
+    });
+    // Attraction along edges
+    edges.forEach(e => {
+      const a = pos[e.source]; const b = pos[e.target];
+      if (!a || !b) return;
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const dist = Math.max(Math.sqrt(dx*dx+dy*dy), 1);
+      const f = dist * 0.02 * e.weight;
+      a.x += dx/dist*f; a.y += dy/dist*f;
+      b.x -= dx/dist*f; b.y -= dy/dist*f;
+    });
+    // Bound
+    nodes.forEach(n => {
+      pos[n.id].x = Math.max(20, Math.min(W-20, pos[n.id].x));
+      pos[n.id].y = Math.max(20, Math.min(H-20, pos[n.id].y));
+    });
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  // Draw edges
+  edges.slice(0, 300).forEach(e => {
+    const a = pos[e.source]; const b = pos[e.target];
+    if (!a || !b) return;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = `rgba(107,70,193,${Math.min(e.weight * 0.5, 0.3)})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+  // Draw nodes
+  nodes.forEach(n => {
+    const p = pos[n.id];
+    const r = Math.max(4, Math.min(4 + n.degree, 12));
+    const c = COLORS[(n.cluster_id || 0) % COLORS.length];
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.fillStyle = c;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    if (n.degree >= 3) {
+      ctx.fillStyle = '#2d3748';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText((n.title||'').slice(0,20), p.x, p.y - r - 3);
+    }
+  });
+}
+
+// ── Authors ──────────────────────────────────────────────────────────────────
+async function loadAuthors() {
+  try {
+    const d = await fetch(API('author-network')).then(r => r.json());
+    const el = document.getElementById('author-grid');
+    const authors = (d.nodes || []).slice(0, 30);
+    if (!authors.length) { el.innerHTML = '<div class="ri-empty">No author data found</div>'; return; }
+    el.innerHTML = authors.map(a => `
+      <div class="ri-author-card">
+        <div class="ri-author-name">${a.label}</div>
+        <div class="ri-author-stats">
+          ${a.papers} manuscript${a.papers!=1?'s':''} &nbsp;·&nbsp; ${a.collaborators} collaborator${a.collaborators!=1?'s':''}
+          <br>Influence: <strong>${a.influence_score}</strong>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    document.getElementById('author-grid').innerHTML = '<div class="ri-empty">Failed to load author data</div>';
+  }
+}
+
+// ── Landscape ────────────────────────────────────────────────────────────────
+async function loadLandscape() {
+  try {
+    const d = await fetch(API('landscape')).then(r => r.json());
+    const tl = d.temporal_trends || [];
+    mkChart('chart-timeline', {
+      type:'line',
+      data:{labels:tl.map(x=>x.year),datasets:[{label:'Publications',data:tl.map(x=>x.count),borderColor:'#6b46c1',backgroundColor:'rgba(107,70,193,.1)',fill:true,tension:.4,pointRadius:2}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}},
+    });
+    const jl = (d.top_journals||[]).slice(0,8);
+    mkChart('chart-journals', {
+      type:'bar',
+      data:{labels:jl.map(j=>j.journal.length>22?j.journal.slice(0,22)+'…':j.journal),datasets:[{label:'Papers',data:jl.map(j=>j.count),backgroundColor:'#6b46c1'}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}},
+    });
+    const areas = d.area_distribution || {};
+    mkChart('chart-areas', {
+      type:'doughnut',
+      data:{labels:Object.keys(areas),datasets:[{data:Object.values(areas),backgroundColor:PAL}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right'}}},
+    });
+    const kws = d.top_keywords || [];
+    const cloud = document.getElementById('kw-cloud');
+    if (kws.length) {
+      const mx = kws[0]?.count || 1;
+      cloud.innerHTML = kws.map(k => {
+        const sz = 0.75 + (k.count/mx)*0.55;
+        return `<span class="ri-kw-tag" style="font-size:${sz}rem">${k.keyword} <em style="opacity:.6">${k.count}</em></span>`;
+      }).join('');
+    } else {
+      cloud.innerHTML = '<div class="ri-empty">No keywords found</div>';
+    }
+    const s = d.summary || {};
+    document.getElementById('landscape-summary').innerHTML = `
+      <div class="ri-card-title">Summary</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem">
+        ${[['Total Refs', s.total_refs||0],['Unique Authors', s.unique_authors||0],['Unique Journals', s.unique_journals||0],['Year Range', s.year_min&&s.year_max?s.year_min+'–'+s.year_max:'–']].map(([l,v])=>`<div style="text-align:center;background:#f7fafc;border-radius:.5rem;padding:.75rem"><div style="font-size:1.4rem;font-weight:800;color:#6b46c1">${v}</div><div style="font-size:.72rem;color:#718096;text-transform:uppercase">${l}</div></div>`).join('')}
+      </div>`;
+  } catch (e) {}
+}
+
+function refreshAll() {
+  Object.keys(loaded).forEach(k => delete loaded[k]);
+  const active = document.querySelector('.ri-tab.active');
+  if (active) { loaded[active.dataset.tab] = false; loadTab(active.dataset.tab); }
+}
+
+// Initial load
+loadTab('recommendations');
+</script>
+{% endblock %}

@@ -10,6 +10,7 @@
     </div>
     <div class="ms-dash__actions">
       <a class="btn btn--secondary" id="detailRefsBtn" href="#">&#128218; {{ _('References') }}</a>
+      <a class="btn btn--secondary" id="detailIntelBtn" href="#">&#129504; {{ _('Intelligence') }}</a>
       <button class="btn btn--secondary" id="detailEditBtn" onclick="goEdit()">&#9998; {{ _('Edit') }}</button>
     </div>
   </div>
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('detailTitle').textContent = m.title;
     document.getElementById('detailEditBtn').onclick = () => window.location.href = `/manuscripts/${manuscriptId}/edit`;
     document.getElementById('detailRefsBtn').href = `/manuscripts/${manuscriptId}/references`;
+    document.getElementById('detailIntelBtn').href = `/manuscripts/${manuscriptId}/references/intelligence`;
     document.getElementById('detailMeta').innerHTML = `
       <span class="ms-badge" style="background:${STATUS_COLOR[m.status]||'#888'}">${m.status}</span>
       &nbsp;${m.research_area||''} · ${m.manuscript_type||''}`;
