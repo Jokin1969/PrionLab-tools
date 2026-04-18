@@ -66,6 +66,12 @@
   <div id="methods-warnings" style="margin-bottom:.5rem"></div>
   <textarea id="methods-textarea" class="form-input generate-output" rows="12" readonly></textarea>
   <div id="copy-feedback" class="text-muted" style="font-size:.8rem;margin-top:.25rem">&nbsp;</div>
+  <div class="export-actions">
+    <span class="export-actions__label">{{ _('Export:') }}</span>
+    <button type="button" class="btn btn--secondary btn--sm" onclick="exportMethodsSection('docx')">{{ _('Word') }}</button>
+    <button type="button" class="btn btn--secondary btn--sm" onclick="exportMethodsSection('latex')">{{ _('LaTeX') }}</button>
+    <button type="button" class="btn btn--secondary btn--sm" onclick="exportMethodsSection('txt')">{{ _('Plain Text') }}</button>
+  </div>
 </div>
 
 <script>
@@ -440,6 +446,7 @@ async function generateSection() {
     }
 
     document.getElementById('methods-textarea').value = data.methods_text;
+    _saveMethodsSection(data.methods_text);
 
     const warnContainer = document.getElementById('methods-warnings');
     warnContainer.innerHTML = '';
@@ -478,6 +485,54 @@ async function copyMethodsOutput() {
 // ── Utility ───────────────────────────────────────────────────────────────────
 function _esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function _saveMethodsSection(text) {
+  try { sessionStorage.setItem('generated_methods', JSON.stringify({text, ts: Date.now()})); }
+  catch(e) {}
+}
+
+async function exportMethodsSection(format) {
+  const ta = document.getElementById('methods-textarea');
+  if (!ta || !ta.value.trim()) {
+    alert('{{ _("Please generate the Methods section first.") }}');
+    return;
+  }
+  const body = new URLSearchParams({
+    text: ta.value,
+    format: format,
+    template_id: format === 'latex' ? 'exp_002' : 'exp_005',
+  });
+  try {
+    const resp = await fetch('/export/section/methods', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    _showMethodsExportNotification(data);
+  } catch(e) {
+    alert('{{ _("Export failed. Please try again.") }}');
+  }
+}
+
+function _showMethodsExportNotification(info) {
+  const existing = document.getElementById('methods-export-notification');
+  if (existing) existing.remove();
+  const n = document.createElement('div');
+  n.id = 'methods-export-notification';
+  n.className = 'download-notification';
+  n.innerHTML =
+    '<strong>✅ {{ _("Export Ready") }}</strong> — ' +
+    '<a href="' + info.download_url + '" class="btn btn--primary btn--sm">⬇ {{ _("Download") }} ' +
+    _esc(info.filename || '') + '</a>' +
+    ' <span class="text-muted" style="font-size:.8rem">({{ _("expires") }} ' + _esc(info.expires_at || '') + ')</span>' +
+    ' <button type="button" class="btn btn--sm" onclick="this.parentElement.remove()" style="margin-left:.5rem">✕</button>';
+  const main = document.querySelector('.site-main .container');
+  if (main) main.prepend(n);
+  setTimeout(() => { if (n.parentElement) n.remove(); }, 15000);
 }
 </script>
 {% endblock %}

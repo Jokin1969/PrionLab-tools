@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Export Downloads') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:1.5rem">
+  <h1 style="margin:0">{{ _('Export Downloads') }}</h1>
+  <p class="text-muted" style="margin:.4rem 0 0">
+    {{ _('Your recent exports. Download links expire after 7 days.') }}
+  </p>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem">
+  <a href="{{ url_for('export.composer') }}" class="btn btn--secondary">
+    ← {{ _('Back to Composer') }}
+  </a>
+  <button type="button" class="btn btn--secondary" onclick="cleanupExpired()">
+    {{ _('Clean Up Expired') }}
+  </button>
+</div>
+
+<div id="cleanup-feedback" style="display:none;margin-bottom:1rem"></div>
+
+{% if not exports %}
+<div class="text-muted" style="padding:2rem 0;text-align:center">
+  {{ _('No exports yet. Use the Manuscript Composer or export individual sections.') }}
+</div>
+{% else %}
+<div class="downloads-list">
+  {% for exp in exports %}
+  <div class="download-item {% if exp.is_expired %}download-item--expired{% endif %}" data-export-id="{{ exp.export_id }}">
+    <div class="download-info">
+      <h4 class="download-filename">{{ exp.filename }}</h4>
+      <div class="download-meta">
+        <span>{{ _('Created') }}: {{ exp.created_at[:16] }}</span>
+        <span>·</span>
+        <span>{{ _('Sections') }}: {{ exp.sections_exported }}</span>
+        <span>·</span>
+        <span>{{ _('Downloads') }}: {{ exp.download_count }}</span>
+      </div>
+    </div>
+    <div class="download-actions">
+      {% if exp.is_expired %}
+        <span class="badge" style="background:#FEE2E2;color:#991B1B">{{ _('Expired') }}</span>
+      {% else %}
+        <a href="{{ url_for('export.download_file', export_id=exp.export_id) }}"
+           class="btn btn--primary btn--sm">
+          ⬇ {{ _('Download') }}
+        </a>
+        <span class="download-expires text-muted">
+          {{ _('Expires in') }} {{ exp.expires_in_days }} {{ _('day(s)') }}
+        </span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+async function cleanupExpired() {
+  const feedback = document.getElementById('cleanup-feedback');
+  try {
+    const resp = await fetch("{{ url_for('export.cleanup') }}", {method: 'POST'});
+    const data = await resp.json();
+    feedback.className = 'alert alert--info';
+    feedback.textContent = data.message || 'Done.';
+    feedback.style.display = '';
+    setTimeout(() => location.reload(), 1500);
+  } catch(e) {
+    feedback.className = 'alert alert--error';
+    feedback.textContent = '{{ _("Cleanup failed.") }}';
+    feedback.style.display = '';
+  }
+}
+</script>
+{% endblock %}

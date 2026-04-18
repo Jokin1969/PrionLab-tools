@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Manuscript Composer') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:1.5rem">
+  <h1 style="margin:0">{{ _('Manuscript Composer') }}</h1>
+  <p class="text-muted" style="margin:.4rem 0 0">
+    {{ _('Combine generated sections into a complete manuscript draft for export.') }}
+  </p>
+</div>
+
+<div class="alert alert--info" style="margin-bottom:1.5rem">
+  {{ _('Generate sections in ManuscriptForge and Methods Library first, then return here to combine and export them.') }}
+</div>
+
+<div class="composer-layout">
+
+  {# ── Left: Sections ── #}
+  <div class="composer-sections">
+
+    <h3 class="composer-panel-title">{{ _('Available Sections') }}</h3>
+
+    <div class="section-group">
+      <h4 class="section-group-title">ManuscriptForge</h4>
+      <div class="section-checkboxes">
+        <label class="section-checkbox-item">
+          <input type="checkbox" id="include_author_order" class="form-checkbox section-cb" data-key="author_order" />
+          <span class="section-cb-label">{{ _('Author Order & Affiliations') }}</span>
+          <span class="section-status" id="status_author_order">{{ _('Not generated') }}</span>
+        </label>
+        <label class="section-checkbox-item">
+          <input type="checkbox" id="include_funding" class="form-checkbox section-cb" data-key="funding" />
+          <span class="section-cb-label">{{ _('Funding') }}</span>
+          <span class="section-status" id="status_funding">{{ _('Not generated') }}</span>
+        </label>
+        <label class="section-checkbox-item">
+          <input type="checkbox" id="include_acknowledgments" class="form-checkbox section-cb" data-key="acknowledgments" />
+          <span class="section-cb-label">{{ _('Acknowledgments') }}</span>
+          <span class="section-status" id="status_acknowledgments">{{ _('Not generated') }}</span>
+        </label>
+        <label class="section-checkbox-item">
+          <input type="checkbox" id="include_competing_interests" class="form-checkbox section-cb" data-key="competing_interests" />
+          <span class="section-cb-label">{{ _('Competing Interests') }}</span>
+          <span class="section-status" id="status_competing_interests">{{ _('Not generated') }}</span>
+        </label>
+        <label class="section-checkbox-item">
+          <input type="checkbox" id="include_credit" class="form-checkbox section-cb" data-key="credit" />
+          <span class="section-cb-label">{{ _('Author Contributions (CRediT)') }}</span>
+          <span class="section-status" id="status_credit">{{ _('Not generated') }}</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="section-group" style="margin-top:1.25rem">
+      <h4 class="section-group-title">{{ _('Methods Library') }}</h4>
+      <div class="section-checkboxes">
+        <label class="section-checkbox-item">
+          <input type="checkbox" id="include_methods" class="form-checkbox section-cb" data-key="methods" />
+          <span class="section-cb-label">{{ _('Methods Section') }}</span>
+          <span class="section-status" id="status_methods">{{ _('Not generated') }}</span>
+        </label>
+      </div>
+    </div>
+
+  </div>
+
+  {# ── Right: Options ── #}
+  <div class="composer-options">
+
+    <h3 class="composer-panel-title">{{ _('Export Options') }}</h3>
+
+    <div class="form-group" style="margin-bottom:1rem">
+      <label class="form-label" for="manuscript_title">{{ _('Manuscript Title') }}</label>
+      <input type="text" id="manuscript_title" class="form-input"
+             placeholder="{{ _('Enter manuscript title…') }}" />
+    </div>
+
+    <div class="form-group" style="margin-bottom:1rem">
+      <label class="form-label" for="export_template">{{ _('Template') }}</label>
+      <select id="export_template" class="form-input">
+        {% for tmpl in export_templates %}
+        <option value="{{ tmpl.template_id }}">{{ tmpl.name }} — {{ tmpl.description }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group" style="margin-bottom:1.25rem">
+      <label class="form-label">{{ _('Section Order') }}</label>
+      <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 .5rem">
+        {{ _('Use ↑↓ buttons to reorder selected sections.') }}
+      </p>
+      <ul id="sections_order_list" class="section-order-list">
+        <li class="text-muted" id="order-empty-msg" style="font-size:.85rem;padding:.5rem 0">
+          {{ _('Check sections on the left to add them to the order.') }}
+        </li>
+      </ul>
+    </div>
+
+    <button type="button" class="btn btn--primary" id="generate-manuscript-btn"
+            onclick="generateManuscript()">
+      {{ _('Generate Manuscript') }}
+    </button>
+
+    <div id="composer-error" class="alert alert--error" style="margin-top:.75rem;display:none"></div>
+    <div id="composer-success" style="margin-top:.75rem;display:none"></div>
+  </div>
+
+</div>
+
+<script>
+const EXPORT_MANUSCRIPT_URL = "{{ url_for('export.export_manuscript') }}";
+
+const SECTION_LABELS = {
+  author_order:         "{{ _('Author Order & Affiliations') }}",
+  funding:              "{{ _('Funding') }}",
+  acknowledgments:      "{{ _('Acknowledgments') }}",
+  competing_interests:  "{{ _('Competing Interests') }}",
+  credit:               "{{ _('Author Contributions (CRediT)') }}",
+  methods:              "{{ _('Methods Section') }}",
+};
+
+const I18N = {
+  ready:          "{{ _('Ready') }}",
+  notGenerated:   "{{ _('Not generated') }}",
+  noSections:     "{{ _('Please select at least one generated section.') }}",
+  exportFailed:   "{{ _('Export failed. Please try again.') }}",
+  download:       "{{ _('Download') }}",
+  expires:        "{{ _('expires') }}",
+  exportReady:    "{{ _('Export Ready') }}",
+  moveUp:         "{{ _('Move up') }}",
+  moveDown:       "{{ _('Move down') }}",
+};
+
+// ── Section status from sessionStorage ────────────────────────────────────────
+
+const SECTION_KEYS = ['author_order', 'funding', 'acknowledgments', 'competing_interests', 'credit', 'methods'];
+const sectionAvailable = {};
+
+const TTL_MS = 24 * 60 * 60 * 1000;
+
+function loadSectionStatus() {
+  SECTION_KEYS.forEach(key => {
+    const raw = sessionStorage.getItem('generated_' + key);
+    if (!raw) { sectionAvailable[key] = false; return; }
+    try {
+      const obj = JSON.parse(raw);
+      sectionAvailable[key] = obj && obj.text && (Date.now() - (obj.ts || 0)) < TTL_MS;
+    } catch(e) { sectionAvailable[key] = false; }
+
+    const statusEl = document.getElementById('status_' + key);
+    const cb = document.getElementById('include_' + key);
+    if (sectionAvailable[key]) {
+      statusEl.textContent = '✅ ' + I18N.ready;
+      statusEl.className = 'section-status section-status--ready';
+      if (cb) { cb.checked = true; cb.disabled = false; }
+    } else {
+      statusEl.textContent = '❌ ' + I18N.notGenerated;
+      statusEl.className = 'section-status section-status--missing';
+      if (cb) { cb.checked = false; cb.disabled = true; }
+    }
+  });
+  renderOrderList();
+}
+
+// ── Section order list ────────────────────────────────────────────────────────
+
+function getSelectedKeys() {
+  return SECTION_KEYS.filter(k => {
+    const cb = document.getElementById('include_' + k);
+    return cb && cb.checked && sectionAvailable[k];
+  });
+}
+
+function renderOrderList() {
+  const list = document.getElementById('sections_order_list');
+  const emptyMsg = document.getElementById('order-empty-msg');
+  const selected = getSelectedKeys();
+
+  list.innerHTML = '';
+
+  if (selected.length === 0) {
+    if (emptyMsg) list.appendChild(emptyMsg);
+    return;
+  }
+
+  selected.forEach((key, idx) => {
+    const li = document.createElement('li');
+    li.className = 'section-order-item';
+    li.dataset.key = key;
+
+    const name = document.createElement('span');
+    name.className = 'section-order-name';
+    name.textContent = SECTION_LABELS[key] || key;
+
+    const controls = document.createElement('span');
+    controls.className = 'section-order-controls';
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'btn btn--sm';
+    upBtn.title = I18N.moveUp;
+    upBtn.textContent = '↑';
+    upBtn.disabled = idx === 0;
+    upBtn.addEventListener('click', () => moveOrderItem(key, -1));
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'btn btn--sm';
+    downBtn.title = I18N.moveDown;
+    downBtn.textContent = '↓';
+    downBtn.disabled = idx === selected.length - 1;
+    downBtn.addEventListener('click', () => moveOrderItem(key, 1));
+
+    controls.appendChild(upBtn);
+    controls.appendChild(downBtn);
+    li.appendChild(name);
+    li.appendChild(controls);
+    list.appendChild(li);
+  });
+}
+
+let customOrder = null;
+
+function moveOrderItem(key, delta) {
+  const current = getOrderedKeys();
+  const idx = current.indexOf(key);
+  if (idx < 0) return;
+  const j = idx + delta;
+  if (j < 0 || j >= current.length) return;
+  [current[idx], current[j]] = [current[j], current[idx]];
+  customOrder = current;
+  renderOrderListFromArray(current);
+}
+
+function getOrderedKeys() {
+  if (customOrder) {
+    const selected = getSelectedKeys();
+    return customOrder.filter(k => selected.includes(k));
+  }
+  return getSelectedKeys();
+}
+
+function renderOrderListFromArray(keys) {
+  const list = document.getElementById('sections_order_list');
+  list.innerHTML = '';
+  if (keys.length === 0) {
+    const emptyMsg = document.createElement('li');
+    emptyMsg.className = 'text-muted';
+    emptyMsg.style.cssText = 'font-size:.85rem;padding:.5rem 0';
+    emptyMsg.textContent = I18N.noSections;
+    list.appendChild(emptyMsg);
+    return;
+  }
+  keys.forEach((key, idx) => {
+    const li = document.createElement('li');
+    li.className = 'section-order-item';
+    li.dataset.key = key;
+
+    const name = document.createElement('span');
+    name.className = 'section-order-name';
+    name.textContent = SECTION_LABELS[key] || key;
+
+    const controls = document.createElement('span');
+    controls.className = 'section-order-controls';
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'btn btn--sm';
+    upBtn.textContent = '↑';
+    upBtn.disabled = idx === 0;
+    upBtn.addEventListener('click', () => moveOrderItem(key, -1));
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'btn btn--sm';
+    downBtn.textContent = '↓';
+    downBtn.disabled = idx === keys.length - 1;
+    downBtn.addEventListener('click', () => moveOrderItem(key, 1));
+
+    controls.appendChild(upBtn);
+    controls.appendChild(downBtn);
+    li.appendChild(name);
+    li.appendChild(controls);
+    list.appendChild(li);
+  });
+}
+
+document.querySelectorAll('.section-cb').forEach(cb => {
+  cb.addEventListener('change', () => {
+    customOrder = null;
+    renderOrderList();
+  });
+});
+
+// ── Generate manuscript ───────────────────────────────────────────────────────
+
+async function generateManuscript() {
+  const errEl = document.getElementById('composer-error');
+  const successEl = document.getElementById('composer-success');
+  errEl.style.display = 'none';
+  successEl.style.display = 'none';
+
+  const orderedKeys = getOrderedKeys();
+  if (orderedKeys.length === 0) {
+    errEl.textContent = I18N.noSections;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const sectionsText = {};
+  orderedKeys.forEach(key => {
+    try {
+      const raw = sessionStorage.getItem('generated_' + key);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        if (obj && obj.text) sectionsText[key] = obj.text;
+      }
+    } catch(e) {}
+  });
+
+  const title = document.getElementById('manuscript_title').value.trim() || 'Manuscript Draft';
+  const templateId = document.getElementById('export_template').value;
+
+  const btn = document.getElementById('generate-manuscript-btn');
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    const resp = await fetch(EXPORT_MANUSCRIPT_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        sections_text: sectionsText,
+        sections_order: orderedKeys,
+        template_id: templateId,
+        title,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      errEl.textContent = data.error || I18N.exportFailed;
+      errEl.style.display = 'block';
+    } else {
+      showSuccess(successEl, data);
+    }
+  } catch(e) {
+    errEl.textContent = I18N.exportFailed;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '{{ _("Generate Manuscript") }}';
+  }
+}
+
+function showSuccess(el, info) {
+  el.innerHTML =
+    '<div class="download-notification">' +
+    '<strong>✅ ' + I18N.exportReady + '</strong> — ' +
+    '<a href="' + info.download_url + '" class="btn btn--primary btn--sm">' +
+    '⬇ ' + I18N.download + ' ' + _esc(info.filename || '') + '</a>' +
+    ' <span class="text-muted" style="font-size:.8rem">(' + I18N.expires + ' ' + _esc(info.expires_at || '') + ')</span>' +
+    '</div>';
+  el.style.display = '';
+}
+
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.addEventListener('DOMContentLoaded', loadSectionStatus);
+</script>
+{% endblock %}

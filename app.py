@@ -60,6 +60,12 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("Methods schema bootstrap failed: %s", e)
 
+    try:
+        from tools.export.models import bootstrap_export_schema
+        bootstrap_export_schema()
+    except Exception as e:
+        app.logger.warning("Export schema bootstrap failed: %s", e)
+
     # ── Babel / i18n ────────────────────────────────────────────────────────
 
     def get_locale() -> str:
@@ -112,6 +118,9 @@ def create_app() -> Flask:
 
     from tools.methods import methods_bp
     app.register_blueprint(methods_bp)
+
+    from tools.export import export_bp
+    app.register_blueprint(export_bp)
 
     # ── Routes ───────────────────────────────────────────────────────────────
 

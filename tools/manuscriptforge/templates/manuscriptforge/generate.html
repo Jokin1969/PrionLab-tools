@@ -110,6 +110,12 @@
       <textarea id="generate-textarea" class="form-input generate-output" rows="14" readonly></textarea>
       <div id="copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
       <div id="unaffiliated-warning" class="alert alert--warning" style="margin-top:.75rem;display:none"></div>
+      <div class="export-actions">
+        <span class="export-actions__label">{{ _('Export:') }}</span>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('author_order','docx')">{{ _('Word') }}</button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('author_order','latex')">{{ _('LaTeX') }}</button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('author_order','txt')">{{ _('Plain Text') }}</button>
+      </div>
     </div>
   </div>
 </div>
@@ -156,6 +162,12 @@
     </div>
     <textarea id="funding-textarea" class="form-input generate-output" rows="10" readonly></textarea>
     <div id="funding-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
+    <div class="export-actions">
+      <span class="export-actions__label">{{ _('Export:') }}</span>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('funding','docx')">{{ _('Word') }}</button>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('funding','latex')">{{ _('LaTeX') }}</button>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('funding','txt')">{{ _('Plain Text') }}</button>
+    </div>
   </div>
 </div>
 
@@ -201,6 +213,12 @@
     </div>
     <textarea id="ack-textarea" class="form-input generate-output" rows="10" readonly></textarea>
     <div id="ack-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
+    <div class="export-actions">
+      <span class="export-actions__label">{{ _('Export:') }}</span>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('acknowledgments','docx')">{{ _('Word') }}</button>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('acknowledgments','latex')">{{ _('LaTeX') }}</button>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('acknowledgments','txt')">{{ _('Plain Text') }}</button>
+    </div>
   </div>
 </div>
 
@@ -325,6 +343,12 @@
     </div>
     <textarea id="ci-textarea" class="form-input generate-output" rows="6" readonly></textarea>
     <div id="ci-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
+    <div class="export-actions">
+      <span class="export-actions__label">{{ _('Export:') }}</span>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('competing_interests','docx')">{{ _('Word') }}</button>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('competing_interests','latex')">{{ _('LaTeX') }}</button>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('competing_interests','txt')">{{ _('Plain Text') }}</button>
+    </div>
   </div>
 </div>
 
@@ -460,6 +484,12 @@
       </div>
       <textarea id="credit-textarea" class="form-input generate-output" rows="8" readonly></textarea>
       <div id="credit-copy-feedback" class="text-muted" style="font-size:.8rem;margin-top:.25rem">&nbsp;</div>
+      <div class="export-actions">
+        <span class="export-actions__label">{{ _('Export:') }}</span>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('credit','docx')">{{ _('Word') }}</button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('credit','latex')">{{ _('LaTeX') }}</button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportMfSection('credit','txt')">{{ _('Plain Text') }}</button>
+      </div>
     </div>
   </div>
 </div>
@@ -666,6 +696,7 @@ async function runFundingGenerate() {
 
     document.getElementById('funding-textarea').value = data.funding_text;
     outEl.style.display = 'block';
+    saveGeneratedSection('funding', data.funding_text);
 
     const warnContainer = document.getElementById('funding-warnings-container');
     warnContainer.innerHTML = '';
@@ -788,6 +819,7 @@ async function runGenerate() {
     document.getElementById('generate-textarea').value = data.full_text;
     outEl.style.display = 'block';
     sessionStorage.setItem('mf_last_author_ids', JSON.stringify({ids: [...selectedIds], ts: Date.now()}));
+    saveGeneratedSection('author_order', data.full_text);
 
     const warn = document.getElementById('unaffiliated-warning');
     if (data.unaffiliated && data.unaffiliated.length > 0) {
@@ -985,6 +1017,7 @@ async function runAckGenerate() {
 
     document.getElementById('ack-textarea').value = data.acknowledgments_text;
     outEl.style.display = 'block';
+    saveGeneratedSection('acknowledgments', data.acknowledgments_text);
 
     const warnContainer = document.getElementById('ack-warnings-container');
     warnContainer.innerHTML = '';
@@ -1149,6 +1182,7 @@ async function runCiGenerate() {
 
     document.getElementById('ci-textarea').value = data.competing_interests_text;
     outEl.style.display = 'block';
+    saveGeneratedSection('competing_interests', data.competing_interests_text);
   } catch (e) {
     errEl.textContent = I18N.networkError;
     errEl.style.display = 'block';
@@ -1597,6 +1631,7 @@ async function runCreditGenerate() {
 
     document.getElementById('credit-textarea').value = data.credit_text;
     outEl.style.display = 'block';
+    saveGeneratedSection('credit', data.credit_text);
 
     const warnContainer = document.getElementById('credit-warnings-container');
     warnContainer.innerHTML = '';
@@ -1625,6 +1660,69 @@ async function copyCreditOutput() {
     catch (e2) { feedback.textContent = I18N.copyFailed; }
   }
   setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
+}
+
+// ── Export functions ──────────────────────────────────────────────────────────
+
+const _MF_TEXTAREA_MAP = {
+  author_order:        'generate-textarea',
+  funding:             'funding-textarea',
+  acknowledgments:     'ack-textarea',
+  competing_interests: 'ci-textarea',
+  credit:              'credit-textarea',
+};
+
+function saveGeneratedSection(key, text) {
+  try {
+    sessionStorage.setItem('generated_' + key, JSON.stringify({text, ts: Date.now()}));
+  } catch(e) {}
+}
+
+async function exportMfSection(sectionType, format) {
+  const taId = _MF_TEXTAREA_MAP[sectionType];
+  const ta = taId ? document.getElementById(taId) : null;
+  if (!ta || !ta.value.trim()) {
+    alert('{{ _("Please generate this section first.") }}');
+    return;
+  }
+  const body = new URLSearchParams({
+    text: ta.value,
+    format: format,
+    template_id: format === 'latex' ? 'exp_002' : 'exp_001',
+  });
+  try {
+    const resp = await fetch('/export/section/' + sectionType, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    _showExportNotification(data);
+  } catch(e) {
+    alert('{{ _("Export failed. Please try again.") }}');
+  }
+}
+
+function _showExportNotification(info) {
+  const existing = document.getElementById('mf-export-notification');
+  if (existing) existing.remove();
+  const n = document.createElement('div');
+  n.id = 'mf-export-notification';
+  n.className = 'download-notification';
+  n.innerHTML =
+    '<strong>✅ {{ _("Export Ready") }}</strong> — ' +
+    '<a href="' + info.download_url + '" class="btn btn--primary btn--sm">⬇ {{ _("Download") }} ' +
+    _escExport(info.filename || '') + '</a>' +
+    ' <span class="text-muted" style="font-size:.8rem">({{ _("expires") }} ' + _escExport(info.expires_at || '') + ')</span>' +
+    ' <button type="button" class="btn btn--sm" onclick="this.parentElement.remove()" style="margin-left:.5rem">✕</button>';
+  const main = document.querySelector('.site-main .container');
+  if (main) main.prepend(n);
+  setTimeout(() => { if (n.parentElement) n.remove(); }, 15000);
+}
+
+function _escExport(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 {% endblock %}

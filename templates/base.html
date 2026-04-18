@@ -17,6 +17,7 @@
         {% if session.get('logged_in') %}
           <a href="{{ url_for('manuscriptforge.home') }}" class="nav-link">ManuscriptForge</a>
           <a href="{{ url_for('methods.index') }}" class="nav-link">{{ _('Methods Library') }}</a>
+          <a href="{{ url_for('export.composer') }}" class="nav-link">{{ _('Export') }}</a>
         {% endif %}
       </nav>
 
