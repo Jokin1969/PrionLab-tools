@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Database Admin') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="admin-page">
+  <h1 class="page-title">&#128202; {{ _('Database Management') }}</h1>
+
+  <!-- ── Health status ─────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <h2 class="card-title">{{ _('Connection Health') }}</h2>
+    {% if not health.configured %}
+      <div class="alert alert--warning">{{ _('DATABASE_URL not set — running in CSV-only mode.') }}</div>
+    {% elif not health.connected %}
+      <div class="alert alert--danger">{{ _('PostgreSQL unreachable.') }} {{ health.error or '' }}</div>
+    {% else %}
+      <div class="db-stats-grid">
+        <div class="db-stat"><span class="db-stat__label">{{ _('Status') }}</span><span class="badge badge--editor">&#9679; {{ _('Connected') }}</span></div>
+        <div class="db-stat"><span class="db-stat__label">{{ _('DB Size') }}</span><strong>{{ health.db_size }}</strong></div>
+        <div class="db-stat"><span class="db-stat__label">{{ _('Active Connections') }}</span><strong>{{ health.active_connections }}</strong></div>
+        <div class="db-stat"><span class="db-stat__label">{{ _('Pool Size') }}</span><strong>{{ health.pool_size }} ({{ health.pool_checked_out }} out)</strong></div>
+        <div class="db-stat db-stat--wide"><span class="db-stat__label">{{ _('Version') }}</span><code>{{ health.pg_version }}</code></div>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if health.connected %}
+  <!-- ── Table stats ───────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <h2 class="card-title">{{ _('Table Statistics') }}</h2>
+    {% if table_stats %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _('Table') }}</th>
+            <th>{{ _('Rows') }}</th>
+            <th>{{ _('Size') }}</th>
+            <th>{{ _('Last Vacuum') }}</th>
+            <th>{{ _('Last Analyze') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in table_stats %}
+          <tr>
+            <td><code>{{ t.table }}</code></td>
+            <td>{{ '{:,}'.format(t.rows) }}</td>
+            <td>{{ t.size }}</td>
+            <td>{{ t.last_vacuum or '—' }}</td>
+            <td>{{ t.last_analyze or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="empty-state">{{ _('No table data available.') }}</p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin.trigger_vacuum') }}" class="mt-1">
+      <button type="submit" class="btn btn--secondary btn--sm"
+              onclick="return confirm('{{ _('Run VACUUM ANALYZE on all tables?') }}')">
+        &#9881; {{ _('Run VACUUM ANALYZE') }}
+      </button>
+    </form>
+  </section>
+
+  <!-- ── Backups ───────────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <div class="card-header-row">
+      <h2 class="card-title">{{ _('Backups') }}</h2>
+      <form method="POST" action="{{ url_for('admin.trigger_backup') }}">
+        <button type="submit" class="btn btn--primary btn--sm">&#128190; {{ _('Create Backup Now') }}</button>
+      </form>
+    </div>
+
+    {% if backups %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _('Filename') }}</th>
+            <th>{{ _('Type') }}</th>
+            <th>{{ _('Size') }}</th>
+            <th>{{ _('Created') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in backups %}
+          <tr>
+            <td><code>{{ b.filename }}</code></td>
+            <td><span class="badge badge--reader">{{ b.type }}</span></td>
+            <td>{{ b.size_mb }} MB</td>
+            <td>{{ b.created_at[:16] }}</td>
+            <td>
+              <form method="POST"
+                    action="{{ url_for('admin.delete_backup', filename=b.filename) }}"
+                    onsubmit="return confirm('{{ _('Delete this backup?') }}')">
+                <button type="submit" class="btn btn--danger btn--xs">{{ _('Delete') }}</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="empty-state">{{ _('No backups yet. Click "Create Backup Now" to start.') }}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <p><a href="{{ url_for('admin.index') }}" class="btn btn--secondary btn--sm">&#8592; {{ _('Back to Admin') }}</a></p>
+</div>
+{% endblock %}

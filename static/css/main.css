@@ -2298,3 +2298,16 @@ select.form-input { cursor: pointer; }
   .lab-actions-grid { grid-template-columns: 1fr; }
   .lab-profile-header { flex-wrap: wrap; }
 }
+
+/* ── Database admin ────────────────────────────────────────────────────────── */
+.card { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 1.5rem; }
+.card-title { margin: 0 0 1rem; font-size: 1.05rem; }
+.card-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.card-header-row .card-title { margin-bottom: 0; }
+.mb-1 { margin-bottom: 1.25rem; }
+.mt-1 { margin-top: 1rem; }
+.db-stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .75rem; }
+.db-stat { display: flex; flex-direction: column; font-size: .9rem; }
+.db-stat__label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #666; margin-bottom: .2rem; }
+.db-stat--wide { grid-column: 1 / -1; }
+.btn--xs { padding: .2rem .5rem; font-size: .75rem; }

@@ -44,19 +44,30 @@ def _init_postgresql(app: Flask) -> None:
             app.logger.warning("PostgreSQL connection test failed — CSV fallback active")
             return
         db.create_all_tables()
-        # Run CSV migration only when tables are newly empty
         from database.migration import run_migration
         result = run_migration()
         if result.get("success"):
             app.logger.info(
-                "PostgreSQL ready — users=%d labs=%d",
+                "PostgreSQL ready — users=%d labs=%d pubs=%d",
                 result.get("users_migrated", 0),
                 result.get("labs_migrated", 0),
+                result.get("publications_migrated", 0),
             )
         else:
             app.logger.warning("Migration reported: %s", result.get("error", "unknown"))
     except Exception as e:
         app.logger.warning("PostgreSQL init failed (CSV fallback active): %s", e)
+
+
+def _start_maintenance_scheduler(app: Flask) -> None:
+    """Start background maintenance tasks when DB is configured."""
+    try:
+        from database.maintenance import MaintenanceScheduler
+        scheduler = MaintenanceScheduler(app)
+        scheduler.start()
+        app._maintenance_scheduler = scheduler
+    except Exception as e:
+        app.logger.warning("Maintenance scheduler not started: %s", e)
 
 
 def create_app() -> Flask:
@@ -193,6 +204,14 @@ def create_app() -> Flask:
             init_scheduler(app)
     except Exception as e:
         app.logger.warning("Scheduler init failed: %s", e)
+
+    # Database maintenance scheduler (no-op when DATABASE_URL not set)
+    try:
+        import os as _os
+        if not app.debug or _os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            _start_maintenance_scheduler(app)
+    except Exception as e:
+        app.logger.warning("Maintenance scheduler init failed: %s", e)
 
     # ── Routes ───────────────────────────────────────────────────────────────
 

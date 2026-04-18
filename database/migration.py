@@ -164,6 +164,70 @@ def _assign_user_labs(session, username_to_id: dict[str, uuid.UUID],
             user.lab_id = lab.id
 
 
+def _migrate_publications(session, username_to_id: dict) -> int:
+    """Migrate publications CSV → publications table.  Returns count inserted."""
+    try:
+        from tools.research.models import get_all_publications
+    except Exception:
+        logger.info("No research module found — skipping publications migration")
+        return 0
+
+    from database.models import Publication
+
+    existing_pub_ids = {
+        r[0] for r in session.query(Publication.pub_id).filter(
+            Publication.pub_id.isnot(None)
+        ).all()
+    }
+    inserted = 0
+
+    for row in get_all_publications():
+        pub_id = row.get("pub_id", "").strip()
+        if not pub_id or pub_id in existing_pub_ids:
+            continue
+
+        year = 2000
+        try:
+            year = int(row.get("year", 2000))
+        except (ValueError, TypeError):
+            pass
+
+        creator_uname = row.get("created_by", "").strip().lower()
+        created_by_id = username_to_id.get(creator_uname)
+
+        doi = row.get("doi", "").strip() or None
+        # Skip duplicate DOIs
+        if doi and session.query(Publication).filter_by(doi=doi).first():
+            doi = None
+
+        pub = Publication(
+            pub_id=pub_id,
+            title=row.get("title", "").strip() or "Untitled",
+            authors=row.get("authors", "").strip(),
+            journal=row.get("journal", "").strip(),
+            year=year,
+            doi=doi,
+            pmid=row.get("pmid", "").strip() or None,
+            abstract=row.get("abstract", "").strip() or None,
+            keywords=row.get("keywords", "").strip() or None,
+            research_area=row.get("research_area", "").strip() or None,
+            publication_type=row.get("pub_type", "research_article"),
+            is_lab_publication=row.get("is_lab_publication", "false").lower() == "true",
+            is_open_access=row.get("is_open_access", "false").lower() == "true",
+            impact_factor=float(row["impact_factor"]) if row.get("impact_factor") else None,
+            citation_count=int(row["citation_count"]) if row.get("citation_count") else 0,
+            created_by_id=created_by_id,
+        )
+        pub.update_search_vector()
+        session.add(pub)
+        existing_pub_ids.add(pub_id)
+        inserted += 1
+
+    if inserted:
+        logger.info("Migrated %d publications", inserted)
+    return inserted
+
+
 def run_migration() -> dict:
     """Run full CSV → PostgreSQL migration.  Returns {'success': bool, ...}."""
     from database.config import db
@@ -182,15 +246,17 @@ def run_migration() -> dict:
             username_to_id = _migrate_users(session)
             lab_code_to_id = _migrate_labs(session, username_to_id)
             _assign_user_labs(session, username_to_id, lab_code_to_id)
+            pubs_count = _migrate_publications(session, username_to_id)
 
         logger.info(
-            "Migration complete — %d users, %d labs",
-            len(username_to_id), len(lab_code_to_id),
+            "Migration complete — %d users, %d labs, %d publications",
+            len(username_to_id), len(lab_code_to_id), pubs_count,
         )
         return {
             "success": True,
             "users_migrated": len(username_to_id),
             "labs_migrated": len(lab_code_to_id),
+            "publications_migrated": pubs_count,
         }
     except Exception as e:
         logger.error("Migration failed: %s", e)
