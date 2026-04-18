@@ -81,6 +81,32 @@ class ORCIDClient(BaseAPIClient):
             response.data = self._parse_person_details(response.data)
         return response
 
+    async def get_person_works(self, orcid_id: str) -> APIResponse:
+        """Return list of works summaries for an ORCID iD."""
+        clean = self._normalise_orcid(orcid_id)
+        if not clean:
+            return APIResponse(
+                success=False, data=None,
+                error=f"Invalid ORCID iD: {orcid_id}", source=self.api_name,
+            )
+        response = await self._make_request("GET", f"{clean}/works", cache_ttl_hours=12)
+        if response.success and response.data:
+            response.data = self._parse_works_list(response.data)
+        return response
+
+    async def get_work_details(self, orcid_id: str, put_code: int) -> APIResponse:
+        """Return detailed record for a single work (put-code)."""
+        clean = self._normalise_orcid(orcid_id)
+        if not clean:
+            return APIResponse(
+                success=False, data=None,
+                error="Invalid ORCID iD", source=self.api_name,
+            )
+        response = await self._make_request("GET", f"{clean}/work/{put_code}", cache_ttl_hours=24)
+        if response.success and response.data:
+            response.data = self._parse_work_detail(response.data)
+        return response
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -160,6 +186,64 @@ class ORCIDClient(BaseAPIClient):
         except Exception as exc:
             logger.error("ORCIDClient: parse person details: %s", exc)
         return info
+
+    @staticmethod
+    def _parse_works_list(data: Dict) -> List[Dict]:
+        works: List[Dict] = []
+        try:
+            for group in data.get("group", []):
+                doi = ""
+                for ext in (group.get("external-ids") or {}).get("external-id", []):
+                    if isinstance(ext, dict) and ext.get("external-id-type") == "doi":
+                        doi = ext.get("external-id-value", "")
+                        break
+                summaries = group.get("work-summary", [])
+                if not summaries:
+                    continue
+                s = summaries[0]
+                title = ((s.get("title") or {}).get("title") or {}).get("value", "")
+                journal = (s.get("journal-title") or {}).get("value", "")
+                pub_date = s.get("publication-date") or {}
+                year_val = (pub_date.get("year") or {}).get("value", "")
+                year = int(year_val) if year_val.isdigit() else None
+                works.append({
+                    "put_code": s.get("put-code"),
+                    "title": title,
+                    "journal": journal,
+                    "year": year,
+                    "doi": doi,
+                    "type": s.get("type", ""),
+                })
+        except Exception as exc:
+            logger.error("ORCIDClient: parse works list: %s", exc)
+        return works
+
+    @staticmethod
+    def _parse_work_detail(data: Dict) -> Dict:
+        result: Dict = {}
+        try:
+            result["put_code"] = data.get("put-code")
+            result["title"] = ((data.get("title") or {}).get("title") or {}).get("value", "")
+            result["journal"] = (data.get("journal-title") or {}).get("value", "")
+            pub_date = data.get("publication-date") or {}
+            year_val = (pub_date.get("year") or {}).get("value", "")
+            result["year"] = int(year_val) if year_val.isdigit() else None
+            result["abstract"] = data.get("short-description", "")
+            result["type"] = data.get("type", "")
+            result["doi"] = ""
+            for ext in (data.get("external-ids") or {}).get("external-id", []):
+                if isinstance(ext, dict) and ext.get("external-id-type") == "doi":
+                    result["doi"] = ext.get("external-id-value", "")
+                    break
+            contribs = []
+            for c in ((data.get("contributors") or {}).get("contributor") or []):
+                name = (c.get("credit-name") or {}).get("value", "")
+                if name:
+                    contribs.append(name)
+            result["contributors"] = contribs
+        except Exception as exc:
+            logger.error("ORCIDClient: parse work detail: %s", exc)
+        return result
 
 
 # Module-level singleton
