@@ -1830,3 +1830,171 @@ msgstr "Vista previa"
 #~ msgid "Unauthorized. Editor access required."
 #~ msgstr "Acceso no autorizado. Se requiere rol de editor."
 
+
+#: tools/export/templates/export/composer.html
+msgid "Manuscript Composer"
+msgstr "Compositor de Manuscrito"
+
+#: tools/export/templates/export/composer.html
+msgid "Combine generated sections into a complete manuscript draft for export."
+msgstr "Combina secciones generadas en un borrador completo de manuscrito para exportar."
+
+#: tools/export/templates/export/composer.html
+msgid "Generate sections in ManuscriptForge and Methods Library first, then return here to combine and export them."
+msgstr "Genera primero las secciones en ManuscriptForge y la Biblioteca de Métodos, y luego vuelve aquí para combinarlas y exportarlas."
+
+#: tools/export/templates/export/composer.html
+msgid "Available Sections"
+msgstr "Secciones Disponibles"
+
+#: tools/export/templates/export/composer.html
+msgid "Author Order & Affiliations"
+msgstr "Orden de Autores y Afiliaciones"
+
+#: tools/export/templates/export/composer.html
+msgid "Author Contributions (CRediT)"
+msgstr "Contribuciones de Autores (CRediT)"
+
+#: tools/export/templates/export/composer.html
+msgid "Methods Section"
+msgstr "Sección de Métodos"
+
+#: tools/export/templates/export/composer.html
+msgid "Export Options"
+msgstr "Opciones de Exportación"
+
+#: tools/export/templates/export/composer.html
+msgid "Manuscript Title"
+msgstr "Título del Manuscrito"
+
+#: tools/export/templates/export/composer.html
+msgid "Enter manuscript title…"
+msgstr "Introduce el título del manuscrito…"
+
+#: tools/export/templates/export/composer.html
+msgid "Template"
+msgstr "Plantilla"
+
+#: tools/export/templates/export/composer.html
+msgid "Section Order"
+msgstr "Orden de Secciones"
+
+#: tools/export/templates/export/composer.html
+msgid "Use ↑↓ buttons to reorder selected sections."
+msgstr "Usa los botones ↑↓ para reordenar las secciones seleccionadas."
+
+#: tools/export/templates/export/composer.html
+msgid "Check sections on the left to add them to the order."
+msgstr "Marca secciones a la izquierda para añadirlas al orden."
+
+#: tools/export/templates/export/composer.html
+msgid "Generate Manuscript"
+msgstr "Generar Manuscrito"
+
+#: tools/export/templates/export/composer.html
+msgid "Not generated"
+msgstr "No generada"
+
+#: tools/export/templates/export/composer.html
+msgid "Ready"
+msgstr "Lista"
+
+#: tools/export/templates/export/composer.html
+msgid "No sections selected."
+msgstr "No hay secciones seleccionadas."
+
+#: tools/export/templates/export/composer.html
+msgid "Export failed. Please try again."
+msgstr "Error al exportar. Por favor, inténtalo de nuevo."
+
+#: tools/export/templates/export/composer.html
+msgid "Download"
+msgstr "Descargar"
+
+#: tools/export/templates/export/composer.html
+msgid "expires"
+msgstr "caduca"
+
+#: tools/export/templates/export/composer.html
+msgid "Export Ready"
+msgstr "Exportación Lista"
+
+#: tools/export/templates/export/download.html
+msgid "Export Downloads"
+msgstr "Descargas de Exportación"
+
+#: tools/export/templates/export/download.html
+msgid "Your recent exports. Download links expire after 7 days."
+msgstr "Tus exportaciones recientes. Los enlaces de descarga caducan a los 7 días."
+
+#: tools/export/templates/export/download.html
+msgid "Back to Composer"
+msgstr "Volver al Compositor"
+
+#: tools/export/templates/export/download.html
+msgid "Clean Up Expired"
+msgstr "Limpiar Caducados"
+
+#: tools/export/templates/export/download.html
+msgid "No exports yet. Use the Manuscript Composer or export individual sections."
+msgstr "Aún no hay exportaciones. Usa el Compositor de Manuscrito o exporta secciones individuales."
+
+#: tools/export/templates/export/download.html
+msgid "Created"
+msgstr "Creado"
+
+#: tools/export/templates/export/download.html
+msgid "Sections"
+msgstr "Secciones"
+
+#: tools/export/templates/export/download.html
+msgid "Downloads"
+msgstr "Descargas"
+
+#: tools/export/templates/export/download.html
+msgid "Expired"
+msgstr "Caducado"
+
+#: tools/export/templates/export/download.html
+msgid "Expires in"
+msgstr "Caduca en"
+
+#: tools/export/templates/export/download.html
+msgid "day(s)"
+msgstr "día(s)"
+
+#: tools/export/templates/export/download.html
+msgid "Cleanup failed."
+msgstr "Error al limpiar."
+
+#: templates/base.html
+msgid "Export"
+msgstr "Exportar"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html
+#: tools/methods/templates/methods/index.html
+msgid "Export:"
+msgstr "Exportar:"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html
+#: tools/methods/templates/methods/index.html
+msgid "Word"
+msgstr "Word"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html
+#: tools/methods/templates/methods/index.html
+msgid "LaTeX"
+msgstr "LaTeX"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html
+#: tools/methods/templates/methods/index.html
+msgid "Plain Text"
+msgstr "Texto Plano"
+
+#: tools/manuscriptforge/templates/manuscriptforge/generate.html
+msgid "Please generate this section first."
+msgstr "Por favor, genera esta sección primero."
+
+#: tools/methods/templates/methods/index.html
+msgid "Please generate the Methods section first."
+msgstr "Por favor, genera la sección de Métodos primero."

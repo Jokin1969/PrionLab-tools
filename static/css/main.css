@@ -1280,3 +1280,147 @@ select.form-input { cursor: pointer; }
 
 /* ── Output textarea ── */
 .generate-output { font-family: 'Georgia', serif; font-size: .88rem; line-height: 1.7; }
+
+/* ────────────────────────────────────────────────────────── Export module ── */
+
+/* Export action buttons row */
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .75rem;
+  flex-wrap: wrap;
+}
+.export-actions__label {
+  font-size: .8rem;
+  color: var(--text-muted, #6b7280);
+  margin-right: .25rem;
+}
+
+/* Download notification bar */
+.download-notification {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+  padding: .75rem 1rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: .9rem;
+}
+
+/* Manuscript Composer layout */
+.composer-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .composer-layout { grid-template-columns: 1fr; }
+}
+
+.composer-panel-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 .75rem;
+}
+
+/* Section group in composer */
+.section-group-title {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin: 0 0 .5rem;
+}
+
+.section-checkboxes { display: flex; flex-direction: column; gap: .4rem; }
+
+.section-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .35rem .5rem;
+  border-radius: 4px;
+  font-size: .9rem;
+}
+.section-checkbox-item:hover { background: #f9fafb; }
+
+.section-cb-label { flex: 1; }
+
+.section-status {
+  font-size: .75rem;
+  color: var(--text-muted, #6b7280);
+  white-space: nowrap;
+}
+.section-status--ready { color: #16a34a; }
+.section-status--missing { color: #9ca3af; }
+
+/* Section order list */
+.section-order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.section-order-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .4rem .6rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: .85rem;
+}
+
+.section-order-name { flex: 1; }
+.section-order-controls { display: flex; gap: .25rem; }
+
+/* Download manager */
+.downloads-list { display: flex; flex-direction: column; gap: .75rem; }
+
+.download-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.download-item--expired {
+  background: #f9fafb;
+  opacity: .7;
+}
+
+.download-filename {
+  font-size: .95rem;
+  font-weight: 600;
+  margin: 0 0 .25rem;
+}
+
+.download-meta {
+  font-size: .8rem;
+  color: var(--text-muted, #6b7280);
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.download-actions {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.download-expires { font-size: .8rem; }
