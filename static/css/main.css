@@ -1424,3 +1424,106 @@ select.form-input { cursor: pointer; }
 }
 
 .download-expires { font-size: .8rem; }
+
+/* ──────────────────────────────────── Enhanced Composer (prompt-12) ── */
+
+/* 3-column composer grid */
+.composer-grid {
+  display: grid;
+  grid-template-columns: 260px 1fr 220px;
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .composer-grid { grid-template-columns: 1fr 1fr; }
+  .composer-right { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .composer-grid { grid-template-columns: 1fr; }
+}
+
+.composer-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+}
+.composer-card-title {
+  font-size: .9rem;
+  font-weight: 600;
+  margin: 0 0 .75rem;
+  color: #374151;
+}
+
+.journal-info-box {
+  font-size: .82rem;
+  line-height: 1.5;
+}
+.journal-requirement-box {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 5px;
+  padding: .5rem .7rem;
+}
+
+/* Validation results */
+.validation-item {
+  padding: .3rem 0;
+  font-size: .85rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+.validation-item--pass  { color: #16a34a; }
+.validation-item--warning { color: #d97706; }
+.validation-item--fail  { color: #dc2626; }
+.validation-item--info  { color: #2563eb; }
+
+/* Downloads stats row */
+.downloads-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: .6rem 1.25rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  min-width: 80px;
+}
+.stat-box--active { background: #f0fdf4; border-color: #bbf7d0; }
+.stat-box--expired { background: #fef2f2; border-color: #fecaca; }
+.stat-number { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+.stat-label { font-size: .75rem; color: #6b7280; margin-top: .2rem; }
+
+/* Filters row */
+.downloads-filters {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Download item filename row */
+.download-filename-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .25rem;
+}
+.format-badge {
+  font-size: .7rem;
+  padding: .1rem .4rem;
+  border-radius: 3px;
+  font-weight: 600;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.format-badge--pdf  { background: #fde8d8; color: #9a3412; }
+.format-badge--docx { background: #dbeafe; color: #1e40af; }
+.format-badge--tex  { background: #f3e8ff; color: #6b21a8; }
+.format-badge--html { background: #dcfce7; color: #166534; }
+.format-badge--txt  { background: #f1f5f9; color: #475569; }

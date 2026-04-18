@@ -122,6 +122,16 @@ def create_app() -> Flask:
     from tools.export import export_bp
     app.register_blueprint(export_bp)
 
+    # Start background scheduler (cleanup + cloud backup placeholder)
+    try:
+        from tools.export.models import init_scheduler
+        import os as _os
+        # Only start in main process (avoid double-start under Werkzeug reloader)
+        if not app.debug or _os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            init_scheduler(app)
+    except Exception as e:
+        app.logger.warning("Scheduler init failed: %s", e)
+
     # ── Routes ───────────────────────────────────────────────────────────────
 
     @app.route("/")

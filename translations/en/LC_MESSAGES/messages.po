@@ -1995,3 +1995,87 @@ msgstr "Please generate this section first."
 #: tools/methods/templates/methods/index.html
 msgid "Please generate the Methods section first."
 msgstr "Please generate the Methods section first."
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Generate publication-ready manuscripts with journal-specific formatting."
+msgstr "Generate publication-ready manuscripts with journal-specific formatting."
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Journal Template"
+msgstr "Journal Template"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Target Journal"
+msgstr "Target Journal"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Manuscript Details"
+msgstr "Manuscript Details"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "(Publication Ready)"
+msgstr "(Publication Ready)"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Word Document"
+msgstr "Word Document"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Source"
+msgstr "Source"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Preview"
+msgstr "Preview"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Use ↑↓ to reorder. Only checked, generated sections appear."
+msgstr "Use ↑↓ to reorder. Only checked, generated sections appear."
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Generate All Formats"
+msgstr "Generate All Formats"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Validate Journal Requirements"
+msgstr "Validate Journal Requirements"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Requirements Check"
+msgstr "Requirements Check"
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Validation failed. Please try again."
+msgstr "Validation failed. Please try again."
+
+#: tools/export/templates/export/composer.html (prompt-12)
+msgid "Generating…"
+msgstr "Generating…"
+
+#: tools/export/templates/export/download.html (prompt-12)
+msgid "Total"
+msgstr "Total"
+
+#: tools/export/templates/export/download.html (prompt-12)
+msgid "Active"
+msgstr "Active"
+
+#: tools/export/templates/export/download.html (prompt-12)
+msgid "Expired"
+msgstr "Expired"
+
+#: tools/export/templates/export/download.html (prompt-12)
+msgid "Back Up to Cloud"
+msgstr "Back Up to Cloud"
+
+#: tools/export/templates/export/download.html (prompt-12)
+msgid "All Formats"
+msgstr "All Formats"
+
+#: tools/export/templates/export/download.html (prompt-12)
+msgid "All Status"
+msgstr "All Status"
+
+#: tools/export/templates/export/download.html (prompt-12)
+msgid "Cloud backup logged. Google Drive integration requires API credentials — see deployment documentation."
+msgstr "Cloud backup logged. Google Drive integration requires API credentials — see deployment documentation."

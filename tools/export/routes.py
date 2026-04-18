@@ -11,14 +11,22 @@ from tools.export.models import (
     check_reader_rate_limit,
     cleanup_expired_exports,
     create_download_record,
+    create_export_job,
+    complete_export_job,
+    error_export_job,
+    export_to_html,
     export_to_latex,
     export_to_plain_text,
     export_to_word,
+    generate_pdf_weasyprint,
     get_export_record,
     get_export_template,
     get_export_templates,
-    increment_download_count,
+    get_journal_template,
+    get_journal_templates,
     get_user_export_history,
+    increment_download_count,
+    validate_journal_requirements,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,8 +35,13 @@ logger = logging.getLogger(__name__)
 @export_bp.route("/composer")
 @login_required
 def composer():
-    templates = get_export_templates()
-    return render_template("export/composer.html", export_templates=templates)
+    export_templates = get_export_templates()
+    journal_templates = get_journal_templates()
+    return render_template(
+        "export/composer.html",
+        export_templates=export_templates,
+        journal_templates=journal_templates,
+    )
 
 
 @export_bp.route("/downloads")
@@ -153,3 +166,98 @@ def download_file(export_id):
 def cleanup():
     removed = cleanup_expired_exports()
     return jsonify({"removed": removed, "message": f"Removed {removed} expired export(s)."})
+
+
+@export_bp.route("/manuscript-enhanced", methods=["POST"])
+@login_required
+def export_manuscript_enhanced():
+    user_id = session.get("username", "")
+    role = session.get("role", "reader")
+
+    data = request.get_json(force=True) or {}
+    sections_text = data.get("sections_text", {})
+    template_id = data.get("template_id", "jnl_001")
+    export_formats = data.get("export_formats", ["pdf"])
+    title = (data.get("title") or "Manuscript Draft").strip()
+    sections_order = data.get("sections_order") or list(sections_text.keys())
+
+    if not sections_text:
+        return jsonify({"error": "No sections selected."}), 400
+
+    # Rate limit for readers: PDF counts as 1, others as 0.5 (capped at 5 total)
+    if role == "reader" and not check_reader_rate_limit(user_id):
+        return jsonify({"error": "Daily export limit reached (5 per day for readers)."}), 429
+
+    sections_data = {"title": title}
+    for key in sections_order:
+        if key in sections_text and sections_text[key]:
+            sections_data[key] = sections_text[key]
+
+    if len(sections_data) <= 1:
+        return jsonify({"error": "No generated content found for the selected sections."}), 400
+
+    job_id = "job_" + __import__("uuid").uuid4().hex[:8]
+    create_export_job(job_id, user_id, "+".join(export_formats), template_id)
+
+    safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_")[:40] or "manuscript"
+    download_links = []
+    errors = []
+
+    for fmt in export_formats:
+        try:
+            if fmt == "pdf":
+                filepath = generate_pdf_weasyprint(sections_data, template_id)
+                filename = f"{safe_title}.pdf"
+            elif fmt == "latex":
+                filepath = export_to_latex(sections_data, template_id)
+                filename = f"{safe_title}.tex"
+            elif fmt == "html":
+                html_body = export_to_html(sections_data, template_id)
+                css = __import__("tools.export.models", fromlist=["get_journal_css"]).get_journal_css(template_id)
+                full_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><style>{css}</style></head><body>{html_body}</body></html>"
+                fn = f"manuscript_{__import__('uuid').uuid4().hex[:8]}.html"
+                fp = __import__("os").path.join("/tmp", fn)
+                with open(fp, "w", encoding="utf-8") as f:
+                    f.write(full_html)
+                filepath, filename = fp, f"{safe_title}.html"
+            else:
+                filepath = export_to_word(sections_data, template_id)
+                filename = f"{safe_title}.docx"
+
+            info = create_download_record(filepath, filename, user_id, template_id,
+                                          list(sections_text.keys()))
+            download_links.append({"format": fmt, **info})
+        except Exception as e:
+            logger.error("Enhanced export format=%s failed: %s", fmt, e)
+            errors.append({"format": fmt, "error": str(e)})
+
+    if download_links:
+        complete_export_job(job_id, {d["format"]: d["filename"] for d in download_links})
+    else:
+        error_export_job(job_id, "; ".join(e["error"] for e in errors))
+        return jsonify({"error": "All export formats failed.", "details": errors}), 500
+
+    return jsonify({
+        "job_id": job_id,
+        "downloads": download_links,
+        "errors": errors,
+    })
+
+
+@export_bp.route("/api/journal-info/<template_id>")
+@login_required
+def get_journal_info(template_id):
+    tmpl = get_journal_template(template_id)
+    if not tmpl:
+        return jsonify({"error": f"Template {template_id!r} not found."}), 404
+    return jsonify(tmpl)
+
+
+@export_bp.route("/api/validate-requirements", methods=["POST"])
+@login_required
+def validate_requirements_route():
+    data = request.get_json(force=True) or {}
+    sections = data.get("sections", [])
+    template_id = data.get("template_id", "jnl_001")
+    results = validate_journal_requirements(sections, template_id)
+    return jsonify(results)
