@@ -26,6 +26,14 @@ from tools.introduction.models import (
 logger = logging.getLogger(__name__)
 
 
+def _get_relevant_lab_pubs(approach_id: str, keywords: str) -> list:
+    try:
+        from tools.research.models import get_relevant_lab_publications
+        return get_relevant_lab_publications(approach_id, keywords)
+    except Exception:
+        return []
+
+
 @introduction_bp.route("/")
 @introduction_bp.route("/generator")
 @login_required
@@ -153,3 +161,19 @@ def api_delete(generation_id):
     if not success:
         return jsonify({"error": "Introduction not found or access denied."}), 404
     return jsonify({"success": True, "message": "Introduction deleted."})
+
+
+@introduction_bp.route("/api/lab-publications")
+@login_required
+def api_lab_publications():
+    approach_id = request.args.get("approach_id", "")
+    keywords = request.args.get("keywords", "")
+    pubs = _get_relevant_lab_pubs(approach_id, keywords)
+    return jsonify([{
+        "pub_id": p.get("pub_id", ""),
+        "title": p.get("title", ""),
+        "author_string": p.get("author_string", ""),
+        "journal": p.get("journal", ""),
+        "year": p.get("year", ""),
+        "doi": p.get("doi", ""),
+    } for p in pubs])

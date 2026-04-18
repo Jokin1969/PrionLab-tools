@@ -72,6 +72,12 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("Introduction schema bootstrap failed: %s", e)
 
+    try:
+        from tools.research.models import bootstrap_research_schema
+        bootstrap_research_schema()
+    except Exception as e:
+        app.logger.warning("Research schema bootstrap failed: %s", e)
+
     # ── Babel / i18n ────────────────────────────────────────────────────────
 
     def get_locale() -> str:
@@ -130,6 +136,9 @@ def create_app() -> Flask:
 
     from tools.introduction import introduction_bp
     app.register_blueprint(introduction_bp)
+
+    from tools.research import research_bp
+    app.register_blueprint(research_bp)
 
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:
