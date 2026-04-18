@@ -46,9 +46,12 @@
           <details class="user-menu">
             <summary class="user-menu__toggle">{{ session.get('full_name', session.get('username', '')) }}</summary>
             <div class="user-menu__dropdown">
+              <a href="{{ url_for('auth.profile') }}" class="user-menu__item">&#128100; {{ _('My Profile') }}</a>
+              <a href="{{ url_for('userprofile.lab_dashboard') }}" class="user-menu__item">&#127981; {{ _('My Lab') }}</a>
               {% if session.get('role') == 'admin' %}
-                <a href="{{ url_for('admin.index') }}" class="user-menu__item">⚙ {{ _('Admin') }}</a>
+                <a href="{{ url_for('admin.index') }}" class="user-menu__item">&#9881; {{ _('Admin') }}</a>
               {% endif %}
+              <hr class="user-menu__divider" />
               <a href="{{ url_for('auth.logout') }}" class="user-menu__item">{{ _('Log out') }}</a>
             </div>
           </details>

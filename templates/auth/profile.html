@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block title %}{{ _('My Profile') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+
+  <div class="profile-header">
+    <div class="profile-avatar">{{ (user.full_name or user.username or '?')[:1].upper() }}</div>
+    <div>
+      <h1 class="profile-name">{{ user.full_name or user.username }}</h1>
+      <p class="profile-role">
+        <span class="badge badge--{{ user.role }}">{{ user.role | title }}</span>
+        {% if user.position %}<span class="profile-position">{{ user.position }}</span>{% endif %}
+      </p>
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="alert alert--danger">{{ error }}</div>
+  {% endif %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert--{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="POST" action="{{ url_for('auth.profile') }}" class="profile-form">
+
+    <div class="profile-section">
+      <h2>{{ _('Basic Information') }}</h2>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">{{ _('Username') }}</label>
+          <input type="text" class="form-input form-input--disabled" value="{{ user.username }}" disabled />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Full Name') }}</label>
+          <input type="text" name="full_name" class="form-input"
+                 value="{{ user.full_name }}" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Email') }}</label>
+          <input type="email" name="email" class="form-input"
+                 value="{{ user.email }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Role') }}</label>
+          <input type="text" class="form-input form-input--disabled" value="{{ user.role | title }}" disabled />
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <h2>{{ _('Professional Profile') }}</h2>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">{{ _('Affiliation') }}</label>
+          <input type="text" name="affiliation" class="form-input"
+                 placeholder="{{ _('Institution or organization') }}"
+                 value="{{ user.affiliation }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Position') }}</label>
+          <input type="text" name="position" class="form-input"
+                 placeholder="{{ _('PI, Postdoc, PhD…') }}"
+                 value="{{ user.position }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Research Areas') }}</label>
+          <input type="text" name="research_areas" class="form-input"
+                 placeholder="{{ _('Semicolon-separated') }}"
+                 value="{{ user.research_areas }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">ORCID iD</label>
+          <input type="text" name="orcid" class="form-input"
+                 placeholder="0000-0000-0000-0000"
+                 value="{{ user.orcid }}" />
+        </div>
+        <div class="form-group form-group--full">
+          <label class="form-label">{{ _('Bio') }}</label>
+          <textarea name="bio" class="form-input" rows="3"
+                    placeholder="{{ _('Short professional bio') }}">{{ user.bio }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <h2>{{ _('Change Password') }} <small style="font-weight:400;font-size:.85rem">({{ _('leave blank to keep current') }})</small></h2>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">{{ _('Current Password') }}</label>
+          <input type="password" name="current_password" class="form-input"
+                 autocomplete="current-password" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('New Password') }} <small>({{ _('min 6 chars') }})</small></label>
+          <input type="password" name="new_password" class="form-input"
+                 autocomplete="new-password" minlength="6" />
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <h2>{{ _('Account Info') }}</h2>
+      <dl class="profile-info-grid">
+        <dt>{{ _('Member since') }}</dt><dd>{{ user.created_at[:10] if user.created_at else '—' }}</dd>
+        <dt>{{ _('Last login') }}</dt><dd>{{ user.last_login[:16] if user.last_login else '—' }}</dd>
+        <dt>{{ _('Language') }}</dt><dd>{{ user.language | upper }}</dd>
+      </dl>
+    </div>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.5rem">
+      <button type="submit" class="btn btn--primary">{{ _('Save Changes') }}</button>
+      <a href="{{ url_for('home') }}" class="btn btn--secondary">{{ _('Cancel') }}</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
