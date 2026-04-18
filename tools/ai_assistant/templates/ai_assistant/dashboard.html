@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}{{ _('AI Writing Assistant') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="ai-page">
+  <h1 class="page-title">&#129302; {{ _('AI Writing Assistant') }}</h1>
+
+  {% if not available %}
+  <div class="alert alert--warning mb-1">
+    {{ _('AI generation is currently unavailable — ANTHROPIC_API_KEY is not configured. Text enhancement and quality checks are also disabled.') }}
+  </div>
+  {% endif %}
+
+  <div class="ai-layout">
+
+    <!-- ── Tool cards ─────────────────────────────────────────────────────── -->
+    <div class="ai-tools">
+
+      <!-- Generate content -->
+      <section class="card ai-card" id="card-generate">
+        <h2 class="card-title">&#9997; {{ _('Generate Content') }}</h2>
+        <div class="form-group">
+          <label class="form-label" for="gen-type">{{ _('Content Type') }}</label>
+          <select id="gen-type" class="form-control">
+            <option value="abstract">{{ _('Abstract') }}</option>
+            <option value="introduction">{{ _('Introduction') }}</option>
+            <option value="methods">{{ _('Methods') }}</option>
+            <option value="discussion">{{ _('Discussion') }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="gen-title">{{ _('Paper Title') }}</label>
+          <input type="text" id="gen-title" class="form-control" placeholder="{{ _('e.g. Prion propagation in murine models') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="gen-topic">{{ _('Topic / Keywords') }}</label>
+          <input type="text" id="gen-topic" class="form-control" placeholder="{{ _('e.g. prion protein misfolding, PrPC to PrPSc conversion') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="gen-source">{{ _('Source Material (optional)') }}</label>
+          <textarea id="gen-source" class="form-control" rows="4" placeholder="{{ _('Paste notes, bullet points, or a rough draft…') }}"></textarea>
+        </div>
+        <button class="btn btn--primary" id="btn-generate" {% if not available %}disabled{% endif %}>
+          &#9654; {{ _('Generate') }}
+        </button>
+      </section>
+
+      <!-- Enhance text -->
+      <section class="card ai-card" id="card-enhance">
+        <h2 class="card-title">&#10024; {{ _('Enhance Text') }}</h2>
+        <div class="form-group">
+          <label class="form-label" for="enh-text">{{ _('Text to Enhance') }}</label>
+          <textarea id="enh-text" class="form-control" rows="6" placeholder="{{ _('Paste your draft text here…') }}"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="enh-instruction">{{ _('Instruction') }}</label>
+          <input type="text" id="enh-instruction" class="form-control"
+                 value="{{ _('Improve clarity and scientific precision.') }}">
+        </div>
+        <button class="btn btn--primary" id="btn-enhance" {% if not available %}disabled{% endif %}>
+          &#10024; {{ _('Enhance') }}
+        </button>
+      </section>
+
+      <!-- Quality check -->
+      <section class="card ai-card" id="card-quality">
+        <h2 class="card-title">&#128202; {{ _('Quality Check') }}</h2>
+        <div class="form-group">
+          <label class="form-label" for="qa-text">{{ _('Text to Assess') }}</label>
+          <textarea id="qa-text" class="form-control" rows="6" placeholder="{{ _('Paste a paragraph or section for quality assessment…') }}"></textarea>
+        </div>
+        <button class="btn btn--secondary" id="btn-quality" {% if not available %}disabled{% endif %}>
+          &#128202; {{ _('Check Quality') }}
+        </button>
+      </section>
+
+      <!-- Literature synthesis -->
+      <section class="card ai-card" id="card-lit">
+        <h2 class="card-title">&#128218; {{ _('Literature Synthesis') }}</h2>
+        <p class="text-sm text-muted">{{ _('Synthesise publications from your research database into a coherent narrative.') }}</p>
+        <div class="form-group">
+          <label class="form-label" for="lit-topic">{{ _('Topic / Focus') }}</label>
+          <input type="text" id="lit-topic" class="form-control" placeholder="{{ _('e.g. tau aggregation mechanisms') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="lit-pubs">{{ _('Publications (JSON array or paste titles)') }}</label>
+          <textarea id="lit-pubs" class="form-control" rows="5"
+                    placeholder='[{"title":"…","authors":"…","year":2023,"abstract":"…"}]'></textarea>
+        </div>
+        <button class="btn btn--secondary" id="btn-lit" {% if not available %}disabled{% endif %}>
+          &#128218; {{ _('Synthesise') }}
+        </button>
+      </section>
+
+    </div>
+
+    <!-- ── Results panel ───────────────────────────────────────────────────── -->
+    <div class="ai-results" id="results-panel" style="display:none">
+      <section class="card">
+        <div class="ai-results-header">
+          <h2 class="card-title" id="results-title">{{ _('Result') }}</h2>
+          <div class="ai-results-meta">
+            <span class="badge badge--reader" id="results-confidence" style="display:none"></span>
+            <span class="text-sm text-muted" id="results-time"></span>
+          </div>
+        </div>
+
+        <div id="results-loading" class="ai-loading" style="display:none">
+          <div class="ai-spinner"></div>
+          <span>{{ _('Generating…') }}</span>
+        </div>
+
+        <div id="results-content" class="ai-result-text"></div>
+
+        <div id="results-suggestions" style="display:none" class="mt-1">
+          <h3 class="text-sm font-bold">{{ _('Suggestions') }}</h3>
+          <ul class="ai-suggestions" id="suggestions-list"></ul>
+        </div>
+
+        <div class="ai-result-actions mt-1" id="results-actions" style="display:none">
+          <button class="btn btn--secondary btn--sm" id="btn-copy">&#128203; {{ _('Copy') }}</button>
+        </div>
+      </section>
+    </div>
+
+  </div><!-- /.ai-layout -->
+</div><!-- /.ai-page -->
+
+<script>
+(function () {
+  'use strict';
+
+  const panel   = document.getElementById('results-panel');
+  const loading = document.getElementById('results-loading');
+  const content = document.getElementById('results-content');
+  const title   = document.getElementById('results-title');
+  const confBadge = document.getElementById('results-confidence');
+  const timeEl  = document.getElementById('results-time');
+  const sugBox  = document.getElementById('results-suggestions');
+  const sugList = document.getElementById('suggestions-list');
+  const actions = document.getElementById('results-actions');
+
+  function showLoading(heading) {
+    title.textContent = heading;
+    panel.style.display = '';
+    loading.style.display = '';
+    content.textContent = '';
+    confBadge.style.display = 'none';
+    timeEl.textContent = '';
+    sugBox.style.display = 'none';
+    actions.style.display = 'none';
+  }
+
+  function showResult(text, conf, suggestions, elapsed, heading) {
+    title.textContent = heading;
+    loading.style.display = 'none';
+    content.innerHTML = markdownToHtml(text);
+    if (conf != null) {
+      confBadge.textContent = 'Confidence: ' + Math.round(conf * 100) + '%';
+      confBadge.style.display = '';
+    }
+    timeEl.textContent = elapsed ? elapsed.toFixed(1) + 's' : '';
+    if (suggestions && suggestions.length) {
+      sugList.innerHTML = suggestions.map(s => '<li>' + escapeHtml(s) + '</li>').join('');
+      sugBox.style.display = '';
+    }
+    actions.style.display = '';
+  }
+
+  function showError(msg) {
+    loading.style.display = 'none';
+    content.innerHTML = '<p class="alert alert--danger">' + escapeHtml(msg) + '</p>';
+    actions.style.display = 'none';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function markdownToHtml(md) {
+    return md
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br>')
+      .replace(/^/, '<p>').replace(/$/, '</p>');
+  }
+
+  async function post(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    return r.json();
+  }
+
+  // Generate
+  document.getElementById('btn-generate').addEventListener('click', async () => {
+    const type   = document.getElementById('gen-type').value;
+    const title_ = document.getElementById('gen-title').value;
+    const topic  = document.getElementById('gen-topic').value;
+    const source = document.getElementById('gen-source').value;
+    showLoading('Generating ' + type + '…');
+    try {
+      const d = await post('/ai/generate', {
+        content_type: type,
+        context: {title: title_, topic: topic},
+        source_text: source,
+      });
+      if (d.success) showResult(d.generated_text, d.confidence_score, d.suggestions, d.processing_time, type.charAt(0).toUpperCase() + type.slice(1));
+      else showError(d.error || 'Generation failed');
+    } catch (e) { showError(e.message); }
+  });
+
+  // Enhance
+  document.getElementById('btn-enhance').addEventListener('click', async () => {
+    const text = document.getElementById('enh-text').value.trim();
+    const inst = document.getElementById('enh-instruction').value;
+    if (!text) { alert('Please paste text to enhance.'); return; }
+    showLoading('Enhancing text…');
+    try {
+      const d = await post('/ai/enhance', {text, instruction: inst});
+      if (d.success) showResult(d.enhanced_text, d.confidence_score, d.suggestions, d.processing_time, 'Enhanced Text');
+      else showError(d.error || 'Enhancement failed');
+    } catch (e) { showError(e.message); }
+  });
+
+  // Quality check
+  document.getElementById('btn-quality').addEventListener('click', async () => {
+    const text = document.getElementById('qa-text').value.trim();
+    if (!text) { alert('Please paste text to assess.'); return; }
+    showLoading('Assessing quality…');
+    try {
+      const d = await post('/ai/quality-check', {text});
+      if (d.success) showResult(d.assessment, d.confidence_score, d.suggestions, d.processing_time, 'Quality Assessment');
+      else showError(d.error || 'Assessment failed');
+    } catch (e) { showError(e.message); }
+  });
+
+  // Literature synthesis
+  document.getElementById('btn-lit').addEventListener('click', async () => {
+    const topic = document.getElementById('lit-topic').value;
+    const raw   = document.getElementById('lit-pubs').value.trim();
+    if (!raw) { alert('Please enter publication data.'); return; }
+    let pubs;
+    try { pubs = JSON.parse(raw); } catch { alert('Invalid JSON for publications.'); return; }
+    showLoading('Synthesising literature…');
+    try {
+      const d = await post('/ai/literature-synthesis', {publications: pubs, topic});
+      if (d.success) showResult(d.synthesis, d.confidence_score, d.suggestions, d.processing_time, 'Literature Synthesis');
+      else showError(d.error || 'Synthesis failed');
+    } catch (e) { showError(e.message); }
+  });
+
+  // Copy
+  document.getElementById('btn-copy').addEventListener('click', () => {
+    const text = content.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      document.getElementById('btn-copy').textContent = '✓ Copied!';
+      setTimeout(() => { document.getElementById('btn-copy').innerHTML = '&#128203; Copy'; }, 2000);
+    });
+  });
+})();
+</script>
+{% endblock %}
