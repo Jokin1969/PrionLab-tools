@@ -19,3 +19,4 @@ anthropic>=0.40.0
 # External API dependencies
 aiohttp>=3.8.0
 redis>=4.5.0
+lxml>=4.9.0

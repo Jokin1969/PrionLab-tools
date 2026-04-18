@@ -291,3 +291,10 @@ def delete_backup(filename):
     else:
         flash(_("Backup not found."), "warning")
     return redirect(url_for("admin.database_dashboard"))
+
+
+@admin_bp.route("/apis")
+@admin_required
+def api_dashboard():
+    """External API Integration dashboard."""
+    return render_template("admin/api_dashboard.html")

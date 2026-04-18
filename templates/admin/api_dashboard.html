@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}{{ _('API Integration Dashboard') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="admin-page">
+  <h1 class="page-title">&#127760; {{ _('External API Dashboard') }}</h1>
+
+  <!-- ── Analytics strip ──────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <h2 class="card-title">{{ _('Usage Analytics') }}</h2>
+    <div class="db-stats-grid">
+      <div class="db-stat">
+        <span class="db-stat__label">{{ _('API Calls Today') }}</span>
+        <strong id="apiCallsToday">—</strong>
+      </div>
+      <div class="db-stat">
+        <span class="db-stat__label">{{ _('Enrichments (7 days)') }}</span>
+        <strong id="enrichmentsWeek">—</strong>
+      </div>
+      <div class="db-stat">
+        <span class="db-stat__label">{{ _('Success Rate') }}</span>
+        <strong id="successRate">—</strong>
+      </div>
+      <div class="db-stat">
+        <span class="db-stat__label">{{ _('Cache Hit Rate') }}</span>
+        <strong id="cacheHitRate">—</strong>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── API Health ────────────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <div class="card-header-row">
+      <h2 class="card-title">{{ _('API Health') }}</h2>
+      <button class="btn btn--secondary btn--sm" onclick="loadAPIHealth()">&#8635; {{ _('Refresh') }}</button>
+    </div>
+    <div id="apiHealthGrid" class="api-health-grid">
+      <p class="empty-state">{{ _('Loading…') }}</p>
+    </div>
+  </section>
+
+  <!-- ── Job management ───────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <div class="card-header-row">
+      <h2 class="card-title">{{ _('Background Jobs') }}</h2>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn--secondary btn--sm" onclick="loadJobs()">&#8635; {{ _('Refresh') }}</button>
+        <button class="btn btn--primary btn--sm" onclick="showBulkEnrichmentModal()">&#9654; {{ _('Bulk Enrich') }}</button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="data-table" id="jobsTable">
+        <thead>
+          <tr>
+            <th>{{ _('ID') }}</th>
+            <th>{{ _('Type') }}</th>
+            <th>{{ _('Status') }}</th>
+            <th>{{ _('Progress') }}</th>
+            <th>{{ _('Created') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="6" style="text-align:center;color:#666">{{ _('Loading…') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Quick test ───────────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <div class="card-header-row">
+      <h2 class="card-title">{{ _('Connectivity Tests') }}</h2>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn--secondary btn--sm" onclick="runBasicTest()">&#128304; {{ _('Basic Test') }}</button>
+        <button class="btn btn--secondary btn--sm" onclick="runAPITest()">&#127760; {{ _('Live API Test') }}</button>
+      </div>
+    </div>
+    <div id="testResults" class="ai-result-text" style="min-height:60px;display:none"></div>
+  </section>
+
+  <!-- ── Recent activity ──────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <h2 class="card-title">{{ _('Recent Activity') }}</h2>
+    <div id="activityFeed" class="activity-feed">
+      <p class="empty-state">{{ _('Loading…') }}</p>
+    </div>
+  </section>
+
+  <p><a href="{{ url_for('admin.index') }}" class="btn btn--secondary btn--sm">&#8592; {{ _('Back to Admin') }}</a></p>
+</div>
+
+<!-- ── Bulk Enrichment Modal ─────────────────────────────────────────────── -->
+<div id="bulkEnrichmentModal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h2 class="card-title">&#9654; {{ _('Start Bulk Enrichment') }}</h2>
+    <div class="form-group">
+      <label class="form-label">{{ _('Criteria (JSON, optional)') }}</label>
+      <textarea id="enrichmentCriteria" class="form-control" rows="3"
+                placeholder='{"missing_doi_only": true}'></textarea>
+    </div>
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">{{ _('Max Publications') }}</label>
+        <input type="number" id="maxPublications" class="form-control" value="50" min="1" max="500">
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ _('Max Concurrent') }}</label>
+        <input type="number" id="maxConcurrent" class="form-control" value="3" min="1" max="10">
+      </div>
+    </div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+      <button class="btn btn--secondary" onclick="hideBulkEnrichmentModal()">{{ _('Cancel') }}</button>
+      <button class="btn btn--primary" onclick="submitBulkEnrichment()">&#9654; {{ _('Start') }}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ── Init ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+  loadAPIHealth();
+  loadJobs();
+  loadAnalytics();
+  loadRecentActivity();
+});
+
+// ── API Health ────────────────────────────────────────────────────────────
+async function loadAPIHealth() {
+  try {
+    const r = await fetch('/api/external/health');
+    const d = await r.json();
+    if (d.success) displayAPIHealth(d.apis);
+    else showError('Failed to load API health');
+  } catch (e) {
+    showError('Error loading API health: ' + e.message);
+  }
+}
+window.loadAPIHealth = loadAPIHealth;
+
+function displayAPIHealth(apis) {
+  const grid = document.getElementById('apiHealthGrid');
+  grid.innerHTML = '';
+  Object.entries(apis).forEach(([name, info]) => {
+    const status = info.status || 'unknown';
+    const card = document.createElement('div');
+    card.className = 'api-health-card api-health-card--' + status;
+    card.innerHTML =
+      '<div class="api-health-name">' + name.toUpperCase() + '</div>' +
+      '<div class="api-health-status badge badge--' + (status === 'available' ? 'editor' : 'reader') + '">' +
+        (status === 'available' ? '&#9679; Online' : '&#9675; ' + status) +
+      '</div>' +
+      (info.base_url ? '<div class="api-health-url text-sm text-muted">' + info.base_url + '</div>' : '') +
+      (info.api_key_configured !== undefined
+        ? '<div class="text-sm">' + (info.api_key_configured ? '&#128273; Key configured' : '&#128274; No API key') + '</div>'
+        : '');
+    grid.appendChild(card);
+  });
+}
+
+// ── Jobs ──────────────────────────────────────────────────────────────────
+async function loadJobs() {
+  try {
+    const r = await fetch('/api/external/jobs/history');
+    const d = await r.json();
+    if (d.success) displayJobs(d.jobs || []);
+    else showError('Failed to load jobs');
+  } catch (e) {
+    showError('Error loading jobs: ' + e.message);
+  }
+}
+window.loadJobs = loadJobs;
+
+function displayJobs(jobs) {
+  const tbody = document.querySelector('#jobsTable tbody');
+  tbody.innerHTML = '';
+  if (!jobs.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666">No jobs yet</td></tr>';
+    return;
+  }
+  jobs.forEach(function (job) {
+    const pct = Math.round((job.progress || 0) * 100);
+    const row = document.createElement('tr');
+    row.innerHTML =
+      '<td><code>' + job.id.substring(0, 8) + '</code></td>' +
+      '<td>' + escHtml(job.type) + '</td>' +
+      '<td><span class="job-status job-status--' + job.status + '">' + job.status + '</span></td>' +
+      '<td><div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
+        '<small>' + pct + '%</small></td>' +
+      '<td>' + new Date(job.created_at).toLocaleString() + '</td>' +
+      '<td>' +
+        (job.status === 'running'
+          ? '<button class="btn btn--danger btn--xs" onclick="cancelJob(\'' + job.id + '\')">Cancel</button>'
+          : '<button class="btn btn--secondary btn--xs" onclick="viewJobDetails(\'' + job.id + '\')">Details</button>') +
+      '</td>';
+    tbody.appendChild(row);
+  });
+}
+
+window.cancelJob = async function (jobId) {
+  try {
+    const r = await fetch('/api/external/jobs/' + jobId + '/cancel', {method: 'POST'});
+    const d = await r.json();
+    if (d.success) { showSuccess('Job cancelled'); loadJobs(); }
+    else showError('Cancel failed: ' + (d.error || ''));
+  } catch (e) { showError('Error cancelling job'); }
+};
+
+window.viewJobDetails = function (jobId) {
+  alert('Job ' + jobId + '\n(Details view coming in Part 3)');
+};
+
+// ── Analytics ─────────────────────────────────────────────────────────────
+async function loadAnalytics() {
+  // Placeholder — future Part 3 will expose real metrics endpoint
+  document.getElementById('apiCallsToday').textContent = '—';
+  document.getElementById('enrichmentsWeek').textContent = '—';
+  document.getElementById('successRate').textContent = '—';
+  document.getElementById('cacheHitRate').textContent = '—';
+}
+
+// ── Recent activity ───────────────────────────────────────────────────────
+async function loadRecentActivity() {
+  const feed = document.getElementById('activityFeed');
+  try {
+    const r = await fetch('/api/external/jobs/history?limit=5');
+    const d = await r.json();
+    if (d.success && d.jobs.length) {
+      feed.innerHTML = d.jobs.map(function (j) {
+        return '<div class="activity-item"><div>' +
+          escHtml(j.type) + ' — <span class="job-status job-status--' + j.status + '">' + j.status + '</span>' +
+          '</div><div class="activity-time">' + new Date(j.created_at).toLocaleString() + '</div></div>';
+      }).join('');
+      return;
+    }
+  } catch (_) {}
+  feed.innerHTML = '<p class="empty-state">No recent activity</p>';
+}
+
+// ── Bulk enrichment modal ─────────────────────────────────────────────────
+window.showBulkEnrichmentModal = function () {
+  document.getElementById('bulkEnrichmentModal').style.display = 'flex';
+};
+window.hideBulkEnrichmentModal = function () {
+  document.getElementById('bulkEnrichmentModal').style.display = 'none';
+};
+window.submitBulkEnrichment = async function () {
+  const criteriaRaw = document.getElementById('enrichmentCriteria').value.trim();
+  const maxPubs = parseInt(document.getElementById('maxPublications').value) || 50;
+  const maxConc = parseInt(document.getElementById('maxConcurrent').value) || 3;
+  let criteria = {};
+  if (criteriaRaw) {
+    try { criteria = JSON.parse(criteriaRaw); }
+    catch (_) { showError('Invalid JSON in criteria field'); return; }
+  }
+  try {
+    const r = await fetch('/api/external/enrich/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({criteria: criteria, max_publications: maxPubs, max_concurrent: maxConc}),
+    });
+    const d = await r.json();
+    if (d.success) {
+      showSuccess('Bulk enrichment job started: ' + d.job_id.substring(0, 8));
+      hideBulkEnrichmentModal();
+      setTimeout(loadJobs, 1200);
+    } else { showError('Failed: ' + (d.error || 'unknown error')); }
+  } catch (e) { showError('Error: ' + e.message); }
+};
+
+// ── Connectivity tests ────────────────────────────────────────────────────
+window.runBasicTest = async function () {
+  const box = document.getElementById('testResults');
+  box.style.display = '';
+  box.textContent = 'Running basic test…';
+  try {
+    const r = await fetch('/api/external/test/basic');
+    const d = await r.json();
+    box.textContent = JSON.stringify(d, null, 2);
+  } catch (e) { box.textContent = 'Error: ' + e.message; }
+};
+window.runAPITest = async function () {
+  const box = document.getElementById('testResults');
+  box.style.display = '';
+  box.textContent = 'Probing live APIs (this may take 10–20s)…';
+  try {
+    const r = await fetch('/api/external/test/apis', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+    });
+    const d = await r.json();
+    box.textContent = JSON.stringify(d, null, 2);
+  } catch (e) { box.textContent = 'Error: ' + e.message; }
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _toast(msg, bg) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:20px;right:20px;background:' + bg +
+    ';color:#fff;padding:12px 18px;border-radius:6px;z-index:10000;font-weight:600;max-width:360px';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function () { el.parentNode && el.parentNode.removeChild(el); }, 5000);
+}
+function showSuccess(msg) { _toast(msg, '#28a745'); }
+function showError(msg)   { _toast(msg, '#dc3545'); }
+window.showSuccess = showSuccess;
+window.showError   = showError;
+
+document.addEventListener('click', function (e) {
+  const m = document.getElementById('bulkEnrichmentModal');
+  if (e.target === m) hideBulkEnrichmentModal();
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') hideBulkEnrichmentModal();
+});
+})();
+</script>
+{% endblock %}
