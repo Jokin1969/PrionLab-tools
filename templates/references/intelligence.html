@@ -99,6 +99,7 @@
     <button class="ri-tab" data-tab="topics">&#127758; Topics</button>
     <button class="ri-tab" data-tab="extdb">&#127760; External DB</button>
     <button class="ri-tab" data-tab="profiles">&#128100; Profiles</button>
+    <button class="ri-tab" data-tab="predictions">&#128302; Predictions</button>
   </nav>
 
   <!-- RECOMMENDATIONS -->
@@ -388,6 +389,38 @@
       <div id="network-analysis-result"></div>
     </div>
   </div>
+
+  <!-- PREDICTIONS -->
+  <div class="ri-section" id="tab-predictions">
+    <!-- Overview intelligence -->
+    <div class="ri-card">
+      <div class="ri-card-title">Manuscript Intelligence
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Trend analysis · Timing advice</span>
+        <button class="ri-btn ri-btn-sm" style="float:right;margin-top:-.2rem" onclick="loadIntelligence()">&#8635; Refresh</button>
+      </div>
+      <div id="pred-intelligence"><div class="ri-spinner">Analysing…</div></div>
+    </div>
+    <!-- Publication success predictor -->
+    <div class="ri-card">
+      <div class="ri-card-title">Publication Success Predictor</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem">
+        <input type="text" id="predJournal" class="ms-filter-search" style="flex:1;min-width:220px"
+               placeholder="e.g. PLOS Pathogens"
+               onkeydown="if(event.key==='Enter')runSuccessPred()">
+        <input type="text" id="predArea" class="ms-filter-search" style="width:160px"
+               placeholder="Research area">
+        <button class="ri-btn ri-btn-sm" onclick="runSuccessPred()">&#128302; Predict</button>
+      </div>
+      <div id="pred-success-result"></div>
+    </div>
+    <!-- Research trends -->
+    <div class="ri-card">
+      <div class="ri-card-title">Research Trend Analysis
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Derived from manuscript reference corpus</span>
+      </div>
+      <div id="pred-trends"><div class="ri-spinner">Loading trends…</div></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -432,6 +465,7 @@ function loadTab(name) {
   else if (name === 'topics') loadTopics();
   else if (name === 'extdb') loadExtDb();
   else if (name === 'profiles') { loadProfilesList(); }
+  else if (name === 'predictions') { loadIntelligence(); loadPredTrends(); }
 }
 
 // ── Recommendations ──────────────────────────────────────────────────────────
@@ -1294,6 +1328,101 @@ async function runNetworkAnalysis() {
         </div>` : ''}`;
   } catch(e) {
     el.innerHTML = '<div class="ri-empty">Network analysis failed.</div>';
+  }
+}
+
+// ── Predictions ───────────────────────────────────────────────────────────────
+async function loadIntelligence() {
+  const el = document.getElementById('pred-intelligence');
+  el.innerHTML = '<div class="ri-spinner">Analysing manuscript…</div>';
+  try {
+    const d = await fetch(API('intelligence')).then(r => r.json());
+    if (!d.success) { el.innerHTML = '<div class="ri-empty">Analysis unavailable.</div>'; return; }
+    const t = d.timing_intelligence || {};
+    const timingColor = t.is_optimal ? '#276749' : '#744210';
+    const timingBg    = t.is_optimal ? '#c6f6d5'  : '#feebc8';
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem">
+        <div class="ri-net-stat"><div class="ri-net-stat-val">${d.reference_count}</div><div class="ri-net-stat-lbl">References</div></div>
+        <div class="ri-net-stat"><div class="ri-net-stat-val">${(d.trend_analysis||[]).length}</div><div class="ri-net-stat-lbl">Topics detected</div></div>
+        <div class="ri-net-stat"><div class="ri-net-stat-val">${(d.top_research_areas||[]).length}</div><div class="ri-net-stat-lbl">Research areas</div></div>
+      </div>
+      <div style="background:${timingBg};border-radius:.5rem;padding:.75rem;margin-bottom:.75rem">
+        <span style="font-size:.82rem;font-weight:700;color:${timingColor}">&#128337; Timing: ${t.window_label||'—'}</span>
+        <span style="font-size:.8rem;color:#4a5568;margin-left:.5rem">${t.advice||''}</span>
+      </div>
+      ${(d.top_research_areas||[]).length ? `<div class="ri-kw-cloud">${d.top_research_areas.map(a=>`<span class="ri-kw-tag">${a}</span>`).join('')}</div>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Intelligence unavailable.</div>';
+  }
+}
+
+async function runSuccessPred() {
+  const journal = document.getElementById('predJournal').value.trim();
+  if (!journal) return;
+  const area = document.getElementById('predArea').value.trim();
+  const el = document.getElementById('pred-success-result');
+  el.innerHTML = '<div class="ri-spinner">Predicting…</div>';
+  try {
+    const d = await fetch(API('predict-success'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target_journal: journal, research_area: area}),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error||'Prediction failed.'}</div>`; return; }
+    const prob = d.acceptance_probability;
+    const pct  = Math.round(prob * 100);
+    const barColor = prob >= 0.6 ? '#38a169' : prob >= 0.35 ? '#d69e2e' : '#e53e3e';
+    el.innerHTML = `
+      <div style="background:#f7fafc;border-radius:.6rem;padding:1rem;margin-bottom:.75rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+          <span style="font-size:.95rem;font-weight:700;color:#2d3748">${journal}</span>
+          <span style="font-size:1.4rem;font-weight:800;color:${barColor}">${pct}%</span>
+        </div>
+        <div class="ri-score-bar"><div class="ri-score-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <div style="font-size:.75rem;color:#718096;margin-top:.3rem">CI: ${Math.round(d.confidence_low*100)}%–${Math.round(d.confidence_high*100)}% · Review: ~${d.predicted_review_days} days</div>
+      </div>
+      ${d.optimization_suggestions?.length ? `
+        <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.4rem">Suggestions</div>
+        <ul style="margin:0;padding-left:1.25rem;font-size:.82rem;color:#4a5568">
+          ${d.optimization_suggestions.map(s=>`<li style="margin-bottom:.25rem">${s}</li>`).join('')}
+        </ul>` : ''}
+      ${d.alternative_journals?.length ? `
+        <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-top:.75rem;margin-bottom:.4rem">Alternative journals</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+          ${d.alternative_journals.map(j=>`<span class="ri-kw-tag" title="IF ${j.impact_factor||'?'}">${j.name} ${j.quartile_wos?'('+j.quartile_wos+')':''}</span>`).join('')}
+        </div>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Prediction failed.</div>';
+  }
+}
+
+async function loadPredTrends() {
+  const el = document.getElementById('pred-trends');
+  el.innerHTML = '<div class="ri-spinner">Loading…</div>';
+  try {
+    const d = await fetch(API('trends')).then(r => r.json());
+    if (!d.success || !d.trends?.length) {
+      el.innerHTML = '<div class="ri-empty">No trend data. Add references with research area tags.</div>'; return;
+    }
+    const phaseColor = {emerging:'#553c9a',growing:'#276749',mature:'#744210',declining:'#9b2c2c'};
+    const phaseBg    = {emerging:'#e9d8fd',growing:'#c6f6d5',mature:'#feebc8',declining:'#fed7d7'};
+    el.innerHTML = d.trends.map(t => `
+      <div class="ri-pat-item" style="margin-bottom:.65rem">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;margin-bottom:.3rem">
+          <div style="font-size:.9rem;font-weight:700;color:#2d3748">${t.topic}</div>
+          <span style="background:${phaseBg[t.trend_phase]||'#e2e8f0'};color:${phaseColor[t.trend_phase]||'#718096'};font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:9999px;white-space:nowrap;flex-shrink:0">${t.trend_phase}</span>
+        </div>
+        <div style="display:flex;gap:.75rem;font-size:.75rem;color:#718096;margin-bottom:.3rem">
+          <span>Growth: <strong style="color:#2d3748">${(t.growth_rate*100).toFixed(1)}%</strong></span>
+          <span>Opportunity: <strong style="color:#6b46c1">${(t.opportunity_score*100).toFixed(0)}%</strong></span>
+          <span>Publications: <strong>${t.pub_count}</strong></span>
+        </div>
+        <div style="font-size:.78rem;color:#4a5568;font-style:italic">${t.recommendation}</div>
+        ${t.related_topics?.length ? `<div class="ri-kw-cloud" style="margin-top:.35rem">${t.related_topics.map(r=>`<span class="ri-kw-tag">${r}</span>`).join('')}</div>` : ''}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Trend analysis failed.</div>';
   }
 }
 
