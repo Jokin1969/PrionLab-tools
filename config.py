@@ -31,6 +31,33 @@ MAX_PDF_SIZE_MB = int(os.environ.get("MAX_PDF_SIZE_MB", "30"))
 
 APP_VERSION = "0.3.0"
 
+# Data Management Configuration
+DATA_MANAGEMENT_CONFIG = {
+    'storage': {
+        'primary_volume': DATA_DIR,
+        'backup_retention_count': int(os.environ.get('BACKUP_RETENTION_COUNT', '10')),
+        'max_backup_size_gb': 10,
+        'compression_enabled': True,
+    },
+    'dropbox': {
+        'backup_folder': DROPBOX_REMOTE_FOLDER,
+        'auto_upload': os.environ.get('DROPBOX_AUTO_UPLOAD', 'true').lower() == 'true',
+        'sync_frequency': os.environ.get('DROPBOX_SYNC_FREQUENCY', 'daily'),
+        'max_file_size_mb': 150,
+    },
+    'scheduling': {
+        'full_backup': {'day': 'sunday', 'time': '02:00'},
+        'incremental_backup': {'frequency': 'daily', 'time': '01:00'},
+        'integrity_check': {'frequency': 'daily', 'time': '03:00'},
+        'cleanup': {'frequency': 'weekly', 'time': '04:00'},
+    },
+    'performance': {
+        'sqlite_cache_size_mb': 128,
+        'temp_cleanup_hours': 24,
+        'vacuum_frequency': 'weekly',
+    },
+}
+
 # i18n
 LANGUAGES = ["es", "en"]
 DEFAULT_LANGUAGE = "es"

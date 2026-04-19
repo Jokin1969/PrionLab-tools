@@ -186,6 +186,10 @@
               <span class="nb-item-icon">&#127760;</span>
               <span class="nb-item-body"><span class="nb-item-title">{{ _('API Dashboard') }}</span></span>
             </a>
+            <a href="{{ url_for('data_management.dashboard') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128190;</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('Data Management') }}</span></span>
+            </a>
             {% endif %}
             <div class="nb-menu-divider"></div>
             <a href="{{ url_for('auth.logout') }}" class="nb-item nb-logout" role="menuitem">
