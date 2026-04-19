@@ -98,6 +98,7 @@
     <button class="ri-tab" data-tab="methods">&#9881;&#65039; Methods</button>
     <button class="ri-tab" data-tab="topics">&#127758; Topics</button>
     <button class="ri-tab" data-tab="extdb">&#127760; External DB</button>
+    <button class="ri-tab" data-tab="profiles">&#128100; Profiles</button>
   </nav>
 
   <!-- RECOMMENDATIONS -->
@@ -346,6 +347,47 @@
       <div id="enrich-result"></div>
     </div>
   </div>
+
+  <!-- PROFILES -->
+  <div class="ri-section" id="tab-profiles">
+    <!-- Import -->
+    <div class="ri-card">
+      <div class="ri-card-title">Import Researcher Profile
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">via ORCID public API</span>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem">
+        <input type="text" id="profileOrcid" class="ms-filter-search" style="flex:1;min-width:200px"
+               placeholder="0000-0002-1825-0097"
+               onkeydown="if(event.key==='Enter')importProfile()">
+        <button class="ri-btn ri-btn-sm" onclick="importProfile()">&#8659; Import</button>
+      </div>
+      <div id="profile-import-result"></div>
+    </div>
+    <!-- Stored profiles list -->
+    <div class="ri-card">
+      <div class="ri-card-title">Stored Researcher Profiles
+        <button class="ri-btn ri-btn-sm" style="float:right;margin-top:-.2rem" onclick="loadProfilesList()">&#8635; Refresh</button>
+      </div>
+      <div id="profiles-list"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <!-- Collaboration opportunities -->
+    <div class="ri-card" id="collab-card" style="display:none">
+      <div class="ri-card-title">Collaboration Opportunities
+        <span id="collab-name" style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem"></span>
+      </div>
+      <div id="collab-list"><div class="ri-spinner">Analysing…</div></div>
+    </div>
+    <!-- Network analysis -->
+    <div class="ri-card">
+      <div class="ri-card-title">Research Collaboration Network</div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem">
+        <input type="text" id="netInstFilter" class="ms-filter-search" style="flex:1;min-width:180px"
+               placeholder="Filter by institution (optional)">
+        <button class="ri-btn ri-btn-sm" onclick="runNetworkAnalysis()">&#128202; Analyse Network</button>
+      </div>
+      <div id="network-analysis-result"></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -389,6 +431,7 @@ function loadTab(name) {
   else if (name === 'methods') loadMethodologyAnalysis();
   else if (name === 'topics') loadTopics();
   else if (name === 'extdb') loadExtDb();
+  else if (name === 'profiles') { loadProfilesList(); }
 }
 
 // ── Recommendations ──────────────────────────────────────────────────────────
@@ -1107,6 +1150,150 @@ async function runEnrichment() {
     }
   } catch(e) {
     el.innerHTML = '<div class="ri-empty">Enrichment request failed.</div>';
+  }
+}
+
+// ── Research Profiles ────────────────────────────────────────────────────────
+const PROFILES_API = (path) => `/api/references/profiles${path}`;
+
+async function importProfile() {
+  const orcid = document.getElementById('profileOrcid').value.trim();
+  if (!orcid) return;
+  const el = document.getElementById('profile-import-result');
+  el.innerHTML = '<div class="ri-spinner">Importing ORCID profile…</div>';
+  try {
+    const d = await fetch(PROFILES_API('/import-orcid'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({orcid_id: orcid}),
+    }).then(r => r.json());
+    if (!d.success) {
+      el.innerHTML = `<div class="ri-empty">${d.error || 'Import failed.'}</div>`; return;
+    }
+    const p = d.profile;
+    el.innerHTML = `
+      <div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:.5rem;padding:1rem">
+        <div style="font-size:1rem;font-weight:700;color:#276749;margin-bottom:.5rem">${p.name}</div>
+        <div style="font-size:.82rem;color:#4a5568;margin-bottom:.25rem">
+          ${p.current_affiliation ? '<strong>Affiliation:</strong> ' + p.current_affiliation : ''}
+          ${p.geographic_location ? ' · ' + p.geographic_location : ''}
+        </div>
+        ${p.research_areas?.length ? `<div style="font-size:.78rem;color:#718096;margin-bottom:.4rem"><strong>Research areas:</strong> ${p.research_areas.slice(0,8).join(', ')}</div>` : ''}
+        ${p.employment?.length ? `<div style="font-size:.78rem;color:#718096"><strong>Employment entries:</strong> ${p.employment.length}</div>` : ''}
+        ${p.funding?.length ? `<div style="font-size:.78rem;color:#718096"><strong>Funding entries:</strong> ${p.funding.length}</div>` : ''}
+        ${d.researchgate?.note ? `<div style="font-size:.72rem;color:#b45309;margin-top:.4rem;font-style:italic">${d.researchgate.note}</div>` : ''}
+        ${d.google_scholar?.note ? `<div style="font-size:.72rem;color:#b45309;font-style:italic">${d.google_scholar.note}</div>` : ''}
+      </div>`;
+    loadProfilesList();
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Import request failed.</div>';
+  }
+}
+
+async function loadProfilesList() {
+  const el = document.getElementById('profiles-list');
+  el.innerHTML = '<div class="ri-spinner">Loading profiles…</div>';
+  try {
+    const d = await fetch(PROFILES_API('')).then(r => r.json());
+    if (!d.success || !d.profiles?.length) {
+      el.innerHTML = '<div class="ri-empty">No researcher profiles stored yet. Import an ORCID profile above.</div>'; return;
+    }
+    el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead><tr style="background:#f7fafc;border-bottom:2px solid #e2e8f0">
+        <th style="padding:.5rem;text-align:left">Name</th>
+        <th style="padding:.5rem;text-align:left">ORCID</th>
+        <th style="padding:.5rem;text-align:left">Affiliation</th>
+        <th style="padding:.5rem;text-align:left">Location</th>
+        <th style="padding:.5rem;text-align:left">Research areas</th>
+        <th style="padding:.5rem"></th>
+      </tr></thead><tbody>` +
+      d.profiles.map(p => `<tr style="border-bottom:1px solid #e2e8f0;transition:background .15s" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background=''">
+        <td style="padding:.45rem;font-weight:600;color:#2d3748">${p.name}</td>
+        <td style="padding:.45rem;font-size:.75rem;color:#718096">${p.orcid_id}</td>
+        <td style="padding:.45rem">${(p.current_affiliation||'').slice(0,35)||'—'}</td>
+        <td style="padding:.45rem;font-size:.78rem">${p.geographic_location||'—'}</td>
+        <td style="padding:.45rem;font-size:.75rem;color:#718096">${(p.research_areas||[]).slice(0,3).join(', ')||'—'}</td>
+        <td style="padding:.45rem">
+          <button class="ri-btn ri-btn-sm" style="font-size:.72rem" onclick="showCollabOpps('${p.orcid_id}','${p.name.replace(/'/g,"\\'")}')">Collab</button>
+        </td>
+      </tr>`).join('') +
+      `</tbody></table></div>`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Error loading profiles.</div>';
+  }
+}
+
+async function showCollabOpps(orcidId, name) {
+  const card = document.getElementById('collab-card');
+  const el = document.getElementById('collab-list');
+  document.getElementById('collab-name').textContent = name;
+  card.style.display = '';
+  el.innerHTML = '<div class="ri-spinner">Finding opportunities…</div>';
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+  try {
+    const d = await fetch(PROFILES_API(`/collaboration-opportunities/${encodeURIComponent(orcidId)}`)).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error}</div>`; return; }
+    if (!d.opportunities?.length) {
+      el.innerHTML = '<div class="ri-empty">No collaboration opportunities found. Import more researcher profiles to enable matching.</div>'; return;
+    }
+    const potColor = {high:'#276749',medium:'#744210',low:'#718096'};
+    const potBg = {high:'#c6f6d5',medium:'#feebc8',low:'#e2e8f0'};
+    el.innerHTML = d.opportunities.map(o => `
+      <div class="ri-rec-item" style="margin-bottom:.65rem">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+          <div class="ri-rec-title">${o.name_b}</div>
+          <span style="background:${potBg[o.collaboration_potential]||'#e2e8f0'};color:${potColor[o.collaboration_potential]||'#718096'};font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:9999px;white-space:nowrap;flex-shrink:0">${o.collaboration_potential}</span>
+        </div>
+        <div class="ri-rec-meta">${o.affiliation_b||'Unknown affiliation'}</div>
+        <div style="display:flex;gap:.75rem;font-size:.75rem;margin:.3rem 0">
+          <span>Similarity: <strong>${(o.similarity_score*100).toFixed(0)}%</strong></span>
+          <span>Complementarity: <strong>${(o.complementarity_score*100).toFixed(0)}%</strong></span>
+        </div>
+        ${o.shared_interests?.length ? `<div class="ri-kw-cloud">${o.shared_interests.slice(0,6).map(kw=>`<span class="ri-kw-tag">${kw}</span>`).join('')}</div>` : ''}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Failed to load opportunities.</div>';
+  }
+}
+
+async function runNetworkAnalysis() {
+  const inst = document.getElementById('netInstFilter').value.trim();
+  const el = document.getElementById('network-analysis-result');
+  el.innerHTML = '<div class="ri-spinner">Analysing network…</div>';
+  try {
+    const url = PROFILES_API('/research-network') + (inst ? `?institution=${encodeURIComponent(inst)}` : '');
+    const d = await fetch(url).then(r => r.json());
+    if (!d.success) { el.innerHTML = '<div class="ri-empty">Analysis failed.</div>'; return; }
+    if (!d.node_count) {
+      el.innerHTML = '<div class="ri-empty">No profiles found. Import researcher profiles first.</div>'; return;
+    }
+    const potBadge = (p) => p === 'high'
+      ? '<span style="background:#c6f6d5;color:#276749;font-size:.68rem;font-weight:700;padding:.1rem .35rem;border-radius:9999px">high</span>'
+      : '<span style="background:#feebc8;color:#744210;font-size:.68rem;font-weight:700;padding:.1rem .35rem;border-radius:9999px">medium</span>';
+    el.innerHTML = `
+      <div class="ri-net-info" style="margin-bottom:1rem">
+        ${[['Researchers',d.node_count],['Connections',d.edge_count],['Clusters',d.cluster_count],['Avg degree',d.avg_degree]].map(([l,v])=>`
+          <div class="ri-net-stat"><div class="ri-net-stat-val">${v}</div><div class="ri-net-stat-lbl">${l}</div></div>`).join('')}
+      </div>
+      ${d.key_researchers?.length ? `
+        <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.5rem">Key researchers (by connections)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1rem">
+          ${d.key_researchers.map(k=>`<span class="ri-kw-tag">${k}</span>`).join('')}
+        </div>` : ''}
+      ${d.edges?.length ? `
+        <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.5rem">Top connections</div>
+        <div class="ri-rec-list">
+          ${d.edges.slice(0,8).map(e=>`
+            <div style="padding:.5rem .75rem;border:1px solid #e2e8f0;border-radius:.45rem;display:flex;justify-content:space-between;align-items:center;font-size:.82rem">
+              <span>${e.source.slice(0,25)} ↔ ${e.target.slice(0,25)}</span>
+              <span style="display:flex;gap:.4rem;align-items:center">
+                <span style="color:#718096;font-size:.72rem">${(e.weight*100).toFixed(0)}%</span>
+                ${potBadge(e.potential)}
+              </span>
+            </div>`).join('')}
+        </div>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Network analysis failed.</div>';
   }
 }
 
