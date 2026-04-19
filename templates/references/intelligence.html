@@ -71,7 +71,8 @@
 
   <nav class="ri-tabs">
     <button class="ri-tab active" data-tab="recommendations">&#129504; Recommendations</button>
-    <button class="ri-tab" data-tab="gaps">&#128270; Research Gaps</button>
+    <button class="ri-tab" data-tab="gaps">&#128270; Advanced Gaps</button>
+    <button class="ri-tab" data-tab="trends">&#128200; Trends</button>
     <button class="ri-tab" data-tab="network">&#127760; Citation Network</button>
     <button class="ri-tab" data-tab="authors">&#128100; Author Influence</button>
     <button class="ri-tab" data-tab="landscape">&#128202; Research Landscape</button>
@@ -81,17 +82,43 @@
   <div class="ri-section active" id="tab-recommendations">
     <div class="ri-card">
       <div class="ri-card-title">AI-Powered Recommendations
-        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Based on your current references</span>
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Collaborative · Content · Expertise · Analytics-boosted</span>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap">
+        <select id="recFilter" class="ms-filter-select" onchange="filterRecs()">
+          <option value="">All types</option>
+          <option value="collaborative">Collaborative</option>
+          <option value="content">Content</option>
+          <option value="expertise">Expertise</option>
+          <option value="combined">Combined</option>
+        </select>
       </div>
       <div id="rec-list"><div class="ri-spinner">Analysing references…</div></div>
     </div>
   </div>
 
-  <!-- GAPS -->
+  <!-- ADVANCED GAPS -->
   <div class="ri-section" id="tab-gaps">
+    <div id="gaps-summary" style="margin-bottom:1rem"></div>
     <div class="ri-card">
-      <div class="ri-card-title">Research Gap Analysis</div>
+      <div class="ri-card-title">Advanced Research Gap Analysis
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Foundational · Temporal · Methodological · Expert · Interdisciplinary</span>
+      </div>
       <div id="gaps-list"><div class="ri-spinner">Detecting gaps…</div></div>
+    </div>
+    <div class="ri-card" id="gaps-actions-card" style="display:none">
+      <div class="ri-card-title">Priority Actions</div>
+      <div id="gaps-actions"></div>
+    </div>
+  </div>
+
+  <!-- TRENDS -->
+  <div class="ri-section" id="tab-trends">
+    <div class="ri-card">
+      <div class="ri-card-title">Emerging Topic Detection
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Based on your reference collection</span>
+      </div>
+      <div id="trends-list"><div class="ri-spinner">Analysing trends…</div></div>
     </div>
   </div>
 
@@ -169,6 +196,7 @@ function loadTab(name) {
   loaded[name] = true;
   if (name === 'recommendations') loadRecommendations();
   else if (name === 'gaps') loadGaps();
+  else if (name === 'trends') loadTrendsTab();
   else if (name === 'network') loadNetwork();
   else if (name === 'authors') loadAuthors();
   else if (name === 'landscape') loadLandscape();
@@ -177,50 +205,124 @@ function loadTab(name) {
 // ── Recommendations ──────────────────────────────────────────────────────────
 async function loadRecommendations() {
   try {
-    const d = await fetch(API('recommendations')).then(r => r.json());
-    const el = document.getElementById('rec-list');
-    if (!d.recommendations || !d.recommendations.length) {
-      el.innerHTML = '<div class="ri-empty">No recommendations yet — import more references to enable suggestions</div>';
+    const d = await fetch(API('ai-recommendations')).then(r => r.json());
+    _allRecs = d.recommendations || [];
+    if (!_allRecs.length) {
+      document.getElementById('rec-list').innerHTML = '<div class="ri-empty">No recommendations yet — import more references to enable suggestions</div>';
       return;
     }
-    el.innerHTML = '<div class="ri-rec-list">' + d.recommendations.map(r => `
-      <div class="ri-rec-item">
-        <div>
-          <span class="ri-rec-type ${r.recommendation_type}">${r.recommendation_type}</span>
-          <span class="ri-rec-score">${(r.relevance_score * 100).toFixed(0)}% match</span>
-        </div>
-        <div class="ri-rec-title">${r.title || '(no title)'}</div>
-        <div class="ri-rec-meta">
-          ${(r.authors||[]).slice(0,3).join(', ')}${r.authors&&r.authors.length>3?' et al.':''}
-          · ${r.journal||''} ${r.year||''}
-          ${r.doi ? `· <a class="ri-doi-link" href="https://doi.org/${r.doi}" target="_blank">${r.doi}</a>` : ''}
-        </div>
-        <div class="ri-score-bar"><div class="ri-score-fill" style="width:${Math.min(r.relevance_score*300,100)}%"></div></div>
-        <span class="ri-rec-explain">${r.explanation}</span>
-      </div>`).join('') + '</div>';
+    renderRecs(_allRecs);
   } catch (e) {
     document.getElementById('rec-list').innerHTML = '<div class="ri-empty">Failed to load recommendations</div>';
   }
 }
 
-// ── Research Gaps ────────────────────────────────────────────────────────────
+// ── filter recs by type ──────────────────────────────────────────────────────
+let _allRecs = [];
+function filterRecs() {
+  const filter = document.getElementById('recFilter')?.value || '';
+  const show = filter ? _allRecs.filter(r => r.recommendation_type === filter) : _allRecs;
+  renderRecs(show);
+}
+
+function renderRecs(recs) {
+  const el = document.getElementById('rec-list');
+  if (!recs.length) { el.innerHTML = '<div class="ri-empty">No recommendations match this filter.</div>'; return; }
+  el.innerHTML = '<div class="ri-rec-list">' + recs.map(r => `
+    <div class="ri-rec-item">
+      <div>
+        <span class="ri-rec-type ${r.recommendation_type}">${r.recommendation_type}</span>
+        <span class="ri-rec-score">${(r.relevance_score*100).toFixed(0)}% match</span>
+      </div>
+      <div class="ri-rec-title">${r.title||'—'}</div>
+      <div class="ri-rec-meta">
+        ${(r.authors||[]).slice(0,3).join(', ')}${r.authors&&r.authors.length>3?' et al.':''}
+        · ${r.journal||''} ${r.year||''}
+        ${r.doi?`· <a class="ri-doi-link" href="https://doi.org/${r.doi}" target="_blank">${r.doi}</a>`:''}
+      </div>
+      <div class="ri-score-bar"><div class="ri-score-fill" style="width:${Math.min(r.relevance_score*300,100)}%"></div></div>
+      <span class="ri-rec-explain">${r.explanation}</span>
+    </div>`).join('') + '</div>';
+}
+
+// ── Advanced Gaps ─────────────────────────────────────────────────────────────
 async function loadGaps() {
   try {
-    const d = await fetch(API('gaps')).then(r => r.json());
+    const d = await fetch(API('advanced-gaps')).then(r => r.json());
     const el = document.getElementById('gaps-list');
+
+    // Summary bar
+    const s = d.summary || {};
+    const sevColor = {critical:'#e53e3e',high:'#dd6b20',medium:'#d69e2e',low:'#38a169'};
+    const assessColor = {needs_improvement:'#e53e3e',adequate:'#d69e2e',strong:'#38a169'};
+    if (s.total_gaps !== undefined) {
+      document.getElementById('gaps-summary').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.75rem;margin-bottom:1rem">
+          ${[
+            ['Total Gaps', s.total_gaps||0, ''],
+            ['Critical', (s.severity_breakdown||{}).critical||0, 'red'],
+            ['High', (s.severity_breakdown||{}).high||0, 'orange'],
+            ['Assessment', s.overall_assessment||'—', assessColor[s.overall_assessment]||'#718096'],
+          ].map(([l,v,c])=>`<div style="background:#fff;border-radius:.6rem;padding:.75rem;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.07)">
+            <div style="font-size:1.3rem;font-weight:800;color:${c||'#6b46c1'}">${v}</div>
+            <div style="font-size:.72rem;color:#718096;text-transform:uppercase">${l}</div>
+          </div>`).join('')}
+        </div>`;
+    }
+
     if (!d.gaps || !d.gaps.length) {
       el.innerHTML = '<div class="ri-empty">&#10003; No significant gaps detected — your reference list looks comprehensive!</div>';
       return;
     }
-    const sevColor = {critical:'#e53e3e',high:'#dd6b20',medium:'#d69e2e',low:'#38a169'};
     el.innerHTML = d.gaps.map(g => `
-      <div class="ri-gap-item ${g.severity}">
-        <div class="ri-gap-severity" style="color:${sevColor[g.severity]||'#718096'}">${g.severity} — ${g.gap_type.replace(/_/g,' ')}</div>
-        <div class="ri-gap-desc">${g.description}</div>
-        <div class="ri-gap-actions">${g.suggested_actions.map(a => '• ' + a).join(' &nbsp; ')}</div>
+      <div class="ri-gap-item ${g.severity}" style="margin-bottom:.75rem">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="ri-gap-severity" style="color:${sevColor[g.severity]||'#718096'}">${g.severity.toUpperCase()} — ${g.gap_type.replace(/_/g,' ')}</div>
+          <span style="font-size:.75rem;color:#718096">urgency ${g.urgency_level}/5 · effort: ${g.estimated_effort||'—'}</span>
+        </div>
+        <div class="ri-gap-desc">${g.title}: ${g.description}</div>
+        <div class="ri-gap-actions">${(g.suggested_actions||[]).map(a=>'• '+a).join(' &nbsp; ')}</div>
       </div>`).join('');
+
+    if (d.priority_actions && d.priority_actions.length) {
+      document.getElementById('gaps-actions-card').style.display = '';
+      document.getElementById('gaps-actions').innerHTML =
+        '<ol style="margin:0;padding-left:1.25rem;font-size:.88rem;color:#2d3748">' +
+        d.priority_actions.map(a=>`<li style="margin-bottom:.4rem">${a}</li>`).join('') +
+        '</ol>';
+    }
   } catch (e) {
     document.getElementById('gaps-list').innerHTML = '<div class="ri-empty">Failed to load gap analysis</div>';
+  }
+}
+
+// ── Trends ────────────────────────────────────────────────────────────────────
+async function loadTrendsTab() {
+  try {
+    const d = await fetch(API('trends')).then(r => r.json());
+    const el = document.getElementById('trends-list');
+    const topics = d.emerging_topics || [];
+    if (!topics.length) {
+      el.innerHTML = '<div class="ri-empty">No emerging topics detected in your references. Import more recent literature to enable trend analysis.</div>';
+      return;
+    }
+    const max_mom = topics[0]?.momentum || 1;
+    el.innerHTML = `<div style="margin-bottom:.5rem;font-size:.8rem;color:#718096">Analysed ${d.total_refs_analysed||0} references · ${topics.length} emerging topic${topics.length!==1?'s':''} detected</div>` +
+      topics.map(t => {
+        const pct = Math.round(t.momentum * 100);
+        return `<div style="border:1px solid #e2e8f0;border-radius:.5rem;padding:.75rem;margin-bottom:.5rem;background:#fff">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong style="font-size:.9rem;color:#2d3748">${t.topic}</strong>
+            <span style="font-size:.78rem;background:#e9d8fd;color:#553c9a;padding:.15rem .5rem;border-radius:9999px;font-weight:700">${pct}% momentum</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:9999px;height:5px;margin:.5rem 0">
+            <div style="background:#6b46c1;border-radius:9999px;height:100%;width:${Math.round(t.momentum/max_mom*100)}%"></div>
+          </div>
+          <div style="font-size:.78rem;color:#718096">${t.recent_mentions} recent mention${t.recent_mentions!==1?'s':''} of ${t.total_mentions} total · trending since ~${t.trend_start}</div>
+        </div>`;
+      }).join('');
+  } catch (e) {
+    document.getElementById('trends-list').innerHTML = '<div class="ri-empty">Failed to load trend data</div>';
   }
 }
 
