@@ -1,5 +1,6 @@
 """Reference API routes."""
 import logging
+from collections import Counter
 from dataclasses import asdict
 
 import json
@@ -279,3 +280,73 @@ def feedback_stats():
     from .feedback_learning import get_feedback_learning_service
     svc = get_feedback_learning_service()
     return jsonify({"success": True, **svc.get_stats()})
+
+
+# ── NLP processing endpoints ──────────────────────────────────────────────────
+
+@references_bp.route("/manuscript/<manuscript_id>/literature-summary")
+@login_required
+def literature_summary(manuscript_id):
+    """Generate extractive literature summary from reference titles/abstracts."""
+    from .nlp_processing import get_nlp_processing_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_nlp_processing_service()
+    topic = request.args.get("topic", f"Literature Review")
+    result = svc.generate_literature_summary(refs, topic)
+    return jsonify(result)
+
+
+@references_bp.route("/manuscript/<manuscript_id>/research-questions")
+@login_required
+def research_questions_nlp(manuscript_id):
+    """Extract and classify research questions from reference corpus."""
+    from .nlp_processing import get_nlp_processing_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_nlp_processing_service()
+    questions = svc.extract_research_questions(refs[:60])
+    return jsonify({"success": True, "questions": questions, "count": len(questions)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/methodology-analysis")
+@login_required
+def methodology_analysis(manuscript_id):
+    """Analyze methodology landscape across manuscript references."""
+    from .nlp_processing import get_nlp_processing_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_nlp_processing_service()
+    profiles = [svc.detect_methodology_profile(r) for r in refs[:60]]
+    cat_counter: Counter = Counter(p["methodology_category"] for p in profiles)
+    return jsonify({
+        "success": True,
+        "total_references": len(refs),
+        "methodology_profiles": profiles,
+        "category_distribution": dict(cat_counter),
+        "methodology_diversity": len(set(cat_counter)),
+    })
+
+
+@references_bp.route("/manuscript/<manuscript_id>/topics")
+@login_required
+def topic_modeling(manuscript_id):
+    """Perform pure-Python topic clustering on reference corpus."""
+    from .nlp_processing import get_nlp_processing_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_nlp_processing_service()
+    n = min(max(request.args.get("n", 5, type=int), 2), 10)
+    result = svc.perform_topic_modeling(refs[:100], n)
+    return jsonify(result)
+
+
+@references_bp.route("/manuscript/<manuscript_id>/semantic-analysis")
+@login_required
+def semantic_analysis_bulk(manuscript_id):
+    """Semantic analysis of all references in a manuscript."""
+    from .nlp_processing import get_nlp_processing_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_nlp_processing_service()
+    analyses = [svc.analyze_abstract_semantics(r) for r in refs[:50]]
+    return jsonify({
+        "success": True,
+        "analyses": analyses,
+        "count": len(analyses),
+    })

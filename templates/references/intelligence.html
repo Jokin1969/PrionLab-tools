@@ -93,6 +93,10 @@
     <button class="ri-tab" data-tab="authors">&#128100; Author Influence</button>
     <button class="ri-tab" data-tab="collaboration">&#129309; Collaboration</button>
     <button class="ri-tab" data-tab="landscape">&#128202; Research Landscape</button>
+    <button class="ri-tab" data-tab="summary">&#128196; NLP Summary</button>
+    <button class="ri-tab" data-tab="questions">&#10067; Research Qs</button>
+    <button class="ri-tab" data-tab="methods">&#9881;&#65039; Methods</button>
+    <button class="ri-tab" data-tab="topics">&#127758; Topics</button>
   </nav>
 
   <!-- RECOMMENDATIONS -->
@@ -233,6 +237,75 @@
   </div>
 </div>
 
+  <!-- NLP SUMMARY -->
+  <div class="ri-section" id="tab-summary">
+    <div class="ri-card">
+      <div class="ri-card-title">Literature Summary
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Extractive — TF-IDF sentence scoring across reference corpus</span>
+      </div>
+      <div id="nlp-summary-content"><div class="ri-spinner">Generating summary…</div></div>
+    </div>
+    <div class="ri-card" id="nlp-findings-card" style="display:none">
+      <div class="ri-card-title">Key Findings Detected</div>
+      <div id="nlp-findings-list"></div>
+    </div>
+    <div class="ri-card" id="nlp-gaps-card" style="display:none">
+      <div class="ri-card-title">Research Gaps Detected</div>
+      <div id="nlp-gaps-list"></div>
+    </div>
+  </div>
+
+  <!-- RESEARCH QUESTIONS -->
+  <div class="ri-section" id="tab-questions">
+    <div class="ri-card">
+      <div class="ri-card-title">Extracted Research Questions
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Pattern-matched from title/abstract text</span>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center">
+        <select id="qTypeFilter" class="ms-filter-select" onchange="filterQuestions()">
+          <option value="">All types</option>
+          <option value="descriptive">Descriptive</option>
+          <option value="explanatory">Explanatory</option>
+          <option value="predictive">Predictive</option>
+          <option value="causal">Causal</option>
+          <option value="comparative">Comparative</option>
+        </select>
+      </div>
+      <div id="questions-list"><div class="ri-spinner">Extracting questions…</div></div>
+    </div>
+  </div>
+
+  <!-- METHODOLOGY ANALYSIS -->
+  <div class="ri-section" id="tab-methods">
+    <div class="ri-card">
+      <div class="ri-card-title">Methodology Landscape Overview</div>
+      <div id="methods-overview"><div class="ri-spinner">Analysing…</div></div>
+    </div>
+    <div class="ri-card">
+      <div class="ri-card-title">Per-Reference Profiles
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Detected methods, design, statistical approaches</span>
+      </div>
+      <div id="methods-list"></div>
+    </div>
+  </div>
+
+  <!-- TOPIC MODELING -->
+  <div class="ri-section" id="tab-topics">
+    <div class="ri-card">
+      <div class="ri-card-title">Research Topics
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Pure-Python k-means clustering of TF-IDF vectors</span>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.82rem;color:#4a5568">Topics:</label>
+        <input type="number" id="topicsN" value="5" min="2" max="10"
+               style="width:55px;padding:.3rem;border:1px solid #e2e8f0;border-radius:.35rem;font-size:.82rem">
+        <button class="ri-btn ri-btn-sm" onclick="rerunTopics()">&#8635; Recalculate</button>
+      </div>
+      <div id="topics-content"><div class="ri-spinner">Modelling topics…</div></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const MS_ID = "{{ manuscript_id }}";
@@ -269,6 +342,10 @@ function loadTab(name) {
   else if (name === 'authors') loadAuthors();
   else if (name === 'collaboration') loadCollaboration();
   else if (name === 'landscape') loadLandscape();
+  else if (name === 'summary') loadLiteratureSummary();
+  else if (name === 'questions') loadResearchQuestions();
+  else if (name === 'methods') loadMethodologyAnalysis();
+  else if (name === 'topics') loadTopics();
 }
 
 // ── Recommendations ──────────────────────────────────────────────────────────
@@ -751,6 +828,151 @@ function refreshAll() {
   Object.keys(loaded).forEach(k => delete loaded[k]);
   const active = document.querySelector('.ri-tab.active');
   if (active) { loaded[active.dataset.tab] = false; loadTab(active.dataset.tab); }
+}
+
+// ── NLP: Literature Summary ──────────────────────────────────────────────────
+async function loadLiteratureSummary() {
+  try {
+    const d = await fetch(API('literature-summary')).then(r => r.json());
+    const el = document.getElementById('nlp-summary-content');
+    if (!d.summary_text || d.summary_text.startsWith('No sufficient')) {
+      el.innerHTML = '<div class="ri-empty">Not enough reference content for summarization. Add abstracts or notes to your references.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <div style="font-size:.9rem;color:#2d3748;line-height:1.75;margin-bottom:.75rem">${d.summary_text}</div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:.78rem;color:#718096">
+        <span>&#128196; ${d.document_count || 0} documents</span>
+        <span style="color:#38a169">&#9989; Confidence: ${((d.confidence_score||0)*100).toFixed(0)}%</span>
+        <span>&#128295; ${d.methodology_summary || '—'}</span>
+      </div>`;
+    if (d.key_findings?.length) {
+      document.getElementById('nlp-findings-list').innerHTML =
+        d.key_findings.map(f =>
+          `<div style="border-left:3px solid #38a169;padding:.45rem .75rem;margin-bottom:.5rem;font-size:.85rem;color:#2d3748">${f}</div>`
+        ).join('');
+      document.getElementById('nlp-findings-card').style.display = 'block';
+    }
+    if (d.research_gaps?.length) {
+      document.getElementById('nlp-gaps-list').innerHTML =
+        d.research_gaps.map(g =>
+          `<div style="border-left:3px solid #e53e3e;padding:.45rem .75rem;margin-bottom:.5rem;font-size:.85rem;color:#2d3748">${g}</div>`
+        ).join('');
+      document.getElementById('nlp-gaps-card').style.display = 'block';
+    }
+  } catch(e) {
+    document.getElementById('nlp-summary-content').innerHTML =
+      '<div class="ri-empty">Failed to generate literature summary.</div>';
+  }
+}
+
+// ── NLP: Research Questions ──────────────────────────────────────────────────
+let _allQuestions = [];
+async function loadResearchQuestions() {
+  try {
+    const d = await fetch(API('research-questions')).then(r => r.json());
+    _allQuestions = d.questions || [];
+    renderQuestions(_allQuestions);
+  } catch(e) {
+    document.getElementById('questions-list').innerHTML =
+      '<div class="ri-empty">Failed to extract research questions.</div>';
+  }
+}
+function filterQuestions() {
+  const t = document.getElementById('qTypeFilter').value;
+  renderQuestions(t ? _allQuestions.filter(q => q.question_type === t) : _allQuestions);
+}
+function renderQuestions(qs) {
+  const el = document.getElementById('questions-list');
+  if (!qs.length) {
+    el.innerHTML = '<div class="ri-empty">No research questions detected. Reference titles/abstracts may be minimal — try adding abstract text.</div>';
+    return;
+  }
+  const typePal = {
+    descriptive:'#bee3f8', explanatory:'#c6f6d5', predictive:'#feebc8',
+    causal:'#e9d8fd', comparative:'#fed7d7',
+  };
+  el.innerHTML = qs.map(q => `
+    <div class="ri-pat-item">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.3rem;gap:.5rem">
+        <span style="background:${typePal[q.question_type]||'#e2e8f0'};color:#2d3748;padding:.1rem .45rem;border-radius:9999px;font-size:.7rem;font-weight:700;text-transform:uppercase;flex-shrink:0">${q.question_type}</span>
+        <span style="font-size:.7rem;color:#718096">Sig: ${(q.significance_score*100).toFixed(0)}% · Clarity: ${(q.clarity_score*100).toFixed(0)}%</span>
+      </div>
+      <div style="font-size:.88rem;color:#2d3748;line-height:1.55;margin-bottom:.3rem">${q.question_text}</div>
+      ${q.related_concepts?.length ? `<div class="ri-kw-cloud">${q.related_concepts.map(c=>`<span class="ri-kw-tag">${c}</span>`).join('')}</div>` : ''}
+    </div>`).join('');
+}
+
+// ── NLP: Methodology Analysis ────────────────────────────────────────────────
+async function loadMethodologyAnalysis() {
+  try {
+    const d = await fetch(API('methodology-analysis')).then(r => r.json());
+    const ov = document.getElementById('methods-overview');
+    const el = document.getElementById('methods-list');
+    if (!d.success) {
+      ov.innerHTML = `<div class="ri-empty">${d.error||'No data'}</div>`;
+      return;
+    }
+    const catDist = d.category_distribution || {};
+    const entries = Object.entries(catDist).sort((a,b)=>b[1]-a[1]);
+    ov.innerHTML = entries.length ? `
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem">
+        ${entries.slice(0,8).map(([cat,n])=>`
+          <div style="background:#f7fafc;border-radius:.5rem;padding:.4rem .7rem;border:1px solid #e2e8f0">
+            <div style="font-size:.7rem;text-transform:uppercase;color:#718096">${cat}</div>
+            <div style="font-size:.95rem;font-weight:700;color:#6b46c1">${n}</div>
+          </div>`).join('')}
+      </div>
+      <div style="font-size:.78rem;color:#718096">${d.methodology_diversity||0} distinct categories · ${d.total_references||0} total references</div>`
+      : '<div class="ri-empty">No methodology signals detected in references.</div>';
+    const profiles = (d.methodology_profiles||[]).filter(p => p.detected_methods?.length > 0).slice(0, 25);
+    el.innerHTML = profiles.length ? profiles.map(p => `
+      <div class="ri-pat-item">
+        <div style="display:flex;justify-content:space-between;margin-bottom:.25rem">
+          <strong style="font-size:.85rem;color:#2d3748">${p.methodology_category}</strong>
+          <span style="font-size:.7rem;color:#718096">conf: ${((p.confidence||0)*100).toFixed(0)}%</span>
+        </div>
+        <div style="font-size:.78rem;color:#553c9a;margin-bottom:.2rem">Design: ${p.experimental_design||'—'}</div>
+        ${p.statistical_methods?.length ? `<div style="font-size:.75rem;color:#718096">Stats: ${p.statistical_methods.join(', ')}</div>` : ''}
+        ${p.detected_methods?.length ? `<div class="ri-kw-cloud">${p.detected_methods.map(m=>`<span class="ri-kw-tag">${m.category}</span>`).join('')}</div>` : ''}
+      </div>`).join('')
+      : '<div class="ri-empty" style="padding:1rem">No methodology profiles with detected methods.</div>';
+  } catch(e) {
+    document.getElementById('methods-overview').innerHTML =
+      '<div class="ri-empty">Failed to load methodology analysis.</div>';
+  }
+}
+
+// ── NLP: Topic Modeling ──────────────────────────────────────────────────────
+async function loadTopics() {
+  const n = parseInt(document.getElementById('topicsN')?.value || 5);
+  const el = document.getElementById('topics-content');
+  el.innerHTML = '<div class="ri-spinner">Modelling topics…</div>';
+  try {
+    const d = await fetch(`${API('topics')}?n=${n}`).then(r => r.json());
+    if (!d.success) {
+      el.innerHTML = `<div class="ri-empty">${d.error||'Topic modeling failed'}</div>`;
+      return;
+    }
+    const pal = ['#6b46c1','#3182ce','#38a169','#dd6b20','#e53e3e','#319795','#d69e2e','#805ad5','#e83e8c','#2b6cb0'];
+    el.innerHTML = (d.topics||[]).map((t, i) => `
+      <div class="ri-pat-item">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+          <span style="font-size:.9rem;font-weight:700;color:#2d3748">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pal[i%pal.length]};margin-right:.4rem;vertical-align:middle"></span>
+            ${t.topic_label}
+          </span>
+          <span style="font-size:.72rem;color:#718096">${t.size} document${t.size!==1?'s':''}</span>
+        </div>
+        <div class="ri-kw-cloud">${(t.top_words||[]).slice(0,8).map(w=>`<span class="ri-kw-tag">${w}</span>`).join('')}</div>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Failed to perform topic modeling.</div>';
+  }
+}
+function rerunTopics() {
+  loaded['topics'] = false;
+  loadTopics();
 }
 
 document.getElementById('netDashLink').href =
