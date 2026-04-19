@@ -89,7 +89,12 @@
 
   <!-- ── Results panel ─────────────────────────────────────────────────────── -->
   <section class="card mt-1" id="resultsPanel" style="display:none">
-    <h2 class="card-title" id="resultsTitle">{{ _('Results') }}</h2>
+    <div class="card-header-row">
+      <h2 class="card-title" id="resultsTitle">{{ _('Results') }}</h2>
+      <button class="btn btn--secondary btn--sm"
+              onclick="document.getElementById('resultsPanel').style.display='none'"
+              title="{{ _('Close results') }}">&#10005; {{ _('Close') }}</button>
+    </div>
     <div id="resultsBody"></div>
   </section>
 
@@ -227,10 +232,22 @@ window.startAIDiscovery = async function () {
     if (d.success) {
       let rows = '';
       (d.discoveries || []).slice(0, 30).forEach(p => {
+        let idCell;
+        if (p.doi) {
+          idCell = '<a href="https://doi.org/' + esc(p.doi) + '" target="_blank" ' +
+            'style="color:#007bff;text-decoration:none;border-bottom:1px dotted #007bff" ' +
+            'title="Open DOI">' + esc(p.doi) + '</a>';
+        } else if (p.pmid) {
+          idCell = '<a href="https://pubmed.ncbi.nlm.nih.gov/' + esc(p.pmid) + '/" target="_blank" ' +
+            'style="color:#007bff;text-decoration:none;border-bottom:1px dotted #007bff" ' +
+            'title="Open PubMed">PMID:' + esc(p.pmid) + '</a>';
+        } else {
+          idCell = '—';
+        }
         rows += '<tr><td>' + esc(p.title || '') + '</td><td>' + esc(String(p.year || '')) + '</td>' +
           '<td>' + esc(p.journal || '') + '</td>' +
           '<td><span class="badge badge--reader">' + Math.round((p.confidence_score || 0) * 100) + '%</span></td>' +
-          '<td>' + esc((p.doi ? p.doi : (p.pmid ? 'PMID:' + p.pmid : '—'))) + '</td></tr>';
+          '<td>' + idCell + '</td></tr>';
       });
       showResults('AI Discovery Results',
         '<div class="db-stats-grid">' +
@@ -325,4 +342,5 @@ function errList(errors) {
 }
 })();
 </script>
+<script src="{{ url_for('static', filename='js/lab_publication_fixes.js') }}"></script>
 {% endblock %}
