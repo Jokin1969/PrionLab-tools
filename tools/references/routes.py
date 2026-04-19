@@ -668,3 +668,76 @@ def matchmaking_network(manuscript_id):
     refs = get_references(manuscript_id, "", 0, 0, "")
     svc = get_matchmaking_service()
     return jsonify(svc.analyze_network(refs))
+
+
+# ── Research Assistance (P24D2) ───────────────────────────────────────────────
+
+@references_bp.route("/assistance/analyze-proposal", methods=["POST"])
+@login_required
+def assistance_analyze_proposal():
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"success": False, "error": "text required"}), 400
+    from .research_assistance import get_research_assistance_service
+    svc = get_research_assistance_service()
+    return jsonify(svc.analyze_proposal(text, data.get("title", ""), data.get("research_area", "")))
+
+
+@references_bp.route("/assistance/find-grants", methods=["POST"])
+@login_required
+def assistance_find_grants():
+    data = request.get_json(silent=True) or {}
+    areas = data.get("research_areas") or []
+    career_stage = data.get("career_stage", "mid")
+    limit = int(data.get("limit") or 10)
+    from .research_assistance import get_research_assistance_service
+    svc = get_research_assistance_service()
+    return jsonify(svc.find_grants(areas, career_stage, limit))
+
+
+@references_bp.route("/assistance/recommend-methodology", methods=["POST"])
+@login_required
+def assistance_recommend_methodology():
+    data = request.get_json(silent=True) or {}
+    question = (data.get("research_question") or "").strip()
+    if not question:
+        return jsonify({"success": False, "error": "research_question required"}), 400
+    from .research_assistance import get_research_assistance_service
+    svc = get_research_assistance_service()
+    return jsonify(svc.recommend_methodology(
+        question, data.get("objectives"), data.get("resources")
+    ))
+
+
+@references_bp.route("/assistance/analyze-writing", methods=["POST"])
+@login_required
+def assistance_analyze_writing():
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"success": False, "error": "text required"}), 400
+    from .research_assistance import get_research_assistance_service
+    svc = get_research_assistance_service()
+    return jsonify(svc.analyze_writing(text, data.get("document_type", "proposal")))
+
+
+@references_bp.route("/manuscript/<manuscript_id>/assistance-dashboard")
+@login_required
+def assistance_dashboard(manuscript_id):
+    """Quick assistance overview using manuscript reference corpus."""
+    from .research_assistance import get_research_assistance_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    areas = list({r.get("research_area") for r in refs if r.get("research_area")})
+    svc = get_research_assistance_service()
+    grants = svc.find_grants(areas or ["all"], limit=5)
+    return jsonify({
+        "success": True,
+        "manuscript_id": manuscript_id,
+        "detected_areas": areas,
+        "grant_opportunities": grants.get("opportunities", []),
+        "tool_list": [
+            "Proposal Analysis", "Grant Matching",
+            "Methodology Recommendation", "Writing Feedback"
+        ],
+    })

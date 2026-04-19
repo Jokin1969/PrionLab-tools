@@ -102,6 +102,7 @@
     <button class="ri-tab" data-tab="predictions">&#128302; Predictions</button>
     <button class="ri-tab" data-tab="strategy">&#127919; Strategy</button>
     <button class="ri-tab" data-tab="matchmaking">&#129309; Matchmaking</button>
+    <button class="ri-tab" data-tab="assistance">&#128196; Assistance</button>
   </nav>
 
   <!-- RECOMMENDATIONS -->
@@ -530,6 +531,71 @@
       <div id="match-network-result"><div class="ri-spinner">Loading network…</div></div>
     </div>
   </div>
+
+  <!-- ASSISTANCE (P24D2) -->
+  <div class="ri-section" id="tab-assistance">
+    <!-- Proposal Analyser -->
+    <div class="ri-card">
+      <div class="ri-card-title">Proposal Analyser
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Structure · Content · Methodology · Impact</span>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+        <input type="text" id="propTitle" class="ms-filter-search" style="flex:1;min-width:200px" placeholder="Proposal title (optional)">
+        <input type="text" id="propArea" class="ms-filter-search" style="width:160px" placeholder="Research area">
+      </div>
+      <textarea id="propText" class="form-input" rows="6"
+        style="width:100%;font-size:.82rem;resize:vertical;margin-bottom:.5rem"
+        placeholder="Paste your research proposal text here…"></textarea>
+      <button class="ri-btn ri-btn-sm" onclick="runProposalAnalysis()">&#128202; Analyse Proposal</button>
+      <div id="assist-proposal-result" style="margin-top:.75rem"></div>
+    </div>
+    <!-- Grant Finder -->
+    <div class="ri-card">
+      <div class="ri-card-title">Grant Opportunity Finder
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">18 real funding programmes</span>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem">
+        <input type="text" id="grantAreas" class="ms-filter-search" style="flex:1;min-width:220px"
+               placeholder="Research areas (comma-separated, e.g. neuroscience, biology)">
+        <select id="grantStage" class="ms-filter-select" style="width:140px">
+          <option value="early">Early career</option>
+          <option value="mid" selected>Mid career</option>
+          <option value="senior">Senior</option>
+        </select>
+        <button class="ri-btn ri-btn-sm" onclick="runGrantSearch()">&#128270; Find Grants</button>
+      </div>
+      <div id="assist-grants-result"></div>
+    </div>
+    <!-- Methodology Recommender -->
+    <div class="ri-card">
+      <div class="ri-card-title">Methodology Recommender</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem">
+        <input type="text" id="methQuestion" class="ms-filter-search" style="flex:1;min-width:300px"
+               placeholder="Your research question, e.g. What is the effect of X on Y?"
+               onkeydown="if(event.key==='Enter')runMethodRec()">
+        <button class="ri-btn ri-btn-sm" onclick="runMethodRec()">&#9881; Recommend</button>
+      </div>
+      <div id="assist-method-result"></div>
+    </div>
+    <!-- Writing Feedback -->
+    <div class="ri-card">
+      <div class="ri-card-title">Writing Feedback
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Clarity · Passive voice · Missing elements</span>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem">
+        <select id="writingDocType" class="ms-filter-select" style="width:160px">
+          <option value="proposal">Proposal</option>
+          <option value="abstract">Abstract</option>
+          <option value="paper">Paper section</option>
+        </select>
+        <button class="ri-btn ri-btn-sm" onclick="runWritingFeedback()">&#9997; Analyse Writing</button>
+      </div>
+      <textarea id="writingText" class="form-input" rows="5"
+        style="width:100%;font-size:.82rem;resize:vertical;margin-bottom:.5rem"
+        placeholder="Paste your text here…"></textarea>
+      <div id="assist-writing-result"></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -577,6 +643,7 @@ function loadTab(name) {
   else if (name === 'predictions') { loadIntelligence(); loadPredTrends(); }
   else if (name === 'strategy') { loadStrategy(); }
   else if (name === 'matchmaking') { loadMatchmaking(); }
+  else if (name === 'assistance') { loadAssistanceDashboard(); }
 }
 
 // ── Recommendations ──────────────────────────────────────────────────────────
@@ -2053,6 +2120,192 @@ async function loadMatchNetwork() {
   } catch(e) {
     el.innerHTML = '<div class="ri-empty">Network analysis failed.</div>';
   }
+}
+
+// ── Research Assistance (P24D2) ───────────────────────────────────────────────
+const ASSIST_API = '/api/references/assistance';
+
+async function loadAssistanceDashboard() {
+  try {
+    const d = await fetch(API('assistance-dashboard')).then(r => r.json());
+    if (d.detected_areas?.length) {
+      document.getElementById('grantAreas').value = d.detected_areas.join(', ');
+    }
+    if (d.grant_opportunities?.length) {
+      renderGrants(d.grant_opportunities);
+    }
+  } catch(e) {}
+}
+
+async function runProposalAnalysis() {
+  const text = document.getElementById('propText').value.trim();
+  const el = document.getElementById('assist-proposal-result');
+  if (!text) { el.innerHTML = '<div class="ri-empty">Paste proposal text above first.</div>'; return; }
+  el.innerHTML = '<div class="ri-spinner">Analysing proposal…</div>';
+  try {
+    const d = await fetch(`${ASSIST_API}/analyze-proposal`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text,
+        title: document.getElementById('propTitle').value.trim(),
+        research_area: document.getElementById('propArea').value.trim(),
+      }),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error}</div>`; return; }
+    const a = d.analysis;
+    const pct = v => Math.round((v||0)*100);
+    const scoreColor = a.analysis_score >= 0.7 ? '#276749' : a.analysis_score >= 0.45 ? '#744210' : '#9b2c2c';
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+        <div style="text-align:center">
+          <div style="font-size:2rem;font-weight:800;color:${scoreColor}">${pct(a.analysis_score)}%</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">Structure score</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:.4rem;flex:1">
+          ${Object.entries(a.structure||{}).map(([sec,v])=>`
+            <div style="background:#f7fafc;border-radius:.4rem;padding:.4rem;text-align:center">
+              <div style="font-size:.85rem;font-weight:700;color:#6b46c1">${pct(v.balance_score)}%</div>
+              <div style="font-size:.6rem;color:#718096;text-transform:uppercase">${sec}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      ${a.missing_sections?.length ? `<div style="padding:.5rem .75rem;background:#fed7d7;border-radius:.45rem;font-size:.8rem;color:#9b2c2c;margin-bottom:.6rem">&#9888; Missing sections: ${a.missing_sections.join(', ')}</div>` : ''}
+      ${_renderSuggList('Content recommendations', a.content_recommendations, '#3182ce')}
+      ${_renderSuggList('Methodology suggestions', a.methodology_suggestions, '#553c9a')}
+      ${_renderSuggList('Impact suggestions', a.impact_suggestions, '#276749')}
+      <div style="font-size:.72rem;color:#718096;margin-top:.5rem">${a.word_count} words · Improvement potential: ${pct(a.improvement_potential)}%</div>`;
+  } catch(e) { el.innerHTML = '<div class="ri-empty">Analysis failed.</div>'; }
+}
+
+function _renderSuggList(label, items, color) {
+  if (!items?.length) return '';
+  return `<div style="margin-bottom:.6rem">
+    <div style="font-size:.78rem;font-weight:700;color:${color};margin-bottom:.3rem">${label}</div>
+    <ul style="margin:0;padding-left:1.2rem;font-size:.8rem;color:#4a5568">
+      ${items.map(s=>`<li style="margin-bottom:.15rem">${s}</li>`).join('')}
+    </ul></div>`;
+}
+
+async function runGrantSearch() {
+  const areasRaw = document.getElementById('grantAreas').value.trim();
+  const el = document.getElementById('assist-grants-result');
+  if (!areasRaw) { el.innerHTML = '<div class="ri-empty">Enter research areas first.</div>'; return; }
+  const areas = areasRaw.split(',').map(a => a.trim()).filter(Boolean);
+  const stage = document.getElementById('grantStage').value;
+  el.innerHTML = '<div class="ri-spinner">Searching grants…</div>';
+  try {
+    const d = await fetch(`${ASSIST_API}/find-grants`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({research_areas: areas, career_stage: stage, limit: 12}),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error}</div>`; return; }
+    renderGrants(d.opportunities);
+  } catch(e) { el.innerHTML = '<div class="ri-empty">Grant search failed.</div>'; }
+}
+
+function renderGrants(opps) {
+  const el = document.getElementById('assist-grants-result');
+  if (!opps?.length) { el.innerHTML = '<div class="ri-empty">No matching grants found.</div>'; return; }
+  const compColor = {low:'#276749',medium:'#744210',high:'#9b2c2c'};
+  const compBg    = {low:'#c6f6d5',medium:'#feebc8',high:'#fed7d7'};
+  el.innerHTML = `<div style="font-size:.78rem;color:#718096;margin-bottom:.5rem">${opps.length} grant${opps.length!==1?'s':''} found</div>` +
+    opps.map(g => `
+      <div class="ri-rec-item" style="margin-bottom:.6rem">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem;flex-wrap:wrap">
+          <div>
+            <div style="font-size:.85rem;font-weight:700;color:#2d3748">${g.title}</div>
+            <div style="font-size:.75rem;color:#718096">${g.agency} · Deadline: <strong>${g.deadline_str}</strong></div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:1rem;font-weight:800;color:#6b46c1">${Math.round((g.match_score||0)*100)}%</div>
+            <span style="background:${compBg[g.competition]||'#e2e8f0'};color:${compColor[g.competition]||'#718096'};font-size:.65rem;font-weight:700;padding:.1rem .35rem;border-radius:9999px">${g.competition}</span>
+          </div>
+        </div>
+        <div class="ri-score-bar" style="margin:.3rem 0"><div class="ri-score-fill" style="width:${Math.round((g.match_score||0)*100)}%"></div></div>
+        <div style="font-size:.75rem;color:#4a5568;margin-bottom:.25rem">${g.rationale}</div>
+        <div style="font-size:.72rem;color:#718096">
+          £/€ ${(g.min_amount/1000).toFixed(0)}k–${(g.max_amount/1000).toFixed(0)}k ·
+          Success est. ${Math.round((g.success_probability||0)*100)}% ·
+          ${g.requirements?.slice(0,2).join(' · ')||''}
+        </div>
+      </div>`).join('');
+}
+
+async function runMethodRec() {
+  const question = document.getElementById('methQuestion').value.trim();
+  const el = document.getElementById('assist-method-result');
+  if (!question) { el.innerHTML = '<div class="ri-empty">Enter a research question first.</div>'; return; }
+  el.innerHTML = '<div class="ri-spinner">Generating recommendation…</div>';
+  try {
+    const d = await fetch(`${ASSIST_API}/recommend-methodology`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({research_question: question}),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error}</div>`; return; }
+    const r = d.recommendation;
+    const typeColor = {quantitative:'#2a4365',qualitative:'#276749',mixed:'#553c9a'};
+    const typeBg    = {quantitative:'#bee3f8',qualitative:'#c6f6d5',mixed:'#e9d8fd'};
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem">
+        <span style="background:${typeBg[r.methodology_type]||'#e2e8f0'};color:${typeColor[r.methodology_type]||'#718096'};font-size:.8rem;font-weight:700;padding:.25rem .65rem;border-radius:9999px;text-transform:capitalize">${r.methodology_type}</span>
+        <span style="font-size:.85rem;color:#2d3748">${r.recommended_approach}</span>
+        <span style="font-size:.75rem;color:#718096;margin-left:auto">~${r.timeline_months} months</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.75rem">
+        ${[
+          ['Specific methods', r.specific_methods],
+          ['Statistical plan', r.statistical_plan],
+          ['Data collection',  r.data_collection],
+          ['Validation',       r.validation_methods],
+          ['Resources needed', r.resources_needed],
+        ].map(([label,items])=>`
+          <div style="background:#f7fafc;border-radius:.5rem;padding:.75rem;border:1px solid #e2e8f0">
+            <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.35rem">${label}</div>
+            <ul style="margin:0;padding-left:1rem;font-size:.75rem;color:#4a5568">
+              ${(items||[]).map(i=>`<li style="margin-bottom:.15rem">${i}</li>`).join('')}
+            </ul>
+          </div>`).join('')}
+        <div style="background:#f7fafc;border-radius:.5rem;padding:.75rem;border:1px solid #e2e8f0">
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.35rem">Experimental design</div>
+          ${Object.entries(r.experimental_design||{}).map(([k,v])=>`
+            <div style="font-size:.72rem;margin-bottom:.2rem"><strong>${k.replace(/_/g,' ')}</strong>: ${v}</div>`).join('')}
+        </div>
+      </div>`;
+  } catch(e) { el.innerHTML = '<div class="ri-empty">Recommendation failed.</div>'; }
+}
+
+async function runWritingFeedback() {
+  const text = document.getElementById('writingText').value.trim();
+  const el = document.getElementById('assist-writing-result');
+  if (!text) { el.innerHTML = '<div class="ri-empty">Paste text above first.</div>'; return; }
+  el.innerHTML = '<div class="ri-spinner">Analysing writing…</div>';
+  try {
+    const d = await fetch(`${ASSIST_API}/analyze-writing`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, document_type: document.getElementById('writingDocType').value}),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error}</div>`; return; }
+    const f = d.feedback;
+    const cColor = f.clarity_score >= 0.7 ? '#276749' : f.clarity_score >= 0.45 ? '#744210' : '#9b2c2c';
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.6rem;margin-bottom:1rem">
+        ${[
+          ['Words',          f.word_count,                    '#2d3748'],
+          ['Sentences',      f.sentence_count,                '#2d3748'],
+          ['Avg length',     f.avg_sentence_length + ' w',    '#dd6b20'],
+          ['Clarity',        Math.round((f.clarity_score||0)*100)+'%', cColor],
+          ['Passive voice',  Math.round((f.passive_voice_ratio||0)*100)+'%', f.passive_voice_ratio>0.4?'#9b2c2c':'#718096'],
+        ].map(([l,v,c])=>`<div style="background:#f7fafc;border-radius:.5rem;padding:.6rem;text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:${c}">${v}</div>
+          <div style="font-size:.65rem;color:#718096;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+      </div>
+      ${f.strengths?.length ? `<div style="margin-bottom:.6rem"><div style="font-size:.78rem;font-weight:700;color:#276749;margin-bottom:.25rem">&#10003; Strengths</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem">${f.strengths.map(s=>`<span style="background:#c6f6d5;color:#276749;padding:.15rem .45rem;border-radius:9999px;font-size:.72rem;font-weight:600">${s}</span>`).join('')}</div></div>` : ''}
+      ${_renderSuggList('Suggestions', f.suggestions, '#744210')}
+      ${f.missing_elements?.length ? `<div><div style="font-size:.78rem;font-weight:700;color:#9b2c2c;margin-bottom:.25rem">Missing elements</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem">${f.missing_elements.map(e=>`<span style="background:#fed7d7;color:#9b2c2c;padding:.15rem .45rem;border-radius:9999px;font-size:.72rem">${e}</span>`).join('')}</div></div>` : ''}`;
+  } catch(e) { el.innerHTML = '<div class="ri-empty">Writing analysis failed.</div>'; }
 }
 
 // Initial load
