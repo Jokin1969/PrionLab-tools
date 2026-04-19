@@ -480,3 +480,60 @@ def institution_mapping():
         return jsonify({"success": False, "error": "name parameter required"}), 400
     svc = get_profile_integration_service()
     return jsonify(svc.get_institution(name))
+
+
+# ── Predictive analytics endpoints ────────────────────────────────────────────
+
+@references_bp.route("/manuscript/<manuscript_id>/predict-success", methods=["POST"])
+@login_required
+def predict_success(manuscript_id):
+    """Predict publication success probability for a target journal."""
+    from .predictive_analytics import get_predictive_service
+    data = request.get_json(silent=True) or {}
+    target_journal = (data.get("target_journal") or "").strip()
+    if not target_journal:
+        return jsonify({"success": False, "error": "target_journal required"}), 400
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    ms_data = {
+        "manuscript_id": manuscript_id,
+        "abstract": data.get("abstract", ""),
+        "references": refs,
+        "authors": data.get("authors", []),
+        "keywords": data.get("keywords", []),
+        "research_area": data.get("research_area", ""),
+    }
+    svc = get_predictive_service()
+    return jsonify({"success": True, **svc.predict_success(ms_data, target_journal)})
+
+
+@references_bp.route("/<reference_id>/citation-forecast")
+@login_required
+def citation_forecast(reference_id):
+    """Forecast citation impact for a reference."""
+    from .predictive_analytics import get_predictive_service
+    from .service import _load_store
+    months = request.args.get("months", 24, type=int)
+    corpus = _load_store()
+    svc = get_predictive_service()
+    return jsonify({"success": True, **svc.forecast_citations(reference_id, corpus, months)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/trends")
+@login_required
+def manuscript_trends(manuscript_id):
+    """Analyse research trends from a manuscript's reference corpus."""
+    from .predictive_analytics import get_predictive_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_predictive_service()
+    trends = svc.analyze_trends(refs)
+    return jsonify({"success": True, "trends": trends, "count": len(trends)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/intelligence")
+@login_required
+def manuscript_intelligence(manuscript_id):
+    """Comprehensive predictive intelligence for a manuscript."""
+    from .predictive_analytics import get_predictive_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_predictive_service()
+    return jsonify(svc.manuscript_intelligence(manuscript_id, refs))
