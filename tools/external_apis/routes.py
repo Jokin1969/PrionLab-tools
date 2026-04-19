@@ -36,8 +36,25 @@ def api_health():
             "api_key_configured": bool(os.getenv("PUBMED_API_KEY")),
         },
         "orcid": {"status": "available", "base_url": "https://pub.orcid.org/v3.0"},
+        "scopus": {
+            "status": "available" if os.getenv("SCOPUS_API_KEY") else "not_configured",
+            "base_url": "https://api.elsevier.com",
+            "api_key_configured": bool(os.getenv("SCOPUS_API_KEY")),
+        },
+        "scholar": {
+            "status": "available" if os.getenv("SERPAPI_KEY") else "not_configured",
+            "base_url": "https://serpapi.com",
+            "api_key_configured": bool(os.getenv("SERPAPI_KEY")),
+        },
     }
-    return jsonify({"success": True, "apis": apis, "overall_status": "available"})
+    configured_count = sum(1 for a in apis.values() if a["status"] == "available")
+    return jsonify({
+        "success": True,
+        "apis": apis,
+        "overall_status": "available",
+        "apis_configured": configured_count,
+        "apis_total": len(apis),
+    })
 
 
 # ── ORCID ─────────────────────────────────────────────────────────────────────
@@ -458,3 +475,223 @@ def test_apis():
 
     overall = all(r.get("success", False) for r in results.values())
     return jsonify({"success": overall, "api_tests": results})
+
+
+# ── Scopus ────────────────────────────────────────────────────────────────────
+
+@external_api_bp.route("/scopus/author/<author_id>")
+@login_required
+def scopus_author_metrics(author_id):
+    """Get Scopus author citation metrics (H-index, citation count, etc.)."""
+    from .scopus_client import get_scopus_client
+
+    client = get_scopus_client()
+
+    async def _fetch():
+        async with client:
+            return await client.get_author_metrics(author_id)
+
+    try:
+        resp = _run(_fetch())
+        return jsonify({"success": resp.success, "data": resp.data,
+                        "source": "scopus", "cached": resp.cached,
+                        "error": resp.error})
+    except Exception as exc:
+        logger.error("Scopus author error: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/scopus/journal/<issn>")
+@login_required
+def scopus_journal_metrics(issn):
+    """Get Scopus journal metrics (SJR, CiteScore, quartile) by ISSN."""
+    from .scopus_client import get_scopus_client
+
+    client = get_scopus_client()
+
+    async def _fetch():
+        async with client:
+            return await client.get_journal_metrics(issn)
+
+    try:
+        resp = _run(_fetch())
+        return jsonify({"success": resp.success, "data": resp.data,
+                        "source": "scopus", "cached": resp.cached,
+                        "error": resp.error})
+    except Exception as exc:
+        logger.error("Scopus journal error: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/scopus/abstract/<path:doi>")
+@login_required
+def scopus_abstract(doi):
+    """Get abstract and citation count for a DOI from Scopus."""
+    from .scopus_client import get_scopus_client
+
+    client = get_scopus_client()
+
+    async def _fetch():
+        async with client:
+            return await client.get_abstract_by_doi(doi)
+
+    try:
+        resp = _run(_fetch())
+        return jsonify({"success": resp.success, "data": resp.data,
+                        "source": "scopus", "cached": resp.cached,
+                        "error": resp.error})
+    except Exception as exc:
+        logger.error("Scopus abstract error: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ── Google Scholar ────────────────────────────────────────────────────────────
+
+@external_api_bp.route("/scholar/author/<scholar_id>")
+@login_required
+def scholar_author_profile(scholar_id):
+    """Get Google Scholar author profile metrics."""
+    from .scholar_client import get_scholar_client
+
+    client = get_scholar_client()
+
+    async def _fetch():
+        async with client:
+            return await client.get_author_profile(scholar_id)
+
+    try:
+        resp = _run(_fetch())
+        return jsonify({"success": resp.success, "data": resp.data,
+                        "source": "scholar", "cached": resp.cached,
+                        "error": resp.error})
+    except Exception as exc:
+        logger.error("Scholar author error: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/scholar/search", methods=["POST"])
+@login_required
+def scholar_search():
+    """Search Google Scholar publications."""
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+    limit = min(int(data.get("limit", 20)), 100)
+
+    if not query:
+        return jsonify({"success": False, "error": "query required"}), 400
+
+    from .scholar_client import get_scholar_client
+    client = get_scholar_client()
+
+    async def _fetch():
+        async with client:
+            return await client.search_publications(query, limit)
+
+    try:
+        resp = _run(_fetch())
+        return jsonify({"success": resp.success, "data": resp.data,
+                        "source": "scholar", "cached": resp.cached,
+                        "error": resp.error})
+    except Exception as exc:
+        logger.error("Scholar search error: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ── Journal Metrics Aggregator ────────────────────────────────────────────────
+
+@external_api_bp.route("/journal-metrics/<issn>")
+@login_required
+def journal_metrics(issn):
+    """
+    Get aggregated journal metrics from all available sources:
+    Scopus (SJR, CiteScore), CrossRef (publisher, works count),
+    Scholar (h5-index).
+    Optional query param: journal_name (helps Scholar lookup).
+    """
+    journal_name = request.args.get("name", "")
+    from .journal_metrics import run_journal_metrics_sync
+    try:
+        result = run_journal_metrics_sync(issn, journal_name)
+        return jsonify({"success": True, "data": result})
+    except Exception as exc:
+        logger.error("Journal metrics error: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@external_api_bp.route("/journal-metrics/bulk", methods=["POST"])
+@login_required
+def journal_metrics_bulk():
+    """
+    Get aggregated metrics for multiple journals.
+    Body: {"journals": [{"issn": "...", "name": "..."}, ...]}
+    Max 20 journals per request.
+    """
+    data = request.get_json(silent=True) or {}
+    journals = data.get("journals", [])[:20]
+
+    if not journals:
+        return jsonify({"success": False, "error": "journals list required"}), 400
+
+    from .journal_metrics import run_bulk_journal_metrics_sync
+    try:
+        results = run_bulk_journal_metrics_sync(journals)
+        return jsonify({"success": True, "data": results, "count": len(results)})
+    except Exception as exc:
+        logger.error("Bulk journal metrics error: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ── API Analytics (powers the admin API dashboard) ────────────────────────────
+
+@external_api_bp.route("/analytics")
+@login_required
+def api_analytics():
+    """
+    Return real API usage analytics for the admin dashboard.
+    Aggregates stats from all registered clients.
+    """
+    from .crossref_client import get_crossref_client
+    from .orcid_client import get_orcid_client
+    from .pubmed_client import get_pubmed_client
+    from .scopus_client import get_scopus_client
+    from .scholar_client import get_scholar_client
+    import os
+
+    clients = {
+        "crossref": get_crossref_client(),
+        "orcid": get_orcid_client(),
+        "pubmed": get_pubmed_client(),
+        "scopus": get_scopus_client(),
+        "scholar": get_scholar_client(),
+    }
+
+    total_requests = sum(getattr(c, "request_count", 0) for c in clients.values())
+    total_errors = sum(getattr(c, "error_count", 0) for c in clients.values())
+    success_rate = round(
+        (1 - total_errors / max(total_requests, 1)) * 100, 1
+    )
+
+    apis_status = {}
+    for name, client in clients.items():
+        req = getattr(client, "request_count", 0)
+        err = getattr(client, "error_count", 0)
+        configured = getattr(client, "configured", True)  # free APIs always configured
+        apis_status[name] = {
+            "requests": req,
+            "errors": err,
+            "success_rate": round((1 - err / max(req, 1)) * 100, 1) if req else 100,
+            "configured": configured,
+            "status": "available" if configured else "not_configured",
+        }
+
+    return jsonify({
+        "success": True,
+        "summary": {
+            "total_requests": total_requests,
+            "total_errors": total_errors,
+            "success_rate": success_rate,
+            "apis_configured": sum(1 for a in apis_status.values() if a["configured"]),
+            "apis_total": len(apis_status),
+        },
+        "per_api": apis_status,
+    })

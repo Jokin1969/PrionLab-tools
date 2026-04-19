@@ -110,6 +110,146 @@
   </section>
   {% endif %}
 
+  <!-- ── Live monitor ─────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <div class="card-header-row">
+      <h2 class="card-title">&#128308; {{ _('Live Monitor') }}</h2>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <span id="liveStatus" class="text-sm text-muted">{{ _('Idle') }}</span>
+        <button class="btn btn--secondary btn--sm" id="liveToggle" onclick="toggleLive()">&#9654; {{ _('Start') }}</button>
+        <button class="btn btn--secondary btn--sm" onclick="refreshOnce()">&#8635; {{ _('Refresh') }}</button>
+      </div>
+    </div>
+    <div class="db-stats-grid" id="liveStats">
+      <div class="db-stat"><span class="db-stat__label">{{ _('DB Size') }}</span><strong id="live-size">—</strong></div>
+      <div class="db-stat"><span class="db-stat__label">{{ _('Connections') }}</span><strong id="live-conns">—</strong></div>
+      <div class="db-stat"><span class="db-stat__label">{{ _('Pool Out') }}</span><strong id="live-pool">—</strong></div>
+      <div class="db-stat"><span class="db-stat__label">{{ _('Tables') }}</span><strong id="live-tables">—</strong></div>
+    </div>
+    <div class="table-wrapper mt-1">
+      <table class="data-table" id="liveTableStats">
+        <thead>
+          <tr>
+            <th>{{ _('Table') }}</th>
+            <th>{{ _('Rows') }}</th>
+            <th>{{ _('Size') }}</th>
+            <th>{{ _('Last Vacuum') }}</th>
+            <th>{{ _('Last Analyze') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="5" style="text-align:center;color:#666">{{ _('Click Refresh to load') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Index analysis ────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <h2 class="card-title">&#128202; {{ _('Index Usage') }}</h2>
+    <div class="table-wrapper">
+      <table class="data-table" id="indexTable">
+        <thead>
+          <tr>
+            <th>{{ _('Table') }}</th>
+            <th>{{ _('Index') }}</th>
+            <th>{{ _('Scans') }}</th>
+            <th>{{ _('Tuples Read') }}</th>
+            <th>{{ _('Size') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="5" style="text-align:center;color:#666">{{ _('Click Refresh to load') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <p><a href="{{ url_for('admin.index') }}" class="btn btn--secondary btn--sm">&#8592; {{ _('Back to Admin') }}</a></p>
 </div>
+
+<script>
+(function () {
+'use strict';
+var _liveInterval = null;
+
+function toggleLive() {
+  var btn = document.getElementById('liveToggle');
+  var status = document.getElementById('liveStatus');
+  if (_liveInterval) {
+    clearInterval(_liveInterval);
+    _liveInterval = null;
+    btn.textContent = '▶ {{ _("Start") }}';
+    status.textContent = '{{ _("Idle") }}';
+  } else {
+    refreshOnce();
+    _liveInterval = setInterval(refreshOnce, 10000);
+    btn.textContent = '⏹ {{ _("Stop") }}';
+    status.textContent = '{{ _("Updating every 10 s") }}';
+  }
+}
+window.toggleLive = toggleLive;
+
+async function refreshOnce() {
+  try {
+    const [hRes, tRes] = await Promise.all([
+      fetch('{{ url_for("admin.api_db_health") }}').then(r => r.json()),
+      fetch('{{ url_for("admin.api_db_tables") }}').then(r => r.json()),
+    ]);
+    if (hRes.success && hRes.health) {
+      var h = hRes.health;
+      document.getElementById('live-size').textContent = h.db_size || '—';
+      document.getElementById('live-conns').textContent = h.active_connections !== undefined ? h.active_connections : '—';
+      document.getElementById('live-pool').textContent = h.pool_checked_out !== undefined ? h.pool_checked_out : '—';
+    }
+    if (tRes.success) {
+      var tables = tRes.tables || [];
+      document.getElementById('live-tables').textContent = tables.length;
+      var tbody = document.querySelector('#liveTableStats tbody');
+      tbody.innerHTML = '';
+      if (!tables.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666">No tables</td></tr>';
+      } else {
+        tables.forEach(function (t) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td><code>' + esc(t.table) + '</code></td>' +
+            '<td>' + (t.rows || 0).toLocaleString() + '</td>' +
+            '<td>' + esc(t.size || '—') + '</td>' +
+            '<td>' + esc(t.last_vacuum || '—') + '</td>' +
+            '<td>' + esc(t.last_analyze || '—') + '</td>';
+          tbody.appendChild(tr);
+        });
+      }
+      var indexes = tRes.indexes || [];
+      var itbody = document.querySelector('#indexTable tbody');
+      itbody.innerHTML = '';
+      if (!indexes.length) {
+        itbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666">No index data</td></tr>';
+      } else {
+        indexes.forEach(function (ix) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td><code>' + esc(ix.table) + '</code></td>' +
+            '<td><code>' + esc(ix.index) + '</code></td>' +
+            '<td>' + (ix.scans || 0).toLocaleString() + '</td>' +
+            '<td>' + (ix.tuples_read || 0).toLocaleString() + '</td>' +
+            '<td>' + esc(ix.size || '—') + '</td>';
+          itbody.appendChild(tr);
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Live monitor error:', e.message);
+  }
+}
+window.refreshOnce = refreshOnce;
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.addEventListener('DOMContentLoaded', refreshOnce);
+})();
+</script>
 {% endblock %}
