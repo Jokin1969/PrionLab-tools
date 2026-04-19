@@ -537,3 +537,70 @@ def manuscript_intelligence(manuscript_id):
     refs = get_references(manuscript_id, "", 0, 0, "")
     svc = get_predictive_service()
     return jsonify(svc.manuscript_intelligence(manuscript_id, refs))
+
+
+# ── Strategic analytics endpoints ─────────────────────────────────────────────
+
+@references_bp.route("/manuscript/<manuscript_id>/strategic-dashboard")
+@login_required
+def strategic_dashboard(manuscript_id):
+    """Combined strategic metrics dashboard."""
+    from .strategic_analytics import get_strategic_analytics_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_strategic_analytics_service()
+    return jsonify(svc.dashboard(manuscript_id, refs))
+
+
+@references_bp.route("/manuscript/<manuscript_id>/roi-analysis")
+@login_required
+def roi_analysis(manuscript_id):
+    """Research ROI proxy analysis from reference corpus."""
+    from .strategic_analytics import get_strategic_analytics_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_strategic_analytics_service()
+    return jsonify({"success": True, **svc.roi_analysis(manuscript_id, refs)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/collaboration-analysis")
+@login_required
+def collaboration_analysis(manuscript_id):
+    """Collaboration effectiveness analysis from author co-occurrence."""
+    from .strategic_analytics import get_strategic_analytics_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_strategic_analytics_service()
+    return jsonify({"success": True, **svc.collaboration_analysis(manuscript_id, refs)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/portfolio-analysis")
+@login_required
+def portfolio_analysis(manuscript_id):
+    """Journal and topic portfolio diversity analysis."""
+    from .strategic_analytics import get_strategic_analytics_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_strategic_analytics_service()
+    return jsonify({"success": True, **svc.portfolio_analysis(manuscript_id, refs)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/strategic-plan")
+@login_required
+def strategic_plan(manuscript_id):
+    """Forward-looking strategic research plan."""
+    from .strategic_analytics import get_strategic_analytics_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    horizon = request.args.get("months", 24, type=int)
+    svc = get_strategic_analytics_service()
+    return jsonify({"success": True, **svc.strategic_plan(manuscript_id, refs, horizon)})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/competitive-analysis")
+@login_required
+def competitive_analysis(manuscript_id):
+    """Competitive landscape analysis for a research area."""
+    from .strategic_analytics import get_strategic_analytics_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    area = request.args.get("area", "")
+    if not area:
+        areas = [r.get("research_area") for r in refs if r.get("research_area")]
+        area = Counter(areas).most_common(1)[0][0] if areas else "general"
+    svc = get_strategic_analytics_service()
+    return jsonify({"success": True, **svc.competitive_analysis(area, refs)})

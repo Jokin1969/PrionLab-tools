@@ -100,6 +100,7 @@
     <button class="ri-tab" data-tab="extdb">&#127760; External DB</button>
     <button class="ri-tab" data-tab="profiles">&#128100; Profiles</button>
     <button class="ri-tab" data-tab="predictions">&#128302; Predictions</button>
+    <button class="ri-tab" data-tab="strategy">&#127919; Strategy</button>
   </nav>
 
   <!-- RECOMMENDATIONS -->
@@ -421,6 +422,56 @@
       <div id="pred-trends"><div class="ri-spinner">Loading trends…</div></div>
     </div>
   </div>
+
+  <!-- STRATEGY -->
+  <div class="ri-section" id="tab-strategy">
+    <!-- Dashboard KPIs -->
+    <div class="ri-card">
+      <div class="ri-card-title">Strategic Dashboard
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">ROI · Diversity · Velocity · Risk</span>
+        <button class="ri-btn ri-btn-sm" style="float:right;margin-top:-.2rem" onclick="reloadStrategy()">&#8635; Refresh</button>
+      </div>
+      <div id="strategy-kpis"><div class="ri-spinner">Analysing corpus…</div></div>
+    </div>
+    <!-- ROI Analysis -->
+    <div class="ri-card">
+      <div class="ri-card-title">Research ROI Analysis
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Impact Factor weighting · Quartile scoring · Collaboration breadth</span>
+      </div>
+      <div id="strategy-roi"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <!-- Portfolio Analysis -->
+    <div class="ri-card">
+      <div class="ri-card-title">Portfolio Optimisation
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Journal diversity · Topic diversity · Risk profile</span>
+      </div>
+      <div id="strategy-portfolio"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <!-- Collaboration effectiveness -->
+    <div class="ri-card">
+      <div class="ri-card-title">Collaboration Effectiveness</div>
+      <div id="strategy-collab"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <!-- Strategic Plan -->
+    <div class="ri-card">
+      <div class="ri-card-title">Strategic Research Plan
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Directions · Milestones · Resource allocation</span>
+      </div>
+      <div id="strategy-plan"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <!-- Competitive Analysis -->
+    <div class="ri-card">
+      <div class="ri-card-title">Competitive Intelligence
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Top journals · Research velocity · White-space topics</span>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem">
+        <input type="text" id="stratArea" class="ms-filter-search" style="flex:1;min-width:180px"
+               placeholder="Research area (auto-detected if blank)">
+        <button class="ri-btn ri-btn-sm" onclick="loadCompetitiveAnalysis()">&#128270; Analyse</button>
+      </div>
+      <div id="strategy-competitive"><div class="ri-empty">Enter a research area above or leave blank to auto-detect.</div></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -466,6 +517,7 @@ function loadTab(name) {
   else if (name === 'extdb') loadExtDb();
   else if (name === 'profiles') { loadProfilesList(); }
   else if (name === 'predictions') { loadIntelligence(); loadPredTrends(); }
+  else if (name === 'strategy') { loadStrategy(); }
 }
 
 // ── Recommendations ──────────────────────────────────────────────────────────
@@ -1428,6 +1480,270 @@ async function loadPredTrends() {
 
 document.getElementById('netDashLink').href =
   `/manuscripts/${MS_ID}/references/network-dashboard`;
+
+// ── Strategic Analytics ───────────────────────────────────────────────────────
+async function loadStrategy() {
+  await Promise.all([
+    loadStrategicDashboard(),
+    loadROIAnalysis(),
+    loadPortfolioAnalysis(),
+    loadCollabAnalysis(),
+    loadStrategicPlan(),
+  ]);
+}
+
+function reloadStrategy() {
+  loaded['strategy'] = false;
+  ['strategy-kpis','strategy-roi','strategy-portfolio','strategy-collab','strategy-plan'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="ri-spinner">Refreshing…</div>';
+  });
+  loadStrategy();
+}
+
+async function loadStrategicDashboard() {
+  const el = document.getElementById('strategy-kpis');
+  try {
+    const d = await fetch(API('strategic-dashboard')).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error||'No data.'}</div>`; return; }
+    const riskColor = {low:'#276749',medium:'#744210',high:'#9b2c2c'};
+    const riskBg    = {low:'#c6f6d5',medium:'#feebc8',high:'#fed7d7'};
+    const risk = d.portfolio_risk || 'medium';
+    const pct = v => Math.round((v||0)*100);
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.75rem;margin-bottom:1rem">
+        ${[
+          ['ROI Index',        (d.roi_index||0).toFixed(2),           '#6b46c1'],
+          ['Journal Diversity',(pct(d.journal_diversity_score))+'%',  '#3182ce'],
+          ['Topic Diversity',  (pct(d.topic_diversity_score))+'%',    '#38a169'],
+          ['References',       d.reference_count||0,                  '#2d3748'],
+          ['Research Areas',   d.area_count||0,                       '#2d3748'],
+        ].map(([l,v,c])=>`<div style="background:#f7fafc;border-radius:.6rem;padding:.85rem;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+          <div style="font-size:1.5rem;font-weight:800;color:${c}">${v}</div>
+          <div style="font-size:.7rem;color:#718096;text-transform:uppercase;margin-top:.2rem">${l}</div>
+        </div>`).join('')}
+        <div style="background:${riskBg[risk]||'#e2e8f0'};border-radius:.6rem;padding:.85rem;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+          <div style="font-size:1.5rem;font-weight:800;color:${riskColor[risk]||'#718096'}">${risk}</div>
+          <div style="font-size:.7rem;color:#718096;text-transform:uppercase;margin-top:.2rem">Portfolio Risk</div>
+        </div>
+      </div>
+      ${d.top_research_area ? `<div style="font-size:.82rem;color:#4a5568"><strong>Top area:</strong> ${d.top_research_area}</div>` : ''}
+      ${d.warning ? `<div style="margin-top:.6rem;padding:.5rem .75rem;background:#feebc8;border-radius:.45rem;font-size:.8rem;color:#744210">&#9888; ${d.warning}</div>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Dashboard unavailable.</div>';
+  }
+}
+
+async function loadROIAnalysis() {
+  const el = document.getElementById('strategy-roi');
+  try {
+    const d = await fetch(API('roi-analysis')).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error||'No ROI data.'}</div>`; return; }
+    const r = d.roi_analysis || {};
+    const pct = v => Math.round((v||0)*100);
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem;margin-bottom:1rem">
+        ${[
+          ['Composite ROI', (r.composite_roi||0).toFixed(3), '#6b46c1'],
+          ['IF Score',      (r.impact_factor_score||0).toFixed(3), '#3182ce'],
+          ['Quartile Score',(r.quartile_score||0).toFixed(3), '#38a169'],
+          ['Hi-Impact %',   pct(r.high_impact_ratio)+'%', '#dd6b20'],
+          ['Collab Breadth',(r.collaboration_breadth||0).toFixed(3), '#319795'],
+          ['Avg IF',        (r.avg_impact_factor||0).toFixed(2), '#d69e2e'],
+        ].map(([l,v,c])=>`<div style="background:#f7fafc;border-radius:.5rem;padding:.7rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:${c}">${v}</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;font-size:.78rem;color:#718096">
+        <span>Analysed <strong>${r.total_references||0}</strong> references</span>
+        ${r.q1_count!==undefined?`<span>· Q1: <strong>${r.q1_count}</strong></span><span>Q2: <strong>${r.q2_count||0}</strong></span><span>Q3+: <strong>${(r.q3_count||0)+(r.q4_count||0)}</strong></span>`:''}
+      </div>
+      ${d.recommendations?.length ? `
+        <div style="margin-top:.75rem">
+          <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.4rem">Recommendations</div>
+          <ul style="margin:0;padding-left:1.2rem;font-size:.82rem;color:#4a5568">
+            ${d.recommendations.map(s=>`<li style="margin-bottom:.25rem">${s}</li>`).join('')}
+          </ul>
+        </div>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">ROI analysis unavailable.</div>';
+  }
+}
+
+async function loadPortfolioAnalysis() {
+  const el = document.getElementById('strategy-portfolio');
+  try {
+    const d = await fetch(API('portfolio-analysis')).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error||'No portfolio data.'}</div>`; return; }
+    const p = d.portfolio_analysis || {};
+    const dist = p.impact_distribution || {};
+    const riskColor = {low:'#276749',medium:'#744210',high:'#9b2c2c'};
+    const riskBg    = {low:'#c6f6d5',medium:'#feebc8',high:'#fed7d7'};
+    const risk = p.portfolio_risk || 'medium';
+    const pct = v => Math.round((v||0)*100);
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.75rem;margin-bottom:1rem">
+        <div style="background:#f7fafc;border-radius:.5rem;padding:.7rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:#3182ce">${pct(p.journal_diversity_score)}%</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">Journal diversity</div>
+        </div>
+        <div style="background:#f7fafc;border-radius:.5rem;padding:.7rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:#38a169">${pct(p.topic_diversity_score)}%</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">Topic diversity</div>
+        </div>
+        <div style="background:${riskBg[risk]};border-radius:.5rem;padding:.7rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:${riskColor[risk]}">${risk}</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">Risk</div>
+        </div>
+        <div style="background:#f7fafc;border-radius:.5rem;padding:.7rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:#6b46c1">${p.unique_journals||0}</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">Journals</div>
+        </div>
+        <div style="background:#f7fafc;border-radius:.5rem;padding:.7rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:#805ad5">${p.unique_topics||0}</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">Topics</div>
+        </div>
+      </div>
+      ${Object.keys(dist).length ? `
+        <div style="margin-bottom:.75rem">
+          <div style="font-size:.8rem;font-weight:700;color:#2d3748;margin-bottom:.4rem">Impact distribution</div>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+            ${['Q1','Q2','Q3','Q4','Unknown'].map(q=>`
+              <span style="background:#e9d8fd;color:#553c9a;padding:.2rem .55rem;border-radius:9999px;font-size:.75rem;font-weight:700">${q}: ${dist[q]||0}</span>
+            `).join('')}
+          </div>
+        </div>` : ''}
+      ${p.over_concentrated_journals?.length ? `
+        <div style="padding:.5rem .75rem;background:#feebc8;border-radius:.45rem;font-size:.8rem;color:#744210;margin-bottom:.5rem">
+          &#9888; Over-concentrated in: ${p.over_concentrated_journals.join(', ')}
+        </div>` : ''}
+      ${d.recommendations?.length ? `
+        <ul style="margin:0;padding-left:1.2rem;font-size:.82rem;color:#4a5568">
+          ${d.recommendations.map(s=>`<li style="margin-bottom:.25rem">${s}</li>`).join('')}
+        </ul>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Portfolio analysis unavailable.</div>';
+  }
+}
+
+async function loadCollabAnalysis() {
+  const el = document.getElementById('strategy-collab');
+  try {
+    const d = await fetch(API('collaboration-analysis')).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error||'No collaboration data.'}</div>`; return; }
+    const c = d.collaboration_analysis || {};
+    const pct = v => Math.round((v||0)*100);
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem;margin-bottom:1rem">
+        ${[
+          ['Diversity Score',   pct(c.collaboration_diversity_score)+'%', '#6b46c1'],
+          ['Cross-institution', pct(c.cross_institutional_ratio)+'%',     '#3182ce'],
+          ['Avg co-authors',    (c.avg_collaborators||0).toFixed(1),       '#38a169'],
+          ['Top pair papers',   c.most_productive_pair_count||0,           '#dd6b20'],
+        ].map(([l,v,col])=>`<div style="background:#f7fafc;border-radius:.5rem;padding:.7rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:${col}">${v}</div>
+          <div style="font-size:.68rem;color:#718096;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+      </div>
+      ${c.most_productive_pair ? `<div style="font-size:.82rem;color:#4a5568;margin-bottom:.5rem"><strong>Most productive pair:</strong> ${c.most_productive_pair}</div>` : ''}
+      ${c.top_collaborators?.length ? `
+        <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.4rem">Top collaborators</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+          ${c.top_collaborators.map(a=>`<span class="ri-kw-tag">${a}</span>`).join('')}
+        </div>` : ''}
+      ${d.recommendations?.length ? `
+        <ul style="margin:.75rem 0 0;padding-left:1.2rem;font-size:.82rem;color:#4a5568">
+          ${d.recommendations.map(s=>`<li style="margin-bottom:.25rem">${s}</li>`).join('')}
+        </ul>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Collaboration analysis unavailable.</div>';
+  }
+}
+
+async function loadStrategicPlan() {
+  const el = document.getElementById('strategy-plan');
+  try {
+    const d = await fetch(API('strategic-plan')).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error||'No plan data.'}</div>`; return; }
+    const p = d.strategic_plan || {};
+    const alloc = p.resource_allocation || {};
+    const phaseColor = {emerging:'#553c9a',growing:'#276749',mature:'#744210',declining:'#9b2c2c'};
+    const phaseBg    = {emerging:'#e9d8fd',growing:'#c6f6d5',mature:'#feebc8',declining:'#fed7d7'};
+    el.innerHTML = `
+      ${p.research_directions?.length ? `
+        <div style="margin-bottom:1rem">
+          <div style="font-size:.85rem;font-weight:700;color:#2d3748;margin-bottom:.5rem">Research Directions</div>
+          ${p.research_directions.map(dir=>`
+            <div class="ri-pat-item" style="margin-bottom:.5rem">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;margin-bottom:.25rem">
+                <div style="font-size:.88rem;font-weight:700;color:#2d3748">${dir.topic}</div>
+                <span style="background:${phaseBg[dir.phase]||'#e2e8f0'};color:${phaseColor[dir.phase]||'#718096'};font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:9999px;white-space:nowrap">${dir.phase}</span>
+              </div>
+              <div style="font-size:.78rem;color:#718096">${dir.rationale}</div>
+            </div>`).join('')}
+        </div>` : ''}
+      ${p.milestones?.length ? `
+        <div style="margin-bottom:1rem">
+          <div style="font-size:.85rem;font-weight:700;color:#2d3748;margin-bottom:.5rem">Milestones (12-month)</div>
+          <ol style="margin:0;padding-left:1.25rem;font-size:.83rem;color:#4a5568">
+            ${p.milestones.map(m=>`<li style="margin-bottom:.35rem">${m}</li>`).join('')}
+          </ol>
+        </div>` : ''}
+      ${Object.keys(alloc).length ? `
+        <div>
+          <div style="font-size:.85rem;font-weight:700;color:#2d3748;margin-bottom:.5rem">Resource allocation</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            ${Object.entries(alloc).map(([k,v])=>`<span style="background:#e9d8fd;color:#553c9a;padding:.2rem .55rem;border-radius:9999px;font-size:.76rem;font-weight:700">${k}: ${v}%</span>`).join('')}
+          </div>
+        </div>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Strategic plan unavailable.</div>';
+  }
+}
+
+async function loadCompetitiveAnalysis() {
+  const area = document.getElementById('stratArea').value.trim();
+  const el = document.getElementById('strategy-competitive');
+  el.innerHTML = '<div class="ri-spinner">Analysing competitive landscape…</div>';
+  try {
+    const url = API('competitive-analysis') + (area ? `?area=${encodeURIComponent(area)}` : '');
+    const d = await fetch(url).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error||'No data.'}</div>`; return; }
+    const c = d.competitive_analysis || {};
+    const posColor = {leading:'#276749',active:'#3182ce',emerging:'#553c9a',niche:'#744210'};
+    const posBg    = {leading:'#c6f6d5',active:'#bee3f8',emerging:'#e9d8fd',niche:'#feebc8'};
+    const pos = c.competitive_position || 'active';
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem">
+        <span style="font-size:.88rem;font-weight:700;color:#2d3748">Area: ${c.research_area||'—'}</span>
+        <span style="background:${posBg[pos]||'#e2e8f0'};color:${posColor[pos]||'#718096'};padding:.2rem .6rem;border-radius:9999px;font-size:.76rem;font-weight:700;text-transform:capitalize">${pos}</span>
+        <span style="font-size:.78rem;color:#718096">Velocity: <strong>${((c.research_velocity||0)*100).toFixed(1)}%</strong> YoY</span>
+        <span style="font-size:.78rem;color:#718096">Field size: <strong>${c.field_size_estimate||0}</strong> refs</span>
+      </div>
+      ${c.top_journals?.length ? `
+        <div style="margin-bottom:.85rem">
+          <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.4rem">Top journals in field</div>
+          <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+            ${c.top_journals.map(j=>`<span class="ri-kw-tag">${j.journal} <em style="opacity:.65">${j.count}</em></span>`).join('')}
+          </div>
+        </div>` : ''}
+      ${c.white_space_topics?.length ? `
+        <div style="margin-bottom:.85rem">
+          <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.4rem">White-space opportunities</div>
+          <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+            ${c.white_space_topics.map(t=>`<span style="background:#c6f6d5;color:#276749;padding:.2rem .55rem;border-radius:9999px;font-size:.75rem;font-weight:600">${t}</span>`).join('')}
+          </div>
+        </div>` : ''}
+      ${d.strategic_recommendations?.length ? `
+        <div style="font-size:.82rem;font-weight:700;color:#2d3748;margin-bottom:.4rem">Recommendations</div>
+        <ul style="margin:0;padding-left:1.2rem;font-size:.82rem;color:#4a5568">
+          ${d.strategic_recommendations.map(s=>`<li style="margin-bottom:.25rem">${s}</li>`).join('')}
+        </ul>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Competitive analysis failed.</div>';
+  }
+}
 
 // Initial load
 loadTab('recommendations');
