@@ -213,6 +213,17 @@ def create_app() -> Flask:
     from tools.analytics import analytics_bp
     app.register_blueprint(analytics_bp)
 
+    from tools.help import help_bp
+    app.register_blueprint(help_bp)
+
+    try:
+        import database.help_system  # noqa: F401 — registers models with Base.metadata
+        from database.config import db as _db
+        if _db.is_configured():
+            _db.create_all_tables()
+    except Exception as e:
+        app.logger.debug("Help system DB tables skipped: %s", e)
+
     # Start background scheduler (cleanup + cloud backup placeholder)
     try:
         from tools.export.models import init_scheduler

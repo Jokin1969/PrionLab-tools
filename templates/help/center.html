@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Help Center') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="help-center-page">
+
+  <!-- Hero -->
+  <div class="hc-hero">
+    <div class="hc-hero-inner">
+      <div class="hc-hero-icon">&#10067;</div>
+      <h1>{{ _('Help Center') }}</h1>
+      <p>{{ _('Find answers, learn features, and master PrionLab Tools') }}</p>
+      <div class="hc-search-wrap">
+        <form class="hc-search-form" action="{{ url_for('help.center') }}" method="get">
+          <svg class="hc-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input
+            type="text"
+            name="q"
+            class="hc-search-input"
+            placeholder="{{ _('Search help articles, tutorials, features…') }}"
+            value="{{ search_query or '' }}"
+            autocomplete="off"
+            id="hc-main-search"
+          >
+          {% if search_query %}
+          <a href="{{ url_for('help.center') }}" class="hc-search-clear" title="{{ _('Clear') }}">&#10005;</a>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search results -->
+  {% if search_query %}
+  <div class="hc-section">
+    <h2>{{ _('Search results for') }} "<em>{{ search_query }}</em>"</h2>
+    {% if search_results %}
+    <div class="hc-articles-grid">
+      {% for art in search_results %}
+      <div class="hc-article-card" data-slug="{{ art.slug }}">
+        <div class="hc-article-cat">
+          <span>{{ art.category.icon if art.category else '📄' }}</span>
+          {{ art.category.name if art.category else '' }}
+        </div>
+        <h3 class="hc-article-title">{{ art.title }}</h3>
+        <p class="hc-article-excerpt">{{ art.excerpt }}</p>
+        {% if art.snippet %}
+        <p class="hc-article-snippet">"…{{ art.snippet }}…"</p>
+        {% endif %}
+        <div class="hc-article-meta">
+          <span class="hc-badge hc-badge--{{ art.difficulty }}">{{ _(art.difficulty) }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="hc-empty">
+      <div class="hc-empty-icon">&#128269;</div>
+      <p>{{ _('No results found for') }} "{{ search_query }}".</p>
+      <p class="hc-empty-hint">{{ _('Try different keywords or browse by category below.') }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Featured Articles -->
+  {% if not search_query %}
+  <div class="hc-section">
+    <div class="hc-section-head">
+      <h2>&#11088; {{ _('Featured Articles') }}</h2>
+    </div>
+    <div class="hc-articles-grid">
+      {% for art in featured_articles %}
+      <div class="hc-article-card" data-slug="{{ art.slug }}">
+        <div class="hc-article-cat">
+          <span>{{ art.category.icon if art.category else '📄' }}</span>
+          {{ art.category.name if art.category else '' }}
+        </div>
+        <h3 class="hc-article-title">{{ art.title }}</h3>
+        <p class="hc-article-excerpt">{{ art.excerpt }}</p>
+        <div class="hc-article-meta">
+          <span class="hc-badge hc-badge--{{ art.difficulty }}">{{ _(art.difficulty) }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Browse by Category -->
+  <div class="hc-section">
+    <div class="hc-section-head">
+      <h2>&#128218; {{ _('Browse by Category') }}</h2>
+    </div>
+    <div class="hc-categories-grid">
+      {% for cat in categories %}
+      <a href="{{ url_for('help.center') }}?category={{ cat.id }}" class="hc-cat-card">
+        <div class="hc-cat-icon">{{ cat.icon }}</div>
+        <div class="hc-cat-body">
+          <h3>{{ cat.name }}</h3>
+          <p>{{ cat.description }}</p>
+        </div>
+        <div class="hc-cat-count">{{ cat.article_count }} {{ _('articles') }}</div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Tutorials CTA -->
+  <div class="hc-section">
+    <div class="hc-tutorials-cta">
+      <div class="hc-cta-icon">&#127891;</div>
+      <div class="hc-cta-body">
+        <h2>{{ _('Interactive Tutorials') }}</h2>
+        <p>{{ _('Guided step-by-step tours to master PrionLab Tools at your own pace') }}</p>
+      </div>
+      <button class="hc-cta-btn" onclick="window.HelpSystem && HelpSystem.open('tutorials')">
+        {{ _('Start Learning') }} &#8594;
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<style>
+/* Help Center Page Styles */
+.help-center-page { max-width: 960px; margin: 0 auto; padding-bottom: 3rem; }
+
+.hc-hero {
+  text-align: center;
+  padding: 3rem 1rem 2rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0fdfa 100%);
+  border-radius: 12px;
+  margin-bottom: 2rem;
+}
+.hc-hero-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+.hc-hero h1 { font-size: 1.75rem; font-weight: 700; color: #111827; margin: 0 0 0.5rem; }
+.hc-hero p { color: #6b7280; margin: 0 0 1.5rem; font-size: 1rem; }
+
+.hc-search-wrap { max-width: 560px; margin: 0 auto; }
+.hc-search-form {
+  display: flex; align-items: center;
+  background: #fff; border: 1.5px solid #e5e7eb;
+  border-radius: 10px; padding: 0 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transition: border-color .15s, box-shadow .15s;
+}
+.hc-search-form:focus-within { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+.hc-search-icon { color: #9ca3af; flex-shrink: 0; }
+.hc-search-input {
+  flex: 1; border: none; outline: none; padding: .75rem .5rem;
+  font-size: .95rem; background: transparent; color: #111827;
+}
+.hc-search-clear {
+  color: #9ca3af; text-decoration: none; font-size: .85rem;
+  padding: .25rem; border-radius: 4px;
+}
+.hc-search-clear:hover { color: #374151; background: #f3f4f6; }
+
+.hc-section { margin-bottom: 2.5rem; }
+.hc-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.hc-section h2 { font-size: 1.1rem; font-weight: 600; color: #111827; margin: 0 0 1rem; }
+
+.hc-articles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+.hc-article-card {
+  border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .1s;
+  background: #fff;
+}
+.hc-article-card:hover { border-color: #2563eb; box-shadow: 0 4px 12px rgba(37,99,235,.1); transform: translateY(-2px); }
+.hc-article-cat { font-size: .72rem; color: #6b7280; margin-bottom: .4rem; display: flex; align-items: center; gap: .3rem; }
+.hc-article-title { font-size: .9rem; font-weight: 600; color: #111827; margin: 0 0 .4rem; line-height: 1.35; }
+.hc-article-excerpt { font-size: .8rem; color: #6b7280; margin: 0 0 .6rem; line-height: 1.4; }
+.hc-article-snippet { font-size: .78rem; color: #374151; background: #fffbeb; border-left: 3px solid #f59e0b; padding: .3rem .5rem; border-radius: 0 4px 4px 0; margin: 0 0 .6rem; }
+.hc-article-meta { display: flex; gap: .4rem; flex-wrap: wrap; }
+.hc-badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: .68rem; font-weight: 500; }
+.hc-badge--beginner { background: #d1fae5; color: #065f46; }
+.hc-badge--intermediate { background: #fef3c7; color: #92400e; }
+.hc-badge--advanced { background: #fee2e2; color: #991b1b; }
+
+.hc-categories-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+.hc-cat-card {
+  display: flex; flex-direction: column; gap: .5rem;
+  border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem;
+  text-decoration: none; color: inherit;
+  transition: border-color .15s, background .15s;
+}
+.hc-cat-card:hover { border-color: #2563eb; background: #eff6ff; }
+.hc-cat-icon { font-size: 1.75rem; }
+.hc-cat-body h3 { font-size: .88rem; font-weight: 600; color: #111827; margin: 0 0 .2rem; }
+.hc-cat-body p { font-size: .76rem; color: #6b7280; margin: 0; line-height: 1.35; }
+.hc-cat-count { font-size: .72rem; color: #9ca3af; margin-top: auto; }
+
+.hc-tutorials-cta {
+  display: flex; align-items: center; gap: 1.25rem;
+  background: linear-gradient(135deg, #2563eb, #0891b2);
+  border-radius: 12px; padding: 1.5rem;
+  color: #fff;
+}
+.hc-cta-icon { font-size: 2.5rem; flex-shrink: 0; }
+.hc-cta-body { flex: 1; }
+.hc-cta-body h2 { font-size: 1.1rem; font-weight: 700; margin: 0 0 .3rem; color: #fff; }
+.hc-cta-body p { font-size: .84rem; opacity: .9; margin: 0; }
+.hc-cta-btn {
+  flex-shrink: 0; background: rgba(255,255,255,.2); color: #fff;
+  border: 1.5px solid rgba(255,255,255,.5); border-radius: 7px;
+  padding: .5rem 1.1rem; font-size: .84rem; font-weight: 600;
+  cursor: pointer; transition: background .15s;
+  white-space: nowrap;
+}
+.hc-cta-btn:hover { background: rgba(255,255,255,.3); }
+
+.hc-empty { text-align: center; padding: 3rem 1rem; color: #6b7280; }
+.hc-empty-icon { font-size: 2.5rem; margin-bottom: .75rem; }
+.hc-empty-hint { font-size: .84rem; }
+
+@media (max-width: 600px) {
+  .hc-hero { padding: 2rem 1rem 1.5rem; }
+  .hc-tutorials-cta { flex-direction: column; text-align: center; }
+}
+</style>
+
+<script>
+// Wire up article card clicks → open help panel
+document.querySelectorAll('.hc-article-card[data-slug]').forEach(function(card) {
+  card.addEventListener('click', function() {
+    var slug = card.dataset.slug;
+    if (window.HelpSystem) {
+      HelpSystem.open('contextual');
+      HelpSystem.showArticle(slug);
+    }
+  });
+});
+</script>
+{% endblock %}
