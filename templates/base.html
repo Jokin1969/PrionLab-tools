@@ -6,67 +6,287 @@
   <title>{% block title %}PrionLab Tools{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/enhanced_navbar.css') }}" />
 </head>
 <body>
   <header class="site-header">
-    <div class="container header-inner">
+    <div class="nb-container">
 
-      <a href="{{ url_for('home') }}" class="site-title">PrionLab Tools</a>
+      <!-- Brand -->
+      <a href="{{ url_for('home') }}" class="nb-brand">
+        <div class="nb-brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/>
+          </svg>
+        </div>
+        <div class="nb-brand-text">
+          <span class="nb-brand-primary">PrionLab</span>
+          <span class="nb-brand-secondary">Tools</span>
+        </div>
+      </a>
 
-      <nav class="site-nav">
-        {% if session.get('logged_in') %}
-          <a href="{{ url_for('manuscript_dashboard_page') }}" class="nav-link">&#128218; {{ _('Dashboard') }}</a>
-          <a href="{{ url_for('manuscriptforge.home') }}" class="nav-link">ManuscriptForge</a>
-          <a href="{{ url_for('methods.index') }}" class="nav-link">{{ _('Methods Library') }}</a>
-          <a href="{{ url_for('introduction.generator') }}" class="nav-link">{{ _('Introduction') }}</a>
-          <a href="{{ url_for('export.composer') }}" class="nav-link">{{ _('Export') }}</a>
-          <a href="{{ url_for('ai_assistant.dashboard') }}" class="nav-link">&#129302; {{ _('AI Assistant') }}</a>
-          <a href="{{ url_for('analytics_page') }}" class="nav-link">&#128202; {{ _('Analytics') }}</a>
-          <a href="{{ url_for('lab_integration_page') }}" class="nav-link">&#129710; {{ _('Lab Import') }}</a>
-          <details class="nav-dropdown">
-            <summary class="nav-link nav-dropdown__toggle">{{ _('Research') }} &#9660;</summary>
-            <div class="nav-dropdown__menu">
-              <a href="{{ url_for('research.library') }}" class="nav-dropdown__item">&#128218; {{ _('Publications Library') }}</a>
-              <a href="{{ url_for('research.analytics_page') }}" class="nav-dropdown__item">&#128202; {{ _('Research Analytics') }}</a>
-              <button class="nav-dropdown__item open-citation-modal" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:.5rem 1rem;font-size:.9rem">&#128196; {{ _('Citation Manager') }}</button>
-            </div>
-          </details>
-        {% endif %}
+      {% if session.get('logged_in') %}
+      <!-- Main nav -->
+      <nav class="nb-nav" aria-label="{{ _('Main navigation') }}">
+
+        <!-- Dashboard (direct link) -->
+        <a href="{{ url_for('manuscript_dashboard_page') }}" class="nb-link">
+          <svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <span class="nb-label">{{ _('Dashboard') }}</span>
+        </a>
+
+        <!-- Research Hub dropdown -->
+        <div class="nb-dropdown">
+          <button class="nb-link" aria-haspopup="true" aria-expanded="false">
+            <svg width="16" height="16" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            <span class="nb-label">{{ _('Research Hub') }}</span>
+            <svg class="nb-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nb-menu" role="menu">
+            <div class="nb-menu-section-label">{{ _('Writing') }}</div>
+            <a href="{{ url_for('manuscriptforge.home') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#9997;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">ManuscriptForge</span>
+                <span class="nb-item-desc">{{ _('Draft and structure your manuscript') }}</span>
+              </span>
+            </a>
+            <a href="{{ url_for('introduction.generator') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128195;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('Introduction') }}</span>
+                <span class="nb-item-desc">{{ _('AI-assisted introduction builder') }}</span>
+              </span>
+            </a>
+            <a href="{{ url_for('export.composer') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128228;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('Export') }}</span>
+                <span class="nb-item-desc">{{ _('Export to journal formats') }}</span>
+              </span>
+            </a>
+            <div class="nb-menu-divider"></div>
+            <div class="nb-menu-section-label">{{ _('References') }}</div>
+            <a href="{{ url_for('research.library') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128218;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('Publications Library') }}</span>
+                <span class="nb-item-desc">{{ _('Browse and manage references') }}</span>
+              </span>
+            </a>
+            <button class="nb-item open-citation-modal" role="menuitem">
+              <span class="nb-item-icon">&#128196;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('Citation Manager') }}</span>
+                <span class="nb-item-desc">{{ _('Insert and format citations') }}</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Methods link -->
+        <a href="{{ url_for('methods.index') }}" class="nb-link">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/><path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/><path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/></svg>
+          <span class="nb-label">{{ _('Methods') }}</span>
+        </a>
+
+        <!-- AI & Analytics dropdown -->
+        <div class="nb-dropdown">
+          <button class="nb-link" aria-haspopup="true" aria-expanded="false">
+            <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+            <span class="nb-label">{{ _('Intelligence') }}</span>
+            <svg class="nb-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nb-menu" role="menu">
+            <div class="nb-menu-section-label">{{ _('AI Tools') }}</div>
+            <a href="{{ url_for('ai_assistant.dashboard') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#129302;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('AI Assistant') }}</span>
+                <span class="nb-item-desc">{{ _('Intelligent writing and analysis') }}</span>
+              </span>
+            </a>
+            <div class="nb-menu-divider"></div>
+            <div class="nb-menu-section-label">{{ _('Analytics') }}</div>
+            <a href="{{ url_for('analytics_page') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128202;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('Analytics') }}</span>
+                <span class="nb-item-desc">{{ _('Manuscript and workflow metrics') }}</span>
+              </span>
+            </a>
+            <a href="{{ url_for('research.analytics_page') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128200;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('Research Analytics') }}</span>
+                <span class="nb-item-desc">{{ _('Citation and impact analysis') }}</span>
+              </span>
+            </a>
+            <a href="{{ url_for('lab_integration_page') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#129710;</span>
+              <span class="nb-item-body">
+                <span class="nb-item-title">{{ _('Lab Import') }}</span>
+                <span class="nb-item-desc">{{ _('Import data from lab instruments') }}</span>
+              </span>
+            </a>
+          </div>
+        </div>
+
       </nav>
+      {% endif %}
 
-      <div class="header-right">
+      <!-- Right area -->
+      <div class="nb-right">
+
         <!-- Language flags -->
-        <div class="lang-switcher">
-          <a href="{{ lang_url('es') }}" class="flag-link {% if current_locale == 'es' %}active{% endif %}" title="Español">
+        <div class="nb-flags">
+          <a href="{{ lang_url('es') }}" class="nb-flag {% if current_locale == 'es' %}nb-active{% endif %}" title="Español">
             <img src="{{ url_for('static', filename='img/flags/es.png') }}" alt="ES" onerror="this.replaceWith(document.createTextNode('ES'))" />
           </a>
-          <a href="{{ lang_url('en') }}" class="flag-link {% if current_locale == 'en' %}active{% endif %}" title="English">
+          <a href="{{ lang_url('en') }}" class="nb-flag {% if current_locale == 'en' %}nb-active{% endif %}" title="English">
             <img src="{{ url_for('static', filename='img/flags/en.png') }}" alt="EN" onerror="this.replaceWith(document.createTextNode('EN'))" />
           </a>
         </div>
 
-        <!-- User menu -->
+        <!-- User dropdown -->
         {% if session.get('logged_in') %}
-          <details class="user-menu">
-            <summary class="user-menu__toggle">{{ session.get('full_name', session.get('username', '')) }}</summary>
-            <div class="user-menu__dropdown">
-              <a href="{{ url_for('auth.profile') }}" class="user-menu__item">&#128100; {{ _('My Profile') }}</a>
-              <a href="{{ url_for('userprofile.lab_dashboard') }}" class="user-menu__item">&#127981; {{ _('My Lab') }}</a>
-              {% if session.get('role') == 'admin' %}
-                <a href="{{ url_for('admin.index') }}" class="user-menu__item">&#9881; {{ _('Admin') }}</a>
-                <a href="{{ url_for('admin.database_dashboard') }}" class="user-menu__item">&#128202; {{ _('Database') }}</a>
-                <a href="{{ url_for('admin.api_dashboard') }}" class="user-menu__item">&#127760; {{ _('API Dashboard') }}</a>
-              {% endif %}
-              <hr class="user-menu__divider" />
-              <a href="{{ url_for('auth.logout') }}" class="user-menu__item">{{ _('Log out') }}</a>
+        <div class="nb-dropdown">
+          <button class="nb-link" aria-haspopup="true" aria-expanded="false">
+            <div class="nb-avatar" aria-hidden="true">
+              {{ (session.get('full_name') or session.get('username') or 'U')[0]|upper }}
             </div>
-          </details>
+            <svg class="nb-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nb-menu" role="menu" style="right:0;left:auto;min-width:200px;">
+            <div class="nb-user-info">
+              <div class="nb-user-name">{{ session.get('full_name', session.get('username', '')) }}</div>
+              <div class="nb-user-role">{{ session.get('role', '') }}</div>
+            </div>
+            <a href="{{ url_for('auth.profile') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128100;</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('My Profile') }}</span></span>
+            </a>
+            <a href="{{ url_for('userprofile.lab_dashboard') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#127981;</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('My Lab') }}</span></span>
+            </a>
+            {% if session.get('role') == 'admin' %}
+            <div class="nb-menu-divider"></div>
+            <div class="nb-menu-section-label">Admin</div>
+            <a href="{{ url_for('admin.index') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#9881;</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('Admin Panel') }}</span></span>
+            </a>
+            <a href="{{ url_for('admin.database_dashboard') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#128202;</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('Database') }}</span></span>
+            </a>
+            <a href="{{ url_for('admin.api_dashboard') }}" class="nb-item" role="menuitem">
+              <span class="nb-item-icon">&#127760;</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('API Dashboard') }}</span></span>
+            </a>
+            {% endif %}
+            <div class="nb-menu-divider"></div>
+            <a href="{{ url_for('auth.logout') }}" class="nb-item nb-logout" role="menuitem">
+              <span class="nb-item-icon">&#128682;</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('Log out') }}</span></span>
+            </a>
+          </div>
+        </div>
         {% else %}
-          <a href="{{ url_for('auth.login') }}" class="nav-link">{{ _('Login') }}</a>
+          <a href="{{ url_for('auth.login') }}" class="nb-link">{{ _('Login') }}</a>
         {% endif %}
-      </div>
 
+        <!-- Mobile hamburger -->
+        {% if session.get('logged_in') %}
+        <button id="nb-mobile-toggle" class="nb-mobile-toggle" aria-label="{{ _('Open menu') }}" aria-expanded="false">
+          <span class="nb-ham"></span>
+          <span class="nb-ham"></span>
+          <span class="nb-ham"></span>
+        </button>
+        {% endif %}
+
+      </div>
+    </div><!-- /.nb-container -->
+
+    <!-- Mobile drawer -->
+    {% if session.get('logged_in') %}
+    <div id="nb-mobile-drawer" class="nb-mobile-drawer" role="dialog" aria-label="{{ _('Navigation menu') }}">
+      <div class="nb-mobile-panel">
+
+        <div class="nb-mobile-section">
+          <a href="{{ url_for('manuscript_dashboard_page') }}" class="nb-item">
+            <span class="nb-item-icon">&#128218;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Dashboard') }}</span></span>
+          </a>
+        </div>
+
+        <div class="nb-mobile-section">
+          <div class="nb-mobile-section-label">{{ _('Research Hub') }}</div>
+          <a href="{{ url_for('manuscriptforge.home') }}" class="nb-item">
+            <span class="nb-item-icon">&#9997;</span>
+            <span class="nb-item-body"><span class="nb-item-title">ManuscriptForge</span></span>
+          </a>
+          <a href="{{ url_for('introduction.generator') }}" class="nb-item">
+            <span class="nb-item-icon">&#128195;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Introduction') }}</span></span>
+          </a>
+          <a href="{{ url_for('export.composer') }}" class="nb-item">
+            <span class="nb-item-icon">&#128228;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Export') }}</span></span>
+          </a>
+          <a href="{{ url_for('research.library') }}" class="nb-item">
+            <span class="nb-item-icon">&#128218;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Publications Library') }}</span></span>
+          </a>
+        </div>
+
+        <div class="nb-mobile-section">
+          <div class="nb-mobile-section-label">{{ _('Tools') }}</div>
+          <a href="{{ url_for('methods.index') }}" class="nb-item">
+            <span class="nb-item-icon">&#128295;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Methods Library') }}</span></span>
+          </a>
+          <a href="{{ url_for('ai_assistant.dashboard') }}" class="nb-item">
+            <span class="nb-item-icon">&#129302;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('AI Assistant') }}</span></span>
+          </a>
+          <a href="{{ url_for('analytics_page') }}" class="nb-item">
+            <span class="nb-item-icon">&#128202;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Analytics') }}</span></span>
+          </a>
+          <a href="{{ url_for('lab_integration_page') }}" class="nb-item">
+            <span class="nb-item-icon">&#129710;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Lab Import') }}</span></span>
+          </a>
+        </div>
+
+        <div class="nb-mobile-section">
+          <div class="nb-mobile-section-label">{{ _('Account') }}</div>
+          <a href="{{ url_for('auth.profile') }}" class="nb-item">
+            <span class="nb-item-icon">&#128100;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('My Profile') }}</span></span>
+          </a>
+          <a href="{{ url_for('userprofile.lab_dashboard') }}" class="nb-item">
+            <span class="nb-item-icon">&#127981;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('My Lab') }}</span></span>
+          </a>
+          {% if session.get('role') == 'admin' %}
+          <a href="{{ url_for('admin.index') }}" class="nb-item">
+            <span class="nb-item-icon">&#9881;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Admin') }}</span></span>
+          </a>
+          {% endif %}
+          <a href="{{ url_for('auth.logout') }}" class="nb-item nb-logout">
+            <span class="nb-item-icon">&#128682;</span>
+            <span class="nb-item-body"><span class="nb-item-title">{{ _('Log out') }}</span></span>
+          </a>
+        </div>
+
+      </div>
     </div>
+    {% endif %}
+
   </header>
 
   <main class="site-main">
@@ -83,6 +303,7 @@
   {% if session.get('logged_in') %}
   <script src="{{ url_for('static', filename='js/research-citations.js') }}"></script>
   {% endif %}
+  <script src="{{ url_for('static', filename='js/enhanced_navbar.js') }}"></script>
 
   <footer class="site-footer">
     <div class="container">
