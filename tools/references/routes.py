@@ -424,3 +424,59 @@ def _find_reference_by_id(reference_id: str):
         if ref.get("reference_id") == reference_id:
             return ref
     return None
+
+
+# ── Research profile endpoints ────────────────────────────────────────────────
+
+@references_bp.route("/profiles/import-orcid", methods=["POST"])
+@login_required
+def import_orcid_profile():
+    """Import a researcher profile from ORCID public API."""
+    from .research_profiles import get_profile_integration_service
+    data = request.get_json(silent=True) or {}
+    orcid_id = (data.get("orcid_id") or "").strip()
+    if not orcid_id:
+        return jsonify({"success": False, "error": "orcid_id required"}), 400
+    svc = get_profile_integration_service()
+    result = svc.import_orcid_profile(orcid_id)
+    return jsonify(result), 200 if result.get("success") else 400
+
+
+@references_bp.route("/profiles")
+@login_required
+def list_profiles():
+    """List all stored researcher profiles."""
+    from .research_profiles import get_profile_integration_service
+    svc = get_profile_integration_service()
+    return jsonify(svc.list_profiles())
+
+
+@references_bp.route("/profiles/collaboration-opportunities/<orcid_id>")
+@login_required
+def collaboration_opportunities(orcid_id):
+    """Find collaboration opportunities for a stored researcher profile."""
+    from .research_profiles import get_profile_integration_service
+    svc = get_profile_integration_service()
+    return jsonify(svc.collaboration_opportunities(orcid_id))
+
+
+@references_bp.route("/profiles/research-network")
+@login_required
+def research_network():
+    """Analyse collaboration network across all stored profiles."""
+    from .research_profiles import get_profile_integration_service
+    institution = request.args.get("institution", "")
+    svc = get_profile_integration_service()
+    return jsonify(svc.analyze_network(institution_filter=institution))
+
+
+@references_bp.route("/profiles/institution-mapping")
+@login_required
+def institution_mapping():
+    """Get or create an institution profile by name."""
+    from .research_profiles import get_profile_integration_service
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify({"success": False, "error": "name parameter required"}), 400
+    svc = get_profile_integration_service()
+    return jsonify(svc.get_institution(name))
