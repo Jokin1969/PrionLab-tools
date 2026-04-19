@@ -350,3 +350,77 @@ def semantic_analysis_bulk(manuscript_id):
         "analyses": analyses,
         "count": len(analyses),
     })
+
+
+# ── External database endpoints ───────────────────────────────────────────────
+
+@references_bp.route("/external-db/status")
+@login_required
+def external_db_status():
+    """Show which external database APIs are configured and reachable."""
+    from .external_databases import get_external_db_service
+    svc = get_external_db_service()
+    return jsonify({"success": True, "databases": svc.get_status()})
+
+
+@references_bp.route("/external-search")
+@login_required
+def external_search():
+    """Search across external academic databases."""
+    from .external_databases import get_external_db_service
+    query = request.args.get("query", "").strip()
+    if not query:
+        return jsonify({"success": False, "error": "query parameter required"}), 400
+    sources_param = request.args.get("sources", "")
+    sources = [s.strip() for s in sources_param.split(",") if s.strip()] or None
+    limit = request.args.get("limit", 15, type=int)
+    svc = get_external_db_service()
+    results = svc.search_all(query, sources=sources, max_per_source=limit)
+    return jsonify({"success": True, "results": results, "count": len(results), "query": query})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/enrich-external", methods=["POST"])
+@login_required
+def enrich_external(manuscript_id):
+    """Enrich manuscript references with external database metadata."""
+    from .external_databases import get_external_db_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    if not refs:
+        return jsonify({"success": False, "error": "No references found"}), 404
+    data = request.get_json(silent=True) or {}
+    max_refs = min(int(data.get("max_refs", 30)), 100)
+    svc = get_external_db_service()
+    result = svc.enrich_manuscript_references(refs, max_refs=max_refs)
+    return jsonify({
+        "success": result.success,
+        "records_found": result.records_found,
+        "records_updated": result.records_updated,
+        "errors": result.errors[:10],
+        "duration_ms": result.duration_ms,
+    })
+
+
+@references_bp.route("/<reference_id>/global-citations")
+@login_required
+def global_citations(reference_id):
+    """Get citation counts for a reference from all configured sources."""
+    from .external_databases import get_external_db_service
+    refs = _find_reference_by_id(reference_id)
+    if refs is None:
+        return jsonify({"success": False, "error": "Reference not found"}), 404
+    svc = get_external_db_service()
+    counts = svc.get_global_citations(
+        doi=refs.get("doi", ""),
+        pmid=refs.get("pmid", ""),
+    )
+    return jsonify({"success": True, **counts})
+
+
+def _find_reference_by_id(reference_id: str):
+    """Load all references and find by reference_id."""
+    from .service import _load_store
+    store = _load_store()
+    for ref in store:
+        if ref.get("reference_id") == reference_id:
+            return ref
+    return None

@@ -97,6 +97,7 @@
     <button class="ri-tab" data-tab="questions">&#10067; Research Qs</button>
     <button class="ri-tab" data-tab="methods">&#9881;&#65039; Methods</button>
     <button class="ri-tab" data-tab="topics">&#127758; Topics</button>
+    <button class="ri-tab" data-tab="extdb">&#127760; External DB</button>
   </nav>
 
   <!-- RECOMMENDATIONS -->
@@ -304,6 +305,47 @@
       <div id="topics-content"><div class="ri-spinner">Modelling topics…</div></div>
     </div>
   </div>
+
+  <!-- EXTERNAL DB -->
+  <div class="ri-section" id="tab-extdb">
+    <!-- DB Status -->
+    <div class="ri-card">
+      <div class="ri-card-title">External Database Status</div>
+      <div id="extdb-status"><div class="ri-spinner">Checking APIs…</div></div>
+    </div>
+    <!-- Search -->
+    <div class="ri-card">
+      <div class="ri-card-title">Cross-Database Search
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">CrossRef · PubMed · WoS · Scopus</span>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap;align-items:center">
+        <input type="text" id="extdbQuery" class="ms-filter-search" style="flex:1;min-width:220px"
+               placeholder="e.g. prion protein aggregation mechanism"
+               onkeydown="if(event.key==='Enter')runExtSearch()">
+        <div style="display:flex;gap:.3rem;flex-wrap:wrap">
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:.25rem"><input type="checkbox" class="extdb-src" value="crossref" checked> CrossRef</label>
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:.25rem"><input type="checkbox" class="extdb-src" value="pubmed" checked> PubMed</label>
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:.25rem" id="wos-src-lbl"><input type="checkbox" class="extdb-src" value="wos"> WoS</label>
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:.25rem" id="scopus-src-lbl"><input type="checkbox" class="extdb-src" value="scopus"> Scopus</label>
+        </div>
+        <button class="ri-btn ri-btn-sm" onclick="runExtSearch()">&#128270; Search</button>
+      </div>
+      <div id="extdb-results"><div class="ri-empty">Enter a query above to search external databases.</div></div>
+    </div>
+    <!-- Enrichment -->
+    <div class="ri-card">
+      <div class="ri-card-title">Enrich Manuscript References
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Fill missing metadata from external sources</span>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem">
+        <label style="font-size:.82rem;color:#4a5568">Max refs:</label>
+        <input type="number" id="enrichMax" value="30" min="1" max="100"
+               style="width:60px;padding:.3rem;border:1px solid #e2e8f0;border-radius:.35rem;font-size:.82rem">
+        <button class="ri-btn ri-btn-sm" onclick="runEnrichment()">&#9889; Enrich Now</button>
+      </div>
+      <div id="enrich-result"></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -346,6 +388,7 @@ function loadTab(name) {
   else if (name === 'questions') loadResearchQuestions();
   else if (name === 'methods') loadMethodologyAnalysis();
   else if (name === 'topics') loadTopics();
+  else if (name === 'extdb') loadExtDb();
 }
 
 // ── Recommendations ──────────────────────────────────────────────────────────
@@ -973,6 +1016,98 @@ async function loadTopics() {
 function rerunTopics() {
   loaded['topics'] = false;
   loadTopics();
+}
+
+// ── External DB ───────────────────────────────────────────────────────────────
+async function loadExtDb() {
+  try {
+    const d = await fetch('/api/references/external-db/status').then(r => r.json());
+    const el = document.getElementById('extdb-status');
+    if (!d.success) { el.innerHTML = '<div class="ri-empty">Could not load API status.</div>'; return; }
+    const dbs = d.databases || {};
+    const badge = (ok) => ok
+      ? '<span style="color:#276749;background:#c6f6d5;font-size:.72rem;font-weight:700;padding:.15rem .45rem;border-radius:9999px">configured</span>'
+      : '<span style="color:#9b2c2c;background:#fed7d7;font-size:.72rem;font-weight:700;padding:.15rem .45rem;border-radius:9999px">not configured</span>';
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem">` +
+      Object.entries(dbs).map(([name, info]) => `
+        <div style="background:#f7fafc;border-radius:.5rem;padding:.85rem;border:1px solid #e2e8f0">
+          <div style="font-size:.88rem;font-weight:700;color:#2d3748;text-transform:capitalize;margin-bottom:.35rem">${name}</div>
+          <div style="margin-bottom:.25rem">${badge(info.configured)}</div>
+          <div style="font-size:.72rem;color:#718096">Auth: ${info.auth}</div>
+        </div>`).join('') +
+      `</div>`;
+    // Enable/disable source checkboxes
+    ['wos','scopus'].forEach(src => {
+      const lbl = document.getElementById(src + '-src-lbl');
+      if (lbl && !dbs[src]?.configured) {
+        lbl.style.opacity = '.4';
+        lbl.querySelector('input').disabled = true;
+        lbl.title = `${src} API key not configured`;
+      }
+    });
+  } catch(e) {
+    document.getElementById('extdb-status').innerHTML = '<div class="ri-empty">Error loading status.</div>';
+  }
+}
+
+async function runExtSearch() {
+  const query = document.getElementById('extdbQuery').value.trim();
+  if (!query) return;
+  const sources = [...document.querySelectorAll('.extdb-src:checked')].map(c => c.value);
+  if (!sources.length) { alert('Select at least one source.'); return; }
+  const el = document.getElementById('extdb-results');
+  el.innerHTML = '<div class="ri-spinner">Searching external databases…</div>';
+  try {
+    const url = `/api/references/external-search?query=${encodeURIComponent(query)}&sources=${sources.join(',')}&limit=15`;
+    const d = await fetch(url).then(r => r.json());
+    if (!d.success || !d.results?.length) {
+      el.innerHTML = '<div class="ri-empty">No results found.</div>'; return;
+    }
+    el.innerHTML = `<div style="font-size:.78rem;color:#718096;margin-bottom:.75rem">${d.count} result${d.count!==1?'s':''} found</div>` +
+      `<div class="ri-rec-list">` +
+      d.results.slice(0,40).map(r => `
+        <div class="ri-rec-item">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+            <div class="ri-rec-title">${r.title || '(no title)'}</div>
+            <span style="background:#e9d8fd;color:#553c9a;font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:9999px;white-space:nowrap;flex-shrink:0">${r.source}</span>
+          </div>
+          <div class="ri-rec-meta">
+            ${r.authors?.slice(0,3).join(', ')||''}${(r.authors?.length||0)>3?' et al.':''}
+            ${r.journal ? ' · <em>' + r.journal + '</em>' : ''}
+            ${r.year ? ' · ' + r.year : ''}
+          </div>
+          ${r.doi ? `<a href="https://doi.org/${r.doi}" target="_blank" rel="noopener" class="ri-doi-link">doi:${r.doi}</a>` : ''}
+          ${r.citations_count ? `<span style="font-size:.72rem;color:#718096;margin-left:.75rem">Cited ${r.citations_count}×</span>` : ''}
+          ${r.is_open_access ? `<span style="font-size:.68rem;color:#276749;background:#c6f6d5;padding:.1rem .4rem;border-radius:9999px;margin-left:.5rem;font-weight:700">OA</span>` : ''}
+        </div>`).join('') +
+      `</div>`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Search failed.</div>';
+  }
+}
+
+async function runEnrichment() {
+  const maxRefs = parseInt(document.getElementById('enrichMax').value) || 30;
+  const el = document.getElementById('enrich-result');
+  el.innerHTML = '<div class="ri-spinner">Enriching references from external sources…</div>';
+  try {
+    const d = await fetch(API('enrich-external'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({max_refs: maxRefs}),
+    }).then(r => r.json());
+    if (d.success) {
+      el.innerHTML = `<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:.5rem;padding:.85rem;font-size:.85rem;color:#276749">
+        <strong>Enrichment complete.</strong>
+        Found: ${d.records_found} · Updated: ${d.records_updated} · Time: ${d.duration_ms}ms
+        ${d.errors?.length ? `<div style="color:#744210;margin-top:.35rem">Warnings: ${d.errors.slice(0,5).join('; ')}</div>` : ''}
+      </div>`;
+    } else {
+      el.innerHTML = `<div class="ri-empty">${d.error || 'Enrichment failed.'}</div>`;
+    }
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Enrichment request failed.</div>';
+  }
 }
 
 document.getElementById('netDashLink').href =
