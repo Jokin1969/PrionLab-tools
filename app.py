@@ -219,6 +219,9 @@ def create_app() -> Flask:
     from tools.data_management import data_mgmt_bp
     app.register_blueprint(data_mgmt_bp)
 
+    from tools.spanish_academic import spanish_academic_bp
+    app.register_blueprint(spanish_academic_bp)
+
     try:
         import database.help_system  # noqa: F401 — registers models with Base.metadata
         from database.config import db as _db
