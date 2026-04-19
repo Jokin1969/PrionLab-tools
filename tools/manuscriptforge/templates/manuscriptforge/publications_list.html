@@ -9,7 +9,7 @@
   <div class="actions-cell" style="gap:.4rem;flex-wrap:wrap">
     <a href="{{ url_for('manuscriptforge.publication_analytics') }}" class="btn btn--secondary btn--sm">&#128202; {{ _('Analytics') }}</a>
     {% if session.get('role') in ('admin','editor') %}
-      <button type="button" class="btn btn--secondary btn--sm" onclick="document.getElementById('orcidModal').style.display='flex'">&#127744; {{ _('Import ORCID') }}</button>
+      <button type="button" class="btn btn--secondary btn--sm" onclick="openOrcidModal()">&#127744; {{ _('Import ORCID') }}</button>
       <a href="{{ url_for('manuscriptforge.new_publication') }}" class="btn btn--primary btn--sm">+ {{ _('Add publication') }}</a>
     {% endif %}
   </div>
@@ -37,6 +37,16 @@
 <script>
 let _orcidWorks = [];
 
+function openOrcidModal() {
+  document.getElementById('orcidInput').value = '';
+  document.getElementById('orcidStatus').textContent = '';
+  document.getElementById('orcidStatus').style.color = 'inherit';
+  document.getElementById('orcidWorksList').innerHTML = '';
+  document.getElementById('orcidImportBar').style.display = 'none';
+  _orcidWorks = [];
+  document.getElementById('orcidModal').style.display = 'flex';
+}
+
 async function previewOrcid() {
   const orcid = document.getElementById('orcidInput').value.trim();
   const status = document.getElementById('orcidStatus');
@@ -47,7 +57,7 @@ async function previewOrcid() {
   list.innerHTML = '';
   document.getElementById('orcidImportBar').style.display = 'none';
   try {
-    const r = await fetch(`/api/manuscriptforge/orcid/preview?orcid=${encodeURIComponent(orcid)}`);
+    const r = await fetch(`/tools/manuscriptforge/orcid/preview?orcid=${encodeURIComponent(orcid)}`);
     const d = await r.json();
     if (!d.success) { status.style.color='#b91c1c'; status.textContent = d.error; return; }
     _orcidWorks = d.works;
@@ -79,7 +89,7 @@ async function importSelected() {
   const status = document.getElementById('orcidStatus');
   status.textContent = '{{ _("Importing…") }}';
   try {
-    const r = await fetch('/api/manuscriptforge/orcid/import', {
+    const r = await fetch('/tools/manuscriptforge/orcid/import', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({orcid, put_codes})
     });
