@@ -101,6 +101,7 @@
     <button class="ri-tab" data-tab="profiles">&#128100; Profiles</button>
     <button class="ri-tab" data-tab="predictions">&#128302; Predictions</button>
     <button class="ri-tab" data-tab="strategy">&#127919; Strategy</button>
+    <button class="ri-tab" data-tab="matchmaking">&#129309; Matchmaking</button>
   </nav>
 
   <!-- RECOMMENDATIONS -->
@@ -472,6 +473,63 @@
       <div id="strategy-competitive"><div class="ri-empty">Enter a research area above or leave blank to auto-detect.</div></div>
     </div>
   </div>
+
+  <!-- MATCHMAKING -->
+  <div class="ri-section" id="tab-matchmaking">
+    <!-- Find Partners -->
+    <div class="ri-card">
+      <div class="ri-card-title">Find Research Partners
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">AI compatibility scoring from stored ORCID profiles</span>
+        <button class="ri-btn ri-btn-sm" style="float:right;margin-top:-.2rem" onclick="reloadMatchmaking()">&#8635; Refresh</button>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem">
+        <select id="matchTarget" class="ms-filter-select" style="flex:1;min-width:220px">
+          <option value="">— Select your profile —</option>
+        </select>
+        <select id="matchCollabType" class="ms-filter-select" style="width:160px">
+          <option value="">Any type</option>
+          <option value="research">Research</option>
+          <option value="publication">Publication</option>
+          <option value="grant">Grant</option>
+          <option value="mentorship">Mentorship</option>
+        </select>
+        <button class="ri-btn ri-btn-sm" onclick="runFindPartners()">&#129309; Find Partners</button>
+      </div>
+      <div id="match-partners-result"></div>
+    </div>
+    <!-- Pairwise Compatibility -->
+    <div class="ri-card">
+      <div class="ri-card-title">Pairwise Compatibility Assessment</div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem">
+        <select id="matchPairA" class="ms-filter-select" style="flex:1;min-width:200px">
+          <option value="">— Researcher A —</option>
+        </select>
+        <select id="matchPairB" class="ms-filter-select" style="flex:1;min-width:200px">
+          <option value="">— Researcher B —</option>
+        </select>
+        <button class="ri-btn ri-btn-sm" onclick="runAssessCompatibility()">&#128202; Assess</button>
+      </div>
+      <div id="match-compat-result"></div>
+    </div>
+    <!-- Group Synergy -->
+    <div class="ri-card">
+      <div class="ri-card-title">Group Research Synergy
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Select 2–6 researchers</span>
+      </div>
+      <div style="margin-bottom:.75rem">
+        <div id="match-synergy-checkboxes" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem"></div>
+        <button class="ri-btn ri-btn-sm" onclick="runAnalyzeSynergy()">&#9889; Analyse Synergy</button>
+      </div>
+      <div id="match-synergy-result"></div>
+    </div>
+    <!-- Network -->
+    <div class="ri-card">
+      <div class="ri-card-title">Co-authorship Network
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Built from manuscript references</span>
+      </div>
+      <div id="match-network-result"><div class="ri-spinner">Loading network…</div></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -518,6 +576,7 @@ function loadTab(name) {
   else if (name === 'profiles') { loadProfilesList(); }
   else if (name === 'predictions') { loadIntelligence(); loadPredTrends(); }
   else if (name === 'strategy') { loadStrategy(); }
+  else if (name === 'matchmaking') { loadMatchmaking(); }
 }
 
 // ── Recommendations ──────────────────────────────────────────────────────────
@@ -1742,6 +1801,257 @@ async function loadCompetitiveAnalysis() {
         </ul>` : ''}`;
   } catch(e) {
     el.innerHTML = '<div class="ri-empty">Competitive analysis failed.</div>';
+  }
+}
+
+// ── Matchmaking (P24D1) ───────────────────────────────────────────────────────
+const MATCH_API = (path) => `/api/references${path}`;
+let _matchProfiles = [];
+
+async function loadMatchmaking() {
+  await loadMatchProfiles();
+  loadMatchNetwork();
+}
+
+function reloadMatchmaking() {
+  loaded['matchmaking'] = false;
+  loadMatchmaking();
+}
+
+async function loadMatchProfiles() {
+  try {
+    const d = await fetch(MATCH_API('/matchmaking/profiles')).then(r => r.json());
+    _matchProfiles = d.profiles || [];
+    if (!_matchProfiles.length) {
+      ['match-partners-result','match-compat-result','match-synergy-result'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<div class="ri-empty">No researcher profiles stored. Import ORCID profiles in the Profiles tab first.</div>';
+      });
+      return;
+    }
+    // Populate selects
+    const opts = _matchProfiles.map(p =>
+      `<option value="${p.orcid_id}">${p.name || p.orcid_id}${p.current_affiliation ? ' — ' + p.current_affiliation.slice(0,35) : ''}</option>`
+    ).join('');
+    ['matchTarget','matchPairA','matchPairB'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const first = el.options[0].outerHTML;
+      el.innerHTML = first + opts;
+    });
+    // Populate synergy checkboxes
+    const cbBox = document.getElementById('match-synergy-checkboxes');
+    if (cbBox) {
+      cbBox.innerHTML = _matchProfiles.map(p =>
+        `<label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem;background:#f7fafc;padding:.2rem .5rem;border-radius:.35rem;border:1px solid #e2e8f0;cursor:pointer">
+          <input type="checkbox" class="match-syn-chk" value="${p.orcid_id}">
+          ${(p.name || p.orcid_id).slice(0,30)}
+        </label>`
+      ).join('');
+    }
+  } catch(e) {
+    console.error('Failed to load match profiles', e);
+  }
+}
+
+async function runFindPartners() {
+  const target = document.getElementById('matchTarget').value;
+  const collabType = document.getElementById('matchCollabType').value;
+  const el = document.getElementById('match-partners-result');
+  if (!target) { el.innerHTML = '<div class="ri-empty">Select a profile first.</div>'; return; }
+  el.innerHTML = '<div class="ri-spinner">Finding compatible partners…</div>';
+  try {
+    const d = await fetch(MATCH_API('/matchmaking/find-partners'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target_orcid: target, limit: 10, collab_type: collabType || null}),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error || 'No results.'}</div>`; return; }
+    if (!d.recommendations?.length) {
+      el.innerHTML = '<div class="ri-empty">No compatible partners found. Import more ORCID profiles to enable matching.</div>'; return;
+    }
+    const potColor = {high:'#276749',medium:'#744210',low:'#718096'};
+    const potBg    = {high:'#c6f6d5',medium:'#feebc8',low:'#e2e8f0'};
+    const typeColor = {research:'#553c9a',publication:'#2a4365',grant:'#276749',mentorship:'#744210'};
+    const typeBg    = {research:'#e9d8fd',publication:'#bee3f8',grant:'#c6f6d5',mentorship:'#feebc8'};
+    el.innerHTML = `<div style="font-size:.78rem;color:#718096;margin-bottom:.6rem">${d.count} partner${d.count!==1?'s':''} found for <strong>${d.target_name||target}</strong></div>` +
+      '<div class="ri-rec-list">' +
+      d.recommendations.map(r => `
+        <div class="ri-rec-item">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem;flex-wrap:wrap">
+            <div>
+              <span style="font-size:.82rem;font-weight:700;color:#2d3748">#${r.rank} ${r.name}</span>
+              <span style="font-size:.75rem;color:#718096;margin-left:.4rem">${(r.affiliation||'').slice(0,40)}</span>
+            </div>
+            <div style="display:flex;gap:.3rem;align-items:center;flex-shrink:0">
+              <span style="background:${typeBg[r.collaboration_type]||'#e2e8f0'};color:${typeColor[r.collaboration_type]||'#718096'};font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:9999px">${r.collaboration_type}</span>
+              <span style="font-size:1rem;font-weight:800;color:${potColor[r.collaboration_potential]||'#718096'}">${Math.round((r.compatibility_score||0)*100)}%</span>
+            </div>
+          </div>
+          <div class="ri-score-bar" style="margin:.35rem 0"><div class="ri-score-fill" style="width:${Math.round((r.compatibility_score||0)*100)}%"></div></div>
+          <div style="font-size:.78rem;color:#4a5568;margin-bottom:.3rem;font-style:italic">${r.rationale||''}</div>
+          ${r.shared_interests?.length ? `<div class="ri-kw-cloud">${r.shared_interests.map(t=>`<span class="ri-kw-tag">${t}</span>`).join('')}</div>` : ''}
+          <div style="font-size:.72rem;color:#718096;margin-top:.25rem">Success estimate: <strong>${Math.round((r.estimated_success||0)*100)}%</strong>
+            <button class="ri-btn ri-btn-sm" style="font-size:.68rem;margin-left:.5rem;padding:.1rem .35rem"
+              onclick="prefillPairwise('${target}','${r.orcid_id}')">&#128202; Compare</button>
+          </div>
+        </div>`).join('') + '</div>';
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Partner search failed.</div>';
+  }
+}
+
+function prefillPairwise(a, b) {
+  const selA = document.getElementById('matchPairA');
+  const selB = document.getElementById('matchPairB');
+  if (selA) selA.value = a;
+  if (selB) selB.value = b;
+  document.querySelector('[data-tab="matchmaking"]').click();
+  setTimeout(() => runAssessCompatibility(), 100);
+}
+
+async function runAssessCompatibility() {
+  const a = document.getElementById('matchPairA').value;
+  const b = document.getElementById('matchPairB').value;
+  const el = document.getElementById('match-compat-result');
+  if (!a || !b) { el.innerHTML = '<div class="ri-empty">Select both researchers.</div>'; return; }
+  if (a === b) { el.innerHTML = '<div class="ri-empty">Select two different researchers.</div>'; return; }
+  el.innerHTML = '<div class="ri-spinner">Assessing compatibility…</div>';
+  try {
+    const d = await fetch(MATCH_API('/matchmaking/assess-compatibility'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({orcid_a: a, orcid_b: b}),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error || 'Assessment failed.'}</div>`; return; }
+    const c = d.compatibility;
+    const potColor = {high:'#276749',medium:'#744210',low:'#718096'};
+    const potBg    = {high:'#c6f6d5',medium:'#feebc8',low:'#e2e8f0'};
+    const pot = c.collaboration_potential || 'medium';
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+        <div style="font-size:.95rem;font-weight:700;color:#2d3748">
+          ${(_matchProfiles.find(p=>p.orcid_id===a)||{}).name||a}
+          <span style="color:#a0aec0;font-weight:400"> × </span>
+          ${(_matchProfiles.find(p=>p.orcid_id===b)||{}).name||b}
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <span style="font-size:1.6rem;font-weight:800;color:${potColor[pot]}">${Math.round((c.overall_score||0)*100)}%</span>
+          <span style="background:${potBg[pot]};color:${potColor[pot]};padding:.2rem .55rem;border-radius:9999px;font-size:.75rem;font-weight:700;text-transform:capitalize">${pot}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem;margin-bottom:1rem">
+        ${[
+          ['Research interests', c.research_interest_score],
+          ['Expertise fit',      c.expertise_complement_score],
+          ['Career stage',       c.career_stage_score],
+          ['Geographic',         c.geographic_score],
+          ['Success est.',       c.success_prediction],
+        ].map(([l,v])=>`<div style="background:#f7fafc;border-radius:.5rem;padding:.6rem;text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:#6b46c1">${Math.round((v||0)*100)}%</div>
+          <div style="font-size:.65rem;color:#718096;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+      </div>
+      ${c.rationale ? `<div style="font-size:.82rem;color:#4a5568;font-style:italic;margin-bottom:.6rem">${c.rationale}</div>` : ''}
+      ${c.shared_interests?.length ? `
+        <div style="margin-bottom:.5rem">
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.25rem">Shared interests</div>
+          <div class="ri-kw-cloud">${c.shared_interests.map(t=>`<span class="ri-kw-tag">${t}</span>`).join('')}</div>
+        </div>` : ''}
+      ${c.opportunities?.length ? `
+        <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.25rem">Opportunities</div>
+        <ul style="margin:0;padding-left:1.2rem;font-size:.8rem;color:#4a5568">
+          ${c.opportunities.map(o=>`<li style="margin-bottom:.2rem">${o}</li>`).join('')}
+        </ul>` : ''}`;
+  } catch(e) {
+    document.getElementById('match-compat-result').innerHTML = '<div class="ri-empty">Compatibility assessment failed.</div>';
+  }
+}
+
+async function runAnalyzeSynergy() {
+  const checked = [...document.querySelectorAll('.match-syn-chk:checked')].map(c => c.value);
+  const el = document.getElementById('match-synergy-result');
+  if (checked.length < 2) { el.innerHTML = '<div class="ri-empty">Select at least 2 researchers.</div>'; return; }
+  if (checked.length > 6) { el.innerHTML = '<div class="ri-empty">Select at most 6 researchers.</div>'; return; }
+  el.innerHTML = '<div class="ri-spinner">Analysing group synergy…</div>';
+  try {
+    const d = await fetch(MATCH_API('/matchmaking/analyze-synergy'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({orcid_list: checked}),
+    }).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error || 'Synergy analysis failed.'}</div>`; return; }
+    const s = d.synergy;
+    const pct = v => Math.round((v||0)*100);
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem;margin-bottom:1rem">
+        ${[
+          ['Synergy',           s.synergy_score,              '#6b46c1'],
+          ['Innovation',        s.innovation_potential,       '#38a169'],
+          ['Expertise diversity',s.expertise_diversity,       '#3182ce'],
+          ['Method compat.',    s.methodological_compatibility,'#dd6b20'],
+        ].map(([l,v,c])=>`<div style="background:#f7fafc;border-radius:.5rem;padding:.6rem;text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:${c}">${pct(v)}%</div>
+          <div style="font-size:.65rem;color:#718096;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+      </div>
+      ${s.synergy_areas?.length ? `
+        <div style="margin-bottom:.65rem">
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.25rem">Synergy areas</div>
+          <div class="ri-kw-cloud">${s.synergy_areas.map(t=>`<span class="ri-kw-tag">${t}</span>`).join('')}</div>
+        </div>` : ''}
+      ${s.predicted_outcomes?.length ? `
+        <div style="margin-bottom:.65rem">
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.3rem">Predicted outcomes</div>
+          <ul style="margin:0;padding-left:1.2rem;font-size:.8rem;color:#4a5568">
+            ${s.predicted_outcomes.map(o=>`<li style="margin-bottom:.2rem">${o}</li>`).join('')}
+          </ul>
+        </div>` : ''}
+      ${s.risk_factors?.length ? `
+        <div style="margin-bottom:.65rem">
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.3rem">Risk factors</div>
+          <ul style="margin:0;padding-left:1.2rem;font-size:.8rem;color:#744210">
+            ${s.risk_factors.map(r=>`<li style="margin-bottom:.2rem">${r}</li>`).join('')}
+          </ul>
+        </div>` : ''}
+      ${s.recommended_roles && Object.keys(s.recommended_roles).length ? `
+        <div>
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.3rem">Recommended roles</div>
+          ${Object.entries(s.recommended_roles).map(([oid,role])=>{
+            const name = (_matchProfiles.find(p=>p.orcid_id===oid)||{}).name || oid;
+            return `<div style="font-size:.78rem;color:#4a5568;margin-bottom:.2rem"><strong>${name.slice(0,30)}</strong>: ${role}</div>`;
+          }).join('')}
+        </div>` : ''}`;
+  } catch(e) {
+    document.getElementById('match-synergy-result').innerHTML = '<div class="ri-empty">Synergy analysis failed.</div>';
+  }
+}
+
+async function loadMatchNetwork() {
+  const el = document.getElementById('match-network-result');
+  try {
+    const d = await fetch(API('matchmaking-network')).then(r => r.json());
+    if (!d.success) { el.innerHTML = `<div class="ri-empty">${d.error || 'Network unavailable.'}</div>`; return; }
+    const net = d.network;
+    el.innerHTML = `
+      <div class="ri-net-info" style="margin-bottom:1rem">
+        ${[['Authors',net.node_count],['Connections',net.edge_count],['Density',(net.density*100).toFixed(1)+'%'],['Avg Degree',net.avg_degree],['Clusters',net.community_count],['Growth',Math.round((net.growth_potential||0)*100)+'%']].map(([l,v])=>`
+          <div class="ri-net-stat"><div class="ri-net-stat-val">${v}</div><div class="ri-net-stat-lbl">${l}</div></div>`).join('')}
+      </div>
+      ${net.key_nodes?.length ? `
+        <div style="margin-bottom:.65rem">
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.25rem">Key connectors</div>
+          <div class="ri-kw-cloud">${net.key_nodes.map(n=>`<span class="ri-kw-tag">${n.slice(0,25)}</span>`).join('')}</div>
+        </div>` : ''}
+      ${net.optimization_tips?.length ? `
+        <div>
+          <div style="font-size:.78rem;font-weight:700;color:#2d3748;margin-bottom:.3rem">Optimisation tips</div>
+          <ul style="margin:0;padding-left:1.2rem;font-size:.8rem;color:#4a5568">
+            ${net.optimization_tips.map(t=>`<li style="margin-bottom:.2rem">${t}</li>`).join('')}
+          </ul>
+        </div>` : ''}`;
+  } catch(e) {
+    el.innerHTML = '<div class="ri-empty">Network analysis failed.</div>';
   }
 }
 
