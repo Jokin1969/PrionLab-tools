@@ -70,8 +70,28 @@
       <div class="form-group">
         <label class="form-label">{{ _('Position') }}</label>
         <input type="text" name="current_position" class="form-input"
+               list="position-options"
                placeholder="PI, Postdoc, PhD student…"
                value="{{ form.get('current_position', '') }}" />
+        <datalist id="position-options">
+          <option value="Principal Investigator (PI)">
+          <option value="Co-Investigator">
+          <option value="Postdoctoral Researcher">
+          <option value="PhD Student">
+          <option value="Master's Student">
+          <option value="Research Scientist">
+          <option value="Senior Scientist">
+          <option value="Research Associate">
+          <option value="Research Technician">
+          <option value="Lab Manager">
+          <option value="Bioinformatician">
+          <option value="Data Scientist">
+          <option value="Visiting Researcher">
+          <option value="Visiting Professor">
+          <option value="Collaborator">
+          <option value="Honorary Researcher">
+          <option value="Emeritus Professor">
+        </datalist>
       </div>
     </div>
 
