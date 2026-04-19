@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Citation Network — PrionLab Tools{% endblock %}
+{% block content %}
+<style>
+.nd-page{padding:1.5rem 2rem;max-width:1400px;margin:0 auto}
+.nd-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem}
+.nd-header h1{font-size:1.4rem;font-weight:700;color:#1a202c;margin:0}
+.nd-header h1 span{color:#6b46c1}
+.nd-back{font-size:.85rem;color:#6b46c1;text-decoration:none;font-weight:600}
+.nd-back:hover{text-decoration:underline}
+.nd-btn{display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .85rem;border-radius:.4rem;font-size:.8rem;font-weight:600;border:1.5px solid #6b46c1;color:#6b46c1;background:#fff;cursor:pointer;transition:all .15s;text-decoration:none}
+.nd-btn:hover,.nd-btn.active{background:#6b46c1;color:#fff}
+.nd-btn-grp{display:flex;gap:.4rem;flex-wrap:wrap}
+.nd-layout{display:grid;grid-template-columns:240px 1fr;gap:1rem;align-items:start}
+.nd-sidebar{display:flex;flex-direction:column;gap:.75rem}
+.nd-card{background:#fff;border-radius:.6rem;padding:1rem;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.nd-card-title{font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#718096;margin-bottom:.6rem}
+.nd-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.nd-stat{background:#f7fafc;border-radius:.4rem;padding:.5rem;text-align:center}
+.nd-stat-val{font-size:1.25rem;font-weight:800;color:#6b46c1}
+.nd-stat-lbl{font-size:.68rem;color:#718096;text-transform:uppercase;letter-spacing:.04em}
+.nd-field{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.6rem}
+.nd-field label{font-size:.78rem;font-weight:600;color:#4a5568}
+.nd-input{width:100%;padding:.3rem .5rem;border:1px solid #e2e8f0;border-radius:.35rem;font-size:.82rem;box-sizing:border-box}
+.nd-input:focus{outline:none;border-color:#6b46c1}
+.nd-year-row{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+.nd-chk-list{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:.2rem}
+.nd-chk-item{display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:#2d3748;cursor:pointer}
+.nd-chk-item input{accent-color:#6b46c1}
+.nd-canvas-wrap{position:relative}
+.nd-canvas-wrap svg{width:100%;height:auto;display:block}
+.nd-cluster-list{display:flex;flex-direction:column;gap:.4rem;max-height:260px;overflow-y:auto}
+.nd-cluster-item{border-left:4px solid;padding:.5rem .75rem;border-radius:0 .4rem .4rem 0;cursor:pointer;transition:background .15s}
+.nd-cluster-item:hover{background:#f7fafc}
+.nd-cluster-name{font-size:.85rem;font-weight:600;color:#2d3748}
+.nd-cluster-meta{font-size:.75rem;color:#718096}
+.nd-sel-box{font-size:.85rem;color:#2d3748}
+.nd-sel-title{font-weight:700;margin-bottom:.3rem;color:#1a202c}
+.nd-sel-meta{font-size:.78rem;color:#718096;line-height:1.6}
+.nd-spinner{display:flex;align-items:center;justify-content:center;padding:3rem;color:#a0aec0;gap:.5rem;font-size:.9rem}
+.nd-spinner::before{content:"";width:18px;height:18px;border:3px solid #e2e8f0;border-top-color:#6b46c1;border-radius:50%;animation:nd-spin .7s linear infinite;flex-shrink:0}
+@keyframes nd-spin{to{transform:rotate(360deg)}}
+.nd-empty{text-align:center;padding:3rem;color:#a0aec0;font-size:.9rem}
+@media(max-width:900px){.nd-layout{grid-template-columns:1fr}.nd-sidebar{flex-direction:row;flex-wrap:wrap}.nd-sidebar>*{flex:1;min-width:200px}}
+@media(max-width:640px){.nd-page{padding:1rem}}
+</style>
+
+<div class="nd-page">
+  <div class="nd-header">
+    <div>
+      <a class="nd-back" id="backLink" href="#">&#8592; References</a>
+      <h1>Citation <span>Network</span></h1>
+    </div>
+    <div class="nd-btn-grp">
+      <button class="nd-btn" id="btnLabels" onclick="viz && viz.toggleLabels(); this.classList.toggle('active')">&#127991; Labels</button>
+      <button class="nd-btn" onclick="viz && viz.fitToContent()">&#8690; Fit</button>
+      <button class="nd-btn" onclick="viz && viz.resetView()">&#8635; Reset</button>
+      <button class="nd-btn" onclick="viz && viz.exportJSON()">&#11015; Export</button>
+    </div>
+  </div>
+
+  <div class="nd-layout">
+
+    <!-- ── Sidebar ─────────────────────────────────────────────────── -->
+    <div class="nd-sidebar">
+
+      <div class="nd-card">
+        <div class="nd-card-title">Network Stats</div>
+        <div class="nd-stat-grid">
+          <div class="nd-stat"><div class="nd-stat-val" id="statNodes">—</div><div class="nd-stat-lbl">Nodes</div></div>
+          <div class="nd-stat"><div class="nd-stat-val" id="statEdges">—</div><div class="nd-stat-lbl">Edges</div></div>
+          <div class="nd-stat"><div class="nd-stat-val" id="statClusters">—</div><div class="nd-stat-lbl">Clusters</div></div>
+          <div class="nd-stat"><div class="nd-stat-val" id="statDensity">—</div><div class="nd-stat-lbl">Density</div></div>
+          <div class="nd-stat"><div class="nd-stat-val" id="statDegC">—</div><div class="nd-stat-lbl">Avg Degree</div></div>
+          <div class="nd-stat"><div class="nd-stat-val" id="statClose">—</div><div class="nd-stat-lbl">Avg Close.</div></div>
+        </div>
+      </div>
+
+      <div class="nd-card">
+        <div class="nd-card-title">Layout</div>
+        <select class="nd-input" id="layoutSelect" onchange="viz && viz.updateLayout(this.value)">
+          <option value="force">Force-directed</option>
+          <option value="circular">Circular</option>
+          <option value="community">By Cluster</option>
+        </select>
+      </div>
+
+      <div class="nd-card">
+        <div class="nd-card-title">Search</div>
+        <div class="nd-field">
+          <input class="nd-input" id="searchInput" placeholder="Title, author, journal…" oninput="doSearch(this.value)">
+        </div>
+        <div id="searchCount" style="font-size:.75rem;color:#718096"></div>
+      </div>
+
+      <div class="nd-card">
+        <div class="nd-card-title">Filters</div>
+        <div class="nd-field">
+          <label>Year range</label>
+          <div class="nd-year-row">
+            <input class="nd-input" id="yearMin" placeholder="From" type="number" min="1980" max="2030">
+            <input class="nd-input" id="yearMax" placeholder="To" type="number" min="1980" max="2030">
+          </div>
+        </div>
+        <div class="nd-field">
+          <label>Research areas</label>
+          <div class="nd-chk-list" id="areaFilters"></div>
+        </div>
+        <div class="nd-field">
+          <label>Clusters</label>
+          <div class="nd-chk-list" id="clusterFilters"></div>
+        </div>
+        <div style="display:flex;gap:.4rem;margin-top:.5rem">
+          <button class="nd-btn" style="flex:1;justify-content:center" onclick="applyFilters()">Apply</button>
+          <button class="nd-btn" style="flex:1;justify-content:center" onclick="clearFilters()">Clear</button>
+        </div>
+      </div>
+
+      <div class="nd-card" id="selCard">
+        <div class="nd-card-title">Selected Node</div>
+        <div id="selInfo" class="nd-sel-box" style="color:#a0aec0;font-size:.82rem">Click a node to see details</div>
+      </div>
+
+    </div>
+
+    <!-- ── Main Area ───────────────────────────────────────────────── -->
+    <div style="display:flex;flex-direction:column;gap:1rem">
+
+      <div class="nd-card nd-canvas-wrap" style="padding:.5rem">
+        <div id="nvCanvas"><div class="nd-spinner">Building network…</div></div>
+      </div>
+
+      <div class="nd-card">
+        <div class="nd-card-title">Research Clusters</div>
+        <div class="nd-cluster-list" id="clusterList"><div class="nd-empty">No cluster data</div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="{{ url_for('static', filename='js/network-visualization.js') }}"></script>
+<script>
+const MS_ID = "{{ manuscript_id }}";
+const API_NET = `/api/references/manuscript/${MS_ID}/network`;
+let viz = null;
+let _rawNetData = null;
+
+document.getElementById('backLink').href = `/manuscripts/${MS_ID}/references`;
+
+const CLUSTER_PAL = ['#6b46c1','#3182ce','#38a169','#dd6b20','#e53e3e',
+                     '#319795','#d69e2e','#805ad5','#e83e8c','#2b6cb0'];
+
+async function init() {
+  try {
+    const data = await fetch(API_NET).then(r => r.json());
+    if (!data.success) {
+      document.getElementById('nvCanvas').innerHTML =
+        `<div class="nd-empty">No network data available — import references first.</div>`;
+      return;
+    }
+    _rawNetData = data;
+    document.getElementById('nvCanvas').innerHTML = '';
+    viz = new CitationNetworkVisualization('nvCanvas', { width: 900, height: 520 });
+    viz.loadData(data);
+    buildFilters(data);
+    buildClusterList(data.clusters || []);
+  } catch (e) {
+    document.getElementById('nvCanvas').innerHTML =
+      `<div class="nd-empty">Failed to load citation network.</div>`;
+  }
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+document.addEventListener('nv:stats', e => {
+  const d = e.detail;
+  document.getElementById('statNodes').textContent = d.nodes;
+  document.getElementById('statEdges').textContent = d.edges;
+  document.getElementById('statClusters').textContent = d.clusters;
+  document.getElementById('statDensity').textContent = (d.metrics?.density || 0).toFixed(3);
+  document.getElementById('statDegC').textContent = (d.metrics?.avg_degree || 0).toFixed(1);
+  document.getElementById('statClose').textContent = (d.metrics?.avg_closeness_centrality || 0).toFixed(3);
+});
+
+// ── Node click ──────────────────────────────────────────────────────────────
+document.addEventListener('nv:nodeClick', e => {
+  const n = e.detail;
+  if (!n) { document.getElementById('selInfo').innerHTML = '<span style="color:#a0aec0">Click a node to see details</span>'; return; }
+  const authors = (n.authors || []).slice(0, 4).join(', ') + (n.authors?.length > 4 ? ' et al.' : '');
+  document.getElementById('selInfo').innerHTML = `
+    <div class="nd-sel-title">${(n.title || '—').slice(0, 100)}</div>
+    <div class="nd-sel-meta">
+      <strong>Authors:</strong> ${authors || '—'}<br>
+      <strong>Journal:</strong> ${n.journal || '—'} ${n.year ? '('+n.year+')' : ''}<br>
+      ${n.doi ? `<strong>DOI:</strong> <a href="https://doi.org/${n.doi}" target="_blank" style="color:#3182ce">${n.doi}</a><br>` : ''}
+      <strong>Cluster:</strong> ${n.cluster_id ?? '—'} &nbsp;
+      <strong>Degree:</strong> ${n.degree || 0} &nbsp;
+      <strong>Centrality:</strong> ${(n.degree_centrality||0).toFixed(3)}
+    </div>`;
+});
+
+// ── Search ─────────────────────────────────────────────────────────────────
+function doSearch(q) {
+  if (!viz) return;
+  const hits = viz.searchNodes(q);
+  document.getElementById('searchCount').textContent =
+    q ? `${hits.length} node${hits.length !== 1 ? 's' : ''} matched` : '';
+}
+
+// ── Filters ────────────────────────────────────────────────────────────────
+function buildFilters(data) {
+  // Research areas
+  const areas = [...new Set((data.nodes || []).map(n => n.research_area).filter(Boolean))];
+  const areaEl = document.getElementById('areaFilters');
+  areaEl.innerHTML = areas.map(a =>
+    `<label class="nd-chk-item"><input type="checkbox" value="${a}"> ${a}</label>`
+  ).join('');
+
+  // Clusters
+  const clusterEl = document.getElementById('clusterFilters');
+  (data.clusters || []).forEach(c => {
+    const label = document.createElement('label');
+    label.className = 'nd-chk-item';
+    label.innerHTML = `<input type="checkbox" value="${c.id}"> <span style="color:${CLUSTER_PAL[c.id % CLUSTER_PAL.length]}">&#11044;</span> Cluster ${c.id}: ${c.topic} (${c.size})`;
+    clusterEl.appendChild(label);
+  });
+}
+
+function applyFilters() {
+  if (!viz) return;
+  const areas = [...document.querySelectorAll('#areaFilters input:checked')].map(e => e.value);
+  const clusters = [...document.querySelectorAll('#clusterFilters input:checked')].map(e => Number(e.value));
+  const yMin = parseInt(document.getElementById('yearMin').value) || 0;
+  const yMax = parseInt(document.getElementById('yearMax').value) || 0;
+  viz.applyFilters({
+    research_areas: areas.length ? areas : null,
+    cluster_ids: clusters.length ? clusters : null,
+    year_min: yMin || null,
+    year_max: yMax || null,
+  });
+}
+
+function clearFilters() {
+  document.querySelectorAll('#areaFilters input, #clusterFilters input').forEach(e => e.checked = false);
+  document.getElementById('yearMin').value = '';
+  document.getElementById('yearMax').value = '';
+  document.getElementById('searchInput').value = '';
+  if (viz) { viz.applyFilters({}); viz.clearSearch(); }
+  document.getElementById('searchCount').textContent = '';
+}
+
+// ── Cluster list ───────────────────────────────────────────────────────────
+function buildClusterList(clusters) {
+  const el = document.getElementById('clusterList');
+  if (!clusters.length) { el.innerHTML = '<div class="nd-empty">No clusters detected</div>'; return; }
+  el.innerHTML = clusters.map(c => {
+    const col = CLUSTER_PAL[c.id % CLUSTER_PAL.length];
+    const authors = (c.key_authors || []).slice(0, 3).join(', ');
+    return `<div class="nd-cluster-item" style="border-left-color:${col}"
+                 onclick="focusCluster(${c.id})">
+      <div class="nd-cluster-name">Cluster ${c.id}: ${c.topic}</div>
+      <div class="nd-cluster-meta">
+        ${c.size} node${c.size !== 1 ? 's' : ''} · density ${(c.density||0).toFixed(3)}
+        ${authors ? ' · ' + authors : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function focusCluster(id) {
+  if (!viz) return;
+  // Uncheck all, check this one, then apply
+  document.querySelectorAll('#clusterFilters input').forEach(e => {
+    e.checked = Number(e.value) === id;
+  });
+  applyFilters();
+  // Scroll sidebar cluster checkbox into view
+  const cb = document.querySelector(`#clusterFilters input[value="${id}"]`);
+  cb?.scrollIntoView({ block: 'nearest' });
+}
+
+init();
+</script>
+{% endblock %}

@@ -2,7 +2,8 @@
 import logging
 from dataclasses import asdict
 
-from flask import jsonify, request, session
+import json
+from flask import jsonify, make_response, request, session
 
 from core.decorators import login_required
 from . import references_bp
@@ -190,3 +191,37 @@ def reference_trends(manuscript_id):
     username = session.get("username", "")
     svc = get_analytics_integration_service()
     return jsonify(svc.get_temporal_trends(manuscript_id))
+
+
+@references_bp.route("/manuscript/<manuscript_id>/export-network")
+@login_required
+def export_network(manuscript_id):
+    fmt = request.args.get("format", "json")
+    data = get_citation_network_service().build_citation_network(manuscript_id)
+    if fmt == "csv":
+        import io, csv as _csv
+        buf = io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["id", "title", "authors", "journal", "year", "doi",
+                    "research_area", "degree", "cluster_id"])
+        for n in data.get("nodes", []):
+            w.writerow([
+                n.get("id", ""), n.get("title", ""),
+                "; ".join(n.get("authors") or []),
+                n.get("journal", ""), n.get("year", ""),
+                n.get("doi", ""), n.get("research_area", ""),
+                n.get("degree", 0), n.get("cluster_id", ""),
+            ])
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "text/csv"
+        resp.headers["Content-Disposition"] = (
+            f"attachment; filename=network-{manuscript_id}.csv"
+        )
+        return resp
+    # JSON
+    resp = make_response(json.dumps(data, indent=2))
+    resp.headers["Content-Type"] = "application/json"
+    resp.headers["Content-Disposition"] = (
+        f"attachment; filename=network-{manuscript_id}.json"
+    )
+    return resp
