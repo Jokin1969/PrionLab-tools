@@ -75,6 +75,7 @@
     <button class="ri-tab" data-tab="trends">&#128200; Trends</button>
     <button class="ri-tab" data-tab="network">&#127760; Citation Network</button>
     <button class="ri-tab" data-tab="authors">&#128100; Author Influence</button>
+    <button class="ri-tab" data-tab="collaboration">&#129309; Collaboration</button>
     <button class="ri-tab" data-tab="landscape">&#128202; Research Landscape</button>
   </nav>
 
@@ -142,6 +143,30 @@
     </div>
   </div>
 
+  <!-- COLLABORATION -->
+  <div class="ri-section" id="tab-collaboration">
+    <div class="ri-card">
+      <div class="ri-card-title">Research Groups
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Co-authorship clusters</span>
+      </div>
+      <div id="collab-groups"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <div class="ri-card">
+      <div class="ri-card-title">Bridge Authors
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Researchers connecting multiple groups</span>
+      </div>
+      <div id="collab-bridges"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <div class="ri-card">
+      <div class="ri-card-title">Top Collaborators</div>
+      <div id="collab-top" class="ri-author-grid"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <div class="ri-card">
+      <div class="ri-card-title">Network Metrics</div>
+      <div id="collab-metrics"></div>
+    </div>
+  </div>
+
   <!-- LANDSCAPE -->
   <div class="ri-section" id="tab-landscape">
     <div class="ri-charts-grid">
@@ -199,6 +224,7 @@ function loadTab(name) {
   else if (name === 'trends') loadTrendsTab();
   else if (name === 'network') loadNetwork();
   else if (name === 'authors') loadAuthors();
+  else if (name === 'collaboration') loadCollaboration();
   else if (name === 'landscape') loadLandscape();
 }
 
@@ -453,6 +479,79 @@ async function loadAuthors() {
       </div>`).join('');
   } catch (e) {
     document.getElementById('author-grid').innerHTML = '<div class="ri-empty">Failed to load author data</div>';
+  }
+}
+
+// ── Collaboration Network ─────────────────────────────────────────────────────
+async function loadCollaboration() {
+  try {
+    const d = await fetch(API('collaboration')).then(r => r.json());
+
+    // Research groups
+    const groups = d.research_groups || [];
+    const grpEl = document.getElementById('collab-groups');
+    if (!groups.length) {
+      grpEl.innerHTML = '<div class="ri-empty">No research groups detected — more references needed.</div>';
+    } else {
+      grpEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem">` +
+        groups.map(g => `
+          <div class="ri-author-card">
+            <div class="ri-author-name">Group ${g.group_id} · ${g.size} authors</div>
+            <div class="ri-author-stats">
+              <strong>${g.key_authors.slice(0,2).join(', ')}${g.key_authors.length>2?' et al.':''}</strong><br>
+              Area: ${g.main_area} · ${g.total_papers} paper${g.total_papers!==1?'s':''}
+            </div>
+          </div>`).join('') + `</div>`;
+    }
+
+    // Bridge authors
+    const bridges = d.bridge_authors || [];
+    const brEl = document.getElementById('collab-bridges');
+    if (!bridges.length) {
+      brEl.innerHTML = '<div class="ri-empty">No bridge authors found.</div>';
+    } else {
+      brEl.innerHTML = bridges.map(b => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid #f0f0f0">
+          <span style="font-size:.88rem;font-weight:600;color:#2d3748">${b.author}</span>
+          <span style="font-size:.78rem;color:#718096">bridges ${b.bridges_to_groups} group${b.bridges_to_groups!==1?'s':''} · ${b.papers} paper${b.papers!==1?'s':''}</span>
+        </div>`).join('');
+    }
+
+    // Top collaborators
+    const top = d.top_collaborators || [];
+    const topEl = document.getElementById('collab-top');
+    if (!top.length) {
+      topEl.innerHTML = '<div class="ri-empty">No collaborator data.</div>';
+    } else {
+      topEl.innerHTML = top.map(c => `
+        <div class="ri-author-card">
+          <div class="ri-author-name">${c.author}</div>
+          <div class="ri-author-stats">${c.papers} paper${c.papers!==1?'s':''} &nbsp;·&nbsp; influence ${c.influence_score}</div>
+        </div>`).join('');
+    }
+
+    // Metrics
+    const m = d.metrics || {};
+    const pat = d.collaboration_patterns || {};
+    document.getElementById('collab-metrics').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem;margin-bottom:.75rem">
+        ${[
+          ['Total Authors', m.total_authors||0],
+          ['Collaborations', m.total_collaborations||0],
+          ['Research Groups', m.research_groups||0],
+          ['Bridge Authors', m.bridge_authors||0],
+          ['Avg Papers/Author', m.avg_papers_per_author||0],
+          ['Multi-author Ratio', ((pat.multi_author_ratio||0)*100).toFixed(0)+'%'],
+        ].map(([l,v])=>`<div style="text-align:center;background:#f7fafc;border-radius:.5rem;padding:.75rem">
+          <div style="font-size:1.3rem;font-weight:800;color:#6b46c1">${v}</div>
+          <div style="font-size:.72rem;color:#718096;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+      </div>`;
+  } catch (e) {
+    ['collab-groups','collab-bridges','collab-top','collab-metrics'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<div class="ri-empty">Failed to load collaboration data</div>';
+    });
   }
 }
 

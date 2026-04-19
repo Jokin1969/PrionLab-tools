@@ -146,6 +146,12 @@ def research_landscape(manuscript_id):
     return jsonify(get_citation_network_service().analyze_research_landscape(manuscript_id))
 
 
+@references_bp.route("/manuscript/<manuscript_id>/collaboration")
+@login_required
+def collaboration_network(manuscript_id):
+    return jsonify(get_citation_network_service().build_collaboration_network(manuscript_id))
+
+
 @references_bp.route("/manuscript/<manuscript_id>/ai-recommendations")
 @login_required
 def ai_recommendations(manuscript_id):
