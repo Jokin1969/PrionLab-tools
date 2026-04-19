@@ -12,6 +12,7 @@ from .service import (
 )
 from .smart_recommendations import get_smart_recommendation_engine
 from .citation_network import get_citation_network_service
+from .ai_core import get_core_ai_recommendation_engine
 
 logger = logging.getLogger(__name__)
 
@@ -141,3 +142,12 @@ def author_network(manuscript_id):
 @login_required
 def research_landscape(manuscript_id):
     return jsonify(get_citation_network_service().analyze_research_landscape(manuscript_id))
+
+
+@references_bp.route("/manuscript/<manuscript_id>/ai-recommendations")
+@login_required
+def ai_recommendations(manuscript_id):
+    username = session.get("username", "")
+    limit = request.args.get("limit", 10, type=int)
+    engine = get_core_ai_recommendation_engine()
+    return jsonify(engine.generate_core_recommendations(manuscript_id, username, limit))

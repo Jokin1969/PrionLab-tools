@@ -86,10 +86,28 @@
 
     <div id="refList"></div>
     <div id="refEmpty" class="ms-empty" style="display:none">
+
       <div class="ms-empty__icon">&#128218;</div>
       <h3>{{ _('No references yet') }}</h3>
       <p>{{ _('Import a BibTeX file to get started.') }}</p>
     </div>
+  </div>
+
+  <!-- AI Suggestions panel -->
+  <div class="card card--padded" style="margin-top:1.25rem">
+    <div class="ref-lib-head">
+      <h2 class="ref-section-title">&#129504; {{ _('AI Suggestions') }}</h2>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <button id="aiLoadBtn" class="btn btn--secondary" onclick="loadAISuggestions()">
+          &#128269; {{ _('Get Smart Suggestions') }}
+        </button>
+        <a href="/manuscripts/{{ manuscript_id }}/references/intelligence"
+           class="btn btn--secondary" style="font-size:.82rem">
+          {{ _('Full Intelligence Dashboard →') }}
+        </a>
+      </div>
+    </div>
+    <div id="aiRecs" style="display:none;margin-top:.75rem"></div>
   </div>
 </div>
 
@@ -342,6 +360,57 @@ function downloadBib() {
   a.href = URL.createObjectURL(new Blob([_bibText], {type:'text/plain'}));
   a.download = `bibliography_${style}_${new Date().toISOString().slice(0,10)}.txt`;
   a.click();
+}
+
+// ── AI Suggestions ───────────────────────────────────────────────────────────
+const _REC_TYPE_COLOR = {collaborative:'#bee3f8',content:'#c6f6d5',expertise:'#e9d8fd',combined:'#feebc8'};
+const _REC_TYPE_TEXT  = {collaborative:'#2a4365',content:'#276749',expertise:'#553c9a',combined:'#744210'};
+
+async function loadAISuggestions() {
+  const btn = document.getElementById('aiLoadBtn');
+  const box = document.getElementById('aiRecs');
+  btn.disabled = true;
+  btn.textContent = '{{ _("Loading…") }}';
+  box.style.display = '';
+  box.innerHTML = '<div style="color:#a0aec0;padding:1rem">&#9203; Analysing your references…</div>';
+  try {
+    const mid = MANUSCRIPT_ID.replace(/"/g,'');
+    const d = await fetch(`/api/references/manuscript/${mid}/ai-recommendations?limit=8`).then(r=>r.json());
+    if (d.error) { box.innerHTML = `<div style="color:#e53e3e">${d.error}</div>`; return; }
+    const recs = d.recommendations || [];
+    if (!recs.length) {
+      box.innerHTML = '<div style="color:#718096;padding:.5rem">Import more references to enable AI suggestions.</div>';
+      return;
+    }
+    const gaps = d.foundational_gaps || [];
+    let html = '';
+    if (gaps.length) {
+      html += `<div style="background:#fff5f5;border-left:4px solid #e53e3e;padding:.6rem .9rem;border-radius:0 .4rem .4rem 0;margin-bottom:.75rem;font-size:.83rem;color:#c53030">
+        &#9888; ${gaps[0].description}
+      </div>`;
+    }
+    html += '<div style="display:flex;flex-direction:column;gap:.5rem">';
+    recs.forEach(r => {
+      const bg = _REC_TYPE_COLOR[r.recommendation_type] || '#e2e8f0';
+      const tc = _REC_TYPE_TEXT[r.recommendation_type] || '#2d3748';
+      const authors = (r.authors||[]).slice(0,2).join(', ') + (r.authors&&r.authors.length>2?' et al.':'');
+      html += `<div style="border:1px solid #e2e8f0;border-radius:.5rem;padding:.75rem;background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+          <div style="font-size:.88rem;font-weight:600;color:#2d3748;flex:1">${r.title||'—'}</div>
+          <span style="background:${bg};color:${tc};padding:.15rem .5rem;border-radius:9999px;font-size:.7rem;font-weight:700;white-space:nowrap">${r.recommendation_type}</span>
+        </div>
+        <div style="font-size:.78rem;color:#718096;margin:.2rem 0">${authors} · ${r.journal||''} ${r.year||''}</div>
+        <div style="font-size:.78rem;color:#805ad5;background:#f5f0ff;padding:.2rem .5rem;border-radius:.3rem;display:inline-block">${r.explanation}</div>
+      </div>`;
+    });
+    html += '</div>';
+    box.innerHTML = html;
+  } catch(e) {
+    box.innerHTML = '<div style="color:#e53e3e">Failed to load suggestions</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '{{ _("Refresh Suggestions") }}';
+  }
 }
 </script>
 {% endblock %}
