@@ -312,6 +312,43 @@ def update_manuscript_status(manuscript_id: str, new_status: str, username: str 
             return {"success": True, "manuscript": m}
     return {"success": False, "error": "Manuscript not found"}
 
+def update_manuscript_abstract(
+    manuscript_id: str, abstract_en: str, abstract_es: str = "", username: str = ""
+) -> Dict:
+    """Update bilingual abstract fields for a manuscript."""
+    db = _db()
+    if db:
+        try:
+            import uuid as _uuid
+            from database.models import Manuscript
+            with db.get_session() as s:
+                m = s.query(Manuscript).filter(Manuscript.id == _uuid.UUID(manuscript_id)).first()
+                if not m:
+                    return {"success": False, "error": "Manuscript not found"}
+                m.abstract = abstract_en
+                if hasattr(m, "abstract_es"):
+                    m.abstract_es = abstract_es
+                m.last_modified_by = username
+                m.updated_at = datetime.now(timezone.utc)
+                d = m.to_dict()
+            _append_activity(manuscript_id, d.get("title", ""), "Abstract updated", username)
+            return {"success": True, "manuscript": d}
+        except Exception as exc:
+            logger.warning("DB update_abstract: %s", exc)
+
+    manuscripts = _load_json_store(_manuscripts_path())
+    for m in manuscripts:
+        if m.get("id") == manuscript_id:
+            m["abstract"] = abstract_en
+            m["abstract_es"] = abstract_es
+            m["last_modified_by"] = username
+            m["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _save_json_store(_manuscripts_path(), manuscripts)
+            _append_activity(manuscript_id, m.get("title", ""), "Abstract updated", username)
+            return {"success": True, "manuscript": m}
+    return {"success": False, "error": "Manuscript not found"}
+
+
 # ── Activity log ──────────────────────────────────────────────────────────────
 
 def _append_activity(manuscript_id: str, title: str, action: str, username: str) -> None:

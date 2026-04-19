@@ -41,8 +41,20 @@ PUBLICATIONS_COLS = [
     "pub_id", "doi", "title", "authors_raw", "journal", "year",
     "volume", "issue", "pages", "pmid", "pdf_path", "pub_type",
     "is_group_pub", "notes", "created_at", "updated_at",
+    "abstract_en", "abstract_es", "orcid_work_id",
+    "quartile_wos", "quartile_scopus", "d_classification", "t_classification",
+    "impact_factor", "sjr_score",
+    "citations_wos", "citations_scopus", "citations_scholar", "last_citation_update",
 ]
 PUBLICATIONS_FILE = os.path.join(CSV_DIR, "publications.csv")
+
+JOURNAL_QUALITY_COLS = [
+    "journal_id", "name", "issn", "eissn", "publisher",
+    "quartile_wos", "quartile_scopus", "d_classification", "t_classification",
+    "impact_factor", "sjr_score", "h_index",
+    "subject_areas", "is_oa", "notes", "updated_at",
+]
+JOURNAL_QUALITY_FILE = os.path.join(CSV_DIR, "journal_quality.csv")
 
 ACK_BLOCKS_COLS = [
     "block_id", "category", "short_label", "text", "is_active",
@@ -98,6 +110,7 @@ def bootstrap_schema() -> None:
         (GRANT_MEMBERS_FILE, GRANT_MEMBERS_COLS),
         (PUBLICATIONS_FILE, PUBLICATIONS_COLS),
         (ACK_BLOCKS_FILE, ACK_BLOCKS_COLS),
+        (JOURNAL_QUALITY_FILE, JOURNAL_QUALITY_COLS),
     ]:
         if not os.path.exists(filepath):
             os.makedirs(CSV_DIR, exist_ok=True)
@@ -113,6 +126,7 @@ def bootstrap_schema() -> None:
     _patch_members_initials()
     _patch_competing_interests()
     _bootstrap_papers_dir()
+    _seed_journal_quality_if_empty()
 
 
 # ── Members ───────────────────────────────────────────────────────────────────
@@ -502,6 +516,86 @@ def delete_publication(pub_id: str) -> tuple[bool, str]:
     pdf_path = rows.iloc[0].get("pdf_path", "")
     save_publications(df[df["pub_id"] != pub_id])
     return True, pdf_path
+
+
+# ── Journal Quality ──────────────────────────────────────────────────────────
+
+def load_journal_quality() -> pd.DataFrame:
+    return _read(JOURNAL_QUALITY_FILE, JOURNAL_QUALITY_COLS)
+
+
+def get_journal_quality(journal_name: str) -> dict | None:
+    """Look up quality metrics for a journal by name (case-insensitive, partial match)."""
+    if not journal_name:
+        return None
+    df = load_journal_quality()
+    name_lower = journal_name.lower().strip()
+    mask = df["name"].str.lower().str.contains(name_lower, na=False, regex=False)
+    if not mask.any():
+        return None
+    return df[mask].iloc[0].to_dict()
+
+
+def get_publication_analytics() -> dict:
+    """Return aggregated publication statistics for the analytics dashboard."""
+    df = load_publications()
+    if df.empty:
+        return {
+            "total": 0, "by_year": {}, "by_type": {}, "by_quartile": {},
+            "with_citations": 0, "avg_citations": 0,
+            "top_impact_factor": 0, "avg_impact_factor": 0,
+            "oa_count": 0,
+        }
+
+    total = len(df)
+
+    def _counts(col: str) -> dict:
+        return dict(df[col].replace("", pd.NA).dropna().value_counts().items())
+
+    by_year = dict(
+        sorted(_counts("year").items(), key=lambda kv: kv[0], reverse=True)
+    )
+
+    def _to_int(v) -> int:
+        try:
+            return int(str(v).strip())
+        except Exception:
+            return 0
+
+    citations_per_pub = [
+        max(_to_int(r.get("citations_wos", 0)),
+            _to_int(r.get("citations_scopus", 0)),
+            _to_int(r.get("citations_scholar", 0)))
+        for _, r in df.iterrows()
+    ]
+    with_citations = sum(1 for c in citations_per_pub if c > 0)
+    avg_citations = round(sum(citations_per_pub) / max(len(citations_per_pub), 1), 1)
+
+    impact_factors: list[float] = []
+    for v in df["impact_factor"].replace("", pd.NA).dropna():
+        try:
+            impact_factors.append(float(str(v).strip()))
+        except Exception:
+            pass
+
+    jq_df = load_journal_quality()
+    oa_journals = set(
+        jq_df[jq_df["is_oa"].str.lower() == "yes"]["name"].str.lower().tolist()
+    )
+    oa_count = int(df["journal"].str.lower().isin(oa_journals).sum())
+
+    return {
+        "total": total,
+        "by_year": by_year,
+        "by_type": _counts("pub_type"),
+        "by_quartile": _counts("quartile_wos"),
+        "by_d_class": _counts("d_classification"),
+        "with_citations": with_citations,
+        "avg_citations": avg_citations,
+        "top_impact_factor": round(max(impact_factors), 3) if impact_factors else 0,
+        "avg_impact_factor": round(sum(impact_factors) / len(impact_factors), 3) if impact_factors else 0,
+        "oa_count": oa_count,
+    }
 
 
 # ── Acknowledgment Blocks ─────────────────────────────────────────────────────
@@ -1940,3 +2034,125 @@ def get_available_references() -> list:
         return _get_refs()
     except Exception:
         return []
+
+
+# ── Journal Quality seed data ─────────────────────────────────────────────────
+
+_JOURNAL_QUALITY_SEED = [
+    # (journal_id, name, issn, eissn, publisher,
+    #  quartile_wos, quartile_scopus, d_class, t_class,
+    #  impact_factor, sjr_score, h_index, subject_areas, is_oa)
+    ("jq_001", "PLOS Pathogens", "1553-7366", "1553-7374",
+     "Public Library of Science", "Q1", "Q1", "D1", "T2",
+     "6.7", "2.41", "200",
+     "Infectious Diseases; Parasitology; Virology", "yes"),
+    ("jq_002", "PLOS ONE", "1932-6203", "1932-6203",
+     "Public Library of Science", "Q2", "Q2", "D2", "",
+     "3.7", "0.94", "400", "Multidisciplinary", "yes"),
+    ("jq_003", "Journal of Virology", "0022-538X", "1098-5514",
+     "American Society for Microbiology", "Q1", "Q1", "D1", "T2",
+     "5.4", "1.78", "350", "Virology; Microbiology", "no"),
+    ("jq_004", "Acta Neuropathologica", "0001-6322", "1432-0533",
+     "Springer", "Q1", "Q1", "D1", "T1",
+     "16.0", "6.74", "250", "Neuroscience; Pathology", "no"),
+    ("jq_005", "Brain", "0006-8950", "1460-2156",
+     "Oxford University Press", "Q1", "Q1", "D1", "T1",
+     "14.5", "4.52", "320", "Neuroscience; Neurology", "no"),
+    ("jq_006", "Neurobiology of Disease", "0969-9961", "1095-953X",
+     "Elsevier", "Q1", "Q1", "D1", "T2",
+     "7.1", "2.12", "200", "Neuroscience", "no"),
+    ("jq_007", "Journal of Neuroscience", "0270-6474", "1529-2401",
+     "Society for Neuroscience", "Q1", "Q1", "D1", "T1",
+     "5.3", "2.52", "450", "Neuroscience", "no"),
+    ("jq_008", "Frontiers in Neuroscience", "1662-453X", "1662-453X",
+     "Frontiers Media", "Q2", "Q2", "D2", "",
+     "4.3", "1.08", "130", "Neuroscience", "yes"),
+    ("jq_009", "Journal of General Virology", "0022-1317", "1465-2099",
+     "Microbiology Society", "Q2", "Q2", "D2", "",
+     "3.6", "0.92", "220", "Virology; Microbiology", "no"),
+    ("jq_010", "Prion", "1933-6896", "1933-690X",
+     "Taylor & Francis", "Q3", "Q3", "D3", "",
+     "2.2", "0.55", "70", "Biochemistry; Cell Biology", "no"),
+    ("jq_011", "Journal of Biological Chemistry", "0021-9258", "1083-351X",
+     "ASBMB/Elsevier", "Q1", "Q1", "D1", "T2",
+     "5.5", "2.12", "600", "Biochemistry; Molecular Biology", "yes"),
+    ("jq_012", "PNAS", "0027-8424", "1091-6490",
+     "National Academy of Sciences", "Q1", "Q1", "D1", "T1",
+     "11.1", "4.26", "1000", "Multidisciplinary", "yes"),
+    ("jq_013", "Pathogens", "2076-0817", "2076-0817",
+     "MDPI", "Q2", "Q2", "D2", "",
+     "3.9", "0.89", "70", "Infectious Diseases; Microbiology", "yes"),
+    ("jq_014", "Viruses", "1999-4915", "1999-4915",
+     "MDPI", "Q2", "Q2", "D2", "",
+     "4.7", "1.04", "110", "Virology", "yes"),
+    ("jq_015", "Zoonoses and Public Health", "1863-1959", "1863-2378",
+     "Wiley", "Q2", "Q2", "D2", "",
+     "3.0", "0.72", "90", "Veterinary Sciences; Public Health", "no"),
+    ("jq_016", "Emerging Microbes & Infections", "2222-1751", "2222-1751",
+     "Taylor & Francis", "Q1", "Q1", "D1", "T2",
+     "8.4", "2.35", "80", "Infectious Diseases; Microbiology", "yes"),
+    ("jq_017", "Cell Host & Microbe", "1931-3128", "1934-6069",
+     "Cell Press/Elsevier", "Q1", "Q1", "D1", "T1",
+     "30.3", "14.7", "250", "Cell Biology; Infectious Diseases", "no"),
+    ("jq_018", "Nature Communications", "2041-1723", "2041-1723",
+     "Nature Publishing Group", "Q1", "Q1", "D1", "T1",
+     "16.6", "5.04", "550", "Multidisciplinary", "yes"),
+    ("jq_019", "eLife", "2050-084X", "2050-084X",
+     "eLife Sciences Publications", "Q1", "Q1", "D1", "T2",
+     "8.7", "3.55", "200", "Multidisciplinary", "yes"),
+    ("jq_020", "Scientific Reports", "2045-2322", "2045-2322",
+     "Nature Publishing Group", "Q2", "Q2", "D2", "",
+     "4.6", "1.01", "400", "Multidisciplinary", "yes"),
+    ("jq_021", "Annals of Neurology", "0364-5134", "1531-8249",
+     "Wiley/AAN", "Q1", "Q1", "D1", "T1",
+     "11.4", "4.18", "280", "Neuroscience; Neurology", "no"),
+    ("jq_022", "Alzheimer's & Dementia", "1552-5260", "1552-5279",
+     "Wiley/Alzheimer's Association", "Q1", "Q1", "D1", "T1",
+     "14.0", "6.24", "180", "Neuroscience; Geriatrics", "no"),
+    ("jq_023", "mBio", "2150-7511", "2150-7511",
+     "American Society for Microbiology", "Q1", "Q1", "D1", "T2",
+     "7.0", "2.72", "130", "Microbiology; Infectious Diseases", "yes"),
+    ("jq_024", "Virulence", "2150-5608", "2150-5616",
+     "Taylor & Francis", "Q2", "Q2", "D2", "",
+     "5.7", "1.44", "80", "Infectious Diseases; Microbiology", "yes"),
+    ("jq_025", "Neuroscience & Biobehavioral Reviews", "0149-7634", "1873-7528",
+     "Elsevier", "Q1", "Q1", "D1", "T2",
+     "8.4", "3.12", "200", "Neuroscience", "no"),
+]
+
+
+def _seed_journal_quality_if_empty() -> None:
+    if not os.path.exists(JOURNAL_QUALITY_FILE):
+        return
+    try:
+        existing = pd.read_csv(JOURNAL_QUALITY_FILE, dtype=str, keep_default_na=False)
+        if not existing.empty:
+            return
+    except Exception:
+        return
+
+    now = _now()
+    rows = []
+    for (jid, name, issn, eissn, publisher, q_wos, q_sco, d_cls, t_cls,
+         impact, sjr, h_idx, subjects, is_oa) in _JOURNAL_QUALITY_SEED:
+        rows.append({
+            "journal_id":       jid,
+            "name":             name,
+            "issn":             issn,
+            "eissn":            eissn,
+            "publisher":        publisher,
+            "quartile_wos":     q_wos,
+            "quartile_scopus":  q_sco,
+            "d_classification": d_cls,
+            "t_classification": t_cls,
+            "impact_factor":    impact,
+            "sjr_score":        sjr,
+            "h_index":          h_idx,
+            "subject_areas":    subjects,
+            "is_oa":            is_oa,
+            "notes":            "",
+            "updated_at":       now,
+        })
+    df = pd.DataFrame(rows, columns=JOURNAL_QUALITY_COLS)
+    _write(df, JOURNAL_QUALITY_FILE, "journal_quality.csv")
+    logger.info("Seeded %d journal quality records", len(rows))

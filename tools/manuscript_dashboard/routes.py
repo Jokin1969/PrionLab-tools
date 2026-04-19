@@ -8,7 +8,7 @@ from . import manuscript_dashboard_bp
 from .service import (
     create_manuscript, create_project, get_dashboard_data,
     get_manuscript, get_manuscripts, get_projects, get_templates,
-    update_manuscript_status,
+    update_manuscript_status, update_manuscript_abstract,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,20 @@ def update_status(manuscript_id):
 def list_projects():
     username = session.get("username", "")
     return jsonify({"success": True, "projects": get_projects(username)})
+
+
+@manuscript_dashboard_bp.route("/<manuscript_id>/abstract", methods=["PUT"])
+@login_required
+def update_abstract(manuscript_id):
+    username = session.get("username", "")
+    data = request.get_json(silent=True) or {}
+    result = update_manuscript_abstract(
+        manuscript_id,
+        abstract_en=data.get("abstract_en", ""),
+        abstract_es=data.get("abstract_es", ""),
+        username=username,
+    )
+    return jsonify(result), 200 if result.get("success") else 400
 
 
 @manuscript_dashboard_bp.route("/projects", methods=["POST"])

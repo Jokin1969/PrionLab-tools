@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ _('Edit Manuscript') }} — PrionLab Tools{% endblock %}
 {% block content %}
+<style>
+.edit-tabs{display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:1.25rem}
+.edit-tab{padding:.5rem 1rem;font-size:.88rem;font-weight:600;color:#718096;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s}
+.edit-tab.active{color:#6b46c1;border-bottom-color:#6b46c1}
+.edit-panel{display:none}.edit-panel.active{display:block}
+.wc-badge{font-size:.75rem;color:#718096;margin-left:.5rem}
+</style>
 <div class="ms-dash">
   <div class="ms-dash__header">
     <div>
@@ -8,8 +15,15 @@
       <h1 class="ms-dash__title">{{ _('Edit Manuscript') }}</h1>
     </div>
   </div>
-  <div class="card card--padded" style="max-width:800px">
-    <form id="editForm">
+  <div class="card card--padded" style="max-width:900px">
+
+    <div class="edit-tabs">
+      <button class="edit-tab active" onclick="switchTab('status',this)">{{ _('Status') }}</button>
+      <button class="edit-tab" onclick="switchTab('abstract',this)">{{ _('Abstract') }}</button>
+    </div>
+
+    <!-- Status tab -->
+    <div id="panel-status" class="edit-panel active">
       <div class="ms-field-full"><label>{{ _('Status') }}</label>
         <select id="editStatus" class="ms-input">
           <option value="draft">Draft</option><option value="writing">Writing</option>
@@ -21,22 +35,64 @@
       <div class="ms-field-full"><label>{{ _('Notes on status change') }}</label>
         <input id="editNotes" class="ms-input" placeholder="{{ _('Optional notes') }}"></div>
       <div style="margin-top:1.5rem;display:flex;gap:.75rem">
-        <button type="button" class="btn btn--primary" onclick="saveEdit()">{{ _('Save') }}</button>
+        <button type="button" class="btn btn--primary" onclick="saveStatus()">{{ _('Save Status') }}</button>
         <button type="button" class="btn btn--secondary" onclick="history.back()">{{ _('Cancel') }}</button>
       </div>
-    </form>
+    </div>
+
+    <!-- Abstract tab -->
+    <div id="panel-abstract" class="edit-panel">
+      <div class="ms-field-full">
+        <label>{{ _('Abstract (English)') }} <span class="wc-badge" id="wcEn"></span></label>
+        <textarea id="abstractEn" class="ms-input" rows="7"
+                  placeholder="{{ _('English abstract…') }}"
+                  oninput="updateWc('En')"></textarea>
+      </div>
+      <div class="ms-field-full" style="margin-top:1rem">
+        <label>{{ _('Abstract (Spanish)') }} <span class="wc-badge" id="wcEs"></span></label>
+        <textarea id="abstractEs" class="ms-input" rows="7"
+                  placeholder="{{ _('Resumen en español…') }}"
+                  oninput="updateWc('Es')"></textarea>
+      </div>
+      <div style="margin-top:1.5rem;display:flex;gap:.75rem">
+        <button type="button" class="btn btn--primary" onclick="saveAbstract()">{{ _('Save Abstract') }}</button>
+        <button type="button" class="btn btn--secondary" onclick="history.back()">{{ _('Cancel') }}</button>
+      </div>
+      <p id="abstractMsg" style="margin-top:.75rem;font-size:.85rem"></p>
+    </div>
+
   </div>
 </div>
 <script>
 const manuscriptId = "{{ manuscript_id }}";
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     const r = await fetch(`/api/manuscripts/${manuscriptId}`);
     const d = await r.json();
-    if (d.success) document.getElementById('editStatus').value = d.manuscript.status;
+    if (d.success) {
+      document.getElementById('editStatus').value = d.manuscript.status || 'draft';
+      document.getElementById('abstractEn').value = d.manuscript.abstract || '';
+      document.getElementById('abstractEs').value = d.manuscript.abstract_es || '';
+      updateWc('En'); updateWc('Es');
+    }
   } catch(e) {}
 });
-async function saveEdit() {
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.edit-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.edit-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+function updateWc(lang) {
+  const el = document.getElementById('abstract' + lang);
+  const wc = el.value.trim() ? el.value.trim().split(/\s+/).length : 0;
+  document.getElementById('wc' + lang).textContent = `${wc} {{ _('words') }}`;
+}
+
+async function saveStatus() {
   const status = document.getElementById('editStatus').value;
   const notes = document.getElementById('editNotes').value;
   try {
@@ -48,6 +104,29 @@ async function saveEdit() {
     if (d.success) window.location.href = `/manuscripts/${manuscriptId}`;
     else alert('{{ _("Error") }}: ' + (d.error||'unknown'));
   } catch(e) { alert('{{ _("Error saving") }}'); }
+}
+
+async function saveAbstract() {
+  const msg = document.getElementById('abstractMsg');
+  const abstract_en = document.getElementById('abstractEn').value;
+  const abstract_es = document.getElementById('abstractEs').value;
+  try {
+    const r = await fetch(`/api/manuscripts/${manuscriptId}/abstract`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({abstract_en, abstract_es})
+    });
+    const d = await r.json();
+    if (d.success) {
+      msg.style.color = '#15803d';
+      msg.textContent = '{{ _("Abstract saved successfully.") }}';
+    } else {
+      msg.style.color = '#b91c1c';
+      msg.textContent = d.error || '{{ _("Error saving abstract.") }}';
+    }
+  } catch(e) {
+    msg.style.color = '#b91c1c';
+    msg.textContent = '{{ _("Error saving abstract.") }}';
+  }
 }
 </script>
 {% endblock %}
