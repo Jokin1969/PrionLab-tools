@@ -604,3 +604,67 @@ def competitive_analysis(manuscript_id):
         area = Counter(areas).most_common(1)[0][0] if areas else "general"
     svc = get_strategic_analytics_service()
     return jsonify({"success": True, **svc.competitive_analysis(area, refs)})
+
+
+# ── Matchmaking (P24D1) ────────────────────────────────────────────────────────
+
+@references_bp.route("/matchmaking/profiles")
+@login_required
+def matchmaking_profiles():
+    # Returns list of stored researcher profiles for UI dropdowns
+    from .researcher_matchmaking import get_matchmaking_service
+    svc = get_matchmaking_service()
+    profiles = svc.get_profiles()
+    return jsonify({"success": True, "profiles": profiles, "count": len(profiles)})
+
+
+@references_bp.route("/matchmaking/find-partners", methods=["POST"])
+@login_required
+def matchmaking_find_partners():
+    # Finds compatible research partners for a target ORCID profile
+    data = request.get_json(silent=True) or {}
+    target_orcid = (data.get("target_orcid") or "").strip()
+    limit = int(data.get("limit") or 10)
+    collab_type = data.get("collab_type")
+    if not target_orcid:
+        return jsonify({"success": False, "error": "target_orcid required"}), 400
+    from .researcher_matchmaking import get_matchmaking_service
+    svc = get_matchmaking_service()
+    return jsonify(svc.find_partners(target_orcid, limit=limit, collab_type=collab_type))
+
+
+@references_bp.route("/matchmaking/assess-compatibility", methods=["POST"])
+@login_required
+def matchmaking_assess_compatibility():
+    # Pairwise compatibility assessment between two researcher profiles
+    data = request.get_json(silent=True) or {}
+    orcid_a = (data.get("orcid_a") or "").strip()
+    orcid_b = (data.get("orcid_b") or "").strip()
+    if not orcid_a or not orcid_b:
+        return jsonify({"success": False, "error": "orcid_a and orcid_b required"}), 400
+    from .researcher_matchmaking import get_matchmaking_service
+    svc = get_matchmaking_service()
+    return jsonify(svc.assess_compatibility(orcid_a, orcid_b))
+
+
+@references_bp.route("/matchmaking/analyze-synergy", methods=["POST"])
+@login_required
+def matchmaking_analyze_synergy():
+    # Group synergy analysis for a list of ORCID profiles
+    data = request.get_json(silent=True) or {}
+    orcid_list = data.get("orcid_list") or []
+    if len(orcid_list) < 2:
+        return jsonify({"success": False, "error": "At least 2 ORCID IDs required"}), 400
+    from .researcher_matchmaking import get_matchmaking_service
+    svc = get_matchmaking_service()
+    return jsonify(svc.analyze_synergy(orcid_list))
+
+
+@references_bp.route("/manuscript/<manuscript_id>/matchmaking-network")
+@login_required
+def matchmaking_network(manuscript_id):
+    # Co-authorship network built from manuscript references
+    from .researcher_matchmaking import get_matchmaking_service
+    refs = get_references(manuscript_id, "", 0, 0, "")
+    svc = get_matchmaking_service()
+    return jsonify(svc.analyze_network(refs))
