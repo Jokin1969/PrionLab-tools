@@ -216,6 +216,9 @@ def create_app() -> Flask:
     from tools.help import help_bp
     app.register_blueprint(help_bp)
 
+    from tools.data_management import data_mgmt_bp
+    app.register_blueprint(data_mgmt_bp)
+
     try:
         import database.help_system  # noqa: F401 — registers models with Base.metadata
         from database.config import db as _db

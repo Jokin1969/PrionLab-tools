@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Data Management') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="dm-page">
+
+  <div class="dm-hero">
+    <h1>&#128202; {{ _('Data Management & Backup') }}</h1>
+    <p>{{ _('Storage status, backup controls, Dropbox sync and integrity checks') }}</p>
+  </div>
+
+  <!-- Status cards -->
+  <div class="dm-cards" id="dm-cards">
+    <div class="dm-card dm-card--loading"><div class="dm-spinner"></div><span>{{ _('Loading…') }}</span></div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="dm-actions">
+    <button class="dm-btn dm-btn--primary" onclick="dmBackup('auto')">
+      &#128190; {{ _('Create Backup') }}
+    </button>
+    <button class="dm-btn dm-btn--secondary" onclick="dmIntegrityCheck()">
+      &#128270; {{ _('Integrity Check') }}
+    </button>
+    <button class="dm-btn dm-btn--secondary" onclick="dmOptimize()">
+      &#9889; {{ _('Optimize Storage') }}
+    </button>
+    <button class="dm-btn dm-btn--secondary" onclick="dmSyncPush()">
+      &#8679; {{ _('Push to Dropbox') }}
+    </button>
+    <button class="dm-btn dm-btn--secondary" onclick="dmSyncPull()">
+      &#8681; {{ _('Pull from Dropbox') }}
+    </button>
+  </div>
+
+  <!-- Results panel -->
+  <div id="dm-result" class="dm-result" style="display:none"></div>
+
+  <!-- Backups list -->
+  <div class="dm-section">
+    <div class="dm-section-head">
+      <h2>&#128230; {{ _('Local Backups') }}</h2>
+      <button class="dm-btn dm-btn--sm" onclick="loadBackups()">&#8635; {{ _('Refresh') }}</button>
+    </div>
+    <div id="dm-backups-list" class="dm-backups-list">
+      <p class="dm-muted">{{ _('Loading…') }}</p>
+    </div>
+  </div>
+
+</div>
+
+<style>
+.dm-page { max-width: 1000px; margin: 0 auto; padding-bottom: 3rem; }
+.dm-hero { margin-bottom: 1.5rem; }
+.dm-hero h1 { font-size: 1.4rem; font-weight: 700; margin: 0 0 .3rem; color: #111827; }
+.dm-hero p { color: #6b7280; font-size: .9rem; margin: 0; }
+
+.dm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.dm-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 1rem; display: flex; flex-direction: column; gap: .35rem;
+}
+.dm-card--loading { align-items: center; justify-content: center; flex-direction: row; gap: .5rem; color: #9ca3af; }
+.dm-card-label { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; }
+.dm-card-value { font-size: 1.25rem; font-weight: 700; color: #111827; }
+.dm-card-sub { font-size: .76rem; color: #9ca3af; }
+.dm-card--ok .dm-card-value { color: #065f46; }
+.dm-card--warn .dm-card-value { color: #92400e; }
+.dm-card--error .dm-card-value { color: #991b1b; }
+
+.dm-spinner {
+  width: 18px; height: 18px; border: 2px solid #e5e7eb;
+  border-top-color: #2563eb; border-radius: 50%;
+  animation: dm-spin .6s linear infinite;
+}
+@keyframes dm-spin { to { transform: rotate(360deg); } }
+
+.dm-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1.5rem; }
+.dm-btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+  border-radius: 7px; border: 1px solid #e5e7eb;
+  padding: .45rem .9rem; font-size: .84rem; font-weight: 500;
+  cursor: pointer; transition: background .12s, border-color .12s;
+  text-decoration: none;
+}
+.dm-btn--primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+.dm-btn--primary:hover { background: #1d4ed8; }
+.dm-btn--secondary { background: #fff; color: #374151; }
+.dm-btn--secondary:hover { background: #f3f4f6; }
+.dm-btn--sm { font-size: .78rem; padding: .3rem .65rem; }
+
+.dm-result {
+  padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;
+  font-size: .84rem; font-family: monospace; white-space: pre-wrap;
+  background: #f8fafc; border: 1px solid #e5e7eb; max-height: 300px; overflow-y: auto;
+}
+.dm-result--ok { background: #f0fdf4; border-color: #bbf7d0; color: #065f46; }
+.dm-result--error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+.dm-section { margin-top: 1.5rem; }
+.dm-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+.dm-section-head h2 { font-size: 1rem; font-weight: 600; color: #111827; margin: 0; }
+
+.dm-backups-list { display: flex; flex-direction: column; gap: .5rem; }
+.dm-backup-item {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .6rem .8rem; border: 1px solid #e5e7eb; border-radius: 8px;
+  background: #fff; font-size: .83rem;
+}
+.dm-backup-name { font-weight: 500; flex: 1; color: #111827; word-break: break-all; }
+.dm-backup-meta { color: #6b7280; white-space: nowrap; }
+.dm-muted { color: #9ca3af; font-size: .85rem; }
+</style>
+
+<script>
+var DM_BASE = '/data-management/api';
+
+function dmFetch(url, opts, cb) {
+  var options = Object.assign({ credentials: 'same-origin' }, opts || {});
+  fetch(url, options)
+    .then(function(r) { return r.json(); })
+    .then(function(data) { cb(null, data); })
+    .catch(function(e) { cb(e, null); });
+}
+
+function showResult(msg, isError) {
+  var el = document.getElementById('dm-result');
+  el.style.display = 'block';
+  el.className = 'dm-result ' + (isError ? 'dm-result--error' : 'dm-result--ok');
+  el.textContent = typeof msg === 'object' ? JSON.stringify(msg, null, 2) : String(msg);
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function loadStatus() {
+  var cards = document.getElementById('dm-cards');
+  cards.innerHTML = '<div class="dm-card dm-card--loading"><div class="dm-spinner"></div><span>Loading…</span></div>';
+  dmFetch(DM_BASE + '/status', null, function(err, data) {
+    if (err || data.error) {
+      cards.innerHTML = '<div class="dm-card dm-card--error"><div class="dm-card-label">Error</div><div class="dm-card-value">!</div><div class="dm-card-sub">' + (err || data.error) + '</div></div>';
+      return;
+    }
+    var html = '';
+
+    // Volume
+    if (data.volume && !data.volume.error) {
+      var pct = data.volume.usage_pct;
+      var cls = pct > 90 ? 'dm-card--error' : pct > 75 ? 'dm-card--warn' : 'dm-card--ok';
+      html += '<div class="dm-card ' + cls + '"><div class="dm-card-label">Volume /data</div>'
+        + '<div class="dm-card-value">' + pct + '%</div>'
+        + '<div class="dm-card-sub">' + data.volume.used_gb + ' GB / ' + data.volume.total_gb + ' GB</div></div>';
+    }
+
+    // CSV storage
+    if (data.csv_storage) {
+      html += '<div class="dm-card dm-card--ok"><div class="dm-card-label">CSV Files</div>'
+        + '<div class="dm-card-value">' + data.csv_storage.file_count + '</div>'
+        + '<div class="dm-card-sub">' + data.csv_storage.total_mb + ' MB</div></div>';
+    }
+
+    // Backups
+    if (data.backups) {
+      html += '<div class="dm-card"><div class="dm-card-label">Backups</div>'
+        + '<div class="dm-card-value">' + data.backups.count + '</div>'
+        + '<div class="dm-card-sub">' + data.backups.total_mb + ' MB total</div></div>';
+    }
+
+    // PostgreSQL
+    if (data.postgresql) {
+      var pgCls = data.postgresql.status === 'connected' ? 'dm-card--ok' : 'dm-card--warn';
+      html += '<div class="dm-card ' + pgCls + '"><div class="dm-card-label">PostgreSQL</div>'
+        + '<div class="dm-card-value">' + (data.postgresql.status || 'N/A') + '</div>'
+        + '<div class="dm-card-sub">' + (data.postgresql.configured ? 'configured' : 'CSV-only mode') + '</div></div>';
+    }
+
+    // Dropbox
+    if (data.dropbox) {
+      var dbCls = data.dropbox.status === 'connected' ? 'dm-card--ok' : (data.dropbox.configured ? 'dm-card--warn' : 'dm-card--error');
+      html += '<div class="dm-card ' + dbCls + '"><div class="dm-card-label">Dropbox</div>'
+        + '<div class="dm-card-value">' + (data.dropbox.status || (data.dropbox.configured ? 'configured' : 'not configured')) + '</div>'
+        + '<div class="dm-card-sub">' + (data.dropbox.last_sync ? 'Last sync: ' + data.dropbox.last_sync : '') + '</div></div>';
+    }
+
+    cards.innerHTML = html || '<p class="dm-muted">No data available</p>';
+  });
+}
+
+function loadBackups() {
+  var el = document.getElementById('dm-backups-list');
+  el.innerHTML = '<p class="dm-muted">Loading…</p>';
+  dmFetch(DM_BASE + '/backups', null, function(err, data) {
+    if (err || !Array.isArray(data)) {
+      el.innerHTML = '<p class="dm-muted">Error loading backups</p>';
+      return;
+    }
+    if (!data.length) {
+      el.innerHTML = '<p class="dm-muted">No backups found</p>';
+      return;
+    }
+    el.innerHTML = data.map(function(b) {
+      return '<div class="dm-backup-item">'
+        + '<span class="dm-backup-name">📦 ' + b.filename + '</span>'
+        + '<span class="dm-backup-meta">' + b.size_mb + ' MB</span>'
+        + '<span class="dm-backup-meta">' + (b.created_at || '').split('T')[0] + '</span>'
+        + '<span class="dm-backup-meta" style="background:#eff6ff;color:#1d4ed8;border-radius:4px;padding:1px 6px;font-size:.7rem">' + b.type + '</span>'
+        + '</div>';
+    }).join('');
+  });
+}
+
+function dmPost(url, body, label) {
+  showResult('⏳ ' + label + '…', false);
+  dmFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {})
+  }, function(err, data) {
+    if (err) { showResult('Error: ' + err, true); return; }
+    showResult(data, data.error || data.success === false);
+    loadStatus();
+    loadBackups();
+  });
+}
+
+function dmBackup(type)       { dmPost(DM_BASE + '/backup', { backup_type: type }, 'Creating backup'); }
+function dmIntegrityCheck()   { dmPost(DM_BASE + '/integrity-check', {}, 'Running integrity check'); }
+function dmOptimize()         { dmPost(DM_BASE + '/optimize', {}, 'Optimizing storage'); }
+function dmSyncPush()         { dmPost(DM_BASE + '/sync/push', {}, 'Pushing to Dropbox'); }
+function dmSyncPull()         { dmPost(DM_BASE + '/sync/pull', {}, 'Pulling from Dropbox'); }
+
+// Initial load
+loadStatus();
+loadBackups();
+</script>
+{% endblock %}
