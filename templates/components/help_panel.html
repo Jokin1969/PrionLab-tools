@@ -1,0 +1,225 @@
+{% if session.get('logged_in') %}
+{# ── Floating Help System ─────────────────────────────────────────────── #}
+
+<!-- Help Toggle Button -->
+<button
+  id="hs-toggle"
+  class="hs-toggle {% if not session.get('hs_opened') %}hs-pulse{% endif %}"
+  aria-label="{{ _('Help Center') }}"
+  aria-expanded="false"
+  title="{{ _('Help Center') }}"
+>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+    <line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+</button>
+
+<!-- Help Panel -->
+<aside
+  id="hs-panel"
+  class="hs-panel"
+  role="complementary"
+  aria-label="{{ _('Help Center') }}"
+>
+  <!-- Header -->
+  <div class="hs-header">
+    <div class="hs-header-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span>{{ _('Help Center') }}</span>
+    </div>
+    <div class="hs-header-actions">
+      <button id="hs-search-toggle" class="hs-icon-btn" title="{{ _('Search help') }}" aria-label="{{ _('Search help') }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+      </button>
+      <a href="{{ url_for('help.center') }}" class="hs-icon-btn" title="{{ _('Open full Help Center') }}" aria-label="{{ _('Full Help Center') }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+      <button id="hs-close" class="hs-icon-btn" title="{{ _('Close') }}" aria-label="{{ _('Close help') }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div id="hs-search" class="hs-search">
+    <div class="hs-search-inner">
+      <svg class="hs-search-prefix-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input
+        type="text"
+        id="hs-search-input"
+        class="hs-search-input"
+        placeholder="{{ _('Search help articles…') }}"
+        autocomplete="off"
+        aria-label="{{ _('Search help') }}"
+      >
+      <button id="hs-search-clear" class="hs-search-clear" aria-label="{{ _('Clear search') }}">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div id="hs-search-results" class="hs-search-results"></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="hs-tabs" role="tablist">
+    <button class="hs-tab hs-active" data-tab="contextual" role="tab" aria-selected="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+        <line x1="12" y1="22.08" x2="12" y2="12"/>
+      </svg>
+      <span>{{ _('This Page') }}</span>
+    </button>
+    <button class="hs-tab" data-tab="tutorials" role="tab" aria-selected="false">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="23 7 16 12 23 17 23 7"/>
+        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+      </svg>
+      <span>{{ _('Tutorials') }}</span>
+    </button>
+    <button class="hs-tab" data-tab="browse" role="tab" aria-selected="false">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+      </svg>
+      <span>{{ _('Browse') }}</span>
+    </button>
+  </div>
+
+  <!-- Content -->
+  <div class="hs-content">
+
+    <!-- Contextual pane -->
+    <div id="hs-pane-contextual" class="hs-tab-pane hs-active" role="tabpanel">
+      <div class="hs-section">
+        <div class="hs-section-title">{{ _('Quick Tips') }}</div>
+        <div id="hs-tips"></div>
+      </div>
+      <div class="hs-section">
+        <div class="hs-section-title">{{ _('Help Articles') }}</div>
+        <div id="hs-articles"></div>
+      </div>
+      <div class="hs-section">
+        <div class="hs-section-title">{{ _('Suggested Actions') }}</div>
+        <div id="hs-actions"></div>
+      </div>
+    </div>
+
+    <!-- Tutorials pane -->
+    <div id="hs-pane-tutorials" class="hs-tab-pane" role="tabpanel">
+      <div class="hs-section">
+        <div class="hs-section-title">{{ _('Interactive Tutorials') }}</div>
+        <div id="hs-tutorials"></div>
+      </div>
+    </div>
+
+    <!-- Browse pane -->
+    <div id="hs-pane-browse" class="hs-tab-pane" role="tabpanel">
+      <div class="hs-section">
+        <div class="hs-section-title">{{ _('Knowledge Base') }}</div>
+        <div id="hs-categories"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="hs-footer">
+    <button id="hs-start-tutorial" class="hs-btn hs-btn--primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      {{ _('Start Tutorial') }}
+    </button>
+    <a href="{{ url_for('help.center') }}" class="hs-btn hs-btn--secondary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+        <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+      </svg>
+      {{ _('Help Center') }}
+    </a>
+  </div>
+</aside>
+
+<!-- Tutorial Overlay -->
+<div id="hs-overlay" class="hs-overlay" role="dialog" aria-modal="true" aria-labelledby="hs-tutorial-title">
+  <div class="hs-overlay-panel">
+    <div class="hs-overlay-progress">
+      <div id="hs-tutorial-progress-fill" class="hs-overlay-progress-fill"></div>
+    </div>
+    <div class="hs-overlay-header">
+      <div>
+        <h3 id="hs-tutorial-title" class="hs-overlay-title"></h3>
+        <div class="hs-overlay-step-count">
+          {{ _('Step') }} <span id="hs-tutorial-step">1</span> / <span id="hs-tutorial-total">1</span>
+        </div>
+      </div>
+      <button id="hs-tutorial-close" class="hs-icon-btn" aria-label="{{ _('Close tutorial') }}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div id="hs-tutorial-body" class="hs-overlay-body"></div>
+    <div class="hs-overlay-footer">
+      <button id="hs-tutorial-prev" class="hs-btn hs-btn--ghost">&#8592; {{ _('Previous') }}</button>
+      <button id="hs-tutorial-skip" class="hs-btn hs-btn--ghost hs-btn--sm">{{ _('Skip') }}</button>
+      <button id="hs-tutorial-next" class="hs-btn hs-btn--primary">{{ _('Next') }} &#8594;</button>
+    </div>
+  </div>
+</div>
+
+<!-- Onboarding Modal -->
+<div id="hs-onboarding" class="hs-onboarding" role="dialog" aria-modal="true">
+  <div class="hs-onboarding-card">
+    <div class="hs-onboarding-icon">&#10024;</div>
+    <h2 class="hs-onboarding-title">{{ _('Welcome to PrionLab Tools!') }}</h2>
+    <p class="hs-onboarding-subtitle">{{ _('Let us give you a quick tour of the main features') }}</p>
+    <div class="hs-onboarding-features">
+      <div class="hs-feat">
+        <div class="hs-feat-icon">&#128196;</div>
+        <div class="hs-feat-name">ManuscriptForge</div>
+        <div class="hs-feat-desc">{{ _('Manuscripts & references') }}</div>
+      </div>
+      <div class="hs-feat">
+        <div class="hs-feat-icon">&#129302;</div>
+        <div class="hs-feat-name">{{ _('AI Assistant') }}</div>
+        <div class="hs-feat-desc">{{ _('Smart research help') }}</div>
+      </div>
+      <div class="hs-feat">
+        <div class="hs-feat-icon">&#128202;</div>
+        <div class="hs-feat-name">{{ _('Analytics') }}</div>
+        <div class="hs-feat-desc">{{ _('Impact & metrics') }}</div>
+      </div>
+    </div>
+    <div class="hs-onboarding-footer">
+      <button id="hs-onboarding-skip" class="hs-btn hs-btn--secondary">{{ _('Skip for now') }}</button>
+      <button id="hs-onboarding-start" class="hs-btn hs-btn--primary">{{ _('Start guided tour') }} &#8594;</button>
+    </div>
+  </div>
+</div>
+
+{# Expose page context to JS #}
+<script>
+  window.HELP_PAGE_CONTEXT = {{ page_context | tojson if page_context is defined else '""' }};
+  window.HELP_USER_LOGGED_IN = true;
+  window.HELP_LANG = {{ session.get('language', 'es') | tojson }};
+</script>
+{% endif %}
