@@ -105,6 +105,92 @@
     </div>
 
     <div class="form-group">
+      <label class="form-label">{{ _('Abstract (English)') }}</label>
+      <textarea name="abstract_en" class="form-input" rows="5"
+                placeholder="{{ _('English abstract…') }}">{{ form.get('abstract_en', '') }}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">{{ _('Abstract (Spanish)') }}</label>
+      <textarea name="abstract_es" class="form-input" rows="5"
+                placeholder="{{ _('Resumen en español…') }}">{{ form.get('abstract_es', '') }}</textarea>
+    </div>
+
+    <details style="margin-top:.75rem">
+      <summary class="form-label" style="cursor:pointer;font-weight:600">{{ _('Journal quality & citation metrics') }}</summary>
+      <div style="margin-top:.75rem;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:.75rem">
+        <div class="form-group">
+          <label class="form-label">{{ _('WoS Quartile') }}</label>
+          <select name="quartile_wos" class="form-input">
+            <option value="">—</option>
+            {% for q in ['Q1','Q2','Q3','Q4'] %}
+            <option value="{{ q }}" {% if form.get('quartile_wos') == q %}selected{% endif %}>{{ q }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Scopus Quartile') }}</label>
+          <select name="quartile_scopus" class="form-input">
+            <option value="">—</option>
+            {% for q in ['Q1','Q2','Q3','Q4'] %}
+            <option value="{{ q }}" {% if form.get('quartile_scopus') == q %}selected{% endif %}>{{ q }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('D Classification') }}</label>
+          <select name="d_classification" class="form-input">
+            <option value="">—</option>
+            {% for d in ['D1','D2','D3','D4'] %}
+            <option value="{{ d }}" {% if form.get('d_classification') == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('T Classification') }}</label>
+          <select name="t_classification" class="form-input">
+            <option value="">—</option>
+            {% for t in ['T1','T2'] %}
+            <option value="{{ t }}" {% if form.get('t_classification') == t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Impact Factor') }}</label>
+          <input type="text" name="impact_factor" class="form-input" placeholder="5.3"
+                 value="{{ form.get('impact_factor', '') }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('SJR Score') }}</label>
+          <input type="text" name="sjr_score" class="form-input" placeholder="1.84"
+                 value="{{ form.get('sjr_score', '') }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Citations (WoS)') }}</label>
+          <input type="number" name="citations_wos" class="form-input" min="0"
+                 value="{{ form.get('citations_wos', '') }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Citations (Scopus)') }}</label>
+          <input type="number" name="citations_scopus" class="form-input" min="0"
+                 value="{{ form.get('citations_scopus', '') }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('Citations (Scholar)') }}</label>
+          <input type="number" name="citations_scholar" class="form-input" min="0"
+                 value="{{ form.get('citations_scholar', '') }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ _('ORCID Work ID') }}</label>
+          <input type="text" name="orcid_work_id" class="form-input"
+                 placeholder="0000-0000-0000-0000:12345"
+                 value="{{ form.get('orcid_work_id', '') }}" />
+        </div>
+      </div>
+      <div id="jqAutoFill" style="margin-top:.5rem;font-size:.8rem;color:#718096"></div>
+    </details>
+
+    <div class="form-group" style="margin-top:.75rem">
       <label class="form-label">{{ _('Internal notes') }}</label>
       <textarea name="notes" class="form-input" rows="2">{{ form.get('notes', '') }}</textarea>
     </div>
@@ -137,6 +223,40 @@
     pages:   document.getElementById('f-pages'),
     pub_type: document.getElementById('f-pub-type'),
   };
+
+  // Journal quality auto-fill
+  var journalInput = document.getElementById('f-journal');
+  var jqMsg = document.getElementById('jqAutoFill');
+  var jqTimer;
+  if (journalInput) {
+    journalInput.addEventListener('input', function() {
+      clearTimeout(jqTimer);
+      var name = journalInput.value.trim();
+      if (name.length < 4) { jqMsg.textContent = ''; return; }
+      jqTimer = setTimeout(function() {
+        fetch('/api/manuscriptforge/publications/journal-quality?name=' + encodeURIComponent(name))
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (!d.success || !d.journal) { jqMsg.textContent = ''; return; }
+            var j = d.journal;
+            var fields = {
+              'quartile_wos': j.quartile_wos, 'quartile_scopus': j.quartile_scopus,
+              'd_classification': j.d_classification, 't_classification': j.t_classification,
+              'impact_factor': j.impact_factor, 'sjr_score': j.sjr_score,
+            };
+            var filled = [];
+            Object.keys(fields).forEach(function(k) {
+              var el = document.querySelector('[name="' + k + '"]');
+              if (el && !el.value && fields[k]) { el.value = fields[k]; filled.push(k); }
+            });
+            if (filled.length) {
+              jqMsg.style.color = '#15803d';
+              jqMsg.textContent = '{{ _("Journal quality data auto-filled from database.") }}';
+            }
+          }).catch(function() {});
+      }, 600);
+    });
+  }
 
   btn.addEventListener('click', function() {
     var doi = input.value.trim();

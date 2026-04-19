@@ -1,0 +1,104 @@
+{% extends "manuscriptforge/base.html" %}
+{% block title %}{{ _('Publication Analytics') }} — ManuscriptForge{% endblock %}
+
+{% block mf_content %}
+<style>
+.an-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem}
+.an-stat{background:#f7fafc;border-radius:.6rem;padding:1rem;text-align:center;border:1px solid #e2e8f0}
+.an-stat-val{font-size:1.8rem;font-weight:800;color:#6b46c1}
+.an-stat-lbl{font-size:.78rem;color:#718096;text-transform:uppercase;letter-spacing:.04em;margin-top:.2rem}
+.an-section{margin-bottom:2rem}
+.an-section h3{font-size:.95rem;font-weight:700;color:#2d3748;margin-bottom:.75rem;border-bottom:2px solid #e2e8f0;padding-bottom:.4rem}
+.an-bar-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem}
+.an-bar-label{width:100px;font-size:.82rem;color:#4a5568;text-align:right;flex-shrink:0}
+.an-bar-track{flex:1;background:#e2e8f0;border-radius:4px;height:18px;position:relative;overflow:hidden}
+.an-bar-fill{height:100%;background:#6b46c1;border-radius:4px;transition:width .4s}
+.an-bar-count{font-size:.78rem;color:#718096;width:36px;text-align:right;flex-shrink:0}
+.an-spinner{text-align:center;padding:3rem;color:#a0aec0}
+</style>
+
+<div class="detail-header">
+  <div>
+    <h2 class="detail-title">{{ _('Publication Analytics') }}</h2>
+  </div>
+  <div class="actions-cell">
+    <a href="{{ url_for('manuscriptforge.publications_list') }}" class="btn btn--secondary btn--sm">&#8592; {{ _('Publications') }}</a>
+  </div>
+</div>
+
+<div id="analyticsContent"><div class="an-spinner">{{ _('Loading…') }}</div></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  const root = document.getElementById('analyticsContent');
+  try {
+    const r = await fetch('{{ url_for("manuscriptforge.publication_analytics_data") }}');
+    const d = await r.json();
+    if (!d.success) { root.innerHTML = '<p class="text-muted">{{ _("Could not load analytics.") }}</p>'; return; }
+    renderAnalytics(d, root);
+  } catch(e) {
+    root.innerHTML = '<p class="text-muted">{{ _("Error loading analytics.") }}</p>';
+  }
+});
+
+function renderAnalytics(d, root) {
+  const byYear = d.by_year || {};
+  const byType = d.by_type || {};
+  const byQ    = d.by_quartile || {};
+  const byD    = d.by_d_class || {};
+
+  const maxYear = Math.max(1, ...Object.values(byYear));
+  const maxType = Math.max(1, ...Object.values(byType));
+  const maxQ    = Math.max(1, ...Object.values(byQ));
+
+  function barSection(title, obj, maxVal, palette) {
+    const entries = Object.entries(obj).sort((a,b) => b[1]-a[1]);
+    if (!entries.length) return '';
+    const pal = palette || ['#6b46c1'];
+    return `<div class="an-section"><h3>${title}</h3>` +
+      entries.map(([k,v], i) =>
+        `<div class="an-bar-row">
+           <div class="an-bar-label">${k}</div>
+           <div class="an-bar-track"><div class="an-bar-fill" style="width:${Math.round(v/maxVal*100)}%;background:${pal[i%pal.length]}"></div></div>
+           <div class="an-bar-count">${v}</div>
+         </div>`
+      ).join('') + '</div>';
+  }
+
+  const qPalette = {'Q1':'#6b46c1','Q2':'#3182ce','Q3':'#38a169','Q4':'#e53e3e'};
+  function qBars(title, obj) {
+    const entries = Object.entries(obj).sort();
+    if (!entries.length) return '';
+    const maxVal = Math.max(1, ...entries.map(e => e[1]));
+    return `<div class="an-section"><h3>${title}</h3>` +
+      entries.map(([k,v]) =>
+        `<div class="an-bar-row">
+           <div class="an-bar-label">${k}</div>
+           <div class="an-bar-track"><div class="an-bar-fill" style="width:${Math.round(v/maxVal*100)}%;background:${qPalette[k]||'#718096'}"></div></div>
+           <div class="an-bar-count">${v}</div>
+         </div>`
+      ).join('') + '</div>';
+  }
+
+  root.innerHTML = `
+    <div class="an-grid">
+      <div class="an-stat"><div class="an-stat-val">${d.total}</div><div class="an-stat-lbl">{{ _('Total') }}</div></div>
+      <div class="an-stat"><div class="an-stat-val">${d.with_citations}</div><div class="an-stat-lbl">{{ _('With citations') }}</div></div>
+      <div class="an-stat"><div class="an-stat-val">${d.avg_citations}</div><div class="an-stat-lbl">{{ _('Avg citations') }}</div></div>
+      <div class="an-stat"><div class="an-stat-val">${d.avg_impact_factor||'—'}</div><div class="an-stat-lbl">{{ _('Avg IF') }}</div></div>
+      <div class="an-stat"><div class="an-stat-val">${d.top_impact_factor||'—'}</div><div class="an-stat-lbl">{{ _('Top IF') }}</div></div>
+      <div class="an-stat"><div class="an-stat-val">${d.oa_count}</div><div class="an-stat-lbl">{{ _('Open Access') }}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;flex-wrap:wrap">
+      <div>
+        ${barSection('{{ _("By Year") }}', byYear, maxYear, ['#6b46c1','#805ad5','#9f7aea','#b794f4'])}
+        ${barSection('{{ _("By Type") }}', byType, maxType, ['#3182ce','#2b6cb0','#2c5282'])}
+      </div>
+      <div>
+        ${qBars('{{ _("WoS Quartile") }}', byQ)}
+        ${qBars('{{ _("D Classification (ANEP)") }}', byD)}
+      </div>
+    </div>`;
+}
+</script>
+{% endblock %}

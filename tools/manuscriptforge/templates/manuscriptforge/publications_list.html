@@ -6,12 +6,94 @@
   <div>
     <h2 class="detail-title">{{ _('Publications') }}</h2>
   </div>
-  <div class="actions-cell">
+  <div class="actions-cell" style="gap:.4rem;flex-wrap:wrap">
+    <a href="{{ url_for('manuscriptforge.publication_analytics') }}" class="btn btn--secondary btn--sm">&#128202; {{ _('Analytics') }}</a>
     {% if session.get('role') in ('admin','editor') %}
+      <button type="button" class="btn btn--secondary btn--sm" onclick="document.getElementById('orcidModal').style.display='flex'">&#127744; {{ _('Import ORCID') }}</button>
       <a href="{{ url_for('manuscriptforge.new_publication') }}" class="btn btn--primary btn--sm">+ {{ _('Add publication') }}</a>
     {% endif %}
   </div>
 </div>
+
+<!-- ORCID import modal -->
+<div id="orcidModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:.75rem;padding:1.5rem;max-width:680px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h3 style="margin:0;font-size:1.1rem">{{ _('Import from ORCID') }}</h3>
+      <button onclick="document.getElementById('orcidModal').style.display='none'" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#718096">&times;</button>
+    </div>
+    <div style="display:flex;gap:.5rem;margin-bottom:.75rem">
+      <input id="orcidInput" class="form-input" style="flex:1" placeholder="0000-0000-0000-0000">
+      <button class="btn btn--secondary btn--sm" onclick="previewOrcid()">{{ _('Preview') }}</button>
+    </div>
+    <p id="orcidStatus" style="font-size:.82rem;min-height:1.2em;margin-bottom:.5rem"></p>
+    <div id="orcidWorksList"></div>
+    <div id="orcidImportBar" style="display:none;margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end">
+      <button class="btn btn--primary btn--sm" onclick="importSelected()">{{ _('Import selected') }}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _orcidWorks = [];
+
+async function previewOrcid() {
+  const orcid = document.getElementById('orcidInput').value.trim();
+  const status = document.getElementById('orcidStatus');
+  const list = document.getElementById('orcidWorksList');
+  if (!orcid) return;
+  status.style.color = 'inherit';
+  status.textContent = '{{ _("Fetching ORCID profile…") }}';
+  list.innerHTML = '';
+  document.getElementById('orcidImportBar').style.display = 'none';
+  try {
+    const r = await fetch(`/api/manuscriptforge/orcid/preview?orcid=${encodeURIComponent(orcid)}`);
+    const d = await r.json();
+    if (!d.success) { status.style.color='#b91c1c'; status.textContent = d.error; return; }
+    _orcidWorks = d.works;
+    status.textContent = `${d.count} {{ _('work(s) found') }}`;
+    if (!d.count) return;
+    list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead><tr style="background:#f7fafc">
+        <th style="padding:.4rem;text-align:left"><input type="checkbox" id="orcidSelAll" onchange="toggleAllOrcid(this)"> {{ _('All') }}</th>
+        <th style="padding:.4rem">{{ _('Year') }}</th><th style="padding:.4rem;text-align:left">{{ _('Title') }}</th><th style="padding:.4rem;text-align:left">{{ _('Journal') }}</th>
+      </tr></thead><tbody>` +
+      d.works.map(w => `<tr>
+        <td style="padding:.3rem"><input type="checkbox" class="orcid-chk" value="${w.put_code}" checked></td>
+        <td style="padding:.3rem;text-align:center">${w.year||'—'}</td>
+        <td style="padding:.3rem" title="${w.title}">${(w.title||'').slice(0,60)}${w.title&&w.title.length>60?'…':''}</td>
+        <td style="padding:.3rem">${(w.journal||'').slice(0,30)}</td>
+      </tr>`).join('') + `</tbody></table>`;
+    document.getElementById('orcidImportBar').style.display = 'flex';
+  } catch(e) { status.style.color='#b91c1c'; status.textContent='{{ _("Error fetching ORCID data.") }}'; }
+}
+
+function toggleAllOrcid(cb) {
+  document.querySelectorAll('.orcid-chk').forEach(c => c.checked = cb.checked);
+}
+
+async function importSelected() {
+  const orcid = document.getElementById('orcidInput').value.trim();
+  const put_codes = [...document.querySelectorAll('.orcid-chk:checked')].map(c => c.value);
+  if (!put_codes.length) return;
+  const status = document.getElementById('orcidStatus');
+  status.textContent = '{{ _("Importing…") }}';
+  try {
+    const r = await fetch('/api/manuscriptforge/orcid/import', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({orcid, put_codes})
+    });
+    const d = await r.json();
+    if (d.success) {
+      status.style.color='#15803d';
+      status.textContent = `{{ _('Imported') }} ${d.imported_count}, {{ _('skipped') }} ${d.skipped_count}.`;
+      setTimeout(() => { document.getElementById('orcidModal').style.display='none'; location.reload(); }, 1500);
+    } else {
+      status.style.color='#b91c1c'; status.textContent = d.error||'{{ _("Import failed.") }}';
+    }
+  } catch(e) { status.style.color='#b91c1c'; status.textContent='{{ _("Import error.") }}'; }
+}
+</script>
 
 <div class="filter-bar" style="flex-wrap:wrap;gap:.5rem">
   <form method="GET" style="display:contents">

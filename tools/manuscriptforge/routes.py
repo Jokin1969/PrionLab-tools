@@ -532,18 +532,30 @@ def remove_member_from_grant(grant_id, member_id):
 
 def _pub_form_data(form) -> dict:
     return {
-        "doi":          form.get("doi", "").strip(),
-        "title":        form.get("title", "").strip(),
-        "authors_raw":  form.get("authors_raw", "").strip(),
-        "journal":      form.get("journal", "").strip(),
-        "year":         form.get("year", "").strip(),
-        "volume":       form.get("volume", "").strip(),
-        "issue":        form.get("issue", "").strip(),
-        "pages":        form.get("pages", "").strip(),
-        "pmid":         form.get("pmid", "").strip(),
-        "pub_type":     form.get("pub_type", "article"),
-        "is_group_pub": "true" if form.get("is_group_pub") else "false",
-        "notes":        form.get("notes", "").strip(),
+        "doi":               form.get("doi", "").strip(),
+        "title":             form.get("title", "").strip(),
+        "authors_raw":       form.get("authors_raw", "").strip(),
+        "journal":           form.get("journal", "").strip(),
+        "year":              form.get("year", "").strip(),
+        "volume":            form.get("volume", "").strip(),
+        "issue":             form.get("issue", "").strip(),
+        "pages":             form.get("pages", "").strip(),
+        "pmid":              form.get("pmid", "").strip(),
+        "pub_type":          form.get("pub_type", "article"),
+        "is_group_pub":      "true" if form.get("is_group_pub") else "false",
+        "notes":             form.get("notes", "").strip(),
+        "abstract_en":       form.get("abstract_en", "").strip(),
+        "abstract_es":       form.get("abstract_es", "").strip(),
+        "orcid_work_id":     form.get("orcid_work_id", "").strip(),
+        "quartile_wos":      form.get("quartile_wos", "").strip(),
+        "quartile_scopus":   form.get("quartile_scopus", "").strip(),
+        "d_classification":  form.get("d_classification", "").strip(),
+        "t_classification":  form.get("t_classification", "").strip(),
+        "impact_factor":     form.get("impact_factor", "").strip(),
+        "sjr_score":         form.get("sjr_score", "").strip(),
+        "citations_wos":     form.get("citations_wos", "").strip(),
+        "citations_scopus":  form.get("citations_scopus", "").strip(),
+        "citations_scholar": form.get("citations_scholar", "").strip(),
     }
 
 
@@ -1114,3 +1126,103 @@ def import_references():
     except Exception as e:
         logger.error("References import error: %s", e)
         return jsonify({"error": "Failed to import references."}), 500
+
+
+# ── ORCID import ──────────────────────────────────────────────────────────────
+
+@manuscriptforge_bp.route("/orcid/preview")
+@login_required
+def orcid_preview():
+    """Preview works from a public ORCID profile (no import yet)."""
+    orcid = request.args.get("orcid", "").strip()
+    if not orcid:
+        return jsonify({"success": False, "error": "orcid parameter required"}), 400
+    from .orcid_service import fetch_orcid_works
+    result = fetch_orcid_works(orcid)
+    return jsonify(result), 200 if result.get("success") else 502
+
+
+@manuscriptforge_bp.route("/orcid/import", methods=["POST"])
+@editor_required
+def orcid_import():
+    """Import selected ORCID works as publications."""
+    from .orcid_service import fetch_orcid_works
+    data = request.get_json(silent=True) or {}
+    orcid = (data.get("orcid") or "").strip()
+    put_codes = set(str(pc) for pc in (data.get("put_codes") or []))
+
+    if not orcid:
+        return jsonify({"success": False, "error": "orcid required"}), 400
+    if not put_codes:
+        return jsonify({"success": False, "error": "put_codes required"}), 400
+
+    fetch = fetch_orcid_works(orcid)
+    if not fetch.get("success"):
+        return jsonify(fetch), 502
+
+    imported: list[dict] = []
+    skipped: list[str] = []
+    existing_df = load_publications()
+    existing_orcid_ids = set(existing_df["orcid_work_id"].tolist()) if "orcid_work_id" in existing_df.columns else set()
+
+    for work in fetch["works"]:
+        if work["put_code"] not in put_codes:
+            continue
+        if work["orcid_work_id"] in existing_orcid_ids:
+            skipped.append(work["title"] or work["put_code"])
+            continue
+        pub_data = {
+            "doi": work["doi"],
+            "title": work["title"],
+            "authors_raw": "",
+            "journal": work["journal"],
+            "year": work["year"],
+            "pmid": work["pmid"],
+            "pub_type": work["pub_type"],
+            "is_group_pub": "false",
+            "orcid_work_id": work["orcid_work_id"],
+            "notes": f"Imported from ORCID {orcid}",
+        }
+        created = create_publication(pub_data)
+        imported.append({"pub_id": created["pub_id"], "title": created["title"]})
+
+    return jsonify({
+        "success": True,
+        "imported": imported,
+        "skipped": skipped,
+        "imported_count": len(imported),
+        "skipped_count": len(skipped),
+    })
+
+
+# ── Publication analytics ─────────────────────────────────────────────────────
+
+@manuscriptforge_bp.route("/publications/analytics")
+@login_required
+def publication_analytics():
+    """Analytics dashboard page."""
+    return render_template("manuscriptforge/publication_analytics.html")
+
+
+@manuscriptforge_bp.route("/publications/analytics/data")
+@login_required
+def publication_analytics_data():
+    """JSON analytics data endpoint."""
+    from .models import get_publication_analytics
+    return jsonify({"success": True, **get_publication_analytics()})
+
+
+@manuscriptforge_bp.route("/publications/journal-quality")
+@login_required
+def journal_quality_lookup():
+    """Look up journal quality metrics by name."""
+    name = request.args.get("name", "").strip()
+    if not name:
+        from .models import load_journal_quality
+        df = load_journal_quality()
+        return jsonify({"success": True, "journals": df.to_dict("records"), "count": len(df)})
+    from .models import get_journal_quality
+    jq = get_journal_quality(name)
+    if jq:
+        return jsonify({"success": True, "journal": jq})
+    return jsonify({"success": False, "error": "Journal not found"}), 404
