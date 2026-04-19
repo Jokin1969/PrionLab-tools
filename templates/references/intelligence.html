@@ -58,6 +58,18 @@
 .ri-author-name{font-size:.85rem;font-weight:700;color:#2d3748;margin-bottom:.25rem}
 .ri-author-stats{font-size:.75rem;color:#718096}
 @media(max-width:640px){.ri-page{padding:1rem}.ri-charts-grid{grid-template-columns:1fr}}
+.ri-fb-btn{display:inline-flex;align-items:center;gap:.2rem;padding:.15rem .45rem;border-radius:.35rem;font-size:.72rem;font-weight:600;border:1px solid #e2e8f0;background:#fff;cursor:pointer;color:#718096;transition:all .15s}
+.ri-fb-btn:hover{border-color:#6b46c1;color:#6b46c1}
+.ri-fb-btn.pos:hover{border-color:#38a169;color:#38a169;background:#f0fff4}
+.ri-fb-btn.neg:hover{border-color:#e53e3e;color:#e53e3e;background:#fff5f5}
+.ri-fb-btn.add:hover{border-color:#3182ce;color:#3182ce;background:#ebf8ff}
+.ri-fb-btn.sent{opacity:.5;pointer-events:none}
+.ri-weights-bar{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.75rem}
+.ri-weight-chip{font-size:.72rem;padding:.2rem .5rem;border-radius:9999px;background:#e9d8fd;color:#553c9a;font-weight:700}
+.ri-pat-item{border:1px solid #e2e8f0;border-radius:.5rem;padding:.75rem;margin-bottom:.6rem}
+.ri-pat-type{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#805ad5;margin-bottom:.25rem}
+.ri-pat-desc{font-size:.88rem;font-weight:600;color:#2d3748;margin-bottom:.25rem}
+.ri-pat-rec{font-size:.78rem;color:#718096;font-style:italic}
 </style>
 
 <div class="ri-page">
@@ -74,6 +86,7 @@
 
   <nav class="ri-tabs">
     <button class="ri-tab active" data-tab="recommendations">&#129504; Recommendations</button>
+    <button class="ri-tab" data-tab="patterns">&#129302; ML Patterns</button>
     <button class="ri-tab" data-tab="gaps">&#128270; Advanced Gaps</button>
     <button class="ri-tab" data-tab="trends">&#128200; Trends</button>
     <button class="ri-tab" data-tab="network">&#127760; Citation Network</button>
@@ -98,6 +111,32 @@
         </select>
       </div>
       <div id="rec-list"><div class="ri-spinner">Analysing references…</div></div>
+    </div>
+  </div>
+
+  <!-- ML PATTERNS -->
+  <div class="ri-section" id="tab-patterns">
+    <div class="ri-card">
+      <div class="ri-card-title">Personalized Algorithm Weights
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">Derived from your feedback history</span>
+      </div>
+      <div id="weights-display"><div class="ri-spinner">Loading…</div></div>
+    </div>
+    <div class="ri-card">
+      <div class="ri-card-title">Feedback Patterns
+        <span style="font-size:.8rem;font-weight:400;color:#718096;margin-left:.5rem">What's working and what isn't</span>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem">
+        <select id="patternScope" class="ms-filter-select" onchange="loadPatterns()">
+          <option value="user">My patterns</option>
+          <option value="global">Global patterns</option>
+        </select>
+      </div>
+      <div id="patterns-list"><div class="ri-spinner">Analysing…</div></div>
+    </div>
+    <div class="ri-card">
+      <div class="ri-card-title">Feedback Statistics</div>
+      <div id="feedback-stats"><div class="ri-spinner">Loading…</div></div>
     </div>
   </div>
 
@@ -223,6 +262,7 @@ function loadTab(name) {
   if (loaded[name]) return;
   loaded[name] = true;
   if (name === 'recommendations') loadRecommendations();
+  else if (name === 'patterns') loadPatterns();
   else if (name === 'gaps') loadGaps();
   else if (name === 'trends') loadTrendsTab();
   else if (name === 'network') loadNetwork();
@@ -258,10 +298,17 @@ function renderRecs(recs) {
   const el = document.getElementById('rec-list');
   if (!recs.length) { el.innerHTML = '<div class="ri-empty">No recommendations match this filter.</div>'; return; }
   el.innerHTML = '<div class="ri-rec-list">' + recs.map(r => `
-    <div class="ri-rec-item">
-      <div>
+    <div class="ri-rec-item" id="rec-${r.reference_id}">
+      <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
         <span class="ri-rec-type ${r.recommendation_type}">${r.recommendation_type}</span>
         <span class="ri-rec-score">${(r.relevance_score*100).toFixed(0)}% match</span>
+        <span style="flex:1"></span>
+        <button class="ri-fb-btn add" title="Add to manuscript"
+          onclick="sendFeedback('${r.reference_id}','${r.recommendation_type}','${(r.journal||'').replace(/'/g,'').slice(0,40)}',${r.year||0},'add_to_manuscript',this)">&#10133; Add</button>
+        <button class="ri-fb-btn pos" title="Helpful"
+          onclick="sendFeedback('${r.reference_id}','${r.recommendation_type}','${(r.journal||'').replace(/'/g,'').slice(0,40)}',${r.year||0},'click',this)">&#128077;</button>
+        <button class="ri-fb-btn neg" title="Not relevant"
+          onclick="sendFeedback('${r.reference_id}','${r.recommendation_type}','${(r.journal||'').replace(/'/g,'').slice(0,40)}',${r.year||0},'dismiss',this)">&#128078;</button>
       </div>
       <div class="ri-rec-title">${r.title||'—'}</div>
       <div class="ri-rec-meta">
@@ -272,6 +319,106 @@ function renderRecs(recs) {
       <div class="ri-score-bar"><div class="ri-score-fill" style="width:${Math.min(r.relevance_score*300,100)}%"></div></div>
       <span class="ri-rec-explain">${r.explanation}</span>
     </div>`).join('') + '</div>';
+}
+
+// ── Feedback submission ────────────────────────────────────────────────────────
+async function sendFeedback(refId, recType, journal, year, action, btn) {
+  btn.classList.add('sent');
+  try {
+    await fetch('/api/references/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        rec_type: recType, ref_id: refId, ms_id: MS_ID,
+        action, journal, year
+      })
+    });
+    // Visual confirmation
+    btn.textContent = action === 'dismiss' ? '✓ Noted' : '✓ Saved';
+    if (action === 'dismiss') {
+      const card = document.getElementById('rec-' + refId);
+      if (card) { card.style.opacity = '.4'; card.style.transition = 'opacity .4s'; }
+    }
+  } catch (e) { btn.classList.remove('sent'); }
+}
+
+// ── ML Patterns tab ───────────────────────────────────────────────────────────
+async function loadPatterns() {
+  // Adaptive weights
+  try {
+    const wd = await fetch(API('adaptive-weights')).then(r => r.json());
+    const weights = wd.weights || {};
+    const wEl = document.getElementById('weights-display');
+    if (Object.keys(weights).length) {
+      wEl.innerHTML = `<div class="ri-weights-bar">` +
+        Object.entries(weights)
+          .sort((a, b) => b[1] - a[1])
+          .map(([t, v]) =>
+            `<span class="ri-weight-chip">${t}: ${(v * 100).toFixed(1)}%</span>`
+          ).join('') +
+        `</div>` +
+        `<p style="font-size:.78rem;color:#718096;margin:0">` +
+        (wd.username ? `Personalised for ${wd.username}` : 'Default weights — interact with recommendations to personalise') +
+        `</p>`;
+    } else {
+      wEl.innerHTML = '<div class="ri-empty">No personalisation data yet — use the feedback buttons on recommendations.</div>';
+    }
+  } catch (e) {
+    document.getElementById('weights-display').innerHTML = '<div class="ri-empty">Unable to load weights</div>';
+  }
+
+  // Patterns
+  const scope = document.getElementById('patternScope')?.value || 'user';
+  try {
+    const pd = await fetch(`/api/references/feedback/patterns?scope=${scope}`).then(r => r.json());
+    const pEl = document.getElementById('patterns-list');
+    const patterns = pd.patterns || [];
+    if (!patterns.length) {
+      pEl.innerHTML = '<div class="ri-empty">No patterns detected yet — keep using the feedback buttons.</div>';
+    } else {
+      const sevColor = {
+        recommendation_strength: '#38a169',
+        recommendation_weakness: '#e53e3e',
+        journal_preference: '#3182ce',
+        recency_preference: '#d69e2e',
+      };
+      pEl.innerHTML = patterns.map(p => `
+        <div class="ri-pat-item">
+          <div class="ri-pat-type" style="color:${sevColor[p.pattern_type]||'#805ad5'}">
+            ${p.pattern_type.replace(/_/g,' ')} · confidence ${Math.round(p.confidence*100)}%
+          </div>
+          <div class="ri-pat-desc">${p.description}</div>
+          <div class="ri-pat-rec">&#128161; ${p.recommendation}</div>
+        </div>`).join('');
+    }
+  } catch (e) {
+    document.getElementById('patterns-list').innerHTML = '<div class="ri-empty">Failed to load patterns</div>';
+  }
+
+  // Stats
+  try {
+    const sd = await fetch('/api/references/feedback/stats').then(r => r.json());
+    const sEl = document.getElementById('feedback-stats');
+    sEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.75rem">
+        ${[
+          ['Total', sd.total||0,''],
+          ['Positive', sd.positive||0,'#38a169'],
+          ['Negative', sd.negative||0,'#e53e3e'],
+          ['Accept rate', ((sd.positive_rate||0)*100).toFixed(0)+'%','#6b46c1'],
+          ['Users', sd.unique_users||0,''],
+        ].map(([l,v,c])=>`<div style="background:#f7fafc;border-radius:.5rem;padding:.75rem;text-align:center">
+          <div style="font-size:1.2rem;font-weight:800;color:${c||'#2d3748'}">${v}</div>
+          <div style="font-size:.7rem;color:#718096;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+      </div>
+      ${sd.by_action && Object.keys(sd.by_action).length ? `
+        <div style="margin-top:.75rem;font-size:.8rem;color:#718096">
+          ${Object.entries(sd.by_action).map(([a,c])=>`<span style="margin-right:.75rem">${a}: <strong>${c}</strong></span>`).join('')}
+        </div>` : ''}`;
+  } catch (e) {
+    document.getElementById('feedback-stats').innerHTML = '<div class="ri-empty">No feedback data yet</div>';
+  }
 }
 
 // ── Advanced Gaps ─────────────────────────────────────────────────────────────

@@ -225,3 +225,57 @@ def export_network(manuscript_id):
         f"attachment; filename=network-{manuscript_id}.json"
     )
     return resp
+
+
+# ── Feedback learning endpoints ───────────────────────────────────────────────
+
+@references_bp.route("/feedback", methods=["POST"])
+@login_required
+def record_feedback():
+    """Record user interaction with a recommendation."""
+    from .feedback_learning import get_feedback_learning_service
+    username = session.get("username", "")
+    data = request.get_json(silent=True) or {}
+    svc = get_feedback_learning_service()
+    ok = svc.record_feedback(
+        username=username,
+        rec_type=data.get("rec_type", "content"),
+        ref_id=data.get("ref_id", ""),
+        ms_id=data.get("ms_id", ""),
+        action=data.get("action", "click"),
+        journal=data.get("journal", ""),
+        year=int(data.get("year") or 0),
+    )
+    return jsonify({"success": ok})
+
+
+@references_bp.route("/manuscript/<manuscript_id>/adaptive-weights")
+@login_required
+def adaptive_weights(manuscript_id):
+    """Get personalized algorithm weights for this user."""
+    from .feedback_learning import get_feedback_learning_service
+    username = session.get("username", "")
+    svc = get_feedback_learning_service()
+    weights = svc.get_adaptive_weights(username)
+    return jsonify({"success": True, "username": username, "weights": weights})
+
+
+@references_bp.route("/feedback/patterns")
+@login_required
+def feedback_patterns():
+    """Surface feedback patterns for the current user (or global)."""
+    from .feedback_learning import get_feedback_learning_service
+    username = session.get("username", "")
+    scope = request.args.get("scope", "user")
+    svc = get_feedback_learning_service()
+    patterns = svc.analyze_patterns(username if scope == "user" else None)
+    return jsonify({"success": True, "patterns": patterns, "count": len(patterns)})
+
+
+@references_bp.route("/feedback/stats")
+@login_required
+def feedback_stats():
+    """Overall feedback system statistics (admin-useful)."""
+    from .feedback_learning import get_feedback_learning_service
+    svc = get_feedback_learning_service()
+    return jsonify({"success": True, **svc.get_stats()})
