@@ -58,6 +58,16 @@ DATA_MANAGEMENT_CONFIG = {
     },
 }
 
+# External API keys
+SCOPUS_API_KEY = os.environ.get("SCOPUS_API_KEY", "")
+SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "")
+
+def scopus_configured() -> bool:
+    return bool(SCOPUS_API_KEY)
+
+def serpapi_configured() -> bool:
+    return bool(SERPAPI_KEY)
+
 # i18n
 LANGUAGES = ["es", "en"]
 DEFAULT_LANGUAGE = "es"

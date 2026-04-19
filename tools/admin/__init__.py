@@ -298,3 +298,53 @@ def delete_backup(filename):
 def api_dashboard():
     """External API Integration dashboard."""
     return render_template("admin/api_dashboard.html")
+
+
+# ── Database JSON APIs ────────────────────────────────────────────────────────
+
+@admin_bp.route("/api/db/health")
+@admin_required
+def api_db_health():
+    from flask import jsonify
+    from database.services import DatabaseHealthService
+    try:
+        return jsonify({"success": True, "health": DatabaseHealthService.get_metrics()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/db/tables")
+@admin_required
+def api_db_tables():
+    from flask import jsonify
+    from database.services import DatabaseHealthService
+    from database.config import db
+    try:
+        tables = DatabaseHealthService.get_table_stats()
+        index_stats = []
+        if db.is_configured():
+            try:
+                from sqlalchemy import text
+                with db.engine.connect() as conn:
+                    rows = conn.execute(text("""
+                        SELECT
+                            schemaname, tablename, indexname,
+                            idx_scan, idx_tup_read, idx_tup_fetch,
+                            pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
+                        FROM pg_stat_user_indexes
+                        ORDER BY idx_scan DESC
+                        LIMIT 20
+                    """)).fetchall()
+                    index_stats = [
+                        {
+                            "table": r[1], "index": r[2],
+                            "scans": r[3], "tuples_read": r[4],
+                            "tuples_fetched": r[5], "size": r[6],
+                        }
+                        for r in rows
+                    ]
+            except Exception:
+                pass
+        return jsonify({"success": True, "tables": tables, "indexes": index_stats})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500

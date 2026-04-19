@@ -216,11 +216,27 @@ window.viewJobDetails = function (jobId) {
 
 // ── Analytics ─────────────────────────────────────────────────────────────
 async function loadAnalytics() {
-  // Placeholder — future Part 3 will expose real metrics endpoint
-  document.getElementById('apiCallsToday').textContent = '—';
-  document.getElementById('enrichmentsWeek').textContent = '—';
-  document.getElementById('successRate').textContent = '—';
-  document.getElementById('cacheHitRate').textContent = '—';
+  try {
+    const r = await fetch('/api/external/analytics');
+    const d = await r.json();
+    if (!d.success) return;
+    const s = d.stats || {};
+    document.getElementById('apiCallsToday').textContent =
+      (s.total_requests !== undefined ? s.total_requests.toLocaleString() : '—');
+    document.getElementById('enrichmentsWeek').textContent =
+      (s.cached_requests !== undefined
+        ? (s.total_requests - s.cached_requests).toLocaleString() : '—');
+    const errRate = (s.total_requests > 0)
+      ? (((s.total_requests - (s.total_errors || 0)) / s.total_requests) * 100).toFixed(1) + '%'
+      : '—';
+    document.getElementById('successRate').textContent = errRate;
+    const cacheRate = (s.total_requests > 0 && s.cached_requests !== undefined)
+      ? ((s.cached_requests / s.total_requests) * 100).toFixed(1) + '%'
+      : '—';
+    document.getElementById('cacheHitRate').textContent = cacheRate;
+  } catch (e) {
+    console.warn('Analytics load error:', e.message);
+  }
 }
 
 // ── Recent activity ───────────────────────────────────────────────────────
