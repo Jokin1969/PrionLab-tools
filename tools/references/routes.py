@@ -13,6 +13,8 @@ from .service import (
 from .smart_recommendations import get_smart_recommendation_engine
 from .citation_network import get_citation_network_service
 from .ai_core import get_core_ai_recommendation_engine
+from .advanced_gaps import get_advanced_gap_detection_service
+from .analytics_integration import get_analytics_integration_service
 
 logger = logging.getLogger(__name__)
 
@@ -150,4 +152,35 @@ def ai_recommendations(manuscript_id):
     username = session.get("username", "")
     limit = request.args.get("limit", 10, type=int)
     engine = get_core_ai_recommendation_engine()
-    return jsonify(engine.generate_core_recommendations(manuscript_id, username, limit))
+    result = engine.generate_core_recommendations(manuscript_id, username, limit)
+    # Apply analytics enhancement
+    if result.get("recommendations"):
+        svc = get_analytics_integration_service()
+        result["recommendations"] = svc.enhance_recommendations(
+            result["recommendations"], username
+        )
+    return jsonify(result)
+
+
+@references_bp.route("/manuscript/<manuscript_id>/advanced-gaps")
+@login_required
+def advanced_gaps(manuscript_id):
+    username = session.get("username", "")
+    svc = get_advanced_gap_detection_service()
+    result = svc.analyze_research_gaps(manuscript_id, username)
+    return jsonify({
+        "success": True,
+        "gaps": [asdict(g) for g in result.gaps],
+        "summary": result.summary,
+        "recommendations": result.recommendations,
+        "priority_actions": result.priority_actions,
+        "count": len(result.gaps),
+    })
+
+
+@references_bp.route("/manuscript/<manuscript_id>/trends")
+@login_required
+def reference_trends(manuscript_id):
+    username = session.get("username", "")
+    svc = get_analytics_integration_service()
+    return jsonify(svc.get_temporal_trends(manuscript_id))
