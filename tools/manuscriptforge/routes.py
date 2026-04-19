@@ -249,6 +249,168 @@ def delete_member_route(member_id):
     return redirect(url_for("manuscriptforge.members_list"))
 
 
+@manuscriptforge_bp.route("/members/export-template")
+@editor_required
+def members_export_template():
+    """Download an empty Excel template with all member columns."""
+    import io
+    from .models import MEMBERS_COLS
+    # Exclude system-managed columns
+    _SYSTEM = {"member_id", "created_at", "updated_at"}
+    export_cols = [c for c in MEMBERS_COLS if c not in _SYSTEM]
+
+    # Column hints shown in row 2
+    _HINTS = {
+        "first_name":               "e.g. Juan",
+        "last_name":                "e.g. García",
+        "display_name":             "e.g. J. García",
+        "initials":                 "e.g. J.G.",
+        "email":                    "e.g. juan@example.com",
+        "orcid":                    "0000-0000-0000-0000",
+        "dni":                      "optional",
+        "is_corresponding_default": "true / false",
+        "status":                   "active / alumni / visiting / collaborator_external",
+        "current_position":         "e.g. PhD Student",
+        "joined_date":              "YYYY-MM-DD",
+        "left_date":                "YYYY-MM-DD or empty",
+        "short_bio":                "1–2 sentences",
+        "long_bio":                 "optional",
+        "expertise_areas":          "semicolon-separated",
+        "has_competing_interests":  "true / false",
+        "competing_interests_text": "required if has_competing_interests=true",
+        "linked_username":          "app username (optional)",
+        "notes":                    "internal, not exported",
+    }
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Members"
+
+    header_fill = PatternFill("solid", fgColor="4C3F91")
+    hint_fill   = PatternFill("solid", fgColor="EDE9F7")
+    bold_white  = Font(bold=True, color="FFFFFF")
+    grey_italic = Font(italic=True, color="718096")
+
+    for ci, col in enumerate(export_cols, start=1):
+        # Header row
+        hc = ws.cell(row=1, column=ci, value=col)
+        hc.font = bold_white
+        hc.fill = header_fill
+        hc.alignment = Alignment(horizontal="center")
+        # Hint row
+        hn = ws.cell(row=2, column=ci, value=_HINTS.get(col, ""))
+        hn.font = grey_italic
+        hn.fill = hint_fill
+        # Column width
+        ws.column_dimensions[hc.column_letter].width = max(16, len(col) + 4)
+
+    ws.row_dimensions[1].height = 22
+    ws.row_dimensions[2].height = 18
+    ws.freeze_panes = "A3"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="members_template.xlsx",
+    )
+
+
+@manuscriptforge_bp.route("/members/import", methods=["POST"])
+@editor_required
+def members_import():
+    """Import members from an Excel file. Overwrites rows with matching first+last name."""
+    from .models import MEMBERS_COLS, load_members, save_members, _next_member_id
+    import io, openpyxl
+
+    if "file" not in request.files:
+        flash(_("No file uploaded."), "error")
+        return redirect(url_for("manuscriptforge.members_list"))
+
+    f = request.files["file"]
+    if not f.filename or not f.filename.lower().endswith((".xlsx", ".xls")):
+        flash(_("Please upload an .xlsx file."), "error")
+        return redirect(url_for("manuscriptforge.members_list"))
+
+    try:
+        content = f.read()
+        try:
+            xl = pd.read_excel(io.BytesIO(content), sheet_name=0, dtype=str, header=0, skiprows=[1])
+        except Exception:
+            xl = pd.read_excel(io.BytesIO(content), sheet_name=0, dtype=str, header=0)
+        xl = xl.fillna("")
+    except Exception as e:
+        flash(_("Could not read Excel file: %(e)s", e=str(e)), "error")
+        return redirect(url_for("manuscriptforge.members_list"))
+
+    # Normalise incoming column names
+    xl.columns = [str(c).strip().lower() for c in xl.columns]
+    if "first_name" not in xl.columns or "last_name" not in xl.columns:
+        flash(_("Excel must contain 'first_name' and 'last_name' columns."), "error")
+        return redirect(url_for("manuscriptforge.members_list"))
+
+    # Skip the hint row if it snuck through (first_name cell looks like a hint)
+    xl = xl[~xl["first_name"].str.startswith("e.g", na=False)].reset_index(drop=True)
+    # Drop fully empty rows
+    xl = xl[xl["first_name"].str.strip().ne("") | xl["last_name"].str.strip().ne("")].reset_index(drop=True)
+
+    if xl.empty:
+        flash(_("No data rows found in file."), "error")
+        return redirect(url_for("manuscriptforge.members_list"))
+
+    df = load_members()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    created = updated = skipped = 0
+    for _, row in xl.iterrows():
+        fn = str(row.get("first_name", "")).strip()
+        ln = str(row.get("last_name", "")).strip()
+        if not fn and not ln:
+            continue
+
+        # Build update dict from all known columns present in the sheet
+        updates = {}
+        for col in MEMBERS_COLS:
+            if col in ("member_id", "created_at", "updated_at"):
+                continue
+            if col in xl.columns:
+                updates[col] = str(row.get(col, "")).strip()
+
+        # Match by first_name + last_name (case-insensitive)
+        mask = (df["first_name"].str.strip().str.lower() == fn.lower()) & \
+               (df["last_name"].str.strip().str.lower()  == ln.lower())
+
+        if mask.any():
+            for k, v in updates.items():
+                df.loc[mask, k] = v
+            df.loc[mask, "updated_at"] = now
+            updated += 1
+        else:
+            new_row = {c: "" for c in MEMBERS_COLS}
+            new_row.update(updates)
+            new_row["member_id"]  = _next_member_id(df)
+            new_row["first_name"] = fn
+            new_row["last_name"]  = ln
+            new_row["created_at"] = now
+            new_row["updated_at"] = now
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            created += 1
+
+    save_members(df)
+    flash(
+        _("Import complete: %(c)d created, %(u)d updated, %(s)d skipped.",
+          c=created, u=updated, s=skipped),
+        "success",
+    )
+    return redirect(url_for("manuscriptforge.members_list"))
+
+
 # ── Members — affiliation management ─────────────────────────────────────────
 
 @manuscriptforge_bp.route("/members/<member_id>/affiliations/add", methods=["POST"])

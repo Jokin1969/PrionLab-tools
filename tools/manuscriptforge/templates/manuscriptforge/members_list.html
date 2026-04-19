@@ -5,9 +5,50 @@
 <div class="admin-section">
   <div class="admin-section__header">
     <h2>{{ _('Members') }}</h2>
-    {% if session.get('role') in ('admin', 'editor') %}
-      <a href="{{ url_for('manuscriptforge.new_member') }}" class="btn btn--primary btn--sm">+ {{ _('Add member') }}</a>
-    {% endif %}
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+      {% if session.get('role') in ('admin', 'editor') %}
+        <a href="{{ url_for('manuscriptforge.members_export_template') }}"
+           class="btn btn--secondary btn--sm" title="{{ _('Download empty Excel template') }}">
+          &#11123; {{ _('Export template') }}
+        </a>
+        <button type="button" class="btn btn--secondary btn--sm"
+                onclick="document.getElementById('importMembersModal').style.display='flex'"
+                title="{{ _('Import members from Excel') }}">
+          &#11121; {{ _('Import Excel') }}
+        </button>
+        <a href="{{ url_for('manuscriptforge.new_member') }}" class="btn btn--primary btn--sm">+ {{ _('Add member') }}</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Import modal -->
+  <div id="importMembersModal"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:.75rem;padding:1.5rem;max-width:520px;width:95%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="margin:0;font-size:1.05rem">{{ _('Import members from Excel') }}</h3>
+        <button onclick="document.getElementById('importMembersModal').style.display='none'"
+                style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#718096">&times;</button>
+      </div>
+      <p style="font-size:.85rem;color:#4a5568;margin-bottom:1rem">
+        {{ _('Upload an Excel file using the template format. Rows whose') }}
+        <strong>first_name + last_name</strong>
+        {{ _('match an existing member will overwrite that member\'s data. New names will create new members.') }}
+      </p>
+      <form method="POST" action="{{ url_for('manuscriptforge.members_import') }}"
+            enctype="multipart/form-data">
+        <div style="margin-bottom:1rem">
+          <input type="file" name="file" accept=".xlsx,.xls" class="form-input" required>
+        </div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end">
+          <button type="button" class="btn btn--secondary btn--sm"
+                  onclick="document.getElementById('importMembersModal').style.display='none'">
+            {{ _('Cancel') }}
+          </button>
+          <button type="submit" class="btn btn--primary btn--sm">&#11121; {{ _('Import') }}</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   {# Filters #}
