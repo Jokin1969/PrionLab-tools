@@ -28,7 +28,7 @@
     </div>
     <p id="orcidStatus" style="font-size:.82rem;min-height:1.2em;margin-bottom:.5rem"></p>
     <div id="orcidWorksList"></div>
-    <div id="orcidImportBar" style="display:none;margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end">
+    <div id="orcidImportBar" style="display:none;margin-top:1rem;gap:.5rem;justify-content:flex-end">
       <button class="btn btn--primary btn--sm" onclick="importSelected()">{{ _('Import selected') }}</button>
     </div>
   </div>
@@ -84,24 +84,32 @@ function toggleAllOrcid(cb) {
 
 async function importSelected() {
   const orcid = document.getElementById('orcidInput').value.trim();
-  const put_codes = [...document.querySelectorAll('.orcid-chk:checked')].map(c => c.value);
-  if (!put_codes.length) return;
+  const selectedCodes = new Set([...document.querySelectorAll('.orcid-chk:checked')].map(c => c.value));
+  if (!selectedCodes.size) return;
+  const selectedWorks = _orcidWorks.filter(w => selectedCodes.has(String(w.put_code)));
+  if (!selectedWorks.length) return;
   const status = document.getElementById('orcidStatus');
+  status.style.color = 'inherit';
   status.textContent = '{{ _("Importing…") }}';
   try {
     const r = await fetch('/tools/manuscriptforge/orcid/import', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({orcid, put_codes})
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({orcid, works: selectedWorks}),
     });
     const d = await r.json();
     if (d.success) {
-      status.style.color='#15803d';
+      status.style.color = '#15803d';
       status.textContent = `{{ _('Imported') }} ${d.imported_count}, {{ _('skipped') }} ${d.skipped_count}.`;
-      setTimeout(() => { document.getElementById('orcidModal').style.display='none'; location.reload(); }, 1500);
+      setTimeout(() => { document.getElementById('orcidModal').style.display='none'; location.reload(); }, 1800);
     } else {
-      status.style.color='#b91c1c'; status.textContent = d.error||'{{ _("Import failed.") }}';
+      status.style.color = '#b91c1c';
+      status.textContent = d.error || '{{ _("Import failed.") }}';
     }
-  } catch(e) { status.style.color='#b91c1c'; status.textContent='{{ _("Import error.") }}'; }
+  } catch(e) {
+    status.style.color = '#b91c1c';
+    status.textContent = '{{ _("Import error.") }}';
+  }
 }
 </script>
 

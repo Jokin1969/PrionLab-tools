@@ -1307,43 +1307,46 @@ def orcid_preview():
 @manuscriptforge_bp.route("/orcid/import", methods=["POST"])
 @editor_required
 def orcid_import():
-    """Import selected ORCID works as publications."""
-    from .orcid_service import fetch_orcid_works
+    """Import selected ORCID works as publications.
+
+    Accepts the works array already fetched by the client during preview,
+    avoiding a redundant second ORCID API call.
+    """
     data = request.get_json(silent=True) or {}
     orcid = (data.get("orcid") or "").strip()
-    put_codes = set(str(pc) for pc in (data.get("put_codes") or []))
+    works = data.get("works") or []
 
     if not orcid:
         return jsonify({"success": False, "error": "orcid required"}), 400
-    if not put_codes:
-        return jsonify({"success": False, "error": "put_codes required"}), 400
-
-    fetch = fetch_orcid_works(orcid)
-    if not fetch.get("success"):
-        return jsonify(fetch), 502
+    if not works:
+        return jsonify({"success": False, "error": "no works provided"}), 400
 
     imported: list[dict] = []
     skipped: list[str] = []
     existing_df = load_publications()
-    existing_orcid_ids = set(existing_df["orcid_work_id"].tolist()) if "orcid_work_id" in existing_df.columns else set()
+    existing_orcid_ids = (
+        set(existing_df["orcid_work_id"].dropna().tolist())
+        if "orcid_work_id" in existing_df.columns else set()
+    )
 
-    for work in fetch["works"]:
-        if work["put_code"] not in put_codes:
+    for work in works:
+        if not isinstance(work, dict):
             continue
-        if work["orcid_work_id"] in existing_orcid_ids:
-            skipped.append(work["title"] or work["put_code"])
+        orcid_work_id = work.get("orcid_work_id") or f"{orcid}:{work.get('put_code', '')}"
+        if orcid_work_id in existing_orcid_ids:
+            skipped.append(work.get("title") or orcid_work_id)
             continue
         pub_data = {
-            "doi": work["doi"],
-            "title": work["title"],
-            "authors_raw": "",
-            "journal": work["journal"],
-            "year": work["year"],
-            "pmid": work["pmid"],
-            "pub_type": work["pub_type"],
-            "is_group_pub": "false",
-            "orcid_work_id": work["orcid_work_id"],
-            "notes": f"Imported from ORCID {orcid}",
+            "doi":           (work.get("doi") or "").strip(),
+            "title":         (work.get("title") or "").strip(),
+            "authors_raw":   "",
+            "journal":       (work.get("journal") or "").strip(),
+            "year":          str(work.get("year") or "").strip(),
+            "pmid":          (work.get("pmid") or "").strip(),
+            "pub_type":      work.get("pub_type") or "article",
+            "is_group_pub":  "true",
+            "orcid_work_id": orcid_work_id,
+            "notes":         f"Imported from ORCID {orcid}",
         }
         created = create_publication(pub_data)
         imported.append({"pub_id": created["pub_id"], "title": created["title"]})
