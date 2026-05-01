@@ -1308,38 +1308,47 @@
 .pp-btn-icon.btn-claude:hover { color: var(--pp-accent); }
 .pp-btn-icon.btn-remove:hover { color: #dc2626; background: #fef2f2; }
 
-/* Buttons inside the finding header need a visible frame so they don't vanish into the light background */
+/* Buttons inside the finding header — visible framed icons */
 .pp-finding-header .pp-btn-icon {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #c0c8d2;
-  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8edf3;
+  border: 1px solid #9aabbc;
+  color: #1e3a5f;
   border-radius: 5px;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
 }
 .pp-finding-header .pp-btn-icon:hover {
-  background: #e0e8f0;
-  color: #1e293b;
-  border-color: #94a3b8;
+  background: #d0dbe8;
+  color: #0f2440;
+  border-color: #6b8cad;
 }
-.pp-finding-header .pp-btn-icon.btn-claude:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
+.pp-finding-header .pp-btn-icon.btn-claude:hover { color: var(--pp-accent); border-color: var(--pp-accent); background: var(--pp-accent-glow); }
 .pp-finding-header .pp-btn-icon.btn-remove:hover { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
 
-/* Figure buttons — same visible frame */
+/* Figure buttons — same treatment */
 .pp-figure-btns .pp-btn-icon {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #c0c8d2;
-  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8edf3;
+  border: 1px solid #9aabbc;
+  color: #1e3a5f;
   border-radius: 5px;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
 }
 .pp-figure-btns .pp-btn-icon:hover {
-  background: #e0e8f0;
-  color: #1e293b;
-  border-color: #94a3b8;
+  background: #d0dbe8;
+  color: #0f2440;
+  border-color: #6b8cad;
 }
 .pp-figure-btns .pp-btn-icon.btn-remove:hover { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
+.pp-figure-btns .pp-btn-icon.active { background: var(--pp-accent-glow); border-color: var(--pp-accent); color: var(--pp-accent); }
 
 .pp-btn-icon.loading { pointer-events: none; }
 .pp-btn-icon.loading i { animation: pp-spin .7s linear infinite; }
