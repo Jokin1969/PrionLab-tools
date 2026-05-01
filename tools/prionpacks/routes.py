@@ -1,12 +1,19 @@
 import logging
+from datetime import datetime
 
-from flask import jsonify, render_template, request
+from flask import Response, jsonify, render_template, request
 
 from core.decorators import login_required
 from . import prionpacks_bp
 from . import models
 
 logger = logging.getLogger(__name__)
+
+COLLEAGUES: dict[str, dict] = {
+    'herana':  {'name': 'Hasier Eraña',  'email': 'herana@cicbiogune.es'},
+    'cdiza':   {'name': 'Carlos Díaz',   'email': 'cdiza@cicbiogune.es'},
+    'jmoreno': {'name': 'Jorge Moreno',  'email': 'jmoreno@cicbiogune.es'},
+}
 
 
 @prionpacks_bp.route('/')
@@ -49,3 +56,93 @@ def api_update(pkg_id):
 def api_delete(pkg_id):
     models.delete_package(pkg_id)
     return jsonify({'ok': True})
+
+
+# ── DOCX download ─────────────────────────────────────────────────────────────
+
+@prionpacks_bp.route('/api/packages/<pkg_id>/docx', methods=['GET'])
+@login_required
+def api_download_docx(pkg_id):
+    from .docx_generator import generate_package_docx
+
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'not found'}), 404
+
+    version = max(1, pkg.get('docxVersion', 0))
+    try:
+        docx_bytes = generate_package_docx(pkg, version, datetime.now())
+    except Exception as exc:
+        logger.exception('DOCX generation error for %s', pkg_id)
+        return jsonify({'error': str(exc)}), 500
+
+    safe = ''.join(c if c.isalnum() or c in ' _-' else '_' for c in pkg.get('title', 'Package'))[:50]
+    filename = f'PrionPack_{safe}_v{version}.docx'
+    return Response(
+        docx_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Send for review ───────────────────────────────────────────────────────────
+
+@prionpacks_bp.route('/api/packages/<pkg_id>/send-review', methods=['POST'])
+@login_required
+def api_send_review(pkg_id):
+    from .docx_generator import generate_package_docx
+    from .email_sender import is_configured, send_review_email
+
+    data = request.get_json(force=True, silent=True) or {}
+    key  = data.get('recipient', '')
+    colleague = COLLEAGUES.get(key)
+    if not colleague:
+        return jsonify({'error': 'Destinatario no válido.'}), 400
+
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'Paquete no encontrado.'}), 404
+
+    version = models.increment_docx_version(pkg_id)
+    pkg = models.get_package(pkg_id)
+
+    try:
+        docx_bytes = generate_package_docx(pkg, version, datetime.now())
+    except Exception as exc:
+        logger.exception('DOCX generation error for %s', pkg_id)
+        return jsonify({'error': f'Error generando el documento: {exc}', 'version': version}), 500
+
+    if not is_configured():
+        safe = ''.join(
+            c if c.isalnum() or c in ' _-' else '_' for c in pkg.get('title', 'Package')
+        )[:50]
+        filename = f'PrionPack_{safe}_v{version}.docx'
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={
+                'Content-Disposition':  f'attachment; filename="{filename}"',
+                'X-PP-SMTP-Missing':    '1',
+                'X-PP-Version':         str(version),
+                'Access-Control-Expose-Headers': 'X-PP-SMTP-Missing, X-PP-Version, Content-Disposition',
+            },
+        )
+
+    try:
+        send_review_email(
+            recipient_email=colleague['email'],
+            recipient_name=colleague['name'],
+            pkg_title=pkg.get('title', 'Paquete sin título'),
+            docx_bytes=docx_bytes,
+            version=version,
+        )
+    except Exception as exc:
+        logger.error('Email send error for %s: %s', pkg_id, exc)
+        return jsonify({'error': f'Error enviando el email: {exc}', 'version': version}), 500
+
+    return jsonify({
+        'ok':        True,
+        'version':   version,
+        'recipient': colleague['name'],
+        'email':     colleague['email'],
+    })

@@ -1289,6 +1289,120 @@
   to   { opacity: 1; transform: translateX(0); }
 }
 
+/* ── Send for Review Modal ────────────────────────────────────────────────── */
+.pp-btn-send {
+  background: #1d4ed8;
+  color: #fff;
+  border: none;
+}
+.pp-btn-send:hover { background: #1e40af; }
+
+.pp-version-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-radius: 6px;
+  padding: 2px 8px;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.pp-send-modal-card {
+  position: relative;
+  z-index: 1001;
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+}
+.pp-send-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.pp-send-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pp-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pp-colleague-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.pp-colleague-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px 14px;
+  border: 2px solid var(--pp-border);
+  border-radius: 12px;
+  background: var(--pp-bg);
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  text-align: center;
+}
+.pp-colleague-card:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.pp-colleague-card.selected {
+  border-color: #1d4ed8;
+  background: #dbeafe;
+  box-shadow: 0 0 0 3px rgba(29,78,216,.12);
+}
+.pp-colleague-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: .03em;
+}
+.pp-colleague-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pp-text-primary);
+  line-height: 1.2;
+}
+.pp-colleague-email {
+  font-size: 10px;
+  color: var(--pp-text-dim);
+}
+.pp-colleague-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #1d4ed8;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.pp-colleague-card.selected .pp-colleague-check { opacity: 1; }
+.pp-send-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16px;
+  border-top: 1px solid var(--pp-border);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1200px) {

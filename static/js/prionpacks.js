@@ -206,10 +206,86 @@ const PrionPacks = (() => {
   }
 
   /* ── Editor ────────────────────────────────────────────────────────────── */
+  /* ── Send for Review ───────────────────────────────────────────────────── */
+  let _selectedColleague = null;
+
+  function _openSendModal() {
+    if (!state.currentId) return;
+    _selectedColleague = null;
+    document.querySelectorAll('.pp-colleague-card').forEach(c => c.classList.remove('selected'));
+    document.getElementById('pp-send-btn').disabled = true;
+    document.getElementById('pp-send-modal').style.display = '';
+  }
+
+  function _closeSendModal() {
+    document.getElementById('pp-send-modal').style.display = 'none';
+  }
+
+  async function _sendReview() {
+    if (!_selectedColleague || !state.currentId) return;
+    const btn = document.getElementById('pp-send-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…';
+    try {
+      const resp = await fetch(`/prionpacks/api/packages/${state.currentId}/send-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: _selectedColleague }),
+      });
+
+      // SMTP not configured — server returns the file directly
+      if (resp.headers.get('X-PP-SMTP-Missing') === '1') {
+        const newVersion = resp.headers.get('X-PP-Version') || '1';
+        const blob = await resp.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const cd   = resp.headers.get('Content-Disposition') || '';
+        const m    = cd.match(/filename="([^"]+)"/);
+        a.href = url; a.download = m ? m[1] : 'package.docx';
+        a.click(); URL.revokeObjectURL(url);
+        _closeSendModal();
+        _updateVersionBadge(parseInt(newVersion, 10));
+        toast('SMTP no configurado — documento descargado localmente.', 'info');
+        return;
+      }
+
+      const data = await resp.json();
+      if (!resp.ok) { toast(data.error || 'Error enviando.', 'error'); return; }
+      _closeSendModal();
+      _updateVersionBadge(data.version);
+      toast(`Documento v${data.version} enviado a ${data.recipient}.`, 'success');
+    } catch (err) {
+      toast('Error de red: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar documento';
+    }
+  }
+
+  function _updateVersionBadge(version) {
+    const badge = document.getElementById('editor-version-badge');
+    if (badge && version) {
+      badge.textContent = `v${version} enviada`;
+      badge.style.display = '';
+    }
+    const pkg = PPStorage.get(state.currentId);
+    if (pkg) PPStorage.update(state.currentId, { docxVersion: version });
+  }
+
   function _populateEditor(pkg) {
     const isNew = !pkg;
     document.getElementById('editor-id-badge').textContent = isNew ? 'PRP-NEW' : pkg.id;
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
+    document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
+    const vBadge = document.getElementById('editor-version-badge');
+    if (!isNew && pkg.docxVersion) {
+      vBadge.textContent = `v${pkg.docxVersion} enviada`;
+      vBadge.style.display = '';
+    } else {
+      vBadge.style.display = 'none';
+    }
+    document.getElementById('pp-send-download-link').href =
+      isNew ? '#' : `/prionpacks/api/packages/${pkg.id}/docx`;
     document.getElementById('meta-id').textContent = isNew ? '—' : pkg.id;
     document.getElementById('meta-created').textContent = isNew ? '—' : _fmtDate(pkg.createdAt);
     document.getElementById('meta-modified').textContent = isNew ? '—' : _fmtDate(pkg.lastModified);
@@ -967,6 +1043,7 @@ const PrionPacks = (() => {
     });
 
     document.getElementById('btn-add-finding').addEventListener('click', addFinding);
+    document.getElementById('btn-send-review').addEventListener('click', _openSendModal);
 
     document.querySelectorAll('.pp-priority-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1021,11 +1098,27 @@ const PrionPacks = (() => {
     document.getElementById('pp-fig-view-close').addEventListener('click', _closeFigureViewModal);
     document.getElementById('pp-fig-view-backdrop').addEventListener('click', _closeFigureViewModal);
 
+    // Send review modal
+    document.getElementById('pp-send-backdrop').addEventListener('click', _closeSendModal);
+    document.getElementById('pp-send-modal-close').addEventListener('click', _closeSendModal);
+    document.getElementById('pp-send-cancel').addEventListener('click', _closeSendModal);
+    document.getElementById('pp-send-btn').addEventListener('click', _sendReview);
+
+    document.querySelectorAll('.pp-colleague-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.pp-colleague-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        _selectedColleague = card.dataset.key;
+        document.getElementById('pp-send-btn').disabled = false;
+      });
+    });
+
     // Escape closes any open modal
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape') return;
       if (document.getElementById('pp-img-upload-modal').style.display !== 'none') _closeImgUploadModal();
       if (document.getElementById('pp-fig-view-modal').style.display  !== 'none') _closeFigureViewModal();
+      if (document.getElementById('pp-send-modal').style.display      !== 'none') _closeSendModal();
     });
   }
 

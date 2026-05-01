@@ -130,8 +130,12 @@
         </button>
         <div class="pp-editor-toolbar-right">
           <span class="pp-package-id-badge" id="editor-id-badge">PRP-NEW</span>
+          <span class="pp-version-badge" id="editor-version-badge" style="display:none;"></span>
           <button class="pp-btn pp-btn-danger" id="btn-delete-package" style="display:none;">
             <i class="fas fa-trash"></i> Delete
+          </button>
+          <button class="pp-btn pp-btn-send" id="btn-send-review" style="display:none;">
+            <i class="fas fa-paper-plane"></i> Enviar para revisar
           </button>
           <button class="pp-btn pp-btn-primary" id="btn-save-package">
             <i class="fas fa-save"></i> Save
@@ -275,6 +279,53 @@
     </div>
 
   </main>
+</div>
+
+<!-- Send for Review Modal -->
+<div id="pp-send-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-send-modal-title">
+  <div class="pp-modal-backdrop" id="pp-send-backdrop"></div>
+  <div class="pp-send-modal-card">
+    <div class="pp-send-modal-header">
+      <span class="pp-send-modal-title" id="pp-send-modal-title">
+        <i class="fas fa-paper-plane"></i> Enviar para revisar
+      </span>
+      <button id="pp-send-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <p style="margin:0 0 16px;font-size:13px;color:var(--pp-text-dim);">Selecciona el destinatario. Se generará un Word adjunto y se enviará por email.</p>
+    <div class="pp-colleague-grid">
+      <button class="pp-colleague-card" data-key="herana" type="button">
+        <div class="pp-colleague-avatar">HE</div>
+        <div class="pp-colleague-name">Hasier Eraña</div>
+        <div class="pp-colleague-email">herana@cicbiogune.es</div>
+        <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
+      </button>
+      <button class="pp-colleague-card" data-key="cdiza" type="button">
+        <div class="pp-colleague-avatar">CD</div>
+        <div class="pp-colleague-name">Carlos Díaz</div>
+        <div class="pp-colleague-email">cdiza@cicbiogune.es</div>
+        <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
+      </button>
+      <button class="pp-colleague-card" data-key="jmoreno" type="button">
+        <div class="pp-colleague-avatar">JM</div>
+        <div class="pp-colleague-name">Jorge Moreno</div>
+        <div class="pp-colleague-email">jmoreno@cicbiogune.es</div>
+        <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
+      </button>
+    </div>
+    <div class="pp-send-modal-footer">
+      <a id="pp-send-download-link" href="#" download style="font-size:12px;color:var(--pp-text-dim);text-decoration:none;" title="Descargar sin enviar">
+        <i class="fas fa-download"></i> Solo descargar Word
+      </a>
+      <div style="display:flex;gap:8px;">
+        <button id="pp-send-cancel" class="pp-btn pp-btn-ghost" type="button">Cancelar</button>
+        <button id="pp-send-btn" class="pp-btn pp-btn-primary" type="button" disabled>
+          <i class="fas fa-paper-plane"></i> Enviar documento
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Image Upload Modal -->

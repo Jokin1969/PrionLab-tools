@@ -157,3 +157,15 @@ def update_package(pkg_id: str, data: dict) -> dict | None:
 
 def delete_package(pkg_id: str) -> None:
     _save([p for p in _load() if p['id'] != pkg_id])
+
+
+def increment_docx_version(pkg_id: str) -> int:
+    packages = _load()
+    pkg = next((p for p in packages if p['id'] == pkg_id), None)
+    if pkg is None:
+        return 1
+    new_ver = pkg.get('docxVersion', 0) + 1
+    pkg['docxVersion'] = new_ver
+    pkg['lastModified'] = _now()
+    _save(packages)
+    return new_ver
