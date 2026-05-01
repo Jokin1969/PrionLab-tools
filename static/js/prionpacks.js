@@ -959,18 +959,22 @@ const PrionPacks = (() => {
     const hasFinding = findingId ? ' has-finding' : '';
     const assignedClass = findingId ? ' assigned' : '';
     const neededDisplay = neededExp ? '' : 'none';
+    const neededActive = neededExp ? ' active' : '';
     const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
         <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
         <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
-        <button class="pp-btn-icon pp-gap-needed-toggle${neededExp ? ' active' : ''}" title="Needed experiment"><i class="fas fa-flask"></i></button>
-        <button class="pp-btn-icon btn-remove" onclick="this.closest('.pp-gap-item').remove();PrionPacks._recalcScore();PrionPacks._updateFindingGapIndicators();">
+        <button class="pp-btn pp-btn-sm pp-btn-ghost pp-gap-needed-toggle${neededActive}" title="Add a needed experiment to address this gap" type="button">
+          <i class="fas fa-flask"></i> Needed experiment
+        </button>
+        <button class="pp-btn-icon btn-remove" title="Remove gap" onclick="this.closest('.pp-gap-item').remove();PrionPacks._recalcScore();PrionPacks._updateFindingGapIndicators();">
           <i class="fas fa-times"></i>
         </button>
       </div>
       <div class="pp-gap-needed-row" style="display:${neededDisplay}">
-        <textarea class="pp-gap-needed-input pp-textarea" rows="2" placeholder="Describe the needed experiment to address this gap…">${_esc(neededExp)}</textarea>
+        <label class="pp-gap-needed-label"><i class="fas fa-flask"></i> Needed experiment for this gap</label>
+        <textarea class="pp-gap-needed-input pp-textarea" rows="2" placeholder="Describe the experiment proposed to address this missing information…">${_esc(neededExp)}</textarea>
       </div>
       <div class="pp-gap-finding-row">
         <span class="pp-gap-finding-label">Links to finding:</span>
