@@ -69,10 +69,11 @@ const PrionPacks = (() => {
 
   function _matchesSearch(p, q) {
     if (!q) return true;
+    const missingInfo = (p.gaps?.missingInfo || []).map(g => typeof g === 'string' ? g : g.text);
     const fields = [
       p.title, p.id, p.description, p.hypothesis,
       ...(p.findings || []).flatMap(f => [f.title, f.titleEnglish, f.description, ...(f.figures || []).map(fig => fig.description)]),
-      ...(p.gaps?.missingInfo || []),
+      ...missingInfo,
       ...(p.gaps?.neededExperiments || []),
     ];
     return fields.some(v => v && String(v).toLowerCase().includes(q));
@@ -216,8 +217,15 @@ const PrionPacks = (() => {
 
     _setPriority(pkg?.priority || 'none');
     _renderFindings(pkg?.findings || []);
-    _renderGapList('missing', pkg?.gaps?.missingInfo || []);
+
+    // Normalize missingInfo: backward compat with old string[] format
+    const missingInfo = (pkg?.gaps?.missingInfo || []).map(g =>
+      typeof g === 'string' ? { text: g, findingId: null } : g
+    );
+    _renderGapList('missing', missingInfo);
     _renderGapList('experiments', pkg?.gaps?.neededExperiments || []);
+    _refreshGapFindingSelects();
+    _updateFindingGapIndicators();
     _updateScore(pkg?.scores || { hypothesis: 0, findings: 0, figures: 0, gaps: 0, total: 0 });
     _recalcScore();
   }
@@ -274,7 +282,8 @@ const PrionPacks = (() => {
             <i class="fas fa-plus"></i> Add Figure
           </button>
         </div>
-      </div>`;
+      </div>
+      <div class="pp-finding-gap-indicator"></div>`;
     div.querySelector('.pp-finding-title-input').addEventListener('input', _recalcScore);
     div.querySelector('.pp-textarea').addEventListener('input', _recalcScore);
     return div;
@@ -296,12 +305,15 @@ const PrionPacks = (() => {
     document.getElementById('findings-empty').style.display = 'none';
     block.querySelector('.pp-finding-title-input').focus();
     _initDragDrop(container);
+    _refreshGapFindingSelects();
     _recalcScore();
   }
 
   function removeFinding(btn) {
     btn.closest('.pp-finding-block').remove();
     _renumberFindings();
+    _refreshGapFindingSelects();
+    _updateFindingGapIndicators();
     _recalcScore();
   }
 
@@ -362,8 +374,44 @@ const PrionPacks = (() => {
   function _renderGapList(type, items) {
     const id = type === 'missing' ? 'gaps-missing-list' : 'gaps-experiments-list';
     const list = document.getElementById(id);
-    list.innerHTML = items.map(_gapItemHTML).join('');
-    list.querySelectorAll('input').forEach(inp => inp.addEventListener('input', _recalcScore));
+    if (type === 'missing') {
+      list.innerHTML = items.map(g => _gapMissingItemHTML(g)).join('');
+      list.querySelectorAll('input').forEach(inp =>
+        inp.addEventListener('input', () => { _recalcScore(); _updateFindingGapIndicators(); })
+      );
+      list.querySelectorAll('.pp-gap-finding-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+          sel.dataset.findingId = sel.value;
+          sel.classList.toggle('assigned', !!sel.value);
+          sel.closest('.pp-gap-item').classList.toggle('has-finding', !!sel.value);
+          _updateFindingGapIndicators();
+        });
+      });
+    } else {
+      list.innerHTML = items.map(g => _gapItemHTML(typeof g === 'string' ? g : g.text)).join('');
+      list.querySelectorAll('input').forEach(inp => inp.addEventListener('input', _recalcScore));
+    }
+  }
+
+  function _gapMissingItemHTML(gap) {
+    const text = typeof gap === 'string' ? gap : (gap.text || '');
+    const findingId = typeof gap === 'string' ? '' : (gap.findingId || '');
+    const hasFinding = findingId ? ' has-finding' : '';
+    const assignedClass = findingId ? ' assigned' : '';
+    return `<div class="pp-gap-item${hasFinding}">
+      <div class="pp-gap-item-top">
+        <input type="text" value="${_esc(text)}" placeholder="Missing information…" />
+        <button class="pp-btn-icon btn-remove" onclick="this.closest('.pp-gap-item').remove();PrionPacks._recalcScore();PrionPacks._updateFindingGapIndicators();">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="pp-gap-finding-row">
+        <span class="pp-gap-finding-label">Links to finding:</span>
+        <select class="pp-gap-finding-select${assignedClass}" data-finding-id="${_esc(findingId)}">
+          <option value="">— None —</option>
+        </select>
+      </div>
+    </div>`;
   }
 
   function _gapItemHTML(value) {
@@ -379,12 +427,100 @@ const PrionPacks = (() => {
     const id = type === 'missing' ? 'gaps-missing-list' : 'gaps-experiments-list';
     const list = document.getElementById(id);
     const tmp = document.createElement('div');
-    tmp.innerHTML = _gapItemHTML('');
-    const item = tmp.firstElementChild;
-    list.appendChild(item);
-    item.querySelector('input').focus();
-    item.querySelector('input').addEventListener('input', _recalcScore);
+    if (type === 'missing') {
+      tmp.innerHTML = _gapMissingItemHTML({ text: '', findingId: null });
+      const item = tmp.firstElementChild;
+      list.appendChild(item);
+      item.querySelector('input').addEventListener('input', () => { _recalcScore(); _updateFindingGapIndicators(); });
+      const sel = item.querySelector('.pp-gap-finding-select');
+      sel.addEventListener('change', () => {
+        sel.dataset.findingId = sel.value;
+        sel.classList.toggle('assigned', !!sel.value);
+        item.classList.toggle('has-finding', !!sel.value);
+        _updateFindingGapIndicators();
+      });
+      _refreshGapFindingSelects();
+      item.querySelector('input').focus();
+    } else {
+      tmp.innerHTML = _gapItemHTML('');
+      const item = tmp.firstElementChild;
+      list.appendChild(item);
+      item.querySelector('input').focus();
+      item.querySelector('input').addEventListener('input', _recalcScore);
+    }
     _recalcScore();
+  }
+
+  /* ── Gap-Finding association helpers ───────────────────────────────────── */
+  function _refreshGapFindingSelects() {
+    const findings = Array.from(document.querySelectorAll('.pp-finding-block'));
+    const optsHTML = '<option value="">— None —</option>' + findings.map((block, i) => {
+      const num = 'F-' + String(i+1).padStart(2,'0');
+      const title = block.querySelector('.pp-finding-title-input')?.value.trim() || '(untitled)';
+      return `<option value="${_esc(block.dataset.id)}">${_esc(num + ': ' + title)}</option>`;
+    }).join('');
+
+    document.querySelectorAll('.pp-gap-finding-select').forEach(sel => {
+      const savedId = sel.dataset.findingId || sel.value || '';
+      sel.innerHTML = optsHTML;
+      if (savedId) {
+        sel.value = savedId;
+        const matched = !!sel.value; // false if option no longer exists
+        sel.classList.toggle('assigned', matched);
+        sel.closest('.pp-gap-item')?.classList.toggle('has-finding', matched);
+        if (!matched) sel.dataset.findingId = '';
+      }
+    });
+  }
+
+  function _updateFindingGapIndicators() {
+    const gapMap = {};
+    document.querySelectorAll('#gaps-missing-list .pp-gap-item').forEach(item => {
+      const sel = item.querySelector('.pp-gap-finding-select');
+      const fid = sel?.value;
+      if (fid) {
+        if (!gapMap[fid]) gapMap[fid] = [];
+        gapMap[fid].push(item.querySelector('input')?.value.trim() || '(gap)');
+      }
+    });
+
+    document.querySelectorAll('.pp-finding-block').forEach(block => {
+      const fid = block.dataset.id;
+      const indicator = block.querySelector('.pp-finding-gap-indicator');
+      if (!indicator) return;
+      const gaps = gapMap[fid] || [];
+      if (gaps.length) {
+        indicator.classList.add('visible');
+        const count = gaps.length;
+        indicator.innerHTML = '';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-link';
+        const text = document.createElement('span');
+        text.textContent = `${count} gap${count !== 1 ? 's' : ''} associated — `;
+        const link = document.createElement('span');
+        link.className = 'pp-finding-gap-link';
+        link.textContent = `view gap${count !== 1 ? 's' : ''}`;
+        link.addEventListener('click', () => _scrollToGap(fid));
+        text.appendChild(link);
+        indicator.appendChild(icon);
+        indicator.appendChild(text);
+      } else {
+        indicator.classList.remove('visible');
+        indicator.innerHTML = '';
+      }
+    });
+  }
+
+  function _scrollToGap(findingId) {
+    const items = Array.from(document.querySelectorAll('#gaps-missing-list .pp-gap-item'))
+      .filter(item => item.querySelector('.pp-gap-finding-select')?.value === findingId);
+    if (items.length) {
+      items[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      items.forEach(item => {
+        item.style.outline = '2px solid var(--pp-accent)';
+        setTimeout(() => { item.style.outline = ''; }, 2000);
+      });
+    }
   }
 
   /* ── Scoring ───────────────────────────────────────────────────────────── */
@@ -409,7 +545,7 @@ const PrionPacks = (() => {
     if (totalFigs) figScore = Math.round((filledFigs / totalFigs) * 100);
     else if (findings.length) figScore = 20;
 
-    const gapCount = document.querySelectorAll('#gaps-missing-list .pp-dynamic-item, #gaps-experiments-list .pp-dynamic-item').length;
+    const gapCount = document.querySelectorAll('#gaps-missing-list .pp-gap-item, #gaps-experiments-list .pp-dynamic-item').length;
     const gapScore = gapCount > 5 ? Math.max(20, 100 - (gapCount - 5) * 10) : 100;
 
     const total = Math.round(hScore * .20 + fScore * .50 + figScore * .20 + gapScore * .10);
@@ -507,6 +643,12 @@ const PrionPacks = (() => {
   }
 
   function _collectGapList(listId) {
+    if (listId === 'gaps-missing-list') {
+      return Array.from(document.querySelectorAll('#' + listId + ' .pp-gap-item')).map(item => ({
+        text: item.querySelector('input')?.value.trim() || '',
+        findingId: item.querySelector('.pp-gap-finding-select')?.value || null,
+      })).filter(g => g.text);
+    }
     return Array.from(document.querySelectorAll('#' + listId + ' input'))
       .map(i => i.value.trim()).filter(Boolean);
   }
@@ -554,7 +696,9 @@ const PrionPacks = (() => {
       block.addEventListener('dragend', () => {
         dragging = null; block.style.opacity = '';
         container.querySelectorAll('.pp-finding-block').forEach(b => b.classList.remove('drag-over'));
-        _renumberFindings(); _recalcScore();
+        _renumberFindings();
+        _refreshGapFindingSelects();
+        _recalcScore();
       });
       block.addEventListener('dragover', e => {
         e.preventDefault();
@@ -684,7 +828,7 @@ const PrionPacks = (() => {
     init, showDashboard, showEditor,
     addFinding, removeFinding, addFigure, removeFigure,
     translateFinding, addGapItem, savePackage, deletePackage,
-    toast, _recalcScore,
+    toast, _recalcScore, _updateFindingGapIndicators, _scrollToGap,
   };
 })();
 
