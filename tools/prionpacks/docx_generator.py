@@ -96,6 +96,15 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         _dim_para(doc, '(sin hipótesis registrada)')
     doc.add_paragraph()
 
+    # ── Introduction ─────────────────────────────────────────────────────────
+    intro = (pkg.get('introduction') or '').strip()
+    if intro:
+        _section_heading(doc, 'INTRODUCCIÓN')
+        p = doc.add_paragraph()
+        r = p.add_run(intro)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
     # ── Pre-process gaps for linking ──────────────────────────────────────────
     raw_missing = pkg.get('gaps', {}).get('missingInfo', [])
     gap_items = []
@@ -195,6 +204,15 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             r.font.size = Pt(10); r.font.color.rgb = _DARK
 
     doc.add_paragraph()
+
+    # ── Discussion ────────────────────────────────────────────────────────────
+    disc = (pkg.get('discussion') or '').strip()
+    if disc:
+        _section_heading(doc, 'DISCUSIÓN')
+        p = doc.add_paragraph()
+        r = p.add_run(disc)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
 
     # ── Score ─────────────────────────────────────────────────────────────────
     scores = pkg.get('scores', {})
