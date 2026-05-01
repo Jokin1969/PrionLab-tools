@@ -366,7 +366,7 @@ const PrionPacks = (() => {
 
     const titleEl = document.getElementById('field-title');
     titleEl.value = pkg?.title || '';
-    _autoResize(titleEl);
+    _updateTitleDisplay(titleEl.value);
 
     document.getElementById('field-description').value = pkg?.description || '';
     document.getElementById('field-hypothesis').value = pkg?.hypothesis || '';
@@ -397,9 +397,17 @@ const PrionPacks = (() => {
     _updateToggleBtn('btn-toggle-discussion', !!disc, 'fa-comments', 'Discussion');
   }
 
-  function _autoResize(el) {
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
+  function _updateTitleDisplay(text) {
+    const display = document.getElementById('title-display');
+    if (!display) return;
+    const trimmed = (text || '').trim();
+    if (trimmed) {
+      display.textContent = trimmed;
+      display.classList.remove('pp-title-display-empty');
+    } else {
+      display.textContent = 'Untitled package';
+      display.classList.add('pp-title-display-empty');
+    }
   }
 
   /* ── Toggle helpers ────────────────────────────────────────────────────── */
@@ -1295,7 +1303,7 @@ const PrionPacks = (() => {
     });
 
     const titleEl = document.getElementById('field-title');
-    titleEl.addEventListener('input', e => { _autoResize(e.target); });
+    titleEl.addEventListener('input', e => { _updateTitleDisplay(e.target.value); });
     document.getElementById('field-hypothesis').addEventListener('input', _recalcScore);
 
     document.getElementById('btn-save-api-key').addEventListener('click', () => {

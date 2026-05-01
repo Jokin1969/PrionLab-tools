@@ -299,24 +299,23 @@
   padding: 0 24px;
 }
 
-.pp-title-input {
-  display: block;
-  width: 100%;
+.pp-title-display {
+  margin: 0;
   background: transparent;
-  border: none;
   color: var(--pp-text);
   font-size: 24px;
   font-weight: 700;
   font-family: 'Crimson Pro', Georgia, serif;
   line-height: 1.4;
   padding: 18px 0;
-  resize: none;
-  overflow: hidden;
-  outline: none;
-  box-sizing: border-box;
+  word-wrap: break-word;
+  word-break: break-word;
 }
-
-.pp-title-input::placeholder { color: var(--pp-text-dim); font-weight: 400; }
+.pp-title-display-empty {
+  color: var(--pp-text-dim);
+  font-weight: 400;
+  font-style: italic;
+}
 
 /* ── Metrics ─────────────────────────────────────────────────────────────── */
 
@@ -1474,13 +1473,6 @@
 }
 
 /* ── AI context toggles & Claude ask buttons ─────────────────────────────── */
-
-.pp-title-ai-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 0 0;
-}
 
 .pp-label-ai-row {
   display: flex;

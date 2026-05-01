@@ -149,17 +149,9 @@
         </button>
       </div>
 
-      <!-- Title bar — full width below toolbar -->
+      <!-- Title bar — full width below toolbar (read-only display) -->
       <div class="pp-title-bar">
-        <div class="pp-title-ai-row">
-          <button class="pp-ai-btn" data-field-id="field-title" data-ai-label="Título del paquete" title="Incluir como contexto para Claude">AI</button>
-          <button class="pp-claude-ask-btn" data-source-id="field-title" data-source-label="Título del paquete" title="Preguntar a Claude">
-            <i class="fas fa-robot"></i> Claude
-          </button>
-        </div>
-        <textarea id="field-title" class="pp-title-input" rows="1"
-          placeholder="Package title…"
-          autocomplete="off"></textarea>
+        <h1 id="title-display" class="pp-title-display pp-title-display-empty">Untitled package</h1>
       </div>
 
       <div class="pp-editor-layout">
@@ -176,6 +168,18 @@
                 <button class="pp-priority-btn" data-priority="medium" style="background:var(--pp-priority-medium);" title="Media"></button>
                 <button class="pp-priority-btn" data-priority="high" style="background:var(--pp-priority-high);" title="Alta"></button>
               </div>
+            </div>
+            <div class="pp-form-group">
+              <div class="pp-label-ai-row">
+                <label class="pp-label">Title</label>
+                <div class="pp-field-ai-actions">
+                  <button class="pp-ai-btn" data-field-id="field-title" data-ai-label="Título del paquete" title="Incluir como contexto para Claude">AI</button>
+                  <button class="pp-claude-ask-btn" data-source-id="field-title" data-source-label="Título del paquete" title="Preguntar a Claude">
+                    <i class="fas fa-robot"></i> Claude
+                  </button>
+                </div>
+              </div>
+              <textarea id="field-title" class="pp-textarea" rows="2" placeholder="Package title…" autocomplete="off"></textarea>
             </div>
             <div class="pp-form-group">
               <div class="pp-label-ai-row">
