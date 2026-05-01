@@ -749,6 +749,7 @@
 
 .pp-figure-input {
   flex: 1;
+  min-width: 0;
   background: var(--pp-secondary);
   border: 1px solid var(--pp-border);
   color: var(--pp-text);
@@ -824,6 +825,7 @@
   padding: 0;
 }
 
+.pp-fig-img-btn { border-color: var(--pp-border-light); }
 .pp-fig-img-btn:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
 .pp-fig-cap-btn:hover { color: #b45309; border-color: #fde68a; }
 
@@ -1304,6 +1306,16 @@
 .pp-btn-icon:hover { color: var(--pp-text); background: var(--pp-secondary); }
 .pp-btn-icon.btn-claude:hover { color: var(--pp-accent); }
 .pp-btn-icon.btn-remove:hover { color: #dc2626; background: #fef2f2; }
+
+/* Buttons inside the finding header need a visible frame so they don't vanish into the light background */
+.pp-finding-header .pp-btn-icon {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--pp-border);
+  color: var(--pp-text-muted);
+}
+.pp-finding-header .pp-btn-icon:hover { background: #fff; border-color: var(--pp-border-light); }
+.pp-finding-header .pp-btn-icon.btn-claude:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
+.pp-finding-header .pp-btn-icon.btn-remove:hover { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
 
 .pp-btn-icon.loading { pointer-events: none; }
 .pp-btn-icon.loading i { animation: pp-spin .7s linear infinite; }
