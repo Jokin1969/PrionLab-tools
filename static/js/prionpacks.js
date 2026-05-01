@@ -2,7 +2,7 @@
 
 const PrionPacks = (() => {
   /* ── State ─────────────────────────────────────────────────────────────── */
-  let _packages = [];   // in-memory cache from server
+  let _packages = [];
   let state = {
     currentId: null,
     view: 'dashboard',
@@ -11,11 +11,14 @@ const PrionPacks = (() => {
     filterPriority: 'all',
   };
 
+  let _imgUploadCallback = null; // set while image-upload modal is open
+
   const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low', none: 'No priority' };
 
   /* ── Init ──────────────────────────────────────────────────────────────── */
   async function init() {
     _bindGlobalEvents();
+    _bindModalEvents();
     _loadApiKeyField();
     _bindKeyboardShortcuts();
     await _fetchAndRender();
@@ -72,7 +75,11 @@ const PrionPacks = (() => {
     const missingInfo = (p.gaps?.missingInfo || []).map(g => typeof g === 'string' ? g : g.text);
     const fields = [
       p.title, p.id, p.description, p.hypothesis,
-      ...(p.findings || []).flatMap(f => [f.title, f.titleEnglish, f.description, ...(f.figures || []).map(fig => fig.description)]),
+      ...(p.findings || []).flatMap(f => [
+        f.title, f.titleEnglish, f.description,
+        ...(f.figures || []).flatMap(fig => [fig.description, fig.caption]),
+        ...(f.tables  || []).map(tbl => tbl.description),
+      ]),
       ...missingInfo,
       ...(p.gaps?.neededExperiments || []),
     ];
@@ -101,7 +108,6 @@ const PrionPacks = (() => {
     document.getElementById('metric-complete').textContent = complete;
     document.getElementById('metric-progress').textContent = progress;
     document.getElementById('metric-avg').textContent = avg + '%';
-
     document.querySelectorAll('.pp-metric-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.filter === state.filterStatus);
     });
@@ -218,7 +224,6 @@ const PrionPacks = (() => {
     _setPriority(pkg?.priority || 'none');
     _renderFindings(pkg?.findings || []);
 
-    // Normalize missingInfo: backward compat with old string[] format
     const missingInfo = (pkg?.gaps?.missingInfo || []).map(g =>
       typeof g === 'string' ? { text: g, findingId: null } : g
     );
@@ -260,6 +265,7 @@ const PrionPacks = (() => {
     div.draggable = true;
     const enBadge = finding.titleEnglish
       ? `<div class="pp-finding-en-badge">EN: ${_esc(finding.titleEnglish)}</div>` : '';
+
     div.innerHTML = `
       <div class="pp-finding-header">
         <i class="fas fa-grip-vertical pp-drag-handle"></i>
@@ -275,74 +281,251 @@ const PrionPacks = (() => {
       ${enBadge}
       <div class="pp-finding-content">
         <textarea class="pp-textarea" rows="3" placeholder="Describe the main result…">${_esc(finding.description||'')}</textarea>
-        <div class="pp-figures-section">
-          <div class="pp-figures-label">Associated Figures</div>
-          <div class="pp-figures-list">${(finding.figures||[]).map((f,i)=>_figureRowHTML(f,i+1)).join('')}</div>
-          <button class="pp-btn pp-btn-ghost pp-btn-sm" onclick="PrionPacks.addFigure(this)">
-            <i class="fas fa-plus"></i> Add Figure
-          </button>
+        <div class="pp-figs-tables-section">
+          <div class="pp-figs-tables-header">
+            <span class="pp-figs-tables-label">Figures &amp; Tables</span>
+            <div class="pp-figs-tables-btns">
+              <button class="pp-btn pp-btn-ghost pp-btn-sm btn-add-figure">
+                <i class="fas fa-plus"></i> Add Figure
+              </button>
+              <button class="pp-btn pp-btn-ghost pp-btn-sm btn-add-table">
+                <i class="fas fa-table"></i> Add Table
+              </button>
+            </div>
+          </div>
+          <div class="pp-figures-list"></div>
+          <div class="pp-tables-list"></div>
         </div>
       </div>
       <div class="pp-finding-gap-indicator"></div>`;
+
+    // Populate figures
+    const figList = div.querySelector('.pp-figures-list');
+    (finding.figures || []).forEach((fig, i) => figList.appendChild(_createFigureItem(fig, i + 1)));
+
+    // Populate tables
+    const tblList = div.querySelector('.pp-tables-list');
+    (finding.tables || []).forEach((tbl, i) => tblList.appendChild(_createTableRow(tbl, i + 1)));
+
+    // Add buttons
+    div.querySelector('.btn-add-figure').addEventListener('click', () => _addFigureToList(figList));
+    div.querySelector('.btn-add-table').addEventListener('click', () => _addTableToList(tblList));
+
     div.querySelector('.pp-finding-title-input').addEventListener('input', _recalcScore);
     div.querySelector('.pp-textarea').addEventListener('input', _recalcScore);
     return div;
   }
 
-  function _figureRowHTML(fig, num) {
-    return `<div class="pp-figure-row">
-      <span class="pp-figure-num">Fig ${num}</span>
-      <input type="text" class="pp-figure-input" placeholder="Figure description…" value="${_esc(fig.description||'')}" />
-      <button class="pp-btn-icon btn-remove" onclick="PrionPacks.removeFigure(this)"><i class="fas fa-times"></i></button>
-    </div>`;
+  /* ── Figure items ──────────────────────────────────────────────────────── */
+  function _createFigureItem(fig, num) {
+    const div = document.createElement('div');
+    div.className = 'pp-figure-item';
+    div.dataset.imageUrl = fig.imageUrl || '';
+    div.dataset.caption  = fig.caption  || '';
+
+    div.innerHTML = `
+      <div class="pp-figure-top">
+        <span class="pp-figure-num">Fig ${num}</span>
+        <input type="text" class="pp-figure-input" placeholder="Figure description…" value="${_esc(fig.description||'')}" />
+        <div class="pp-figure-btns">
+          <button class="pp-fig-img-btn pp-btn-icon" title="Upload image"><i class="fas fa-image"></i></button>
+          <button class="pp-fig-cap-btn pp-btn-icon pp-hidden" title="Add caption"><i class="fas fa-align-left"></i></button>
+          <button class="pp-btn-icon btn-remove" title="Remove figure"><i class="fas fa-times"></i></button>
+        </div>
+      </div>
+      <div class="pp-fig-cap-editor pp-hidden">
+        <textarea class="pp-textarea pp-fig-cap-textarea" rows="2" placeholder="Figure legend / pie de figura…"></textarea>
+        <div class="pp-fig-cap-actions">
+          <button class="pp-btn pp-btn-sm pp-btn-ghost pp-fig-cap-cancel">Cancel</button>
+          <button class="pp-btn pp-btn-sm pp-btn-primary pp-fig-cap-save"><i class="fas fa-check"></i> Save caption</button>
+        </div>
+      </div>`;
+
+    _bindFigureItemEvents(div);
+    _updateFigurePreview(div); // sets up thumbnail and button states from dataset
+    return div;
   }
 
-  function addFinding() {
-    const container = document.getElementById('findings-container');
-    const num = container.querySelectorAll('.pp-finding-block').length + 1;
-    const block = _createFindingBlock({id:'f'+Date.now(),title:'',titleEnglish:'',description:'',figures:[]}, num);
-    container.appendChild(block);
-    document.getElementById('findings-empty').style.display = 'none';
-    block.querySelector('.pp-finding-title-input').focus();
-    _initDragDrop(container);
-    _refreshGapFindingSelects();
+  function _bindFigureItemEvents(div) {
+    const imgBtn    = div.querySelector('.pp-fig-img-btn');
+    const capBtn    = div.querySelector('.pp-fig-cap-btn');
+    const removeBtn = div.querySelector('.btn-remove');
+    const capEditor = div.querySelector('.pp-fig-cap-editor');
+    const capInput  = div.querySelector('.pp-fig-cap-textarea');
+    const descInput = div.querySelector('.pp-figure-input');
+
+    imgBtn.addEventListener('click', () => {
+      _openImgUploadModal(dataUrl => {
+        div.dataset.imageUrl = dataUrl;
+        _updateFigurePreview(div);
+        _recalcScore();
+      });
+    });
+
+    capBtn.addEventListener('click', () => {
+      const opening = capEditor.classList.contains('pp-hidden');
+      capEditor.classList.toggle('pp-hidden');
+      if (opening) {
+        capInput.value = div.dataset.caption || '';
+        capInput.focus();
+      }
+    });
+
+    div.querySelector('.pp-fig-cap-save').addEventListener('click', () => {
+      div.dataset.caption = capInput.value.trim();
+      capEditor.classList.add('pp-hidden');
+      _updateFigurePreview(div);
+    });
+
+    div.querySelector('.pp-fig-cap-cancel').addEventListener('click', () => {
+      capEditor.classList.add('pp-hidden');
+    });
+
+    removeBtn.addEventListener('click', () => {
+      const list = div.closest('.pp-figures-list');
+      div.remove();
+      _renumberList(list, '.pp-figure-item', '.pp-figure-num', 'Fig ');
+      _recalcScore();
+    });
+
+    descInput.addEventListener('input', _recalcScore);
+  }
+
+  function _updateFigurePreview(div) {
+    const imageUrl = div.dataset.imageUrl || '';
+    const caption  = div.dataset.caption  || '';
+    const hasImg   = !!imageUrl;
+    const hasCap   = !!(caption.trim());
+
+    // Image button state
+    const imgBtn = div.querySelector('.pp-fig-img-btn');
+    imgBtn.classList.toggle('active', hasImg);
+    imgBtn.title = hasImg ? 'Change image' : 'Upload image';
+
+    // Caption button: only visible when image present
+    const capBtn = div.querySelector('.pp-fig-cap-btn');
+    capBtn.classList.toggle('pp-hidden', !hasImg);
+    capBtn.classList.toggle('active', hasCap);
+    capBtn.title = hasCap ? 'Edit caption' : 'Add caption';
+
+    // Remove old preview if any
+    div.querySelector('.pp-figure-preview')?.remove();
+
+    if (hasImg) {
+      const preview = document.createElement('div');
+      preview.className = 'pp-figure-preview';
+
+      const thumb = document.createElement('img');
+      thumb.className = 'pp-figure-thumb';
+      thumb.src = imageUrl;
+      thumb.alt = 'Figure preview';
+      thumb.addEventListener('click', () => _openFigureViewModal(imageUrl, caption));
+
+      const badges = document.createElement('div');
+      badges.className = 'pp-figure-badges';
+      badges.innerHTML = `
+        <span class="pp-fig-badge pp-fig-badge-img"><i class="fas fa-image"></i> Image</span>
+        <span class="pp-fig-badge ${hasCap ? 'pp-fig-badge-cap' : 'pp-fig-badge-nocap'}">
+          <i class="fas fa-${hasCap ? 'comment-dots' : 'comment-slash'}"></i>
+          ${hasCap ? 'Caption' : 'No caption'}
+        </span>`;
+
+      preview.appendChild(thumb);
+      preview.appendChild(badges);
+
+      // Insert after .pp-figure-top (before caption editor)
+      div.querySelector('.pp-figure-top').insertAdjacentElement('afterend', preview);
+    }
+  }
+
+  function _addFigureToList(list) {
+    const num = list.querySelectorAll('.pp-figure-item').length + 1;
+    const item = _createFigureItem({ id: 'fig' + Date.now(), description: '', imageUrl: '', caption: '' }, num);
+    list.appendChild(item);
+    item.querySelector('.pp-figure-input').focus();
     _recalcScore();
   }
 
-  function removeFinding(btn) {
-    btn.closest('.pp-finding-block').remove();
-    _renumberFindings();
-    _refreshGapFindingSelects();
-    _updateFindingGapIndicators();
+  /* ── Table rows ────────────────────────────────────────────────────────── */
+  function _createTableRow(tbl, num) {
+    const div = document.createElement('div');
+    div.className = 'pp-table-row';
+    div.innerHTML = `
+      <span class="pp-table-num">Tbl ${num}</span>
+      <input type="text" class="pp-table-input" placeholder="Table description…" value="${_esc(tbl.description||'')}" />
+      <button class="pp-btn-icon btn-remove" title="Remove table"><i class="fas fa-times"></i></button>`;
+    div.querySelector('.btn-remove').addEventListener('click', () => {
+      const list = div.closest('.pp-tables-list');
+      div.remove();
+      _renumberList(list, '.pp-table-row', '.pp-table-num', 'Tbl ');
+      _recalcScore();
+    });
+    div.querySelector('.pp-table-input').addEventListener('input', _recalcScore);
+    return div;
+  }
+
+  function _addTableToList(list) {
+    const num = list.querySelectorAll('.pp-table-row').length + 1;
+    const row = _createTableRow({ id: 'tbl' + Date.now(), description: '' }, num);
+    list.appendChild(row);
+    row.querySelector('.pp-table-input').focus();
     _recalcScore();
   }
 
-  function _renumberFindings() {
-    document.querySelectorAll('.pp-finding-number').forEach((el, i) => {
-      el.textContent = 'F-' + String(i+1).padStart(2,'0');
+  function _renumberList(list, itemSel, numSel, prefix) {
+    list.querySelectorAll(itemSel).forEach((el, i) => {
+      const numEl = el.querySelector(numSel);
+      if (numEl) numEl.textContent = prefix + (i + 1);
     });
   }
 
-  function addFigure(btn) {
-    const list = btn.previousElementSibling;
-    const num = list.querySelectorAll('.pp-figure-row').length + 1;
-    const tmp = document.createElement('div');
-    tmp.innerHTML = _figureRowHTML({description:''}, num);
-    list.appendChild(tmp.firstElementChild);
-    list.querySelectorAll('.pp-figure-row').forEach((r,i) => {
-      r.querySelector('.pp-figure-num').textContent = 'Fig '+(i+1);
-    });
-    _recalcScore();
+  /* ── Image upload modal ────────────────────────────────────────────────── */
+  function _openImgUploadModal(callback) {
+    _imgUploadCallback = callback;
+    document.getElementById('pp-img-upload-modal').style.display = '';
+    // Reset file input so same file can be re-selected
+    document.getElementById('pp-img-file-input').value = '';
+    setTimeout(() => document.getElementById('pp-img-drop-zone').focus(), 50);
   }
 
-  function removeFigure(btn) {
-    const row = btn.closest('.pp-figure-row');
-    const list = row.closest('.pp-figures-list');
-    row.remove();
-    list.querySelectorAll('.pp-figure-row').forEach((r,i) => {
-      r.querySelector('.pp-figure-num').textContent = 'Fig '+(i+1);
-    });
-    _recalcScore();
+  function _closeImgUploadModal() {
+    document.getElementById('pp-img-upload-modal').style.display = 'none';
+    _imgUploadCallback = null;
+  }
+
+  function _handleImageFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Please select a valid image file.', 'error'); return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast('Image too large (max 10 MB).', 'error'); return;
+    }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const cb = _imgUploadCallback;
+      _closeImgUploadModal();
+      if (cb) cb(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /* ── Figure viewer modal ───────────────────────────────────────────────── */
+  function _openFigureViewModal(imageUrl, caption) {
+    document.getElementById('pp-fig-view-img').src = imageUrl;
+    const capEl = document.getElementById('pp-fig-view-caption');
+    if (caption && caption.trim()) {
+      capEl.textContent = caption;
+      capEl.style.display = '';
+    } else {
+      capEl.style.display = 'none';
+    }
+    document.getElementById('pp-fig-view-modal').style.display = '';
+  }
+
+  function _closeFigureViewModal() {
+    document.getElementById('pp-fig-view-modal').style.display = 'none';
+    document.getElementById('pp-fig-view-img').src = '';
   }
 
   /* ── Translate ─────────────────────────────────────────────────────────── */
@@ -451,7 +634,7 @@ const PrionPacks = (() => {
     _recalcScore();
   }
 
-  /* ── Gap-Finding association helpers ───────────────────────────────────── */
+  /* ── Gap-Finding association ───────────────────────────────────────────── */
   function _refreshGapFindingSelects() {
     const findings = Array.from(document.querySelectorAll('.pp-finding-block'));
     const optsHTML = '<option value="">— None —</option>' + findings.map((block, i) => {
@@ -465,7 +648,7 @@ const PrionPacks = (() => {
       sel.innerHTML = optsHTML;
       if (savedId) {
         sel.value = savedId;
-        const matched = !!sel.value; // false if option no longer exists
+        const matched = !!sel.value;
         sel.classList.toggle('assigned', matched);
         sel.closest('.pp-gap-item')?.classList.toggle('has-finding', matched);
         if (!matched) sel.dataset.findingId = '';
@@ -535,7 +718,8 @@ const PrionPacks = (() => {
       const title = block.querySelector('.pp-finding-title-input')?.value.trim() || '';
       const desc  = block.querySelector('.pp-textarea')?.value.trim() || '';
       fScore += (title ? 40 : 0) + (desc.length > 30 ? 60 : 0);
-      block.querySelectorAll('.pp-figure-input').forEach(inp => {
+      // Count figures and tables together for the figures score
+      block.querySelectorAll('.pp-figure-input, .pp-table-input').forEach(inp => {
         totalFigs++;
         if (inp.value.trim().length > 5) filledFigs++;
       });
@@ -576,6 +760,33 @@ const PrionPacks = (() => {
     const v = document.getElementById('score-val-' + key);
     if (b) b.style.width = value + '%';
     if (v) v.textContent = value + '%';
+  }
+
+  /* ── Findings: add / remove ────────────────────────────────────────────── */
+  function addFinding() {
+    const container = document.getElementById('findings-container');
+    const num = container.querySelectorAll('.pp-finding-block').length + 1;
+    const block = _createFindingBlock({id:'f'+Date.now(),title:'',titleEnglish:'',description:'',figures:[],tables:[]}, num);
+    container.appendChild(block);
+    document.getElementById('findings-empty').style.display = 'none';
+    block.querySelector('.pp-finding-title-input').focus();
+    _initDragDrop(container);
+    _refreshGapFindingSelects();
+    _recalcScore();
+  }
+
+  function removeFinding(btn) {
+    btn.closest('.pp-finding-block').remove();
+    _renumberFindings();
+    _refreshGapFindingSelects();
+    _updateFindingGapIndicators();
+    _recalcScore();
+  }
+
+  function _renumberFindings() {
+    document.querySelectorAll('.pp-finding-number').forEach((el, i) => {
+      el.textContent = 'F-' + String(i+1).padStart(2,'0');
+    });
   }
 
   /* ── Save ──────────────────────────────────────────────────────────────── */
@@ -635,8 +846,15 @@ const PrionPacks = (() => {
         title: block.querySelector('.pp-finding-title-input')?.value.trim() || '',
         titleEnglish: badge ? badge.textContent.replace(/^EN:\s*/, '') : '',
         description: block.querySelector('.pp-textarea')?.value.trim() || '',
-        figures: Array.from(block.querySelectorAll('.pp-figure-input')).map((inp, i) => ({
-          id: 'fig' + (i + 1), description: inp.value.trim(),
+        figures: Array.from(block.querySelectorAll('.pp-figure-item')).map((item, i) => ({
+          id: 'fig' + (i + 1),
+          description: item.querySelector('.pp-figure-input')?.value.trim() || '',
+          imageUrl: item.dataset.imageUrl || null,
+          caption:  item.dataset.caption  || null,
+        })),
+        tables: Array.from(block.querySelectorAll('.pp-table-row')).map((row, i) => ({
+          id: 'tbl' + (i + 1),
+          description: row.querySelector('.pp-table-input')?.value.trim() || '',
         })),
       };
     });
@@ -714,7 +932,7 @@ const PrionPacks = (() => {
     });
   }
 
-  /* ── Events ────────────────────────────────────────────────────────────── */
+  /* ── Global events ─────────────────────────────────────────────────────── */
   function _bindGlobalEvents() {
     document.getElementById('btn-new-package').addEventListener('click', () => showEditor(null));
     document.getElementById('btn-new-package-main').addEventListener('click', () => showEditor(null));
@@ -737,7 +955,6 @@ const PrionPacks = (() => {
       _renderDashboard();
     });
 
-    // Metric cards as filter buttons
     document.querySelectorAll('.pp-metric-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const f = btn.dataset.filter;
@@ -770,6 +987,45 @@ const PrionPacks = (() => {
       status.textContent = '✓ Saved';
       status.className = 'pp-api-status ok';
       toast('API key saved.', 'success');
+    });
+  }
+
+  function _bindModalEvents() {
+    // Image upload modal
+    document.getElementById('pp-img-modal-close').addEventListener('click', _closeImgUploadModal);
+    document.getElementById('pp-img-modal-backdrop').addEventListener('click', _closeImgUploadModal);
+
+    const dropZone  = document.getElementById('pp-img-drop-zone');
+    const fileInput = document.getElementById('pp-img-file-input');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) _handleImageFile(e.target.files[0]); });
+
+    dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) _handleImageFile(e.dataTransfer.files[0]);
+    });
+
+    // Paste support while modal is open
+    document.addEventListener('paste', e => {
+      if (document.getElementById('pp-img-upload-modal').style.display === 'none') return;
+      if (!_imgUploadCallback) return;
+      const imageItem = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'));
+      if (imageItem) { e.preventDefault(); _handleImageFile(imageItem.getAsFile()); }
+    });
+
+    // Figure viewer modal
+    document.getElementById('pp-fig-view-close').addEventListener('click', _closeFigureViewModal);
+    document.getElementById('pp-fig-view-backdrop').addEventListener('click', _closeFigureViewModal);
+
+    // Escape closes any open modal
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (document.getElementById('pp-img-upload-modal').style.display !== 'none') _closeImgUploadModal();
+      if (document.getElementById('pp-fig-view-modal').style.display  !== 'none') _closeFigureViewModal();
     });
   }
 
@@ -826,7 +1082,7 @@ const PrionPacks = (() => {
 
   return {
     init, showDashboard, showEditor,
-    addFinding, removeFinding, addFigure, removeFigure,
+    addFinding, removeFinding,
     translateFinding, addGapItem, savePackage, deletePackage,
     toast, _recalcScore, _updateFindingGapIndicators, _scrollToGap,
   };

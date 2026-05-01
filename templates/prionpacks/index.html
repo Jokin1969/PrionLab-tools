@@ -277,6 +277,44 @@
   </main>
 </div>
 
+<!-- Image Upload Modal -->
+<div id="pp-img-upload-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-img-modal-title">
+  <div class="pp-modal-backdrop" id="pp-img-modal-backdrop"></div>
+  <div class="pp-img-modal-card">
+    <div class="pp-img-modal-header">
+      <span class="pp-img-modal-title" id="pp-img-modal-title">
+        <i class="fas fa-image"></i> Add Figure Image
+      </span>
+      <button id="pp-img-modal-close" class="pp-btn-icon" aria-label="Close">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="pp-img-drop-zone" id="pp-img-drop-zone" tabindex="0" role="button" aria-label="Drop image or click to browse">
+      <i class="fas fa-cloud-upload-alt pp-img-drop-icon"></i>
+      <div class="pp-img-drop-text">Drop image here or <span class="pp-img-browse-link">browse files</span></div>
+      <div class="pp-img-drop-formats">PNG &nbsp;·&nbsp; JPG / JPEG &nbsp;·&nbsp; TIFF &nbsp;·&nbsp; SVG &nbsp;&nbsp;max 10 MB</div>
+    </div>
+    <div class="pp-img-paste-hint">
+      <i class="fas fa-paste"></i>&nbsp; Or press <kbd>Ctrl+V</kbd> / <kbd>⌘V</kbd> to paste an image from clipboard
+    </div>
+    <input type="file" id="pp-img-file-input" accept=".png,.jpg,.jpeg,.tif,.tiff,.svg,image/*" style="display:none" />
+  </div>
+</div>
+
+<!-- Figure Viewer Modal -->
+<div id="pp-fig-view-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true">
+  <div class="pp-modal-backdrop" id="pp-fig-view-backdrop"></div>
+  <div class="pp-fig-view-card">
+    <button id="pp-fig-view-close" class="pp-btn-icon pp-fig-view-close-btn" aria-label="Close figure">
+      <i class="fas fa-times"></i>
+    </button>
+    <div class="pp-fig-view-img-wrap">
+      <img id="pp-fig-view-img" class="pp-fig-view-img" alt="Figure" />
+    </div>
+    <div id="pp-fig-view-caption" class="pp-fig-view-caption" style="display:none"></div>
+  </div>
+</div>
+
 <div id="pp-toast-container" class="pp-toast-container"></div>
 
 <script src="{{ url_for('static', filename='js/prionpacks-storage.js') }}"></script>
