@@ -78,14 +78,15 @@ const PrionPacks = (() => {
     if (!q) return true;
     const missingInfo = (p.gaps?.missingInfo || []).map(g => typeof g === 'string' ? g : g.text);
     const fields = [
-      p.title, p.id, p.description, p.hypothesis, p.introduction, p.discussion,
+      p.title, p.id, p.description, p.introduction, p.discussion,
+      p.coAuthors, p.affiliations, p.abstract, p.authorSummary,
+      p.acknowledgments, p.funding, p.conflictsOfInterest, p.references,
       ...(p.findings || []).flatMap(f => [
         f.title, f.titleEnglish, f.description,
         ...(f.figures || []).flatMap(fig => [fig.description, fig.caption]),
         ...(f.tables  || []).map(tbl => tbl.description),
       ]),
       ...missingInfo,
-      ...(p.gaps?.neededExperiments || []),
     ];
     return fields.some(v => v && _norm(v).includes(q));
   }
@@ -243,6 +244,44 @@ const PrionPacks = (() => {
     }
   }
 
+  async function _askClaudeCaption(figDiv, capTextarea) {
+    const capText = capTextarea.value.trim();
+    if (!capText && !figDiv.dataset.imageUrl) {
+      toast('Añade una descripción o imagen primero.', 'error'); return;
+    }
+
+    const context = _getAIContext();
+    const imageDataUrl = (figDiv.dataset.imageAsContext === '1' && figDiv.dataset.imageUrl)
+      ? figDiv.dataset.imageUrl
+      : null;
+
+    _showClaudeModal(null, null, null);
+    // Override callback to set capTextarea value
+    try {
+      const response = await PPApi.askClaude(context, 'Pie de figura', capText || '(describe this figure)', imageDataUrl);
+      // Show modal with custom callback
+      const modal       = document.getElementById('pp-claude-modal');
+      const loading     = document.getElementById('pp-claude-loading');
+      const responseEl  = document.getElementById('pp-claude-response-text');
+      const footer      = document.getElementById('pp-claude-modal-footer');
+      const hint        = document.getElementById('pp-claude-field-hint');
+
+      loading.style.display    = 'none';
+      responseEl.style.display = '';
+      responseEl.textContent   = response;
+      footer.style.display     = '';
+      hint.textContent         = '→ Campo: Pie de figura';
+      _claudeModalCallback = () => {
+        capTextarea.value = response;
+        capTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      modal.style.display = '';
+    } catch (e) {
+      _closeClaudeModal();
+      toast('Error llamando a Claude: ' + e.message, 'error');
+    }
+  }
+
   function _showClaudeModal(text, sourceEl, sourceLabel) {
     const modal       = document.getElementById('pp-claude-modal');
     const loading     = document.getElementById('pp-claude-loading');
@@ -342,6 +381,13 @@ const PrionPacks = (() => {
     const isNew = !pkg;
     // Reset all AI context toggles
     document.querySelectorAll('.pp-ai-btn.active').forEach(b => b.classList.remove('active'));
+    // Reset image-as-context on all figure items
+    document.querySelectorAll('.pp-figure-item').forEach(div => {
+      div.dataset.imageAsContext = '';
+      const imgAiBtn = div.querySelector('.pp-fig-img-ai-btn');
+      if (imgAiBtn) imgAiBtn.classList.remove('active');
+    });
+
     document.getElementById('editor-id-badge').textContent = isNew ? 'PRP-NEW' : pkg.id;
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
     document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
@@ -369,32 +415,50 @@ const PrionPacks = (() => {
     _updateTitleDisplay(titleEl.value);
 
     document.getElementById('field-description').value = pkg?.description || '';
-    document.getElementById('field-hypothesis').value = pkg?.hypothesis || '';
 
     _setPriority(pkg?.priority || 'none');
     _renderFindings(pkg?.findings || []);
 
     const missingInfo = (pkg?.gaps?.missingInfo || []).map(g =>
-      typeof g === 'string' ? { text: g, findingId: null } : g
+      typeof g === 'string' ? { text: g, findingId: null, neededExperiment: '' } : g
     );
     _renderGapList('missing', missingInfo);
-    _renderGapList('experiments', pkg?.gaps?.neededExperiments || []);
     _refreshGapFindingSelects();
     _updateFindingGapIndicators();
-    _updateScore(pkg?.scores || { hypothesis: 0, findings: 0, figures: 0, gaps: 0, total: 0 });
+    _updateScore(pkg?.scores || { findings: 0, figures: 0, gaps: 0, total: 0 });
     _recalcScore();
 
-    // Introduction
-    const intro = pkg?.introduction || '';
-    document.getElementById('field-introduction').value = intro;
-    document.getElementById('section-introduction').style.display = intro ? '' : 'none';
-    _updateToggleBtn('btn-toggle-introduction', !!intro, 'fa-book-open', 'Introduction');
+    // Optional sections — basic info group
+    const optionalSectionsBasic = [
+      { field: 'field-coauthors',    section: 'section-coauthors',    btn: 'btn-toggle-coauthors',    icon: 'fa-users',     label: 'Co-authors',     key: 'coAuthors' },
+      { field: 'field-affiliations', section: 'section-affiliations', btn: 'btn-toggle-affiliations', icon: 'fa-university',label: 'Affiliations',   key: 'affiliations' },
+      { field: 'field-abstract',     section: 'section-abstract',     btn: 'btn-toggle-abstract',     icon: 'fa-align-left',label: 'Abstract',       key: 'abstract' },
+      { field: 'field-authorsummary',section: 'section-authorsummary',btn: 'btn-toggle-authorsummary',icon: 'fa-user-edit', label: 'Author Summary', key: 'authorSummary' },
+      { field: 'field-introduction', section: 'section-introduction', btn: 'btn-toggle-introduction', icon: 'fa-book-open', label: 'Introduction',   key: 'introduction' },
+    ];
+    optionalSectionsBasic.forEach(({ field, section, btn, icon, label, key }) => {
+      const val = pkg?.[key] || '';
+      document.getElementById(field).value = val;
+      const visible = !!val;
+      document.getElementById(section).style.display = visible ? '' : 'none';
+      _updateToggleBtn(btn, visible, icon, label);
+    });
 
-    // Discussion
-    const disc = pkg?.discussion || '';
-    document.getElementById('field-discussion').value = disc;
-    document.getElementById('section-discussion').style.display = disc ? '' : 'none';
-    _updateToggleBtn('btn-toggle-discussion', !!disc, 'fa-comments', 'Discussion');
+    // Optional sections — gaps group
+    const optionalSectionsGaps = [
+      { field: 'field-discussion',        section: 'section-discussion',     btn: 'btn-toggle-discussion',     icon: 'fa-comments',      label: 'Discussion',          key: 'discussion' },
+      { field: 'field-acknowledgments',   section: 'section-acknowledgments',btn: 'btn-toggle-acknowledgments',icon: 'fa-heart',         label: 'Acknowledgments',     key: 'acknowledgments' },
+      { field: 'field-funding',           section: 'section-funding',        btn: 'btn-toggle-funding',        icon: 'fa-coins',         label: 'Funding',             key: 'funding' },
+      { field: 'field-conflictsofinterest',section:'section-conflicts',      btn: 'btn-toggle-conflicts',      icon: 'fa-balance-scale', label: 'Conflicts of interest', key: 'conflictsOfInterest' },
+      { field: 'field-references',        section: 'section-references',     btn: 'btn-toggle-references',     icon: 'fa-list',          label: 'References',          key: 'references' },
+    ];
+    optionalSectionsGaps.forEach(({ field, section, btn, icon, label, key }) => {
+      const val = pkg?.[key] || '';
+      document.getElementById(field).value = val;
+      const visible = !!val;
+      document.getElementById(section).style.display = visible ? '' : 'none';
+      _updateToggleBtn(btn, visible, icon, label);
+    });
   }
 
   function _updateTitleDisplay(text) {
@@ -420,38 +484,28 @@ const PrionPacks = (() => {
       : `<i class="fas ${icon}"></i> ${label}`;
   }
 
-  function _toggleIntroduction() {
-    const section = document.getElementById('section-introduction');
+  // Generic toggle: no content guard, just hide/show
+  function _toggleSection(sectionId, btnId, icon, label) {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
     const visible = section.style.display !== 'none';
     if (visible) {
-      if (document.getElementById('field-introduction').value.trim()) {
-        toast('Para ocultar Introduction, elimina el texto primero.', 'info');
-        return;
-      }
       section.style.display = 'none';
-      _updateToggleBtn('btn-toggle-introduction', false, 'fa-book-open', 'Introduction');
+      _updateToggleBtn(btnId, false, icon, label);
     } else {
       section.style.display = '';
-      _updateToggleBtn('btn-toggle-introduction', true, 'fa-book-open', 'Introduction');
-      document.getElementById('field-introduction').focus();
+      _updateToggleBtn(btnId, true, icon, label);
+      const field = section.querySelector('textarea, input[type="text"]');
+      if (field) field.focus();
     }
   }
 
+  function _toggleIntroduction() {
+    _toggleSection('section-introduction', 'btn-toggle-introduction', 'fa-book-open', 'Introduction');
+  }
+
   function _toggleDiscussion() {
-    const section = document.getElementById('section-discussion');
-    const visible = section.style.display !== 'none';
-    if (visible) {
-      if (document.getElementById('field-discussion').value.trim()) {
-        toast('Para ocultar Discussion, elimina el texto primero.', 'info');
-        return;
-      }
-      section.style.display = 'none';
-      _updateToggleBtn('btn-toggle-discussion', false, 'fa-comments', 'Discussion');
-    } else {
-      section.style.display = '';
-      _updateToggleBtn('btn-toggle-discussion', true, 'fa-comments', 'Discussion');
-      document.getElementById('field-discussion').focus();
-    }
+    _toggleSection('section-discussion', 'btn-toggle-discussion', 'fa-comments', 'Discussion');
   }
 
   /* ── Autosave ──────────────────────────────────────────────────────────── */
@@ -472,20 +526,7 @@ const PrionPacks = (() => {
     if (!title) return;
     const indicator = document.getElementById('autosave-status');
     if (indicator) indicator.textContent = 'Guardando…';
-    const data = {
-      title,
-      description: document.getElementById('field-description').value.trim(),
-      priority: _getCurrentPriority(),
-      hypothesis: document.getElementById('field-hypothesis').value.trim(),
-      introduction: document.getElementById('field-introduction').value.trim() || null,
-      discussion: document.getElementById('field-discussion').value.trim() || null,
-      findings: _collectFindings(),
-      gaps: {
-        missingInfo: _collectGapList('gaps-missing-list'),
-        neededExperiments: _collectGapList('gaps-experiments-list'),
-      },
-      scores: _collectScores(),
-    };
+    const data = _collectAllData(title);
     try {
       const saved = await PPStorage.update(state.currentId, data);
       const idx = _packages.findIndex(p => p.id === state.currentId);
@@ -499,6 +540,29 @@ const PrionPacks = (() => {
     } catch (e) {
       if (indicator) indicator.textContent = '⚠ Error';
     }
+  }
+
+  function _collectAllData(title) {
+    return {
+      title: title || (document.getElementById('field-title').value || '').trim(),
+      description: document.getElementById('field-description').value.trim(),
+      priority: _getCurrentPriority(),
+      coAuthors: document.getElementById('field-coauthors').value.trim() || null,
+      affiliations: document.getElementById('field-affiliations').value.trim() || null,
+      abstract: document.getElementById('field-abstract').value.trim() || null,
+      authorSummary: document.getElementById('field-authorsummary').value.trim() || null,
+      introduction: document.getElementById('field-introduction').value.trim() || null,
+      discussion: document.getElementById('field-discussion').value.trim() || null,
+      acknowledgments: document.getElementById('field-acknowledgments').value.trim() || null,
+      funding: document.getElementById('field-funding').value.trim() || null,
+      conflictsOfInterest: document.getElementById('field-conflictsofinterest').value.trim() || null,
+      references: document.getElementById('field-references').value.trim() || null,
+      findings: _collectFindings(),
+      gaps: {
+        missingInfo: _collectGapList('gaps-missing-list'),
+      },
+      scores: _collectScores(),
+    };
   }
 
   /* ── Priority ──────────────────────────────────────────────────────────── */
@@ -598,8 +662,11 @@ const PrionPacks = (() => {
     div.className = 'pp-figure-item';
     div.dataset.imageUrl = fig.imageUrl || '';
     div.dataset.caption  = fig.caption  || '';
+    div.dataset.imageAsContext = '';
 
     const figInputId = `figdesc-${fig.id || 'fig'+num}`;
+    const capTextareaId = `figcap-${fig.id || 'fig'+num}`;
+
     div.innerHTML = `
       <div class="pp-figure-top">
         <span class="pp-figure-num">Fig ${num}</span>
@@ -612,7 +679,12 @@ const PrionPacks = (() => {
         </div>
       </div>
       <div class="pp-fig-cap-editor pp-hidden">
-        <textarea class="pp-textarea pp-fig-cap-textarea" rows="2" placeholder="Figure legend / pie de figura…"></textarea>
+        <textarea id="${capTextareaId}" class="pp-textarea pp-fig-cap-textarea" rows="2" placeholder="Figure legend / pie de figura…"></textarea>
+        <div class="pp-field-ai-row">
+          <button class="pp-ai-btn pp-ai-btn-xs pp-fig-img-ai-btn" title="Incluir imagen como contexto visual para Claude">AI img</button>
+          <button class="pp-ai-btn pp-ai-btn-xs pp-fig-cap-ai-btn" data-field-id="${capTextareaId}" data-ai-label="Pie de figura ${num}" title="Incluir pie de figura como contexto para Claude">AI</button>
+          <button class="pp-claude-ask-btn pp-fig-cap-claude-btn" title="Pedir a Claude que escriba el pie de figura"><i class="fas fa-robot"></i> Claude</button>
+        </div>
         <div class="pp-fig-cap-actions">
           <button class="pp-btn pp-btn-sm pp-btn-ghost pp-fig-cap-cancel">Cancel</button>
           <button class="pp-btn pp-btn-sm pp-btn-primary pp-fig-cap-save"><i class="fas fa-check"></i> Save caption</button>
@@ -667,6 +739,27 @@ const PrionPacks = (() => {
     });
 
     descInput.addEventListener('input', _recalcScore);
+
+    // AI img toggle button — toggles image-as-context
+    const imgAiBtn = div.querySelector('.pp-fig-img-ai-btn');
+    if (imgAiBtn) {
+      imgAiBtn.addEventListener('click', () => {
+        const active = imgAiBtn.classList.toggle('active');
+        div.dataset.imageAsContext = active ? '1' : '';
+      });
+    }
+
+    // Caption AI toggle (standard)
+    const capAiBtn = div.querySelector('.pp-fig-cap-ai-btn');
+    if (capAiBtn) {
+      capAiBtn.addEventListener('click', () => capAiBtn.classList.toggle('active'));
+    }
+
+    // Caption Claude button
+    const capClaudeBtn = div.querySelector('.pp-fig-cap-claude-btn');
+    if (capClaudeBtn) {
+      capClaudeBtn.addEventListener('click', () => _askClaudeCaption(div, capInput));
+    }
   }
 
   function _updateFigurePreview(div) {
@@ -833,40 +926,51 @@ const PrionPacks = (() => {
 
   /* ── Gap lists ─────────────────────────────────────────────────────────── */
   function _renderGapList(type, items) {
-    const id = type === 'missing' ? 'gaps-missing-list' : 'gaps-experiments-list';
-    const list = document.getElementById(id);
-    if (type === 'missing') {
-      list.innerHTML = items.map(g => _gapMissingItemHTML(g)).join('');
-      list.querySelectorAll('input').forEach(inp =>
-        inp.addEventListener('input', () => { _recalcScore(); _updateFindingGapIndicators(); })
-      );
-      list.querySelectorAll('.pp-gap-finding-select').forEach(sel => {
-        sel.addEventListener('change', () => {
-          sel.dataset.findingId = sel.value;
-          sel.classList.toggle('assigned', !!sel.value);
-          sel.closest('.pp-gap-item').classList.toggle('has-finding', !!sel.value);
-          _updateFindingGapIndicators();
-        });
+    if (type !== 'missing') return;
+    const list = document.getElementById('gaps-missing-list');
+    list.innerHTML = items.map(g => _gapMissingItemHTML(g)).join('');
+    list.querySelectorAll('input[type="text"]').forEach(inp =>
+      inp.addEventListener('input', () => { _recalcScore(); _updateFindingGapIndicators(); })
+    );
+    list.querySelectorAll('.pp-gap-needed-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const row = btn.closest('.pp-gap-item').querySelector('.pp-gap-needed-row');
+        if (row) {
+          const hidden = row.style.display === 'none' || row.style.display === '';
+          row.style.display = hidden ? '' : 'none';
+          btn.classList.toggle('active', hidden);
+        }
       });
-    } else {
-      list.innerHTML = items.map(g => _gapItemHTML(typeof g === 'string' ? g : g.text)).join('');
-      list.querySelectorAll('input').forEach(inp => inp.addEventListener('input', _recalcScore));
-    }
+    });
+    list.querySelectorAll('.pp-gap-finding-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        sel.dataset.findingId = sel.value;
+        sel.classList.toggle('assigned', !!sel.value);
+        sel.closest('.pp-gap-item').classList.toggle('has-finding', !!sel.value);
+        _updateFindingGapIndicators();
+      });
+    });
   }
 
   function _gapMissingItemHTML(gap) {
     const text = typeof gap === 'string' ? gap : (gap.text || '');
     const findingId = typeof gap === 'string' ? '' : (gap.findingId || '');
+    const neededExp = typeof gap === 'string' ? '' : (gap.neededExperiment || '');
     const hasFinding = findingId ? ' has-finding' : '';
     const assignedClass = findingId ? ' assigned' : '';
+    const neededDisplay = neededExp ? '' : 'none';
     const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
         <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
         <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
+        <button class="pp-btn-icon pp-gap-needed-toggle${neededExp ? ' active' : ''}" title="Needed experiment"><i class="fas fa-flask"></i></button>
         <button class="pp-btn-icon btn-remove" onclick="this.closest('.pp-gap-item').remove();PrionPacks._recalcScore();PrionPacks._updateFindingGapIndicators();">
           <i class="fas fa-times"></i>
         </button>
+      </div>
+      <div class="pp-gap-needed-row" style="display:${neededDisplay}">
+        <textarea class="pp-gap-needed-input pp-textarea" rows="2" placeholder="Describe the needed experiment to address this gap…">${_esc(neededExp)}</textarea>
       </div>
       <div class="pp-gap-finding-row">
         <span class="pp-gap-finding-label">Links to finding:</span>
@@ -877,42 +981,32 @@ const PrionPacks = (() => {
     </div>`;
   }
 
-  function _gapItemHTML(value) {
-    const gid = 'gapm-' + (++_gapCounter);
-    return `<div class="pp-dynamic-item">
-      <input type="text" id="${gid}" value="${_esc(value)}" placeholder="Add item…" />
-      <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (experimento necesario)" title="Contexto para Claude">AI</button>
-      <button class="pp-btn-icon btn-remove" onclick="this.closest('.pp-dynamic-item').remove();PrionPacks._recalcScore();">
-        <i class="fas fa-times"></i>
-      </button>
-    </div>`;
-  }
-
   function addGapItem(type) {
-    const id = type === 'missing' ? 'gaps-missing-list' : 'gaps-experiments-list';
-    const list = document.getElementById(id);
+    if (type !== 'missing') return;
+    const list = document.getElementById('gaps-missing-list');
     const tmp = document.createElement('div');
-    if (type === 'missing') {
-      tmp.innerHTML = _gapMissingItemHTML({ text: '', findingId: null });
-      const item = tmp.firstElementChild;
-      list.appendChild(item);
-      item.querySelector('input').addEventListener('input', () => { _recalcScore(); _updateFindingGapIndicators(); });
-      const sel = item.querySelector('.pp-gap-finding-select');
-      sel.addEventListener('change', () => {
-        sel.dataset.findingId = sel.value;
-        sel.classList.toggle('assigned', !!sel.value);
-        item.classList.toggle('has-finding', !!sel.value);
-        _updateFindingGapIndicators();
-      });
-      _refreshGapFindingSelects();
-      item.querySelector('input').focus();
-    } else {
-      tmp.innerHTML = _gapItemHTML('');
-      const item = tmp.firstElementChild;
-      list.appendChild(item);
-      item.querySelector('input').focus();
-      item.querySelector('input').addEventListener('input', _recalcScore);
-    }
+    tmp.innerHTML = _gapMissingItemHTML({ text: '', findingId: null, neededExperiment: '' });
+    const item = tmp.firstElementChild;
+    list.appendChild(item);
+    item.querySelector('input[type="text"]').addEventListener('input', () => { _recalcScore(); _updateFindingGapIndicators(); });
+    const neededToggle = item.querySelector('.pp-gap-needed-toggle');
+    neededToggle.addEventListener('click', () => {
+      const row = item.querySelector('.pp-gap-needed-row');
+      if (row) {
+        const hidden = row.style.display === 'none' || row.style.display === '';
+        row.style.display = hidden ? '' : 'none';
+        neededToggle.classList.toggle('active', hidden);
+      }
+    });
+    const sel = item.querySelector('.pp-gap-finding-select');
+    sel.addEventListener('change', () => {
+      sel.dataset.findingId = sel.value;
+      sel.classList.toggle('assigned', !!sel.value);
+      item.classList.toggle('has-finding', !!sel.value);
+      _updateFindingGapIndicators();
+    });
+    _refreshGapFindingSelects();
+    item.querySelector('input[type="text"]').focus();
     _recalcScore();
   }
 
@@ -945,7 +1039,7 @@ const PrionPacks = (() => {
       const fid = sel?.value;
       if (fid) {
         if (!gapMap[fid]) gapMap[fid] = [];
-        gapMap[fid].push(item.querySelector('input')?.value.trim() || '(gap)');
+        gapMap[fid].push(item.querySelector('input[type="text"]')?.value.trim() || '(gap)');
       }
     });
 
@@ -988,12 +1082,10 @@ const PrionPacks = (() => {
     }
   }
 
-  /* ── Scoring ───────────────────────────────────────────────────────────── */
+  /* ── Scoring — findings 60%, figures 25%, gaps 15% ────────────────────── */
   function _recalcScore() {
-    const hypothesis = (document.getElementById('field-hypothesis')?.value || '').trim();
     const findings = document.querySelectorAll('.pp-finding-block');
 
-    let hScore = Math.min(100, hypothesis.length > 20 ? Math.round(hypothesis.length / 3) : hypothesis.length * 5);
     let fScore = 0, figScore = 0, totalFigs = 0, filledFigs = 0;
 
     findings.forEach(block => {
@@ -1011,21 +1103,20 @@ const PrionPacks = (() => {
     if (totalFigs) figScore = Math.round((filledFigs / totalFigs) * 100);
     else if (findings.length) figScore = 20;
 
-    const gapCount = document.querySelectorAll('#gaps-missing-list .pp-gap-item, #gaps-experiments-list .pp-dynamic-item').length;
+    const gapCount = document.querySelectorAll('#gaps-missing-list .pp-gap-item').length;
     const gapScore = gapCount > 5 ? Math.max(20, 100 - (gapCount - 5) * 10) : 100;
 
-    const total = Math.round(hScore * .20 + fScore * .50 + figScore * .20 + gapScore * .10);
-    _updateScore({ hypothesis: hScore, findings: fScore, figures: figScore, gaps: gapScore, total });
+    const total = Math.round(fScore * .60 + figScore * .25 + gapScore * .15);
+    _updateScore({ findings: fScore, figures: figScore, gaps: gapScore, total });
     document.getElementById('meta-findings-count').textContent = findings.length;
   }
 
   function _updateScore(scores) {
-    const { hypothesis, findings, figures, gaps, total } = scores;
+    const { findings, figures, gaps, total } = scores;
     document.getElementById('score-pct').textContent = total + '%';
     const fill = document.getElementById('score-circle-fill');
     fill.style.strokeDashoffset = 251.2 - (total / 100) * 251.2;
     fill.style.stroke = total >= 90 ? '#26de81' : total >= 70 ? '#ffa502' : '#00d4aa';
-    _setBar('hypothesis', hypothesis);
     _setBar('findings', findings);
     _setBar('figures', figures);
     _setBar('gaps', gaps);
@@ -1033,7 +1124,7 @@ const PrionPacks = (() => {
     if (total < 50)      rec = 'Initial phase — keep developing your main findings.';
     else if (total < 70) rec = 'Good progress — focus on completing figures and reducing gaps.';
     else if (total < 90) rec = 'Almost ready — consider starting the manuscript draft.';
-    else                  rec = '🎉 Ready for manuscript! Excellent work.';
+    else                  rec = 'Ready for manuscript! Excellent work.';
     document.getElementById('score-rec-text').textContent = rec;
   }
 
@@ -1080,20 +1171,7 @@ const PrionPacks = (() => {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
 
-    const data = {
-      title,
-      description: document.getElementById('field-description').value.trim(),
-      priority: _getCurrentPriority(),
-      hypothesis: document.getElementById('field-hypothesis').value.trim(),
-      introduction: document.getElementById('field-introduction').value.trim() || null,
-      discussion: document.getElementById('field-discussion').value.trim() || null,
-      findings: _collectFindings(),
-      gaps: {
-        missingInfo: _collectGapList('gaps-missing-list'),
-        neededExperiments: _collectGapList('gaps-experiments-list'),
-      },
-      scores: _collectScores(),
-    };
+    const data = _collectAllData(title);
 
     try {
       let saved;
@@ -1151,17 +1229,16 @@ const PrionPacks = (() => {
   function _collectGapList(listId) {
     if (listId === 'gaps-missing-list') {
       return Array.from(document.querySelectorAll('#' + listId + ' .pp-gap-item')).map(item => ({
-        text: item.querySelector('input')?.value.trim() || '',
+        text: item.querySelector('input[type="text"]')?.value.trim() || '',
         findingId: item.querySelector('.pp-gap-finding-select')?.value || null,
+        neededExperiment: item.querySelector('.pp-gap-needed-input')?.value.trim() || null,
       })).filter(g => g.text);
     }
-    return Array.from(document.querySelectorAll('#' + listId + ' input'))
-      .map(i => i.value.trim()).filter(Boolean);
+    return [];
   }
 
   function _collectScores() {
     return {
-      hypothesis: _readPct('score-val-hypothesis'),
       findings:   _readPct('score-val-findings'),
       figures:    _readPct('score-val-figures'),
       gaps:       _readPct('score-val-gaps'),
@@ -1256,8 +1333,28 @@ const PrionPacks = (() => {
 
     document.getElementById('btn-add-finding').addEventListener('click', addFinding);
     document.getElementById('btn-send-review').addEventListener('click', _openSendModal);
+
+    // Toggle buttons — basic info group
+    document.getElementById('btn-toggle-coauthors').addEventListener('click', () =>
+      _toggleSection('section-coauthors', 'btn-toggle-coauthors', 'fa-users', 'Co-authors'));
+    document.getElementById('btn-toggle-affiliations').addEventListener('click', () =>
+      _toggleSection('section-affiliations', 'btn-toggle-affiliations', 'fa-university', 'Affiliations'));
+    document.getElementById('btn-toggle-abstract').addEventListener('click', () =>
+      _toggleSection('section-abstract', 'btn-toggle-abstract', 'fa-align-left', 'Abstract'));
+    document.getElementById('btn-toggle-authorsummary').addEventListener('click', () =>
+      _toggleSection('section-authorsummary', 'btn-toggle-authorsummary', 'fa-user-edit', 'Author Summary'));
     document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
+
+    // Toggle buttons — gaps group
     document.getElementById('btn-toggle-discussion').addEventListener('click', _toggleDiscussion);
+    document.getElementById('btn-toggle-acknowledgments').addEventListener('click', () =>
+      _toggleSection('section-acknowledgments', 'btn-toggle-acknowledgments', 'fa-heart', 'Acknowledgments'));
+    document.getElementById('btn-toggle-funding').addEventListener('click', () =>
+      _toggleSection('section-funding', 'btn-toggle-funding', 'fa-coins', 'Funding'));
+    document.getElementById('btn-toggle-conflicts').addEventListener('click', () =>
+      _toggleSection('section-conflicts', 'btn-toggle-conflicts', 'fa-balance-scale', 'Conflicts of interest'));
+    document.getElementById('btn-toggle-references').addEventListener('click', () =>
+      _toggleSection('section-references', 'btn-toggle-references', 'fa-list', 'References'));
 
     // Static field Claude ask buttons
     document.querySelectorAll('.pp-claude-ask-btn[data-source-id]').forEach(btn => {
@@ -1287,11 +1384,6 @@ const PrionPacks = (() => {
       if (aiBtn) aiBtn.classList.toggle('active');
     });
 
-    document.getElementById('gaps-experiments-list').addEventListener('click', e => {
-      const aiBtn = e.target.closest('.pp-ai-btn');
-      if (aiBtn) aiBtn.classList.toggle('active');
-    });
-
     // Autosave on any input in the editor
     document.getElementById('view-editor').addEventListener('input', _scheduleAutosave);
 
@@ -1304,7 +1396,6 @@ const PrionPacks = (() => {
 
     const titleEl = document.getElementById('field-title');
     titleEl.addEventListener('input', e => { _updateTitleDisplay(e.target.value); });
-    document.getElementById('field-hypothesis').addEventListener('input', _recalcScore);
 
     document.getElementById('btn-save-api-key').addEventListener('click', () => {
       const key = document.getElementById('field-api-key').value.trim();
