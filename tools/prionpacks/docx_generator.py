@@ -85,16 +85,41 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         run.font.italic = True; run.font.size = Pt(10); run.font.color.rgb = _DIM
         doc.add_paragraph()
 
-    # ── Hypothesis ────────────────────────────────────────────────────────────
-    _section_heading(doc, 'HIPÓTESIS PRINCIPAL')
-    hyp = (pkg.get('hypothesis') or '').strip()
-    if hyp:
+    # ── Co-authors ────────────────────────────────────────────────────────────
+    coauthors = (pkg.get('coAuthors') or '').strip()
+    if coauthors:
+        _section_heading(doc, 'CO-AUTORES')
         p = doc.add_paragraph()
-        run = p.add_run(hyp)
-        run.font.size = Pt(10); run.font.color.rgb = _DARK
-    else:
-        _dim_para(doc, '(sin hipótesis registrada)')
-    doc.add_paragraph()
+        r = p.add_run(coauthors)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
+    # ── Affiliations ──────────────────────────────────────────────────────────
+    affiliations = (pkg.get('affiliations') or '').strip()
+    if affiliations:
+        _section_heading(doc, 'AFILIACIONES')
+        p = doc.add_paragraph()
+        r = p.add_run(affiliations)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
+    # ── Abstract ──────────────────────────────────────────────────────────────
+    abstract = (pkg.get('abstract') or '').strip()
+    if abstract:
+        _section_heading(doc, 'ABSTRACT')
+        p = doc.add_paragraph()
+        r = p.add_run(abstract)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
+    # ── Author Summary ────────────────────────────────────────────────────────
+    author_summary = (pkg.get('authorSummary') or '').strip()
+    if author_summary:
+        _section_heading(doc, 'RESUMEN PARA AUTORES')
+        p = doc.add_paragraph()
+        r = p.add_run(author_summary)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
 
     # ── Introduction ─────────────────────────────────────────────────────────
     intro = (pkg.get('introduction') or '').strip()
@@ -110,9 +135,14 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     gap_items = []
     for i, g in enumerate(raw_missing):
         if isinstance(g, str):
-            gap_items.append({'text': g, 'fid': None, 'bm': f'ppgap_{i}'})
+            gap_items.append({'text': g, 'fid': None, 'bm': f'ppgap_{i}', 'neededExperiment': ''})
         else:
-            gap_items.append({'text': g.get('text', ''), 'fid': g.get('findingId'), 'bm': f'ppgap_{i}'})
+            gap_items.append({
+                'text': g.get('text', ''),
+                'fid': g.get('findingId'),
+                'bm': f'ppgap_{i}',
+                'neededExperiment': g.get('neededExperiment') or '',
+            })
 
     gaps_for_finding: dict[str, list] = {}
     for gi in gap_items:
@@ -179,10 +209,20 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         r_h.font.bold = True; r_h.font.size = Pt(10); r_h.font.color.rgb = _DARK
 
         for gi in gap_items:
-            p = doc.add_paragraph(style='List Bullet')
+            # Bold "Missing: " + item text
+            p = doc.add_paragraph()
             _bookmark_add(p, gi['bm'], abs(hash(gi['bm'])) % 90000 + 1000)
-            run = p.add_run(gi['text'])
-            run.font.size = Pt(10); run.font.color.rgb = _DARK
+            r_miss = p.add_run('Missing: ')
+            r_miss.font.bold = True; r_miss.font.size = Pt(10); r_miss.font.color.rgb = _DARK
+            r_text = p.add_run(gi['text'])
+            r_text.font.size = Pt(10); r_text.font.color.rgb = _DARK
+
+            # Needed experiment (indented italic)
+            needed_exp = (gi.get('neededExperiment') or '').strip()
+            if needed_exp:
+                p_ne = doc.add_paragraph()
+                r_ne = p_ne.add_run(f'     → Needed: {needed_exp}')
+                r_ne.font.size = Pt(9); r_ne.font.italic = True; r_ne.font.color.rgb = _DIM
 
             if gi['fid']:
                 linked_f = next((f for f in findings if f.get('id') == gi['fid']), None)
@@ -191,17 +231,6 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
                     ann = doc.add_paragraph()
                     r_ann = ann.add_run(f'     → Vinculado a F-{fi_num:02d}: {linked_f.get("title", "")}')
                     r_ann.font.size = Pt(8); r_ann.font.italic = True; r_ann.font.color.rgb = _TEAL
-
-    needed = pkg.get('gaps', {}).get('neededExperiments', [])
-    if needed:
-        doc.add_paragraph()
-        p_h2 = doc.add_paragraph()
-        r_h2 = p_h2.add_run('Experimentos necesarios')
-        r_h2.font.bold = True; r_h2.font.size = Pt(10); r_h2.font.color.rgb = _DARK
-        for exp in needed:
-            p = doc.add_paragraph(style='List Bullet')
-            r = p.add_run(exp if isinstance(exp, str) else str(exp))
-            r.font.size = Pt(10); r.font.color.rgb = _DARK
 
     doc.add_paragraph()
 
@@ -214,23 +243,41 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         r.font.size = Pt(10); r.font.color.rgb = _DARK
         doc.add_paragraph()
 
-    # ── Score ─────────────────────────────────────────────────────────────────
-    scores = pkg.get('scores', {})
-    total  = scores.get('total', 0)
-    _section_heading(doc, f'PUNTUACIÓN TOTAL: {total}%')
-
-    breakdown = [
-        ('Hipótesis', scores.get('hypothesis', 0)),
-        ('Hallazgos', scores.get('findings', 0)),
-        ('Figuras',   scores.get('figures', 0)),
-        ('Gaps',      scores.get('gaps', 0)),
-    ]
-    for label, val in breakdown:
+    # ── Acknowledgments ───────────────────────────────────────────────────────
+    acknowledgments = (pkg.get('acknowledgments') or '').strip()
+    if acknowledgments:
+        _section_heading(doc, 'AGRADECIMIENTOS')
         p = doc.add_paragraph()
-        r = p.add_run(f'{label}: {val}%')
+        r = p.add_run(acknowledgments)
         r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
 
-    doc.add_paragraph()
+    # ── Funding ───────────────────────────────────────────────────────────────
+    funding = (pkg.get('funding') or '').strip()
+    if funding:
+        _section_heading(doc, 'FINANCIACIÓN')
+        p = doc.add_paragraph()
+        r = p.add_run(funding)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
+    # ── Conflicts of Interest ─────────────────────────────────────────────────
+    conflicts = (pkg.get('conflictsOfInterest') or '').strip()
+    if conflicts:
+        _section_heading(doc, 'CONFLICTOS DE INTERÉS')
+        p = doc.add_paragraph()
+        r = p.add_run(conflicts)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
+    # ── References ────────────────────────────────────────────────────────────
+    references = (pkg.get('references') or '').strip()
+    if references:
+        _section_heading(doc, 'REFERENCIAS')
+        p = doc.add_paragraph()
+        r = p.add_run(references)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
 
     # ── Footer ────────────────────────────────────────────────────────────────
     p_ft = doc.add_paragraph()

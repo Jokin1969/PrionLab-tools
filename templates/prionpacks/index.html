@@ -159,6 +159,7 @@
         <!-- Left: form -->
         <div class="pp-editor-form">
 
+          <!-- Basic Information card -->
           <div class="pp-card pp-card-section">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-info-circle"></i> Basic Information</h2>
@@ -188,26 +189,72 @@
               </div>
               <textarea id="field-description" class="pp-textarea" rows="3" placeholder="Brief description of this research package…"></textarea>
             </div>
+            <div class="pp-toggle-field-row">
+              <button class="pp-toggle-field-btn" id="btn-toggle-coauthors"><i class="fas fa-users"></i> Co-authors</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-affiliations"><i class="fas fa-university"></i> Affiliations</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-abstract"><i class="fas fa-align-left"></i> Abstract</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-authorsummary"><i class="fas fa-user-edit"></i> Author Summary</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-introduction"><i class="fas fa-book-open"></i> Introduction</button>
+            </div>
           </div>
 
-          <div class="pp-card pp-card-section">
+          <!-- Co-authors section -->
+          <div class="pp-card pp-card-section" id="section-coauthors" style="display:none;">
             <div class="pp-section-header">
-              <h2 class="pp-section-title"><i class="fas fa-lightbulb"></i> Main Hypothesis</h2>
+              <h2 class="pp-section-title"><i class="fas fa-users"></i> Co-authors</h2>
               <div class="pp-field-ai-actions">
-                <button class="pp-ai-btn" data-field-id="field-hypothesis" data-ai-label="Hipótesis principal" title="Incluir como contexto para Claude">AI</button>
-                <button class="pp-claude-ask-btn" data-source-id="field-hypothesis" data-source-label="Hipótesis principal" title="Preguntar a Claude">
+                <button class="pp-ai-btn" data-field-id="field-coauthors" data-ai-label="Co-autores" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-coauthors" data-source-label="Co-autores" title="Preguntar a Claude">
                   <i class="fas fa-robot"></i> Claude
                 </button>
               </div>
             </div>
-            <textarea id="field-hypothesis" class="pp-textarea pp-textarea-lg" rows="5" placeholder="State the main hypothesis of this research…"></textarea>
-            <div class="pp-toggle-field-row">
-              <button class="pp-toggle-field-btn" id="btn-toggle-introduction">
-                <i class="fas fa-book-open"></i> Introduction
-              </button>
-            </div>
+            <textarea id="field-coauthors" class="pp-textarea pp-textarea-lg" rows="3" placeholder="List co-authors…"></textarea>
           </div>
 
+          <!-- Affiliations section -->
+          <div class="pp-card pp-card-section" id="section-affiliations" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-university"></i> Affiliations</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-affiliations" data-ai-label="Afiliaciones" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-affiliations" data-source-label="Afiliaciones" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-affiliations" class="pp-textarea pp-textarea-lg" rows="3" placeholder="List affiliations…"></textarea>
+          </div>
+
+          <!-- Abstract section -->
+          <div class="pp-card pp-card-section" id="section-abstract" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-align-left"></i> Abstract</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-abstract" data-ai-label="Abstract" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-abstract" data-source-label="Abstract" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-abstract" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Write the abstract…"></textarea>
+          </div>
+
+          <!-- Author Summary section -->
+          <div class="pp-card pp-card-section" id="section-authorsummary" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-user-edit"></i> Author Summary</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-authorsummary" data-ai-label="Resumen de autor" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-authorsummary" data-source-label="Resumen de autor" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-authorsummary" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Write the author summary…"></textarea>
+          </div>
+
+          <!-- Introduction section -->
           <div class="pp-card pp-card-section" id="section-introduction" style="display:none;">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-book-open"></i> Introduction</h2>
@@ -221,6 +268,7 @@
             <textarea id="field-introduction" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la introducción…"></textarea>
           </div>
 
+          <!-- Main Findings card -->
           <div class="pp-card pp-card-section">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-microscope"></i> Main Findings</h2>
@@ -235,31 +283,26 @@
             </div>
           </div>
 
+          <!-- Gaps & Next Steps card -->
           <div class="pp-card pp-card-section">
             <h2 class="pp-section-title"><i class="fas fa-exclamation-triangle"></i> Gaps &amp; Next Steps</h2>
-            <div class="pp-form-row">
-              <div class="pp-form-group pp-form-half">
-                <label class="pp-label">Missing Information</label>
-                <div id="gaps-missing-list" class="pp-dynamic-list"></div>
-                <button class="pp-btn pp-btn-sm pp-btn-ghost" onclick="PrionPacks.addGapItem('missing')">
-                  <i class="fas fa-plus"></i> Add Item
-                </button>
-              </div>
-              <div class="pp-form-group pp-form-half">
-                <label class="pp-label">Needed Experiments</label>
-                <div id="gaps-experiments-list" class="pp-dynamic-list"></div>
-                <button class="pp-btn pp-btn-sm pp-btn-ghost" onclick="PrionPacks.addGapItem('experiments')">
-                  <i class="fas fa-plus"></i> Add Item
-                </button>
-              </div>
+            <div class="pp-form-group">
+              <label class="pp-label">Missing Information</label>
+              <div id="gaps-missing-list" class="pp-dynamic-list"></div>
+              <button class="pp-btn pp-btn-sm pp-btn-ghost" onclick="PrionPacks.addGapItem('missing')">
+                <i class="fas fa-plus"></i> Add Item
+              </button>
             </div>
             <div class="pp-toggle-field-row">
-              <button class="pp-toggle-field-btn" id="btn-toggle-discussion">
-                <i class="fas fa-comments"></i> Discussion
-              </button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-references"><i class="fas fa-list"></i> References</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-conflicts"><i class="fas fa-balance-scale"></i> Conflicts of interest</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-funding"><i class="fas fa-coins"></i> Funding</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-acknowledgments"><i class="fas fa-heart"></i> Acknowledgments</button>
+              <button class="pp-toggle-field-btn" id="btn-toggle-discussion"><i class="fas fa-comments"></i> Discussion</button>
             </div>
           </div>
 
+          <!-- Discussion section -->
           <div class="pp-card pp-card-section" id="section-discussion" style="display:none;">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-comments"></i> Discussion</h2>
@@ -271,6 +314,62 @@
               </div>
             </div>
             <textarea id="field-discussion" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la discusión…"></textarea>
+          </div>
+
+          <!-- Acknowledgments section -->
+          <div class="pp-card pp-card-section" id="section-acknowledgments" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-heart"></i> Acknowledgments</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-acknowledgments" data-ai-label="Agradecimientos" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-acknowledgments" data-source-label="Agradecimientos" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-acknowledgments" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Escribe los agradecimientos…"></textarea>
+          </div>
+
+          <!-- Funding section -->
+          <div class="pp-card pp-card-section" id="section-funding" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-coins"></i> Funding</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-funding" data-ai-label="Financiación" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-funding" data-source-label="Financiación" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-funding" class="pp-textarea pp-textarea-lg" rows="3" placeholder="Escribe información de financiación…"></textarea>
+          </div>
+
+          <!-- Conflicts of Interest section -->
+          <div class="pp-card pp-card-section" id="section-conflicts" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-balance-scale"></i> Conflicts of Interest</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-conflictsofinterest" data-ai-label="Conflictos de interés" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-conflictsofinterest" data-source-label="Conflictos de interés" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-conflictsofinterest" class="pp-textarea pp-textarea-lg" rows="3" placeholder="Declara conflictos de interés…"></textarea>
+          </div>
+
+          <!-- References section -->
+          <div class="pp-card pp-card-section" id="section-references" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-list"></i> References</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-references" data-ai-label="Referencias" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-references" data-source-label="Referencias" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-references" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Lista las referencias…"></textarea>
           </div>
 
         </div>
@@ -290,11 +389,6 @@
               </div>
             </div>
             <div class="pp-score-breakdown">
-              <div class="pp-score-row">
-                <span class="pp-score-row-label">Hypothesis</span>
-                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-hypothesis"></div></div>
-                <span class="pp-score-row-val" id="score-val-hypothesis">0%</span>
-              </div>
               <div class="pp-score-row">
                 <span class="pp-score-row-label">Findings</span>
                 <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-findings"></div></div>

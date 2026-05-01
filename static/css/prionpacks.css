@@ -478,6 +478,8 @@
 .pp-toggle-field-row {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 12px;
 }
 .pp-toggle-field-btn {
@@ -1308,13 +1310,36 @@
 
 /* Buttons inside the finding header need a visible frame so they don't vanish into the light background */
 .pp-finding-header .pp-btn-icon {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid var(--pp-border);
-  color: var(--pp-text-muted);
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #c0c8d2;
+  color: #334155;
+  border-radius: 5px;
+  width: 28px;
+  height: 28px;
 }
-.pp-finding-header .pp-btn-icon:hover { background: #fff; border-color: var(--pp-border-light); }
+.pp-finding-header .pp-btn-icon:hover {
+  background: #e0e8f0;
+  color: #1e293b;
+  border-color: #94a3b8;
+}
 .pp-finding-header .pp-btn-icon.btn-claude:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
 .pp-finding-header .pp-btn-icon.btn-remove:hover { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
+
+/* Figure buttons — same visible frame */
+.pp-figure-btns .pp-btn-icon {
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #c0c8d2;
+  color: #334155;
+  border-radius: 5px;
+  width: 28px;
+  height: 28px;
+}
+.pp-figure-btns .pp-btn-icon:hover {
+  background: #e0e8f0;
+  color: #1e293b;
+  border-color: #94a3b8;
+}
+.pp-figure-btns .pp-btn-icon.btn-remove:hover { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
 
 .pp-btn-icon.loading { pointer-events: none; }
 .pp-btn-icon.loading i { animation: pp-spin .7s linear infinite; }
@@ -1626,6 +1651,19 @@
   font-size: 11px;
   color: var(--pp-text-dim);
   font-style: italic;
+}
+
+/* ── Gap needed experiment row ───────────────────────────────────────────── */
+.pp-gap-needed-row {
+  margin: 4px 0 4px 20px;
+  border-left: 2px solid var(--pp-accent-glow);
+  padding-left: 10px;
+}
+.pp-gap-needed-row .pp-textarea {
+  font-size: 12px;
+}
+.pp-gap-needed-toggle.active {
+  color: var(--pp-accent);
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
