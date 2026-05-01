@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/enhanced_navbar.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/help_system.css') }}" />
+  {% block head_extra %}{% endblock %}
 </head>
 <body data-page-context="{{ page_context | default('') }}" data-lang="{{ current_locale }}">
   <header class="site-header">
@@ -84,6 +85,12 @@
             </button>
           </div>
         </div>
+
+        <!-- PrionPacks link -->
+        <a href="{{ url_for('prionpacks.index') }}" class="nb-link" style="color:#00d4aa;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span class="nb-label">PrionPacks</span>
+        </a>
 
         <!-- Methods link -->
         <a href="{{ url_for('methods.index') }}" class="nb-link">
@@ -248,6 +255,10 @@
 
         <div class="nb-mobile-section">
           <div class="nb-mobile-section-label">{{ _('Tools') }}</div>
+          <a href="{{ url_for('prionpacks.index') }}" class="nb-item" style="color:#00d4aa;">
+            <span class="nb-item-icon">&#9643;</span>
+            <span class="nb-item-body"><span class="nb-item-title">PrionPacks</span></span>
+          </a>
           <a href="{{ url_for('methods.index') }}" class="nb-item">
             <span class="nb-item-icon">&#128295;</span>
             <span class="nb-item-body"><span class="nb-item-title">{{ _('Methods Library') }}</span></span>

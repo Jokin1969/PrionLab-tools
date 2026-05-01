@@ -222,6 +222,9 @@ def create_app() -> Flask:
     from tools.spanish_academic import spanish_academic_bp
     app.register_blueprint(spanish_academic_bp)
 
+    from tools.prionpacks import prionpacks_bp
+    app.register_blueprint(prionpacks_bp)
+
     try:
         import database.help_system  # noqa: F401 — registers models with Base.metadata
         from database.config import db as _db
