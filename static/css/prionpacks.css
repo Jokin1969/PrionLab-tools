@@ -1654,16 +1654,41 @@
 }
 
 /* ── Gap needed experiment row ───────────────────────────────────────────── */
-.pp-gap-needed-row {
-  margin: 4px 0 4px 20px;
-  border-left: 2px solid var(--pp-accent-glow);
-  padding-left: 10px;
-}
-.pp-gap-needed-row .pp-textarea {
-  font-size: 12px;
+.pp-gap-needed-toggle {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .pp-gap-needed-toggle.active {
+  background: var(--pp-accent-glow);
+  border-color: var(--pp-accent);
   color: var(--pp-accent);
+}
+.pp-gap-needed-row {
+  margin: 8px 0 8px 22px;
+  padding: 10px 12px;
+  background: var(--pp-accent-glow);
+  border-left: 3px solid var(--pp-accent);
+  border-radius: 0 6px 6px 0;
+}
+.pp-gap-needed-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pp-accent);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 6px;
+}
+.pp-gap-needed-row .pp-textarea {
+  font-size: 13px;
+  background: #fff;
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
