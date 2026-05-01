@@ -1473,6 +1473,169 @@
   border-top: 1px solid var(--pp-border);
 }
 
+/* ── AI context toggles & Claude ask buttons ─────────────────────────────── */
+
+.pp-title-ai-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 0;
+}
+
+.pp-label-ai-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.pp-label-ai-row .pp-label { margin-bottom: 0; }
+
+.pp-field-ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.pp-field-ai-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.pp-ai-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  border: 1px solid var(--pp-border-light);
+  border-radius: 4px;
+  background: var(--pp-secondary);
+  color: var(--pp-text-dim);
+  cursor: pointer;
+  transition: all .15s;
+  flex-shrink: 0;
+  height: 20px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.pp-ai-btn:hover {
+  border-color: var(--pp-accent);
+  color: var(--pp-accent);
+  background: var(--pp-accent-glow);
+}
+.pp-ai-btn.active {
+  background: var(--pp-accent);
+  border-color: var(--pp-accent);
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--pp-accent-glow);
+}
+
+.pp-ai-btn-xs {
+  padding: 1px 5px;
+  font-size: 9px;
+  height: 18px;
+}
+
+.pp-claude-ask-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(0,127,104,0.3);
+  border-radius: 5px;
+  background: var(--pp-accent-glow);
+  color: var(--pp-accent);
+  cursor: pointer;
+  transition: all .15s;
+  flex-shrink: 0;
+  height: 24px;
+  font-family: inherit;
+}
+.pp-claude-ask-btn:hover {
+  background: var(--pp-accent);
+  color: #fff;
+  border-color: var(--pp-accent);
+}
+.pp-claude-ask-btn.loading {
+  opacity: .7;
+  pointer-events: none;
+}
+
+/* ── Claude response modal ───────────────────────────────────────────────── */
+
+.pp-claude-modal-card {
+  position: relative;
+  z-index: 1001;
+  background: var(--pp-surface, var(--pp-card));
+  border: 1px solid var(--pp-border);
+  border-radius: 16px;
+  padding: 0;
+  width: 620px;
+  max-width: calc(100vw - 48px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+  overflow: hidden;
+}
+.pp-claude-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--pp-border);
+  background: linear-gradient(135deg, var(--pp-accent-glow), var(--pp-primary));
+  flex-shrink: 0;
+}
+.pp-claude-modal-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pp-accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pp-claude-response-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  min-height: 80px;
+}
+.pp-claude-loading {
+  color: var(--pp-text-dim);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+.pp-claude-response-text {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--pp-text);
+  white-space: pre-wrap;
+}
+.pp-claude-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--pp-border);
+  background: var(--pp-secondary);
+  flex-shrink: 0;
+}
+.pp-claude-field-hint {
+  font-size: 11px;
+  color: var(--pp-text-dim);
+  font-style: italic;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1200px) {

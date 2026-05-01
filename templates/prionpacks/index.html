@@ -151,6 +151,12 @@
 
       <!-- Title bar — full width below toolbar -->
       <div class="pp-title-bar">
+        <div class="pp-title-ai-row">
+          <button class="pp-ai-btn" data-field-id="field-title" data-ai-label="Título del paquete" title="Incluir como contexto para Claude">AI</button>
+          <button class="pp-claude-ask-btn" data-source-id="field-title" data-source-label="Título del paquete" title="Preguntar a Claude">
+            <i class="fas fa-robot"></i> Claude
+          </button>
+        </div>
         <textarea id="field-title" class="pp-title-input" rows="1"
           placeholder="Package title…"
           autocomplete="off"></textarea>
@@ -172,13 +178,24 @@
               </div>
             </div>
             <div class="pp-form-group">
-              <label class="pp-label">Description</label>
+              <div class="pp-label-ai-row">
+                <label class="pp-label">Description</label>
+                <button class="pp-ai-btn" data-field-id="field-description" data-ai-label="Descripción" title="Incluir como contexto para Claude">AI</button>
+              </div>
               <textarea id="field-description" class="pp-textarea" rows="3" placeholder="Brief description of this research package…"></textarea>
             </div>
           </div>
 
           <div class="pp-card pp-card-section">
-            <h2 class="pp-section-title"><i class="fas fa-lightbulb"></i> Main Hypothesis</h2>
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-lightbulb"></i> Main Hypothesis</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-hypothesis" data-ai-label="Hipótesis principal" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-hypothesis" data-source-label="Hipótesis principal" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
             <textarea id="field-hypothesis" class="pp-textarea pp-textarea-lg" rows="5" placeholder="State the main hypothesis of this research…"></textarea>
             <div class="pp-toggle-field-row">
               <button class="pp-toggle-field-btn" id="btn-toggle-introduction">
@@ -188,7 +205,15 @@
           </div>
 
           <div class="pp-card pp-card-section" id="section-introduction" style="display:none;">
-            <h2 class="pp-section-title"><i class="fas fa-book-open"></i> Introduction</h2>
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-book-open"></i> Introduction</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-introduction" data-ai-label="Introducción" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-introduction" data-source-label="Introducción" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
             <textarea id="field-introduction" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la introducción…"></textarea>
           </div>
 
@@ -232,7 +257,15 @@
           </div>
 
           <div class="pp-card pp-card-section" id="section-discussion" style="display:none;">
-            <h2 class="pp-section-title"><i class="fas fa-comments"></i> Discussion</h2>
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-comments"></i> Discussion</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-discussion" data-ai-label="Discusión" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-discussion" data-source-label="Discusión" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
             <textarea id="field-discussion" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la discusión…"></textarea>
           </div>
 
@@ -290,7 +323,7 @@
 
           <div class="pp-card pp-api-card">
             <h3 class="pp-api-title"><i class="fas fa-robot"></i> Claude API</h3>
-            <p class="pp-api-desc">Required for AI translation of finding titles.</p>
+            <p class="pp-api-desc">Necesaria para traducciones y consultas con Claude.</p>
             <div class="pp-form-group">
               <input type="password" id="field-api-key" class="pp-input pp-input-sm" placeholder="sk-ant-…" autocomplete="off" />
             </div>
@@ -304,6 +337,36 @@
     </div>
 
   </main>
+</div>
+
+<!-- Claude Response Modal -->
+<div id="pp-claude-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-claude-modal-title">
+  <div class="pp-modal-backdrop" id="pp-claude-modal-backdrop"></div>
+  <div class="pp-claude-modal-card">
+    <div class="pp-claude-modal-header">
+      <span class="pp-claude-modal-title" id="pp-claude-modal-title">
+        <i class="fas fa-robot"></i> Respuesta de Claude
+      </span>
+      <button id="pp-claude-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div id="pp-claude-response-body" class="pp-claude-response-body">
+      <div class="pp-claude-loading" id="pp-claude-loading">
+        <i class="fas fa-spinner fa-spin"></i> Claude está pensando…
+      </div>
+      <div id="pp-claude-response-text" class="pp-claude-response-text" style="display:none"></div>
+    </div>
+    <div class="pp-claude-modal-footer" id="pp-claude-modal-footer" style="display:none">
+      <span class="pp-claude-field-hint" id="pp-claude-field-hint"></span>
+      <div style="display:flex;gap:8px;">
+        <button id="pp-claude-modal-discard" class="pp-btn pp-btn-ghost" type="button">Descartar</button>
+        <button id="pp-claude-modal-apply" class="pp-btn pp-btn-primary" type="button">
+          <i class="fas fa-check"></i> Aplicar al campo
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Send for Review Modal -->

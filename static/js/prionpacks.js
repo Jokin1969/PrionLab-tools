@@ -212,6 +212,68 @@ const PrionPacks = (() => {
   /* ── Editor ────────────────────────────────────────────────────────────── */
   /* ── Send for Review ───────────────────────────────────────────────────── */
   let _selectedColleague = null;
+  let _claudeModalCallback = null;
+
+  function _getAIContext() {
+    const items = [];
+    document.querySelectorAll('.pp-ai-btn.active').forEach(btn => {
+      const fieldId  = btn.dataset.fieldId;
+      const label    = btn.dataset.aiLabel || 'Campo';
+      const text     = fieldId ? (document.getElementById(fieldId)?.value || '').trim() : '';
+      if (text) items.push({ label, text });
+    });
+    return items;
+  }
+
+  async function _askClaudeField(sourceId, sourceLabel) {
+    const sourceEl = document.getElementById(sourceId);
+    if (!sourceEl) return;
+    const sourceText = sourceEl.value.trim();
+    if (!sourceText) { toast('El campo está vacío.', 'error'); return; }
+
+    const context = _getAIContext().filter(c => !(c.label === sourceLabel && c.text === sourceText));
+
+    _showClaudeModal(null, null, null);
+    try {
+      const response = await PPApi.askClaude(context, sourceLabel, sourceText);
+      _showClaudeModal(response, sourceEl, sourceLabel);
+    } catch (e) {
+      _closeClaudeModal();
+      toast('Error llamando a Claude: ' + e.message, 'error');
+    }
+  }
+
+  function _showClaudeModal(text, sourceEl, sourceLabel) {
+    const modal       = document.getElementById('pp-claude-modal');
+    const loading     = document.getElementById('pp-claude-loading');
+    const responseEl  = document.getElementById('pp-claude-response-text');
+    const footer      = document.getElementById('pp-claude-modal-footer');
+    const hint        = document.getElementById('pp-claude-field-hint');
+
+    if (text === null) {
+      loading.style.display    = '';
+      responseEl.style.display = 'none';
+      responseEl.textContent   = '';
+      footer.style.display     = 'none';
+      _claudeModalCallback     = null;
+    } else {
+      loading.style.display    = 'none';
+      responseEl.style.display = '';
+      responseEl.textContent   = text;
+      footer.style.display     = '';
+      hint.textContent         = `→ Campo: ${sourceLabel}`;
+      _claudeModalCallback = () => {
+        sourceEl.value = text;
+        sourceEl.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+    }
+    modal.style.display = '';
+  }
+
+  function _closeClaudeModal() {
+    document.getElementById('pp-claude-modal').style.display = 'none';
+    _claudeModalCallback = null;
+  }
 
   function _openSendModal() {
     if (!state.currentId) return;
@@ -278,6 +340,8 @@ const PrionPacks = (() => {
 
   function _populateEditor(pkg) {
     const isNew = !pkg;
+    // Reset all AI context toggles
+    document.querySelectorAll('.pp-ai-btn.active').forEach(b => b.classList.remove('active'));
     document.getElementById('editor-id-badge').textContent = isNew ? 'PRP-NEW' : pkg.id;
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
     document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
@@ -384,6 +448,7 @@ const PrionPacks = (() => {
 
   /* ── Autosave ──────────────────────────────────────────────────────────── */
   let _autosaveTimer = null;
+  let _gapCounter = 0;
 
   function _scheduleAutosave() {
     if (!state.currentId) return;
@@ -458,7 +523,8 @@ const PrionPacks = (() => {
       <div class="pp-finding-header">
         <i class="fas fa-grip-vertical pp-drag-handle"></i>
         <span class="pp-finding-number">F-${String(num).padStart(2,'0')}</span>
-        <input type="text" class="pp-finding-title-input" placeholder="Finding title…" value="${_esc(finding.title||'')}" />
+        <input type="text" id="ftitle-${finding.id}" class="pp-finding-title-input" placeholder="Finding title…" value="${_esc(finding.title||'')}" />
+        <button class="pp-ai-btn" data-field-id="ftitle-${finding.id}" data-ai-label="Finding título: ${_esc(finding.title||'(sin título)')}" title="Incluir título como contexto para Claude">AI</button>
         <button class="pp-btn-icon btn-claude" title="Translate with Claude" onclick="PrionPacks.translateFinding(this)">
           <i class="fas fa-robot"></i>
         </button>
@@ -468,7 +534,13 @@ const PrionPacks = (() => {
       </div>
       ${enBadge}
       <div class="pp-finding-content">
-        <textarea class="pp-textarea" rows="3" placeholder="Describe the main result…">${_esc(finding.description||'')}</textarea>
+        <textarea id="fdesc-${finding.id}" class="pp-textarea" rows="3" placeholder="Describe the main result…">${_esc(finding.description||'')}</textarea>
+        <div class="pp-field-ai-row">
+          <button class="pp-ai-btn" data-field-id="fdesc-${finding.id}" data-ai-label="Finding descripción: ${_esc(finding.title||'(sin título)')}" title="Incluir descripción como contexto para Claude">AI</button>
+          <button class="pp-claude-ask-btn pp-claude-finding-btn" data-source-id="fdesc-${finding.id}" data-source-label="Finding: ${_esc(finding.title||'(sin título)')}" title="Preguntar a Claude sobre este finding">
+            <i class="fas fa-robot"></i> Claude
+          </button>
+        </div>
         <div class="pp-figs-tables-section">
           <div class="pp-figs-tables-header">
             <span class="pp-figs-tables-label">Figures &amp; Tables</span>
@@ -500,6 +572,14 @@ const PrionPacks = (() => {
     div.querySelector('.btn-add-table').addEventListener('click', () => _addTableToList(tblList));
 
     div.querySelector('.pp-finding-title-input').addEventListener('input', _recalcScore);
+    div.querySelector('.pp-finding-title-input').addEventListener('input', e => {
+      const aiBtn = div.querySelector('.pp-ai-btn[data-field-id="ftitle-' + finding.id + '"]');
+      if (aiBtn) aiBtn.dataset.aiLabel = 'Finding título: ' + (e.target.value.trim() || '(sin título)');
+      const claudeBtn = div.querySelector('.pp-claude-finding-btn');
+      if (claudeBtn) {
+        claudeBtn.dataset.sourceLabel = 'Finding: ' + (e.target.value.trim() || '(sin título)');
+      }
+    });
     div.querySelector('.pp-textarea').addEventListener('input', _recalcScore);
     return div;
   }
@@ -511,11 +591,13 @@ const PrionPacks = (() => {
     div.dataset.imageUrl = fig.imageUrl || '';
     div.dataset.caption  = fig.caption  || '';
 
+    const figInputId = `figdesc-${fig.id || 'fig'+num}`;
     div.innerHTML = `
       <div class="pp-figure-top">
         <span class="pp-figure-num">Fig ${num}</span>
-        <input type="text" class="pp-figure-input" placeholder="Figure description…" value="${_esc(fig.description||'')}" />
+        <input type="text" id="${figInputId}" class="pp-figure-input" placeholder="Figure description…" value="${_esc(fig.description||'')}" />
         <div class="pp-figure-btns">
+          <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${figInputId}" data-ai-label="Figura ${num}: descripción" title="Contexto para Claude">AI</button>
           <button class="pp-fig-img-btn pp-btn-icon" title="Upload image"><i class="fas fa-image"></i></button>
           <button class="pp-fig-cap-btn pp-btn-icon pp-hidden" title="Add caption"><i class="fas fa-align-left"></i></button>
           <button class="pp-btn-icon btn-remove" title="Remove figure"><i class="fas fa-times"></i></button>
@@ -769,9 +851,11 @@ const PrionPacks = (() => {
     const findingId = typeof gap === 'string' ? '' : (gap.findingId || '');
     const hasFinding = findingId ? ' has-finding' : '';
     const assignedClass = findingId ? ' assigned' : '';
+    const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
-        <input type="text" value="${_esc(text)}" placeholder="Missing information…" />
+        <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
+        <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
         <button class="pp-btn-icon btn-remove" onclick="this.closest('.pp-gap-item').remove();PrionPacks._recalcScore();PrionPacks._updateFindingGapIndicators();">
           <i class="fas fa-times"></i>
         </button>
@@ -786,8 +870,10 @@ const PrionPacks = (() => {
   }
 
   function _gapItemHTML(value) {
+    const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-dynamic-item">
-      <input type="text" value="${_esc(value)}" placeholder="Add item…" />
+      <input type="text" id="${gid}" value="${_esc(value)}" placeholder="Add item…" />
+      <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (experimento necesario)" title="Contexto para Claude">AI</button>
       <button class="pp-btn-icon btn-remove" onclick="this.closest('.pp-dynamic-item').remove();PrionPacks._recalcScore();">
         <i class="fas fa-times"></i>
       </button>
@@ -1165,6 +1251,39 @@ const PrionPacks = (() => {
     document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
     document.getElementById('btn-toggle-discussion').addEventListener('click', _toggleDiscussion);
 
+    // Static field Claude ask buttons
+    document.querySelectorAll('.pp-claude-ask-btn[data-source-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _askClaudeField(btn.dataset.sourceId, btn.dataset.sourceLabel);
+      });
+    });
+
+    // Static field AI toggles
+    document.querySelectorAll('.pp-ai-btn[data-field-id]').forEach(btn => {
+      btn.addEventListener('click', () => btn.classList.toggle('active'));
+    });
+
+    // Event delegation for dynamic findings AI toggles and Claude buttons
+    document.getElementById('findings-container').addEventListener('click', e => {
+      const aiBtn = e.target.closest('.pp-ai-btn');
+      if (aiBtn) { aiBtn.classList.toggle('active'); return; }
+      const claudeBtn = e.target.closest('.pp-claude-finding-btn');
+      if (claudeBtn) {
+        _askClaudeField(claudeBtn.dataset.sourceId, claudeBtn.dataset.sourceLabel);
+      }
+    });
+
+    // Event delegation for gap AI toggles
+    document.getElementById('gaps-missing-list').addEventListener('click', e => {
+      const aiBtn = e.target.closest('.pp-ai-btn');
+      if (aiBtn) aiBtn.classList.toggle('active');
+    });
+
+    document.getElementById('gaps-experiments-list').addEventListener('click', e => {
+      const aiBtn = e.target.closest('.pp-ai-btn');
+      if (aiBtn) aiBtn.classList.toggle('active');
+    });
+
     // Autosave on any input in the editor
     document.getElementById('view-editor').addEventListener('input', _scheduleAutosave);
 
@@ -1236,9 +1355,19 @@ const PrionPacks = (() => {
       });
     });
 
+    // Claude response modal
+    document.getElementById('pp-claude-modal-close').addEventListener('click', _closeClaudeModal);
+    document.getElementById('pp-claude-modal-backdrop').addEventListener('click', _closeClaudeModal);
+    document.getElementById('pp-claude-modal-discard').addEventListener('click', _closeClaudeModal);
+    document.getElementById('pp-claude-modal-apply').addEventListener('click', () => {
+      if (_claudeModalCallback) _claudeModalCallback();
+      _closeClaudeModal();
+    });
+
     // Escape closes any open modal
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape') return;
+      if (document.getElementById('pp-claude-modal').style.display    !== 'none') _closeClaudeModal();
       if (document.getElementById('pp-img-upload-modal').style.display !== 'none') _closeImgUploadModal();
       if (document.getElementById('pp-fig-view-modal').style.display  !== 'none') _closeFigureViewModal();
       if (document.getElementById('pp-send-modal').style.display      !== 'none') _closeSendModal();
