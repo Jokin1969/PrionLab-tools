@@ -6,7 +6,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/prionpacks.css') }}" />
 {% endblock %}
 
-{% block content %}
+{# Override main_body to skip the .container max-width constraint #}
+{% block main_body %}
 <div id="prionpacks-app">
 
   <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
@@ -49,23 +50,10 @@
           <option value="none">⚪ Unprioritized</option>
         </select>
       </div>
-      <div class="pp-filter-group">
-        <label class="pp-filter-label">Type</label>
-        <select id="filter-type" class="pp-select">
-          <option value="all">All Types</option>
-          <option value="research">Research Original</option>
-          <option value="review">Review</option>
-          <option value="clinical">Clinical Trial</option>
-          <option value="case">Case Study</option>
-          <option value="meta">Meta-analysis</option>
-        </select>
-      </div>
     </div>
 
     <!-- Package list -->
-    <div class="pp-package-list" id="pp-package-list">
-      <!-- Populated by JS -->
-    </div>
+    <div class="pp-package-list" id="pp-package-list"></div>
 
     <!-- New package button -->
     <div class="pp-sidebar-footer">
@@ -78,7 +66,7 @@
   <!-- ── Main Area ───────────────────────────────────────────────────────── -->
   <main class="pp-main" id="pp-main">
 
-    <!-- Dashboard view (default) -->
+    <!-- Dashboard view -->
     <div id="view-dashboard" class="pp-view active">
       <div class="pp-page-header">
         <div>
@@ -86,12 +74,6 @@
           <p class="pp-page-sub">Overview of your research packages</p>
         </div>
         <div class="pp-page-actions">
-          <button class="pp-btn pp-btn-secondary" id="btn-import">
-            <i class="fas fa-file-import"></i> Import
-          </button>
-          <button class="pp-btn pp-btn-secondary" id="btn-export-all">
-            <i class="fas fa-file-export"></i> Export All
-          </button>
           <button class="pp-btn pp-btn-primary" id="btn-new-package-main">
             <i class="fas fa-plus"></i> New Package
           </button>
@@ -131,9 +113,7 @@
       </div>
 
       <!-- Cards grid -->
-      <div class="pp-cards-grid" id="pp-cards-grid">
-        <!-- Package cards rendered by JS -->
-      </div>
+      <div class="pp-cards-grid" id="pp-cards-grid"></div>
 
       <!-- Empty state -->
       <div class="pp-empty-state" id="pp-empty-state" style="display:none;">
@@ -157,9 +137,6 @@
         </div>
         <div class="pp-page-actions">
           <span class="pp-package-id-badge" id="editor-id-badge">PRP-???</span>
-          <button class="pp-btn pp-btn-secondary" id="btn-export-package">
-            <i class="fas fa-file-export"></i> Export
-          </button>
           <button class="pp-btn pp-btn-danger" id="btn-delete-package" style="display:none;">
             <i class="fas fa-trash"></i>
           </button>
@@ -181,28 +158,15 @@
             </h2>
             <div class="pp-form-group">
               <label class="pp-label">Title *</label>
-              <input type="text" id="field-title" class="pp-input" placeholder="Package title…" />
+              <textarea id="field-title" class="pp-textarea pp-textarea-title" rows="2" placeholder="Package title…"></textarea>
             </div>
-            <div class="pp-form-row">
-              <div class="pp-form-group">
-                <label class="pp-label">Manuscript Type</label>
-                <select id="field-type" class="pp-select">
-                  <option value="research">Research Original</option>
-                  <option value="review">Review</option>
-                  <option value="clinical">Clinical Trial</option>
-                  <option value="case">Case Study</option>
-                  <option value="meta">Meta-analysis</option>
-                </select>
-              </div>
-              <div class="pp-form-group">
-                <label class="pp-label">Priority</label>
-                <div class="pp-priority-selector" id="priority-selector">
-                  <button class="pp-priority-btn active" data-priority="none" style="background:var(--pp-priority-none);" title="No priority"></button>
-                  <button class="pp-priority-btn" data-priority="low" style="background:var(--pp-priority-low);" title="Low priority"></button>
-                  <button class="pp-priority-btn" data-priority="medium" style="background:var(--pp-priority-medium);" title="Medium priority"></button>
-                  <button class="pp-priority-btn" data-priority="high" style="background:var(--pp-priority-high);" title="High priority"></button>
-                  <span class="pp-priority-label" id="priority-label">No priority</span>
-                </div>
+            <div class="pp-form-group">
+              <label class="pp-label">Priority</label>
+              <div class="pp-priority-selector" id="priority-selector">
+                <button class="pp-priority-btn active" data-priority="none" style="background:var(--pp-priority-none);" title="No priority"></button>
+                <button class="pp-priority-btn" data-priority="low" style="background:var(--pp-priority-low);" title="Low priority"></button>
+                <button class="pp-priority-btn" data-priority="medium" style="background:var(--pp-priority-medium);" title="Medium priority"></button>
+                <button class="pp-priority-btn" data-priority="high" style="background:var(--pp-priority-high);" title="High priority"></button>
               </div>
             </div>
             <div class="pp-form-group">
@@ -231,9 +195,7 @@
                 <i class="fas fa-plus"></i> Add Finding
               </button>
             </div>
-            <div id="findings-container" class="pp-findings-list">
-              <!-- Finding blocks rendered by JS -->
-            </div>
+            <div id="findings-container" class="pp-findings-list"></div>
             <div class="pp-findings-empty" id="findings-empty">
               <i class="fas fa-flask"></i>
               <span>No findings yet. Click "Add Finding" to start.</span>
@@ -372,24 +334,6 @@
       </div>
     </div>
   </main>
-</div>
-
-<!-- ── Import modal ──────────────────────────────────────────────────────── -->
-<div class="pp-modal-overlay" id="modal-import" style="display:none;">
-  <div class="pp-modal">
-    <div class="pp-modal-header">
-      <h3>Import Packages</h3>
-      <button class="pp-modal-close" onclick="PrionPacks.closeModal('modal-import')">×</button>
-    </div>
-    <div class="pp-modal-body">
-      <p>Select a JSON file exported from PrionPacks.</p>
-      <input type="file" id="import-file" accept=".json" class="pp-input" />
-    </div>
-    <div class="pp-modal-footer">
-      <button class="pp-btn pp-btn-secondary" onclick="PrionPacks.closeModal('modal-import')">Cancel</button>
-      <button class="pp-btn pp-btn-primary" onclick="PrionPacks.confirmImport()">Import</button>
-    </div>
-  </div>
 </div>
 
 <!-- ── Toast notifications ───────────────────────────────────────────────── -->

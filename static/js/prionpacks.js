@@ -8,7 +8,6 @@ const PrionPacks = (() => {
     search: '',
     filterStatus: 'all',
     filterPriority: 'all',
-    filterType: 'all',
   };
 
   const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low', none: 'No priority' };
@@ -71,7 +70,6 @@ const PrionPacks = (() => {
       });
     }
     if (state.filterPriority !== 'all') pkgs = pkgs.filter(p => p.priority === state.filterPriority);
-    if (state.filterType !== 'all') pkgs = pkgs.filter(p => p.type === state.filterType);
     return pkgs;
   }
 
@@ -117,7 +115,7 @@ const PrionPacks = (() => {
         <div class="pp-pkg-card-body">
           <div class="pp-pkg-card-id">${p.id}</div>
           <div class="pp-pkg-card-title">${_esc(p.title)}</div>
-          <div class="pp-pkg-card-type">${TYPE_LABELS[p.type] || p.type}</div>
+          <div class="pp-pkg-card-type">${TYPE_LABELS[p.type] || p.type || ''}</div>
         </div>
       </div>
       <div class="pp-pkg-card-progress">
@@ -170,7 +168,7 @@ const PrionPacks = (() => {
     dot.style.background = _priorityColor(next);
     dot.title = PRIORITY_LABELS[next];
     _renderSidebarList(PPStorage.loadAll());
-    toast(`Priority changed to ${PRIORITY_LABELS[next]}`);
+    toast(`Priority: ${PRIORITY_LABELS[next]}`);
   }
 
   /* ── Editor ───────────────────────────────────────────────────────────── */
@@ -183,9 +181,11 @@ const PrionPacks = (() => {
     document.getElementById('meta-created').textContent = isNew ? '—' : _fmtDate(pkg.createdAt);
     document.getElementById('meta-modified').textContent = isNew ? '—' : _fmtDate(pkg.lastModified);
 
-    document.getElementById('field-title').value = pkg?.title || '';
+    const titleEl = document.getElementById('field-title');
+    titleEl.value = pkg?.title || '';
+    _autoResizeTextarea(titleEl);
+
     document.getElementById('field-description').value = pkg?.description || '';
-    document.getElementById('field-type').value = pkg?.type || 'research';
     document.getElementById('field-hypothesis').value = pkg?.hypothesis || '';
     document.getElementById('timeline-number').value = pkg?.timeline?.number || '';
     document.getElementById('timeline-unit').value = pkg?.timeline?.unit || 'weeks';
@@ -199,12 +199,16 @@ const PrionPacks = (() => {
     _recalcScore();
   }
 
+  function _autoResizeTextarea(el) {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }
+
   /* ── Priority in editor ───────────────────────────────────────────────── */
   function _setPriority(priority) {
     document.querySelectorAll('.pp-priority-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.priority === priority);
     });
-    document.getElementById('priority-label').textContent = PRIORITY_LABELS[priority] || 'No priority';
   }
 
   /* ── Findings ─────────────────────────────────────────────────────────── */
@@ -286,8 +290,7 @@ const PrionPacks = (() => {
   }
 
   function removeFinding(btn) {
-    const block = btn.closest('.pp-finding-block');
-    block.remove();
+    btn.closest('.pp-finding-block').remove();
     _renumberFindings();
     _recalcScore();
   }
@@ -304,8 +307,8 @@ const PrionPacks = (() => {
     const row = document.createElement('div');
     row.innerHTML = _figureRowHTML({ description: '' }, num);
     list.appendChild(row.firstElementChild);
-    list.querySelectorAll('.pp-figure-input').forEach((el, i) => {
-      el.closest('.pp-figure-row').querySelector('.pp-figure-num').textContent = 'Fig ' + (i + 1);
+    list.querySelectorAll('.pp-figure-row').forEach((r, i) => {
+      r.querySelector('.pp-figure-num').textContent = 'Fig ' + (i + 1);
     });
     _recalcScore();
   }
@@ -428,9 +431,7 @@ const PrionPacks = (() => {
     const offset = circumference - (total / 100) * circumference;
     const fill = document.getElementById('score-circle-fill');
     fill.style.strokeDashoffset = offset;
-
-    let strokeColor = total >= 90 ? '#26de81' : total >= 70 ? '#ffa502' : '#00d4aa';
-    fill.style.stroke = strokeColor;
+    fill.style.stroke = total >= 90 ? '#26de81' : total >= 70 ? '#ffa502' : '#00d4aa';
 
     _setBar('hypothesis', hypothesis);
     _setBar('findings', findings);
@@ -454,7 +455,7 @@ const PrionPacks = (() => {
 
   /* ── Save ─────────────────────────────────────────────────────────────── */
   function savePackage() {
-    const title = document.getElementById('field-title').value.trim();
+    const title = (document.getElementById('field-title').value || '').trim();
     if (!title) { toast('Please enter a title.', 'error'); document.getElementById('field-title').focus(); return; }
 
     const findings = _collectFindings();
@@ -462,7 +463,6 @@ const PrionPacks = (() => {
     const data = {
       title,
       description: document.getElementById('field-description').value.trim(),
-      type: document.getElementById('field-type').value,
       priority: _getCurrentPriority(),
       hypothesis: document.getElementById('field-hypothesis').value.trim(),
       findings,
@@ -548,41 +548,6 @@ const PrionPacks = (() => {
     toast('Package deleted.', 'error');
   }
 
-  /* ── Export ───────────────────────────────────────────────────────────── */
-  function exportPackage() {
-    if (!state.currentId) return;
-    PPStorage.exportOne(state.currentId);
-    toast('Package exported.');
-  }
-
-  function exportAll() {
-    PPStorage.exportAll();
-    toast('All packages exported.');
-  }
-
-  /* ── Import ───────────────────────────────────────────────────────────── */
-  function openImport() {
-    document.getElementById('modal-import').style.display = 'flex';
-  }
-
-  function closeModal(id) {
-    document.getElementById(id).style.display = 'none';
-  }
-
-  function confirmImport() {
-    const file = document.getElementById('import-file').files[0];
-    if (!file) { toast('Select a file first.', 'error'); return; }
-    const reader = new FileReader();
-    reader.onload = e => {
-      const result = PPStorage.importFromJSON(e.target.result);
-      if (!result.ok) { toast('Import error: ' + result.error, 'error'); return; }
-      closeModal('modal-import');
-      _renderDashboard();
-      toast(`Imported ${result.added} package(s). Skipped: ${result.skipped}.`, 'success');
-    };
-    reader.readAsText(file);
-  }
-
   /* ── Drag & Drop ──────────────────────────────────────────────────────── */
   function _initDragDrop(container) {
     let dragging = null;
@@ -623,9 +588,6 @@ const PrionPacks = (() => {
     document.getElementById('btn-back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('btn-save-package').addEventListener('click', savePackage);
     document.getElementById('btn-delete-package').addEventListener('click', deletePackage);
-    document.getElementById('btn-export-package').addEventListener('click', exportPackage);
-    document.getElementById('btn-export-all').addEventListener('click', exportAll);
-    document.getElementById('btn-import').addEventListener('click', openImport);
 
     document.getElementById('pp-search').addEventListener('input', e => {
       state.search = e.target.value;
@@ -639,10 +601,6 @@ const PrionPacks = (() => {
       state.filterPriority = e.target.value;
       _renderDashboard();
     });
-    document.getElementById('filter-type').addEventListener('change', e => {
-      state.filterType = e.target.value;
-      _renderDashboard();
-    });
 
     document.getElementById('btn-add-finding').addEventListener('click', addFinding);
 
@@ -650,12 +608,13 @@ const PrionPacks = (() => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.pp-priority-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        document.getElementById('priority-label').textContent = PRIORITY_LABELS[btn.dataset.priority];
       });
     });
 
-    document.getElementById('field-title').addEventListener('input', e => {
+    const titleEl = document.getElementById('field-title');
+    titleEl.addEventListener('input', e => {
       document.getElementById('editor-title-header').textContent = e.target.value || 'New Package';
+      _autoResizeTextarea(e.target);
     });
     document.getElementById('field-hypothesis').addEventListener('input', _recalcScore);
 
@@ -686,9 +645,6 @@ const PrionPacks = (() => {
         if (e.key === 'n') { e.preventDefault(); showEditor(null); }
         if (e.key === 's' && state.view === 'editor') { e.preventDefault(); savePackage(); }
         if (e.key === 'f') { e.preventDefault(); document.getElementById('pp-search').focus(); }
-      }
-      if (e.key === 'Escape') {
-        document.querySelectorAll('.pp-modal-overlay').forEach(m => { m.style.display = 'none'; });
       }
     });
   }
@@ -732,11 +688,6 @@ const PrionPacks = (() => {
     addGapItem,
     savePackage,
     deletePackage,
-    exportPackage,
-    exportAll,
-    openImport,
-    closeModal,
-    confirmImport,
     toast,
     _recalcScore,
   };
