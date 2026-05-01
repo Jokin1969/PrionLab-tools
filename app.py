@@ -226,6 +226,12 @@ def create_app() -> Flask:
     app.register_blueprint(prionpacks_bp)
 
     try:
+        from tools.prionpacks.models import bootstrap_demo_data
+        bootstrap_demo_data()
+    except Exception as e:
+        app.logger.warning('PrionPacks demo seed failed: %s', e)
+
+    try:
         import database.help_system  # noqa: F401 — registers models with Base.metadata
         from database.config import db as _db
         if _db.is_configured():

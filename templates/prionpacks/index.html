@@ -6,12 +6,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/prionpacks.css') }}" />
 {% endblock %}
 
-{# Override main_body to skip the .container max-width constraint #}
+{# Skip the .container wrapper so PrionPacks is full-width #}
 {% block main_body %}
 <div id="prionpacks-app">
 
   <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
-  <aside class="pp-sidebar" id="pp-sidebar">
+  <aside class="pp-sidebar">
     <div class="pp-sidebar-header">
       <div class="pp-sidebar-brand">
         <i class="fas fa-cube pp-brand-icon"></i>
@@ -22,11 +22,10 @@
       </div>
     </div>
 
-    <!-- Search & Filters -->
     <div class="pp-sidebar-search">
       <div class="pp-search-wrap">
         <i class="fas fa-search pp-search-icon"></i>
-        <input type="text" id="pp-search" class="pp-search-input" placeholder="Search packages…" autocomplete="off" />
+        <input type="text" id="pp-search" class="pp-search-input" placeholder="Search all fields…" autocomplete="off" />
       </div>
     </div>
 
@@ -52,10 +51,8 @@
       </div>
     </div>
 
-    <!-- Package list -->
     <div class="pp-package-list" id="pp-package-list"></div>
 
-    <!-- New package button -->
     <div class="pp-sidebar-footer">
       <button class="pp-btn pp-btn-primary pp-btn-full" id="btn-new-package">
         <i class="fas fa-plus"></i> New Package
@@ -64,7 +61,7 @@
   </aside>
 
   <!-- ── Main Area ───────────────────────────────────────────────────────── -->
-  <main class="pp-main" id="pp-main">
+  <main class="pp-main">
 
     <!-- Dashboard view -->
     <div id="view-dashboard" class="pp-view active">
@@ -80,65 +77,61 @@
         </div>
       </div>
 
-      <!-- Metrics -->
-      <div class="pp-metrics-grid" id="pp-metrics">
-        <div class="pp-metric-card">
+      <div class="pp-metrics-grid">
+        <button class="pp-metric-card pp-metric-btn" data-filter="all">
           <div class="pp-metric-icon pp-metric-icon-total"><i class="fas fa-cube"></i></div>
           <div class="pp-metric-body">
             <div class="pp-metric-value" id="metric-total">0</div>
             <div class="pp-metric-label">Total Packages</div>
           </div>
-        </div>
-        <div class="pp-metric-card">
+        </button>
+        <button class="pp-metric-card pp-metric-btn" data-filter="complete">
           <div class="pp-metric-icon pp-metric-icon-complete"><i class="fas fa-check-circle"></i></div>
           <div class="pp-metric-body">
             <div class="pp-metric-value" id="metric-complete">0</div>
             <div class="pp-metric-label">Completed (≥90%)</div>
           </div>
-        </div>
-        <div class="pp-metric-card">
+        </button>
+        <button class="pp-metric-card pp-metric-btn" data-filter="progress">
           <div class="pp-metric-icon pp-metric-icon-progress"><i class="fas fa-spinner"></i></div>
           <div class="pp-metric-body">
             <div class="pp-metric-value" id="metric-progress">0</div>
             <div class="pp-metric-label">In Progress</div>
           </div>
-        </div>
-        <div class="pp-metric-card">
+        </button>
+        <button class="pp-metric-card pp-metric-btn" data-filter="initial">
           <div class="pp-metric-icon pp-metric-icon-avg"><i class="fas fa-chart-bar"></i></div>
           <div class="pp-metric-body">
             <div class="pp-metric-value" id="metric-avg">0%</div>
             <div class="pp-metric-label">Avg Completeness</div>
           </div>
-        </div>
+        </button>
       </div>
 
-      <!-- Cards grid -->
       <div class="pp-cards-grid" id="pp-cards-grid"></div>
 
-      <!-- Empty state -->
       <div class="pp-empty-state" id="pp-empty-state" style="display:none;">
         <i class="fas fa-cube pp-empty-icon"></i>
-        <h3>No packages yet</h3>
-        <p>Create your first research package to get started.</p>
+        <h3>No packages found</h3>
+        <p>Try adjusting your filters or create a new package.</p>
         <button class="pp-btn pp-btn-primary" id="btn-first-package">
-          <i class="fas fa-plus"></i> Create First Package
+          <i class="fas fa-plus"></i> Create Package
         </button>
       </div>
     </div>
 
     <!-- Editor view -->
     <div id="view-editor" class="pp-view">
-      <div class="pp-page-header">
-        <div>
-          <button class="pp-btn-back" id="btn-back-dashboard">
-            <i class="fas fa-arrow-left"></i> Dashboard
-          </button>
-          <h1 class="pp-page-title" id="editor-title-header">New Package</h1>
-        </div>
-        <div class="pp-page-actions">
-          <span class="pp-package-id-badge" id="editor-id-badge">PRP-???</span>
+
+      <!-- Editor toolbar -->
+      <div class="pp-editor-toolbar">
+        <button class="pp-btn pp-btn-back-lg" id="btn-back-dashboard">
+          <i class="fas fa-arrow-left"></i> Dashboard
+        </button>
+        <div class="pp-editor-toolbar-right">
+          <span class="pp-package-id-badge" id="editor-id-badge">PRP-NEW</span>
           <button class="pp-btn pp-btn-danger" id="btn-delete-package" style="display:none;">
-            <i class="fas fa-trash"></i>
+            <i class="fas fa-trash"></i> Delete
           </button>
           <button class="pp-btn pp-btn-primary" id="btn-save-package">
             <i class="fas fa-save"></i> Save
@@ -146,20 +139,20 @@
         </div>
       </div>
 
+      <!-- Title bar — full width below toolbar -->
+      <div class="pp-title-bar">
+        <textarea id="field-title" class="pp-title-input" rows="1"
+          placeholder="Package title…"
+          autocomplete="off"></textarea>
+      </div>
+
       <div class="pp-editor-layout">
 
-        <!-- Left column: form -->
+        <!-- Left: form -->
         <div class="pp-editor-form">
 
-          <!-- Basic info -->
           <div class="pp-card pp-card-section">
-            <h2 class="pp-section-title">
-              <i class="fas fa-info-circle"></i> Basic Information
-            </h2>
-            <div class="pp-form-group">
-              <label class="pp-label">Title *</label>
-              <textarea id="field-title" class="pp-textarea pp-textarea-title" rows="2" placeholder="Package title…"></textarea>
-            </div>
+            <h2 class="pp-section-title"><i class="fas fa-info-circle"></i> Basic Information</h2>
             <div class="pp-form-group">
               <label class="pp-label">Priority</label>
               <div class="pp-priority-selector" id="priority-selector">
@@ -175,22 +168,14 @@
             </div>
           </div>
 
-          <!-- Hypothesis -->
           <div class="pp-card pp-card-section">
-            <h2 class="pp-section-title">
-              <i class="fas fa-lightbulb"></i> Main Hypothesis
-            </h2>
-            <div class="pp-form-group">
-              <textarea id="field-hypothesis" class="pp-textarea pp-textarea-lg" rows="5" placeholder="State the main hypothesis of this research…"></textarea>
-            </div>
+            <h2 class="pp-section-title"><i class="fas fa-lightbulb"></i> Main Hypothesis</h2>
+            <textarea id="field-hypothesis" class="pp-textarea pp-textarea-lg" rows="5" placeholder="State the main hypothesis of this research…"></textarea>
           </div>
 
-          <!-- Findings -->
           <div class="pp-card pp-card-section">
             <div class="pp-section-header">
-              <h2 class="pp-section-title">
-                <i class="fas fa-microscope"></i> Main Findings
-              </h2>
+              <h2 class="pp-section-title"><i class="fas fa-microscope"></i> Main Findings</h2>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-finding">
                 <i class="fas fa-plus"></i> Add Finding
               </button>
@@ -202,11 +187,8 @@
             </div>
           </div>
 
-          <!-- Gaps & Next Steps -->
           <div class="pp-card pp-card-section">
-            <h2 class="pp-section-title">
-              <i class="fas fa-exclamation-triangle"></i> Gaps &amp; Next Steps
-            </h2>
+            <h2 class="pp-section-title"><i class="fas fa-exclamation-triangle"></i> Gaps &amp; Next Steps</h2>
             <div class="pp-form-row">
               <div class="pp-form-group pp-form-half">
                 <label class="pp-label">Missing Information</label>
@@ -223,104 +205,62 @@
                 </button>
               </div>
             </div>
-
-            <div class="pp-form-group pp-timeline-group">
-              <label class="pp-label">Estimated Timeline</label>
-              <div class="pp-timeline-row">
-                <input type="number" id="timeline-number" class="pp-input pp-input-sm" min="1" max="999" placeholder="6" />
-                <select id="timeline-unit" class="pp-select pp-select-sm">
-                  <option value="days">Days</option>
-                  <option value="weeks" selected>Weeks</option>
-                  <option value="months">Months</option>
-                </select>
-                <input type="text" id="timeline-notes" class="pp-input" placeholder="Notes about timeline…" />
-              </div>
-            </div>
           </div>
 
         </div>
 
-        <!-- Right column: scoring panel -->
+        <!-- Right: score panel -->
         <div class="pp-editor-sidebar">
           <div class="pp-card pp-score-card">
             <h3 class="pp-score-title">Completeness Score</h3>
-
             <div class="pp-score-circle-wrap">
               <svg class="pp-score-circle" viewBox="0 0 100 100">
                 <circle class="pp-score-track" cx="50" cy="50" r="40" />
                 <circle class="pp-score-fill" id="score-circle-fill" cx="50" cy="50" r="40"
-                  stroke-dasharray="251.2"
-                  stroke-dashoffset="251.2"
-                  transform="rotate(-90 50 50)" />
+                  stroke-dasharray="251.2" stroke-dashoffset="251.2" transform="rotate(-90 50 50)" />
               </svg>
               <div class="pp-score-center">
                 <span class="pp-score-pct" id="score-pct">0%</span>
               </div>
             </div>
-
             <div class="pp-score-breakdown">
               <div class="pp-score-row">
                 <span class="pp-score-row-label">Hypothesis</span>
-                <div class="pp-score-bar-wrap">
-                  <div class="pp-score-bar" id="score-bar-hypothesis"></div>
-                </div>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-hypothesis"></div></div>
                 <span class="pp-score-row-val" id="score-val-hypothesis">0%</span>
               </div>
               <div class="pp-score-row">
                 <span class="pp-score-row-label">Findings</span>
-                <div class="pp-score-bar-wrap">
-                  <div class="pp-score-bar" id="score-bar-findings"></div>
-                </div>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-findings"></div></div>
                 <span class="pp-score-row-val" id="score-val-findings">0%</span>
               </div>
               <div class="pp-score-row">
                 <span class="pp-score-row-label">Figures</span>
-                <div class="pp-score-bar-wrap">
-                  <div class="pp-score-bar" id="score-bar-figures"></div>
-                </div>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-figures"></div></div>
                 <span class="pp-score-row-val" id="score-val-figures">0%</span>
               </div>
               <div class="pp-score-row">
                 <span class="pp-score-row-label">Gaps</span>
-                <div class="pp-score-bar-wrap">
-                  <div class="pp-score-bar" id="score-bar-gaps"></div>
-                </div>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-gaps"></div></div>
                 <span class="pp-score-row-val" id="score-val-gaps">0%</span>
               </div>
             </div>
-
-            <div class="pp-score-recommendation" id="score-recommendation">
+            <div class="pp-score-recommendation">
               <i class="fas fa-info-circle"></i>
               <span id="score-rec-text">Fill in the form to see your score.</span>
             </div>
           </div>
 
-          <!-- Package metadata -->
           <div class="pp-card pp-meta-card">
             <h3 class="pp-meta-title">Package Info</h3>
-            <div class="pp-meta-row">
-              <span class="pp-meta-key">ID</span>
-              <span class="pp-meta-val pp-mono" id="meta-id">—</span>
-            </div>
-            <div class="pp-meta-row">
-              <span class="pp-meta-key">Created</span>
-              <span class="pp-meta-val" id="meta-created">—</span>
-            </div>
-            <div class="pp-meta-row">
-              <span class="pp-meta-key">Modified</span>
-              <span class="pp-meta-val" id="meta-modified">—</span>
-            </div>
-            <div class="pp-meta-row">
-              <span class="pp-meta-key">Findings</span>
-              <span class="pp-meta-val" id="meta-findings-count">0</span>
-            </div>
+            <div class="pp-meta-row"><span class="pp-meta-key">ID</span><span class="pp-meta-val pp-mono" id="meta-id">—</span></div>
+            <div class="pp-meta-row"><span class="pp-meta-key">Created</span><span class="pp-meta-val" id="meta-created">—</span></div>
+            <div class="pp-meta-row"><span class="pp-meta-key">Modified</span><span class="pp-meta-val" id="meta-modified">—</span></div>
+            <div class="pp-meta-row"><span class="pp-meta-key">Findings</span><span class="pp-meta-val" id="meta-findings-count">0</span></div>
           </div>
 
-          <!-- API Key config -->
           <div class="pp-card pp-api-card">
-            <h3 class="pp-api-title">
-              <i class="fas fa-robot"></i> Claude API
-            </h3>
+            <h3 class="pp-api-title"><i class="fas fa-robot"></i> Claude API</h3>
             <p class="pp-api-desc">Required for AI translation of finding titles.</p>
             <div class="pp-form-group">
               <input type="password" id="field-api-key" class="pp-input pp-input-sm" placeholder="sk-ant-…" autocomplete="off" />
@@ -333,10 +273,10 @@
         </div>
       </div>
     </div>
+
   </main>
 </div>
 
-<!-- ── Toast notifications ───────────────────────────────────────────────── -->
 <div id="pp-toast-container" class="pp-toast-container"></div>
 
 <script src="{{ url_for('static', filename='js/prionpacks-storage.js') }}"></script>

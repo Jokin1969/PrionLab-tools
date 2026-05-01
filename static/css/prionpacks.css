@@ -278,6 +278,73 @@
   flex-shrink: 0;
 }
 
+/* ── Editor toolbar ──────────────────────────────────────────────────────── */
+
+.pp-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--pp-border);
+  background: var(--pp-primary);
+  gap: 12px;
+}
+
+.pp-editor-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Large back button */
+.pp-btn-back-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--pp-secondary);
+  border: 1px solid var(--pp-border-light);
+  color: var(--pp-text);
+  border-radius: var(--pp-radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.pp-btn-back-lg:hover {
+  background: #3a3a3a;
+  border-color: var(--pp-accent);
+  color: var(--pp-accent);
+}
+
+/* Title bar — full width, prominent */
+.pp-title-bar {
+  background: var(--pp-primary);
+  border-bottom: 2px solid var(--pp-accent);
+  padding: 0 24px;
+}
+
+.pp-title-input {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--pp-text);
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Crimson Pro', Georgia, serif;
+  line-height: 1.4;
+  padding: 18px 0;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.pp-title-input::placeholder { color: var(--pp-text-dim); font-weight: 400; }
+
 /* Metrics */
 .pp-metrics-grid {
   display: grid;
@@ -294,10 +361,24 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  transition: border-color .2s;
+  transition: border-color .2s, background .2s;
+  text-align: left;
 }
 
-.pp-metric-card:hover { border-color: var(--pp-border-light); }
+.pp-metric-btn {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.pp-metric-btn:hover {
+  border-color: var(--pp-accent);
+  background: var(--pp-card-hover);
+}
+
+.pp-metric-btn.active {
+  border-color: var(--pp-accent);
+  background: var(--pp-accent-glow);
+}
 
 .pp-metric-icon {
   width: 44px;
@@ -465,23 +546,6 @@
 
 /* ── Editor ─────────────────────────────────────────────────────────────── */
 
-.pp-btn-back {
-  background: none;
-  border: none;
-  color: var(--pp-text-muted);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 4px 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-  font-family: inherit;
-  transition: color .15s;
-}
-
-.pp-btn-back:hover { color: var(--pp-accent); }
-
 .pp-package-id-badge {
   background: var(--pp-secondary);
   border: 1px solid var(--pp-border-light);
@@ -496,7 +560,7 @@
   display: grid;
   grid-template-columns: 1fr 300px;
   gap: 24px;
-  padding: 24px 32px;
+  padding: 24px;
   align-items: start;
 }
 
