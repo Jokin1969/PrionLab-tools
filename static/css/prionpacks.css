@@ -223,36 +223,74 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 24px;
+  padding: 10px 20px;
   border-bottom: 1px solid var(--pp-border);
   background: var(--pp-primary);
   gap: 12px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  position: sticky;
+  top: 60px;
+  z-index: 4;
 }
 
-.pp-editor-toolbar-right { display: flex; align-items: center; gap: 8px; }
+.pp-editor-toolbar-left { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.pp-editor-toolbar-actions { display: flex; align-items: center; gap: 6px; }
 
-.pp-btn-back-lg {
+.pp-editor-pkg-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pp-accent);
+  background: var(--pp-accent-glow);
+  border: 1px solid rgba(0,127,104,0.2);
+  border-radius: 6px;
+  padding: 4px 12px;
+  letter-spacing: 0.05em;
+}
+
+.pp-autosave-status {
+  font-size: 11px;
+  color: var(--pp-text-dim);
+  min-width: 80px;
+  transition: opacity 0.3s;
+}
+
+.pp-btn-dashboard {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  gap: 7px;
+  padding: 8px 16px;
   background: var(--pp-secondary);
-  border: 1px solid var(--pp-border-light);
-  color: var(--pp-text);
+  border: 1px solid var(--pp-border);
+  color: var(--pp-text-muted);
   border-radius: var(--pp-radius-sm);
-  font-size: 14px;
+  font-size: 13px;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all .15s;
+  flex-shrink: 0;
 }
-
-.pp-btn-back-lg:hover {
-  background: #e8f5f2;
+.pp-btn-dashboard:hover {
+  background: var(--pp-accent-glow);
   border-color: var(--pp-accent);
   color: var(--pp-accent);
 }
+
+.pp-btn-danger-outline {
+  background: transparent;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+}
+.pp-btn-danger-outline:hover { background: #fee2e2; }
+
+.pp-btn-word {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  text-decoration: none;
+}
+.pp-btn-word:hover { background: #15803d; }
 
 /* Title bar */
 .pp-title-bar {
@@ -438,15 +476,35 @@
 
 /* ── Editor ──────────────────────────────────────────────────────────────── */
 
-.pp-package-id-badge {
-  background: #f0fdf8;
-  border: 1px solid #a7f3d0;
-  color: var(--pp-accent);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 10px;
+.pp-toggle-field-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.pp-toggle-field-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px dashed var(--pp-border-light);
+  color: var(--pp-text-dim);
   border-radius: var(--pp-radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pp-toggle-field-btn:hover {
+  border-color: var(--pp-accent);
+  color: var(--pp-accent);
+  background: var(--pp-accent-glow);
+}
+.pp-toggle-field-btn.active {
+  border-color: var(--pp-accent);
+  color: var(--pp-accent);
+  background: var(--pp-accent-glow);
+  border-style: solid;
 }
 
 .pp-editor-layout {

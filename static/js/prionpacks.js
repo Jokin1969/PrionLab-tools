@@ -70,11 +70,15 @@ const PrionPacks = (() => {
     _renderSidebarList();
   }
 
+  function _norm(s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
+
   function _matchesSearch(p, q) {
     if (!q) return true;
     const missingInfo = (p.gaps?.missingInfo || []).map(g => typeof g === 'string' ? g : g.text);
     const fields = [
-      p.title, p.id, p.description, p.hypothesis,
+      p.title, p.id, p.description, p.hypothesis, p.introduction, p.discussion,
       ...(p.findings || []).flatMap(f => [
         f.title, f.titleEnglish, f.description,
         ...(f.figures || []).flatMap(fig => [fig.description, fig.caption]),
@@ -83,11 +87,11 @@ const PrionPacks = (() => {
       ...missingInfo,
       ...(p.gaps?.neededExperiments || []),
     ];
-    return fields.some(v => v && String(v).toLowerCase().includes(q));
+    return fields.some(v => v && _norm(v).includes(q));
   }
 
   function _filteredPackages() {
-    const q = state.search.toLowerCase();
+    const q = _norm(state.search);
     return _packages.filter(p => {
       if (!_matchesSearch(p, q)) return false;
       const s = p.scores?.total ?? 0;
@@ -286,6 +290,12 @@ const PrionPacks = (() => {
     }
     document.getElementById('pp-send-download-link').href =
       isNew ? '#' : `/prionpacks/api/packages/${pkg.id}/docx`;
+
+    // Download word button
+    const dlWord = document.getElementById('btn-download-word');
+    dlWord.href = isNew ? '#' : `/prionpacks/api/packages/${pkg.id}/docx`;
+    dlWord.style.display = isNew ? 'none' : '';
+
     document.getElementById('meta-id').textContent = isNew ? '—' : pkg.id;
     document.getElementById('meta-created').textContent = isNew ? '—' : _fmtDate(pkg.createdAt);
     document.getElementById('meta-modified').textContent = isNew ? '—' : _fmtDate(pkg.lastModified);
@@ -309,11 +319,113 @@ const PrionPacks = (() => {
     _updateFindingGapIndicators();
     _updateScore(pkg?.scores || { hypothesis: 0, findings: 0, figures: 0, gaps: 0, total: 0 });
     _recalcScore();
+
+    // Introduction
+    const intro = pkg?.introduction || '';
+    document.getElementById('field-introduction').value = intro;
+    document.getElementById('section-introduction').style.display = intro ? '' : 'none';
+    _updateToggleBtn('btn-toggle-introduction', !!intro, 'fa-book-open', 'Introduction');
+
+    // Discussion
+    const disc = pkg?.discussion || '';
+    document.getElementById('field-discussion').value = disc;
+    document.getElementById('section-discussion').style.display = disc ? '' : 'none';
+    _updateToggleBtn('btn-toggle-discussion', !!disc, 'fa-comments', 'Discussion');
   }
 
   function _autoResize(el) {
     el.style.height = 'auto';
     el.style.height = el.scrollHeight + 'px';
+  }
+
+  /* ── Toggle helpers ────────────────────────────────────────────────────── */
+  function _updateToggleBtn(btnId, active, icon, label) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.classList.toggle('active', active);
+    btn.innerHTML = active
+      ? `<i class="fas ${icon}"></i> ${label} <i class="fas fa-times" style="font-size:10px;margin-left:2px;"></i>`
+      : `<i class="fas ${icon}"></i> ${label}`;
+  }
+
+  function _toggleIntroduction() {
+    const section = document.getElementById('section-introduction');
+    const visible = section.style.display !== 'none';
+    if (visible) {
+      if (document.getElementById('field-introduction').value.trim()) {
+        toast('Para ocultar Introduction, elimina el texto primero.', 'info');
+        return;
+      }
+      section.style.display = 'none';
+      _updateToggleBtn('btn-toggle-introduction', false, 'fa-book-open', 'Introduction');
+    } else {
+      section.style.display = '';
+      _updateToggleBtn('btn-toggle-introduction', true, 'fa-book-open', 'Introduction');
+      document.getElementById('field-introduction').focus();
+    }
+  }
+
+  function _toggleDiscussion() {
+    const section = document.getElementById('section-discussion');
+    const visible = section.style.display !== 'none';
+    if (visible) {
+      if (document.getElementById('field-discussion').value.trim()) {
+        toast('Para ocultar Discussion, elimina el texto primero.', 'info');
+        return;
+      }
+      section.style.display = 'none';
+      _updateToggleBtn('btn-toggle-discussion', false, 'fa-comments', 'Discussion');
+    } else {
+      section.style.display = '';
+      _updateToggleBtn('btn-toggle-discussion', true, 'fa-comments', 'Discussion');
+      document.getElementById('field-discussion').focus();
+    }
+  }
+
+  /* ── Autosave ──────────────────────────────────────────────────────────── */
+  let _autosaveTimer = null;
+
+  function _scheduleAutosave() {
+    if (!state.currentId) return;
+    const indicator = document.getElementById('autosave-status');
+    if (indicator) indicator.textContent = '';
+    clearTimeout(_autosaveTimer);
+    _autosaveTimer = setTimeout(_doAutosave, 1500);
+  }
+
+  async function _doAutosave() {
+    if (!state.currentId) return;
+    const title = (document.getElementById('field-title').value || '').trim();
+    if (!title) return;
+    const indicator = document.getElementById('autosave-status');
+    if (indicator) indicator.textContent = 'Guardando…';
+    const data = {
+      title,
+      description: document.getElementById('field-description').value.trim(),
+      priority: _getCurrentPriority(),
+      hypothesis: document.getElementById('field-hypothesis').value.trim(),
+      introduction: document.getElementById('field-introduction').value.trim() || null,
+      discussion: document.getElementById('field-discussion').value.trim() || null,
+      findings: _collectFindings(),
+      gaps: {
+        missingInfo: _collectGapList('gaps-missing-list'),
+        neededExperiments: _collectGapList('gaps-experiments-list'),
+      },
+      scores: _collectScores(),
+    };
+    try {
+      const saved = await PPStorage.update(state.currentId, data);
+      const idx = _packages.findIndex(p => p.id === state.currentId);
+      if (idx >= 0) _packages[idx] = saved;
+      document.getElementById('meta-modified').textContent = _fmtDate(saved.lastModified);
+      _renderSidebarList();
+      if (indicator) {
+        indicator.textContent = '✓ Guardado';
+        setTimeout(() => { if (indicator) indicator.textContent = ''; }, 2000);
+      }
+    } catch (e) {
+      if (indicator) indicator.textContent = '⚠ Error';
+    }
   }
 
   /* ── Priority ──────────────────────────────────────────────────────────── */
@@ -872,13 +984,15 @@ const PrionPacks = (() => {
 
     const btn = document.getElementById('btn-save-package');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
 
     const data = {
       title,
       description: document.getElementById('field-description').value.trim(),
       priority: _getCurrentPriority(),
       hypothesis: document.getElementById('field-hypothesis').value.trim(),
+      introduction: document.getElementById('field-introduction').value.trim() || null,
+      discussion: document.getElementById('field-discussion').value.trim() || null,
       findings: _collectFindings(),
       gaps: {
         missingInfo: _collectGapList('gaps-missing-list'),
@@ -900,6 +1014,10 @@ const PrionPacks = (() => {
       }
       document.getElementById('editor-id-badge').textContent = saved.id;
       document.getElementById('btn-delete-package').style.display = '';
+      document.getElementById('btn-send-review').style.display = '';
+      const dlWord = document.getElementById('btn-download-word');
+      dlWord.href = `/prionpacks/api/packages/${saved.id}/docx`;
+      dlWord.style.display = '';
       document.getElementById('meta-id').textContent = saved.id;
       document.getElementById('meta-created').textContent = _fmtDate(saved.createdAt);
       document.getElementById('meta-modified').textContent = _fmtDate(saved.lastModified);
@@ -910,7 +1028,7 @@ const PrionPacks = (() => {
       toast('Save failed: ' + e.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-save"></i> Save';
+      btn.innerHTML = '<i class="fas fa-save"></i> Guardar';
     }
   }
 
@@ -1044,6 +1162,11 @@ const PrionPacks = (() => {
 
     document.getElementById('btn-add-finding').addEventListener('click', addFinding);
     document.getElementById('btn-send-review').addEventListener('click', _openSendModal);
+    document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
+    document.getElementById('btn-toggle-discussion').addEventListener('click', _toggleDiscussion);
+
+    // Autosave on any input in the editor
+    document.getElementById('view-editor').addEventListener('input', _scheduleAutosave);
 
     document.querySelectorAll('.pp-priority-btn').forEach(btn => {
       btn.addEventListener('click', () => {

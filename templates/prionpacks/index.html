@@ -125,22 +125,28 @@
 
       <!-- Editor toolbar -->
       <div class="pp-editor-toolbar">
-        <button class="pp-btn pp-btn-back-lg" id="btn-back-dashboard">
-          <i class="fas fa-arrow-left"></i> Dashboard
-        </button>
-        <div class="pp-editor-toolbar-right">
-          <span class="pp-package-id-badge" id="editor-id-badge">PRP-NEW</span>
+        <div class="pp-editor-toolbar-left">
+          <span class="pp-editor-pkg-id" id="editor-id-badge">PRP-NEW</span>
+          <span class="pp-autosave-status" id="autosave-status"></span>
+        </div>
+        <div class="pp-editor-toolbar-actions">
           <span class="pp-version-badge" id="editor-version-badge" style="display:none;"></span>
-          <button class="pp-btn pp-btn-danger" id="btn-delete-package" style="display:none;">
-            <i class="fas fa-trash"></i> Delete
+          <button class="pp-btn pp-btn-sm pp-btn-danger-outline" id="btn-delete-package" style="display:none;" title="Eliminar">
+            <i class="fas fa-trash"></i>
           </button>
-          <button class="pp-btn pp-btn-send" id="btn-send-review" style="display:none;">
+          <a class="pp-btn pp-btn-sm pp-btn-word" id="btn-download-word" href="#" download style="display:none;">
+            <i class="fas fa-file-word"></i> Descargar Word
+          </a>
+          <button class="pp-btn pp-btn-sm pp-btn-send" id="btn-send-review" style="display:none;">
             <i class="fas fa-paper-plane"></i> Enviar para revisar
           </button>
-          <button class="pp-btn pp-btn-primary" id="btn-save-package">
-            <i class="fas fa-save"></i> Save
+          <button class="pp-btn pp-btn-sm pp-btn-primary" id="btn-save-package">
+            <i class="fas fa-save"></i> Guardar
           </button>
         </div>
+        <button class="pp-btn-dashboard" id="btn-back-dashboard">
+          <i class="fas fa-th-large"></i> Dashboard
+        </button>
       </div>
 
       <!-- Title bar — full width below toolbar -->
@@ -156,14 +162,13 @@
         <div class="pp-editor-form">
 
           <div class="pp-card pp-card-section">
-            <h2 class="pp-section-title"><i class="fas fa-info-circle"></i> Basic Information</h2>
-            <div class="pp-form-group">
-              <label class="pp-label">Priority</label>
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-info-circle"></i> Basic Information</h2>
               <div class="pp-priority-selector" id="priority-selector">
-                <button class="pp-priority-btn active" data-priority="none" style="background:var(--pp-priority-none);" title="No priority"></button>
-                <button class="pp-priority-btn" data-priority="low" style="background:var(--pp-priority-low);" title="Low priority"></button>
-                <button class="pp-priority-btn" data-priority="medium" style="background:var(--pp-priority-medium);" title="Medium priority"></button>
-                <button class="pp-priority-btn" data-priority="high" style="background:var(--pp-priority-high);" title="High priority"></button>
+                <button class="pp-priority-btn active" data-priority="none" style="background:var(--pp-priority-none);" title="Sin prioridad"></button>
+                <button class="pp-priority-btn" data-priority="low" style="background:var(--pp-priority-low);" title="Baja"></button>
+                <button class="pp-priority-btn" data-priority="medium" style="background:var(--pp-priority-medium);" title="Media"></button>
+                <button class="pp-priority-btn" data-priority="high" style="background:var(--pp-priority-high);" title="Alta"></button>
               </div>
             </div>
             <div class="pp-form-group">
@@ -175,6 +180,16 @@
           <div class="pp-card pp-card-section">
             <h2 class="pp-section-title"><i class="fas fa-lightbulb"></i> Main Hypothesis</h2>
             <textarea id="field-hypothesis" class="pp-textarea pp-textarea-lg" rows="5" placeholder="State the main hypothesis of this research…"></textarea>
+            <div class="pp-toggle-field-row">
+              <button class="pp-toggle-field-btn" id="btn-toggle-introduction">
+                <i class="fas fa-book-open"></i> Introduction
+              </button>
+            </div>
+          </div>
+
+          <div class="pp-card pp-card-section" id="section-introduction" style="display:none;">
+            <h2 class="pp-section-title"><i class="fas fa-book-open"></i> Introduction</h2>
+            <textarea id="field-introduction" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la introducción…"></textarea>
           </div>
 
           <div class="pp-card pp-card-section">
@@ -209,6 +224,16 @@
                 </button>
               </div>
             </div>
+            <div class="pp-toggle-field-row">
+              <button class="pp-toggle-field-btn" id="btn-toggle-discussion">
+                <i class="fas fa-comments"></i> Discussion
+              </button>
+            </div>
+          </div>
+
+          <div class="pp-card pp-card-section" id="section-discussion" style="display:none;">
+            <h2 class="pp-section-title"><i class="fas fa-comments"></i> Discussion</h2>
+            <textarea id="field-discussion" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la discusión…"></textarea>
           </div>
 
         </div>
