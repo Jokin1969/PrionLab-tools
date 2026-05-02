@@ -2208,7 +2208,44 @@
   justify-content: flex-start;
 }
 .pp-section-header > .pp-section-title {
+  margin-right: 0;
+}
+/* The clipboard button sits flush-right of the title; the auto-margin moves
+   to it so any trailing actions (jump strip, Add button…) still go to the
+   far right edge of the header. */
+.pp-section-header > .pp-section-clip-btn {
   margin-right: auto;
+}
+/* Fallback for sections that have a title but no clip button yet (during
+   the brief moment before _setupSectionClipboards runs). */
+.pp-section-header > .pp-section-title:last-child {
+  margin-right: auto;
+}
+
+/* Section clipboard button (paperclip) ─────────────────────────────────── */
+.pp-section-clip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--pp-border);
+  color: #4b5563;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: background .15s, color .15s, border-color .15s, transform .1s;
+}
+.pp-section-clip-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+  border-color: #6b7280;
+}
+.pp-section-clip-btn:active {
+  transform: scale(0.94);
 }
 .pp-collapse-btn {
   flex: 0 0 auto;

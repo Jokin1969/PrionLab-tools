@@ -673,6 +673,7 @@ const PrionPacks = (() => {
     _updateCollapseIndicators();
     _setupAnchorButtons();
     _setupSupPreviews();
+    _setupSectionClipboards();
   }
 
   /* ── Active/Inactive toggle ────────────────────────────────────────────── */
@@ -1121,6 +1122,170 @@ const PrionPacks = (() => {
       ta.dataset.supPreviewWired = '1';
       update();
     });
+  }
+
+  /* ── Clipboard button per section header ──────────────────────────────── */
+  function _setupSectionClipboards() {
+    document.querySelectorAll('.pp-card-section').forEach(card => {
+      const header = card.querySelector('.pp-section-header');
+      if (!header) return;
+      if (header.querySelector('.pp-section-clip-btn')) return;
+      const title = header.querySelector('.pp-section-title');
+      if (!title) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pp-section-clip-btn';
+      btn.title = 'Copiar el contenido de la sección al portapapeles';
+      btn.innerHTML = '<i class="fas fa-paperclip"></i>';
+      btn.addEventListener('click', async e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = _collectSectionText(card);
+        if (!text || !text.trim()) {
+          toast('La sección está vacía.', 'error');
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(text);
+          toast('Sección copiada al portapapeles.', 'success');
+        } catch {
+          const tmp = document.createElement('textarea');
+          tmp.value = text;
+          document.body.appendChild(tmp);
+          tmp.select();
+          let ok = false;
+          try { ok = document.execCommand('copy'); } catch {}
+          tmp.remove();
+          toast(ok ? 'Sección copiada al portapapeles.' : 'No se pudo copiar.', ok ? 'success' : 'error');
+        }
+      });
+      // Insert right after the title h2 so the clip sits next to the section name
+      title.insertAdjacentElement('afterend', btn);
+    });
+  }
+
+  // Plain-text extractor mirroring the structure of the Word export.
+  function _collectSectionText(card) {
+    switch (card.id) {
+      case 'section-basic':         return _collectBasicInfoText();
+      case 'section-investigations':return _collectInvestigationsText();
+      case 'section-findings':      return _collectFindingsText();
+      case 'section-gaps':          return _collectGapsText();
+      case 'section-methods':       return _collectMethodsText();
+      case 'section-references':    return _collectReferencesText();
+      default: {
+        // Fallback: any optional section card with a single textarea.
+        const ta = card.querySelector('textarea.pp-textarea');
+        return ta ? ta.value.trim() : '';
+      }
+    }
+  }
+
+  function _collectBasicInfoText() {
+    const title = document.getElementById('field-title')?.value.trim() || '';
+    const desc  = document.getElementById('field-description')?.value.trim() || '';
+    const alts  = _collectAltTitlesFromEditor();
+    let out = '';
+    if (title) out += 'Título: ' + title + '\n';
+    if (alts.length) {
+      out += '\nTítulos alternativos:\n';
+      alts.forEach(a => { out += '  - ' + a + '\n'; });
+    }
+    if (desc) out += '\nDescripción: ' + desc + '\n';
+    return out.trim();
+  }
+
+  function _collectInvestigationsText() {
+    const text  = document.getElementById('field-investigations-text')?.value.trim() || '';
+    const files = Array.from(document.querySelectorAll('#investigations-files .pp-inv-chip-name'))
+      .map(el => el.textContent.trim()).filter(Boolean);
+    let out = '';
+    if (text) out += text + '\n';
+    if (files.length) {
+      out += '\nDocumentos adjuntos:\n';
+      files.forEach(f => { out += '  - ' + f + '\n'; });
+    }
+    return out.trim();
+  }
+
+  function _collectFindingsText() {
+    const blocks = document.querySelectorAll('.pp-finding-block');
+    const parts = [];
+    blocks.forEach((block, i) => {
+      const num    = `F-${String(i + 1).padStart(2, '0')}`;
+      const title  = block.querySelector('.pp-finding-title-input')?.value.trim() || '';
+      const enRaw  = block.querySelector('.pp-finding-en-badge')?.dataset.raw?.trim() || '';
+      const desc   = block.querySelector('textarea[id^="fdesc-"]')?.value.trim() || '';
+      let p = '▶ ' + num + (title ? ' — ' + title : '') + '\n';
+      if (enRaw) p += 'EN: ' + enRaw + '\n';
+      if (desc)  p += desc + '\n';
+
+      // Figures
+      block.querySelectorAll('.pp-figure-item').forEach((fig, fi) => {
+        const figDesc = fig.querySelector('.pp-figure-input')?.value.trim() || '';
+        const figCap  = fig.querySelector('.pp-fig-cap-textarea')?.value.trim() || '';
+        let line = `Figura ${i + 1}.${fi + 1}`;
+        if (figDesc) line += '  —  ' + figDesc;
+        p += '\n' + line;
+        if (figCap) p += '\n  ' + figCap;
+        p += '\n';
+      });
+
+      // Tables
+      block.querySelectorAll('.pp-table-row').forEach((tbl, ti) => {
+        const tDesc = tbl.querySelector('.pp-table-input')?.value.trim() || '';
+        let line = `Tabla ${i + 1}.${ti + 1}`;
+        if (tDesc) line += '  —  ' + tDesc;
+        p += '\n' + line + '\n';
+      });
+
+      parts.push(p.trimEnd());
+    });
+    return parts.join('\n\n');
+  }
+
+  function _collectGapsText() {
+    const items = document.querySelectorAll('#gaps-missing-list .pp-gap-item');
+    const findings = Array.from(document.querySelectorAll('.pp-finding-block')).map((b, i) => ({
+      id:    b.dataset.id || '',
+      num:   i + 1,
+      title: b.querySelector('.pp-finding-title-input')?.value.trim() || '',
+    }));
+    const lines = [];
+    items.forEach((item, i) => {
+      const num    = `G-${String(i + 1).padStart(2, '0')}`;
+      const text   = item.querySelector('input[type="text"]')?.value.trim() || '';
+      const needed = item.querySelector('.pp-gap-needed-input')?.value.trim() || '';
+      const fid    = item.querySelector('.pp-gap-finding-select')?.value || '';
+      let p = `${num} — Missing: ${text}`;
+      if (needed) p += `\n     → Needed: ${needed}`;
+      if (fid) {
+        const f = findings.find(x => x.id === fid);
+        if (f) p += `\n     → Vinculado a F-${String(f.num).padStart(2, '0')}: ${f.title}`;
+      }
+      lines.push(p);
+    });
+    return lines.join('\n\n');
+  }
+
+  function _collectMethodsText() {
+    const items = document.querySelectorAll('#methods-list .pp-method-item');
+    const lines = [];
+    items.forEach((item, i) => {
+      const num   = `M-${String(i + 1).padStart(2, '0')}`;
+      const title = item.querySelector('.pp-method-title-input')?.value.trim() || '';
+      const body  = item.querySelector('.pp-method-body-textarea')?.value.trim() || '';
+      let p = num + (title ? ' — ' + title : '');
+      if (body) p += '\n' + body;
+      lines.push(p);
+    });
+    return lines.join('\n\n');
+  }
+
+  function _collectReferencesText() {
+    const items = Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+      .map(t => t.value.trim()).filter(Boolean);
+    return items.map((r, i) => `[${i + 1}] ${r}`).join('\n\n');
   }
 
   function _setupCollapsibleSections() {
