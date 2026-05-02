@@ -794,6 +794,20 @@
 
 .pp-figs-tables-btns { display: flex; gap: 6px; }
 
+/* Make Add Figure / Add Table buttons clearly visible even without icon font */
+.pp-figs-tables-btns .pp-btn {
+  background: #e8edf3;
+  border: 1px solid #9aabbc;
+  color: #1e3a5f;
+  border-style: solid;
+  font-weight: 600;
+}
+.pp-figs-tables-btns .pp-btn:hover {
+  background: #d0dbe8;
+  border-color: #6b8cad;
+  color: #0f2440;
+}
+
 .pp-figures-list:empty,
 .pp-tables-list:empty { display: none; }
 
@@ -1952,35 +1966,69 @@
 
 /* ── Collapsible sections ─────────────────────────────────────────────────── */
 .pp-section-header {
-  display: flex;
-  align-items: center;
+  /* Keep original space-between behaviour but let the collapse button sit
+     flush-left next to the title by giving the title an auto right-margin
+     so any trailing action group is pushed to the far right. */
   gap: 8px;
+  justify-content: flex-start;
+}
+.pp-section-header > .pp-section-title {
+  margin-right: auto;
 }
 .pp-collapse-btn {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: none;
   cursor: pointer;
   padding: 0;
-  border-radius: 4px;
-  font-size: 16px;
+  border-radius: 5px;
+  font-size: 14px;
   line-height: 1;
-  transition: background .15s, color .15s;
+  border: 1px solid #9aabbc;
+  background: #e8edf3;
+  color: #1e3a5f;
+  transition: background .15s, color .15s, border-color .15s, transform .15s;
+}
+.pp-collapse-btn::before {
+  /* fallback triangle if Font Awesome is unavailable */
+  content: '\25BC';
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+.pp-collapse-btn .fas,
+.pp-collapse-btn .far,
+.pp-collapse-btn .fab {
+  /* hide the FA icon when present so we don't double-render */
+  display: none;
+}
+.pp-card-collapsed > .pp-section-header > .pp-collapse-btn::before {
+  content: '\25B6';
 }
 .pp-collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: #d0dbe8;
+  border-color: #6b8cad;
 }
 .pp-collapse-btn--filled {
-  color: #16a34a;
+  background: #dcfce7;
+  border-color: #16a34a;
+  color: #15803d;
+}
+.pp-collapse-btn--filled:hover {
+  background: #bbf7d0;
 }
 .pp-collapse-btn--empty {
-  color: #f59e0b;
+  background: #fff7ed;
+  border-color: #f59e0b;
+  color: #c2410c;
   animation: pp-collapse-blink 1.4s ease-in-out infinite;
+}
+.pp-collapse-btn--empty:hover {
+  background: #ffedd5;
+  animation: none;
 }
 @keyframes pp-collapse-blink {
   0%, 100% { opacity: 1; transform: scale(1); }
