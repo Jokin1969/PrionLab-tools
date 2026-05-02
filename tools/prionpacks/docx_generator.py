@@ -130,6 +130,15 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         r.font.size = Pt(10); r.font.color.rgb = _DARK
         doc.add_paragraph()
 
+    # ── Methods ──────────────────────────────────────────────────────────────
+    methods = (pkg.get('methods') or '').strip()
+    if methods:
+        _section_heading(doc, 'MÉTODOS')
+        p = doc.add_paragraph()
+        r = p.add_run(methods)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
     # ── Investigations ────────────────────────────────────────────────────────
     inv = pkg.get('investigations') or {}
     inv_text  = (inv.get('text') or '').strip()
@@ -296,6 +305,15 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         _section_heading(doc, 'REFERENCIAS')
         p = doc.add_paragraph()
         r = p.add_run(references)
+        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        doc.add_paragraph()
+
+    # ── CReDiT ────────────────────────────────────────────────────────────────
+    credit = (pkg.get('credit') or '').strip()
+    if credit:
+        _section_heading(doc, 'CONTRIBUCIÓN DE AUTORÍA (CReDiT)')
+        p = doc.add_paragraph()
+        r = p.add_run(credit)
         r.font.size = Pt(10); r.font.color.rgb = _DARK
         doc.add_paragraph()
 

@@ -130,6 +130,9 @@
           <span class="pp-autosave-status" id="autosave-status"></span>
         </div>
         <div class="pp-editor-toolbar-actions">
+          <button class="pp-active-toggle is-active" id="btn-active-toggle" type="button" title="Activo">
+            <i class="fas fa-toggle-on"></i> <span class="pp-active-toggle-label">Activo</span>
+          </button>
           <span class="pp-version-badge" id="editor-version-badge" style="display:none;"></span>
           <a class="pp-btn pp-btn-sm pp-btn-word" id="btn-download-word" href="#" download style="display:none;">
             <i class="fas fa-file-word"></i> Descargar Word
@@ -189,13 +192,34 @@
               </div>
               <textarea id="field-description" class="pp-textarea" rows="3" placeholder="Brief description of this research package…"></textarea>
             </div>
-            <div class="pp-toggle-field-row">
-              <button class="pp-toggle-field-btn" id="btn-toggle-coauthors"><i class="fas fa-users"></i> Co-authors</button>
-              <button class="pp-toggle-field-btn" id="btn-toggle-affiliations"><i class="fas fa-university"></i> Affiliations</button>
-              <button class="pp-toggle-field-btn" id="btn-toggle-abstract"><i class="fas fa-align-left"></i> Abstract</button>
-              <button class="pp-toggle-field-btn" id="btn-toggle-authorsummary"><i class="fas fa-user-edit"></i> Author Summary</button>
-              <button class="pp-toggle-field-btn" id="btn-toggle-introduction"><i class="fas fa-book-open"></i> Introduction</button>
+          </div>
+
+          <!-- Investigations card -->
+          <div class="pp-card pp-card-section" id="section-investigations">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-search"></i> Investigations</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-investigations-text" data-ai-label="Investigations" title="Incluir como contexto para Claude">AI</button>
+              </div>
             </div>
+            <textarea id="field-investigations-text" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Contexto de la investigación, experimentos previos, datos preliminares…"></textarea>
+            <div class="pp-inv-files-area">
+              <div id="investigations-files" class="pp-inv-files-list"></div>
+              <label class="pp-btn pp-btn-sm pp-btn-ghost pp-inv-attach-btn" for="pp-inv-file-input">
+                <i class="fas fa-paperclip"></i> Adjuntar documento
+              </label>
+              <input type="file" id="pp-inv-file-input" accept=".pdf,.doc,.docx" style="display:none" multiple />
+            </div>
+          </div>
+
+          <!-- Optional sections toggle row (basic info group) -->
+          <div class="pp-toggle-field-row pp-toggle-row-standalone">
+            <button class="pp-toggle-field-btn" id="btn-toggle-coauthors"><i class="fas fa-users"></i> Co-authors</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-affiliations"><i class="fas fa-university"></i> Affiliations</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-abstract"><i class="fas fa-align-left"></i> Abstract</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-authorsummary"><i class="fas fa-user-edit"></i> Author Summary</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-introduction"><i class="fas fa-book-open"></i> Introduction</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-methods"><i class="fas fa-flask-vial"></i> Methods</button>
           </div>
 
           <!-- Co-authors section -->
@@ -268,22 +292,18 @@
             <textarea id="field-introduction" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la introducción…"></textarea>
           </div>
 
-          <!-- Investigations card -->
-          <div class="pp-card pp-card-section" id="section-investigations">
+          <!-- Methods section -->
+          <div class="pp-card pp-card-section" id="section-methods" style="display:none;">
             <div class="pp-section-header">
-              <h2 class="pp-section-title"><i class="fas fa-search"></i> Investigations</h2>
+              <h2 class="pp-section-title"><i class="fas fa-flask-vial"></i> Methods</h2>
               <div class="pp-field-ai-actions">
-                <button class="pp-ai-btn" data-field-id="field-investigations-text" data-ai-label="Investigations" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-ai-btn" data-field-id="field-methods" data-ai-label="Métodos" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-methods" data-source-label="Métodos" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
               </div>
             </div>
-            <textarea id="field-investigations-text" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Contexto de la investigación, experimentos previos, datos preliminares…"></textarea>
-            <div class="pp-inv-files-area">
-              <div id="investigations-files" class="pp-inv-files-list"></div>
-              <label class="pp-btn pp-btn-sm pp-btn-ghost pp-inv-attach-btn" for="pp-inv-file-input">
-                <i class="fas fa-paperclip"></i> Adjuntar documento
-              </label>
-              <input type="file" id="pp-inv-file-input" accept=".pdf,.doc,.docx" style="display:none" multiple />
-            </div>
+            <textarea id="field-methods" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Describe los métodos…"></textarea>
           </div>
 
           <!-- Main Findings card -->
@@ -312,6 +332,7 @@
               </button>
             </div>
             <div class="pp-toggle-field-row">
+              <button class="pp-toggle-field-btn" id="btn-toggle-credit"><i class="fas fa-list-check"></i> CReDiT</button>
               <button class="pp-toggle-field-btn" id="btn-toggle-references"><i class="fas fa-list"></i> References</button>
               <button class="pp-toggle-field-btn" id="btn-toggle-conflicts"><i class="fas fa-balance-scale"></i> Conflicts of interest</button>
               <button class="pp-toggle-field-btn" id="btn-toggle-funding"><i class="fas fa-coins"></i> Funding</button>
@@ -388,6 +409,14 @@
               </div>
             </div>
             <textarea id="field-references" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Lista las referencias…"></textarea>
+          </div>
+
+          <!-- CReDiT section (no AI / Claude buttons) -->
+          <div class="pp-card pp-card-section" id="section-credit" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-list-check"></i> CReDiT</h2>
+            </div>
+            <textarea id="field-credit" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Contribución de autoría (CReDiT)…"></textarea>
           </div>
 
         </div>
