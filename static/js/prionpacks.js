@@ -850,7 +850,7 @@ const PrionPacks = (() => {
       containerId: 'findings-jump',
       sectionId:   'section-findings',
       itemSelector:'.pp-finding-block',
-      itemCollapsedClass: null,
+      itemCollapsedClass: 'pp-finding-collapsed',
       prefix: 'F-',
     });
     _refreshJumpButtonsFor({
@@ -871,7 +871,7 @@ const PrionPacks = (() => {
       containerId: 'gaps-jump',
       sectionId:   'section-gaps',
       itemSelector:'#gaps-missing-list .pp-gap-item',
-      itemCollapsedClass: null,
+      itemCollapsedClass: 'pp-gap-collapsed',
       prefix: 'G-',
     });
   }
@@ -1582,6 +1582,7 @@ const PrionPacks = (() => {
     div.innerHTML = `
       <div class="pp-finding-header">
         <i class="fas fa-grip-vertical pp-drag-handle"></i>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-finding-collapse-btn" title="Plegar / desplegar finding"></button>
         <span class="pp-finding-number">F-${String(num).padStart(2,'0')}</span>
         <input type="text" id="ftitle-${finding.id}" class="pp-finding-title-input" placeholder="Finding title…" value="${_esc(finding.title||'')}" />
         <button class="pp-ai-btn" data-field-id="ftitle-${finding.id}" data-ai-label="Finding título: ${_esc(finding.title||'(sin título)')}" title="Incluir título como contexto para Claude">AI</button>
@@ -1961,6 +1962,7 @@ const PrionPacks = (() => {
     const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-gap-collapse-btn" title="Plegar / desplegar gap" onclick="this.closest('.pp-gap-item').classList.toggle('pp-gap-collapsed');event.stopPropagation();"></button>
         <span class="pp-gap-number"></span>
         <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
         <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
@@ -2528,6 +2530,13 @@ const PrionPacks = (() => {
 
     // Event delegation for dynamic findings AI toggles and Claude buttons
     document.getElementById('findings-container').addEventListener('click', e => {
+      const collapseBtn = e.target.closest('.pp-finding-collapse-btn');
+      if (collapseBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        collapseBtn.closest('.pp-finding-block')?.classList.toggle('pp-finding-collapsed');
+        return;
+      }
       const aiBtn = e.target.closest('.pp-ai-btn');
       if (aiBtn) { aiBtn.classList.toggle('active'); return; }
       const claudeBtn = e.target.closest('.pp-claude-finding-btn');

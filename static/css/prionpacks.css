@@ -2280,8 +2280,18 @@
 .pp-card-collapsed > .pp-section-header > .pp-collapse-btn::before,
 .pp-alt-titles-collapsed > .pp-label-ai-row > .pp-collapse-btn::before,
 .pp-reference-collapsed > .pp-reference-header > .pp-collapse-btn::before,
-.pp-method-collapsed   > .pp-method-header   > .pp-collapse-btn::before {
+.pp-method-collapsed   > .pp-method-header   > .pp-collapse-btn::before,
+.pp-finding-collapsed  > .pp-finding-header  > .pp-collapse-btn::before,
+.pp-gap-collapsed      > .pp-gap-item-top    > .pp-collapse-btn::before {
   content: '\25B6';
+}
+
+/* Per-item collapsed bodies */
+.pp-finding-block.pp-finding-collapsed > *:not(.pp-finding-header) {
+  display: none !important;
+}
+.pp-gap-item.pp-gap-collapsed > *:not(.pp-gap-item-top) {
+  display: none !important;
 }
 .pp-collapse-btn:hover {
   background: #d0dbe8;
