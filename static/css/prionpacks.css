@@ -355,25 +355,7 @@
   font-style: italic;
 }
 
-/* ── Alternative titles ──────────────────────────────────────────────────── */
-.pp-alt-titles-display {
-  padding: 0 0 14px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.pp-alt-titles-display:empty { display: none; }
-.pp-alt-title-display-item {
-  font-family: 'Crimson Pro', Georgia, serif;
-  font-style: italic;
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--pp-text-dim);
-  line-height: 1.4;
-  padding-left: 14px;
-  border-left: 3px solid var(--pp-accent);
-}
-
+/* ── Alternative titles (editor only — not shown in the top title bar) ─── */
 .pp-alt-titles-list { display: flex; flex-direction: column; gap: 6px; }
 .pp-alt-titles-list:empty { margin: 0; }
 .pp-alt-title-row {

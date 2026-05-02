@@ -762,18 +762,9 @@ const PrionPacks = (() => {
       .filter(Boolean);
   }
 
-  function _updateAltTitlesDisplay(altTitles) {
-    const wrap = document.getElementById('alt-titles-display');
-    if (!wrap) return;
-    wrap.innerHTML = '';
-    (altTitles || []).forEach(t => {
-      const trimmed = (t || '').trim();
-      if (!trimmed) return;
-      const div = document.createElement('div');
-      div.className = 'pp-alt-title-display-item';
-      div.textContent = trimmed;
-      wrap.appendChild(div);
-    });
+  function _updateAltTitlesDisplay(_altTitles) {
+    // Alternative titles are intentionally not shown in the top title bar.
+    // They live in the Basic Info editor and are exported to the DOCX.
   }
 
   function _addAltTitleRow() {
