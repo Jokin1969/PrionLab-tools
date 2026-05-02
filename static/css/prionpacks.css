@@ -780,6 +780,34 @@
   background: #126060;
   border-color: #126060;
 }
+
+/* ── Live superscript preview shown below textareas with ^...^ markers ────── */
+.pp-sup-preview {
+  margin-top: 6px;
+  padding: 8px 10px 9px;
+  background: #f0fdf8;
+  border: 1px dashed #b8e6cf;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--pp-text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.pp-sup-preview-label {
+  display: block;
+  margin-bottom: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .6px;
+  color: #16a34a;
+  text-transform: uppercase;
+}
+.pp-sup-preview sup {
+  font-size: 0.75em;
+  color: var(--pp-accent);
+}
 .pp-input-sm  { width: auto; min-width: 70px; padding: 6px 10px; font-size: 13px; }
 .pp-select-sm { width: auto; padding: 6px 10px; font-size: 13px; }
 

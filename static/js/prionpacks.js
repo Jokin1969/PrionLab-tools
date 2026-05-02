@@ -672,6 +672,7 @@ const PrionPacks = (() => {
     _setupCollapsibleSections();
     _updateCollapseIndicators();
     _setupAnchorButtons();
+    _setupSupPreviews();
   }
 
   /* ── Active/Inactive toggle ────────────────────────────────────────────── */
@@ -726,6 +727,7 @@ const PrionPacks = (() => {
     list.innerHTML = '';
     (refs || []).forEach((r, idx) => list.appendChild(_createReferenceItem(r, idx)));
     _setupAnchorButtons(list);
+    _setupSupPreviews(list);
     _updateReferencesCount();
     _refreshAllJumpButtons();
   }
@@ -827,6 +829,7 @@ const PrionPacks = (() => {
     const item = _createReferenceItem('', idx);
     list.appendChild(item);
     _setupAnchorButtons(item);
+    _setupSupPreviews(item);
     if (focus) item.querySelector('textarea').focus();
     _scheduleAutosave();
     _updateCollapseIndicators();
@@ -925,6 +928,7 @@ const PrionPacks = (() => {
     list.innerHTML = '';
     (methods || []).forEach((m, idx) => list.appendChild(_createMethodItem(m, idx)));
     _setupAnchorButtons(list);
+    _setupSupPreviews(list);
     _refreshAllJumpButtons();
   }
 
@@ -1002,6 +1006,7 @@ const PrionPacks = (() => {
     const item = _createMethodItem({ title: '', body: '' }, idx);
     list.appendChild(item);
     _setupAnchorButtons(item);
+    _setupSupPreviews(item);
     if (focus) item.querySelector('input').focus();
     _scheduleAutosave();
     _updateCollapseIndicators();
@@ -1078,6 +1083,43 @@ const PrionPacks = (() => {
           toast('Anclado para mostrar todo el texto: ' + px + fitFlag + '.', 'success');
         }
       });
+    });
+  }
+
+  /* ── Live superscript preview underneath textareas ─────────────────────── */
+  // <textarea> elements can only show plain text, so when the user types
+  // PrP^Sc^ the markers stay literal in the editor. To give live feedback
+  // we attach a small preview block under each wrapped textarea that only
+  // appears when at least one ^xxx^ pattern is detected.
+  function _setupSupPreviews(scope) {
+    const root = scope || document;
+    const supRe = /\^\S[^\^\n]*?\^/;
+    root.querySelectorAll('textarea.pp-textarea').forEach(ta => {
+      if (ta.dataset.supPreviewWired === '1') return;
+      const wrap = ta.closest('.pp-textarea-wrap');
+      if (!wrap) return;
+
+      let preview = wrap.querySelector(':scope > .pp-sup-preview');
+      if (!preview) {
+        preview = document.createElement('div');
+        preview.className = 'pp-sup-preview';
+        preview.style.display = 'none';
+        wrap.appendChild(preview);
+      }
+
+      const update = () => {
+        const text = ta.value || '';
+        if (!supRe.test(text)) {
+          preview.style.display = 'none';
+          return;
+        }
+        preview.innerHTML = '<span class="pp-sup-preview-label">Vista previa con superíndice</span>' + _supHtml(text);
+        preview.style.display = '';
+      };
+
+      ta.addEventListener('input', update);
+      ta.dataset.supPreviewWired = '1';
+      update();
     });
   }
 
@@ -1360,6 +1402,7 @@ const PrionPacks = (() => {
     _initDragDrop(container);
     _updateCollapseIndicators();
     _setupAnchorButtons(container);
+    _setupSupPreviews(container);
     _refreshAllJumpButtons();
   }
 
@@ -2004,6 +2047,7 @@ const PrionPacks = (() => {
     const block = _createFindingBlock({id:'f'+Date.now(),title:'',titleEnglish:'',description:'',figures:[],tables:[]}, num);
     container.appendChild(block);
     _setupAnchorButtons(block);
+    _setupSupPreviews(block);
     document.getElementById('findings-empty').style.display = 'none';
     block.querySelector('.pp-finding-title-input').focus();
     _initDragDrop(container);
