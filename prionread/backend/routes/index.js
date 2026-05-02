@@ -4,6 +4,8 @@ const router = Router();
 router.use('/auth', require('./auth'));
 router.use('/users', require('./users'));
 router.use('/articles', require('./articles'));
+router.use('/assignments', require('./assignments'));
+router.use('/my-articles', require('./student'));
 
 router.get('/', (_req, res) => res.json({ message: 'PrionRead API v1' }));
 
