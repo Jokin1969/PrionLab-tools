@@ -209,6 +209,36 @@
   padding: 0 32px 40px;
   max-width: 980px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.pp-doc-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pp-doc-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pp-doc-block-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pp-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pp-doc-block-title i { color: var(--pp-accent); }
+.pp-doc-block-desc {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--pp-text-muted);
+  line-height: 1.5;
 }
 .pp-docs-content {
   background: #fff;

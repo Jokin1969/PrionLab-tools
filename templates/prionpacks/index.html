@@ -507,12 +507,9 @@
       <div class="pp-page-header">
         <div>
           <h1 class="pp-page-title"><i class="fas fa-book"></i> PrionPacks Documentation</h1>
-          <p class="pp-page-subtitle">Descripción general de la herramienta — pensada como contexto para asistentes de IA.</p>
+          <p class="pp-page-subtitle">Prompts y descripciones reutilizables — copia y pega en cualquier asistente de IA.</p>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="pp-btn pp-btn-primary" id="btn-copy-docs" title="Copiar todo el texto al portapapeles">
-            <i class="fas fa-copy"></i> Copy to clipboard
-          </button>
           <button class="pp-btn pp-btn-secondary" id="btn-docs-back" title="Volver al dashboard">
             <i class="fas fa-arrow-left"></i> Back
           </button>
@@ -520,7 +517,17 @@
       </div>
 
       <div class="pp-docs-wrapper">
-        <pre class="pp-docs-content" id="pp-docs-content"># PrionPacks — Manual de contexto para asistentes de IA
+
+        <!-- Doc 1 — PrionPacks general overview -->
+        <div class="pp-doc-block">
+          <div class="pp-doc-block-header">
+            <h2 class="pp-doc-block-title"><i class="fas fa-cube"></i> Contexto general de PrionPacks</h2>
+            <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-prionpacks-overview" title="Copiar este texto al portapapeles">
+              <i class="fas fa-copy"></i> Copy to clipboard
+            </button>
+          </div>
+          <p class="pp-doc-block-desc">Descripción completa de PrionPacks (campos, flujos, salidas) para dar contexto a una IA antes de pedirle ayuda.</p>
+          <pre class="pp-docs-content" id="doc-prionpacks-overview"># PrionPacks — Manual de contexto para asistentes de IA
 
 ## Qué es
 
@@ -607,6 +614,47 @@ El usuario es investigador en biología de priones / neurodegeneración (CIC bio
 6. Cerrar el paquete con CReDiT, References (con DOIs auto-detectados), Funding y Acknowledgments antes de la submission.
 
 El asistente debe asumir que el contenido suele estar en español o inglés científico, que los temas son técnicos (α-synuclein, tau, PrPsc, ECJ, RT-QuIC, modelos transgénicos, IHC, EM…) y que el tono buscado es el de un manuscrito científico en revistas de neurociencia/neurodegeneración.</pre>
+        </div>
+
+        <!-- Doc 2 — Article summarizer prompt -->
+        <div class="pp-doc-block">
+          <div class="pp-doc-block-header">
+            <h2 class="pp-doc-block-title"><i class="fas fa-file-alt"></i> Resumen de artículo científico</h2>
+            <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-article-summary" title="Copiar este prompt al portapapeles">
+              <i class="fas fa-copy"></i> Copy to clipboard
+            </button>
+          </div>
+          <p class="pp-doc-block-desc">Pega este prompt en un asistente de IA y a continuación el texto / PDF del artículo. Devolverá título, autores, DOI y un resumen detallado en español, listo para pegarlo en el campo Investigations de un PrionPack.</p>
+          <pre class="pp-docs-content" id="doc-article-summary">Eres un asistente científico especializado en biología de priones, neurodegeneración y neurociencia traslacional. Voy a pasarte el texto completo (o el PDF) de un artículo científico y necesito que me devuelvas un resumen estructurado en español.
+
+# Formato de salida (obligatorio)
+
+Devuelve EXACTAMENTE estos cuatro bloques, en este orden, sin añadir nada antes ni después, sin viñetas ni emojis, sin envolver el título entre comillas:
+
+Título: &lt;título completo del artículo, en su idioma original&gt;
+Autores: &lt;lista de autores tal y como aparecen en el artículo, con sus iniciales y grados académicos cuando se indiquen (BSc, MD, PhD, DPhil…), separados por punto y coma&gt;
+
+DOI: &lt;DOI del artículo en formato 10.xxxx/yyyy. Si no aparece en el texto que te he dado, escribe literalmente: "El texto proporcionado no incluye el DOI del artículo."&gt;
+
+Resumen:
+&lt;resumen en español de entre 2 y 4 párrafos, con un tono de manuscrito científico de neurociencia / neurodegeneración. Debe contener:
+
+1. Un primer párrafo de CONTEXTO Y ANTECEDENTES que sitúe el problema en el campo, recogiendo los conceptos previos relevantes y la literatura citada por los autores (mutaciones conocidas, técnicas, modelos animales, hipótesis previas, etc.).
+
+2. Uno o dos párrafos describiendo los HALLAZGOS PRINCIPALES del artículo: caso clínico, datos experimentales, cohortes, ensayos, técnicas empleadas y resultados cuantitativos cuando los haya. Sé específico con cifras, p-valores, nombres de mutaciones, regiones cerebrales, anticuerpos, modelos transgénicos, etc.
+
+3. Un párrafo final con la INTERPRETACIÓN de los autores y la CONCLUSIÓN principal: qué aporta el trabajo al diagnóstico, a la clasificación de la enfermedad, a la fisiopatología o a las futuras líneas de investigación.
+
+Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, PrPC, CJD (o ECJ), GSS, FFI, RT-QuIC, octarrepetido, OPRI, vCJD, etc. No traduzcas siglas ni nombres de genes. Traduce al español de España todo lo demás. No abrevies en exceso: el objetivo es que el resumen sirva como nota de lectura y como entrada en el campo "Investigations" de un paquete PrionPack, así que prefiere ser detallado a ser breve.&gt;
+
+# Reglas adicionales
+
+- Si el texto que te paso es solo el abstract o partes sueltas, hazme el mejor resumen posible con lo que hay y NO inventes datos que no estén en el material.
+- Si detectas que el artículo está en inglés, traduce todo el contenido del resumen al español manteniendo la terminología técnica.
+- Si encuentras varios DOI en el texto, devuelve únicamente el del artículo principal (no el de las referencias).
+- No añadas ninguna línea de "espero que te sirva", ni saludos, ni meta-comentarios. Solo los cuatro bloques.</pre>
+        </div>
+
       </div>
     </div>
 

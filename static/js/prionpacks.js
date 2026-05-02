@@ -1682,24 +1682,29 @@ const PrionPacks = (() => {
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));
     document.getElementById('btn-docs-back')?.addEventListener('click', showDashboard);
-    document.getElementById('btn-copy-docs')?.addEventListener('click', async () => {
-      const txt = document.getElementById('pp-docs-content')?.textContent || '';
-      try {
-        await navigator.clipboard.writeText(txt);
-        toast('Documentación copiada al portapapeles.', 'success');
-      } catch (e) {
+    // Delegated copy handler for any documentation block
+    document.querySelectorAll('.pp-doc-copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const targetId = btn.dataset.target;
+        const txt = document.getElementById(targetId)?.textContent || '';
+        if (!txt) { toast('No hay contenido que copiar.', 'error'); return; }
         try {
-          const tmp = document.createElement('textarea');
-          tmp.value = txt;
-          document.body.appendChild(tmp);
-          tmp.select();
-          document.execCommand('copy');
-          tmp.remove();
-          toast('Documentación copiada al portapapeles.', 'success');
-        } catch {
-          toast('No se pudo copiar. Selecciona el texto manualmente.', 'error');
+          await navigator.clipboard.writeText(txt);
+          toast('Texto copiado al portapapeles.', 'success');
+        } catch (e) {
+          try {
+            const tmp = document.createElement('textarea');
+            tmp.value = txt;
+            document.body.appendChild(tmp);
+            tmp.select();
+            document.execCommand('copy');
+            tmp.remove();
+            toast('Texto copiado al portapapeles.', 'success');
+          } catch {
+            toast('No se pudo copiar. Selecciona el texto manualmente.', 'error');
+          }
         }
-      }
+      });
     });
 
     document.getElementById('pp-search').addEventListener('input', e => {
