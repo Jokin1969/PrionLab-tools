@@ -37,33 +37,63 @@ const PPApi = (() => {
     const apiKey = PPStorage.getApiKey();
     if (!apiKey) throw new Error('No API key configured. Please set your Claude API key in the panel on the right.');
 
-    const response = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 300,
-        system: 'You are a professional scientific translator working for a neuroscience laboratory (prion diseases, neurodegeneration). The user provides a finding title in Spanish and you reply with the English translation only — no quotes, no explanation, just the translated phrase.',
-        messages: [{
-          role: 'user',
-          content: text,
-        }],
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      const msg = err.error?.message || `HTTP ${response.status}`;
-      throw new Error(msg);
+    // Two-pass strategy. Sonnet 4.5 sometimes returns stop_reason=refusal on
+    // bare translation requests; an assistant prefill ("<english>") strongly
+    // anchors the model to continue the translation rather than refuse.
+    async function _call(body) {
+      const response = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${response.status}`);
+      }
+      return response.json();
     }
 
-    const data = await response.json();
-    return _extractText(data).trim().replace(/^["']|["']$/g, '');
+    const body1 = {
+      model: MODEL,
+      max_tokens: 400,
+      system: 'You are a bilingual scientific copy-editor in a neurology / prion-disease research group at CIC bioGUNE. Your job is to render the user-supplied research finding into clear English suitable for a journal manuscript. If the input is already in English you return it unchanged.',
+      messages: [
+        { role: 'user',      content: `<source>${text}</source>\n\nReturn the English version inside <english>…</english>.` },
+        { role: 'assistant', content: '<english>' },
+      ],
+      stop_sequences: ['</english>'],
+    };
+
+    let data;
+    try {
+      data = await _call(body1);
+    } catch (e) {
+      throw e;
+    }
+
+    if (data.stop_reason === 'refusal') {
+      // Fallback: try again without the system prompt, simpler framing.
+      const body2 = {
+        model: MODEL,
+        max_tokens: 400,
+        messages: [
+          { role: 'user',      content: `Translate to English (return only the translation):\n\n${text}` },
+          { role: 'assistant', content: 'English: ' },
+        ],
+      };
+      data = await _call(body2);
+    }
+
+    let out = _extractText(data).trim();
+    // Strip any residual <english> tag the model may have echoed
+    out = out.replace(/^<\/?english[^>]*>/gi, '').replace(/<\/english>\s*$/i, '').trim();
+    out = out.replace(/^["']|["']$/g, '').replace(/^English:\s*/i, '').trim();
+    return out;
   }
 
   async function askClaude(context, fieldLabel, fieldContent, imageDataUrl = null, documents = []) {

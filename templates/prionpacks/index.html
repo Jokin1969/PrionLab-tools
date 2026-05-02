@@ -420,19 +420,15 @@
             <textarea id="field-credit" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Contribución de autoría (CReDiT)…"></textarea>
           </div>
 
-          <!-- References section -->
+          <!-- References section — multi-field -->
           <div class="pp-card pp-card-section" id="section-references" style="display:none;">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-list"></i> References</h2>
-              <div class="pp-field-ai-actions">
-                <button class="pp-ai-btn" data-field-id="field-references" data-ai-label="Referencias" title="Incluir como contexto para Claude">AI</button>
-                <button class="pp-claude-ask-btn" data-source-id="field-references" data-source-label="Referencias" title="Preguntar a Claude">
-                  <i class="fas fa-robot"></i> Claude
-                </button>
-              </div>
+              <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-reference" type="button">
+                <i class="fas fa-plus"></i> Add Reference
+              </button>
             </div>
-            <textarea id="field-references" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Lista las referencias…"></textarea>
-            <div id="references-doi-chips" class="pp-doi-chips"></div>
+            <div id="references-list" class="pp-references-list"></div>
           </div>
 
         </div>

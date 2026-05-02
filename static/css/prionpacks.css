@@ -2159,6 +2159,60 @@
   padding-bottom: 12px;
 }
 
+/* ── References (multi-field) ────────────────────────────────────────────── */
+.pp-references-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pp-reference-item {
+  border: 1px solid var(--pp-border);
+  border-left: 3px solid var(--pp-accent);
+  border-radius: var(--pp-radius-sm);
+  padding: 10px 12px;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pp-reference-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pp-reference-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pp-accent);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-right: auto;
+}
+.pp-reference-textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.pp-reference-item .pp-btn-icon.btn-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #e8edf3;
+  border: 1px solid #9aabbc;
+  color: #1e3a5f;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.pp-reference-item .pp-btn-icon.btn-remove:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
 /* ── DOI chip row ─────────────────────────────────────────────────────────── */
 .pp-doi-chips {
   display: flex;

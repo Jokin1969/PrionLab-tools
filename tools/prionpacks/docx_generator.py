@@ -313,13 +313,22 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         doc.add_paragraph()
 
     # ── References ────────────────────────────────────────────────────────────
-    references = (pkg.get('references') or '').strip()
-    if references:
+    refs_raw = pkg.get('references')
+    if isinstance(refs_raw, list):
+        refs_list = [str(r).strip() for r in refs_raw if isinstance(r, str) and r.strip()]
+    elif isinstance(refs_raw, str) and refs_raw.strip():
+        refs_list = [refs_raw.strip()]
+    else:
+        refs_list = []
+    if refs_list:
         _section_heading(doc, 'REFERENCIAS')
-        p = doc.add_paragraph()
-        r = p.add_run(references)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
-        doc.add_paragraph()
+        for i, ref in enumerate(refs_list, 1):
+            p = doc.add_paragraph()
+            r_num = p.add_run(f'[{i}] ')
+            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = _TEAL
+            r_body = p.add_run(ref)
+            r_body.font.size = Pt(10); r_body.font.color.rgb = _DARK
+            doc.add_paragraph()
 
     # ── CReDiT ────────────────────────────────────────────────────────────────
     credit = (pkg.get('credit') or '').strip()

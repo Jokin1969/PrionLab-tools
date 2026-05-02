@@ -592,7 +592,6 @@ const PrionPacks = (() => {
       { field: 'field-funding',           section: 'section-funding',        btn: 'btn-toggle-funding',        icon: 'fa-coins',         label: 'Funding',             key: 'funding' },
       { field: 'field-conflictsofinterest',section:'section-conflicts',      btn: 'btn-toggle-conflicts',      icon: 'fa-balance-scale', label: 'Conflicts of interest', key: 'conflictsOfInterest' },
       { field: 'field-credit',            section: 'section-credit',         btn: 'btn-toggle-credit',         icon: 'fa-list-check',    label: 'CReDiT',              key: 'credit' },
-      { field: 'field-references',        section: 'section-references',     btn: 'btn-toggle-references',     icon: 'fa-list',          label: 'References',          key: 'references' },
     ];
     optionalSectionsGaps.forEach(({ field, section, btn, icon, label, key }) => {
       const val = pkg?.[key] || '';
@@ -602,8 +601,16 @@ const PrionPacks = (() => {
       _updateToggleBtn(btn, visible, icon, label);
     });
 
-    // DOI chips for references field
-    _updateDoiChips();
+    // References — multi-field. Backward compat: legacy single-string value
+    // is wrapped into a 1-element array so it still loads cleanly.
+    const rawRefs = pkg?.references;
+    let refs = [];
+    if (Array.isArray(rawRefs)) refs = rawRefs.filter(r => r && String(r).trim());
+    else if (typeof rawRefs === 'string' && rawRefs.trim()) refs = [rawRefs.trim()];
+    _renderReferencesList(refs);
+    const refsVisible = refs.length > 0;
+    document.getElementById('section-references').style.display = refsVisible ? '' : 'none';
+    _updateToggleBtn('btn-toggle-references', refsVisible, 'fa-list', 'References');
 
     // Investigations
     const inv = pkg?.investigations || {};
@@ -646,13 +653,12 @@ const PrionPacks = (() => {
     return !btn || btn.classList.contains('is-active');
   }
 
-  /* ── DOI chip renderer ─────────────────────────────────────────────────── */
-  function _updateDoiChips() {
-    const container = document.getElementById('references-doi-chips');
+  /* ── References (multi-field with per-field DOI chips & AI toggles) ───── */
+  const _DOI_RE = /\b10\.\d{4,}\/[^\s,;)>\]]+/g;
+
+  function _renderDoiChipsFor(textarea, container) {
     if (!container) return;
-    const text = document.getElementById('field-references').value;
-    const doiRegex = /\b10\.\d{4,}\/[^\s,;)>\]]+/g;
-    const matches = text.match(doiRegex) || [];
+    const matches = (textarea.value || '').match(_DOI_RE) || [];
     const unique = [...new Set(matches)];
     container.innerHTML = '';
     unique.forEach(doi => {
@@ -665,6 +671,72 @@ const PrionPacks = (() => {
       a.textContent = doi;
       container.appendChild(a);
     });
+  }
+
+  function _renderReferencesList(refs) {
+    const list = document.getElementById('references-list');
+    if (!list) return;
+    list.innerHTML = '';
+    (refs || []).forEach((r, idx) => list.appendChild(_createReferenceItem(r, idx)));
+  }
+
+  function _createReferenceItem(text, idx) {
+    const id      = `field-reference-${idx}`;
+    const chipsId = `reference-doi-chips-${idx}`;
+    const div = document.createElement('div');
+    div.className = 'pp-reference-item';
+    div.innerHTML = `
+      <div class="pp-reference-header">
+        <span class="pp-reference-number">Ref ${idx + 1}</span>
+        <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Referencia ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
+        <button type="button" class="pp-btn-icon btn-remove" title="Eliminar referencia"><i class="fas fa-trash"></i></button>
+      </div>
+      <textarea id="${id}" class="pp-textarea pp-reference-textarea" rows="6" placeholder="Pega aquí una referencia (título, autores, DOI, resumen…)"></textarea>
+      <div id="${chipsId}" class="pp-doi-chips"></div>`;
+    const ta    = div.querySelector('textarea');
+    const chips = div.querySelector('.pp-doi-chips');
+    ta.value = text || '';
+    ta.addEventListener('input', () => _renderDoiChipsFor(ta, chips));
+    div.querySelector('.btn-remove').addEventListener('click', () => {
+      div.remove();
+      _renumberReferences();
+      _scheduleAutosave();
+      _updateCollapseIndicators();
+    });
+    _renderDoiChipsFor(ta, chips);
+    return div;
+  }
+
+  function _renumberReferences() {
+    document.querySelectorAll('#references-list .pp-reference-item').forEach((item, i) => {
+      const id      = `field-reference-${i}`;
+      const chipsId = `reference-doi-chips-${i}`;
+      item.querySelector('.pp-reference-number').textContent = `Ref ${i + 1}`;
+      const ta    = item.querySelector('textarea');
+      const aiBtn = item.querySelector('.pp-ai-btn');
+      const chips = item.querySelector('.pp-doi-chips');
+      ta.id = id;
+      aiBtn.dataset.fieldId = id;
+      aiBtn.dataset.aiLabel = `Referencia ${i + 1}`;
+      chips.id = chipsId;
+    });
+  }
+
+  function _addReference(focus = true) {
+    const list = document.getElementById('references-list');
+    if (!list) return;
+    const idx  = list.children.length;
+    const item = _createReferenceItem('', idx);
+    list.appendChild(item);
+    if (focus) item.querySelector('textarea').focus();
+    _scheduleAutosave();
+    _updateCollapseIndicators();
+  }
+
+  function _collectReferences() {
+    return Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+      .map(t => (t.value || '').trim())
+      .filter(Boolean);
   }
 
   /* ── Collapsible sections ──────────────────────────────────────────────── */
@@ -862,7 +934,7 @@ const PrionPacks = (() => {
       acknowledgments: document.getElementById('field-acknowledgments').value.trim() || null,
       funding: document.getElementById('field-funding').value.trim() || null,
       conflictsOfInterest: document.getElementById('field-conflictsofinterest').value.trim() || null,
-      references: document.getElementById('field-references').value.trim() || null,
+      references: _collectReferences(),
       credit: document.getElementById('field-credit').value.trim() || null,
       investigations: {
         text:  document.getElementById('field-investigations-text').value.trim() || '',
@@ -1454,16 +1526,24 @@ const PrionPacks = (() => {
       { id: 'field-acknowledgments',      minChars: 20 },
       { id: 'field-funding',              minChars: 20 },
       { id: 'field-conflictsofinterest',  minChars: 10 },
-      { id: 'field-references',           minChars: 30 },
       { id: 'field-credit',               minChars: 20 },
     ];
     let closingDone = 0;
+    // References is multi-field — count it as fully done if there is at least
+    // one non-empty reference, half if the section exists but is empty.
+    const refsCount = document.querySelectorAll('#references-list .pp-reference-textarea').length;
+    const refsFilled = Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+      .filter(t => (t.value || '').trim().length >= 30).length;
+    if (refsFilled > 0) closingDone += 1;
+    else if (refsCount > 0) closingDone += 0.5;
+    // Re-balance: there are now 5 closing items (4 single + references)
     closingFields.forEach(f => {
       const v = (document.getElementById(f.id)?.value || '').trim();
       if (v.length >= f.minChars) closingDone += 1;
       else if (v.length > 0)      closingDone += 0.5;
     });
-    const closingFieldScore = Math.round((closingDone / closingFields.length) * 100);
+    // closingFields has 4 entries; references adds a 5th item to the divisor.
+    const closingFieldScore = Math.round((closingDone / (closingFields.length + 1)) * 100);
     // Gap health: documenting gaps is good; an explosion of gaps is bad.
     const gapCount = document.querySelectorAll('#gaps-missing-list .pp-gap-item').length;
     const gapHealth = gapCount === 0 ? 40
@@ -1756,9 +1836,23 @@ const PrionPacks = (() => {
       _toggleSection('section-funding', 'btn-toggle-funding', 'fa-coins', 'Funding'));
     document.getElementById('btn-toggle-conflicts').addEventListener('click', () =>
       _toggleSection('section-conflicts', 'btn-toggle-conflicts', 'fa-balance-scale', 'Conflicts of interest'));
-    document.getElementById('btn-toggle-references').addEventListener('click', () =>
-      _toggleSection('section-references', 'btn-toggle-references', 'fa-list', 'References'));
-    document.getElementById('field-references').addEventListener('input', _updateDoiChips);
+    // References section: open the section and ensure at least one ref row exists.
+    document.getElementById('btn-toggle-references').addEventListener('click', () => {
+      _toggleSection('section-references', 'btn-toggle-references', 'fa-list', 'References');
+      const section = document.getElementById('section-references');
+      const list    = document.getElementById('references-list');
+      if (section && section.style.display !== 'none' && list && list.children.length === 0) {
+        _addReference(false);
+      }
+    });
+    document.getElementById('btn-add-reference')?.addEventListener('click', () => _addReference(true));
+    // Delegated AI toggle for dynamic reference rows
+    document.getElementById('references-list')?.addEventListener('click', e => {
+      const aiBtn = e.target.closest('.pp-ai-btn');
+      if (aiBtn && e.currentTarget.contains(aiBtn)) {
+        aiBtn.classList.toggle('active');
+      }
+    });
     document.getElementById('btn-toggle-credit').addEventListener('click', () =>
       _toggleSection('section-credit', 'btn-toggle-credit', 'fa-list-check', 'CReDiT'));
 

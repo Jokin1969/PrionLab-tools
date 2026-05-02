@@ -27,7 +27,7 @@ DEMO_PACKAGES = [
         "acknowledgments": "",
         "funding": "",
         "conflictsOfInterest": "",
-        "references": "",
+        "references": [],
         "findings": [
             {"id": "f1", "title": "Incremento significativo de agregados en SN", "titleEnglish": "Significant increase of aggregates in SN", "description": "Observamos un aumento del 340% en la densidad de agregados de α-synuclein en la sustancia negra a las 12 semanas.", "figures": [{"id": "fig1", "description": "Inmunohistoquímica anti-α-synuclein (×40)"}, {"id": "fig2", "description": "Cuantificación densitométrica de agregados por región cerebral"}]},
             {"id": "f2", "title": "Correlación déficit motor con carga proteica", "titleEnglish": "Correlation between motor deficit and protein load", "description": "El rotarod muestra correlación r=0.87 entre la carga de agregados y la pérdida de coordinación motora.", "figures": [{"id": "fig3", "description": "Test rotarod semanas 4, 8, 12 post-inducción"}]},
@@ -127,6 +127,15 @@ def _gen_id(packages: list) -> str:
     return f'PRP-{(max(nums) + 1 if nums else 1):03d}'
 
 
+def _normalise_references(value):
+    """Accept a list, a string, or None — always return a list of clean strings."""
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if isinstance(v, str) and v.strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
 def bootstrap_demo_data() -> None:
     if not _load():
         _save(DEMO_PACKAGES)
@@ -162,7 +171,7 @@ def create_package(data: dict) -> dict:
         'acknowledgments': (data.get('acknowledgments') or ''),
         'funding': (data.get('funding') or ''),
         'conflictsOfInterest': (data.get('conflictsOfInterest') or ''),
-        'references': (data.get('references') or ''),
+        'references': _normalise_references(data.get('references')),
         'credit': (data.get('credit') or ''),
         'investigations': data.get('investigations', {'text': '', 'files': []}),
         'findings': data.get('findings', []),
@@ -182,6 +191,8 @@ def update_package(pkg_id: str, data: dict) -> dict | None:
     if idx is None:
         return None
     existing = packages[idx]
+    if 'references' in data:
+        data = {**data, 'references': _normalise_references(data.get('references'))}
     updated = {**existing, **data, 'id': pkg_id, 'createdAt': existing['createdAt'], 'lastModified': _now()}
     packages[idx] = updated
     _save(packages)
