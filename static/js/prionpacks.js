@@ -565,7 +565,7 @@ const PrionPacks = (() => {
     _renderGapList('missing', missingInfo);
     _refreshGapFindingSelects();
     _updateFindingGapIndicators();
-    _updateScore(pkg?.scores || { findings: 0, figures: 0, gaps: 0, total: 0 });
+    _updateScore(pkg?.scores || { findings: 0, figures: 0, manuscript: 0, closing: 0, total: 0 });
     _recalcScore();
 
     // Optional sections — basic info group
@@ -1416,45 +1416,93 @@ const PrionPacks = (() => {
   function _recalcScore() {
     const findings = document.querySelectorAll('.pp-finding-block');
 
-    let fScore = 0, figScore = 0, totalFigs = 0, filledFigs = 0;
-
+    // ── 1. FINDINGS (30%) ────────────────────────────────────────────────
+    let fScore = 0, totalFigs = 0, filledFigs = 0;
     findings.forEach(block => {
       const title = block.querySelector('.pp-finding-title-input')?.value.trim() || '';
       const desc  = block.querySelector('.pp-textarea')?.value.trim() || '';
       fScore += (title ? 40 : 0) + (desc.length > 30 ? 60 : 0);
-      // Count figures and tables together for the figures score
       block.querySelectorAll('.pp-figure-input, .pp-table-input').forEach(inp => {
         totalFigs++;
         if (inp.value.trim().length > 5) filledFigs++;
       });
     });
-
     if (findings.length) fScore = Math.round(fScore / findings.length);
+
+    // ── 2. FIGURES & TABLES (15%) ────────────────────────────────────────
+    let figScore = 0;
     if (totalFigs) figScore = Math.round((filledFigs / totalFigs) * 100);
     else if (findings.length) figScore = 20;
 
-    const gapCount = document.querySelectorAll('#gaps-missing-list .pp-gap-item').length;
-    const gapScore = gapCount > 5 ? Math.max(20, 100 - (gapCount - 5) * 10) : 100;
+    // ── 3. MANUSCRIPT TEXT (35%) ─────────────────────────────────────────
+    // Each field counts equally. "Done" = enough chars; partial = at least
+    // some content; an alt() callback is honoured for fields that can be
+    // satisfied by something other than text length (e.g. attached PDFs).
+    const manuscriptFields = [
+      { id: 'field-title',               minChars: 5   },
+      { id: 'field-description',         minChars: 30  },
+      { id: 'field-investigations-text', minChars: 30,
+        alt: () => document.querySelectorAll('#investigations-files .pp-inv-chip').length > 0 },
+      { id: 'field-abstract',            minChars: 100 },
+      { id: 'field-authorsummary',       minChars: 100 },
+      { id: 'field-introduction',        minChars: 100 },
+      { id: 'field-methods',             minChars: 100 },
+      { id: 'field-discussion',          minChars: 100 },
+    ];
+    let manuscriptDone = 0;
+    manuscriptFields.forEach(f => {
+      const v = (document.getElementById(f.id)?.value || '').trim();
+      if (v.length >= f.minChars)        manuscriptDone += 1;
+      else if (f.alt && f.alt())         manuscriptDone += 1;
+      else if (v.length > 0)             manuscriptDone += 0.5;
+    });
+    const mScore = Math.round((manuscriptDone / manuscriptFields.length) * 100);
 
-    const total = Math.round(fScore * .60 + figScore * .25 + gapScore * .15);
-    _updateScore({ findings: fScore, figures: figScore, gaps: gapScore, total });
+    // ── 4. CLOSING & GAPS (20%) ──────────────────────────────────────────
+    const closingFields = [
+      { id: 'field-acknowledgments',      minChars: 20 },
+      { id: 'field-funding',              minChars: 20 },
+      { id: 'field-conflictsofinterest',  minChars: 10 },
+      { id: 'field-references',           minChars: 30 },
+      { id: 'field-credit',               minChars: 20 },
+    ];
+    let closingDone = 0;
+    closingFields.forEach(f => {
+      const v = (document.getElementById(f.id)?.value || '').trim();
+      if (v.length >= f.minChars) closingDone += 1;
+      else if (v.length > 0)      closingDone += 0.5;
+    });
+    const closingFieldScore = Math.round((closingDone / closingFields.length) * 100);
+    // Gap health: documenting gaps is good; an explosion of gaps is bad.
+    const gapCount = document.querySelectorAll('#gaps-missing-list .pp-gap-item').length;
+    const gapHealth = gapCount === 0 ? 40
+                    : gapCount <= 5 ? 100
+                    : Math.max(20, 100 - (gapCount - 5) * 10);
+    const cScore = Math.round((closingFieldScore + gapHealth) / 2);
+
+    // ── TOTAL ────────────────────────────────────────────────────────────
+    const total = Math.round(fScore * 0.30 + figScore * 0.15 + mScore * 0.35 + cScore * 0.20);
+    _updateScore({ findings: fScore, figures: figScore, manuscript: mScore, closing: cScore, total });
     document.getElementById('meta-findings-count').textContent = findings.length;
   }
 
   function _updateScore(scores) {
-    const { findings, figures, gaps, total } = scores;
+    const { findings = 0, figures = 0, manuscript = 0, closing = 0, total = 0 } = scores;
     document.getElementById('score-pct').textContent = total + '%';
     const fill = document.getElementById('score-circle-fill');
     fill.style.strokeDashoffset = 251.2 - (total / 100) * 251.2;
     fill.style.stroke = total >= 90 ? '#26de81' : total >= 70 ? '#ffa502' : '#00d4aa';
-    _setBar('findings', findings);
-    _setBar('figures', figures);
-    _setBar('gaps', gaps);
+    _setBar('findings',   findings);
+    _setBar('figures',    figures);
+    _setBar('manuscript', manuscript);
+    _setBar('closing',    closing);
     let rec;
-    if (total < 50)      rec = 'Initial phase — keep developing your main findings.';
-    else if (total < 70) rec = 'Good progress — focus on completing figures and reducing gaps.';
-    else if (total < 90) rec = 'Almost ready — consider starting the manuscript draft.';
-    else                  rec = 'Ready for manuscript! Excellent work.';
+    if (total < 30)      rec = 'Just getting started — capture your first findings and ideas.';
+    else if (total < 50) rec = 'Initial phase — keep developing your main findings.';
+    else if (total < 70) rec = 'Good progress — focus on figures, intro/methods, and reducing gaps.';
+    else if (total < 85) rec = 'Almost there — start drafting abstract, discussion and closing sections.';
+    else if (total < 95) rec = 'Manuscript-ready — polish references, CReDiT and acknowledgments.';
+    else                  rec = 'Ready for submission! Excellent work.';
     document.getElementById('score-rec-text').textContent = rec;
   }
 
@@ -1571,7 +1619,8 @@ const PrionPacks = (() => {
     return {
       findings:   _readPct('score-val-findings'),
       figures:    _readPct('score-val-figures'),
-      gaps:       _readPct('score-val-gaps'),
+      manuscript: _readPct('score-val-manuscript'),
+      closing:    _readPct('score-val-closing'),
       total:      _readPct('score-pct'),
     };
   }
