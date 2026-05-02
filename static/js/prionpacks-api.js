@@ -9,6 +9,10 @@ const PPApi = (() => {
     if (!data || typeof data !== 'object') {
       throw new Error('Respuesta vacía o no-JSON de la API.');
     }
+    if (data.stop_reason === 'refusal') {
+      console.error('Claude refused the prompt:', data);
+      throw new Error('El modelo se ha negado a responder este prompt (stop_reason=refusal). Prueba a reformular el texto.');
+    }
     if (!Array.isArray(data.content)) {
       console.error('Unexpected Claude response shape:', data);
       const snap = JSON.stringify(data).slice(0, 400);
@@ -43,10 +47,11 @@ const PPApi = (() => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 200,
+        max_tokens: 300,
+        system: 'You are a professional scientific translator working for a neuroscience laboratory (prion diseases, neurodegeneration). The user provides a finding title in Spanish and you reply with the English translation only — no quotes, no explanation, just the translated phrase.',
         messages: [{
           role: 'user',
-          content: `Translate this scientific finding title from Spanish to English, maintaining scientific accuracy and terminology. Return ONLY the English translation with no extra text:\n\n"${text}"`,
+          content: text,
         }],
       }),
     });
@@ -66,15 +71,12 @@ const PPApi = (() => {
     if (!apiKey) throw new Error('No API key configured. Please set your Claude API key in the panel on the right.');
 
     const contextBlock = context.length > 0
-      ? `CONTEXTO DEL PAQUETE DE INVESTIGACIÓN:\n${context.map(c => `• ${c.label}: ${c.text}`).join('\n')}\n\n`
+      ? `Contexto del paquete de investigación:\n${context.map(c => `- ${c.label}: ${c.text}`).join('\n')}\n\n`
       : '';
 
-    const promptText = `Eres un asistente científico del equipo PrionLab, especializado en enfermedades priónicas y neurociencia traslacional.
-${contextBlock}SOLICITUD DEL USUARIO (campo: "${fieldLabel}"):
----
-${fieldContent}
----
-Responde a lo que el usuario ha escrito. Si incluye una petición de traducción al inglés, proporciona únicamente la traducción. Si es una pregunta, análisis u opinión, responde en español de forma detallada y científica. Si el texto termina con comentarios o instrucciones dirigidas a ti, tenlos en cuenta al elaborar tu respuesta.`;
+    const systemPrompt = 'Eres un asistente científico del equipo PrionLab (CIC bioGUNE), especializado en enfermedades priónicas y neurociencia traslacional. Respondes en español por defecto, salvo que el usuario pida explícitamente otro idioma. Tu tono es preciso, claro y de nivel de manuscrito científico.';
+
+    const promptText = `${contextBlock}Campo del paquete: ${fieldLabel}\n\nContenido / petición del usuario:\n${fieldContent}`;
 
     const contentParts = [];
 
@@ -114,6 +116,7 @@ Responde a lo que el usuario ha escrito. Si incluye una petición de traducción
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1500,
+        system: systemPrompt,
         messages: [{
           role: 'user',
           content: contentParts.length === 1 ? contentParts[0].text : contentParts,
