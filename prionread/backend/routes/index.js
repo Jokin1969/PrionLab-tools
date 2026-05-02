@@ -6,6 +6,7 @@ router.use('/users', require('./users'));
 router.use('/articles', require('./articles'));
 router.use('/assignments', require('./assignments'));
 router.use('/my-articles', require('./student'));
+router.use('/my-dashboard', require('./dashboard'));
 
 router.get('/', (_req, res) => res.json({ message: 'PrionRead API v1' }));
 
