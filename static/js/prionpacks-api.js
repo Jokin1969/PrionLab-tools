@@ -5,6 +5,19 @@ const PPApi = (() => {
   // Latest Claude Sonnet model — stable alias accepted by the Anthropic API.
   const MODEL    = 'claude-sonnet-4-5';
 
+  function _extractText(data) {
+    if (!data || !Array.isArray(data.content)) {
+      console.error('Unexpected Claude response shape:', data);
+      throw new Error('Respuesta inesperada de la API (sin "content").');
+    }
+    const block = data.content.find(c => c && c.type === 'text' && typeof c.text === 'string');
+    if (!block) {
+      console.error('No text block in response:', data);
+      throw new Error('La respuesta no contiene texto utilizable.');
+    }
+    return block.text;
+  }
+
   async function translateTitle(text) {
     const apiKey = PPStorage.getApiKey();
     if (!apiKey) throw new Error('No API key configured. Please set your Claude API key in the panel on the right.');
@@ -34,7 +47,7 @@ const PPApi = (() => {
     }
 
     const data = await response.json();
-    return data.content[0].text.trim().replace(/^["']|["']$/g, '');
+    return _extractText(data).trim().replace(/^["']|["']$/g, '');
   }
 
   async function askClaude(context, fieldLabel, fieldContent, imageDataUrl = null, documents = []) {
@@ -104,7 +117,7 @@ Responde a lo que el usuario ha escrito. Si incluye una petición de traducción
     }
 
     const data = await response.json();
-    return data.content[0].text.trim();
+    return _extractText(data).trim();
   }
 
   return { translateTitle, askClaude };
