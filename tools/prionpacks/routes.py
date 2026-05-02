@@ -28,7 +28,53 @@ def index():
 @prionpacks_bp.route('/api/packages', methods=['GET'])
 @login_required
 def api_list():
-    return jsonify(models.list_packages())
+    active_param = request.args.get('active')
+    pkgs = models.list_packages()
+    if active_param is not None:
+        want = active_param.lower() in ('1', 'true', 'yes')
+        pkgs = [p for p in pkgs if bool(p.get('active', True)) == want]
+    return jsonify(pkgs)
+
+
+@prionpacks_bp.route('/api/packages/<pkg_id>/import-section', methods=['POST'])
+@login_required
+def api_import_section(pkg_id):
+    data = request.get_json(force=True, silent=True) or {}
+    section = (data.get('section') or '').strip()
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'Paquete no encontrado.'}), 404
+
+    SECTION_MAP = {
+        'funding':              'funding',
+        'acknowledgments':      'acknowledgments',
+        'competing_interests':  'conflictsOfInterest',
+        'credit':               'credit',
+    }
+
+    if section == 'author_order':
+        authors = (data.get('authors') or '').strip()
+        affiliations = (data.get('affiliations') or '').strip()
+        update = {}
+        if authors:
+            update['coAuthors'] = authors
+        if affiliations:
+            update['affiliations'] = affiliations
+        if not update:
+            return jsonify({'error': 'No hay contenido para importar.'}), 400
+        models.update_package(pkg_id, update)
+        return jsonify({'ok': True, 'updated': list(update.keys())})
+
+    field_key = SECTION_MAP.get(section)
+    if not field_key:
+        return jsonify({'error': f'Sección no válida: {section}'}), 400
+
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'No hay contenido para importar.'}), 400
+
+    models.update_package(pkg_id, {field_key: text})
+    return jsonify({'ok': True, 'updated': [field_key]})
 
 
 @prionpacks_bp.route('/api/packages', methods=['POST'])

@@ -141,13 +141,16 @@ const PrionPacks = (() => {
     const fillClass = score >= 90 ? 'pp-fill-complete' : score >= 50 ? 'pp-fill-progress' : 'pp-fill-initial';
     const date = p.lastModified ? new Date(p.lastModified).toLocaleDateString() : '—';
     const findings = (p.findings || []).length;
+    const inactive = p.active === false;
+    const inactiveCls = inactive ? ' pp-pkg-card-inactive' : '';
+    const inactiveBadge = inactive ? '<span class="pp-inactive-badge">Inactivo</span>' : '';
     return `
-    <div class="pp-pkg-card" data-id="${p.id}">
+    <div class="pp-pkg-card${inactiveCls}" data-id="${p.id}">
       <div class="pp-pkg-card-header">
         <div class="pp-pkg-priority-dot" data-id="${p.id}" data-priority="${p.priority}"
           style="background:${_priorityColor(p.priority)};" title="Click to change priority"></div>
         <div class="pp-pkg-card-body">
-          <div class="pp-pkg-card-id">${p.id}</div>
+          <div class="pp-pkg-card-id">${p.id} ${inactiveBadge}</div>
           <div class="pp-pkg-card-title">${_esc(p.title)}</div>
         </div>
       </div>
@@ -173,11 +176,13 @@ const PrionPacks = (() => {
     list.innerHTML = _packages.map(p => {
       const score = p.scores?.total ?? 0;
       const active = p.id === state.currentId ? ' active' : '';
+      const inactive = p.active === false ? ' pp-package-item-inactive' : '';
+      const inactiveBadge = p.active === false ? '<span class="pp-inactive-badge pp-inactive-badge-sm">Inactivo</span>' : '';
       return `
-      <div class="pp-package-item${active}" data-id="${p.id}">
+      <div class="pp-package-item${active}${inactive}" data-id="${p.id}">
         <div class="pp-package-item-dot" style="background:${_priorityColor(p.priority)};"></div>
         <div class="pp-package-item-body">
-          <div class="pp-package-item-title">${_esc(p.title)}</div>
+          <div class="pp-package-item-title">${_esc(p.title)} ${inactiveBadge}</div>
           <div class="pp-package-item-meta">
             <span>${p.id}</span>
             <div class="pp-package-item-bar"><div class="pp-package-item-bar-fill" style="width:${score}%;"></div></div>
@@ -216,7 +221,7 @@ const PrionPacks = (() => {
   let _claudeModalCallback = null;
 
   /* ── Investigations file attachments ──────────────────────────────────── */
-  const INV_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+  const INV_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
   function _invMimeFromFile(file) {
     if (file.type) return file.type;
@@ -286,7 +291,7 @@ const PrionPacks = (() => {
     if (!list) return;
     Array.from(fileList).forEach(file => {
       if (file.size > INV_MAX_BYTES) {
-        toast(`"${file.name}" supera el límite de 5 MB.`, 'error');
+        toast(`"${file.name}" supera el límite de 25 MB.`, 'error');
         return;
       }
       const mimeType = _invMimeFromFile(file);
@@ -565,6 +570,7 @@ const PrionPacks = (() => {
       { field: 'field-abstract',     section: 'section-abstract',     btn: 'btn-toggle-abstract',     icon: 'fa-align-left',label: 'Abstract',       key: 'abstract' },
       { field: 'field-authorsummary',section: 'section-authorsummary',btn: 'btn-toggle-authorsummary',icon: 'fa-user-edit', label: 'Author Summary', key: 'authorSummary' },
       { field: 'field-introduction', section: 'section-introduction', btn: 'btn-toggle-introduction', icon: 'fa-book-open', label: 'Introduction',   key: 'introduction' },
+      { field: 'field-methods',      section: 'section-methods',      btn: 'btn-toggle-methods',      icon: 'fa-flask-vial',label: 'Methods',        key: 'methods' },
     ];
     optionalSectionsBasic.forEach(({ field, section, btn, icon, label, key }) => {
       const val = pkg?.[key] || '';
@@ -581,6 +587,7 @@ const PrionPacks = (() => {
       { field: 'field-funding',           section: 'section-funding',        btn: 'btn-toggle-funding',        icon: 'fa-coins',         label: 'Funding',             key: 'funding' },
       { field: 'field-conflictsofinterest',section:'section-conflicts',      btn: 'btn-toggle-conflicts',      icon: 'fa-balance-scale', label: 'Conflicts of interest', key: 'conflictsOfInterest' },
       { field: 'field-references',        section: 'section-references',     btn: 'btn-toggle-references',     icon: 'fa-list',          label: 'References',          key: 'references' },
+      { field: 'field-credit',            section: 'section-credit',         btn: 'btn-toggle-credit',         icon: 'fa-list-check',    label: 'CReDiT',              key: 'credit' },
     ];
     optionalSectionsGaps.forEach(({ field, section, btn, icon, label, key }) => {
       const val = pkg?.[key] || '';
@@ -595,6 +602,36 @@ const PrionPacks = (() => {
     document.getElementById('field-investigations-text').value = inv.text || '';
     _renderInvFiles(inv.files || []);
     // Reset per-file AI toggles (already cleared via innerHTML reset in _renderInvFiles)
+
+    // Active toggle — default true
+    const isActive = pkg ? (pkg.active !== false) : true;
+    _setActiveState(isActive, /*skipAutosave=*/true);
+  }
+
+  /* ── Active/Inactive toggle ────────────────────────────────────────────── */
+  function _setActiveState(active, skipAutosave) {
+    const btn  = document.getElementById('btn-active-toggle');
+    const form = document.querySelector('.pp-editor-form');
+    if (!btn || !form) return;
+    if (active) {
+      btn.classList.add('is-active');
+      btn.classList.remove('is-inactive');
+      btn.title = 'Activo';
+      btn.innerHTML = '<i class="fas fa-toggle-on"></i> <span class="pp-active-toggle-label">Activo</span>';
+      form.classList.remove('pp-form-locked');
+    } else {
+      btn.classList.remove('is-active');
+      btn.classList.add('is-inactive');
+      btn.title = 'Inactivo';
+      btn.innerHTML = '<i class="fas fa-toggle-off"></i> <span class="pp-active-toggle-label">Inactivo</span>';
+      form.classList.add('pp-form-locked');
+    }
+    if (!skipAutosave) _scheduleAutosave();
+  }
+
+  function _getCurrentActive() {
+    const btn = document.getElementById('btn-active-toggle');
+    return !btn || btn.classList.contains('is-active');
   }
 
   function _updateTitleDisplay(text) {
@@ -683,16 +720,19 @@ const PrionPacks = (() => {
       title: title || (document.getElementById('field-title').value || '').trim(),
       description: document.getElementById('field-description').value.trim(),
       priority: _getCurrentPriority(),
+      active: _getCurrentActive(),
       coAuthors: document.getElementById('field-coauthors').value.trim() || null,
       affiliations: document.getElementById('field-affiliations').value.trim() || null,
       abstract: document.getElementById('field-abstract').value.trim() || null,
       authorSummary: document.getElementById('field-authorsummary').value.trim() || null,
       introduction: document.getElementById('field-introduction').value.trim() || null,
+      methods: document.getElementById('field-methods').value.trim() || null,
       discussion: document.getElementById('field-discussion').value.trim() || null,
       acknowledgments: document.getElementById('field-acknowledgments').value.trim() || null,
       funding: document.getElementById('field-funding').value.trim() || null,
       conflictsOfInterest: document.getElementById('field-conflictsofinterest').value.trim() || null,
       references: document.getElementById('field-references').value.trim() || null,
+      credit: document.getElementById('field-credit').value.trim() || null,
       investigations: {
         text:  document.getElementById('field-investigations-text').value.trim() || '',
         files: _collectInvFiles(),
@@ -1488,6 +1528,8 @@ const PrionPacks = (() => {
     document.getElementById('btn-toggle-authorsummary').addEventListener('click', () =>
       _toggleSection('section-authorsummary', 'btn-toggle-authorsummary', 'fa-user-edit', 'Author Summary'));
     document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
+    document.getElementById('btn-toggle-methods').addEventListener('click', () =>
+      _toggleSection('section-methods', 'btn-toggle-methods', 'fa-flask-vial', 'Methods'));
 
     // Toggle buttons — gaps group
     document.getElementById('btn-toggle-discussion').addEventListener('click', _toggleDiscussion);
@@ -1499,6 +1541,13 @@ const PrionPacks = (() => {
       _toggleSection('section-conflicts', 'btn-toggle-conflicts', 'fa-balance-scale', 'Conflicts of interest'));
     document.getElementById('btn-toggle-references').addEventListener('click', () =>
       _toggleSection('section-references', 'btn-toggle-references', 'fa-list', 'References'));
+    document.getElementById('btn-toggle-credit').addEventListener('click', () =>
+      _toggleSection('section-credit', 'btn-toggle-credit', 'fa-list-check', 'CReDiT'));
+
+    // Active/Inactive toggle
+    document.getElementById('btn-active-toggle').addEventListener('click', () => {
+      _setActiveState(!_getCurrentActive());
+    });
 
     // Investigations file input
     document.getElementById('pp-inv-file-input').addEventListener('change', e => {

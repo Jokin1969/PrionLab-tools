@@ -1879,4 +1879,75 @@
   .pp-page-actions { flex-wrap: wrap; }
 }
 
+/* ── Standalone toggle row (extracted from Basic Info) ───────────────────── */
+.pp-toggle-row-standalone {
+  background: linear-gradient(135deg, #f0fdf8 0%, #f4f7fa 100%);
+  border: 1px dashed var(--pp-border);
+  border-radius: var(--pp-radius);
+  padding: 10px 14px;
+  margin: 0;
+  justify-content: flex-start;
+}
+
+/* ── Active/Inactive toggle button ────────────────────────────────────────── */
+.pp-active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  color: #fff;
+  white-space: nowrap;
+}
+.pp-active-toggle.is-active     { background: #2563eb; color: #fff; }
+.pp-active-toggle.is-active:hover{ background: #1d4ed8; }
+.pp-active-toggle.is-inactive   { background: #94a3b8; color: #fff; }
+.pp-active-toggle.is-inactive:hover { background: #64748b; }
+.pp-active-toggle i { font-size: 14px; }
+
+/* When the form is locked (package marked inactive) */
+.pp-editor-form.pp-form-locked {
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Inactive badges on cards / sidebar ───────────────────────────────────── */
+.pp-inactive-badge {
+  display: inline-block;
+  background: #94a3b8;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.pp-inactive-badge-sm {
+  font-size: 9px;
+  padding: 1px 6px;
+}
+.pp-pkg-card-inactive {
+  opacity: 0.6;
+  filter: grayscale(0.25);
+}
+.pp-package-item-inactive .pp-package-item-title {
+  color: var(--pp-text-dim);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--pp-text-dim);
+}
+.pp-package-item-inactive {
+  opacity: 0.75;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');

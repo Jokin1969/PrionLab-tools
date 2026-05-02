@@ -103,9 +103,14 @@
     <div id="generate-output" style="margin-top:1.5rem;display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
         <h4 style="margin:0">{{ _('Generated output') }}</h4>
-        <button type="button" class="btn btn--secondary btn--sm" onclick="copyOutput()">
-          {{ _('Copy to clipboard') }}
-        </button>
+        <div style="display:flex;gap:.5rem">
+          <button type="button" class="btn btn--secondary btn--sm" onclick="copyOutput()">
+            {{ _('Copy to clipboard') }}
+          </button>
+          <button type="button" class="btn btn--secondary btn--sm" onclick="exportToPrionPacks('author_order')">
+            📦 {{ _('Exportar a PrionPacks') }}
+          </button>
+        </div>
       </div>
       <textarea id="generate-textarea" class="form-input generate-output" rows="14" readonly></textarea>
       <div id="copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
@@ -156,9 +161,14 @@
     <div id="funding-warnings-container"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;margin-top:.75rem">
       <h4 style="margin:0">{{ _('Generated output') }}</h4>
-      <button type="button" class="btn btn--secondary btn--sm" onclick="copyFundingOutput()">
-        {{ _('Copy to clipboard') }}
-      </button>
+      <div style="display:flex;gap:.5rem">
+        <button type="button" class="btn btn--secondary btn--sm" onclick="copyFundingOutput()">
+          {{ _('Copy to clipboard') }}
+        </button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportToPrionPacks('funding')">
+          📦 {{ _('Exportar a PrionPacks') }}
+        </button>
+      </div>
     </div>
     <textarea id="funding-textarea" class="form-input generate-output" rows="10" readonly></textarea>
     <div id="funding-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
@@ -207,9 +217,14 @@
     <div id="ack-warnings-container"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;margin-top:.75rem">
       <h4 style="margin:0">{{ _('Generated output') }}</h4>
-      <button type="button" class="btn btn--secondary btn--sm" onclick="copyAckOutput()">
-        {{ _('Copy to clipboard') }}
-      </button>
+      <div style="display:flex;gap:.5rem">
+        <button type="button" class="btn btn--secondary btn--sm" onclick="copyAckOutput()">
+          {{ _('Copy to clipboard') }}
+        </button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportToPrionPacks('acknowledgments')">
+          📦 {{ _('Exportar a PrionPacks') }}
+        </button>
+      </div>
     </div>
     <textarea id="ack-textarea" class="form-input generate-output" rows="10" readonly></textarea>
     <div id="ack-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
@@ -337,9 +352,14 @@
     <div id="ci-analysis-preview" class="ci-analysis-preview"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;margin-top:.75rem">
       <h4 style="margin:0">{{ _('Generated output') }}</h4>
-      <button type="button" class="btn btn--secondary btn--sm" onclick="copyCiOutput()">
-        {{ _('Copy to clipboard') }}
-      </button>
+      <div style="display:flex;gap:.5rem">
+        <button type="button" class="btn btn--secondary btn--sm" onclick="copyCiOutput()">
+          {{ _('Copy to clipboard') }}
+        </button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="exportToPrionPacks('competing_interests')">
+          📦 {{ _('Exportar a PrionPacks') }}
+        </button>
+      </div>
     </div>
     <textarea id="ci-textarea" class="form-input generate-output" rows="6" readonly></textarea>
     <div id="ci-copy-feedback" class="text-muted" style="font-size:0.8rem;margin-top:.25rem">&nbsp;</div>
@@ -480,7 +500,12 @@
       <div id="credit-warnings-container"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
         <h4 style="margin:0">{{ _('Generated output') }}</h4>
-        <button type="button" class="btn btn--secondary btn--sm" onclick="copyCreditOutput()">{{ _('Copy to clipboard') }}</button>
+        <div style="display:flex;gap:.5rem">
+          <button type="button" class="btn btn--secondary btn--sm" onclick="copyCreditOutput()">{{ _('Copy to clipboard') }}</button>
+          <button type="button" class="btn btn--secondary btn--sm" onclick="exportToPrionPacks('credit')">
+            📦 {{ _('Exportar a PrionPacks') }}
+          </button>
+        </div>
       </div>
       <textarea id="credit-textarea" class="form-input generate-output" rows="8" readonly></textarea>
       <div id="credit-copy-feedback" class="text-muted" style="font-size:.8rem;margin-top:.25rem">&nbsp;</div>
@@ -819,6 +844,10 @@ async function runGenerate() {
     document.getElementById('generate-textarea').value = data.full_text;
     outEl.style.display = 'block';
     sessionStorage.setItem('mf_last_author_ids', JSON.stringify({ids: [...selectedIds], ts: Date.now()}));
+    sessionStorage.setItem('mf_author_order_split', JSON.stringify({
+      authors_line:      data.authors_line || '',
+      affiliations_text: data.affiliations_text || '',
+    }));
     saveGeneratedSection('author_order', data.full_text);
 
     const warn = document.getElementById('unaffiliated-warning');
@@ -1724,5 +1753,206 @@ function _showExportNotification(info) {
 function _escExport(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ─── Export to PrionPacks ────────────────────────────────────────────────────
+const _MF_PP_TEXTAREA_MAP = {
+  author_order:        'generate-textarea',
+  funding:             'funding-textarea',
+  acknowledgments:     'ack-textarea',
+  competing_interests: 'ci-textarea',
+  credit:              'credit-textarea',
+};
+
+const _MF_PP_TARGET_MAP = {
+  funding:             'funding',
+  acknowledgments:     'acknowledgments',
+  competing_interests: 'conflictsOfInterest',
+  credit:              'credit',
+};
+
+async function exportToPrionPacks(sectionKey) {
+  const taId = _MF_PP_TEXTAREA_MAP[sectionKey];
+  const ta = taId ? document.getElementById(taId) : null;
+  if (!ta || !ta.value.trim()) {
+    alert('{{ _("Genera la sección primero.") }}');
+    return;
+  }
+
+  let resp;
+  try {
+    resp = await fetch('/prionpacks/api/packages?active=true', { credentials: 'same-origin' });
+  } catch (e) {
+    alert('{{ _("No se pudo obtener la lista de paquetes activos:") }} ' + e.message);
+    return;
+  }
+  if (!resp.ok) {
+    alert('{{ _("Error obteniendo paquetes.") }}');
+    return;
+  }
+  const packages = await resp.json();
+  if (!Array.isArray(packages) || !packages.length) {
+    alert('{{ _("No hay paquetes activos en PrionPacks. Crea uno y actívalo primero.") }}');
+    return;
+  }
+
+  const list = document.getElementById('pp-export-list');
+  list.innerHTML = packages.map(p =>
+    '<button class="pp-export-pkg" data-id="' + _escExport(p.id) + '" type="button">' +
+      '<strong>' + _escExport(p.id) + '</strong> ' + _escExport(p.title || '') +
+    '</button>'
+  ).join('');
+
+  document.getElementById('pp-export-section-info').textContent =
+    '{{ _("Sección:") }} ' + sectionKey;
+  document.getElementById('pp-export-feedback').textContent = '';
+  document.getElementById('pp-export-modal').style.display = '';
+
+  list.querySelectorAll('.pp-export-pkg').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pkgId = btn.dataset.id;
+      const pkg = packages.find(p => p.id === pkgId);
+      if (!pkg) return;
+
+      let body;
+      if (sectionKey === 'author_order') {
+        let authors = '', affiliations = '';
+        try {
+          const stored = sessionStorage.getItem('mf_author_order_split');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            authors = parsed.authors_line || '';
+            affiliations = parsed.affiliations_text || '';
+          }
+        } catch (_) {}
+        if (!authors && !affiliations) {
+          const parts = ta.value.split(/\n\n+/);
+          authors = parts[0] || '';
+          affiliations = parts.slice(1).join('\n\n') || '';
+        }
+        const willOverwrite = (pkg.coAuthors && String(pkg.coAuthors).trim()) ||
+                              (pkg.affiliations && String(pkg.affiliations).trim());
+        if (willOverwrite && !confirm(
+          '{{ _("Esto sobrescribirá los campos Co-authors y/o Affiliations del paquete") }} ' + pkgId + '. {{ _("¿Continuar?") }}'
+        )) return;
+        body = { section: 'author_order', authors, affiliations };
+      } else {
+        const fieldKey = _MF_PP_TARGET_MAP[sectionKey];
+        const existing = (pkg[fieldKey] || '').toString().trim();
+        if (existing && !confirm(
+          '{{ _("El campo") }} ' + fieldKey + ' {{ _("del paquete") }} ' + pkgId + ' {{ _("ya tiene contenido. ¿Sobrescribir?") }}'
+        )) return;
+        body = { section: sectionKey, text: ta.value.trim() };
+      }
+
+      const feedback = document.getElementById('pp-export-feedback');
+      try {
+        const r = await fetch('/prionpacks/api/packages/' + encodeURIComponent(pkgId) + '/import-section', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          feedback.textContent = d.error || '{{ _("Error.") }}';
+          return;
+        }
+        feedback.textContent =
+          '✓ {{ _("Exportado al paquete") }} ' + pkgId + '. {{ _("Campos:") }} ' + (d.updated || []).join(', ');
+        setTimeout(() => {
+          document.getElementById('pp-export-modal').style.display = 'none';
+          feedback.textContent = '';
+        }, 1800);
+      } catch (e) {
+        feedback.textContent = '{{ _("Error de red:") }} ' + e.message;
+      }
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const closeFn = () => {
+    const m = document.getElementById('pp-export-modal');
+    if (m) m.style.display = 'none';
+  };
+  document.getElementById('pp-export-close')?.addEventListener('click', closeFn);
+  document.getElementById('pp-export-cancel')?.addEventListener('click', closeFn);
+  document.getElementById('pp-export-backdrop')?.addEventListener('click', closeFn);
+});
 </script>
+
+{# ── Export-to-PrionPacks modal ─────────────────────────────────────────── #}
+<div id="pp-export-modal" class="pp-export-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-export-title">
+  <div class="pp-export-modal-backdrop" id="pp-export-backdrop"></div>
+  <div class="pp-export-modal-card">
+    <div class="pp-export-modal-header">
+      <h3 id="pp-export-title" style="margin:0;font-size:1.05rem">📦 {{ _('Exportar a PrionPacks') }}</h3>
+      <button type="button" id="pp-export-close" class="btn btn--sm" aria-label="{{ _('Cerrar') }}" style="background:none;border:none;font-size:1.4rem;line-height:1;cursor:pointer;padding:0 .25rem">×</button>
+    </div>
+    <p id="pp-export-section-info" class="text-muted" style="margin:.25rem 0 .75rem"></p>
+    <div id="pp-export-list" class="pp-export-list"></div>
+    <p id="pp-export-feedback" class="text-muted" style="margin:.5rem 0;min-height:1.2em"></p>
+    <div class="pp-export-modal-footer">
+      <button type="button" id="pp-export-cancel" class="btn btn--secondary">{{ _('Cancelar') }}</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .pp-export-modal {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pp-export-modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+  }
+  .pp-export-modal-card {
+    position: relative; z-index: 1;
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  }
+  .pp-export-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: .25rem;
+  }
+  .pp-export-list {
+    display: flex; flex-direction: column; gap: .35rem;
+    max-height: 340px; overflow-y: auto;
+    margin: .5rem 0;
+    padding: .25rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+  }
+  .pp-export-pkg {
+    text-align: left;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: .55rem .75rem;
+    cursor: pointer;
+    font-size: .9rem;
+    color: #1f2937;
+    transition: background .15s, border-color .15s;
+  }
+  .pp-export-pkg:hover {
+    background: #eff6ff;
+    border-color: #2563eb;
+  }
+  .pp-export-pkg strong {
+    color: #2563eb;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    margin-right: .4rem;
+  }
+  .pp-export-modal-footer {
+    display: flex; justify-content: flex-end; gap: .5rem;
+    margin-top: .5rem;
+  }
+</style>
 {% endblock %}
