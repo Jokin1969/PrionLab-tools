@@ -2,7 +2,8 @@
 
 const PPApi = (() => {
   const ENDPOINT = 'https://api.anthropic.com/v1/messages';
-  const MODEL    = 'claude-sonnet-4-20250514';
+  // Latest Claude Sonnet model — stable alias accepted by the Anthropic API.
+  const MODEL    = 'claude-sonnet-4-5';
 
   async function translateTitle(text) {
     const apiKey = PPStorage.getApiKey();
