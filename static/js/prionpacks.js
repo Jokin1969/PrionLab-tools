@@ -284,6 +284,7 @@ const PrionPacks = (() => {
     if (!list) return;
     list.innerHTML = '';
     (files || []).forEach(f => list.appendChild(_createInvFileChip(f)));
+    _updateCollapseIndicators();
   }
 
   function _handleInvFiles(fileList) {
@@ -609,6 +610,10 @@ const PrionPacks = (() => {
     // Active toggle — default true
     const isActive = pkg ? (pkg.active !== false) : true;
     _setActiveState(isActive, /*skipAutosave=*/true);
+
+    // Collapsible sections — install buttons (idempotent) and refresh indicators
+    _setupCollapsibleSections();
+    _updateCollapseIndicators();
   }
 
   /* ── Active/Inactive toggle ────────────────────────────────────────────── */
@@ -655,6 +660,55 @@ const PrionPacks = (() => {
       a.title = doi;
       a.textContent = doi;
       container.appendChild(a);
+    });
+  }
+
+  /* ── Collapsible sections ──────────────────────────────────────────────── */
+  function _setupCollapsibleSections() {
+    document.querySelectorAll('.pp-card-section').forEach(card => {
+      const header = card.querySelector('.pp-section-header');
+      if (!header || header.querySelector('.pp-collapse-btn')) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pp-collapse-btn pp-collapse-btn--empty';
+      btn.title = 'Plegar / desplegar sección';
+      btn.innerHTML = '<i class="fas fa-caret-down"></i>';
+      btn.addEventListener('click', () => {
+        const collapsed = card.classList.toggle('pp-card-collapsed');
+        const i = btn.querySelector('i');
+        i.classList.toggle('fa-caret-down', !collapsed);
+        i.classList.toggle('fa-caret-right', collapsed);
+      });
+      header.insertBefore(btn, header.firstChild);
+    });
+
+    const form = document.querySelector('.pp-editor-form');
+    if (form && !form.dataset.collapseInputBound) {
+      form.addEventListener('input', _updateCollapseIndicators);
+      form.dataset.collapseInputBound = '1';
+    }
+  }
+
+  function _hasCardContent(card) {
+    for (const ta of card.querySelectorAll('textarea')) {
+      if (ta.value && ta.value.trim()) return true;
+    }
+    for (const inp of card.querySelectorAll('input[type="text"]')) {
+      if (inp.value && inp.value.trim()) return true;
+    }
+    for (const list of card.querySelectorAll('.pp-findings-list, .pp-dynamic-list, .pp-inv-files-list')) {
+      if (list.children.length > 0) return true;
+    }
+    return false;
+  }
+
+  function _updateCollapseIndicators() {
+    document.querySelectorAll('.pp-card-section').forEach(card => {
+      const btn = card.querySelector('.pp-section-header > .pp-collapse-btn');
+      if (!btn) return;
+      const has = _hasCardContent(card);
+      btn.classList.toggle('pp-collapse-btn--filled', has);
+      btn.classList.toggle('pp-collapse-btn--empty', !has);
     });
   }
 
@@ -781,10 +835,15 @@ const PrionPacks = (() => {
     const container = document.getElementById('findings-container');
     const empty = document.getElementById('findings-empty');
     container.innerHTML = '';
-    if (!findings.length) { empty.style.display = 'flex'; return; }
+    if (!findings.length) {
+      empty.style.display = 'flex';
+      _updateCollapseIndicators();
+      return;
+    }
     empty.style.display = 'none';
     findings.forEach((f, i) => container.appendChild(_createFindingBlock(f, i + 1)));
     _initDragDrop(container);
+    _updateCollapseIndicators();
   }
 
   function _createFindingBlock(finding, num) {
@@ -1154,6 +1213,7 @@ const PrionPacks = (() => {
         _updateFindingGapIndicators();
       });
     });
+    _updateCollapseIndicators();
   }
 
   function _gapMissingItemHTML(gap) {

@@ -1950,6 +1950,54 @@
   opacity: 0.75;
 }
 
+/* ── Collapsible sections ─────────────────────────────────────────────────── */
+.pp-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pp-collapse-btn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  transition: background .15s, color .15s;
+}
+.pp-collapse-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+.pp-collapse-btn--filled {
+  color: #16a34a;
+}
+.pp-collapse-btn--empty {
+  color: #f59e0b;
+  animation: pp-collapse-blink 1.4s ease-in-out infinite;
+}
+@keyframes pp-collapse-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.9); }
+}
+
+.pp-card-section.pp-card-collapsed > *:not(.pp-section-header) {
+  display: none !important;
+}
+.pp-card-section.pp-card-collapsed .pp-section-header .pp-field-ai-actions,
+.pp-card-section.pp-card-collapsed .pp-section-header .pp-priority-selector {
+  display: none !important;
+}
+.pp-card-section.pp-card-collapsed {
+  padding-bottom: 12px;
+}
+
 /* ── DOI chip row ─────────────────────────────────────────────────────────── */
 .pp-doi-chips {
   display: flex;
