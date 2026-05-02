@@ -582,6 +582,7 @@ const PrionPacks = (() => {
     const altTitles = Array.isArray(pkg?.altTitles) ? pkg.altTitles : [];
     _renderAltTitlesEditor(altTitles);
     _updateAltTitlesDisplay(altTitles);
+    _restoreAltTitlesState();
 
     document.getElementById('field-description').value = pkg?.description || '';
 
@@ -726,6 +727,7 @@ const PrionPacks = (() => {
     (refs || []).forEach((r, idx) => list.appendChild(_createReferenceItem(r, idx)));
     _setupAnchorButtons(list);
     _updateReferencesCount();
+    _refreshAllJumpButtons();
   }
 
   function _createReferenceItem(text, idx) {
@@ -736,8 +738,9 @@ const PrionPacks = (() => {
     div.innerHTML = `
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar referencia"></button>
-        <span class="pp-reference-number">Ref ${idx + 1}</span>
+        <span class="pp-reference-number">R-${String(idx + 1).padStart(2, '0')}</span>
         <span class="pp-reference-preview"></span>
+        <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Referencia ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
         <button type="button" class="pp-btn-icon btn-remove" title="Eliminar referencia"><i class="fas fa-trash"></i></button>
       </div>
@@ -745,18 +748,36 @@ const PrionPacks = (() => {
         <textarea id="${id}" class="pp-textarea pp-reference-textarea" rows="6" placeholder="Pega aquí una referencia (título, autores, DOI, resumen…)"></textarea>
         <div id="${chipsId}" class="pp-doi-chips"></div>
       </div>`;
-    const ta      = div.querySelector('textarea');
-    const chips   = div.querySelector('.pp-doi-chips');
-    const preview = div.querySelector('.pp-reference-preview');
+    const ta        = div.querySelector('textarea');
+    const chips     = div.querySelector('.pp-doi-chips');
+    const headerDoi = div.querySelector('.pp-reference-header-doi');
+    const preview   = div.querySelector('.pp-reference-preview');
     ta.value = text || '';
     const refreshPreview = () => {
       const first = (ta.value || '').split('\n').find(l => l.trim()) || '';
       const clipped = first.length > 90 ? first.slice(0, 90) + '…' : first;
       preview.innerHTML = _supHtml(clipped);
     };
+    const refreshHeaderDoi = () => {
+      const matches = (ta.value || '').match(_DOI_RE) || [];
+      headerDoi.innerHTML = '';
+      if (matches.length) {
+        const first = matches[0];
+        const a = document.createElement('a');
+        a.className = 'pp-doi-chip pp-doi-chip-sm';
+        a.href = `https://doi.org/${first}`;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.title = first;
+        a.textContent = first;
+        a.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(a);
+      }
+    };
     ta.addEventListener('input', () => {
       _renderDoiChipsFor(ta, chips);
       refreshPreview();
+      refreshHeaderDoi();
     });
     div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
       e.preventDefault();
@@ -769,9 +790,11 @@ const PrionPacks = (() => {
       _scheduleAutosave();
       _updateCollapseIndicators();
       _updateReferencesCount();
+      _refreshAllJumpButtons();
     });
     _renderDoiChipsFor(ta, chips);
     refreshPreview();
+    refreshHeaderDoi();
     return div;
   }
 
@@ -786,7 +809,7 @@ const PrionPacks = (() => {
     document.querySelectorAll('#references-list .pp-reference-item').forEach((item, i) => {
       const id      = `field-reference-${i}`;
       const chipsId = `reference-doi-chips-${i}`;
-      item.querySelector('.pp-reference-number').textContent = `Ref ${i + 1}`;
+      item.querySelector('.pp-reference-number').textContent = `R-${String(i + 1).padStart(2, '0')}`;
       const ta    = item.querySelector('textarea');
       const aiBtn = item.querySelector('.pp-ai-btn');
       const chips = item.querySelector('.pp-doi-chips');
@@ -808,12 +831,91 @@ const PrionPacks = (() => {
     _scheduleAutosave();
     _updateCollapseIndicators();
     _updateReferencesCount();
+    _refreshAllJumpButtons();
   }
 
   function _collectReferences() {
     return Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
       .map(t => (t.value || '').trim())
       .filter(Boolean);
+  }
+
+  /* ── Quick-jump buttons in section headers ────────────────────────────── */
+  function _refreshAllJumpButtons() {
+    _refreshJumpButtonsFor({
+      containerId: 'findings-jump',
+      sectionId:   'section-findings',
+      itemSelector:'.pp-finding-block',
+      itemCollapsedClass: null,
+      prefix: 'F-',
+    });
+    _refreshJumpButtonsFor({
+      containerId: 'methods-jump',
+      sectionId:   'section-methods',
+      itemSelector:'#methods-list .pp-method-item',
+      itemCollapsedClass: 'pp-method-collapsed',
+      prefix: 'M-',
+    });
+    _refreshJumpButtonsFor({
+      containerId: 'references-jump',
+      sectionId:   'section-references',
+      itemSelector:'#references-list .pp-reference-item',
+      itemCollapsedClass: 'pp-reference-collapsed',
+      prefix: 'R-',
+    });
+    _refreshJumpButtonsFor({
+      containerId: 'gaps-jump',
+      sectionId:   'section-gaps',
+      itemSelector:'#gaps-missing-list .pp-gap-item',
+      itemCollapsedClass: null,
+      prefix: 'G-',
+    });
+  }
+
+  function _refreshJumpButtonsFor({ containerId, sectionId, itemSelector, itemCollapsedClass, prefix }) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const items = Array.from(document.querySelectorAll(itemSelector));
+    container.innerHTML = '';
+    items.forEach((el, i) => {
+      const code = `${prefix}${String(i + 1).padStart(2, '0')}`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pp-jump-btn';
+      btn.textContent = code;
+      btn.title = `Ir a ${code}`;
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Expand parent section card if collapsed
+        if (sectionId) {
+          const card = document.getElementById(sectionId);
+          if (card?.classList.contains('pp-card-collapsed')) {
+            card.classList.remove('pp-card-collapsed');
+            localStorage.removeItem('pp-collapse:' + sectionId);
+            // Sync the collapse caret icon
+            const caret = card.querySelector('.pp-section-header > .pp-collapse-btn i');
+            if (caret) {
+              caret.classList.add('fa-caret-down');
+              caret.classList.remove('fa-caret-right');
+            }
+          }
+        }
+        // Expand item-specific collapse
+        if (itemCollapsedClass) {
+          el.classList.remove(itemCollapsedClass);
+        }
+        // Scroll into view + brief outline highlight
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.outline = '2px solid var(--pp-accent)';
+        el.style.outlineOffset = '2px';
+        setTimeout(() => {
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+        }, 1500);
+      });
+      container.appendChild(btn);
+    });
   }
 
   /* ── Methods (multi-field, each with title + body, mirror of References) ─ */
@@ -823,6 +925,7 @@ const PrionPacks = (() => {
     list.innerHTML = '';
     (methods || []).forEach((m, idx) => list.appendChild(_createMethodItem(m, idx)));
     _setupAnchorButtons(list);
+    _refreshAllJumpButtons();
   }
 
   function _createMethodItem(m, idx) {
@@ -861,6 +964,7 @@ const PrionPacks = (() => {
       _renumberMethods();
       _scheduleAutosave();
       _updateCollapseIndicators();
+      _refreshAllJumpButtons();
     });
     return div;
   }
@@ -901,6 +1005,7 @@ const PrionPacks = (() => {
     if (focus) item.querySelector('input').focus();
     _scheduleAutosave();
     _updateCollapseIndicators();
+    _refreshAllJumpButtons();
   }
 
   function _collectMethods() {
@@ -979,7 +1084,17 @@ const PrionPacks = (() => {
   function _setupCollapsibleSections() {
     document.querySelectorAll('.pp-card-section').forEach(card => {
       const header = card.querySelector('.pp-section-header');
-      if (!header || header.querySelector('.pp-collapse-btn')) return;
+      if (!header) return;
+      const cardId = card.id || '';
+      const stateKey = cardId ? ('pp-collapse:' + cardId) : '';
+
+      // Re-apply persisted state every time we run (idempotent for the
+      // button itself; the class application is the important bit).
+      if (stateKey && localStorage.getItem(stateKey) === '1') {
+        card.classList.add('pp-card-collapsed');
+      }
+
+      if (header.querySelector('.pp-collapse-btn')) return;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'pp-collapse-btn pp-collapse-btn--empty';
@@ -990,6 +1105,10 @@ const PrionPacks = (() => {
         const i = btn.querySelector('i');
         i.classList.toggle('fa-caret-down', !collapsed);
         i.classList.toggle('fa-caret-right', collapsed);
+        if (stateKey) {
+          if (collapsed) localStorage.setItem(stateKey, '1');
+          else           localStorage.removeItem(stateKey);
+        }
       });
       header.insertBefore(btn, header.firstChild);
     });
@@ -1104,7 +1223,19 @@ const PrionPacks = (() => {
   function _toggleAltTitles() {
     const grp = document.getElementById('alt-titles-group');
     if (!grp) return;
-    grp.classList.toggle('pp-alt-titles-collapsed');
+    const collapsed = grp.classList.toggle('pp-alt-titles-collapsed');
+    if (collapsed) localStorage.setItem('pp-collapse:alt-titles-group', '1');
+    else           localStorage.removeItem('pp-collapse:alt-titles-group');
+  }
+
+  function _restoreAltTitlesState() {
+    const grp = document.getElementById('alt-titles-group');
+    if (!grp) return;
+    if (localStorage.getItem('pp-collapse:alt-titles-group') === '1') {
+      grp.classList.add('pp-alt-titles-collapsed');
+    } else {
+      grp.classList.remove('pp-alt-titles-collapsed');
+    }
   }
 
   /* ── Toggle helpers ────────────────────────────────────────────────────── */
@@ -1221,6 +1352,7 @@ const PrionPacks = (() => {
     if (!findings.length) {
       empty.style.display = 'flex';
       _updateCollapseIndicators();
+      _refreshAllJumpButtons();
       return;
     }
     empty.style.display = 'none';
@@ -1228,6 +1360,7 @@ const PrionPacks = (() => {
     _initDragDrop(container);
     _updateCollapseIndicators();
     _setupAnchorButtons(container);
+    _refreshAllJumpButtons();
   }
 
   function _createFindingBlock(finding, num) {
@@ -1597,7 +1730,16 @@ const PrionPacks = (() => {
         _updateFindingGapIndicators();
       });
     });
+    _renumberGaps();
     _updateCollapseIndicators();
+    _refreshAllJumpButtons();
+  }
+
+  function _renumberGaps() {
+    document.querySelectorAll('#gaps-missing-list .pp-gap-item').forEach((item, i) => {
+      const num = item.querySelector('.pp-gap-number');
+      if (num) num.textContent = `G-${String(i + 1).padStart(2, '0')}`;
+    });
   }
 
   function _gapMissingItemHTML(gap) {
@@ -1611,12 +1753,13 @@ const PrionPacks = (() => {
     const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
+        <span class="pp-gap-number"></span>
         <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
         <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
         <button class="pp-btn pp-btn-sm pp-btn-ghost pp-gap-needed-toggle${neededActive}" title="Add a needed experiment to address this gap" type="button">
           <i class="fas fa-flask"></i> Needed experiment
         </button>
-        <button class="pp-btn-icon btn-remove" title="Remove gap" onclick="this.closest('.pp-gap-item').remove();PrionPacks._recalcScore();PrionPacks._updateFindingGapIndicators();">
+        <button class="pp-btn-icon btn-remove" title="Remove gap" onclick="this.closest('.pp-gap-item').remove();PrionPacks._renumberGaps();PrionPacks._refreshAllJumpButtons();PrionPacks._recalcScore();PrionPacks._updateFindingGapIndicators();">
           <i class="fas fa-times"></i>
         </button>
       </div>
@@ -1658,6 +1801,8 @@ const PrionPacks = (() => {
       _updateFindingGapIndicators();
     });
     _refreshGapFindingSelects();
+    _renumberGaps();
+    _refreshAllJumpButtons();
     item.querySelector('input[type="text"]').focus();
     _recalcScore();
   }
@@ -1864,6 +2009,7 @@ const PrionPacks = (() => {
     _initDragDrop(container);
     _refreshGapFindingSelects();
     _recalcScore();
+    _refreshAllJumpButtons();
   }
 
   function removeFinding(btn) {
@@ -1872,6 +2018,7 @@ const PrionPacks = (() => {
     _refreshGapFindingSelects();
     _updateFindingGapIndicators();
     _recalcScore();
+    _refreshAllJumpButtons();
   }
 
   function _renumberFindings() {
@@ -2395,6 +2542,7 @@ const PrionPacks = (() => {
     addFinding, removeFinding,
     translateFinding, addGapItem, savePackage, deletePackage,
     toast, _recalcScore, _updateFindingGapIndicators, _scrollToGap,
+    _renumberGaps, _refreshAllJumpButtons,
   };
 })();
 

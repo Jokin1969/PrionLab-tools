@@ -167,7 +167,7 @@
         <div class="pp-editor-form">
 
           <!-- Basic Information card -->
-          <div class="pp-card pp-card-section">
+          <div class="pp-card pp-card-section" id="section-basic">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-info-circle"></i> Basic Information</h2>
               <div class="pp-priority-selector" id="priority-selector">
@@ -310,6 +310,7 @@
           <div class="pp-card pp-card-section" id="section-methods" style="display:none;">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-flask-vial"></i> Methods</h2>
+              <div class="pp-section-jump" id="methods-jump"></div>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-method" type="button">
                 <i class="fas fa-plus"></i> Add Method
               </button>
@@ -318,9 +319,10 @@
           </div>
 
           <!-- Main Findings card -->
-          <div class="pp-card pp-card-section">
+          <div class="pp-card pp-card-section" id="section-findings">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-microscope"></i> Main Findings</h2>
+              <div class="pp-section-jump" id="findings-jump"></div>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-finding">
                 <i class="fas fa-plus"></i> Add Finding
               </button>
@@ -333,9 +335,10 @@
           </div>
 
           <!-- Gaps & Next Steps card -->
-          <div class="pp-card pp-card-section">
+          <div class="pp-card pp-card-section" id="section-gaps">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-exclamation-triangle"></i> Gaps &amp; Next Steps</h2>
+              <div class="pp-section-jump" id="gaps-jump"></div>
             </div>
             <div class="pp-form-group">
               <label class="pp-label">Missing Information</label>
@@ -422,6 +425,7 @@
           <div class="pp-card pp-card-section" id="section-references" style="display:none;">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-list"></i> References <span class="pp-section-count" id="references-count"></span></h2>
+              <div class="pp-section-jump" id="references-jump"></div>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-reference" type="button">
                 <i class="fas fa-plus"></i> Add Reference
               </button>
