@@ -55,6 +55,12 @@ router.delete('/:id', authenticate, requireAdmin, deleteArticle);
 // Download link (POST so it's not cached by browsers/proxies)
 router.post('/:id/download-link', authenticate, generateDownloadLinkHandler);
 
+// ── Ratings sub-resource ──────────────────────────────────────────────────────
+// Mounts GET|POST|DELETE /api/articles/:articleId/rate(s)
+// The ratings router uses mergeParams:true to inherit :id as :articleId
+router.use('/:articleId/ratings', require('./ratings'));
+router.use('/:articleId/rate', require('./ratings'));
+
 // ── PDF-specific sub-routes ───────────────────────────────────────────────────
 
 router.post(
