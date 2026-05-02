@@ -586,8 +586,8 @@ const PrionPacks = (() => {
       { field: 'field-acknowledgments',   section: 'section-acknowledgments',btn: 'btn-toggle-acknowledgments',icon: 'fa-heart',         label: 'Acknowledgments',     key: 'acknowledgments' },
       { field: 'field-funding',           section: 'section-funding',        btn: 'btn-toggle-funding',        icon: 'fa-coins',         label: 'Funding',             key: 'funding' },
       { field: 'field-conflictsofinterest',section:'section-conflicts',      btn: 'btn-toggle-conflicts',      icon: 'fa-balance-scale', label: 'Conflicts of interest', key: 'conflictsOfInterest' },
-      { field: 'field-references',        section: 'section-references',     btn: 'btn-toggle-references',     icon: 'fa-list',          label: 'References',          key: 'references' },
       { field: 'field-credit',            section: 'section-credit',         btn: 'btn-toggle-credit',         icon: 'fa-list-check',    label: 'CReDiT',              key: 'credit' },
+      { field: 'field-references',        section: 'section-references',     btn: 'btn-toggle-references',     icon: 'fa-list',          label: 'References',          key: 'references' },
     ];
     optionalSectionsGaps.forEach(({ field, section, btn, icon, label, key }) => {
       const val = pkg?.[key] || '';
