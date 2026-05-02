@@ -212,7 +212,7 @@ const PrionPacks = (() => {
 
   /* ── Editor ────────────────────────────────────────────────────────────── */
   /* ── Send for Review ───────────────────────────────────────────────────── */
-  let _selectedColleague = null;
+  let _selectedColleagues = new Set();
   let _claudeModalCallback = null;
 
   function _getAIContext() {
@@ -316,9 +316,12 @@ const PrionPacks = (() => {
 
   function _openSendModal() {
     if (!state.currentId) return;
-    _selectedColleague = null;
-    document.querySelectorAll('.pp-colleague-card').forEach(c => c.classList.remove('selected'));
-    document.getElementById('pp-send-btn').disabled = true;
+    _selectedColleagues = new Set();
+    document.querySelectorAll('.pp-colleague-card').forEach(c => {
+      c.classList.remove('selected');
+      c.setAttribute('aria-pressed', 'false');
+    });
+    _updateSendBtnState();
     document.getElementById('pp-send-modal').style.display = '';
   }
 
@@ -326,8 +329,21 @@ const PrionPacks = (() => {
     document.getElementById('pp-send-modal').style.display = 'none';
   }
 
+  function _updateSendBtnState() {
+    const count = _selectedColleagues.size;
+    const btn   = document.getElementById('pp-send-btn');
+    const label = document.getElementById('pp-send-btn-label');
+    if (!btn || !label) return;
+    btn.disabled = count === 0;
+    label.textContent = count === 0
+      ? 'Enviar documento'
+      : count === 1
+        ? 'Enviar a 1 destinatario'
+        : `Enviar a ${count} destinatarios`;
+  }
+
   async function _sendReview() {
-    if (!_selectedColleague || !state.currentId) return;
+    if (_selectedColleagues.size === 0 || !state.currentId) return;
     const btn = document.getElementById('pp-send-btn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…';
@@ -335,7 +351,7 @@ const PrionPacks = (() => {
       const resp = await fetch(`/prionpacks/api/packages/${state.currentId}/send-review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipient: _selectedColleague }),
+        body: JSON.stringify({ recipients: Array.from(_selectedColleagues) }),
       });
 
       // SMTP not configured — server returns the file directly
@@ -358,12 +374,18 @@ const PrionPacks = (() => {
       if (!resp.ok) { toast(data.error || 'Error enviando.', 'error'); return; }
       _closeSendModal();
       _updateVersionBadge(data.version);
-      toast(`Documento v${data.version} enviado a ${data.recipient}.`, 'success');
+      const sentNames = (data.sent || []).map(r => r.name).join(', ');
+      const failedCount = (data.failed || []).length;
+      if (failedCount > 0) {
+        toast(`v${data.version} enviada a ${sentNames}. Falló para ${failedCount} destinatario/s.`, 'info');
+      } else {
+        toast(`Documento v${data.version} enviado a ${sentNames}.`, 'success');
+      }
     } catch (err) {
       toast('Error de red: ' + err.message, 'error');
     } finally {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar documento';
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> <span id="pp-send-btn-label">Enviar documento</span>';
+      _updateSendBtnState();
     }
   }
 
@@ -1451,10 +1473,17 @@ const PrionPacks = (() => {
 
     document.querySelectorAll('.pp-colleague-card').forEach(card => {
       card.addEventListener('click', () => {
-        document.querySelectorAll('.pp-colleague-card').forEach(c => c.classList.remove('selected'));
-        card.classList.add('selected');
-        _selectedColleague = card.dataset.key;
-        document.getElementById('pp-send-btn').disabled = false;
+        const key = card.dataset.key;
+        if (_selectedColleagues.has(key)) {
+          _selectedColleagues.delete(key);
+          card.classList.remove('selected');
+          card.setAttribute('aria-pressed', 'false');
+        } else {
+          _selectedColleagues.add(key);
+          card.classList.add('selected');
+          card.setAttribute('aria-pressed', 'true');
+        }
+        _updateSendBtnState();
       });
     });
 

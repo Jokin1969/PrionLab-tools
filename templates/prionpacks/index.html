@@ -479,37 +479,44 @@
         <i class="fas fa-times"></i>
       </button>
     </div>
-    <p style="margin:0 0 16px;font-size:13px;color:var(--pp-text-dim);">Selecciona el destinatario. Se generará un Word adjunto y se enviará por email.</p>
+    <p class="pp-send-modal-desc">Selecciona <strong>uno o varios</strong> destinatarios. Se generará un Word con la versión actualizada y se enviará por email a cada uno.</p>
     <div class="pp-colleague-grid">
-      <button class="pp-colleague-card" data-key="herana" type="button">
+      <button class="pp-colleague-card" data-key="herana" type="button" aria-pressed="false">
         <div class="pp-colleague-avatar">HE</div>
         <div class="pp-colleague-name">Hasier Eraña</div>
         <div class="pp-colleague-email">herana@cicbiogune.es</div>
         <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
       </button>
-      <button class="pp-colleague-card" data-key="cdiza" type="button">
+      <button class="pp-colleague-card" data-key="cdiza" type="button" aria-pressed="false">
         <div class="pp-colleague-avatar">CD</div>
         <div class="pp-colleague-name">Carlos Díaz</div>
         <div class="pp-colleague-email">cdiza@cicbiogune.es</div>
         <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
       </button>
-      <button class="pp-colleague-card" data-key="jmoreno" type="button">
+      <button class="pp-colleague-card" data-key="jmoreno" type="button" aria-pressed="false">
         <div class="pp-colleague-avatar">JM</div>
         <div class="pp-colleague-name">Jorge Moreno</div>
         <div class="pp-colleague-email">jmoreno@cicbiogune.es</div>
         <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
       </button>
     </div>
+
+    <div class="pp-send-modal-divider"><span>o</span></div>
+
+    <a id="pp-send-download-link" class="pp-btn-download-only" href="#" download>
+      <i class="fas fa-file-word"></i>
+      <span class="pp-btn-download-only-text">
+        <strong>Solo descargar el Word</strong>
+        <small>sin enviar email a nadie · revisión personal</small>
+      </span>
+      <i class="fas fa-download pp-btn-download-only-arrow"></i>
+    </a>
+
     <div class="pp-send-modal-footer">
-      <a id="pp-send-download-link" href="#" download style="font-size:12px;color:var(--pp-text-dim);text-decoration:none;" title="Descargar sin enviar">
-        <i class="fas fa-download"></i> Solo descargar Word
-      </a>
-      <div style="display:flex;gap:8px;">
-        <button id="pp-send-cancel" class="pp-btn pp-btn-ghost" type="button">Cancelar</button>
-        <button id="pp-send-btn" class="pp-btn pp-btn-primary" type="button" disabled>
-          <i class="fas fa-paper-plane"></i> Enviar documento
-        </button>
-      </div>
+      <button id="pp-send-cancel" class="pp-btn pp-btn-ghost" type="button">Cancelar</button>
+      <button id="pp-send-btn" class="pp-btn pp-btn-primary" type="button" disabled>
+        <i class="fas fa-paper-plane"></i> <span id="pp-send-btn-label">Enviar documento</span>
+      </button>
     </div>
   </div>
 </div>
