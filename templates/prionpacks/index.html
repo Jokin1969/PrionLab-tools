@@ -159,6 +159,7 @@
       <!-- Title bar — full width below toolbar (read-only display) -->
       <div class="pp-title-bar">
         <h1 id="title-display" class="pp-title-display pp-title-display-empty">Untitled package</h1>
+        <div id="alt-titles-display" class="pp-alt-titles-display"></div>
       </div>
 
       <div class="pp-editor-layout">
@@ -188,6 +189,15 @@
                 </div>
               </div>
               <textarea id="field-title" class="pp-textarea" rows="2" placeholder="Package title…" autocomplete="off"></textarea>
+            </div>
+            <div class="pp-form-group pp-alt-titles-editor">
+              <div class="pp-label-ai-row">
+                <label class="pp-label pp-label-sm">Alternative titles</label>
+                <button type="button" class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-add-alt-title">
+                  <i class="fas fa-plus"></i> Add alternative title
+                </button>
+              </div>
+              <div id="alt-titles-list" class="pp-alt-titles-list"></div>
             </div>
             <div class="pp-form-group">
               <div class="pp-label-ai-row">

@@ -550,6 +550,10 @@ const PrionPacks = (() => {
     titleEl.value = pkg?.title || '';
     _updateTitleDisplay(titleEl.value);
 
+    const altTitles = Array.isArray(pkg?.altTitles) ? pkg.altTitles : [];
+    _renderAltTitlesEditor(altTitles);
+    _updateAltTitlesDisplay(altTitles);
+
     document.getElementById('field-description').value = pkg?.description || '';
 
     _setPriority(pkg?.priority || 'none');
@@ -725,6 +729,63 @@ const PrionPacks = (() => {
     }
   }
 
+  /* ── Alternative titles ────────────────────────────────────────────────── */
+  function _renderAltTitlesEditor(altTitles) {
+    const list = document.getElementById('alt-titles-list');
+    if (!list) return;
+    list.innerHTML = '';
+    (altTitles || []).forEach((t, idx) => {
+      const row = document.createElement('div');
+      row.className = 'pp-alt-title-row';
+      row.dataset.index = idx;
+      row.innerHTML = `
+        <input type="text" class="pp-input pp-alt-title-input" value="${_esc(t)}" placeholder="Alternative title…" />
+        <button type="button" class="pp-btn-icon btn-remove" title="Remove alternative title">
+          <i class="fas fa-trash"></i>
+        </button>`;
+      const input = row.querySelector('.pp-alt-title-input');
+      input.addEventListener('input', () => {
+        _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
+      });
+      row.querySelector('.btn-remove').addEventListener('click', () => {
+        row.remove();
+        _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
+        _scheduleAutosave();
+      });
+      list.appendChild(row);
+    });
+  }
+
+  function _collectAltTitlesFromEditor() {
+    return Array.from(document.querySelectorAll('#alt-titles-list .pp-alt-title-input'))
+      .map(i => i.value.trim())
+      .filter(Boolean);
+  }
+
+  function _updateAltTitlesDisplay(altTitles) {
+    const wrap = document.getElementById('alt-titles-display');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    (altTitles || []).forEach(t => {
+      const trimmed = (t || '').trim();
+      if (!trimmed) return;
+      const div = document.createElement('div');
+      div.className = 'pp-alt-title-display-item';
+      div.textContent = trimmed;
+      wrap.appendChild(div);
+    });
+  }
+
+  function _addAltTitleRow() {
+    const list = document.getElementById('alt-titles-list');
+    if (!list) return;
+    const current = _collectAltTitlesFromEditor();
+    current.push('');
+    _renderAltTitlesEditor(current);
+    const inputs = list.querySelectorAll('.pp-alt-title-input');
+    inputs[inputs.length - 1]?.focus();
+  }
+
   /* ── Toggle helpers ────────────────────────────────────────────────────── */
   function _updateToggleBtn(btnId, active, icon, label) {
     const btn = document.getElementById(btnId);
@@ -796,6 +857,7 @@ const PrionPacks = (() => {
   function _collectAllData(title) {
     return {
       title: title || (document.getElementById('field-title').value || '').trim(),
+      altTitles: _collectAltTitlesFromEditor(),
       description: document.getElementById('field-description').value.trim(),
       priority: _getCurrentPriority(),
       active: _getCurrentActive(),
@@ -1573,6 +1635,9 @@ const PrionPacks = (() => {
     document.getElementById('btn-back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('btn-save-package').addEventListener('click', savePackage);
     document.getElementById('btn-delete-package').addEventListener('click', deletePackage);
+
+    // Alternative titles
+    document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
 
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));

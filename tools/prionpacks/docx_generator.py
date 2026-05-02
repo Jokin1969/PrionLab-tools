@@ -42,6 +42,19 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     run.font.bold  = True
     run.font.color.rgb = _TEAL
 
+    # Alternative titles, one per line, italic dim grey beneath the main title
+    alt_titles = pkg.get('altTitles') or []
+    for at in alt_titles:
+        at_clean = (at or '').strip()
+        if not at_clean:
+            continue
+        ap = doc.add_paragraph()
+        ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        ar = ap.add_run(at_clean)
+        ar.font.size  = Pt(14)
+        ar.font.italic = True
+        ar.font.color.rgb = _TEAL
+
     sub = doc.add_paragraph()
     run2 = sub.add_run(
         f"PrionPack {pkg.get('id', '')}  ·  "

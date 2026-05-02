@@ -147,6 +147,7 @@ def create_package(data: dict) -> dict:
     pkg = {
         'id': _gen_id(packages),
         'title': (data.get('title') or 'Untitled').strip(),
+        'altTitles': [t.strip() for t in (data.get('altTitles') or []) if isinstance(t, str) and t.strip()],
         'description': (data.get('description') or '').strip(),
         'type': data.get('type', 'research'),
         'priority': data.get('priority', 'none'),
