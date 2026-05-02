@@ -654,6 +654,7 @@ const PrionPacks = (() => {
     // Collapsible sections — install buttons (idempotent) and refresh indicators
     _setupCollapsibleSections();
     _updateCollapseIndicators();
+    _setupAnchorButtons();
   }
 
   /* ── Active/Inactive toggle ────────────────────────────────────────────── */
@@ -707,6 +708,7 @@ const PrionPacks = (() => {
     if (!list) return;
     list.innerHTML = '';
     (refs || []).forEach((r, idx) => list.appendChild(_createReferenceItem(r, idx)));
+    _setupAnchorButtons(list);
   }
 
   function _createReferenceItem(text, idx) {
@@ -757,6 +759,7 @@ const PrionPacks = (() => {
     const idx  = list.children.length;
     const item = _createReferenceItem('', idx);
     list.appendChild(item);
+    _setupAnchorButtons(item);
     if (focus) item.querySelector('textarea').focus();
     _scheduleAutosave();
     _updateCollapseIndicators();
@@ -769,6 +772,62 @@ const PrionPacks = (() => {
   }
 
   /* ── Collapsible sections ──────────────────────────────────────────────── */
+  /* ── Anchor button (lock textarea height across reloads/collapse) ──────── */
+  function _setupAnchorButtons(scope) {
+    const root = scope || document;
+    root.querySelectorAll('textarea.pp-textarea').forEach(ta => {
+      if (!ta.id) return;                     // anchor needs a stable storage key
+      if (ta.dataset.anchorWrapped === '1') return;
+
+      // Wrap the textarea in a relatively-positioned container so we can
+      // place the anchor button absolutely over its bottom-right corner.
+      const wrap = document.createElement('div');
+      wrap.className = 'pp-textarea-wrap';
+      ta.parentNode.insertBefore(wrap, ta);
+      wrap.appendChild(ta);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pp-anchor-btn';
+      btn.title = 'Anclar el tamaño actual del campo';
+      btn.innerHTML = '<i class="fas fa-anchor"></i>';
+      wrap.appendChild(btn);
+
+      ta.dataset.anchorWrapped = '1';
+
+      // Restore previously-anchored height
+      const key   = 'pp-anchor-h:' + ta.id;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        ta.style.height = saved;
+        btn.classList.add('is-anchored');
+        btn.title = 'Tamaño anclado — clic para liberar';
+      }
+
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (btn.classList.contains('is-anchored')) {
+          ta.style.height = '';
+          localStorage.removeItem(key);
+          btn.classList.remove('is-anchored');
+          btn.title = 'Anclar el tamaño actual del campo';
+          toast('Tamaño liberado.', 'info');
+        } else {
+          // getBoundingClientRect gives the rendered height (after any
+          // user-resize). Clamp at a sane minimum so we never anchor 0px.
+          const h  = Math.max(40, Math.round(ta.getBoundingClientRect().height));
+          const px = h + 'px';
+          ta.style.height = px;
+          localStorage.setItem(key, px);
+          btn.classList.add('is-anchored');
+          btn.title = 'Tamaño anclado — clic para liberar';
+          toast('Tamaño anclado: ' + px + '.', 'success');
+        }
+      });
+    });
+  }
+
   function _setupCollapsibleSections() {
     document.querySelectorAll('.pp-card-section').forEach(card => {
       const header = card.querySelector('.pp-section-header');
@@ -998,6 +1057,7 @@ const PrionPacks = (() => {
     findings.forEach((f, i) => container.appendChild(_createFindingBlock(f, i + 1)));
     _initDragDrop(container);
     _updateCollapseIndicators();
+    _setupAnchorButtons(container);
   }
 
   function _createFindingBlock(finding, num) {
@@ -1619,6 +1679,7 @@ const PrionPacks = (() => {
     const num = container.querySelectorAll('.pp-finding-block').length + 1;
     const block = _createFindingBlock({id:'f'+Date.now(),title:'',titleEnglish:'',description:'',figures:[],tables:[]}, num);
     container.appendChild(block);
+    _setupAnchorButtons(block);
     document.getElementById('findings-empty').style.display = 'none';
     block.querySelector('.pp-finding-title-input').focus();
     _initDragDrop(container);
