@@ -751,7 +751,8 @@ const PrionPacks = (() => {
     ta.value = text || '';
     const refreshPreview = () => {
       const first = (ta.value || '').split('\n').find(l => l.trim()) || '';
-      preview.textContent = first.length > 90 ? first.slice(0, 90) + '…' : first;
+      const clipped = first.length > 90 ? first.slice(0, 90) + '…' : first;
+      preview.innerHTML = _supHtml(clipped);
     };
     ta.addEventListener('input', () => {
       _renderDoiChipsFor(ta, chips);
@@ -953,15 +954,23 @@ const PrionPacks = (() => {
           btn.title = 'Anclar el tamaño actual del campo';
           toast('Tamaño liberado.', 'info');
         } else {
-          // getBoundingClientRect gives the rendered height (after any
-          // user-resize). Clamp at a sane minimum so we never anchor 0px.
-          const h  = Math.max(40, Math.round(ta.getBoundingClientRect().height));
-          const px = h + 'px';
+          // 1) Expand to fit the full content first: clear inline height so
+          //    scrollHeight reports the size needed to show all text without
+          //    a scrollbar; then read it and use that as the anchor height.
+          // 2) A small +6 px pad avoids a 1-line scrollbar on some browsers.
+          // 3) Cap at 80 % of the viewport so a huge paste doesn't take over
+          //    the whole screen — the user can keep scrolling inside.
+          ta.style.height = 'auto';
+          const fit  = ta.scrollHeight;
+          const cap  = Math.round(window.innerHeight * 0.8);
+          const h    = Math.max(80, Math.min(cap, fit + 6));
+          const px   = h + 'px';
           ta.style.height = px;
           localStorage.setItem(key, px);
           btn.classList.add('is-anchored');
           btn.title = 'Tamaño anclado — clic para liberar';
-          toast('Tamaño anclado: ' + px + '.', 'success');
+          const fitFlag = fit + 6 <= cap ? '' : ' (limitado al 80 % del alto de pantalla)';
+          toast('Anclado para mostrar todo el texto: ' + px + fitFlag + '.', 'success');
         }
       });
     });
@@ -2347,10 +2356,13 @@ const PrionPacks = (() => {
 
   // Render text with markdown-style superscript markers: PrP^Sc^ -> PrP<sup>Sc</sup>.
   // The input is HTML-escaped first; only the <sup> tags we generate are kept.
+  // The regex requires the segment to start with a non-whitespace char so it
+  // does not match stray "^ ... ^" patterns where the carets are isolated;
+  // internal spaces inside the brackets are allowed (e.g. ^max value^).
   // Used in read-only display contexts (titles, badges, dashboard cards…).
   function _supHtml(str) {
     const escaped = _esc(str);
-    return escaped.replace(/\^([^\^\s][^\^]*?)\^/g, '<sup>$1</sup>');
+    return escaped.replace(/\^(\S[^\^\n]*?)\^/g, '<sup>$1</sup>');
   }
 
   // Builds the EN badge HTML shown under a finding header. The raw translation
