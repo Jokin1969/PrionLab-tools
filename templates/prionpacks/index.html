@@ -58,6 +58,9 @@
       <button class="pp-btn pp-btn-primary pp-btn-full" id="btn-new-package">
         <i class="fas fa-plus"></i> New Package
       </button>
+      <button class="pp-btn pp-btn-secondary pp-btn-full pp-btn-docs" id="btn-show-docs" title="Documentación general de PrionPacks">
+        <i class="fas fa-book"></i> Documentation
+      </button>
     </div>
   </aside>
 
@@ -482,6 +485,114 @@
             <span class="pp-api-status" id="api-key-status"></span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Documentation view -->
+    <div id="view-docs" class="pp-view">
+      <div class="pp-page-header">
+        <div>
+          <h1 class="pp-page-title"><i class="fas fa-book"></i> PrionPacks Documentation</h1>
+          <p class="pp-page-subtitle">Descripción general de la herramienta — pensada como contexto para asistentes de IA.</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="pp-btn pp-btn-primary" id="btn-copy-docs" title="Copiar todo el texto al portapapeles">
+            <i class="fas fa-copy"></i> Copy to clipboard
+          </button>
+          <button class="pp-btn pp-btn-secondary" id="btn-docs-back" title="Volver al dashboard">
+            <i class="fas fa-arrow-left"></i> Back
+          </button>
+        </div>
+      </div>
+
+      <div class="pp-docs-wrapper">
+        <pre class="pp-docs-content" id="pp-docs-content"># PrionPacks — Manual de contexto para asistentes de IA
+
+## Qué es
+
+PrionPacks es una herramienta web (Flask + JavaScript vanilla) diseñada para organizar y desarrollar paquetes de investigación científica en el campo de las enfermedades priónicas y la neurodegeneración. Cada "paquete" (PrionPack) es un contenedor estructurado de información que representa un trabajo de investigación en curso: un manuscrito, una revisión, un caso clínico, un proyecto experimental, etc.
+
+La idea central es que un paquete agrupa todo el material conceptual y textual de un trabajo —desde la idea inicial hasta el borrador del manuscrito— de modo que el investigador pueda: (1) ir rellenando secciones de forma progresiva, (2) usar IA (Claude) como copiloto sobre cualquier campo, y (3) exportar en cualquier momento a Word para revisión.
+
+## Estructura de un paquete
+
+Cada paquete tiene un ID único (PRP-001, PRP-002...), un estado activo/inactivo, una prioridad (none / low / medium / high), un tipo (research / review / case / methods) y los siguientes campos:
+
+### Campos básicos (siempre visibles)
+- Title: título del paquete o trabajo. Editable, con botones AI y Claude.
+- Description: descripción breve de qué trata el paquete.
+- Investigations: campo de texto + adjuntos PDF/Word (hasta 25 MB cada uno) para guardar información de partida — bibliografía, notas, papers leídos, ideas iniciales. Los PDFs se pueden enviar como contexto a Claude (vision) usando el botón AI por archivo.
+
+### Campos opcionales — Información de manuscrito (toggle on/off)
+- Co-authors: lista de coautores en orden de firma.
+- Affiliations: afiliaciones numeradas correspondientes a los coautores.
+- Abstract: resumen del manuscrito.
+- Author Summary: resumen para no expertos (estilo PLoS).
+- Introduction: texto de la introducción.
+- Methods: texto de materiales y métodos.
+
+### Main Findings (siempre visible)
+Lista ordenable (drag & drop) de hallazgos del trabajo. Cada finding tiene:
+- Title: título corto del hallazgo (botón "Translate with Claude" para versión en inglés).
+- Description: descripción detallada.
+- Figures: lista de figuras asociadas. Cada figura tiene una descripción (input), una imagen subida (drop, browse, o paste con Ctrl+V) y un pie de figura (textarea con botones AI y Claude — Claude puede ver la imagen y generar el caption).
+- Tables: lista de tablas asociadas con descripción.
+
+### Gaps & Next Steps (siempre visible)
+Lista de lagunas o información que falta para cerrar el trabajo. Cada gap tiene:
+- Missing info: qué falta.
+- Needed experiment (sub-campo desplegable): qué experimento concreto resolvería esa laguna.
+- Linked finding (selector): se puede asociar el gap a un finding concreto.
+
+### Campos opcionales — Cierre del manuscrito (toggle on/off)
+- CReDiT: declaración de contribución de autoría (CRediT taxonomy).
+- References: lista bibliográfica con detección automática de DOIs: cualquier patrón 10.xxxx/yyyy que aparezca en el texto se renderiza como un chip clicable que enlaza a https://doi.org/...
+- Conflicts of Interest.
+- Funding.
+- Acknowledgments.
+- Discussion.
+
+## Sistema de plegado e indicadores visuales
+
+Cada sección tiene un triángulo en la esquina superior izquierda que pliega/despliega su contenido. El color del triángulo indica el estado:
+- Verde fijo: la sección tiene contenido.
+- Naranja parpadeante: la sección está vacía (invitación a rellenarla).
+
+## Integración con Claude (IA)
+
+El sistema usa la API de Anthropic (clave que el usuario configura). Hay dos tipos de botones:
+
+1. Botones "AI" (toggle): marcan un campo como contexto para una pregunta posterior. Se pueden activar varios.
+2. Botones "Claude": lanzan una pregunta a Claude. La pregunta envía:
+   - Todos los campos con AI activo como contexto.
+   - El campo donde está el botón Claude como objetivo de la pregunta.
+   - Opcionalmente, la imagen de una figura (vision) o PDFs de Investigations (document blocks).
+
+El resultado se muestra en un modal para copiarlo al campo si interesa.
+
+## Score y estado activo
+
+- Score: puntuación 0-100 calculada como findings (60%) + figures (25%) + gaps (15%). Sirve como indicador del grado de completitud.
+- Active/Inactive toggle: paquete inactivo se bloquea visualmente (opaco, no editable). Útil para archivar trabajos concluidos sin perderlos.
+
+## Salidas
+
+- Word (.docx): genera el documento completo del paquete con todas las secciones, figuras embebidas con sus pies, tablas, gaps formateados, etc. Versionado automático (v1, v2…) cada vez que se envía para revisión.
+- Email para revisión: envío del Word generado por SMTP a uno o varios "colegas" predefinidos (Hasier Eraña, Carlos Díaz, Jorge Moreno).
+- Export ManuscriptForge → PrionPack: la herramienta hermana ManuscriptForge genera secciones administrativas estandarizadas (Author Order, Funding, Acknowledgments, Competing Interests, CReDiT, Introduction, Methods) a partir del directorio de miembros y grants, y permite exportarlas directamente a un campo del paquete vía botón "📦 Exportar a PrionPacks".
+
+## Para qué se usa
+
+El usuario es investigador en biología de priones / neurodegeneración (CIC bioGUNE). Usa PrionPacks para:
+
+1. Capturar ideas en bruto en Investigations (papers leídos, notas).
+2. Estructurar findings a medida que se generan datos experimentales, asociándoles figuras (gels, IHC, imágenes de microscopía, gráficos).
+3. Identificar gaps que requieren más experimentos antes de poder publicar.
+4. Redactar cada sección del manuscrito con apoyo de Claude (Abstract, Introduction, Methods, Discussion…), usando como contexto los findings y la información de partida.
+5. Iterar con coautores generando Word con versionado, recibiendo comentarios, y reincorporándolos.
+6. Cerrar el paquete con CReDiT, References (con DOIs auto-detectados), Funding y Acknowledgments antes de la submission.
+
+El asistente debe asumir que el contenido suele estar en español o inglés científico, que los temas son técnicos (α-synuclein, tau, PrPsc, ECJ, RT-QuIC, modelos transgénicos, IHC, EM…) y que el tono buscado es el de un manuscrito científico en revistas de neurociencia/neurodegeneración.</pre>
       </div>
     </div>
 

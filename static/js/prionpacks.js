@@ -1574,6 +1574,29 @@ const PrionPacks = (() => {
     document.getElementById('btn-save-package').addEventListener('click', savePackage);
     document.getElementById('btn-delete-package').addEventListener('click', deletePackage);
 
+    // Documentation view
+    document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));
+    document.getElementById('btn-docs-back')?.addEventListener('click', showDashboard);
+    document.getElementById('btn-copy-docs')?.addEventListener('click', async () => {
+      const txt = document.getElementById('pp-docs-content')?.textContent || '';
+      try {
+        await navigator.clipboard.writeText(txt);
+        toast('Documentación copiada al portapapeles.', 'success');
+      } catch (e) {
+        try {
+          const tmp = document.createElement('textarea');
+          tmp.value = txt;
+          document.body.appendChild(tmp);
+          tmp.select();
+          document.execCommand('copy');
+          tmp.remove();
+          toast('Documentación copiada al portapapeles.', 'success');
+        } catch {
+          toast('No se pudo copiar. Selecciona el texto manualmente.', 'error');
+        }
+      }
+    });
+
     document.getElementById('pp-search').addEventListener('input', e => {
       state.search = e.target.value;
       _renderDashboard();

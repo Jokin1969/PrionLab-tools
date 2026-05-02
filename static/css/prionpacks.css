@@ -193,7 +193,37 @@
 .pp-package-item-bar { flex: 1; height: 3px; background: var(--pp-border); border-radius: 2px; overflow: hidden; }
 .pp-package-item-bar-fill { height: 100%; background: var(--pp-accent); border-radius: 2px; transition: width .3s; }
 
-.pp-sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--pp-border); }
+.pp-sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--pp-border); display: flex; flex-direction: column; gap: 8px; }
+.pp-btn-docs {
+  background: #f3f4f6;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
+}
+.pp-btn-docs:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+/* ── Documentation view ──────────────────────────────────────────────────── */
+.pp-docs-wrapper {
+  padding: 0 32px 40px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.pp-docs-content {
+  background: #fff;
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius);
+  padding: 28px 36px;
+  font-family: 'Crimson Pro', 'Georgia', serif;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--pp-text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  overflow-x: auto;
+}
 
 /* ── Main area ───────────────────────────────────────────────────────────── */
 
