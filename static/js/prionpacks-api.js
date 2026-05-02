@@ -6,16 +6,27 @@ const PPApi = (() => {
   const MODEL    = 'claude-sonnet-4-5';
 
   function _extractText(data) {
-    if (!data || !Array.isArray(data.content)) {
-      console.error('Unexpected Claude response shape:', data);
-      throw new Error('Respuesta inesperada de la API (sin "content").');
+    if (!data || typeof data !== 'object') {
+      throw new Error('Respuesta vacía o no-JSON de la API.');
     }
-    const block = data.content.find(c => c && c.type === 'text' && typeof c.text === 'string');
+    if (!Array.isArray(data.content)) {
+      console.error('Unexpected Claude response shape:', data);
+      const snap = JSON.stringify(data).slice(0, 400);
+      throw new Error('Respuesta sin campo "content". Snapshot: ' + snap);
+    }
+    // Strict: a proper text block.
+    let block = data.content.find(c => c && c.type === 'text' && typeof c.text === 'string');
+    // Fallback: any block exposing a string text/value/output.
+    if (!block) {
+      block = data.content.find(c => c && (typeof c.text === 'string' || typeof c.value === 'string' || typeof c.output === 'string'));
+    }
     if (!block) {
       console.error('No text block in response:', data);
-      throw new Error('La respuesta no contiene texto utilizable.');
+      const types = data.content.map(c => c?.type ?? typeof c).join(', ') || '(vacío)';
+      const snap  = JSON.stringify(data).slice(0, 400);
+      throw new Error(`Sin bloque de texto. Tipos recibidos: [${types}]. Respuesta: ${snap}`);
     }
-    return block.text;
+    return block.text || block.value || block.output || '';
   }
 
   async function translateTitle(text) {
