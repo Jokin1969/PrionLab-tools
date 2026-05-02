@@ -2,6 +2,12 @@ const { Router } = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { upload, handleUploadError } = require('../middleware/upload');
 const {
+  createArticle,
+  getArticles,
+  getArticleById,
+  updateArticle,
+  deleteArticle,
+  generateDownloadLinkHandler,
   fetchMetadata,
   uploadArticlePDF,
   getDownloadLink,
@@ -11,15 +17,46 @@ const {
 
 const router = Router();
 
-// ── Metadata lookup (admin only, no DB write) ─────────────────────────────────
-router.post('/fetch-metadata', authenticate, requireAdmin, fetchMetadata);
+// ── Static routes first (must come before /:id) ───────────────────────────────
 
-// ── Dropbox file browser (admin only) ────────────────────────────────────────
-// Registered before /:id routes to avoid shadowing
+router.post('/fetch-metadata', authenticate, requireAdmin, fetchMetadata);
 router.get('/dropbox/files', authenticate, requireAdmin, listDropboxFiles);
 
-// ── Per-article PDF management ────────────────────────────────────────────────
-// Upload: admin only; multer runs first, then the error handler, then the controller
+// ── Collection routes ─────────────────────────────────────────────────────────
+
+// Create: may include PDF — multer runs then error handler then controller
+router.post(
+  '/',
+  authenticate,
+  requireAdmin,
+  upload.single('pdf'),
+  handleUploadError,
+  createArticle
+);
+
+router.get('/', authenticate, getArticles);
+
+// ── Per-article routes ────────────────────────────────────────────────────────
+
+router.get('/:id', authenticate, getArticleById);
+
+// Update: may include replacement PDF
+router.put(
+  '/:id',
+  authenticate,
+  requireAdmin,
+  upload.single('pdf'),
+  handleUploadError,
+  updateArticle
+);
+
+router.delete('/:id', authenticate, requireAdmin, deleteArticle);
+
+// Download link (POST so it's not cached by browsers/proxies)
+router.post('/:id/download-link', authenticate, generateDownloadLinkHandler);
+
+// ── PDF-specific sub-routes ───────────────────────────────────────────────────
+
 router.post(
   '/:id/pdf',
   authenticate,
@@ -29,10 +66,7 @@ router.post(
   uploadArticlePDF
 );
 
-// Download link: any authenticated user can fetch a link for their own reading
 router.get('/:id/pdf/link', authenticate, getDownloadLink);
-
-// Delete PDF: admin only
 router.delete('/:id/pdf', authenticate, requireAdmin, deleteArticlePDF);
 
 module.exports = router;
