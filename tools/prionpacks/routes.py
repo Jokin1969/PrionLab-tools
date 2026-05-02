@@ -94,10 +94,20 @@ def api_send_review(pkg_id):
     from .email_sender import is_configured, send_review_email
 
     data = request.get_json(force=True, silent=True) or {}
-    key  = data.get('recipient', '')
-    colleague = COLLEAGUES.get(key)
-    if not colleague:
-        return jsonify({'error': 'Destinatario no válido.'}), 400
+    keys = data.get('recipients')
+    if not keys:
+        single = data.get('recipient')
+        keys = [single] if single else []
+    keys = [k for k in keys if k]
+    if not keys:
+        return jsonify({'error': 'No se ha seleccionado ningún destinatario.'}), 400
+
+    colleagues = []
+    for k in keys:
+        c = COLLEAGUES.get(k)
+        if not c:
+            return jsonify({'error': f'Destinatario no válido: {k}'}), 400
+        colleagues.append(c)
 
     pkg = models.get_package(pkg_id)
     if not pkg:
@@ -128,21 +138,32 @@ def api_send_review(pkg_id):
             },
         )
 
-    try:
-        send_review_email(
-            recipient_email=colleague['email'],
-            recipient_name=colleague['name'],
-            pkg_title=pkg.get('title', 'Paquete sin título'),
-            docx_bytes=docx_bytes,
-            version=version,
-        )
-    except Exception as exc:
-        logger.error('Email send error for %s: %s', pkg_id, exc)
-        return jsonify({'error': f'Error enviando el email: {exc}', 'version': version}), 500
+    sent, failed = [], []
+    for colleague in colleagues:
+        try:
+            send_review_email(
+                recipient_email=colleague['email'],
+                recipient_name=colleague['name'],
+                pkg_title=pkg.get('title', 'Paquete sin título'),
+                docx_bytes=docx_bytes,
+                version=version,
+            )
+            sent.append({'name': colleague['name'], 'email': colleague['email']})
+        except Exception as exc:
+            logger.error('Email send error to %s: %s', colleague['email'], exc)
+            failed.append({'name': colleague['name'], 'email': colleague['email'], 'error': str(exc)})
+
+    if not sent:
+        return jsonify({
+            'ok': False,
+            'version': version,
+            'failed': failed,
+            'error': 'No se pudo enviar a ningún destinatario.',
+        }), 500
 
     return jsonify({
-        'ok':        True,
-        'version':   version,
-        'recipient': colleague['name'],
-        'email':     colleague['email'],
+        'ok':      True,
+        'version': version,
+        'sent':    sent,
+        'failed':  failed,
     })
