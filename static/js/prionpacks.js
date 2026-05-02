@@ -1006,7 +1006,7 @@ const PrionPacks = (() => {
     div.dataset.id = finding.id;
     div.draggable = true;
     const enBadge = finding.titleEnglish
-      ? `<div class="pp-finding-en-badge">EN: ${_supHtml(finding.titleEnglish)}</div>` : '';
+      ? _buildEnBadgeHTML(finding.titleEnglish) : '';
 
     div.innerHTML = `
       <div class="pp-finding-header">
@@ -1326,12 +1326,12 @@ const PrionPacks = (() => {
     try {
       const translated = await PPApi.translateTitle(text);
       let badge = block.querySelector('.pp-finding-en-badge');
-      if (!badge) {
-        badge = document.createElement('div');
-        badge.className = 'pp-finding-en-badge';
-        block.querySelector('.pp-finding-header').insertAdjacentElement('afterend', badge);
+      const html = _buildEnBadgeHTML(translated);
+      if (badge) {
+        badge.outerHTML = html;
+      } else {
+        block.querySelector('.pp-finding-header').insertAdjacentHTML('afterend', html);
       }
-      badge.innerHTML = 'EN: ' + _supHtml(translated);
       toast('Translation complete!', 'success');
     } catch (e) {
       await _handleClaudeError(e, 'Translation error');
@@ -1688,7 +1688,7 @@ const PrionPacks = (() => {
       return {
         id: block.dataset.id || ('f' + Date.now()),
         title: block.querySelector('.pp-finding-title-input')?.value.trim() || '',
-        titleEnglish: badge ? badge.textContent.replace(/^EN:\s*/, '') : '',
+        titleEnglish: badge ? (badge.dataset.raw || '').trim() : '',
         description: block.querySelector('.pp-textarea')?.value.trim() || '',
         figures: Array.from(block.querySelectorAll('.pp-figure-item')).map((item, i) => ({
           id: 'fig' + (i + 1),
@@ -1917,6 +1917,22 @@ const PrionPacks = (() => {
       const claudeBtn = e.target.closest('.pp-claude-finding-btn');
       if (claudeBtn) {
         _askClaudeField(claudeBtn.dataset.sourceId, claudeBtn.dataset.sourceLabel);
+        return;
+      }
+      const applyBtn = e.target.closest('.pp-finding-en-apply');
+      if (applyBtn) {
+        const badge = applyBtn.closest('.pp-finding-en-badge');
+        const block = applyBtn.closest('.pp-finding-block');
+        const titleInput = block?.querySelector('.pp-finding-title-input');
+        const raw = badge?.dataset.raw || '';
+        if (titleInput && raw) {
+          titleInput.value = raw;
+          // Fire input event so autosave + score recalc + AI label refresh trigger
+          titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        badge?.remove();
+        _scheduleAutosave();
+        toast('Traducción aplicada al título.', 'success');
       }
     });
 
@@ -2084,6 +2100,20 @@ const PrionPacks = (() => {
   function _supHtml(str) {
     const escaped = _esc(str);
     return escaped.replace(/\^([^\^\s][^\^]*?)\^/g, '<sup>$1</sup>');
+  }
+
+  // Builds the EN badge HTML shown under a finding header. The raw translation
+  // (with its ^...^ superscript markers preserved) is stored on data-raw so the
+  // "Apply" button can copy it verbatim into the title input, and so that
+  // _collectFindings can save it without losing the markers.
+  function _buildEnBadgeHTML(text) {
+    const raw = String(text || '');
+    return `<div class="pp-finding-en-badge" data-raw="${_esc(raw)}">
+      <span class="pp-finding-en-text">EN: ${_supHtml(raw)}</span>
+      <button type="button" class="pp-btn pp-btn-sm pp-finding-en-apply" title="Pasar la traducción al título y borrar este aviso">
+        <i class="fas fa-check"></i> Usar como título
+      </button>
+    </div>`;
   }
 
   /* ── Toast ─────────────────────────────────────────────────────────────── */
