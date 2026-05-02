@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const router = Router();
 
+router.use('/admin', require('./admin'));
 router.use('/auth', require('./auth'));
 router.use('/users', require('./users'));
 router.use('/articles', require('./articles'));
