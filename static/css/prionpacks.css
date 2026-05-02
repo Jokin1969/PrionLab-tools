@@ -284,6 +284,14 @@
 }
 .pp-btn-danger-outline:hover { background: #fee2e2; }
 
+.pp-btn-delete {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
+  color: #fff;
+  font-weight: 600;
+}
+.pp-btn-delete:hover { background: #b91c1c; border-color: #991b1b; }
+
 .pp-btn-word {
   background: #16a34a;
   color: #fff;
