@@ -50,6 +50,8 @@ def api_import_section(pkg_id):
         'acknowledgments':      'acknowledgments',
         'competing_interests':  'conflictsOfInterest',
         'credit':               'credit',
+        'introduction':         'introduction',
+        'methods':              'methods',
     }
 
     if section == 'author_order':

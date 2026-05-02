@@ -23,6 +23,8 @@
       <option value="funding">{{ _('Funding') }}</option>
       <option value="acknowledgments">{{ _('Acknowledgments') }}</option>
       <option value="competing_interests">{{ _('Competing Interests') }}</option>
+      <option value="introduction">{{ _('Introduction') }}</option>
+      <option value="methods">{{ _('Methods') }}</option>
       <option value="credit_generation">{{ _('Author Contributions (CRediT)') }}</option>
     </select>
   </div>
@@ -372,6 +374,46 @@
   </div>
 </div>
 
+{# ── Introduction Panel ──────────────────────────────────────────────────── #}
+<div id="panel-introduction" class="generate-panel" style="margin-top:1.5rem;display:none">
+  <h3 style="margin-bottom:.75rem">{{ _('Introduction') }}</h3>
+  <p class="text-muted" style="margin-bottom:1rem">
+    {{ _('Redacta el texto de introducción del manuscrito. Puedes exportarlo directamente a un paquete de PrionPacks.') }}
+  </p>
+  <textarea id="introduction-textarea" class="form-input generate-output" rows="12"
+            placeholder="{{ _('Escribe aquí el texto de la sección Introduction…') }}"
+            style="width:100%;resize:vertical"></textarea>
+  <div style="display:flex;gap:.5rem;align-items:center;margin-top:.75rem;flex-wrap:wrap">
+    <button type="button" class="btn btn--secondary btn--sm" onclick="copyIntroductionOutput()">
+      {{ _('Copy to clipboard') }}
+    </button>
+    <button type="button" class="btn btn--secondary btn--sm" onclick="exportToPrionPacks('introduction')">
+      📦 {{ _('Exportar a PrionPacks') }}
+    </button>
+  </div>
+  <div id="introduction-copy-feedback" class="text-muted" style="font-size:.8rem;margin-top:.25rem">&nbsp;</div>
+</div>
+
+{# ── Methods Panel ────────────────────────────────────────────────────────── #}
+<div id="panel-methods" class="generate-panel" style="margin-top:1.5rem;display:none">
+  <h3 style="margin-bottom:.75rem">{{ _('Methods') }}</h3>
+  <p class="text-muted" style="margin-bottom:1rem">
+    {{ _('Redacta el texto de la sección Methods del manuscrito. Puedes exportarlo directamente a un paquete de PrionPacks.') }}
+  </p>
+  <textarea id="methods-textarea" class="form-input generate-output" rows="12"
+            placeholder="{{ _('Escribe aquí el texto de la sección Methods…') }}"
+            style="width:100%;resize:vertical"></textarea>
+  <div style="display:flex;gap:.5rem;align-items:center;margin-top:.75rem;flex-wrap:wrap">
+    <button type="button" class="btn btn--secondary btn--sm" onclick="copyMethodsOutput()">
+      {{ _('Copy to clipboard') }}
+    </button>
+    <button type="button" class="btn btn--secondary btn--sm" onclick="exportToPrionPacks('methods')">
+      📦 {{ _('Exportar a PrionPacks') }}
+    </button>
+  </div>
+  <div id="methods-copy-feedback" class="text-muted" style="font-size:.8rem;margin-top:.25rem">&nbsp;</div>
+</div>
+
 {# ── CRediT Generation Panel ─────────────────────────────────────────────── #}
 <div id="panel-credit-generation" class="generate-panel" style="margin-top:1.5rem;display:none">
   <h3 style="margin-bottom:.5rem">{{ _('Author Contributions (CRediT)') }}</h3>
@@ -579,7 +621,7 @@ const ACK_BLOCKS_DATA = {{ ack_blocks | tojson }};
 
 let selectedIds = [];
 
-const ALL_PANELS = ['author-order', 'funding', 'acknowledgments', 'competing-interests', 'credit-generation'];
+const ALL_PANELS = ['author-order', 'funding', 'acknowledgments', 'competing-interests', 'introduction', 'methods', 'credit-generation'];
 
 function switchSection(kind) {
   ALL_PANELS.forEach(p => {
@@ -1270,6 +1312,36 @@ async function copyCiOutput() {
   setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
 }
 
+// ── Introduction / Methods copy ───────────────────────────────────────────────
+
+async function copyIntroductionOutput() {
+  const ta = document.getElementById('introduction-textarea');
+  const feedback = document.getElementById('introduction-copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    feedback.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); feedback.textContent = I18N.copied; }
+    catch (e2) { feedback.textContent = I18N.copyFailed; }
+  }
+  setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
+}
+
+async function copyMethodsOutput() {
+  const ta = document.getElementById('methods-textarea');
+  const feedback = document.getElementById('methods-copy-feedback');
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    feedback.textContent = I18N.copied;
+  } catch (e) {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); feedback.textContent = I18N.copied; }
+    catch (e2) { feedback.textContent = I18N.copyFailed; }
+  }
+  setTimeout(() => { feedback.innerHTML = '&nbsp;'; }, 3000);
+}
+
 // ── CRediT Generation section ─────────────────────────────────────────────────
 
 const CREDIT_ROLES = [
@@ -1760,6 +1832,8 @@ const _MF_PP_TEXTAREA_MAP = {
   funding:             'funding-textarea',
   acknowledgments:     'ack-textarea',
   competing_interests: 'ci-textarea',
+  introduction:        'introduction-textarea',
+  methods:             'methods-textarea',
   credit:              'credit-textarea',
 };
 
@@ -1767,6 +1841,8 @@ const _MF_PP_TARGET_MAP = {
   funding:             'funding',
   acknowledgments:     'acknowledgments',
   competing_interests: 'conflictsOfInterest',
+  introduction:        'introduction',
+  methods:             'methods',
   credit:              'credit',
 };
 
