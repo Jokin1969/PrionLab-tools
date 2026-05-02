@@ -151,7 +151,7 @@ const PrionPacks = (() => {
           style="background:${_priorityColor(p.priority)};" title="Click to change priority"></div>
         <div class="pp-pkg-card-body">
           <div class="pp-pkg-card-id">${p.id} ${inactiveBadge}</div>
-          <div class="pp-pkg-card-title">${_esc(p.title)}</div>
+          <div class="pp-pkg-card-title">${_supHtml(p.title)}</div>
         </div>
       </div>
       <div class="pp-pkg-card-progress">
@@ -182,7 +182,7 @@ const PrionPacks = (() => {
       <div class="pp-package-item${active}${inactive}" data-id="${p.id}">
         <div class="pp-package-item-dot" style="background:${_priorityColor(p.priority)};"></div>
         <div class="pp-package-item-body">
-          <div class="pp-package-item-title">${_esc(p.title)} ${inactiveBadge}</div>
+          <div class="pp-package-item-title">${_supHtml(p.title)} ${inactiveBadge}</div>
           <div class="pp-package-item-meta">
             <span>${p.id}</span>
             <div class="pp-package-item-bar"><div class="pp-package-item-bar-fill" style="width:${score}%;"></div></div>
@@ -822,7 +822,7 @@ const PrionPacks = (() => {
     if (!display) return;
     const trimmed = (text || '').trim();
     if (trimmed) {
-      display.textContent = trimmed;
+      display.innerHTML = _supHtml(trimmed);
       display.classList.remove('pp-title-display-empty');
     } else {
       display.textContent = 'Untitled package';
@@ -1006,7 +1006,7 @@ const PrionPacks = (() => {
     div.dataset.id = finding.id;
     div.draggable = true;
     const enBadge = finding.titleEnglish
-      ? `<div class="pp-finding-en-badge">EN: ${_esc(finding.titleEnglish)}</div>` : '';
+      ? `<div class="pp-finding-en-badge">EN: ${_supHtml(finding.titleEnglish)}</div>` : '';
 
     div.innerHTML = `
       <div class="pp-finding-header">
@@ -1331,7 +1331,7 @@ const PrionPacks = (() => {
         badge.className = 'pp-finding-en-badge';
         block.querySelector('.pp-finding-header').insertAdjacentElement('afterend', badge);
       }
-      badge.textContent = 'EN: ' + translated;
+      badge.innerHTML = 'EN: ' + _supHtml(translated);
       toast('Translation complete!', 'success');
     } catch (e) {
       await _handleClaudeError(e, 'Translation error');
@@ -2076,6 +2076,14 @@ const PrionPacks = (() => {
 
   function _esc(str) {
     return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Render text with markdown-style superscript markers: PrP^Sc^ -> PrP<sup>Sc</sup>.
+  // The input is HTML-escaped first; only the <sup> tags we generate are kept.
+  // Used in read-only display contexts (titles, badges, dashboard cards…).
+  function _supHtml(str) {
+    const escaped = _esc(str);
+    return escaped.replace(/\^([^\^\s][^\^]*?)\^/g, '<sup>$1</sup>');
   }
 
   /* ── Toast ─────────────────────────────────────────────────────────────── */

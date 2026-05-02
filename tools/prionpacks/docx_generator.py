@@ -1,5 +1,6 @@
 import io
 import logging
+import re
 from base64 import b64decode
 from datetime import datetime
 
@@ -16,6 +17,38 @@ _DARK      = RGBColor(0x1e, 0x2d, 0x3d)
 _DIM       = RGBColor(0x64, 0x74, 0x8b)
 _LIGHT_BG  = RGBColor(0xf0, 0xf7, 0xf7)
 _WHITE     = RGBColor(0xff, 0xff, 0xff)
+
+# Markdown-style superscript: PrP^Sc^ -> PrP + superscript("Sc")
+_SUP_RE = re.compile(r'\^([^\^\s][^\^]*?)\^')
+
+
+def _apply_font(run, *, size=None, bold=None, italic=None, color=None):
+    if size is not None:   run.font.size = size
+    if bold is not None:   run.font.bold = bold
+    if italic is not None: run.font.italic = italic
+    if color is not None:  run.font.color.rgb = color
+
+
+def add_runs(paragraph, text, *, size=None, bold=None, italic=None, color=None):
+    """add_run() replacement that turns ^xxx^ markers into superscript runs.
+
+    All runs share the supplied font attributes; only `superscript` differs
+    on the bracketed segments.
+    """
+    if not text:
+        return
+    pos = 0
+    for m in _SUP_RE.finditer(text):
+        if m.start() > pos:
+            r = paragraph.add_run(text[pos:m.start()])
+            _apply_font(r, size=size, bold=bold, italic=italic, color=color)
+        rs = paragraph.add_run(m.group(1))
+        rs.font.superscript = True
+        _apply_font(rs, size=size, bold=bold, italic=italic, color=color)
+        pos = m.end()
+    if pos < len(text):
+        r = paragraph.add_run(text[pos:])
+        _apply_font(r, size=size, bold=bold, italic=italic, color=color)
 
 PRIORITY_ES = {'high': 'Alta', 'medium': 'Media', 'low': 'Baja', 'none': '—'}
 TYPE_ES = {
@@ -37,10 +70,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     # ── Title ─────────────────────────────────────────────────────────────────
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    run = t.add_run(pkg.get('title', 'Sin título'))
-    run.font.size  = Pt(22)
-    run.font.bold  = True
-    run.font.color.rgb = _TEAL
+    add_runs(t, pkg.get('title', 'Sin título'), size=Pt(22), bold=True, color=_TEAL)
 
     # Alternative titles, one per line, italic dim grey beneath the main title
     alt_titles = pkg.get('altTitles') or []
@@ -50,10 +80,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             continue
         ap = doc.add_paragraph()
         ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        ar = ap.add_run(at_clean)
-        ar.font.size  = Pt(14)
-        ar.font.italic = True
-        ar.font.color.rgb = _TEAL
+        add_runs(ap, at_clean, size=Pt(14), italic=True, color=_TEAL)
 
     sub = doc.add_paragraph()
     run2 = sub.add_run(
@@ -94,8 +121,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     desc = (pkg.get('description') or '').strip()
     if desc:
         p = doc.add_paragraph()
-        run = p.add_run(desc)
-        run.font.italic = True; run.font.size = Pt(10); run.font.color.rgb = _DIM
+        add_runs(p, desc, italic=True, size=Pt(10), color=_DIM)
         doc.add_paragraph()
 
     # ── Co-authors ────────────────────────────────────────────────────────────
@@ -103,8 +129,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if coauthors:
         _section_heading(doc, 'CO-AUTORES')
         p = doc.add_paragraph()
-        r = p.add_run(coauthors)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, coauthors, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Affiliations ──────────────────────────────────────────────────────────
@@ -112,8 +137,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if affiliations:
         _section_heading(doc, 'AFILIACIONES')
         p = doc.add_paragraph()
-        r = p.add_run(affiliations)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, affiliations, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Abstract ──────────────────────────────────────────────────────────────
@@ -121,8 +145,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if abstract:
         _section_heading(doc, 'ABSTRACT')
         p = doc.add_paragraph()
-        r = p.add_run(abstract)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, abstract, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Author Summary ────────────────────────────────────────────────────────
@@ -130,8 +153,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if author_summary:
         _section_heading(doc, 'RESUMEN PARA AUTORES')
         p = doc.add_paragraph()
-        r = p.add_run(author_summary)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, author_summary, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Introduction ─────────────────────────────────────────────────────────
@@ -139,8 +161,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if intro:
         _section_heading(doc, 'INTRODUCCIÓN')
         p = doc.add_paragraph()
-        r = p.add_run(intro)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, intro, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Methods ──────────────────────────────────────────────────────────────
@@ -148,8 +169,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if methods:
         _section_heading(doc, 'MÉTODOS')
         p = doc.add_paragraph()
-        r = p.add_run(methods)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, methods, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Investigations ────────────────────────────────────────────────────────
@@ -160,16 +180,14 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         _section_heading(doc, 'INVESTIGACIONES')
         if inv_text:
             p = doc.add_paragraph()
-            r = p.add_run(inv_text)
-            r.font.size = Pt(10); r.font.color.rgb = _DARK
+            add_runs(p, inv_text, size=Pt(10), color=_DARK)
         if inv_files:
             p = doc.add_paragraph()
             r = p.add_run('Documentos adjuntos:')
             r.font.bold = True; r.font.size = Pt(10); r.font.color.rgb = _DARK
             for f in inv_files:
                 p2 = doc.add_paragraph(style='List Bullet')
-                r2 = p2.add_run(f.get('name', 'documento'))
-                r2.font.size = Pt(10); r2.font.color.rgb = _DARK
+                add_runs(p2, f.get('name', 'documento'), size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Pre-process gaps for linking ──────────────────────────────────────────
@@ -201,20 +219,19 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             p = doc.add_paragraph()
             bm_name = f'ppfinding_{fid}' if fid else f'ppfinding_{fi}'
             _bookmark_add(p, bm_name, fi * 100)
-            run = p.add_run(f'▶  F-{fi:02d} — {finding.get("title", "")}')
-            run.font.bold = True; run.font.size = Pt(11); run.font.color.rgb = _TEAL
+            r_prefix = p.add_run(f'▶  F-{fi:02d} — ')
+            r_prefix.font.bold = True; r_prefix.font.size = Pt(11); r_prefix.font.color.rgb = _TEAL
+            add_runs(p, finding.get("title", ""), size=Pt(11), bold=True, color=_TEAL)
 
             en_title = (finding.get('titleEnglish') or '').strip()
             if en_title:
                 p2 = doc.add_paragraph()
-                r2 = p2.add_run(en_title)
-                r2.font.italic = True; r2.font.size = Pt(9); r2.font.color.rgb = _DIM
+                add_runs(p2, en_title, italic=True, size=Pt(9), color=_DIM)
 
             fdesc = (finding.get('description') or '').strip()
             if fdesc:
                 p3 = doc.add_paragraph()
-                r3 = p3.add_run(fdesc)
-                r3.font.size = Pt(10); r3.font.color.rgb = _DARK
+                add_runs(p3, fdesc, size=Pt(10), color=_DARK)
 
             # Figures
             for figi, fig in enumerate(finding.get('figures', []), 1):
@@ -227,8 +244,9 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
                 r.font.bold = True; r.font.size = Pt(9); r.font.color.rgb = _TEAL
                 desc_t = (tbl_item.get('description') or '').strip()
                 if desc_t:
-                    r2 = p.add_run(f'  —  {desc_t}')
-                    r2.font.size = Pt(9); r2.font.color.rgb = _DIM
+                    r_sep = p.add_run('  —  ')
+                    r_sep.font.size = Pt(9); r_sep.font.color.rgb = _DIM
+                    add_runs(p, desc_t, size=Pt(9), color=_DIM)
 
             # Gap hyperlinks associated with this finding
             linked = gaps_for_finding.get(fid, [])
@@ -256,23 +274,24 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             _bookmark_add(p, gi['bm'], abs(hash(gi['bm'])) % 90000 + 1000)
             r_miss = p.add_run('Missing: ')
             r_miss.font.bold = True; r_miss.font.size = Pt(10); r_miss.font.color.rgb = _DARK
-            r_text = p.add_run(gi['text'])
-            r_text.font.size = Pt(10); r_text.font.color.rgb = _DARK
+            add_runs(p, gi['text'], size=Pt(10), color=_DARK)
 
             # Needed experiment (indented italic)
             needed_exp = (gi.get('neededExperiment') or '').strip()
             if needed_exp:
                 p_ne = doc.add_paragraph()
-                r_ne = p_ne.add_run(f'     → Needed: {needed_exp}')
+                r_ne = p_ne.add_run('     → Needed: ')
                 r_ne.font.size = Pt(9); r_ne.font.italic = True; r_ne.font.color.rgb = _DIM
+                add_runs(p_ne, needed_exp, size=Pt(9), italic=True, color=_DIM)
 
             if gi['fid']:
                 linked_f = next((f for f in findings if f.get('id') == gi['fid']), None)
                 if linked_f:
                     fi_num = findings.index(linked_f) + 1
                     ann = doc.add_paragraph()
-                    r_ann = ann.add_run(f'     → Vinculado a F-{fi_num:02d}: {linked_f.get("title", "")}')
+                    r_ann = ann.add_run(f'     → Vinculado a F-{fi_num:02d}: ')
                     r_ann.font.size = Pt(8); r_ann.font.italic = True; r_ann.font.color.rgb = _TEAL
+                    add_runs(ann, linked_f.get("title", ""), size=Pt(8), italic=True, color=_TEAL)
 
     doc.add_paragraph()
 
@@ -281,8 +300,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if disc:
         _section_heading(doc, 'DISCUSIÓN')
         p = doc.add_paragraph()
-        r = p.add_run(disc)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, disc, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Acknowledgments ───────────────────────────────────────────────────────
@@ -290,8 +308,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if acknowledgments:
         _section_heading(doc, 'AGRADECIMIENTOS')
         p = doc.add_paragraph()
-        r = p.add_run(acknowledgments)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, acknowledgments, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Funding ───────────────────────────────────────────────────────────────
@@ -299,8 +316,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if funding:
         _section_heading(doc, 'FINANCIACIÓN')
         p = doc.add_paragraph()
-        r = p.add_run(funding)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, funding, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Conflicts of Interest ─────────────────────────────────────────────────
@@ -308,8 +324,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if conflicts:
         _section_heading(doc, 'CONFLICTOS DE INTERÉS')
         p = doc.add_paragraph()
-        r = p.add_run(conflicts)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, conflicts, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── References ────────────────────────────────────────────────────────────
@@ -326,8 +341,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             p = doc.add_paragraph()
             r_num = p.add_run(f'[{i}] ')
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = _TEAL
-            r_body = p.add_run(ref)
-            r_body.font.size = Pt(10); r_body.font.color.rgb = _DARK
+            add_runs(p, ref, size=Pt(10), color=_DARK)
             doc.add_paragraph()
 
     # ── CReDiT ────────────────────────────────────────────────────────────────
@@ -335,8 +349,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if credit:
         _section_heading(doc, 'CONTRIBUCIÓN DE AUTORÍA (CReDiT)')
         p = doc.add_paragraph()
-        r = p.add_run(credit)
-        r.font.size = Pt(10); r.font.color.rgb = _DARK
+        add_runs(p, credit, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Footer ────────────────────────────────────────────────────────────────
@@ -388,8 +401,9 @@ def _render_figure(doc: Document, fig: dict, fi: int, figi: int):
     r_label = p_cap.add_run(label)
     r_label.font.bold = True; r_label.font.size = Pt(9); r_label.font.color.rgb = _TEAL
     if caption:
-        r_cap = p_cap.add_run(f'  {caption}')
-        r_cap.font.size = Pt(9); r_cap.font.color.rgb = _DIM
+        r_sep = p_cap.add_run('  ')
+        r_sep.font.size = Pt(9); r_sep.font.color.rgb = _DIM
+        add_runs(p_cap, caption, size=Pt(9), color=_DIM)
 
 
 def _bookmark_add(para, bm_name: str, bm_id: int):
