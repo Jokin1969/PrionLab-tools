@@ -339,14 +339,11 @@
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-exclamation-triangle"></i> Gaps &amp; Next Steps</h2>
               <div class="pp-section-jump" id="gaps-jump"></div>
-            </div>
-            <div class="pp-form-group">
-              <label class="pp-label">Missing Information</label>
-              <div id="gaps-missing-list" class="pp-dynamic-list"></div>
-              <button class="pp-btn pp-btn-sm pp-btn-ghost" onclick="PrionPacks.addGapItem('missing')">
+              <button class="pp-btn pp-btn-sm pp-btn-secondary" onclick="PrionPacks.addGapItem('missing')" type="button">
                 <i class="fas fa-plus"></i> Add Item
               </button>
             </div>
+            <div id="gaps-missing-list" class="pp-dynamic-list"></div>
           </div>
 
           <!-- Toggle row for the gaps / closing group — sits between Gaps card
