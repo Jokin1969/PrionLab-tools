@@ -268,6 +268,24 @@
             <textarea id="field-introduction" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la introducción…"></textarea>
           </div>
 
+          <!-- Investigations card -->
+          <div class="pp-card pp-card-section" id="section-investigations">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-search"></i> Investigations</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-investigations-text" data-ai-label="Investigations" title="Incluir como contexto para Claude">AI</button>
+              </div>
+            </div>
+            <textarea id="field-investigations-text" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Contexto de la investigación, experimentos previos, datos preliminares…"></textarea>
+            <div class="pp-inv-files-area">
+              <div id="investigations-files" class="pp-inv-files-list"></div>
+              <label class="pp-btn pp-btn-sm pp-btn-ghost pp-inv-attach-btn" for="pp-inv-file-input">
+                <i class="fas fa-paperclip"></i> Adjuntar documento
+              </label>
+              <input type="file" id="pp-inv-file-input" accept=".pdf,.doc,.docx" style="display:none" multiple />
+            </div>
+          </div>
+
           <!-- Main Findings card -->
           <div class="pp-card pp-card-section">
             <div class="pp-section-header">

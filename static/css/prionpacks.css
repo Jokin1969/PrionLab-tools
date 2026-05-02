@@ -1778,6 +1778,74 @@
   background: #fff;
 }
 
+/* ── Investigations file attachments ─────────────────────────────────────── */
+
+.pp-inv-files-area {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pp-inv-files-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 0;
+}
+.pp-inv-attach-btn {
+  align-self: flex-start;
+  cursor: pointer;
+}
+.pp-inv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--pp-secondary);
+  border: 1px solid var(--pp-border);
+  border-radius: 8px;
+  max-width: 240px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pp-inv-chip:hover {
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 2px var(--pp-accent-glow);
+}
+.pp-inv-chip-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+.pp-inv-file-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.pp-inv-icon-pdf  { color: #dc2626; }
+.pp-inv-icon-word { color: #1d4ed8; }
+.pp-inv-chip-name {
+  font-size: 12px;
+  color: var(--pp-text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+.pp-inv-chip-remove {
+  flex-shrink: 0;
+  opacity: .5;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+.pp-inv-chip-remove:hover { opacity: 1; color: #dc2626; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1200px) {

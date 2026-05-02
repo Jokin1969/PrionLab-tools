@@ -156,6 +156,7 @@ def create_package(data: dict) -> dict:
         'funding': (data.get('funding') or ''),
         'conflictsOfInterest': (data.get('conflictsOfInterest') or ''),
         'references': (data.get('references') or ''),
+        'investigations': data.get('investigations', {'text': '', 'files': []}),
         'findings': data.get('findings', []),
         'gaps': data.get('gaps', {'missingInfo': []}),
         'scores': data.get('scores', {'findings': 0, 'figures': 0, 'gaps': 0, 'total': 0}),

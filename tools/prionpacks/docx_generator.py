@@ -130,6 +130,26 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         r.font.size = Pt(10); r.font.color.rgb = _DARK
         doc.add_paragraph()
 
+    # ── Investigations ────────────────────────────────────────────────────────
+    inv = pkg.get('investigations') or {}
+    inv_text  = (inv.get('text') or '').strip()
+    inv_files = inv.get('files') or []
+    if inv_text or inv_files:
+        _section_heading(doc, 'INVESTIGACIONES')
+        if inv_text:
+            p = doc.add_paragraph()
+            r = p.add_run(inv_text)
+            r.font.size = Pt(10); r.font.color.rgb = _DARK
+        if inv_files:
+            p = doc.add_paragraph()
+            r = p.add_run('Documentos adjuntos:')
+            r.font.bold = True; r.font.size = Pt(10); r.font.color.rgb = _DARK
+            for f in inv_files:
+                p2 = doc.add_paragraph(style='List Bullet')
+                r2 = p2.add_run(f.get('name', 'documento'))
+                r2.font.size = Pt(10); r2.font.color.rgb = _DARK
+        doc.add_paragraph()
+
     # ── Pre-process gaps for linking ──────────────────────────────────────────
     raw_missing = pkg.get('gaps', {}).get('missingInfo', [])
     gap_items = []
