@@ -1699,10 +1699,18 @@ const PrionPacks = (() => {
     document.getElementById('pp-img-modal-close').addEventListener('click', _closeImgUploadModal);
     document.getElementById('pp-img-modal-backdrop').addEventListener('click', _closeImgUploadModal);
 
-    const dropZone  = document.getElementById('pp-img-drop-zone');
-    const fileInput = document.getElementById('pp-img-file-input');
+    const dropZone   = document.getElementById('pp-img-drop-zone');
+    const fileInput  = document.getElementById('pp-img-file-input');
+    const browseLink = dropZone.querySelector('.pp-img-browse-link');
 
-    dropZone.addEventListener('click', () => fileInput.click());
+    // Only the "browse files" link opens the file picker — clicking elsewhere
+    // on the drop zone keeps focus inside the modal so Ctrl/⌘ + V can paste.
+    if (browseLink) {
+      browseLink.addEventListener('click', e => {
+        e.stopPropagation();
+        fileInput.click();
+      });
+    }
     fileInput.addEventListener('change', e => { if (e.target.files[0]) _handleImageFile(e.target.files[0]); });
 
     dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -1711,6 +1719,14 @@ const PrionPacks = (() => {
       e.preventDefault();
       dropZone.classList.remove('dragover');
       if (e.dataTransfer.files[0]) _handleImageFile(e.dataTransfer.files[0]);
+    });
+
+    // Local paste listener on the focused drop zone (works in browsers that
+    // don't deliver paste events to document when focus is on a non-input).
+    dropZone.addEventListener('paste', e => {
+      if (!_imgUploadCallback) return;
+      const imageItem = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'));
+      if (imageItem) { e.preventDefault(); _handleImageFile(imageItem.getAsFile()); }
     });
 
     // Paste support while modal is open
