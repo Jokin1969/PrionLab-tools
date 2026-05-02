@@ -1950,4 +1950,42 @@
   opacity: 0.75;
 }
 
+/* ── DOI chip row ─────────────────────────────────────────────────────────── */
+.pp-doi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pp-doi-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: var(--pp-font-mono, monospace);
+  font-weight: 500;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+  text-decoration: none;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.pp-doi-chip::before {
+  content: 'DOI ';
+  font-weight: 700;
+  margin-right: 3px;
+  color: #0284c7;
+  flex-shrink: 0;
+}
+.pp-doi-chip:hover {
+  background: #bae6fd;
+  border-color: #38bdf8;
+  text-decoration: none;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');

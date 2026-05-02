@@ -597,6 +597,9 @@ const PrionPacks = (() => {
       _updateToggleBtn(btn, visible, icon, label);
     });
 
+    // DOI chips for references field
+    _updateDoiChips();
+
     // Investigations
     const inv = pkg?.investigations || {};
     document.getElementById('field-investigations-text').value = inv.text || '';
@@ -632,6 +635,27 @@ const PrionPacks = (() => {
   function _getCurrentActive() {
     const btn = document.getElementById('btn-active-toggle');
     return !btn || btn.classList.contains('is-active');
+  }
+
+  /* ── DOI chip renderer ─────────────────────────────────────────────────── */
+  function _updateDoiChips() {
+    const container = document.getElementById('references-doi-chips');
+    if (!container) return;
+    const text = document.getElementById('field-references').value;
+    const doiRegex = /\b10\.\d{4,}\/[^\s,;)>\]]+/g;
+    const matches = text.match(doiRegex) || [];
+    const unique = [...new Set(matches)];
+    container.innerHTML = '';
+    unique.forEach(doi => {
+      const a = document.createElement('a');
+      a.className = 'pp-doi-chip';
+      a.href = `https://doi.org/${doi}`;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.title = doi;
+      a.textContent = doi;
+      container.appendChild(a);
+    });
   }
 
   function _updateTitleDisplay(text) {
@@ -1541,6 +1565,7 @@ const PrionPacks = (() => {
       _toggleSection('section-conflicts', 'btn-toggle-conflicts', 'fa-balance-scale', 'Conflicts of interest'));
     document.getElementById('btn-toggle-references').addEventListener('click', () =>
       _toggleSection('section-references', 'btn-toggle-references', 'fa-list', 'References'));
+    document.getElementById('field-references').addEventListener('input', _updateDoiChips);
     document.getElementById('btn-toggle-credit').addEventListener('click', () =>
       _toggleSection('section-credit', 'btn-toggle-credit', 'fa-list-check', 'CReDiT'));
 
