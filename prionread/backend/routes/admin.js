@@ -35,4 +35,7 @@ router.get('/articles/analytics', getArticlesAnalytics);
 router.get('/articles/:articleId/engagement', getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all', assignArticleToAll);
 
+// ── Reports ───────────────────────────────────────────────────────────────────
+router.use('/reports', require('./reports'));
+
 module.exports = router;
