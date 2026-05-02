@@ -201,8 +201,8 @@
             </div>
             <div class="pp-form-group">
               <div class="pp-label-ai-row">
-                <label class="pp-label">Description</label>
-                <button class="pp-ai-btn" data-field-id="field-description" data-ai-label="Descripción" title="Incluir como contexto para Claude">AI</button>
+                <label class="pp-label">General description</label>
+                <button class="pp-ai-btn" data-field-id="field-description" data-ai-label="Descripción general" title="Incluir como contexto para Claude">AI</button>
               </div>
               <textarea id="field-description" class="pp-textarea" rows="3" placeholder="Brief description of this research package…"></textarea>
             </div>
@@ -517,8 +517,9 @@
       <div class="pp-docs-wrapper">
 
         <!-- Doc 1 — PrionPacks general overview -->
-        <div class="pp-doc-block">
+        <div class="pp-doc-block" id="doc-block-overview">
           <div class="pp-doc-block-header">
+            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Plegar / desplegar este documento"></button>
             <h2 class="pp-doc-block-title"><i class="fas fa-cube"></i> Contexto general de PrionPacks</h2>
             <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-prionpacks-overview" title="Copiar este texto al portapapeles">
               <i class="fas fa-copy"></i> Copy to clipboard
@@ -624,8 +625,9 @@ El asistente debe asumir que el contenido suele estar en español o inglés cien
         </div>
 
         <!-- Doc 2 — Article summarizer prompt -->
-        <div class="pp-doc-block">
+        <div class="pp-doc-block" id="doc-block-summary">
           <div class="pp-doc-block-header">
+            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Plegar / desplegar este documento"></button>
             <h2 class="pp-doc-block-title"><i class="fas fa-file-alt"></i> Resumen de artículo científico</h2>
             <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-article-summary" title="Copiar este prompt al portapapeles">
               <i class="fas fa-copy"></i> Copy to clipboard

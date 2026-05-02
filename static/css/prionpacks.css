@@ -221,11 +221,11 @@
 .pp-doc-block-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 .pp-doc-block-title {
   margin: 0;
+  margin-right: auto;
   font-size: 18px;
   font-weight: 700;
   color: var(--pp-text);
@@ -239,6 +239,11 @@
   font-size: 13px;
   color: var(--pp-text-muted);
   line-height: 1.5;
+}
+/* Collapsed doc block: hide description and content, keep header visible */
+.pp-doc-block.pp-doc-block-collapsed > .pp-doc-block-desc,
+.pp-doc-block.pp-doc-block-collapsed > .pp-docs-content {
+  display: none;
 }
 .pp-docs-content {
   background: #fff;
@@ -2282,7 +2287,8 @@
 .pp-reference-collapsed > .pp-reference-header > .pp-collapse-btn::before,
 .pp-method-collapsed   > .pp-method-header   > .pp-collapse-btn::before,
 .pp-finding-collapsed  > .pp-finding-header  > .pp-collapse-btn::before,
-.pp-gap-collapsed      > .pp-gap-item-top    > .pp-collapse-btn::before {
+.pp-gap-collapsed      > .pp-gap-item-top    > .pp-collapse-btn::before,
+.pp-doc-block-collapsed > .pp-doc-block-header > .pp-collapse-btn::before {
   content: '\25B6';
 }
 

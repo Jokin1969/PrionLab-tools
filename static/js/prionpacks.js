@@ -1191,7 +1191,7 @@ const PrionPacks = (() => {
       out += '\nTítulos alternativos:\n';
       alts.forEach(a => { out += '  - ' + a + '\n'; });
     }
-    if (desc) out += '\nDescripción: ' + desc + '\n';
+    if (desc) out += '\nDescripción general: ' + desc + '\n';
     return out.trim();
   }
 
@@ -2390,6 +2390,28 @@ const PrionPacks = (() => {
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));
     document.getElementById('btn-docs-back')?.addEventListener('click', showDashboard);
+
+    // Doc-block collapse triangles — restore saved state, then bind clicks
+    document.querySelectorAll('.pp-doc-block').forEach(block => {
+      const id  = block.id;
+      const key = id ? 'pp-collapse:' + id : '';
+      if (key && localStorage.getItem(key) === '1') {
+        block.classList.add('pp-doc-block-collapsed');
+      }
+    });
+    document.querySelectorAll('.pp-doc-collapse-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const block = btn.closest('.pp-doc-block');
+        if (!block) return;
+        const collapsed = block.classList.toggle('pp-doc-block-collapsed');
+        if (block.id) {
+          if (collapsed) localStorage.setItem('pp-collapse:' + block.id, '1');
+          else           localStorage.removeItem('pp-collapse:' + block.id);
+        }
+      });
+    });
     // Delegated copy handler for any documentation block
     document.querySelectorAll('.pp-doc-copy-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
