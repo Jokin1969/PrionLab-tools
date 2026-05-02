@@ -636,10 +636,13 @@ El asistente debe asumir que el contenido suele estar en español o inglés cien
 
 # Formato de salida (obligatorio)
 
-Devuelve EXACTAMENTE estos cuatro bloques, en este orden, sin añadir nada antes ni después, sin viñetas ni emojis, sin envolver el título entre comillas:
+Devuelve EXACTAMENTE estos seis bloques, en este orden, sin añadir nada antes ni después, sin viñetas ni emojis, sin envolver el título entre comillas:
 
 Título: &lt;título completo del artículo, en su idioma original&gt;
 Autores: &lt;lista de autores tal y como aparecen en el artículo, con sus iniciales y grados académicos cuando se indiquen (BSc, MD, PhD, DPhil…), separados por punto y coma&gt;
+
+Revista: &lt;nombre completo de la revista en su forma oficial (p. ej. "The New England Journal of Medicine", "Brain", "PLOS Pathogens"). Si solo aparece la abreviatura, expándela. Si no aparece en el material, escribe literalmente: "El texto proporcionado no indica la revista."&gt;
+Año: &lt;año de publicación con cuatro cifras (p. ej. 1996). Si solo aparece la fecha completa, devuelve únicamente el año. Si no aparece, escribe literalmente: "El texto proporcionado no indica el año."&gt;
 
 DOI: &lt;DOI del artículo en formato 10.xxxx/yyyy. Si no aparece en el texto que te he dado, escribe literalmente: "El texto proporcionado no incluye el DOI del artículo."&gt;
 
