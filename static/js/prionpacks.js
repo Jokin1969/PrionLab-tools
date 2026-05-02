@@ -215,6 +215,113 @@ const PrionPacks = (() => {
   let _selectedColleagues = new Set();
   let _claudeModalCallback = null;
 
+  /* ── Investigations file attachments ──────────────────────────────────── */
+  const INV_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+  function _invMimeFromFile(file) {
+    if (file.type) return file.type;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'pdf')  return 'application/pdf';
+    if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    return 'application/msword';
+  }
+
+  function _invIsPdf(mimeType) { return mimeType === 'application/pdf'; }
+
+  function _createInvFileChip(file) {
+    const chip = document.createElement('div');
+    chip.className = 'pp-inv-chip';
+    chip.dataset.dataUrl  = file.dataUrl;
+    chip.dataset.mimeType = file.mimeType;
+    chip.dataset.name     = file.name;
+    chip.dataset.id       = file.id;
+
+    const isPdf = _invIsPdf(file.mimeType);
+    const iconClass = isPdf ? 'fa-file-pdf pp-inv-icon-pdf' : 'fa-file-word pp-inv-icon-word';
+
+    chip.innerHTML = `
+      <button class="pp-inv-chip-open" title="${isPdf ? 'Abrir en nueva pestaña' : 'Descargar'}">
+        <i class="fas ${iconClass} pp-inv-file-icon"></i>
+        <span class="pp-inv-chip-name">${_esc(file.name)}</span>
+      </button>
+      <button class="pp-ai-btn pp-ai-btn-xs pp-inv-file-ai-btn" data-ai-label="Documento adjunto: ${_esc(file.name)}" title="${isPdf ? 'Incluir PDF como contexto para Claude' : 'Solo PDFs pueden enviarse a Claude'}">AI</button>
+      <button class="pp-inv-chip-remove pp-btn-icon" title="Eliminar"><i class="fas fa-times"></i></button>`;
+
+    chip.querySelector('.pp-inv-chip-open').addEventListener('click', () => _openInvFile(chip));
+    chip.querySelector('.pp-inv-chip-remove').addEventListener('click', () => { chip.remove(); _scheduleAutosave(); });
+    chip.querySelector('.pp-inv-file-ai-btn').addEventListener('click', e => {
+      e.currentTarget.classList.toggle('active');
+    });
+
+    return chip;
+  }
+
+  function _openInvFile(chip) {
+    const dataUrl  = chip.dataset.dataUrl;
+    const mimeType = chip.dataset.mimeType;
+    const name     = chip.dataset.name;
+    const base64   = dataUrl.split(',')[1];
+    const bytes    = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const blob     = new Blob([bytes], { type: mimeType });
+    const url      = URL.createObjectURL(blob);
+    if (_invIsPdf(mimeType)) {
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 15000);
+    } else {
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.click();
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function _renderInvFiles(files) {
+    const list = document.getElementById('investigations-files');
+    if (!list) return;
+    list.innerHTML = '';
+    (files || []).forEach(f => list.appendChild(_createInvFileChip(f)));
+  }
+
+  function _handleInvFiles(fileList) {
+    const list = document.getElementById('investigations-files');
+    if (!list) return;
+    Array.from(fileList).forEach(file => {
+      if (file.size > INV_MAX_BYTES) {
+        toast(`"${file.name}" supera el límite de 5 MB.`, 'error');
+        return;
+      }
+      const mimeType = _invMimeFromFile(file);
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const chip = _createInvFileChip({
+          id:       'inv' + Date.now() + Math.random().toString(36).slice(2),
+          name:     file.name,
+          mimeType,
+          dataUrl:  ev.target.result,
+        });
+        list.appendChild(chip);
+        _scheduleAutosave();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function _collectInvFiles() {
+    return Array.from(document.querySelectorAll('#investigations-files .pp-inv-chip')).map(chip => ({
+      id:       chip.dataset.id,
+      name:     chip.dataset.name,
+      mimeType: chip.dataset.mimeType,
+      dataUrl:  chip.dataset.dataUrl,
+    }));
+  }
+
+  function _getAIDocuments() {
+    return Array.from(document.querySelectorAll('.pp-inv-file-ai-btn.active')).flatMap(btn => {
+      const chip = btn.closest('.pp-inv-chip');
+      if (!chip || !_invIsPdf(chip.dataset.mimeType)) return [];
+      return [{ name: chip.dataset.name, mimeType: chip.dataset.mimeType, dataUrl: chip.dataset.dataUrl }];
+    });
+  }
+
   function _getAIContext() {
     const items = [];
     document.querySelectorAll('.pp-ai-btn.active').forEach(btn => {
@@ -232,11 +339,12 @@ const PrionPacks = (() => {
     const sourceText = sourceEl.value.trim();
     if (!sourceText) { toast('El campo está vacío.', 'error'); return; }
 
-    const context = _getAIContext().filter(c => !(c.label === sourceLabel && c.text === sourceText));
+    const context   = _getAIContext().filter(c => !(c.label === sourceLabel && c.text === sourceText));
+    const documents = _getAIDocuments();
 
     _showClaudeModal(null, null, null);
     try {
-      const response = await PPApi.askClaude(context, sourceLabel, sourceText);
+      const response = await PPApi.askClaude(context, sourceLabel, sourceText, null, documents);
       _showClaudeModal(response, sourceEl, sourceLabel);
     } catch (e) {
       _closeClaudeModal();
@@ -481,6 +589,12 @@ const PrionPacks = (() => {
       document.getElementById(section).style.display = visible ? '' : 'none';
       _updateToggleBtn(btn, visible, icon, label);
     });
+
+    // Investigations
+    const inv = pkg?.investigations || {};
+    document.getElementById('field-investigations-text').value = inv.text || '';
+    _renderInvFiles(inv.files || []);
+    // Reset per-file AI toggles (already cleared via innerHTML reset in _renderInvFiles)
   }
 
   function _updateTitleDisplay(text) {
@@ -579,6 +693,10 @@ const PrionPacks = (() => {
       funding: document.getElementById('field-funding').value.trim() || null,
       conflictsOfInterest: document.getElementById('field-conflictsofinterest').value.trim() || null,
       references: document.getElementById('field-references').value.trim() || null,
+      investigations: {
+        text:  document.getElementById('field-investigations-text').value.trim() || '',
+        files: _collectInvFiles(),
+      },
       findings: _collectFindings(),
       gaps: {
         missingInfo: _collectGapList('gaps-missing-list'),
@@ -1381,6 +1499,14 @@ const PrionPacks = (() => {
       _toggleSection('section-conflicts', 'btn-toggle-conflicts', 'fa-balance-scale', 'Conflicts of interest'));
     document.getElementById('btn-toggle-references').addEventListener('click', () =>
       _toggleSection('section-references', 'btn-toggle-references', 'fa-list', 'References'));
+
+    // Investigations file input
+    document.getElementById('pp-inv-file-input').addEventListener('change', e => {
+      if (e.target.files.length) {
+        _handleInvFiles(e.target.files);
+        e.target.value = '';
+      }
+    });
 
     // Static field Claude ask buttons
     document.querySelectorAll('.pp-claude-ask-btn[data-source-id]').forEach(btn => {

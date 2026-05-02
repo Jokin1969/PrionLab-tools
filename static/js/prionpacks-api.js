@@ -36,7 +36,7 @@ const PPApi = (() => {
     return data.content[0].text.trim().replace(/^["']|["']$/g, '');
   }
 
-  async function askClaude(context, fieldLabel, fieldContent, imageDataUrl = null) {
+  async function askClaude(context, fieldLabel, fieldContent, imageDataUrl = null, documents = []) {
     const apiKey = PPStorage.getApiKey();
     if (!apiKey) throw new Error('No API key configured. Please set your Claude API key in the panel on the right.');
 
@@ -51,33 +51,32 @@ ${fieldContent}
 ---
 Responde a lo que el usuario ha escrito. Si incluye una petición de traducción al inglés, proporciona únicamente la traducción. Si es una pregunta, análisis u opinión, responde en español de forma detallada y científica. Si el texto termina con comentarios o instrucciones dirigidas a ti, tenlos en cuenta al elaborar tu respuesta.`;
 
-    let messageContent;
+    const contentParts = [];
+
+    // PDF documents (Claude document blocks)
+    for (const doc of documents) {
+      if (doc.mimeType === 'application/pdf') {
+        const base64 = doc.dataUrl.split(',')[1];
+        contentParts.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+          title: doc.name,
+        });
+      }
+    }
+
+    // Image (for figure captions)
     if (imageDataUrl) {
-      // Strip data URL prefix to get raw base64
       const match = imageDataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
       if (match) {
-        const mediaType = match[1];
-        const base64Data = match[2];
-        messageContent = [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType,
-              data: base64Data,
-            },
-          },
-          {
-            type: 'text',
-            text: promptText,
-          },
-        ];
-      } else {
-        messageContent = promptText;
+        contentParts.push({
+          type: 'image',
+          source: { type: 'base64', media_type: match[1], data: match[2] },
+        });
       }
-    } else {
-      messageContent = promptText;
     }
+
+    contentParts.push({ type: 'text', text: promptText });
 
     const response = await fetch(ENDPOINT, {
       method: 'POST',
@@ -92,7 +91,7 @@ Responde a lo que el usuario ha escrito. Si incluye una petición de traducción
         max_tokens: 1500,
         messages: [{
           role: 'user',
-          content: messageContent,
+          content: contentParts.length === 1 ? contentParts[0].text : contentParts,
         }],
       }),
     });
