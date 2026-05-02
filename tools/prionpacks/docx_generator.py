@@ -93,33 +93,10 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
 
     doc.add_paragraph()
 
-    # ── Metadata table ────────────────────────────────────────────────────────
-    tbl = doc.add_table(rows=2, cols=3)
-    tbl.style = 'Table Grid'
-    headers = ['Tipo', 'Prioridad', 'Última modificación']
-    values  = [
-        TYPE_ES.get(pkg.get('type', ''), pkg.get('type', '—')),
-        PRIORITY_ES.get(pkg.get('priority', 'none'), '—'),
-        _fmt_date(pkg.get('lastModified')),
-    ]
-    for i, h in enumerate(headers):
-        cell = tbl.rows[0].cells[i]
-        _cell_bg(cell, '1a7373')
-        p = cell.paragraphs[0]
-        run = p.add_run(h)
-        run.font.bold = True; run.font.size = Pt(9); run.font.color.rgb = _WHITE
-    for i, v in enumerate(values):
-        cell = tbl.rows[1].cells[i]
-        _cell_bg(cell, 'f0f7f7')
-        p = cell.paragraphs[0]
-        run = p.add_run(v)
-        run.font.size = Pt(9); run.font.color.rgb = _DARK
-
-    doc.add_paragraph()
-
     # ── Description ───────────────────────────────────────────────────────────
     desc = (pkg.get('description') or '').strip()
     if desc:
+        _section_heading(doc, 'DESCRIPCIÓN BREVE')
         p = doc.add_paragraph()
         add_runs(p, desc, italic=True, size=Pt(10), color=_DIM)
         doc.add_paragraph()
@@ -366,7 +343,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             p = doc.add_paragraph()
             r_num = p.add_run(f'[{i}] ')
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = _TEAL
-            add_runs(p, ref, size=Pt(10), color=_DARK)
+            add_runs(p, _strip_reference_summary(ref), size=Pt(10), color=_DARK)
             doc.add_paragraph()
 
     # ── CReDiT ────────────────────────────────────────────────────────────────
@@ -397,6 +374,25 @@ def _section_heading(doc: Document, text: str):
     run.font.size  = Pt(10)
     run.font.color.rgb = _TEAL
     _para_border_bottom(p)
+
+
+_REF_SUMMARY_HEADERS = re.compile(
+    r'^\s*(Resumen|Resumen del artículo|Abstract)\s*:?\s*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _strip_reference_summary(ref: str) -> str:
+    """Trim a multi-line reference block so the Word output keeps only the
+    bibliographic header (Título / Autores / Revista / Año / DOI…) and drops
+    any "Resumen:" body that comes after it. We cut at the first line that
+    matches a "Resumen" / "Abstract" header. Trailing blank lines are removed.
+    """
+    if not ref:
+        return ''
+    m = _REF_SUMMARY_HEADERS.search(ref)
+    head = ref[:m.start()] if m else ref
+    return head.rstrip()
 
 
 def _dim_para(doc: Document, text: str):
