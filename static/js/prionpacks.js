@@ -339,6 +339,35 @@ const PrionPacks = (() => {
     return items;
   }
 
+  // Centralised handler for errors coming back from PPApi. If Claude refused
+  // the prompt, copy the prompt to the clipboard so the user can paste it
+  // into ChatGPT / Gemini / etc.
+  async function _handleClaudeError(err, errorPrefix) {
+    if (err && err.name === 'RefusalError' && err.prompt) {
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(err.prompt);
+        copied = true;
+      } catch {
+        try {
+          const tmp = document.createElement('textarea');
+          tmp.value = err.prompt;
+          document.body.appendChild(tmp);
+          tmp.select();
+          document.execCommand('copy');
+          tmp.remove();
+          copied = true;
+        } catch { /* give up */ }
+      }
+      const msg = copied
+        ? '🤖 Claude rehusó. Prompt copiado al portapapeles — pégalo en otra IA (ChatGPT, Gemini…).'
+        : '🤖 Claude rehusó y no se pudo copiar el prompt al portapapeles.';
+      toast(msg, 'success');
+      return;
+    }
+    toast((errorPrefix || 'Error') + ': ' + err.message, 'error');
+  }
+
   async function _askClaudeField(sourceId, sourceLabel) {
     const sourceEl = document.getElementById(sourceId);
     if (!sourceEl) return;
@@ -354,7 +383,7 @@ const PrionPacks = (() => {
       _showClaudeModal(response, sourceEl, sourceLabel);
     } catch (e) {
       _closeClaudeModal();
-      toast('Error llamando a Claude: ' + e.message, 'error');
+      await _handleClaudeError(e, 'Error llamando a Claude');
     }
   }
 
@@ -392,7 +421,7 @@ const PrionPacks = (() => {
       modal.style.display = '';
     } catch (e) {
       _closeClaudeModal();
-      toast('Error llamando a Claude: ' + e.message, 'error');
+      await _handleClaudeError(e, 'Error llamando a Claude');
     }
   }
 
@@ -1305,7 +1334,7 @@ const PrionPacks = (() => {
       badge.textContent = 'EN: ' + translated;
       toast('Translation complete!', 'success');
     } catch (e) {
-      toast('Translation error: ' + e.message, 'error');
+      await _handleClaudeError(e, 'Translation error');
     } finally {
       btn.classList.remove('loading');
       btn.querySelector('i').className = 'fas fa-robot';

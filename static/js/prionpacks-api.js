@@ -1,5 +1,13 @@
 /* PrionPacks – Claude API integration */
 
+class RefusalError extends Error {
+  constructor(prompt) {
+    super('El modelo se ha negado a responder. Se ha copiado el prompt al portapapeles para que lo pegues en otra IA.');
+    this.name = 'RefusalError';
+    this.prompt = prompt || '';
+  }
+}
+
 const PPApi = (() => {
   const ENDPOINT = 'https://api.anthropic.com/v1/messages';
   // Latest Claude Sonnet model — stable alias accepted by the Anthropic API.
@@ -9,10 +17,9 @@ const PPApi = (() => {
     if (!data || typeof data !== 'object') {
       throw new Error('Respuesta vacía o no-JSON de la API.');
     }
-    if (data.stop_reason === 'refusal') {
-      console.error('Claude refused the prompt:', data);
-      throw new Error('El modelo se ha negado a responder este prompt (stop_reason=refusal). Prueba a reformular el texto.');
-    }
+    // Note: stop_reason=='refusal' is now handled at the call-site so that
+    // the caller can throw a RefusalError carrying the original prompt for
+    // the user to copy into another AI tool.
     if (!Array.isArray(data.content)) {
       console.error('Unexpected Claude response shape:', data);
       const snap = JSON.stringify(data).slice(0, 400);
@@ -89,6 +96,13 @@ const PPApi = (() => {
       data = await _call(body2);
     }
 
+    if (data.stop_reason === 'refusal') {
+      // Both attempts refused — surface the prompt the user can copy elsewhere.
+      const fallbackPrompt =
+        'Traduce al inglés (solo devuelve la traducción, sin comentarios):\n\n' + text;
+      throw new RefusalError(fallbackPrompt);
+    }
+
     let out = _extractText(data).trim();
     // Strip any residual <english> tag the model may have echoed
     out = out.replace(/^<\/?english[^>]*>/gi, '').replace(/<\/english>\s*$/i, '').trim();
@@ -161,6 +175,18 @@ const PPApi = (() => {
     }
 
     const data = await response.json();
+
+    if (data.stop_reason === 'refusal') {
+      // Build a copy-friendly version of the prompt so the user can paste it
+      // into a different AI assistant.
+      const docList = (documents || []).map(d => `- ${d.name} (${d.mimeType})`).join('\n');
+      const docsBlock = docList ? `\n\nAdjuntos (no se han podido enviar al portapapeles):\n${docList}` : '';
+      const imgNote   = imageDataUrl ? '\n\n(Hay también una imagen adjunta a este prompt; pásala manualmente al asistente.)' : '';
+      const fullPrompt =
+        '— ROL —\n' + systemPrompt + '\n\n— PROMPT —\n' + promptText + docsBlock + imgNote;
+      throw new RefusalError(fullPrompt);
+    }
+
     return _extractText(data).trim();
   }
 
