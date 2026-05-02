@@ -164,13 +164,38 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, intro, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Methods ──────────────────────────────────────────────────────────────
-    methods = (pkg.get('methods') or '').strip()
-    if methods:
+    # ── Methods (multi-field: list of {title, body}) ─────────────────────────
+    methods_raw = pkg.get('methods')
+    if isinstance(methods_raw, list):
+        methods_list = []
+        for m in methods_raw:
+            if isinstance(m, dict):
+                t = (m.get('title') or '').strip()
+                b = (m.get('body') or '').strip()
+                if t or b:
+                    methods_list.append({'title': t, 'body': b})
+            elif isinstance(m, str) and m.strip():
+                methods_list.append({'title': '', 'body': m.strip()})
+    elif isinstance(methods_raw, str) and methods_raw.strip():
+        methods_list = [{'title': '', 'body': methods_raw.strip()}]
+    else:
+        methods_list = []
+    if methods_list:
         _section_heading(doc, 'MÉTODOS')
-        p = doc.add_paragraph()
-        add_runs(p, methods, size=Pt(10), color=_DARK)
-        doc.add_paragraph()
+        for mi, m in enumerate(methods_list, 1):
+            if m['title']:
+                p_t = doc.add_paragraph()
+                r_n = p_t.add_run(f'M-{mi:02d} — ')
+                r_n.font.bold = True; r_n.font.size = Pt(11); r_n.font.color.rgb = _TEAL
+                add_runs(p_t, m['title'], size=Pt(11), bold=True, color=_TEAL)
+            else:
+                p_t = doc.add_paragraph()
+                r_n = p_t.add_run(f'M-{mi:02d}')
+                r_n.font.bold = True; r_n.font.size = Pt(11); r_n.font.color.rgb = _TEAL
+            if m['body']:
+                p_b = doc.add_paragraph()
+                add_runs(p_b, m['body'], size=Pt(10), color=_DARK)
+            doc.add_paragraph()
 
     # ── Investigations ────────────────────────────────────────────────────────
     inv = pkg.get('investigations') or {}

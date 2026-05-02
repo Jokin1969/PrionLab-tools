@@ -189,8 +189,9 @@
               </div>
               <textarea id="field-title" class="pp-textarea" rows="2" placeholder="Package title…" autocomplete="off"></textarea>
             </div>
-            <div class="pp-form-group pp-alt-titles-editor">
+            <div class="pp-form-group pp-alt-titles-editor" id="alt-titles-group">
               <div class="pp-label-ai-row">
+                <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--empty" id="btn-toggle-alt-titles" title="Plegar / desplegar títulos alternativos"></button>
                 <label class="pp-label pp-label-sm">Alternative titles</label>
                 <button type="button" class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-add-alt-title">
                   <i class="fas fa-plus"></i> Add alternative title
@@ -305,18 +306,15 @@
             <textarea id="field-introduction" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la introducción…"></textarea>
           </div>
 
-          <!-- Methods section -->
+          <!-- Methods section — multi-field -->
           <div class="pp-card pp-card-section" id="section-methods" style="display:none;">
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-flask-vial"></i> Methods</h2>
-              <div class="pp-field-ai-actions">
-                <button class="pp-ai-btn" data-field-id="field-methods" data-ai-label="Métodos" title="Incluir como contexto para Claude">AI</button>
-                <button class="pp-claude-ask-btn" data-source-id="field-methods" data-source-label="Métodos" title="Preguntar a Claude">
-                  <i class="fas fa-robot"></i> Claude
-                </button>
-              </div>
+              <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-method" type="button">
+                <i class="fas fa-plus"></i> Add Method
+              </button>
             </div>
-            <textarea id="field-methods" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Describe los métodos…"></textarea>
+            <div id="methods-list" class="pp-methods-list"></div>
           </div>
 
           <!-- Main Findings card -->
@@ -423,7 +421,7 @@
           <!-- References section — multi-field -->
           <div class="pp-card pp-card-section" id="section-references" style="display:none;">
             <div class="pp-section-header">
-              <h2 class="pp-section-title"><i class="fas fa-list"></i> References</h2>
+              <h2 class="pp-section-title"><i class="fas fa-list"></i> References <span class="pp-section-count" id="references-count"></span></h2>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-reference" type="button">
                 <i class="fas fa-plus"></i> Add Reference
               </button>

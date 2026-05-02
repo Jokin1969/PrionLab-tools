@@ -386,8 +386,13 @@
 }
 
 /* ── Alternative titles (editor only — not shown in the top title bar) ─── */
-.pp-alt-titles-list { display: flex; flex-direction: column; gap: 6px; }
+.pp-alt-titles-editor { margin-top: 12px; }
+.pp-alt-titles-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .pp-alt-titles-list:empty { margin: 0; }
+/* Collapsed state — hide the list but keep label + add button row visible */
+.pp-alt-titles-editor.pp-alt-titles-collapsed .pp-alt-titles-list { display: none; }
+/* Add a small extra gap between the alt-titles group and the Description below */
+.pp-alt-titles-editor + .pp-form-group { margin-top: 12px; }
 .pp-alt-title-row {
   display: flex;
   gap: 6px;
@@ -2195,7 +2200,10 @@
   /* hide the FA icon when present so we don't double-render */
   display: none;
 }
-.pp-card-collapsed > .pp-section-header > .pp-collapse-btn::before {
+.pp-card-collapsed > .pp-section-header > .pp-collapse-btn::before,
+.pp-alt-titles-collapsed > .pp-label-ai-row > .pp-collapse-btn::before,
+.pp-reference-collapsed > .pp-reference-header > .pp-collapse-btn::before,
+.pp-method-collapsed   > .pp-method-header   > .pp-collapse-btn::before {
   content: '\25B6';
 }
 .pp-collapse-btn:hover {
@@ -2264,7 +2272,103 @@
   color: var(--pp-accent);
   text-transform: uppercase;
   letter-spacing: .5px;
-  margin-right: auto;
+  flex-shrink: 0;
+}
+.pp-reference-preview {
+  flex: 1;
+  font-size: 12px;
+  color: var(--pp-text-dim);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pp-reference-item.pp-reference-collapsed .pp-reference-body {
+  display: none;
+}
+
+/* ── Methods (multi-field, mirrors References) ────────────────────────────── */
+.pp-methods-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pp-method-item {
+  border: 1px solid var(--pp-border);
+  border-left: 3px solid var(--pp-accent);
+  border-radius: var(--pp-radius-sm);
+  padding: 10px 12px;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pp-method-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pp-method-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pp-accent);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  flex-shrink: 0;
+}
+.pp-method-title-input {
+  flex: 1;
+  padding: 6px 9px;
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  color: var(--pp-text);
+  min-width: 0;
+}
+.pp-method-title-input:focus {
+  outline: none;
+  border-color: var(--pp-accent);
+}
+.pp-method-body { display: flex; flex-direction: column; gap: 6px; }
+.pp-method-body-textarea { font-size: 13px; line-height: 1.5; resize: vertical; }
+.pp-method-item.pp-method-collapsed .pp-method-body { display: none; }
+.pp-method-item .pp-btn-icon.btn-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #e8edf3;
+  border: 1px solid #9aabbc;
+  color: #1e3a5f;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.pp-method-item .pp-btn-icon.btn-remove:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+/* ── Inline collapse button (smaller variant for nested groups/items) ─────── */
+.pp-collapse-btn--inline {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* ── Section count badge (e.g. "References (3)") ──────────────────────────── */
+.pp-section-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pp-text-dim);
+  margin-left: 4px;
 }
 .pp-reference-textarea {
   width: 100%;

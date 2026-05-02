@@ -604,7 +604,6 @@ const PrionPacks = (() => {
       { field: 'field-abstract',     section: 'section-abstract',     btn: 'btn-toggle-abstract',     icon: 'fa-align-left',label: 'Abstract',       key: 'abstract' },
       { field: 'field-authorsummary',section: 'section-authorsummary',btn: 'btn-toggle-authorsummary',icon: 'fa-user-edit', label: 'Author Summary', key: 'authorSummary' },
       { field: 'field-introduction', section: 'section-introduction', btn: 'btn-toggle-introduction', icon: 'fa-book-open', label: 'Introduction',   key: 'introduction' },
-      { field: 'field-methods',      section: 'section-methods',      btn: 'btn-toggle-methods',      icon: 'fa-flask-vial',label: 'Methods',        key: 'methods' },
     ];
     optionalSectionsBasic.forEach(({ field, section, btn, icon, label, key }) => {
       const val = pkg?.[key] || '';
@@ -640,6 +639,23 @@ const PrionPacks = (() => {
     const refsVisible = refs.length > 0;
     document.getElementById('section-references').style.display = refsVisible ? '' : 'none';
     _updateToggleBtn('btn-toggle-references', refsVisible, 'fa-list', 'References');
+
+    // Methods — multi-field. Each item has {title, body}. Legacy single-string
+    // value (or list of strings) is wrapped into a list of body-only items.
+    const rawMethods = pkg?.methods;
+    let methods = [];
+    if (Array.isArray(rawMethods)) {
+      methods = rawMethods.map(m => {
+        if (typeof m === 'string') return { title: '', body: m };
+        return { title: (m?.title || '').toString(), body: (m?.body || '').toString() };
+      }).filter(m => (m.title && m.title.trim()) || (m.body && m.body.trim()));
+    } else if (typeof rawMethods === 'string' && rawMethods.trim()) {
+      methods = [{ title: '', body: rawMethods.trim() }];
+    }
+    _renderMethodsList(methods);
+    const methodsVisible = methods.length > 0;
+    document.getElementById('section-methods').style.display = methodsVisible ? '' : 'none';
+    _updateToggleBtn('btn-toggle-methods', methodsVisible, 'fa-flask-vial', 'Methods');
 
     // Investigations
     const inv = pkg?.investigations || {};
@@ -709,6 +725,7 @@ const PrionPacks = (() => {
     list.innerHTML = '';
     (refs || []).forEach((r, idx) => list.appendChild(_createReferenceItem(r, idx)));
     _setupAnchorButtons(list);
+    _updateReferencesCount();
   }
 
   function _createReferenceItem(text, idx) {
@@ -718,24 +735,50 @@ const PrionPacks = (() => {
     div.className = 'pp-reference-item';
     div.innerHTML = `
       <div class="pp-reference-header">
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar referencia"></button>
         <span class="pp-reference-number">Ref ${idx + 1}</span>
+        <span class="pp-reference-preview"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Referencia ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
         <button type="button" class="pp-btn-icon btn-remove" title="Eliminar referencia"><i class="fas fa-trash"></i></button>
       </div>
-      <textarea id="${id}" class="pp-textarea pp-reference-textarea" rows="6" placeholder="Pega aquí una referencia (título, autores, DOI, resumen…)"></textarea>
-      <div id="${chipsId}" class="pp-doi-chips"></div>`;
-    const ta    = div.querySelector('textarea');
-    const chips = div.querySelector('.pp-doi-chips');
+      <div class="pp-reference-body">
+        <textarea id="${id}" class="pp-textarea pp-reference-textarea" rows="6" placeholder="Pega aquí una referencia (título, autores, DOI, resumen…)"></textarea>
+        <div id="${chipsId}" class="pp-doi-chips"></div>
+      </div>`;
+    const ta      = div.querySelector('textarea');
+    const chips   = div.querySelector('.pp-doi-chips');
+    const preview = div.querySelector('.pp-reference-preview');
     ta.value = text || '';
-    ta.addEventListener('input', () => _renderDoiChipsFor(ta, chips));
+    const refreshPreview = () => {
+      const first = (ta.value || '').split('\n').find(l => l.trim()) || '';
+      preview.textContent = first.length > 90 ? first.slice(0, 90) + '…' : first;
+    };
+    ta.addEventListener('input', () => {
+      _renderDoiChipsFor(ta, chips);
+      refreshPreview();
+    });
+    div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      div.classList.toggle('pp-reference-collapsed');
+    });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
       _renumberReferences();
       _scheduleAutosave();
       _updateCollapseIndicators();
+      _updateReferencesCount();
     });
     _renderDoiChipsFor(ta, chips);
+    refreshPreview();
     return div;
+  }
+
+  function _updateReferencesCount() {
+    const span = document.getElementById('references-count');
+    if (!span) return;
+    const n = document.querySelectorAll('#references-list .pp-reference-item').length;
+    span.textContent = n > 0 ? `(${n})` : '';
   }
 
   function _renumberReferences() {
@@ -763,12 +806,108 @@ const PrionPacks = (() => {
     if (focus) item.querySelector('textarea').focus();
     _scheduleAutosave();
     _updateCollapseIndicators();
+    _updateReferencesCount();
   }
 
   function _collectReferences() {
     return Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
       .map(t => (t.value || '').trim())
       .filter(Boolean);
+  }
+
+  /* ── Methods (multi-field, each with title + body, mirror of References) ─ */
+  function _renderMethodsList(methods) {
+    const list = document.getElementById('methods-list');
+    if (!list) return;
+    list.innerHTML = '';
+    (methods || []).forEach((m, idx) => list.appendChild(_createMethodItem(m, idx)));
+    _setupAnchorButtons(list);
+  }
+
+  function _createMethodItem(m, idx) {
+    const titleId = `field-method-title-${idx}`;
+    const bodyId  = `field-method-body-${idx}`;
+    const data = m || {};
+    const div = document.createElement('div');
+    div.className = 'pp-method-item';
+    div.innerHTML = `
+      <div class="pp-method-header">
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar método"></button>
+        <span class="pp-method-number">M-${String(idx + 1).padStart(2, '0')}</span>
+        <input type="text" id="${titleId}" class="pp-input pp-method-title-input" placeholder="Título del método…" value="${_esc(data.title || '')}" />
+        <button type="button" class="pp-ai-btn" data-field-id="${titleId}" data-ai-label="Método ${idx + 1} — título" title="Incluir el título como contexto para Claude">AI</button>
+        <button type="button" class="pp-btn-icon btn-remove" title="Eliminar método"><i class="fas fa-trash"></i></button>
+      </div>
+      <div class="pp-method-body">
+        <div class="pp-label-ai-row">
+          <label class="pp-label pp-label-sm">Desarrollo</label>
+          <div class="pp-field-ai-actions">
+            <button type="button" class="pp-ai-btn" data-field-id="${bodyId}" data-ai-label="Método ${idx + 1} — desarrollo" title="Incluir el desarrollo como contexto para Claude">AI</button>
+            <button type="button" class="pp-claude-ask-btn pp-method-claude-btn" data-source-id="${bodyId}" data-source-label="Método ${idx + 1}" title="Preguntar a Claude sobre este método">
+              <i class="fas fa-robot"></i> Claude
+            </button>
+          </div>
+        </div>
+        <textarea id="${bodyId}" class="pp-textarea pp-method-body-textarea" rows="6" placeholder="Describe los pasos, equipo, reactivos, parámetros…">${_esc(data.body || '')}</textarea>
+      </div>`;
+    div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      div.classList.toggle('pp-method-collapsed');
+    });
+    div.querySelector('.btn-remove').addEventListener('click', () => {
+      div.remove();
+      _renumberMethods();
+      _scheduleAutosave();
+      _updateCollapseIndicators();
+    });
+    return div;
+  }
+
+  function _renumberMethods() {
+    document.querySelectorAll('#methods-list .pp-method-item').forEach((item, i) => {
+      const titleId = `field-method-title-${i}`;
+      const bodyId  = `field-method-body-${i}`;
+      item.querySelector('.pp-method-number').textContent = `M-${String(i + 1).padStart(2, '0')}`;
+      const titleInput = item.querySelector('.pp-method-title-input');
+      const bodyArea   = item.querySelector('.pp-method-body-textarea');
+      titleInput.id = titleId;
+      bodyArea.id   = bodyId;
+      const aiButtons = item.querySelectorAll('.pp-ai-btn');
+      if (aiButtons[0]) {
+        aiButtons[0].dataset.fieldId = titleId;
+        aiButtons[0].dataset.aiLabel = `Método ${i + 1} — título`;
+      }
+      if (aiButtons[1]) {
+        aiButtons[1].dataset.fieldId = bodyId;
+        aiButtons[1].dataset.aiLabel = `Método ${i + 1} — desarrollo`;
+      }
+      const claudeBtn = item.querySelector('.pp-method-claude-btn');
+      if (claudeBtn) {
+        claudeBtn.dataset.sourceId    = bodyId;
+        claudeBtn.dataset.sourceLabel = `Método ${i + 1}`;
+      }
+    });
+  }
+
+  function _addMethod(focus = true) {
+    const list = document.getElementById('methods-list');
+    if (!list) return;
+    const idx  = list.children.length;
+    const item = _createMethodItem({ title: '', body: '' }, idx);
+    list.appendChild(item);
+    _setupAnchorButtons(item);
+    if (focus) item.querySelector('input').focus();
+    _scheduleAutosave();
+    _updateCollapseIndicators();
+  }
+
+  function _collectMethods() {
+    return Array.from(document.querySelectorAll('#methods-list .pp-method-item')).map(item => {
+      const title = (item.querySelector('.pp-method-title-input')?.value || '').trim();
+      const body  = (item.querySelector('.pp-method-body-textarea')?.value || '').trim();
+      return { title, body };
+    }).filter(m => m.title || m.body);
   }
 
   /* ── Collapsible sections ──────────────────────────────────────────────── */
@@ -906,14 +1045,17 @@ const PrionPacks = (() => {
       const input = row.querySelector('.pp-alt-title-input');
       input.addEventListener('input', () => {
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
+        _updateAltTitlesIndicator();
       });
       row.querySelector('.btn-remove').addEventListener('click', () => {
         row.remove();
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
+        _updateAltTitlesIndicator();
         _scheduleAutosave();
       });
       list.appendChild(row);
     });
+    _updateAltTitlesIndicator();
   }
 
   function _collectAltTitlesFromEditor() {
@@ -935,6 +1077,25 @@ const PrionPacks = (() => {
     _renderAltTitlesEditor(current);
     const inputs = list.querySelectorAll('.pp-alt-title-input');
     inputs[inputs.length - 1]?.focus();
+    // Make sure the group is expanded so the new row is visible
+    document.getElementById('alt-titles-group')?.classList.remove('pp-alt-titles-collapsed');
+    _updateAltTitlesIndicator();
+  }
+
+  // The alt-titles collapse triangle works just like the section ones:
+  // green/filled when there is content, amber/blinking when empty.
+  function _updateAltTitlesIndicator() {
+    const btn = document.getElementById('btn-toggle-alt-titles');
+    if (!btn) return;
+    const has = _collectAltTitlesFromEditor().length > 0;
+    btn.classList.toggle('pp-collapse-btn--filled', has);
+    btn.classList.toggle('pp-collapse-btn--empty',  !has);
+  }
+
+  function _toggleAltTitles() {
+    const grp = document.getElementById('alt-titles-group');
+    if (!grp) return;
+    grp.classList.toggle('pp-alt-titles-collapsed');
   }
 
   /* ── Toggle helpers ────────────────────────────────────────────────────── */
@@ -1017,7 +1178,7 @@ const PrionPacks = (() => {
       abstract: document.getElementById('field-abstract').value.trim() || null,
       authorSummary: document.getElementById('field-authorsummary').value.trim() || null,
       introduction: document.getElementById('field-introduction').value.trim() || null,
-      methods: document.getElementById('field-methods').value.trim() || null,
+      methods: _collectMethods(),
       discussion: document.getElementById('field-discussion').value.trim() || null,
       acknowledgments: document.getElementById('field-acknowledgments').value.trim() || null,
       funding: document.getElementById('field-funding').value.trim() || null,
@@ -1598,7 +1759,6 @@ const PrionPacks = (() => {
       { id: 'field-abstract',            minChars: 100 },
       { id: 'field-authorsummary',       minChars: 100 },
       { id: 'field-introduction',        minChars: 100 },
-      { id: 'field-methods',             minChars: 100 },
       { id: 'field-discussion',          minChars: 100 },
     ];
     let manuscriptDone = 0;
@@ -1608,7 +1768,17 @@ const PrionPacks = (() => {
       else if (f.alt && f.alt())         manuscriptDone += 1;
       else if (v.length > 0)             manuscriptDone += 0.5;
     });
-    const mScore = Math.round((manuscriptDone / manuscriptFields.length) * 100);
+    // Methods is multi-field — count it as fully done if there is at least one
+    // method with a body of >=80 chars; half if there is at least one method
+    // with any title or body.
+    const methodsBodies = Array.from(document.querySelectorAll('#methods-list .pp-method-body-textarea'));
+    const methodsTitles = Array.from(document.querySelectorAll('#methods-list .pp-method-title-input'));
+    const methodsFilled = methodsBodies.some(t => (t.value || '').trim().length >= 80);
+    const methodsAny    = methodsBodies.some(t => (t.value || '').trim()) ||
+                          methodsTitles.some(t => (t.value || '').trim());
+    if      (methodsFilled) manuscriptDone += 1;
+    else if (methodsAny)    manuscriptDone += 0.5;
+    const mScore = Math.round((manuscriptDone / (manuscriptFields.length + 1)) * 100);
 
     // ── 4. CLOSING & GAPS (20%) ──────────────────────────────────────────
     const closingFields = [
@@ -1848,6 +2018,7 @@ const PrionPacks = (() => {
 
     // Alternative titles
     document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
+    document.getElementById('btn-toggle-alt-titles')?.addEventListener('click', _toggleAltTitles);
 
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));
@@ -1915,8 +2086,27 @@ const PrionPacks = (() => {
     document.getElementById('btn-toggle-authorsummary').addEventListener('click', () =>
       _toggleSection('section-authorsummary', 'btn-toggle-authorsummary', 'fa-user-edit', 'Author Summary'));
     document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
-    document.getElementById('btn-toggle-methods').addEventListener('click', () =>
-      _toggleSection('section-methods', 'btn-toggle-methods', 'fa-flask-vial', 'Methods'));
+    document.getElementById('btn-toggle-methods').addEventListener('click', () => {
+      _toggleSection('section-methods', 'btn-toggle-methods', 'fa-flask-vial', 'Methods');
+      const section = document.getElementById('section-methods');
+      const list    = document.getElementById('methods-list');
+      if (section && section.style.display !== 'none' && list && list.children.length === 0) {
+        _addMethod(false);
+      }
+    });
+    document.getElementById('btn-add-method')?.addEventListener('click', () => _addMethod(true));
+    // Delegated AI / Claude clicks for dynamic method rows
+    document.getElementById('methods-list')?.addEventListener('click', e => {
+      const aiBtn = e.target.closest('.pp-ai-btn');
+      if (aiBtn && e.currentTarget.contains(aiBtn)) {
+        aiBtn.classList.toggle('active');
+        return;
+      }
+      const claudeBtn = e.target.closest('.pp-claude-ask-btn');
+      if (claudeBtn && e.currentTarget.contains(claudeBtn)) {
+        _askClaudeField(claudeBtn.dataset.sourceId, claudeBtn.dataset.sourceLabel);
+      }
+    });
 
     // Toggle buttons — gaps group
     document.getElementById('btn-toggle-discussion').addEventListener('click', _toggleDiscussion);

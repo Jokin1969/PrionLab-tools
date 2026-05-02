@@ -136,6 +136,30 @@ def _normalise_references(value):
     return []
 
 
+def _normalise_methods(value):
+    """Methods is a list of {title, body} dicts. Accepts:
+       - list of {title, body} dicts (canonical)
+       - list of strings (treated as body-only)
+       - single string (legacy single-textarea value)
+       - None / anything else  -> []"""
+    if isinstance(value, list):
+        out = []
+        for m in value:
+            if isinstance(m, dict):
+                title = str(m.get('title') or '').strip()
+                body  = str(m.get('body') or '').strip()
+            elif isinstance(m, str):
+                title, body = '', m.strip()
+            else:
+                continue
+            if title or body:
+                out.append({'title': title, 'body': body})
+        return out
+    if isinstance(value, str) and value.strip():
+        return [{'title': '', 'body': value.strip()}]
+    return []
+
+
 def bootstrap_demo_data() -> None:
     if not _load():
         _save(DEMO_PACKAGES)
@@ -166,7 +190,7 @@ def create_package(data: dict) -> dict:
         'abstract': (data.get('abstract') or ''),
         'authorSummary': (data.get('authorSummary') or ''),
         'introduction': (data.get('introduction') or ''),
-        'methods': (data.get('methods') or ''),
+        'methods': _normalise_methods(data.get('methods')),
         'discussion': (data.get('discussion') or ''),
         'acknowledgments': (data.get('acknowledgments') or ''),
         'funding': (data.get('funding') or ''),
@@ -193,6 +217,8 @@ def update_package(pkg_id: str, data: dict) -> dict | None:
     existing = packages[idx]
     if 'references' in data:
         data = {**data, 'references': _normalise_references(data.get('references'))}
+    if 'methods' in data:
+        data = {**data, 'methods': _normalise_methods(data.get('methods'))}
     updated = {**existing, **data, 'id': pkg_id, 'createdAt': existing['createdAt'], 'lastModified': _now()}
     packages[idx] = updated
     _save(packages)
