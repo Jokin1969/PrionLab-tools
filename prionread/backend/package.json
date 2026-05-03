@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "db:sync": "node scripts/sync-db.js"
+    "db:sync": "node scripts/sync-db.js",
+    "test:recommendations": "node scripts/test-recommendations.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

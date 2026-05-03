@@ -1,4 +1,5 @@
 const { UserArticle, Article, Evaluation, User } = require('../models');
+const recommendationEngine = require('../utils/recommendationEngine');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -220,7 +221,7 @@ async function getStudentDashboard(req, res) {
     // Fire independent queries in parallel
     const [userArticles, nextRecommended, labComparison] = await Promise.all([
       fetchUserArticles(userId),
-      fetchRecommended(userId),
+      recommendationEngine.generateRecommendations(userId, RECOMMENDED_LIMIT),
       fetchLabComparison(userId),
     ]);
 
