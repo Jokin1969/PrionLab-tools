@@ -412,6 +412,8 @@ const AdminArticles = () => {
                                 PDF
                               </label>
                             )}
+
+                            {/* DOI → doi.org | PMID → PubMed | ninguno → gris */}
                             {article.doi ? (
                               <a
                                 href={`https://doi.org/${article.doi}`}
@@ -422,8 +424,18 @@ const AdminArticles = () => {
                               >
                                 DOI
                               </a>
+                            ) : article.pubmed_id ? (
+                              <a
+                                href={`https://pubmed.ncbi.nlm.nih.gov/${article.pubmed_id}/`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`Ver en PubMed — PMID ${article.pubmed_id}`}
+                                className="px-2 py-1 text-xs font-bold rounded bg-teal-100 text-teal-700 hover:bg-teal-200"
+                              >
+                                PMID
+                              </a>
                             ) : (
-                              <span title="Sin DOI" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">DOI</span>
+                              <span title="Sin DOI ni PubMed ID" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">DOI</span>
                             )}
                           </div>
                         </td>
