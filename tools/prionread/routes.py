@@ -2,7 +2,7 @@ import logging
 import os
 
 import requests as http
-from flask import Response, send_from_directory, request
+from flask import Response, redirect, send_from_directory, request
 
 from core.decorators import login_required
 from . import prionread_bp
@@ -63,8 +63,13 @@ def assets(filename):
 # ── SPA entry point and client-side routes ────────────────────────────────────
 # Requires Flask session login to access PrionRead at all
 
+@prionread_bp.route("", strict_slashes=False)
+@login_required
+def root():
+    return redirect("/prionread/", 301)
+
+
 @prionread_bp.route("/")
-@prionread_bp.route("/index")
 @prionread_bp.route("/<path:path>")
 @login_required
 def index(path=""):
