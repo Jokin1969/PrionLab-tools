@@ -96,4 +96,9 @@ export const adminService = {
     const response = await api.post('/assignments/bulk', { user_ids: userIds, article_ids: articleIds });
     return response.data;
   },
+
+  assignArticleToAll: async (articleId) => {
+    const response = await api.post(`/admin/articles/${articleId}/assign-all`);
+    return response.data;
+  },
 };

@@ -1,298 +1,244 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  RiSearchLine, RiAddLine, RiDeleteBin6Line,
-  RiUploadLine, RiGroupLine, RiExternalLinkLine,
-} from 'react-icons/ri';
-import api from '../../services/api';
-import PageHeader from '../../components/layout/PageHeader';
-import { StatusBadge } from '../../components/ui/Badge';
-import Spinner from '../../components/ui/Spinner';
+import { useState, useEffect } from 'react';
+import { adminService } from '../../services/admin.service';
+import { ArticleModal } from '../../components/admin/ArticleModal';
+import { Card, Button, Input, Loader } from '../../components/common';
 
-function CreateArticleModal({ onClose, onCreated }) {
-  const [doi, setDoi] = useState('');
-  const [pmid, setPmid] = useState('');
-  const [title, setTitle] = useState('');
-  const [fetching, setFetching] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  async function fetchMeta() {
-    if (!doi && !pmid) return;
-    setFetching(true);
-    setErr('');
-    try {
-      const params = doi ? `?doi=${encodeURIComponent(doi)}` : `?pmid=${encodeURIComponent(pmid)}`;
-      const res = await api.get(`/articles/fetch-metadata${params}`);
-      const m = res.data.metadata ?? res.data;
-      if (m.title) setTitle(m.title);
-    } catch {
-      setErr('No se encontraron metadatos');
-    } finally {
-      setFetching(false);
-    }
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setErr('');
-    setSaving(true);
-    try {
-      await api.post('/articles', { doi: doi || undefined, pmid_id: pmid || undefined, title });
-      onCreated();
-      onClose();
-    } catch (error) {
-      setErr(error.response?.data?.error || 'Error al crear artículo');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="card w-full max-w-md p-6 space-y-4">
-        <h2 className="font-semibold text-gray-900">Nuevo artículo</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">DOI</label>
-              <input value={doi} onChange={(e) => setDoi(e.target.value)} placeholder="10.1234/..." className="input" />
-            </div>
-            <div className="flex-1">
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">PubMed ID</label>
-              <input value={pmid} onChange={(e) => setPmid(e.target.value)} placeholder="12345678" className="input" />
-            </div>
-          </div>
-          <button type="button" onClick={fetchMeta} disabled={fetching || (!doi && !pmid)} className="btn-secondary text-sm flex items-center gap-2">
-            {fetching ? <Spinner size="sm" /> : null}
-            Buscar metadatos
-          </button>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Título *</label>
-            <input required value={title} onChange={(e) => setTitle(e.target.value)} className="input" />
-          </div>
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
-            <button type="submit" disabled={saving} className="btn-primary flex-1">
-              {saving ? <Spinner size="sm" /> : 'Crear'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function UploadPDFModal({ article, onClose, onUploaded }) {
-  const [file, setFile] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!file) return;
-    setSaving(true);
-    const formData = new FormData();
-    formData.append('pdf', file);
-    try {
-      await api.post(`/articles/${article.id}/pdf`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      onUploaded();
-      onClose();
-    } catch (error) {
-      setErr(error.response?.data?.error || 'Error al subir PDF');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="card w-full max-w-sm p-6 space-y-4">
-        <h2 className="font-semibold text-gray-900">Subir PDF</h2>
-        <p className="text-sm text-gray-500 truncate">{article.title}</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="file"
-            accept="application/pdf"
-            required
-            onChange={(e) => setFile(e.target.files[0])}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:rounded file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-indigo-700"
-          />
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
-            <button type="submit" disabled={saving || !file} className="btn-primary flex-1">
-              {saving ? <Spinner size="sm" /> : 'Subir'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export default function AdminArticles() {
+const AdminArticles = () => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingArticle, setEditingArticle] = useState(null);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [showCreate, setShowCreate] = useState(false);
-  const [uploadTarget, setUploadTarget] = useState(null);
+  const [filters, setFilters] = useState({
+    is_milestone: '',
+    year: '',
+    sort_by: 'year',
+    order: 'desc',
+  });
   const [msg, setMsg] = useState('');
 
-  const fetchArticles = useCallback(() => {
+  useEffect(() => {
+    loadArticles();
+  }, [filters]);
+
+  const loadArticles = async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page, limit: 20 });
-    if (search) params.set('search', search);
-    api.get(`/articles?${params}`)
-      .then((res) => {
-        setArticles(res.data.articles ?? res.data);
-        if (res.data.pagination) setTotalPages(res.data.pagination.totalPages ?? 1);
-      })
-      .catch(() => setArticles([]))
-      .finally(() => setLoading(false));
-  }, [search, page]);
-
-  useEffect(() => { fetchArticles(); }, [fetchArticles]);
-
-  async function assignAll(articleId) {
     try {
-      await api.post(`/admin/articles/${articleId}/assign-all`);
-      setMsg('Artículo asignado a todos los estudiantes');
-    } catch (err) {
-      setMsg(err.response?.data?.error || 'Error al asignar');
+      const data = await adminService.getArticles(filters);
+      setArticles(data.articles || []);
+    } catch (error) {
+      console.error('Error loading articles:', error);
+    } finally {
+      setLoading(false);
     }
-    setTimeout(() => setMsg(''), 3000);
-  }
+  };
 
-  async function deleteArticle(articleId) {
-    if (!window.confirm('¿Eliminar este artículo?')) return;
-    try {
-      await api.delete(`/articles/${articleId}`);
-      setArticles((prev) => prev.filter((a) => a.id !== articleId));
-      setMsg('Artículo eliminado');
-    } catch (err) {
-      setMsg(err.response?.data?.error || 'Error al eliminar');
-    }
+  const flash = (text) => {
+    setMsg(text);
     setTimeout(() => setMsg(''), 3000);
-  }
+  };
+
+  const handleCreateArticle = async (formData) => {
+    await adminService.createArticle(formData);
+    loadArticles();
+    flash('Artículo creado correctamente');
+  };
+
+  const handleUpdateArticle = async (formData) => {
+    await adminService.updateArticle(editingArticle.id, formData);
+    loadArticles();
+    setEditingArticle(null);
+    flash('Artículo actualizado correctamente');
+  };
+
+  const handleDeleteArticle = async (articleId, title) => {
+    if (!window.confirm(`¿Eliminar artículo "${title}"?`)) return;
+    try {
+      await adminService.deleteArticle(articleId);
+      loadArticles();
+      flash('Artículo eliminado');
+    } catch {
+      flash('Error eliminando artículo');
+    }
+  };
+
+  const handleAssignToAll = async (articleId, title) => {
+    if (!window.confirm(`¿Asignar "${title}" a TODOS los estudiantes?`)) return;
+    try {
+      const data = await adminService.assignArticleToAll(articleId);
+      flash(`Asignado a ${data.assigned_to ?? data.count ?? 'todos los'} estudiantes`);
+    } catch {
+      flash('Error asignando artículo');
+    }
+  };
+
+  const authorsText = (authors) =>
+    Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
+
+  const filteredArticles = articles.filter((article) => {
+    const q = search.toLowerCase();
+    return (
+      article.title?.toLowerCase().includes(q) ||
+      authorsText(article.authors).toLowerCase().includes(q)
+    );
+  });
 
   return (
-    <div>
-      <PageHeader
-        title="Artículos"
-        subtitle="Biblioteca de artículos científicos"
-        action={
-          <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2 text-sm">
-            <RiAddLine className="h-4 w-4" />
-            Nuevo artículo
-          </button>
-        }
-      />
-
-      <div className="p-6 space-y-4">
-        {msg && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{msg}</p>}
-
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar artículo..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchArticles(); } }}
-              className="input pl-9"
-            />
-          </div>
-          <button onClick={() => { setPage(1); fetchArticles(); }} className="btn-secondary">Buscar</button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">📚 Artículos</h1>
+          <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
-
-        {loading ? (
-          <div className="flex justify-center py-12"><Spinner size="lg" /></div>
-        ) : (
-          <div className="space-y-2">
-            {articles.length === 0 ? (
-              <p className="py-10 text-center text-sm text-gray-400">No hay artículos</p>
-            ) : articles.map((a) => (
-              <div key={a.id} className="card flex items-start gap-4 p-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-2">
-                    <p className="font-medium text-gray-900 leading-snug">{a.title}</p>
-                    {a.is_milestone && (
-                      <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">HITO</span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    {Array.isArray(a.authors) ? a.authors.slice(0, 2).join(', ') : a.authors}
-                    {a.year && ` · ${a.year}`}
-                    {a.journal && ` · ${a.journal}`}
-                  </p>
-                  {Array.isArray(a.tags) && a.tags.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {a.tags.map((t) => (
-                        <span key={t} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">{t}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {a.doi && (
-                    <a
-                      href={`https://doi.org/${a.doi}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded p-1.5 text-gray-400 hover:text-prion-primary"
-                      title="Ver en DOI"
-                    >
-                      <RiExternalLinkLine className="h-4 w-4" />
-                    </a>
-                  )}
-                  <button
-                    onClick={() => setUploadTarget(a)}
-                    title="Subir PDF"
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                  >
-                    <RiUploadLine className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => assignAll(a.id)}
-                    title="Asignar a todos"
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                  >
-                    <RiGroupLine className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => deleteArticle(a.id)}
-                    title="Eliminar"
-                    className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                  >
-                    <RiDeleteBin6Line className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-4">
-            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="btn-secondary disabled:opacity-40">Anterior</button>
-            <span className="text-sm text-gray-500">{page} / {totalPages}</span>
-            <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="btn-secondary disabled:opacity-40">Siguiente</button>
-          </div>
-        )}
+        <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>
+          + Nuevo Artículo
+        </Button>
       </div>
 
-      {showCreate && (
-        <CreateArticleModal onClose={() => setShowCreate(false)} onCreated={fetchArticles} />
+      {msg && (
+        <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          {msg}
+        </div>
       )}
-      {uploadTarget && (
-        <UploadPDFModal article={uploadTarget} onClose={() => setUploadTarget(null)} onUploaded={fetchArticles} />
+
+      {/* Filters */}
+      <Card>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="md:col-span-2">
+            <Input
+              placeholder="Buscar por título o autor..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <select
+            value={filters.is_milestone}
+            onChange={(e) => setFilters((prev) => ({ ...prev, is_milestone: e.target.value }))}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
+          >
+            <option value="">Todos</option>
+            <option value="true">Solo Milestones</option>
+            <option value="false">Solo Regulares</option>
+          </select>
+
+          <select
+            value={filters.sort_by}
+            onChange={(e) => setFilters((prev) => ({ ...prev, sort_by: e.target.value }))}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
+          >
+            <option value="year">Año</option>
+            <option value="title">Título</option>
+            <option value="priority">Prioridad</option>
+          </select>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <p className="text-sm text-gray-600">
+            Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos
+          </p>
+        </div>
+      </Card>
+
+      {/* Articles Table */}
+      {loading ? (
+        <Loader />
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prioridad</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredArticles.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-400">
+                      No se encontraron artículos
+                    </td>
+                  </tr>
+                ) : filteredArticles.map((article) => (
+                  <tr key={article.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 max-w-sm">
+                      <p className="font-semibold text-gray-900 truncate">{article.title}</p>
+                      <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {article.is_milestone && (
+                          <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">
+                            ⭐ Milestone
+                          </span>
+                        )}
+                        {article.tags?.slice(0, 2).map((tag) => (
+                          <span key={tag} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 text-xs font-medium rounded ${
+                        article.priority >= 4
+                          ? 'bg-red-100 text-red-600'
+                          : 'bg-blue-100 text-blue-600'
+                      }`}>
+                        P{article.priority ?? '—'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {article.times_read != null && <p>{article.times_read} lecturas</p>}
+                      {article.avg_rating != null && (
+                        <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setEditingArticle(article); setShowModal(true); }}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleAssignToAll(article.id, article.title)}
+                        >
+                          Asignar a Todos
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteArticle(article.id, article.title)}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
+
+      <ArticleModal
+        isOpen={showModal}
+        onClose={() => { setShowModal(false); setEditingArticle(null); }}
+        onSave={editingArticle ? handleUpdateArticle : handleCreateArticle}
+        article={editingArticle}
+      />
     </div>
   );
-}
+};
+
+export default AdminArticles;
