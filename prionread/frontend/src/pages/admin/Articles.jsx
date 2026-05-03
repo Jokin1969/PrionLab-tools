@@ -323,11 +323,15 @@ const AdminArticles = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
-                  {students.map((s) => (
-                    <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
-                      {initials(s.name)}
-                    </th>
-                  ))}
+                  {students.map((s) => {
+                    const count = Object.values(matrix).filter((row) => row[s.id]).length;
+                    return (
+                      <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
+                        <div>{initials(s.name)}</div>
+                        <div className="text-xs font-normal text-gray-400 leading-tight">{count}</div>
+                      </th>
+                    );
+                  })}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                 </tr>
               </thead>
