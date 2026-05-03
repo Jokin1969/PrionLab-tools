@@ -1,166 +1,232 @@
 import { useState, useEffect } from 'react';
-import {
-  RiGroupLine, RiArticleLine, RiCheckboxCircleLine,
-  RiBarChartLine, RiTrophyLine,
-} from 'react-icons/ri';
-import api from '../../services/api';
-import PageHeader from '../../components/layout/PageHeader';
-import StatCard from '../../components/ui/StatCard';
-import Spinner from '../../components/ui/Spinner';
+import { Link } from 'react-router-dom';
+import { adminService } from '../../services/admin.service';
+import { Card, Loader } from '../../components/common';
+import { ProgressChart } from '../../components/charts/ProgressChart';
 
-function MonthlyChart({ data }) {
-  if (!data?.length) return null;
-  const max = Math.max(...data.map((d) => d.count), 1);
-  return (
-    <div className="card p-5">
-      <h2 className="mb-4 text-sm font-semibold text-gray-700">Progreso mensual (lecturas completadas)</h2>
-      <div className="flex items-end gap-1 h-32">
-        {data.map((d) => (
-          <div key={d.month} className="flex flex-1 flex-col items-center gap-1">
-            <div
-              className="w-full rounded-t bg-prion-primary transition-all"
-              style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count ? '4px' : '0' }}
-            />
-            <span className="text-[10px] text-gray-400 rotate-45 origin-left translate-y-1">
-              {d.month?.slice(5)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export default function AdminDashboard() {
-  const [data, setData] = useState(null);
+const AdminDashboard = () => {
+  const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/admin/dashboard')
-      .then((res) => setData(res.data))
-      .catch(() => setError('No se pudo cargar el dashboard'))
-      .finally(() => setLoading(false));
+    loadDashboard();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center p-12">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
+  const loadDashboard = async () => {
+    try {
+      const data = await adminService.getDashboard();
+      setDashboard(data);
+    } catch (error) {
+      console.error('Error loading dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  if (error) {
-    return (
-      <div className="p-6">
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
-      </div>
-    );
-  }
+  if (loading) return <Loader fullScreen />;
+  if (!dashboard) return <div className="p-8 text-gray-500">Error cargando datos</div>;
 
-  const { summary, top_performers, monthly_progress, article_stats } = data ?? {};
+  const {
+    summary,
+    top_performers,
+    recent_activity,
+    article_stats,
+    monthly_progress,
+  } = dashboard;
+
+  // Normalise — backend may return summary or global_stats at top level
+  const stats = summary ?? dashboard;
+  const mostRead = article_stats?.most_read ?? [];
+  const recentActivity = recent_activity ?? [];
+  const topPerformers = top_performers ?? [];
+  const monthlyData = monthly_progress ?? [];
 
   return (
-    <div>
-      <PageHeader title="Dashboard Admin" subtitle="Vista general del laboratorio" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">📊 Dashboard Admin</h1>
+        <p className="text-gray-600 mt-1">Vista general del laboratorio</p>
+      </div>
 
-      <div className="p-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <StatCard
-            label="Estudiantes"
-            value={summary?.total_students}
-            icon={RiGroupLine}
-            color="indigo"
-          />
-          <StatCard
-            label="Artículos"
-            value={summary?.total_articles}
-            icon={RiArticleLine}
-            color="purple"
-          />
-          <StatCard
-            label="Lecturas completadas"
-            value={summary?.total_reads}
-            icon={RiCheckboxCircleLine}
-            color="green"
-          />
-          <StatCard
-            label="Tasa de progreso"
-            value={summary?.completion_rate != null ? `${Number(summary.completion_rate).toFixed(1)}%` : '—'}
-            icon={RiBarChartLine}
-            color="amber"
-          />
-        </div>
+      {/* Global Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <div className="text-center">
+            <p className="text-4xl font-bold text-prion-primary mb-2">
+              {stats.total_students ?? '—'}
+            </p>
+            <p className="text-sm text-gray-600">Estudiantes Activos</p>
+          </div>
+        </Card>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* Monthly chart */}
-          <MonthlyChart data={monthly_progress} />
-
-          {/* Top performers */}
-          <div className="card p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700">
-              <RiTrophyLine className="h-4 w-4 text-amber-500" />
-              Top estudiantes
-            </h2>
-            {top_performers?.length ? (
-              <ol className="space-y-2">
-                {top_performers.map((s, i) => (
-                  <li key={s.id} className="flex items-center gap-3">
-                    <span className="w-5 text-center text-sm font-bold text-gray-400">#{i + 1}</span>
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-prion-primary">
-                      {s.name?.[0]?.toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-800">{s.name}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-prion-primary">{s.reads_count} leídos</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="text-sm text-gray-400">Sin datos disponibles</p>
+        <Card>
+          <div className="text-center">
+            <p className="text-4xl font-bold text-indigo-600 mb-2">
+              {stats.total_articles ?? '—'}
+            </p>
+            <p className="text-sm text-gray-600">Artículos en Biblioteca</p>
+            {stats.total_milestones != null && (
+              <p className="text-xs text-gray-500 mt-1">
+                {stats.total_milestones} milestones
+              </p>
             )}
           </div>
-        </div>
+        </Card>
 
-        {/* Article read stats */}
-        {article_stats && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="card p-5">
-              <h2 className="mb-3 text-sm font-semibold text-gray-700">Artículos más leídos</h2>
-              {article_stats.most_read?.length ? (
-                <ul className="space-y-2">
-                  {article_stats.most_read.slice(0, 5).map((a) => (
-                    <li key={a.id} className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-gray-800">{a.title}</p>
-                      </div>
-                      <span className="text-xs font-semibold text-prion-primary">{a.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="text-sm text-gray-400">Sin datos</p>}
-            </div>
-            <div className="card p-5">
-              <h2 className="mb-3 text-sm font-semibold text-gray-700">Artículos pendientes</h2>
-              {article_stats.least_read?.length ? (
-                <ul className="space-y-2">
-                  {article_stats.least_read.slice(0, 5).map((a) => (
-                    <li key={a.id} className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-gray-800">{a.title}</p>
-                      </div>
-                      <span className="text-xs text-gray-400">{a.count} leídos</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="text-sm text-gray-400">Sin datos</p>}
-            </div>
+        <Card>
+          <div className="text-center">
+            <p className="text-4xl font-bold text-green-600 mb-2">
+              {stats.total_reads ?? '—'}
+            </p>
+            <p className="text-sm text-gray-600">Lecturas Totales</p>
           </div>
-        )}
+        </Card>
+
+        <Card>
+          <div className="text-center">
+            <p className="text-4xl font-bold text-amber-600 mb-2">
+              {stats.completion_rate != null
+                ? `${Number(stats.completion_rate).toFixed(0)}%`
+                : '—'}
+            </p>
+            <p className="text-sm text-gray-600">Tasa de Completitud</p>
+            {stats.avg_evaluation_score != null && (
+              <p className="text-xs text-gray-500 mt-1">
+                Puntuación media: {Number(stats.avg_evaluation_score).toFixed(1)}/10
+              </p>
+            )}
+          </div>
+        </Card>
       </div>
+
+      {/* Monthly Chart */}
+      {monthlyData.length > 0 && (
+        <Card title="📈 Progreso Mensual del Laboratorio">
+          <ProgressChart data={monthlyData} />
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top Performers */}
+        <Card title="🏆 Mejores Estudiantes">
+          {topPerformers.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin datos disponibles</p>
+          ) : (
+            <div className="space-y-4">
+              {topPerformers.map((student, idx) => (
+                <Link
+                  key={student.user_id ?? student.id ?? idx}
+                  to="/admin/users"
+                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-600 font-bold shrink-0">
+                    {idx + 1}
+                  </div>
+                  {student.photo_url ? (
+                    <img
+                      src={student.photo_url}
+                      alt={student.name}
+                      className="w-12 h-12 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-lg font-bold text-prion-primary shrink-0">
+                      {student.name?.[0]?.toUpperCase() ?? '?'}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 truncate">{student.name}</p>
+                    <p className="text-sm text-gray-600">
+                      {student.articles_read ?? student.reads_count ?? 0} leídos
+                      {student.avg_score != null && ` • Nota: ${Number(student.avg_score).toFixed(1)}/10`}
+                    </p>
+                  </div>
+                  {student.completion_rate != null && (
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-medium text-green-600">
+                        {(Number(student.completion_rate) * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                  )}
+                </Link>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Most Read Articles */}
+        <Card title="📚 Artículos Más Leídos">
+          {mostRead.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin datos disponibles</p>
+          ) : (
+            <div className="space-y-3">
+              {mostRead.slice(0, 5).map((article) => (
+                <div
+                  key={article.article_id ?? article.id}
+                  className="block p-3 bg-gray-50 rounded-lg"
+                >
+                  <p className="font-semibold text-gray-900 text-sm mb-1 truncate">
+                    {article.title}
+                  </p>
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>{article.times_read ?? article.count ?? 0} lecturas</span>
+                    {article.avg_rating != null && (
+                      <span>
+                        {'⭐'.repeat(Math.round(article.avg_rating))} ({Number(article.avg_rating).toFixed(1)})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Recent Activity */}
+      {recentActivity.length > 0 && (
+        <Card title="📝 Actividad Reciente">
+          <div className="space-y-3">
+            {recentActivity.slice(0, 10).map((activity, idx) => (
+              <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                {activity.user_photo ? (
+                  <img
+                    src={activity.user_photo}
+                    alt={activity.user_name}
+                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-prion-primary shrink-0">
+                    {activity.user_name?.[0]?.toUpperCase() ?? '?'}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm">
+                    <span className="font-semibold">{activity.user_name}</span>
+                    {' '}
+                    <span className="text-gray-600">
+                      {activity.action === 'evaluated' ? 'evaluó' :
+                       activity.action === 'summarized' ? 'resumió' :
+                       'leyó'}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-600 truncate">{activity.article_title}</p>
+                  {activity.score != null && (
+                    <p className="text-xs text-green-600 font-medium">
+                      Puntuación: {activity.score}/10
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 shrink-0">
+                  {new Date(activity.date).toLocaleDateString('es-ES')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
-}
+};
+
+export default AdminDashboard;
