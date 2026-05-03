@@ -39,8 +39,11 @@ export const adminService = {
     return response.data;
   },
 
-  resetUserPassword: async (userId) => {
-    const response = await api.post(`/admin/users/${userId}/reset-password`);
+  resetUserPassword: async (userId, password) => {
+    const response = await api.post(
+      `/admin/users/${userId}/reset-password`,
+      password ? { password } : {}
+    );
     return response.data;
   },
 

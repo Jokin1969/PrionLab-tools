@@ -7,10 +7,6 @@ const { calculateUserStats } = require('../utils/userStats');
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-/**
- * Counts consecutive days of activity ending on today (strict — streak = 0
- * if today has no recorded activity).
- */
 function calcStreak(userArticles) {
   const active = new Set();
   for (const ua of userArticles) {
@@ -31,9 +27,6 @@ function calcStreak(userArticles) {
   return streak;
 }
 
-/**
- * Returns top-5 tags from articles the student has progressed past pending.
- */
 function calcFavoriteTopics(userArticles) {
   const counts = {};
   for (const ua of userArticles) {
@@ -87,7 +80,6 @@ async function getUserDetailedStats(req, res) {
       ],
     });
 
-    // ── Stats ──────────────────────────────────────────────────────────────────
     const counts = { pending: 0, read: 0, summarized: 0, evaluated: 0 };
     const allScores = [];
     let lastActivityDate = null;
@@ -125,7 +117,6 @@ async function getUserDetailedStats(req, res) {
       favorite_topics: calcFavoriteTopics(userArticles),
     };
 
-    // ── Reading history ────────────────────────────────────────────────────────
     const reading_history = userArticles
       .filter((ua) => ua.read_date)
       .sort((a, b) => new Date(b.read_date) - new Date(a.read_date))
@@ -151,7 +142,6 @@ async function getUserDetailedStats(req, res) {
         };
       });
 
-    // ── Performance over time ──────────────────────────────────────────────────
     const monthMap = {};
     for (const ua of userArticles) {
       if (!ua.read_date) continue;
@@ -191,7 +181,6 @@ async function exportUsersCSV(req, res) {
       order: [['name', 'ASC']],
     });
 
-    // Aggregate stats per student in one query
     const statsRows = await UserArticle.findAll({
       attributes: [
         'user_id',
@@ -207,7 +196,6 @@ async function exportUsersCSV(req, res) {
       ],
     });
 
-    // Build per-user stat maps
     const byUser = {};
     for (const ua of statsRows) {
       const uid = ua.user_id;
@@ -273,8 +261,9 @@ async function resetUserPassword(req, res) {
     const user = await User.findByPk(req.params.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const tempPassword = generatePassword(10);
-    user.password = tempPassword; // bcrypt hook fires on save
+    // Use the provided password or generate a random one
+    const tempPassword = req.body?.password || generatePassword(10);
+    user.password = tempPassword;
     await user.save();
 
     let emailSent = false;

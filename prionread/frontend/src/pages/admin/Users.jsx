@@ -11,6 +11,7 @@ const AdminUsers = () => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [msg, setMsg] = useState('');
+  const [passwordBanner, setPasswordBanner] = useState(null);
 
   useEffect(() => {
     loadUsers();
@@ -37,13 +38,20 @@ const AdminUsers = () => {
 
   const handleCreateUser = async (userData) => {
     await adminService.createUser(userData);
-    loadUsers();
+    await loadUsers();
+    if (userData.password) {
+      setPasswordBanner({ email: userData.email, password: userData.password });
+    }
     flash('Usuario creado correctamente');
   };
 
   const handleUpdateUser = async (userData) => {
     await adminService.updateUser(editingUser.id, userData);
-    loadUsers();
+    if (userData.password) {
+      await adminService.resetUserPassword(editingUser.id, userData.password);
+      setPasswordBanner({ email: editingUser.email, password: userData.password });
+    }
+    await loadUsers();
     setEditingUser(null);
     flash('Usuario actualizado correctamente');
   };
@@ -52,7 +60,7 @@ const AdminUsers = () => {
     if (!window.confirm(`¿Eliminar usuario ${userName}?`)) return;
     try {
       await adminService.deleteUser(userId);
-      loadUsers();
+      await loadUsers();
       flash('Usuario eliminado');
     } catch {
       flash('Error eliminando usuario');
@@ -60,10 +68,14 @@ const AdminUsers = () => {
   };
 
   const handleResetPassword = async (userId, userEmail) => {
-    if (!window.confirm(`¿Resetear contraseña para ${userEmail}?`)) return;
+    const newPassword = window.prompt(
+      `Nueva contraseña para ${userEmail}:\n(dejar vacío para generar automáticamente)`
+    );
+    if (newPassword === null) return; // cancelado
     try {
-      const data = await adminService.resetUserPassword(userId);
-      flash(`Nueva contraseña generada para ${userEmail}${data.temp_password ? `: ${data.temp_password}` : '. Se ha enviado por email.'}`);
+      const data = await adminService.resetUserPassword(userId, newPassword || undefined);
+      setPasswordBanner({ email: userEmail, password: data.tempPassword });
+      flash(data.email_sent ? 'Contraseña reseteada y enviada por email' : 'Contraseña reseteada');
     } catch {
       flash('Error reseteando contraseña');
     }
@@ -87,6 +99,32 @@ const AdminUsers = () => {
           + Nuevo Usuario
         </Button>
       </div>
+
+      {/* Password banner — persists until dismissed */}
+      {passwordBanner && (
+        <div className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-amber-900">
+                Contraseña de acceso para {passwordBanner.email}
+              </p>
+              <p className="font-mono text-xl text-amber-800 mt-1 select-all tracking-wider">
+                {passwordBanner.password}
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Copia esta contraseña ahora — no se volverá a mostrar.
+              </p>
+            </div>
+            <button
+              onClick={() => setPasswordBanner(null)}
+              className="text-amber-600 hover:text-amber-900 text-2xl font-bold leading-none mt-0.5"
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {msg && (
         <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">

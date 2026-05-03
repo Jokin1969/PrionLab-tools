@@ -5,10 +5,12 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    password: '',
     role: 'student',
     year_started: new Date().getFullYear(),
     photo_url: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -16,6 +18,7 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
       setFormData({
         name: user.name || '',
         email: user.email || '',
+        password: '',
         role: user.role || 'student',
         year_started: user.year_started || new Date().getFullYear(),
         photo_url: user.photo_url || '',
@@ -24,11 +27,13 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
       setFormData({
         name: '',
         email: '',
+        password: '',
         role: 'student',
         year_started: new Date().getFullYear(),
         photo_url: '',
       });
     }
+    setShowPassword(false);
   }, [user]);
 
   const handleChange = (field, value) => {
@@ -69,6 +74,31 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
           onChange={(e) => handleChange('email', e.target.value)}
           required
         />
+
+        {/* Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {user ? 'Nueva contraseña' : 'Contraseña'}
+            {user && <span className="text-gray-400 font-normal"> (dejar vacío para no cambiar)</span>}
+          </label>
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={formData.password}
+              onChange={(e) => handleChange('password', e.target.value)}
+              required={!user}
+              placeholder={user ? '••••••••' : 'Contraseña de acceso'}
+              className="w-full px-3 py-2 pr-16 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-800"
+            >
+              {showPassword ? 'Ocultar' : 'Ver'}
+            </button>
+          </div>
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
