@@ -93,6 +93,16 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = nul
           .includes(search.toLowerCase()))
   );
 
+  const allUnassignedSelected = unassigned.length > 0 && unassigned.every((a) => selected.includes(a.id));
+
+  const handleToggleSelectAll = () => {
+    if (allUnassignedSelected) {
+      setSelected([]);
+    } else {
+      setSelected(unassigned.map((a) => a.id));
+    }
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -173,7 +183,17 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = nul
 
         {/* ── Assign new articles ── */}
         <section className="border-t pt-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Asignar artículos</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-gray-700">Asignar artículos</h3>
+            {unassigned.length > 0 && (
+              <button
+                onClick={handleToggleSelectAll}
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
+              >
+                {allUnassignedSelected ? 'Deseleccionar todos' : `Seleccionar todos (${unassigned.length})`}
+              </button>
+            )}
+          </div>
           <input
             type="text"
             placeholder="Buscar por título o autor..."
@@ -188,7 +208,7 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = nul
                 {search ? 'Sin resultados' : 'Todos los artículos ya están asignados'}
               </p>
             ) : (
-              unassigned.slice(0, 30).map((article) => (
+              unassigned.map((article) => (
                 <label
                   key={article.id}
                   className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer"
