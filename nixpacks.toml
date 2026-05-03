@@ -1,5 +1,8 @@
 [phases.setup]
-nixPkgs = ["python311", "nodejs_20", "gcc", "postgresql_16"]
+cmds = [
+  "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -",
+  "apt-get install -y nodejs"
+]
 
 [phases.install]
 cmds = [
