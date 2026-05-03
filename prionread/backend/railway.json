@@ -5,8 +5,6 @@
   },
   "deploy": {
     "startCommand": "node scripts/sync-db.js; npm start",
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 60,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
