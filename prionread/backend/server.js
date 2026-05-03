@@ -18,7 +18,8 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', app: 'prionread' }));
 app.use('/api', routes);
 
 // One-time admin setup endpoint — only active when SETUP_TOKEN env var is set.
-// Remove SETUP_TOKEN from Railway env vars after creating the first admin.
+// Pass plain-text password — the User model's beforeCreate/beforeUpdate hooks hash it.
+// Remove SETUP_TOKEN from Railway env vars after use.
 app.post('/setup', async (req, res) => {
   const setupToken = process.env.SETUP_TOKEN;
   if (!setupToken) {
@@ -37,18 +38,23 @@ app.post('/setup', async (req, res) => {
 
   try {
     const { User } = require('./models');
-    const bcrypt = require('bcrypt');
 
     const existingAdmin = await User.findOne({ where: { role: 'admin' } });
+
     if (existingAdmin) {
-      return res.status(409).json({
-        error: 'An admin user already exists',
-        admin: { name: existingAdmin.name, email: existingAdmin.email },
+      // Reset password on existing admin — beforeUpdate hook hashes it once
+      existingAdmin.password = password;
+      existingAdmin.name = name;
+      await existingAdmin.save();
+      return res.json({
+        success: true,
+        message: 'Admin password reset. Remove SETUP_TOKEN from Railway env vars now.',
+        admin: { id: existingAdmin.id, name: existingAdmin.name, email: existingAdmin.email },
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const admin = await User.create({ name, email, password: hashedPassword, role: 'admin' });
+    // No admin yet — beforeCreate hook hashes the plain password once
+    const admin = await User.create({ name, email, password, role: 'admin' });
 
     res.json({
       success: true,
