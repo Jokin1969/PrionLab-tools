@@ -94,6 +94,16 @@ const AdminArticles = () => {
     navigate('/admin/articles', { replace: true, state: null });
   };
 
+  const handleStudentCountClick = (student, count) => {
+    if (count === 0) return;
+    if (userFilter?.id === student.id && statusFilter === null) {
+      clearUserFilter();
+    } else {
+      setUserFilter(student);
+      setStatusFilter(null);
+    }
+  };
+
   const handleInlineUpdate = async (article, patch) => {
     setSavingInline(article.id);
     try {
@@ -324,11 +334,25 @@ const AdminArticles = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
                   {students.map((s) => {
-                    const count = Object.values(matrix).filter((row) => row[s.id]).length;
+                    const count     = Object.values(matrix).filter((row) => row[s.id]).length;
+                    const isActive  = userFilter?.id === s.id && statusFilter === null;
                     return (
                       <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
                         <div>{initials(s.name)}</div>
-                        <div className="text-xs font-normal text-gray-400 leading-tight">{count}</div>
+                        <button
+                          onClick={() => handleStudentCountClick(s, count)}
+                          disabled={count === 0}
+                          title={count > 0 ? `Filtrar por ${s.name} (${count} asignados)` : 'Sin artículos asignados'}
+                          className={`text-xs font-normal leading-tight rounded px-1 transition-colors ${
+                            count === 0
+                              ? 'text-gray-300 cursor-default'
+                              : isActive
+                                ? 'bg-indigo-600 text-white cursor-pointer'
+                                : 'text-indigo-500 hover:bg-indigo-100 cursor-pointer'
+                          }`}
+                        >
+                          {count}
+                        </button>
                       </th>
                     );
                   })}
