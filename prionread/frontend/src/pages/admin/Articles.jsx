@@ -54,6 +54,7 @@ const AdminArticles = () => {
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
   const [filters, setFilters]               = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
   const [msg, setMsg]                       = useState('');
+  const [errMsg, setErrMsg]                 = useState('');
   const [students, setStudents]             = useState([]);
   const [matrix, setMatrix]                 = useState({});
   const [loadingPdf, setLoadingPdf]         = useState(null);
@@ -82,7 +83,8 @@ const AdminArticles = () => {
   useEffect(() => { loadArticles(); }, [loadArticles]);
   useEffect(() => { loadMatrix(); },  [loadMatrix]);
 
-  const flash = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
+  const flash      = (text) => { setMsg(text);    setTimeout(() => setMsg(''),    3000); };
+  const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
 
   const clearUserFilter = () => {
     setUserFilter(null);
@@ -101,14 +103,14 @@ const AdminArticles = () => {
       // Skip empty doi/pubmed_id — empty string triggers false 409 uniqueness conflict
       if (article.doi)       fd.append('doi',       article.doi);
       if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
-      fd.append('abstract',     article.abstract || '');
+      // Use patch value when present so abstract is only appended once
+      fd.append('abstract',     patch.abstract !== undefined ? patch.abstract : (article.abstract || ''));
       fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
       fd.append('priority',     String(patch.priority     ?? article.priority));
-      if (patch.abstract !== undefined) fd.append('abstract', patch.abstract);
       await adminService.updateArticle(article.id, fd);
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, ...patch } : a));
     } catch (err) {
-      flash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
+      errorFlash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
     } finally { setSavingInline(null); }
   };
 
@@ -128,7 +130,7 @@ const AdminArticles = () => {
   const handleDeleteArticle = async (articleId, title) => {
     if (!window.confirm(`¿Eliminar artículo "${title}"?`)) return;
     try { await adminService.deleteArticle(articleId); await loadArticles(); flash('Artículo eliminado'); }
-    catch { flash('Error eliminando artículo'); }
+    catch { errorFlash('Error eliminando artículo'); }
   };
 
   const handleAssignToAll = async (articleId, title) => {
@@ -137,7 +139,7 @@ const AdminArticles = () => {
       const data = await adminService.assignArticleToAll(articleId);
       await loadMatrix();
       flash(`Asignado a ${data.assigned_to ?? data.count ?? 'todos los'} estudiantes`);
-    } catch { flash('Error asignando artículo'); }
+    } catch { errorFlash('Error asignando artículo'); }
   };
 
   const handleOpenPdf = async (article) => {
@@ -146,7 +148,7 @@ const AdminArticles = () => {
     try {
       const data = await adminService.getArticlePdfLink(article.id);
       window.open(data.url, '_blank');
-    } catch { flash('Error obteniendo enlace PDF'); }
+    } catch { errorFlash('Error obteniendo enlace PDF'); }
     finally { setLoadingPdf(null); }
   };
 
@@ -163,13 +165,13 @@ const AdminArticles = () => {
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, dropbox_path: newPath } : a));
       flash('PDF subido correctamente');
     } catch (err) {
-      flash(err?.response?.data?.error || err?.message || 'Error subiendo PDF');
+      errorFlash(err?.response?.data?.error || err?.message || 'Error subiendo PDF');
     } finally { setUploadingPdf(null); }
   };
 
   const handleFetchAbstract = async (article) => {
     if (!article.doi && !article.pubmed_id) {
-      flash('Este artículo necesita DOI o PubMed ID para buscar el abstract');
+      errorFlash('Este artículo necesita DOI o PubMed ID para buscar el abstract');
       return;
     }
     setFetchingAbstract(article.id);
@@ -177,10 +179,13 @@ const AdminArticles = () => {
     try {
       const data = await adminService.fetchMetadata(article.doi, article.pubmed_id);
       const m = data.metadata ?? data;
-      if (!m.abstract) { flash('No se encontró abstract en la fuente (CrossRef / PubMed)'); return; }
+      if (!m.abstract) {
+        errorFlash('No se encontró abstract en CrossRef ni PubMed para este artículo');
+        return;
+      }
       setAbstractPreview({ id: article.id, text: m.abstract });
     } catch (err) {
-      flash(err?.response?.data?.error || err?.message || 'Error buscando abstract');
+      errorFlash(err?.response?.data?.error || err?.message || 'Error buscando abstract');
     } finally { setFetchingAbstract(null); }
   };
 
@@ -206,7 +211,7 @@ const AdminArticles = () => {
         delete next[articleId][student.id];
         return next;
       });
-      flash('Error asignando artículo');
+      errorFlash('Error asignando artículo');
     }
   };
 
@@ -243,7 +248,8 @@ const AdminArticles = () => {
         </div>
       </div>
 
-      {msg && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+      {msg    && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+      {errMsg && <div className="rounded-lg bg-red-50   border border-red-200   px-4 py-3 text-sm text-red-700">{errMsg}</div>}
 
       {userFilter && (
         <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 flex items-center justify-between">
