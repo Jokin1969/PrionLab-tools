@@ -1,132 +1,123 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { RiSearchLine, RiArrowRightLine, RiBookOpenLine } from 'react-icons/ri';
-import api from '../../services/api';
-import PageHeader from '../../components/layout/PageHeader';
-import { StatusBadge } from '../../components/ui/Badge';
-import Spinner from '../../components/ui/Spinner';
+import { useState, useEffect } from 'react';
+import { studentService } from '../../services/student.service';
+import { ArticleCard } from '../../components/student/ArticleCard';
+import { Loader, Button, Input } from '../../components/common';
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'Todos' },
-  { value: 'pending', label: 'Pendiente' },
-  { value: 'read', label: 'Leído' },
-  { value: 'summarized', label: 'Resumido' },
-  { value: 'evaluated', label: 'Evaluado' },
-];
-
-export default function MyArticles() {
+const MyArticles = () => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [filters, setFilters] = useState({
+    status: '',
+    search: '',
+    sort_by: 'priority',
+    order: 'desc',
+  });
 
-  const fetchArticles = useCallback(() => {
+  useEffect(() => {
+    loadArticles();
+  }, [filters]);
+
+  const loadArticles = async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page, limit: 20 });
-    if (search) params.set('search', search);
-    if (status) params.set('status', status);
+    try {
+      const data = await studentService.getMyArticles(filters);
+      setArticles(data.articles || []);
+    } catch (error) {
+      console.error('Error loading articles:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    api.get(`/my-articles?${params}`)
-      .then((res) => {
-        setArticles(res.data.articles ?? res.data);
-        if (res.data.pagination) {
-          setTotalPages(res.data.pagination.totalPages ?? 1);
-        }
-      })
-      .catch(() => setArticles([]))
-      .finally(() => setLoading(false));
-  }, [search, status, page]);
+  const handleMarkAsRead = async (articleId) => {
+    try {
+      await studentService.markAsRead(articleId);
+      loadArticles();
+    } catch (error) {
+      console.error('Error marking as read:', error);
+    }
+  };
 
-  useEffect(() => { fetchArticles(); }, [fetchArticles]);
-
-  function handleSearch(e) {
-    e.preventDefault();
-    setPage(1);
-    fetchArticles();
-  }
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
   return (
-    <div>
-      <PageHeader title="Mis Artículos" subtitle="Artículos asignados para lectura crítica" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">📚 Mis Artículos</h1>
+        <p className="text-gray-600 mt-1">
+          Gestiona tu biblioteca personal de lectura científica
+        </p>
+      </div>
 
-      <div className="p-6 space-y-4">
-        {/* Filters */}
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
-          <div className="relative flex-1 min-w-48">
-            <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por título o autor..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input pl-9"
+      {/* Filters */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Search */}
+          <div className="md:col-span-2">
+            <Input
+              placeholder="Buscar por título, autor..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
             />
           </div>
+
+          {/* Status filter */}
           <select
-            value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-            className="input w-auto"
+            value={filters.status}
+            onChange={(e) => handleFilterChange('status', e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
           >
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
+            <option value="">Todos los estados</option>
+            <option value="pending">Pendientes</option>
+            <option value="read">Leídos</option>
+            <option value="summarized">Resumidos</option>
+            <option value="evaluated">Evaluados</option>
           </select>
-          <button type="submit" className="btn-primary">Buscar</button>
-        </form>
 
-        {/* List */}
-        {loading ? (
-          <div className="flex justify-center py-12"><Spinner size="lg" /></div>
-        ) : articles.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-gray-400">
-            <RiBookOpenLine className="h-10 w-10" />
-            <p className="text-sm">No hay artículos que mostrar</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {articles.map((a) => (
-              <Link
-                key={a.id}
-                to={`/my-articles/${a.id}`}
-                className="card flex items-center gap-4 p-4 hover:shadow-md transition-shadow"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-gray-900">{a.title}</p>
-                  <p className="mt-0.5 truncate text-sm text-gray-500">
-                    {Array.isArray(a.authors) ? a.authors.slice(0, 3).join(', ') : a.authors}
-                    {a.year && ` · ${a.year}`}
-                  </p>
-                </div>
-                <StatusBadge status={a.status ?? a.UserArticle?.status ?? 'pending'} />
-                <RiArrowRightLine className="h-4 w-4 shrink-0 text-gray-400" />
-              </Link>
-            ))}
-          </div>
-        )}
+          {/* Sort */}
+          <select
+            value={filters.sort_by}
+            onChange={(e) => handleFilterChange('sort_by', e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
+          >
+            <option value="priority">Prioridad</option>
+            <option value="year">Año</option>
+            <option value="title">Título</option>
+            <option value="read_date">Fecha lectura</option>
+          </select>
+        </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-4">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="btn-secondary disabled:opacity-40"
-            >
-              Anterior
-            </button>
-            <span className="text-sm text-gray-500">{page} / {totalPages}</span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="btn-secondary disabled:opacity-40"
-            >
-              Siguiente
-            </button>
-          </div>
-        )}
+        {/* Stats row */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <p className="text-sm text-gray-600">
+            Mostrando <span className="font-semibold">{articles.length}</span> artículos
+          </p>
+        </div>
       </div>
+
+      {/* Articles List */}
+      {loading ? (
+        <Loader />
+      ) : articles.length === 0 ? (
+        <div className="bg-white rounded-lg shadow-md p-12 text-center">
+          <p className="text-gray-500 text-lg">No hay artículos con estos filtros</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {articles.map((article) => (
+            <ArticleCard
+              key={article.id}
+              article={article}
+              onMarkAsRead={handleMarkAsRead}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default MyArticles;
