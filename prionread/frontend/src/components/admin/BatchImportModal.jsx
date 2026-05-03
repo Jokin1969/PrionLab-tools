@@ -10,6 +10,22 @@ const STATUS = {
   error:    { icon: '✗',  cls: 'text-red-500' },
 };
 
+// DOI starts with "10."  —  PMID is purely numeric
+function parseEntry(raw) {
+  const s = raw.trim();
+  if (/^10\./.test(s))      return { doi: s,  pmid: '',  label: s };
+  if (/^\d+$/.test(s))      return { doi: '',  pmid: s,  label: `PMID:${s}` };
+  return                           { doi: s,  pmid: '',  label: s }; // unknown, try as DOI
+}
+
+function parseEntries(text) {
+  return text
+    .split(/[\n\r\t,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(parseEntry);
+}
+
 export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
   const [raw, setRaw]         = useState('');
   const [rows, setRows]       = useState([]);
@@ -17,38 +33,31 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
   const [done, setDone]       = useState(false);
 
   const reset = () => { setRaw(''); setRows([]); setDone(false); };
-
   const handleClose = () => { reset(); onClose(); };
 
-  // Splits on newlines (Excel column paste), tabs (Excel multi-col), commas, semicolons
-  const parseDois = (text) =>
-    text
-      .split(/[\n\r\t,;]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const entries = parseEntries(raw);
 
   const handleStart = async () => {
-    const dois = parseDois(raw);
-    if (!dois.length) return;
-    setRows(dois.map((doi) => ({ doi, status: 'pending', title: '', error: '' })));
+    if (!entries.length) return;
+    setRows(entries.map((e) => ({ ...e, status: 'pending', title: '', error: '' })));
     setRunning(true);
     setDone(false);
 
-    for (let i = 0; i < dois.length; i++) {
-      const doi = dois[i];
+    for (let i = 0; i < entries.length; i++) {
+      const { doi, pmid, label } = entries[i];
       setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, status: 'loading' } : r));
 
       try {
-        const meta = await adminService.fetchMetadata(doi, '');
+        const meta = await adminService.fetchMetadata(doi, pmid);
         const m = meta.metadata ?? meta;
 
         const fd = new FormData();
-        fd.append('title',        m.title     || doi);
+        fd.append('title',        m.title     || label);
         fd.append('authors',      Array.isArray(m.authors) ? m.authors.join(', ') : (m.authors || ''));
         fd.append('year',         m.year       || new Date().getFullYear());
         fd.append('journal',      m.journal    || '');
         fd.append('doi',          m.doi        || doi);
-        fd.append('pubmed_id',    m.pubmed_id  || '');
+        fd.append('pubmed_id',    m.pubmed_id  || pmid);
         fd.append('abstract',     m.abstract   || '');
         fd.append('is_milestone', 'false');
         fd.append('priority',     '3');
@@ -56,7 +65,7 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
         await adminService.createArticle(fd);
 
         setRows((prev) => prev.map((r, idx) =>
-          idx === i ? { ...r, status: 'ok', title: m.title || doi } : r
+          idx === i ? { ...r, status: 'ok', title: m.title || label } : r
         ));
       } catch (err) {
         const msg = err?.response?.data?.error || err?.message || 'Error desconocido';
@@ -74,31 +83,41 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
 
   const counts = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
 
+  const doiCount  = entries.filter((e) => e.doi  && !e.pmid).length;
+  const pmidCount = entries.filter((e) => e.pmid && !e.doi).length;
+  const countLabel = [
+    entries.length ? `${entries.length} entrada${entries.length !== 1 ? 's' : ''}` : '',
+    doiCount  ? `${doiCount} DOI`          : '',
+    pmidCount ? `${pmidCount} PMID`        : '',
+  ].filter(Boolean).join(' · ');
+
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Importar artículos por DOI" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Importar artículos por DOI / PMID" size="lg">
       <div className="space-y-4">
 
         {rows.length === 0 ? (
           <>
             <p className="text-sm text-gray-600">
-              Pega los DOIs directamente desde una columna de Excel o cualquier listado.
-              Se acepta uno por línea, separados por coma, punto y coma o tabulador.
-              Los metadatos se obtendrán automáticamente desde CrossRef / PubMed.
+              Pega DOIs o PMIDs, mezclados o por separado. Se acepta uno por línea
+              o separados por coma, punto y coma o tabulador (compatible con columna de Excel).
+              Los metadatos se obtienen automáticamente desde CrossRef y PubMed.
             </p>
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+              <div><span className="font-semibold">DOI</span> — empieza por <code>10.</code><br /><span className="text-gray-400">10.1038/s41586-023-06900-0</span></div>
+              <div><span className="font-semibold">PMID</span> — solo números<br /><span className="text-gray-400">38234567</span></div>
+            </div>
             <textarea
               rows={10}
-              placeholder={`10.1016/j.cell.2023.01.001\n10.1038/s41586-023-06900-0\n10.1126/science.adh8168`}
+              placeholder={`10.1016/j.cell.2023.01.001\n38234567\n10.1038/s41586-023-06900-0\n12345678`}
               value={raw}
               onChange={(e) => setRaw(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-prion-primary resize-y"
             />
-            <p className="text-xs text-gray-400">
-              {parseDois(raw).length} DOI{parseDois(raw).length !== 1 ? 's' : ''} detectado{parseDois(raw).length !== 1 ? 's' : ''}
-            </p>
+            <p className="text-xs text-gray-400">{countLabel || 'Sin entradas detectadas'}</p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={handleClose} type="button">Cancelar</Button>
-              <Button onClick={handleStart} disabled={!parseDois(raw).length}>
-                Importar {parseDois(raw).length > 0 ? parseDois(raw).length : ''} artículos
+              <Button onClick={handleStart} disabled={!entries.length}>
+                Importar {entries.length > 0 ? entries.length : ''} artículos
               </Button>
             </div>
           </>
@@ -112,14 +131,12 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
                     <span className={`mt-0.5 font-bold text-sm shrink-0 w-4 text-center ${s.cls}`}>{s.icon}</span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-800 truncate">
-                        {r.title || r.doi}
+                        {r.title || r.label}
                       </p>
-                      {r.title && r.title !== r.doi && (
-                        <p className="text-xs text-gray-400 truncate">{r.doi}</p>
+                      {r.title && r.title !== r.label && (
+                        <p className="text-xs text-gray-400 truncate">{r.label}</p>
                       )}
-                      {r.error && (
-                        <p className="text-xs text-red-500 mt-0.5">{r.error}</p>
-                      )}
+                      {r.error && <p className="text-xs text-red-500 mt-0.5">{r.error}</p>}
                       {r.status === 'duplicate' && (
                         <p className="text-xs text-amber-500 mt-0.5">Ya existe en la biblioteca</p>
                       )}
