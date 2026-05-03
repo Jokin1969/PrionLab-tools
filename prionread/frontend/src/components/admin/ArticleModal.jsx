@@ -5,31 +5,36 @@ import { adminService } from '../../services/admin.service';
 export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
   const [formData, setFormData] = useState({
     title: '', authors: '', year: new Date().getFullYear(),
-    journal: '', doi: '', pubmed_id: '', abstract: '',
+    journal: '', doi: '', pubmed_id: '', abstract: '', tags: '',
     is_milestone: false, priority: 3,
   });
-  const [pdfFile, setPdfFile] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [pdfFile, setPdfFile]             = useState(null);
+  const [saving, setSaving]               = useState(false);
   const [fetchingMetadata, setFetchingMetadata] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]                 = useState('');
 
   useEffect(() => {
     setError('');
     setPdfFile(null);
     if (article) {
       setFormData({
-        title:      article.title || '',
-        authors:    Array.isArray(article.authors) ? article.authors.join(', ') : article.authors || '',
-        year:       article.year || new Date().getFullYear(),
-        journal:    article.journal || '',
-        doi:        article.doi || '',
-        pubmed_id:  article.pubmed_id || '',
-        abstract:   article.abstract || '',
+        title:        article.title || '',
+        authors:      Array.isArray(article.authors) ? article.authors.join(', ') : article.authors || '',
+        year:         article.year || new Date().getFullYear(),
+        journal:      article.journal || '',
+        doi:          article.doi || '',
+        pubmed_id:    article.pubmed_id || '',
+        abstract:     article.abstract || '',
+        tags:         Array.isArray(article.tags) ? article.tags.join(', ') : article.tags || '',
         is_milestone: article.is_milestone || false,
-        priority:   article.priority || 3,
+        priority:     article.priority || 3,
       });
     } else {
-      setFormData({ title: '', authors: '', year: new Date().getFullYear(), journal: '', doi: '', pubmed_id: '', abstract: '', is_milestone: false, priority: 3 });
+      setFormData({
+        title: '', authors: '', year: new Date().getFullYear(),
+        journal: '', doi: '', pubmed_id: '', abstract: '', tags: '',
+        is_milestone: false, priority: 3,
+      });
     }
   }, [article, isOpen]);
 
@@ -76,6 +81,8 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
       fd.append('abstract',     formData.abstract);
       fd.append('is_milestone', formData.is_milestone);
       fd.append('priority',     formData.priority);
+      const tagsArray = formData.tags.split(',').map((t) => t.trim()).filter(Boolean);
+      fd.append('tags', JSON.stringify(tagsArray));
       if (pdfFile) fd.append('pdf', pdfFile);
       await onSave(fd);
       onClose();
@@ -85,6 +92,8 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
       setSaving(false);
     }
   };
+
+  const hasPdf = Boolean(article?.dropbox_path);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={article ? 'Editar Artículo' : 'Nuevo Artículo'} size="lg">
@@ -121,6 +130,8 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
           <textarea value={formData.abstract} onChange={(e) => handleChange('abstract', e.target.value)} rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary resize-y" />
         </div>
 
+        <Input label="Tags (separados por comas)" value={formData.tags} onChange={(e) => handleChange('tags', e.target.value)} placeholder="prion diseases, methodology, neuroscience" />
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad (1-5)</label>
@@ -139,12 +150,38 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
           <p className="text-xs text-amber-600">⭐ Milestone → prioridad fijada a 5 automáticamente</p>
         )}
 
+        {/* PDF */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            PDF <span className="text-gray-400 font-normal">(opcional)</span>
+            PDF{' '}
+            {hasPdf ? (
+              <span className="inline-flex items-center gap-1 ml-1 px-2 py-0.5 text-xs font-normal bg-green-100 text-green-700 rounded-full">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                PDF disponible
+              </span>
+            ) : (
+              <span className="text-gray-400 font-normal">(opcional)</span>
+            )}
           </label>
-          <input type="file" accept=".pdf" onChange={(e) => setPdfFile(e.target.files[0])} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-          {pdfFile && <p className="text-xs text-gray-600 mt-1">Archivo: {pdfFile.name} ({(pdfFile.size/1024/1024).toFixed(2)} MB)</p>}
+
+          {hasPdf && (
+            <div className="flex items-center gap-3 mb-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+              <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>
+              <a href={article.dropbox_path} target="_blank" rel="noopener noreferrer" className="text-sm text-green-700 hover:text-green-900 hover:underline truncate flex-1">
+                Ver PDF actual
+              </a>
+            </div>
+          )}
+
+          <input type="file" accept=".pdf" onChange={(e) => setPdfFile(e.target.files[0])} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <p className="text-xs text-gray-400 mt-1">
+            {hasPdf ? 'Selecciona un archivo solo si quieres sustituir el PDF actual' : 'Selecciona el PDF del artículo'}
+          </p>
+          {pdfFile && (
+            <p className="text-xs text-green-700 mt-1 font-medium">
+              Nuevo archivo: {pdfFile.name} ({(pdfFile.size / 1024 / 1024).toFixed(2)} MB)
+            </p>
+          )}
         </div>
 
         <div className="flex gap-2 justify-end pt-4 border-t">
