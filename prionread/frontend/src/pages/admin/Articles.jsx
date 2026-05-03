@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
@@ -41,6 +41,8 @@ const AdminArticles = () => {
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
   const [savingInline, setSavingInline] = useState(null);
   const [uploadingPdf, setUploadingPdf] = useState(null);
+  const [fetchingAbstract, setFetchingAbstract] = useState(null);
+  const [abstractPreview, setAbstractPreview] = useState(null); // { id, text }
   const [filters, setFilters] = useState({
     is_milestone: '',
     year: '',
@@ -74,7 +76,7 @@ const AdminArticles = () => {
 
   const flash = (text) => {
     setMsg(text);
-    setTimeout(() => setMsg(''), 3000);
+    setTimeout(() => setMsg(''), 4000);
   };
 
   const handleCreateArticle = async (formData) => {
@@ -153,6 +155,34 @@ const AdminArticles = () => {
     } finally {
       setUploadingPdf(null);
     }
+  };
+
+  const handleFetchAbstract = async (article) => {
+    if (!article.doi && !article.pubmed_id) {
+      flash('Este artículo necesita DOI o PubMed ID para buscar el abstract');
+      return;
+    }
+    setFetchingAbstract(article.id);
+    setAbstractPreview(null);
+    try {
+      const data = await adminService.fetchMetadata(article.doi, article.pubmed_id);
+      const m = data.metadata ?? data;
+      if (!m.abstract) {
+        flash('No se encontró abstract en la fuente (CrossRef / PubMed)');
+        return;
+      }
+      setAbstractPreview({ id: article.id, text: m.abstract });
+    } catch (err) {
+      flash(err?.response?.data?.error || err?.message || 'Error buscando abstract');
+    } finally {
+      setFetchingAbstract(null);
+    }
+  };
+
+  const handleSaveAbstract = async (article) => {
+    if (!abstractPreview) return;
+    await handleInlineUpdate(article, { abstract: abstractPreview.text });
+    setAbstractPreview(null);
   };
 
   const authorsText = (authors) =>
@@ -305,154 +335,211 @@ const AdminArticles = () => {
                   const { error, warn } = articleCompleteness(article);
                   const isSaving = savingInline === article.id;
                   const isUploadingPdf = uploadingPdf === article.id;
+                  const isFetchingAbstract = fetchingAbstract === article.id;
+                  const showAbstractPreview = abstractPreview?.id === article.id;
                   return (
-                    <tr key={article.id} className={`hover:bg-gray-50 ${isSaving ? 'opacity-60' : ''}`}>
-                      <td className="px-4 py-4 max-w-sm">
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900 truncate">{article.title}</p>
-                            <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {article.is_milestone && (
-                                <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">
-                                  ⭐ Milestone
-                                </span>
-                              )}
-                              {article.tags?.slice(0, 2).map((tag) => (
-                                <span key={tag} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                                  {tag}
-                                </span>
-                              ))}
+                    <Fragment key={article.id}>
+                      <tr className={`hover:bg-gray-50 ${
+                        showAbstractPreview ? 'bg-violet-50' : ''
+                      } ${isSaving ? 'opacity-60' : ''}`}>
+                        <td className="px-4 py-4 max-w-sm">
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 truncate">{article.title}</p>
+                              <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
+                              <div className="flex flex-wrap gap-1 mt-1 items-center">
+                                {article.is_milestone && (
+                                  <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">
+                                    ⭐ Milestone
+                                  </span>
+                                )}
+                                {article.tags?.slice(0, 2).map((tag) => (
+                                  <span key={tag} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                                    {tag}
+                                  </span>
+                                ))}
+                                {/* Abstract fetch button — only when no abstract */}
+                                {!article.abstract && !showAbstractPreview && (
+                                  <button
+                                    onClick={() => handleFetchAbstract(article)}
+                                    disabled={isFetchingAbstract}
+                                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-violet-100 text-violet-700 rounded hover:bg-violet-200 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                                    title="Obtener abstract desde DOI / PubMed"
+                                  >
+                                    {isFetchingAbstract ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                        </svg>
+                                        Buscando…
+                                      </>
+                                    ) : (
+                                      <>⬇️ Abstract</>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
                             </div>
+                            {error.length > 0 && (
+                              <span
+                                title={`Falta: ${error.join(', ')}`}
+                                className="flex-shrink-0 text-red-500 font-bold text-sm cursor-pointer select-none"
+                              >
+                                !
+                              </span>
+                            )}
+                            {error.length === 0 && warn.length > 0 && (
+                              <span
+                                title={`Falta: ${warn.join(', ')}`}
+                                className="flex-shrink-0 text-sm cursor-pointer select-none"
+                              >
+                                ⚠️
+                              </span>
+                            )}
                           </div>
-                          {error.length > 0 && (
-                            <span
-                              title={`Falta: ${error.join(', ')}`}
-                              className="flex-shrink-0 text-red-500 font-bold text-sm cursor-pointer select-none"
+                        </td>
+                        <td className="px-4 py-4 text-sm text-gray-600">{article.year}</td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={article.priority ?? 3}
+                              disabled={isSaving}
+                              onChange={(e) =>
+                                handleInlineUpdate(article, { priority: parseInt(e.target.value) })
+                              }
+                              className={`text-xs px-1 py-0.5 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-400 ${
+                                PRIORITY_COLORS[article.priority ?? 3] ?? PRIORITY_COLORS[3]
+                              }`}
                             >
-                              !
-                            </span>
-                          )}
-                          {error.length === 0 && warn.length > 0 && (
-                            <span
-                              title={`Falta: ${warn.join(', ')}`}
-                              className="flex-shrink-0 text-sm cursor-pointer select-none"
+                              {[1, 2, 3, 4, 5].map((p) => (
+                                <option key={p} value={p}>P{p}</option>
+                              ))}
+                            </select>
+                            <button
+                              disabled={isSaving}
+                              onClick={() =>
+                                handleInlineUpdate(article, {
+                                  is_milestone: !article.is_milestone,
+                                  ...(!article.is_milestone && { priority: 5 }),
+                                })
+                              }
+                              className="text-lg leading-none hover:scale-110 transition-transform disabled:opacity-40"
+                              title={article.is_milestone ? 'Quitar milestone' : 'Marcar milestone'}
                             >
-                              ⚠️
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-sm text-gray-600">{article.year}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1">
-                          <select
-                            value={article.priority ?? 3}
-                            disabled={isSaving}
-                            onChange={(e) =>
-                              handleInlineUpdate(article, { priority: parseInt(e.target.value) })
-                            }
-                            className={`text-xs px-1 py-0.5 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-400 ${
-                              PRIORITY_COLORS[article.priority ?? 3] ?? PRIORITY_COLORS[3]
-                            }`}
-                          >
-                            {[1, 2, 3, 4, 5].map((p) => (
-                              <option key={p} value={p}>P{p}</option>
-                            ))}
-                          </select>
-                          <button
-                            disabled={isSaving}
-                            onClick={() =>
-                              handleInlineUpdate(article, {
-                                is_milestone: !article.is_milestone,
-                                ...(!article.is_milestone && { priority: 5 }),
-                              })
-                            }
-                            className="text-lg leading-none hover:scale-110 transition-transform disabled:opacity-40"
-                            title={article.is_milestone ? 'Quitar milestone' : 'Marcar milestone'}
-                          >
-                            {article.is_milestone ? '⭐' : '☆'}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex gap-1 flex-wrap items-center">
-                          {/* PDF button: grey=no pdf, spinner=uploading, rose=has pdf */}
-                          {article.dropbox_path ? (
-                            <a
-                              href={article.dropbox_path}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded hover:bg-rose-200"
-                              title="Abrir PDF"
+                              {article.is_milestone ? '⭐' : '☆'}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex gap-1 flex-wrap items-center">
+                            {article.dropbox_path ? (
+                              <a
+                                href={article.dropbox_path}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded hover:bg-rose-200"
+                                title="Abrir PDF"
+                              >
+                                PDF
+                              </a>
+                            ) : isUploadingPdf ? (
+                              <span className="px-2 py-1 text-xs bg-gray-100 text-gray-400 rounded flex items-center gap-1">
+                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                PDF
+                              </span>
+                            ) : (
+                              <label
+                                className="px-2 py-1 text-xs bg-gray-200 text-gray-500 rounded hover:bg-gray-300 cursor-pointer select-none"
+                                title="Sin PDF — haz clic para subir"
+                              >
+                                <input
+                                  type="file"
+                                  accept=".pdf"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files[0];
+                                    if (file) handlePdfUpload(article, file);
+                                    e.target.value = '';
+                                  }}
+                                />
+                                PDF
+                              </label>
+                            )}
+                            {article.doi && (
+                              <a
+                                href={`https://doi.org/${article.doi}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
+                                title={`DOI: ${article.doi}`}
+                              >
+                                DOI
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex gap-2 flex-wrap">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setEditingArticle(article); setShowModal(true); }}
                             >
-                              PDF
-                            </a>
-                          ) : isUploadingPdf ? (
-                            <span className="px-2 py-1 text-xs bg-gray-100 text-gray-400 rounded flex items-center gap-1">
-                              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                              </svg>
-                              PDF
-                            </span>
-                          ) : (
-                            <label
-                              className="px-2 py-1 text-xs bg-gray-200 text-gray-500 rounded hover:bg-gray-300 cursor-pointer select-none"
-                              title="Sin PDF — haz clic para subir"
+                              Editar
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleAssignToAll(article.id, article.title)}
                             >
-                              <input
-                                type="file"
-                                accept=".pdf"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files[0];
-                                  if (file) handlePdfUpload(article, file);
-                                  e.target.value = '';
-                                }}
-                              />
-                              PDF
-                            </label>
-                          )}
-                          {article.doi && (
-                            <a
-                              href={`https://doi.org/${article.doi}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
-                              title={`DOI: ${article.doi}`}
+                              Asignar a Todos
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleDeleteArticle(article.id, article.title)}
                             >
-                              DOI
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex gap-2 flex-wrap">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => { setEditingArticle(article); setShowModal(true); }}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleAssignToAll(article.id, article.title)}
-                          >
-                            Asignar a Todos
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => handleDeleteArticle(article.id, article.title)}
-                          >
-                            Eliminar
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+                              Eliminar
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Inline abstract preview row */}
+                      {showAbstractPreview && (
+                        <tr className="bg-violet-50">
+                          <td colSpan={5} className="px-6 pb-5 pt-0">
+                            <div className="rounded-lg border border-violet-200 bg-white shadow-sm p-4">
+                              <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">
+                                Abstract obtenido — verifica y confirma
+                              </p>
+                              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                                {abstractPreview.text}
+                              </p>
+                              <div className="flex gap-2 mt-4">
+                                <button
+                                  onClick={() => setAbstractPreview(null)}
+                                  className="px-4 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={() => handleSaveAbstract(article)}
+                                  disabled={savingInline === article.id}
+                                  className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {savingInline === article.id ? 'Guardando…' : 'Introducir'}
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
