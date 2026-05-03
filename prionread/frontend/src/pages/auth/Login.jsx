@@ -78,7 +78,7 @@ const Login = () => {
         </Card>
 
         <p className="text-center text-sm text-gray-600 mt-6">
-          ¿Olvidaste tu contraseña? Contacta al administrador
+          ¿Olvidaste tu contraseña? Contacta con el administrador
         </p>
       </div>
     </div>
