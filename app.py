@@ -225,6 +225,9 @@ def create_app() -> Flask:
     from tools.prionpacks import prionpacks_bp
     app.register_blueprint(prionpacks_bp)
 
+    from tools.prionread import prionread_bp
+    app.register_blueprint(prionread_bp)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()
