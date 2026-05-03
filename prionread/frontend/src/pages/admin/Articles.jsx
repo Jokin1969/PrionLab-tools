@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
 import { BatchImportModal } from '../../components/admin/BatchImportModal';
+import { PdfUploadModal } from '../../components/admin/PdfUploadModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const DOT_CLS = {
@@ -47,6 +48,7 @@ const AdminArticles = () => {
   const [showModal, setShowModal]           = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
+  const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
   const [search, setSearch]                 = useState('');
   const [filterNoPdf, setFilterNoPdf]       = useState(false);
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
@@ -388,7 +390,7 @@ const AdminArticles = () => {
 
                         <td className="px-4 py-4">
                           <div className="flex gap-1">
-                            {/* PDF: rose if available (opens via API), grey upload if missing */}
+                            {/* PDF: rose if available (opens via API), spinner if uploading, grey button → modal if missing */}
                             {article.dropbox_path ? (
                               <button
                                 title="Abrir PDF"
@@ -404,13 +406,13 @@ const AdminArticles = () => {
                                 PDF
                               </span>
                             ) : (
-                              <label
-                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer select-none"
+                              <button
+                                onClick={() => setPdfUploadTarget(article)}
                                 title="Sin PDF — haz clic para subir"
+                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer"
                               >
-                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files[0]; if (f) handlePdfUpload(article, f); e.target.value = ''; }} />
                                 PDF
-                              </label>
+                              </button>
                             )}
 
                             {/* DOI → doi.org | PMID → PubMed | ninguno → gris */}
@@ -514,6 +516,12 @@ const AdminArticles = () => {
         isOpen={showBatchModal}
         onClose={() => setShowBatchModal(false)}
         onImported={() => { loadArticles(); flash('Importación completada'); }}
+      />
+      <PdfUploadModal
+        isOpen={Boolean(pdfUploadTarget)}
+        onClose={() => setPdfUploadTarget(null)}
+        article={pdfUploadTarget}
+        onUpload={handlePdfUpload}
       />
     </div>
   );
