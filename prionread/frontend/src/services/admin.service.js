@@ -18,6 +18,9 @@ export const adminService = {
   sendReminder: async (userId, message) =>
     (await api.post(`/admin/users/${userId}/send-reminder`, { message })).data,
 
+  sendWelcomeEmail: async (userId) =>
+    (await api.post(`/admin/users/${userId}/send-welcome`)).data,
+
   // Assignments
   getUserAssignments: async (userId) => (await api.get(`/assignments/user/${userId}`)).data,
   assignArticles: async (userId, articleIds) =>
@@ -34,7 +37,6 @@ export const adminService = {
   getArticleById: async (articleId) => (await api.get(`/articles/${articleId}`)).data,
   createArticle: async (formData) =>
     (await api.post('/articles', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data,
-  // Content-Type header required — without it multipart fields (including pdf) are not parsed correctly
   updateArticle: async (articleId, formData) =>
     (await api.put(`/articles/${articleId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data,
   deleteArticle: async (articleId) => (await api.delete(`/articles/${articleId}`)).data,

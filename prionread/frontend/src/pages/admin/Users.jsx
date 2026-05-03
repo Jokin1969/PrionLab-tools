@@ -12,6 +12,11 @@ const STAT_BADGES = [
   { key: 'total_evaluated',  label: 'Eval',   cls: 'bg-green-100  text-green-700',  filter: ['evaluated'] },
 ];
 
+function fmtDate(iso) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 const AdminUsers = () => {
   const navigate = useNavigate();
   const [users, setUsers]               = useState([]);
@@ -22,7 +27,9 @@ const AdminUsers = () => {
   const [search, setSearch]             = useState('');
   const [roleFilter, setRoleFilter]     = useState('');
   const [msg, setMsg]                   = useState('');
+  const [errMsg, setErrMsg]             = useState('');
   const [passwordBanner, setPasswordBanner] = useState(null);
+  const [sendingWelcome, setSendingWelcome] = useState(null);
 
   useEffect(() => { loadUsers(); }, [roleFilter]);
 
@@ -40,7 +47,8 @@ const AdminUsers = () => {
     }
   };
 
-  const flash = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
+  const flash      = (text) => { setMsg(text);    setTimeout(() => setMsg(''),    3000); };
+  const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
 
   const handleCreateUser = async (userData) => {
     await adminService.createUser(userData);
@@ -63,7 +71,7 @@ const AdminUsers = () => {
   const handleDeleteUser = async (userId, userName) => {
     if (!window.confirm(`¿Eliminar usuario ${userName}?`)) return;
     try { await adminService.deleteUser(userId); await loadUsers(); flash('Usuario eliminado'); }
-    catch  { flash('Error eliminando usuario'); }
+    catch  { errorFlash('Error eliminando usuario'); }
   };
 
   const handleResetPassword = async (userId, userEmail) => {
@@ -73,7 +81,29 @@ const AdminUsers = () => {
       const data = await adminService.resetUserPassword(userId, newPassword || undefined);
       setPasswordBanner({ email: userEmail, password: data.tempPassword });
       flash(data.email_sent ? 'Contraseña reseteada y enviada por email' : 'Contraseña reseteada');
-    } catch { flash('Error reseteando contraseña'); }
+    } catch { errorFlash('Error reseteando contraseña'); }
+  };
+
+  const handleSendWelcome = async (user) => {
+    const alreadySent = Boolean(user.welcome_email_sent_at);
+    const confirmMsg = alreadySent
+      ? `${user.name} ya recibió el email de bienvenida el ${fmtDate(user.welcome_email_sent_at)}.\n\n¿Reenviar? Esto generará una nueva contraseña temporal y la anterior dejará de funcionar.`
+      : `¿Enviar email de bienvenida a ${user.name}?\n\nSe generará una nueva contraseña temporal. La contraseña actual dejará de funcionar.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setSendingWelcome(user.id);
+    try {
+      const data = await adminService.sendWelcomeEmail(user.id);
+      setUsers((prev) => prev.map((u) =>
+        u.id === user.id ? { ...u, welcome_email_sent_at: data.welcome_email_sent_at } : u
+      ));
+      setPasswordBanner({ email: user.email, password: data.tempPassword, welcome: true });
+      flash(`Email de bienvenida enviado a ${user.email}`);
+    } catch (err) {
+      errorFlash(err?.response?.data?.error || 'Error enviando email de bienvenida');
+    } finally {
+      setSendingWelcome(null);
+    }
   };
 
   const filteredUsers = users.filter(
@@ -95,7 +125,10 @@ const AdminUsers = () => {
         <div className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-amber-900">Contraseña para {passwordBanner.email}</p>
+              {passwordBanner.welcome && (
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">✉️ Email de bienvenida enviado</p>
+              )}
+              <p className="text-sm font-semibold text-amber-900">Contraseña temporal para {passwordBanner.email}</p>
               <p className="font-mono text-xl text-amber-800 mt-1 select-all tracking-wider">{passwordBanner.password}</p>
               <p className="text-xs text-amber-700 mt-1">Copia esta contraseña ahora — no se volverá a mostrar.</p>
             </div>
@@ -104,7 +137,8 @@ const AdminUsers = () => {
         </div>
       )}
 
-      {msg && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+      {msg    && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+      {errMsg && <div className="rounded-lg bg-red-50   border border-red-200   px-4 py-3 text-sm text-red-700">{errMsg}</div>}
 
       <Card>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -145,6 +179,11 @@ const AdminUsers = () => {
                         <div>
                           <p className="font-semibold text-gray-900">{user.name}</p>
                           <p className="text-sm text-gray-600">{user.email}</p>
+                          {user.welcome_email_sent_at ? (
+                            <p className="text-xs text-green-600 mt-0.5">✔️ Bienvenida enviada {fmtDate(user.welcome_email_sent_at)}</p>
+                          ) : (
+                            <p className="text-xs text-amber-500 mt-0.5">⏳ Sin email de bienvenida</p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -182,6 +221,20 @@ const AdminUsers = () => {
                         <Button variant="secondary" size="sm" onClick={() => setAssignmentsUser(user)}>Asignaciones</Button>
                         <Button variant="ghost" size="sm" onClick={() => { setEditingUser(user); setShowModal(true); }}>Editar</Button>
                         <Button variant="ghost" size="sm" onClick={() => handleResetPassword(user.id, user.email)}>Reset Pass</Button>
+                        {user.role === 'student' && (
+                          <button
+                            onClick={() => handleSendWelcome(user)}
+                            disabled={sendingWelcome === user.id}
+                            title={user.welcome_email_sent_at ? `Reenviar bienvenida (enviada ${fmtDate(user.welcome_email_sent_at)})` : 'Enviar email de bienvenida con credenciales y guía'}
+                            className={`px-2 py-1 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
+                              user.welcome_email_sent_at
+                                ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                            }`}
+                          >
+                            {sendingWelcome === user.id ? '…' : user.welcome_email_sent_at ? '✉️ Reenviar' : '✉️ Dar bienvenida'}
+                          </button>
+                        )}
                         {user.role !== 'admin' && (
                           <Button variant="danger" size="sm" onClick={() => handleDeleteUser(user.id, user.name)}>Eliminar</Button>
                         )}

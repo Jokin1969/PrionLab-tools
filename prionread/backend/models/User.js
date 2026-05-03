@@ -34,6 +34,10 @@ const User = sequelize.define('User', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  welcome_email_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'users',
   timestamps: true,
