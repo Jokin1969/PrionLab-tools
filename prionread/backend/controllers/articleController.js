@@ -1,35 +1,27 @@
 const { Op, literal } = require('sequelize');
 const { fetchArticleByDOI } = require('../services/crossref');
-const { fetchArticleByPubMedID } = require('../services/pubmed');
+const { fetchArticleByPubMedID, searchPubMedByDOI } = require('../services/pubmed');
 const {
   uploadPDF,
   generateDownloadLink: dbxDownloadLink,
   checkFileExists,
   deletePDF,
   listFiles,
+  dropboxPath,
 } = require('../services/dropbox');
 const { Article, ArticleRating, sequelize } = require('../models');
 const { buildArticleQuery } = require('../utils/articleFilters');
 
 const CURRENT_YEAR = new Date().getFullYear();
 
-// ─── Error mapping ────────────────────────────────────────────────────────────
-
 const HTTP_STATUS = {
-  INVALID_INPUT: 400,
-  INVALID_FILE_TYPE: 415,
-  NOT_FOUND: 404,
-  RATE_LIMITED: 429,
-  UPSTREAM_ERROR: 503,
-  PARSE_ERROR: 502,
+  INVALID_INPUT: 400, INVALID_FILE_TYPE: 415, NOT_FOUND: 404,
+  RATE_LIMITED: 429, UPSTREAM_ERROR: 503, PARSE_ERROR: 502,
 };
 
 function serviceError(res, err) {
-  const status = HTTP_STATUS[err.code] || 500;
-  return res.status(status).json({ error: err.message });
+  return res.status(HTTP_STATUS[err.code] || 500).json({ error: err.message });
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function coerceFields(body) {
   const out = { ...body };
@@ -64,15 +56,24 @@ function validationErrors(fields) {
   return errors;
 }
 
+/**
+ * Resolves metadata from CrossRef (DOI) and/or PubMed (PMID).
+ * Falls back to PubMed via DOI lookup when CrossRef has no abstract.
+ */
 async function resolveExternalMetadata(doi, pubmed_id) {
   if (doi) {
     const meta = await fetchArticleByDOI(doi);
-    if (pubmed_id && !meta.pubmed_id) {
-      try {
-        const pm = await fetchArticleByPubMedID(pubmed_id);
-        meta.abstract = meta.abstract || pm.abstract;
-        meta.pubmed_id = pm.pubmed_id;
-      } catch { /* best-effort */ }
+    if (!meta.abstract) {
+      const pmid = pubmed_id || await searchPubMedByDOI(doi);
+      if (pmid) {
+        try {
+          const pm = await fetchArticleByPubMedID(pmid);
+          meta.abstract = pm.abstract;
+          if (!meta.pubmed_id && pm.pubmed_id) meta.pubmed_id = pm.pubmed_id;
+        } catch { /* best-effort */ }
+      }
+    } else if (pubmed_id && !meta.pubmed_id) {
+      meta.pubmed_id = pubmed_id;
     }
     return meta;
   }
@@ -86,8 +87,6 @@ const RATING_COUNT_LITERAL = literal(
   '(SELECT COUNT(*) FROM article_ratings WHERE article_id = "Article".id)'
 );
 
-// ─── CRUD ─────────────────────────────────────────────────────────────────────
-
 async function createArticle(req, res) {
   try {
     let fields = coerceFields(req.body);
@@ -97,8 +96,7 @@ async function createArticle(req, res) {
       let fetched;
       try { fetched = await resolveExternalMetadata(fields.doi, fields.pubmed_id); }
       catch (err) { return serviceError(res, err); }
-      fields = { ...fetched, ...fields };
-      fields = coerceFields(fields);
+      fields = coerceFields({ ...fetched, ...fields });
     }
     const errs = validationErrors(fields);
     if (errs.length) return res.status(400).json({ errors: errs });
@@ -124,11 +122,18 @@ async function createArticle(req, res) {
     });
     if (req.file) {
       try {
-        const dropbox_path = await uploadPDF(req.file.buffer, article);
-        await article.update({ dropbox_path });
+        const dp = await uploadPDF(req.file.buffer, article);
+        await article.update({ dropbox_path: dp });
       } catch (err) {
-        console.error('[createArticle] PDF upload failed after article creation:', err.message);
+        console.error('[createArticle] PDF upload failed:', err.message);
       }
+    } else if (article.doi || article.pubmed_id) {
+      // No file uploaded — check if the expected PDF already exists in Dropbox
+      try {
+        const expectedPath = dropboxPath(article);
+        const exists = await checkFileExists(expectedPath);
+        if (exists) await article.update({ dropbox_path: expectedPath });
+      } catch { /* best-effort */ }
     }
     return res.status(201).json({ article });
   } catch (err) {
@@ -145,12 +150,7 @@ async function getArticles(req, res) {
     const { where, order, limit, offset, page } = buildArticleQuery(req.query);
     const { count, rows } = await Article.findAndCountAll({
       where, order, limit, offset,
-      attributes: {
-        include: [
-          [AVG_RATING_LITERAL, 'avg_rating'],
-          [RATING_COUNT_LITERAL, 'rating_count'],
-        ],
-      },
+      attributes: { include: [[AVG_RATING_LITERAL, 'avg_rating'], [RATING_COUNT_LITERAL, 'rating_count']] },
       distinct: true,
     });
     return res.json({ articles: rows, total: count, page, limit, total_pages: Math.ceil(count / limit) });
@@ -187,38 +187,30 @@ async function updateArticle(req, res) {
       title: fields.title ?? article.title,
       authors: fields.authors ?? article.authors,
       year: fields.year ?? article.year,
-      priority: fields.priority,
-      tags: fields.tags,
+      priority: fields.priority, tags: fields.tags,
     };
     const errs = validationErrors(toCheck);
     if (errs.length) return res.status(400).json({ errors: errs });
     if (fields.doi !== undefined) {
-      const conflict = await Article.findOne({
-        where: { doi: fields.doi.toLowerCase(), id: { [Op.ne]: article.id } },
-      });
+      const conflict = await Article.findOne({ where: { doi: fields.doi.toLowerCase(), id: { [Op.ne]: article.id } } });
       if (conflict) return res.status(409).json({ error: 'DOI already used by another article' });
     }
     if (fields.pubmed_id !== undefined) {
-      const conflict = await Article.findOne({
-        where: { pubmed_id: String(fields.pubmed_id), id: { [Op.ne]: article.id } },
-      });
+      const conflict = await Article.findOne({ where: { pubmed_id: String(fields.pubmed_id), id: { [Op.ne]: article.id } } });
       if (conflict) return res.status(409).json({ error: 'PubMed ID already used by another article' });
     }
-    const updatable = ['title', 'authors', 'year', 'journal', 'doi', 'pubmed_id',
-                       'abstract', 'tags', 'is_milestone', 'priority'];
+    const updatable = ['title', 'authors', 'year', 'journal', 'doi', 'pubmed_id', 'abstract', 'tags', 'is_milestone', 'priority'];
     for (const key of updatable) {
       if (fields[key] !== undefined) article[key] = fields[key];
     }
     if (req.file) {
       if (article.dropbox_path) {
-        try { await deletePDF(article.dropbox_path); } catch { /* old file gone — fine */ }
+        try { await deletePDF(article.dropbox_path); } catch { /* gone */ }
       }
       try {
         article.dropbox_path = await uploadPDF(req.file.buffer, article);
         article.dropbox_link = null;
-      } catch (err) {
-        return serviceError(res, err);
-      }
+      } catch (err) { return serviceError(res, err); }
     }
     await article.save();
     return res.json({ article });
@@ -260,8 +252,6 @@ async function generateDownloadLinkHandler(req, res) {
   }
 }
 
-// ─── Metadata + Dropbox helpers ───────────────────────────────────────────────
-
 async function fetchMetadata(req, res) {
   try {
     const { doi, pubmed_id } = req.body;
@@ -281,11 +271,11 @@ async function uploadArticlePDF(req, res) {
     const article = await Article.findByPk(req.params.id);
     if (!article) return res.status(404).json({ error: 'Article not found' });
     if (!req.file) return res.status(400).json({ error: 'No PDF file received' });
-    let dropbox_path;
-    try { dropbox_path = await uploadPDF(req.file.buffer, article); }
+    let dp;
+    try { dp = await uploadPDF(req.file.buffer, article); }
     catch (err) { return serviceError(res, err); }
-    await article.update({ dropbox_path, dropbox_link: null });
-    return res.json({ dropbox_path });
+    await article.update({ dropbox_path: dp, dropbox_link: null });
+    return res.json({ dropbox_path: dp });
   } catch (err) {
     console.error('[uploadArticlePDF]', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -338,45 +328,46 @@ async function listDropboxFiles(req, res) {
 
 /**
  * POST /api/admin/articles/verify-pdfs
- * Checks every article whose dropbox_path is set against Dropbox.
- * Returns per-article ok/missing status + summary counts.
+ * Full scan of ALL articles:
+ * - With dropbox_path: verify file still exists (ok | missing)
+ * - Without dropbox_path + has doi/pmid: check expected path, auto-link if found (linked | no_pdf)
  */
 async function verifyArticlePDFs(req, res) {
   try {
     const articles = await Article.findAll({
-      where: { dropbox_path: { [Op.ne]: null } },
       attributes: ['id', 'title', 'doi', 'pubmed_id', 'dropbox_path'],
       order: [['title', 'ASC']],
     });
-
     const results = await Promise.all(
       articles.map(async (a) => {
-        const exists = await checkFileExists(a.dropbox_path).catch(() => false);
-        return {
-          id: a.id,
-          title: a.title,
-          doi: a.doi,
-          pubmed_id: a.pubmed_id,
-          dropbox_path: a.dropbox_path,
-          exists,
-        };
+        const base = { id: a.id, title: a.title, doi: a.doi, pubmed_id: a.pubmed_id };
+        if (a.dropbox_path) {
+          const exists = await checkFileExists(a.dropbox_path).catch(() => false);
+          return { ...base, status: exists ? 'ok' : 'missing', dropbox_path: a.dropbox_path };
+        }
+        if (a.doi || a.pubmed_id) {
+          const expectedPath = dropboxPath(a);
+          const exists = await checkFileExists(expectedPath).catch(() => false);
+          if (exists) {
+            await a.update({ dropbox_path: expectedPath });
+            return { ...base, status: 'linked', dropbox_path: expectedPath };
+          }
+          return { ...base, status: 'no_pdf', dropbox_path: null };
+        }
+        return { ...base, status: 'no_identifier', dropbox_path: null };
       })
     );
-
-    const ok      = results.filter((r) => r.exists).length;
-    const missing = results.filter((r) => !r.exists).length;
-    return res.json({ results, summary: { ok, missing, total: results.length } });
+    const count = (s) => results.filter((r) => r.status === s).length;
+    return res.json({
+      results,
+      summary: { ok: count('ok'), missing: count('missing'), linked: count('linked'), no_pdf: count('no_pdf'), total: results.length },
+    });
   } catch (err) {
     console.error('[verifyArticlePDFs]', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-/**
- * DELETE /api/articles/:id/pdf-link
- * Clears dropbox_path in the DB without touching Dropbox.
- * Use when the path in the DB is stale (file was moved/renamed outside the app).
- */
 async function clearPdfLink(req, res) {
   try {
     const article = await Article.findByPk(req.params.id);
@@ -389,38 +380,26 @@ async function clearPdfLink(req, res) {
   }
 }
 
-/**
- * POST /api/admin/articles/sync-dropbox
- * Scans the Dropbox folder and links PDFs to articles by DOI/PMID filename.
- */
 async function syncDropboxPDFs(req, res) {
   try {
     let files;
     try { files = await listFiles(); }
     catch (err) { return serviceError(res, err); }
-
     const results = { matched: 0, already_had_pdf: 0, unmatched: [] };
-
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.pdf')) continue;
       const baseName = file.name.replace(/\.pdf$/i, '');
       let article = null;
-
       if (baseName.startsWith('PMID_')) {
-        const pmid = baseName.slice(5);
-        article = await Article.findOne({ where: { pubmed_id: pmid } });
+        article = await Article.findOne({ where: { pubmed_id: baseName.slice(5) } });
       } else {
-        const doi = baseName.replace(/_/g, '/');
-        article = await Article.findOne({ where: { doi: doi.toLowerCase() } });
+        article = await Article.findOne({ where: { doi: baseName.replace(/_/g, '/').toLowerCase() } });
       }
-
       if (!article) { results.unmatched.push(file.name); continue; }
       if (article.dropbox_path) { results.already_had_pdf++; continue; }
-
       await article.update({ dropbox_path: file.path, dropbox_link: null });
       results.matched++;
     }
-
     return res.json(results);
   } catch (err) {
     console.error('[syncDropboxPDFs]', err);

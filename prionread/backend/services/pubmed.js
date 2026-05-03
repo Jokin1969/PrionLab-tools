@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { normalizeMetadata } = require('../utils/normalizeMetadata');
 
+const ESEARCH_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi';
 const ESUMMARY_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi';
 const EFETCH_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi';
 
@@ -31,10 +32,6 @@ function xmlAll(xml, tag) {
 
 // ─── Author formatting ────────────────────────────────────────────────────────
 
-/**
- * PubMed efetch gives <Author> blocks with <LastName> + <Initials>.
- * We parse the <AuthorList> section to keep order and handle CollectiveName.
- */
 function parseAuthorsFromXml(xml) {
   const authorListMatch = xml.match(/<AuthorList[^>]*>([\s\S]*?)<\/AuthorList>/i);
   if (!authorListMatch) return null;
@@ -55,9 +52,26 @@ function parseAuthorsFromXml(xml) {
 }
 
 function extractDoiFromXml(xml) {
-  // <ArticleId IdType="doi">10.xxxx/...</ArticleId>
   const m = xml.match(/<ArticleId\s+IdType="doi">([^<]+)<\/ArticleId>/i);
   return m ? m[1].trim().toLowerCase() : null;
+}
+
+// ─── DOI → PMID lookup ───────────────────────────────────────────────────────
+
+/**
+ * Returns the PMID for a given DOI by querying PubMed esearch, or null if not found.
+ */
+async function searchPubMedByDOI(doi) {
+  if (!doi) return null;
+  try {
+    const { data } = await axios.get(ESEARCH_URL, {
+      params: { ...NCBI_PARAMS, term: `${doi}[doi]`, retmax: 1 },
+      timeout: 8000,
+    });
+    return data?.esearchresult?.idlist?.[0] || null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Main fetch ───────────────────────────────────────────────────────────────
@@ -69,7 +83,6 @@ async function fetchArticleByPubMedID(pmid) {
 
   const id = String(pmid).trim();
 
-  // 1. esummary — fast check that the record exists + grab journal/year
   let summary;
   try {
     const { data } = await axios.get(ESUMMARY_URL, {
@@ -91,7 +104,6 @@ async function fetchArticleByPubMedID(pmid) {
   const journalFromSummary = summary.fulljournalname || summary.source || null;
   const yearFromSummary = summary.pubdate ? parseInt(summary.pubdate, 10) : null;
 
-  // 2. efetch — full XML for title, authors, abstract, DOI
   let xml;
   try {
     const { data } = await axios.get(EFETCH_URL, {
@@ -115,7 +127,6 @@ async function fetchArticleByPubMedID(pmid) {
   const authors = parseAuthorsFromXml(xml);
   const doi = extractDoiFromXml(xml);
 
-  // Year: prefer efetch MedlineCitation date, fallback to summary
   const pubYear = (() => {
     const y = xmlText(xml, 'Year');
     const parsed = y ? parseInt(y, 10) : null;
@@ -133,4 +144,4 @@ async function fetchArticleByPubMedID(pmid) {
   });
 }
 
-module.exports = { fetchArticleByPubMedID };
+module.exports = { fetchArticleByPubMedID, searchPubMedByDOI };

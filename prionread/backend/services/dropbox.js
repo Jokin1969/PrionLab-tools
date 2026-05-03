@@ -4,10 +4,6 @@ const ROOT_FOLDER = '/PrionLab tools/PrionRead';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Sanitizes a string for use as a Dropbox filename.
- * Replaces slashes (common in DOIs) and other unsafe chars with underscores.
- */
 function sanitizeForFilename(str) {
   return String(str)
     .replace(/\//g, '_')
@@ -15,7 +11,7 @@ function sanitizeForFilename(str) {
 }
 
 /**
- * Returns the Dropbox path for an article's PDF.
+ * Returns the expected Dropbox path for an article's PDF.
  * Priority: DOI → PMID → UUID fallback
  */
 function dropboxPath(article) {
@@ -30,12 +26,8 @@ function dropboxPath(article) {
   return `${ROOT_FOLDER}/${name}.pdf`;
 }
 
-/**
- * Wraps Dropbox SDK errors with a code so callers can map to HTTP status.
- */
 function wrapDropboxError(err, context) {
   const status = err?.status || err?.error?.error_summary;
-
   if (err?.status === 409 || String(status).includes('not_found')) {
     return Object.assign(new Error('File not found in Dropbox'), { code: 'NOT_FOUND' });
   }
@@ -43,26 +35,16 @@ function wrapDropboxError(err, context) {
     return Object.assign(new Error('Dropbox rate limit reached'), { code: 'RATE_LIMITED' });
   }
   console.error(`[dropbox:${context}]`, err);
-  return Object.assign(new Error(`Dropbox error: ${err?.message || 'unknown'}`), {
-    code: 'UPSTREAM_ERROR',
-  });
+  return Object.assign(new Error(`Dropbox error: ${err?.message || 'unknown'}`), { code: 'UPSTREAM_ERROR' });
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Uploads a PDF buffer to /PrionLab tools/PrionRead/{doi|PMID_pmid|uuid}.pdf
- * @param {Buffer} fileBuffer  - raw PDF bytes (from multer memoryStorage)
- * @param {object} article     - must contain at least { id, doi?, pubmed_id? }
- * @returns {string} dropbox_path stored in the DB
- */
 async function uploadPDF(fileBuffer, article) {
   if (!Buffer.isBuffer(fileBuffer) || fileBuffer.length === 0) {
     throw Object.assign(new Error('File buffer is empty or invalid'), { code: 'INVALID_INPUT' });
   }
-
   const path = dropboxPath(article);
-
   try {
     await dbx.filesUpload({
       path,
@@ -77,11 +59,6 @@ async function uploadPDF(fileBuffer, article) {
   }
 }
 
-/**
- * Generates a temporary download link valid for ~4 hours.
- * @param {string} dropboxFilePath
- * @returns {string} HTTPS link
- */
 async function generateDownloadLink(dropboxFilePath) {
   if (!dropboxFilePath) {
     throw Object.assign(new Error('dropbox_path is required'), { code: 'INVALID_INPUT' });
@@ -94,12 +71,6 @@ async function generateDownloadLink(dropboxFilePath) {
   }
 }
 
-/**
- * Checks whether a file exists in Dropbox without generating a download link.
- * Returns true if found, false if not found, throws on other errors.
- * @param {string} dropboxFilePath
- * @returns {boolean}
- */
 async function checkFileExists(dropboxFilePath) {
   if (!dropboxFilePath) return false;
   try {
@@ -113,32 +84,18 @@ async function checkFileExists(dropboxFilePath) {
   }
 }
 
-/**
- * Lists files inside a Dropbox folder.
- * @param {string} folder  - defaults to ROOT_FOLDER
- * @returns {Array<{ name, path, size, modified }>}
- */
 async function listFiles(folder = ROOT_FOLDER) {
   try {
     const result = await dbx.filesListFolder({ path: folder, recursive: false });
     return result.result.entries
       .filter((e) => e['.tag'] === 'file')
-      .map((e) => ({
-        name: e.name,
-        path: e.path_lower,
-        size: e.size,
-        modified: e.server_modified,
-      }));
+      .map((e) => ({ name: e.name, path: e.path_lower, size: e.size, modified: e.server_modified }));
   } catch (err) {
     if (err?.status === 409) return [];
     throw wrapDropboxError(err, 'listFiles');
   }
 }
 
-/**
- * Permanently deletes a file from Dropbox.
- * @param {string} dropboxFilePath
- */
 async function deletePDF(dropboxFilePath) {
   if (!dropboxFilePath) {
     throw Object.assign(new Error('dropbox_path is required'), { code: 'INVALID_INPUT' });
@@ -151,4 +108,4 @@ async function deletePDF(dropboxFilePath) {
   }
 }
 
-module.exports = { uploadPDF, generateDownloadLink, checkFileExists, listFiles, deletePDF };
+module.exports = { uploadPDF, generateDownloadLink, checkFileExists, listFiles, deletePDF, dropboxPath };
