@@ -1,5 +1,14 @@
 [phases.setup]
 nixPkgs = ["python311", "nodejs_20"]
 
+[phases.install]
+cmds = [
+  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt",
+  "cd prionread/frontend && npm install"
+]
+
+[phases.build]
+cmds = ["cd prionread/frontend && npm run build"]
+
 [start]
-cmd = "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+cmd = "/opt/venv/bin/gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
