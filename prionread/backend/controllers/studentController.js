@@ -1,5 +1,5 @@
-const { UserArticle, Article, ArticleRating, ArticleSummary } = require('../models');
-const { generateSummary: aiGenerateSummary } = require('../services/openai');
+const { UserArticle, Article, ArticleRating, ArticleSummary, Evaluation } = require('../models');
+const { generateSummary: aiGenerateSummary, generateEvaluation: aiGenerateEvaluation } = require('../services/openai');
 
 const ARTICLE_SORT_FIELDS = new Set(['priority', 'year', 'title', 'created_at']);
 const VALID_STATUSES = new Set(['pending', 'read', 'summarized', 'evaluated']);
@@ -243,6 +243,128 @@ async function generateAISummary(req, res) {
   }
 }
 
+// ─── POST /api/my-articles/:articleId/generate-evaluation ────────────────────
+
+async function generateEvaluation(req, res) {
+  try {
+    const ua = await findUserArticle(req.user.id, req.params.articleId, true);
+    if (!ua) return res.status(404).json({ error: 'Article not assigned to you' });
+
+    const article = ua.article;
+    if (!article) return res.status(404).json({ error: 'Article data not found' });
+
+    if (!article.abstract && !article.title) {
+      return res.status(422).json({ error: 'Article has insufficient data for evaluation generation' });
+    }
+
+    let questions;
+    try {
+      questions = await aiGenerateEvaluation({
+        title: article.title,
+        authors: article.authors,
+        year: article.year,
+        journal: article.journal,
+        abstract: article.abstract,
+      });
+    } catch (err) {
+      const status = AI_HTTP_STATUS[err.code] || 500;
+      return res.status(status).json({ error: err.message });
+    }
+
+    // Persist questions (with correct answers) — never expose `correct` to client
+    await Evaluation.create({ user_article_id: ua.id, questions, answers: [] });
+
+    const questionsForClient = questions.map(({ question, options }) => ({ question, options }));
+    return res.json({ questions: questionsForClient });
+  } catch (err) {
+    console.error('[generateEvaluation]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ─── POST /api/my-articles/:articleId/submit-evaluation ──────────────────────
+
+async function submitEvaluation(req, res) {
+  try {
+    const { answers } = req.body;
+
+    if (!Array.isArray(answers)) {
+      return res.status(400).json({ error: 'answers must be an array' });
+    }
+
+    const ua = await findUserArticle(req.user.id, req.params.articleId);
+    if (!ua) return res.status(404).json({ error: 'Article not assigned to you' });
+
+    const evaluation = await Evaluation.findOne({
+      where: { user_article_id: ua.id },
+      order: [['created_at', 'DESC']],
+    });
+
+    if (!evaluation) {
+      return res.status(404).json({ error: 'No evaluation generated yet' });
+    }
+    if (evaluation.score != null) {
+      return res.status(409).json({ error: 'Evaluation already submitted' });
+    }
+
+    const questions = evaluation.questions;
+    if (answers.length !== questions.length) {
+      return res.status(400).json({ error: `Expected ${questions.length} answers, received ${answers.length}` });
+    }
+
+    const correctCount = answers.filter((ans, i) => ans === questions[i].correct).length;
+    const score = Math.round((correctCount / questions.length) * 10 * 100) / 100;
+    const passed = score >= 5;
+
+    await evaluation.update({ answers, score, passed });
+
+    if (statusRank(ua.status) < statusRank('evaluated')) {
+      await ua.update({ status: 'evaluated', evaluation_date: new Date() });
+    }
+
+    return res.json({ score, passed, correct: correctCount, total: questions.length });
+  } catch (err) {
+    console.error('[submitEvaluation]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ─── GET /api/my-articles/:articleId/evaluation ──────────────────────────────
+
+async function getEvaluation(req, res) {
+  try {
+    const ua = await findUserArticle(req.user.id, req.params.articleId);
+    if (!ua) return res.status(404).json({ error: 'Article not assigned to you' });
+
+    const evaluation = await Evaluation.findOne({
+      where: { user_article_id: ua.id },
+      order: [['created_at', 'DESC']],
+    });
+
+    if (!evaluation || evaluation.score == null) {
+      return res.status(404).json({ error: 'No submitted evaluation found' });
+    }
+
+    const correctCount = evaluation.answers.filter(
+      (ans, i) => ans === evaluation.questions[i].correct
+    ).length;
+
+    return res.json({
+      evaluation: {
+        id: evaluation.id,
+        score: evaluation.score,
+        passed: evaluation.passed,
+        correct: correctCount,
+        total: evaluation.questions.length,
+        created_at: evaluation.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error('[getEvaluation]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   getMyArticles,
   getMyArticleDetail,
@@ -250,4 +372,7 @@ module.exports = {
   createOrUpdateSummary,
   getSummary,
   generateAISummary,
+  generateEvaluation,
+  submitEvaluation,
+  getEvaluation,
 };

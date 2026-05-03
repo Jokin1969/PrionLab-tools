@@ -92,4 +92,80 @@ ${buildPromptContent(article)}`;
   return text;
 }
 
-module.exports = { generateSummary };
+/**
+ * Generates multiple-choice comprehension questions for a scientific article.
+ * Returns array of { question, options, correct } — caller must strip `correct` before sending to client.
+ * @param {object} article - { title, authors, year, journal, abstract }
+ * @returns {Array<{question: string, options: string[], correct: number}>}
+ */
+async function generateEvaluation(article) {
+  const client = getClient();
+
+  const systemPrompt = `Eres un experto en evaluación de comprensión lectora de artículos científicos biomédicos.
+Genera preguntas de opción múltiple en español para evaluar la comprensión de un artículo.
+Responde ÚNICAMENTE con JSON válido y sin texto adicional.`;
+
+  const userPrompt = `Genera exactamente 5 preguntas de opción múltiple sobre el siguiente artículo científico.
+Cada pregunta debe evaluar la comprensión real del contenido (objetivos, métodos, resultados o conclusiones).
+
+Responde ÚNICAMENTE con este JSON (sin markdown, sin texto extra):
+{
+  "questions": [
+    {
+      "question": "Texto de la pregunta",
+      "options": ["Opción A", "Opción B", "Opción C", "Opción D"],
+      "correct": 0
+    }
+  ]
+}
+
+donde "correct" es el índice (0-3) de la opción correcta.
+
+Datos del artículo:
+${buildPromptContent(article)}`;
+
+  let response;
+  try {
+    response = await client.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 1200,
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+    });
+  } catch (err) {
+    if (err?.status === 401) {
+      throw Object.assign(new Error('Invalid OpenAI API key'), { code: 'INVALID_KEY' });
+    }
+    if (err?.status === 429) {
+      throw Object.assign(new Error('OpenAI rate limit or quota exceeded'), { code: 'RATE_LIMITED' });
+    }
+    throw Object.assign(
+      new Error(`OpenAI request failed: ${err?.message || 'unknown error'}`),
+      { code: 'UPSTREAM_ERROR' }
+    );
+  }
+
+  const text = response.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    throw Object.assign(new Error('OpenAI returned an empty response'), { code: 'EMPTY_RESPONSE' });
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw Object.assign(new Error('OpenAI returned invalid JSON'), { code: 'UPSTREAM_ERROR' });
+  }
+
+  if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+    throw Object.assign(new Error('OpenAI returned no questions'), { code: 'UPSTREAM_ERROR' });
+  }
+
+  return parsed.questions;
+}
+
+module.exports = { generateSummary, generateEvaluation };

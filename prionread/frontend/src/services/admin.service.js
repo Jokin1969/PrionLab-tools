@@ -79,10 +79,7 @@ export const adminService = {
   },
 
   fetchMetadata: async (doi, pubmedId) => {
-    const params = new URLSearchParams();
-    if (doi) params.set('doi', doi);
-    if (pubmedId) params.set('pubmed_id', pubmedId);
-    const response = await api.get(`/articles/fetch-metadata?${params}`);
+    const response = await api.post('/articles/fetch-metadata', { doi, pubmed_id: pubmedId });
     return response.data;
   },
 
@@ -98,7 +95,7 @@ export const adminService = {
   },
 
   assignArticleToAll: async (articleId) => {
-    const response = await api.post(`/admin/articles/${articleId}/assign-all`);
+    const response = await api.post(`/admin/articles/${articleId}/assign-to-all`);
     return response.data;
   },
 };

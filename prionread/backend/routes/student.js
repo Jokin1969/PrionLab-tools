@@ -7,6 +7,9 @@ const {
   createOrUpdateSummary,
   getSummary,
   generateAISummary,
+  generateEvaluation,
+  submitEvaluation,
+  getEvaluation,
 } = require('../controllers/studentController');
 
 const router = Router();
@@ -27,5 +30,10 @@ router.put('/:articleId/mark-as-read', markAsRead);
 router.post('/:articleId/summary', createOrUpdateSummary);
 router.get('/:articleId/summary', getSummary);
 router.post('/:articleId/generate-ai-summary', generateAISummary);
+
+// ── Evaluation sub-resource ───────────────────────────────────────────────────
+router.post('/:articleId/generate-evaluation', generateEvaluation);
+router.post('/:articleId/submit-evaluation', submitEvaluation);
+router.get('/:articleId/evaluation', getEvaluation);
 
 module.exports = router;

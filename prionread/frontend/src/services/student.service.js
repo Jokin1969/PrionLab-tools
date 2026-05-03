@@ -13,7 +13,7 @@ export const studentService = {
   },
 
   markAsRead: async (articleId) => {
-    const response = await api.post(`/my-articles/${articleId}/read`);
+    const response = await api.put(`/my-articles/${articleId}/mark-as-read`);
     return response.data;
   },
 
@@ -36,7 +36,7 @@ export const studentService = {
   },
 
   generateAISummary: async (articleId) => {
-    const response = await api.post(`/my-articles/${articleId}/summary/ai`);
+    const response = await api.post(`/my-articles/${articleId}/generate-ai-summary`);
     return response.data;
   },
 
