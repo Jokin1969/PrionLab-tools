@@ -13,6 +13,7 @@ const {
   getDownloadLink,
   deleteArticlePDF,
   listDropboxFiles,
+  clearPdfLink,
 } = require('../controllers/articleController');
 
 const router = Router();
@@ -74,5 +75,6 @@ router.post(
 
 router.get('/:id/pdf/link', authenticate, getDownloadLink);
 router.delete('/:id/pdf', authenticate, requireAdmin, deleteArticlePDF);
+router.delete('/:id/pdf-link', authenticate, requireAdmin, clearPdfLink);
 
 module.exports = router;

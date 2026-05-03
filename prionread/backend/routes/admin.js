@@ -3,6 +3,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getGlobalDashboard } = require('../controllers/adminDashboardController');
 const { getUserDetailedStats, exportUsersCSV, resetUserPassword, sendReminderToUser } = require('../controllers/adminUserController');
 const { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll } = require('../controllers/adminArticleController');
+const { verifyArticlePDFs, syncDropboxPDFs } = require('../controllers/articleController');
 const notificationService = require('../services/notificationService');
 
 const router = Router();
@@ -20,6 +21,10 @@ router.post('/users/:userId/send-reminder',    sendReminderToUser);
 // Article analytics — static routes BEFORE /:articleId
 router.get('/articles/analytics',           getArticlesAnalytics);
 router.get('/articles/assignments-matrix',  getAssignmentsMatrix);
+
+// PDF health check
+router.post('/articles/verify-pdfs',  verifyArticlePDFs);
+router.post('/articles/sync-dropbox', syncDropboxPDFs);
 
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);
