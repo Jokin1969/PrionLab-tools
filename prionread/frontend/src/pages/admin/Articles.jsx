@@ -40,6 +40,7 @@ const AdminArticles = () => {
   const [filterNoPdf, setFilterNoPdf] = useState(false);
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
   const [savingInline, setSavingInline] = useState(null);
+  const [uploadingPdf, setUploadingPdf] = useState(null);
   const [filters, setFilters] = useState({
     is_milestone: '',
     year: '',
@@ -115,7 +116,6 @@ const AdminArticles = () => {
     try {
       const fd = new FormData();
       fd.append('title', article.title);
-      // Only send doi/pubmed_id when non-empty — empty string triggers false 409 conflicts
       if (article.doi) fd.append('doi', article.doi);
       if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
       Object.entries(patch).forEach(([k, v]) => fd.append(k, String(v)));
@@ -127,6 +127,31 @@ const AdminArticles = () => {
       flash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
     } finally {
       setSavingInline(null);
+    }
+  };
+
+  const handlePdfUpload = async (article, file) => {
+    setUploadingPdf(article.id);
+    try {
+      const fd = new FormData();
+      fd.append('title', article.title);
+      if (article.doi) fd.append('doi', article.doi);
+      if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
+      fd.append('pdf', file);
+      const updated = await adminService.updateArticle(article.id, fd);
+      const newPath =
+        updated.dropbox_path ??
+        updated.article?.dropbox_path ??
+        updated.pdf_url ??
+        'uploaded';
+      setArticles((prev) =>
+        prev.map((a) => (a.id === article.id ? { ...a, dropbox_path: newPath } : a))
+      );
+      flash('PDF subido correctamente');
+    } catch (err) {
+      flash(err?.response?.data?.error || err?.message || 'Error subiendo PDF');
+    } finally {
+      setUploadingPdf(null);
     }
   };
 
@@ -279,6 +304,7 @@ const AdminArticles = () => {
                 ) : filteredArticles.map((article) => {
                   const { error, warn } = articleCompleteness(article);
                   const isSaving = savingInline === article.id;
+                  const isUploadingPdf = uploadingPdf === article.id;
                   return (
                     <tr key={article.id} className={`hover:bg-gray-50 ${isSaving ? 'opacity-60' : ''}`}>
                       <td className="px-4 py-4 max-w-sm">
@@ -302,7 +328,7 @@ const AdminArticles = () => {
                           {error.length > 0 && (
                             <span
                               title={`Falta: ${error.join(', ')}`}
-                              className="flex-shrink-0 text-red-500 font-bold text-sm cursor-help"
+                              className="flex-shrink-0 text-red-500 font-bold text-sm cursor-pointer select-none"
                             >
                               !
                             </span>
@@ -310,7 +336,7 @@ const AdminArticles = () => {
                           {error.length === 0 && warn.length > 0 && (
                             <span
                               title={`Falta: ${warn.join(', ')}`}
-                              className="flex-shrink-0 text-sm cursor-help"
+                              className="flex-shrink-0 text-sm cursor-pointer select-none"
                             >
                               ⚠️
                             </span>
@@ -350,17 +376,43 @@ const AdminArticles = () => {
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <div className="flex gap-1 flex-wrap">
-                          {article.dropbox_path && (
+                        <div className="flex gap-1 flex-wrap items-center">
+                          {/* PDF button: grey=no pdf, spinner=uploading, rose=has pdf */}
+                          {article.dropbox_path ? (
                             <a
                               href={article.dropbox_path}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                              className="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded hover:bg-rose-200"
                               title="Abrir PDF"
                             >
                               PDF
                             </a>
+                          ) : isUploadingPdf ? (
+                            <span className="px-2 py-1 text-xs bg-gray-100 text-gray-400 rounded flex items-center gap-1">
+                              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                              PDF
+                            </span>
+                          ) : (
+                            <label
+                              className="px-2 py-1 text-xs bg-gray-200 text-gray-500 rounded hover:bg-gray-300 cursor-pointer select-none"
+                              title="Sin PDF — haz clic para subir"
+                            >
+                              <input
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files[0];
+                                  if (file) handlePdfUpload(article, file);
+                                  e.target.value = '';
+                                }}
+                              />
+                              PDF
+                            </label>
                           )}
                           {article.doi && (
                             <a
