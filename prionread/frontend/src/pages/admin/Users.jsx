@@ -1,216 +1,240 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  RiSearchLine, RiDownloadLine, RiUserAddLine,
-  RiMoreLine, RiMailLine, RiDeleteBin6Line,
-} from 'react-icons/ri';
-import api from '../../services/api';
-import PageHeader from '../../components/layout/PageHeader';
-import Spinner from '../../components/ui/Spinner';
+import { useState, useEffect } from 'react';
+import { adminService } from '../../services/admin.service';
+import { UserModal } from '../../components/admin/UserModal';
+import { Card, Button, Input, Loader } from '../../components/common';
 
-function CreateUserModal({ onClose, onCreated }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setErr('');
-    setSaving(true);
-    try {
-      await api.post('/users', { name, email, role: 'student' });
-      onCreated();
-      onClose();
-    } catch (error) {
-      setErr(error.response?.data?.error || 'Error al crear usuario');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="card w-full max-w-sm p-6 space-y-4">
-        <h2 className="font-semibold text-gray-900">Nuevo estudiante</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Nombre</label>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className="input" />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Email</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input" />
-          </div>
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
-            <button type="submit" disabled={saving} className="btn-primary flex-1">
-              {saving ? <Spinner size="sm" /> : 'Crear'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export default function AdminUsers() {
+const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [actionMsg, setActionMsg] = useState('');
+  const [editingUser, setEditingUser] = useState(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [msg, setMsg] = useState('');
 
-  const fetchUsers = useCallback(() => {
+  useEffect(() => {
+    loadUsers();
+  }, [roleFilter]);
+
+  const loadUsers = async () => {
     setLoading(true);
-    const params = new URLSearchParams({ role: 'student' });
-    if (search) params.set('search', search);
-    api.get(`/users?${params}`)
-      .then((res) => setUsers(res.data.users ?? res.data))
-      .catch(() => setUsers([]))
-      .finally(() => setLoading(false));
-  }, [search]);
-
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
-
-  async function exportCSV() {
     try {
-      const res = await api.get('/admin/users/export', { responseType: 'blob' });
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'estudiantes.csv';
-      a.click();
-      URL.revokeObjectURL(url);
+      const filters = {};
+      if (roleFilter) filters.role = roleFilter;
+      const data = await adminService.getUsers(filters);
+      setUsers(data.users || []);
+    } catch (error) {
+      console.error('Error loading users:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const flash = (text) => {
+    setMsg(text);
+    setTimeout(() => setMsg(''), 3000);
+  };
+
+  const handleCreateUser = async (userData) => {
+    await adminService.createUser(userData);
+    loadUsers();
+    flash('Usuario creado correctamente');
+  };
+
+  const handleUpdateUser = async (userData) => {
+    await adminService.updateUser(editingUser.id, userData);
+    loadUsers();
+    setEditingUser(null);
+    flash('Usuario actualizado correctamente');
+  };
+
+  const handleDeleteUser = async (userId, userName) => {
+    if (!window.confirm(`¿Eliminar usuario ${userName}?`)) return;
+    try {
+      await adminService.deleteUser(userId);
+      loadUsers();
+      flash('Usuario eliminado');
     } catch {
-      setActionMsg('Error al exportar CSV');
+      flash('Error eliminando usuario');
     }
-  }
+  };
 
-  async function sendReminder(userId) {
+  const handleResetPassword = async (userId, userEmail) => {
+    if (!window.confirm(`¿Resetear contraseña para ${userEmail}?`)) return;
     try {
-      await api.post(`/admin/users/${userId}/reminder`);
-      setActionMsg('Recordatorio enviado');
+      const data = await adminService.resetUserPassword(userId);
+      flash(`Nueva contraseña generada para ${userEmail}${data.temp_password ? `: ${data.temp_password}` : '. Se ha enviado por email.'}`);
     } catch {
-      setActionMsg('Error al enviar recordatorio');
+      flash('Error reseteando contraseña');
     }
-    setTimeout(() => setActionMsg(''), 3000);
-  }
+  };
 
-  async function deleteUser(userId) {
-    if (!window.confirm('¿Eliminar este estudiante?')) return;
-    try {
-      await api.delete(`/users/${userId}`);
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
-      setActionMsg('Usuario eliminado');
-    } catch (err) {
-      setActionMsg(err.response?.data?.error || 'Error al eliminar usuario');
-    }
-    setTimeout(() => setActionMsg(''), 3000);
-  }
+  const filteredUsers = users.filter(
+    (user) =>
+      user.name?.toLowerCase().includes(search.toLowerCase()) ||
+      user.email?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div>
-      <PageHeader
-        title="Estudiantes"
-        subtitle="Gestión de usuarios del laboratorio"
-        action={
-          <div className="flex gap-2">
-            <button onClick={exportCSV} className="btn-secondary flex items-center gap-2 text-sm">
-              <RiDownloadLine className="h-4 w-4" />
-              CSV
-            </button>
-            <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2 text-sm">
-              <RiUserAddLine className="h-4 w-4" />
-              Nuevo
-            </button>
-          </div>
-        }
-      />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">👥 Usuarios</h1>
+          <p className="text-gray-600 mt-1">Gestiona estudiantes y administradores</p>
+        </div>
+        <Button onClick={() => { setEditingUser(null); setShowModal(true); }}>
+          + Nuevo Usuario
+        </Button>
+      </div>
 
-      <div className="p-6 space-y-4">
-        {actionMsg && (
-          <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{actionMsg}</p>
-        )}
+      {msg && (
+        <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          {msg}
+        </div>
+      )}
 
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar estudiante..."
+      {/* Filters */}
+      <Card>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <Input
+              placeholder="Buscar por nombre o email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && fetchUsers()}
-              className="input pl-9"
             />
           </div>
-          <button onClick={fetchUsers} className="btn-secondary">Buscar</button>
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
+          >
+            <option value="">Todos los roles</option>
+            <option value="student">Estudiantes</option>
+            <option value="admin">Administradores</option>
+          </select>
         </div>
+      </Card>
 
-        {loading ? (
-          <div className="flex justify-center py-12"><Spinner size="lg" /></div>
-        ) : (
-          <div className="card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      {/* Users Table */}
+      {loading ? (
+        <Loader />
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3">Nombre</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3 text-center">Leídos</th>
-                  <th className="px-4 py-3 text-center">Pendientes</th>
-                  <th className="px-4 py-3 text-right">Acciones</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año Inicio</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progreso</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {users.length === 0 ? (
+              <tbody className="divide-y divide-gray-200">
+                {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-gray-400">
-                      No se encontraron estudiantes
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-400">
+                      No se encontraron usuarios
                     </td>
                   </tr>
-                ) : users.map((u) => (
-                  <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-prion-primary">
-                          {u.name?.[0]?.toUpperCase()}
+                ) : filteredUsers.map((user) => {
+                  const totalAssigned = user.total_assigned ?? user.stats?.total_assigned;
+                  const totalEvaluated = user.total_evaluated ?? user.stats?.evaluated;
+                  return (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {user.photo_url ? (
+                            <img
+                              src={user.photo_url}
+                              alt={user.name}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                              <span className="text-prion-primary font-semibold">
+                                {user.name?.charAt(0)?.toUpperCase() ?? '?'}
+                              </span>
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-semibold text-gray-900">{user.name}</p>
+                            <p className="text-sm text-gray-600">{user.email}</p>
+                          </div>
                         </div>
-                        {u.name}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{u.email}</td>
-                    <td className="px-4 py-3 text-center">{u.stats?.reads_count ?? u.reads_count ?? '—'}</td>
-                    <td className="px-4 py-3 text-center">{u.stats?.pending_count ?? u.pending_count ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => sendReminder(u.id)}
-                          title="Enviar recordatorio"
-                          className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                        >
-                          <RiMailLine className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteUser(u.id)}
-                          title="Eliminar"
-                          className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <RiDeleteBin6Line className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 text-xs font-medium rounded ${
+                          user.role === 'admin'
+                            ? 'bg-amber-100 text-amber-600'
+                            : 'bg-blue-100 text-blue-600'
+                        }`}>
+                          {user.role === 'admin' ? 'Admin' : 'Estudiante'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {user.year_started || '—'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {totalAssigned != null && totalAssigned > 0 ? (
+                          <div className="text-sm">
+                            <p className="text-gray-900">
+                              {totalEvaluated ?? 0}/{totalAssigned}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {(((totalEvaluated ?? 0) / totalAssigned) * 100).toFixed(0)}%
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setEditingUser(user); setShowModal(true); }}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleResetPassword(user.id, user.email)}
+                          >
+                            Reset Pass
+                          </Button>
+                          {user.role !== 'admin' && (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleDeleteUser(user.id, user.name)}
+                            >
+                              Eliminar
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      {showModal && (
-        <CreateUserModal onClose={() => setShowModal(false)} onCreated={fetchUsers} />
+        </Card>
       )}
+
+      <UserModal
+        isOpen={showModal}
+        onClose={() => { setShowModal(false); setEditingUser(null); }}
+        onSave={editingUser ? handleUpdateUser : handleCreateUser}
+        user={editingUser}
+      />
     </div>
   );
-}
+};
+
+export default AdminUsers;
