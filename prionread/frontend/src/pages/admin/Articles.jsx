@@ -15,9 +15,7 @@ const DOT_CLS = {
   evaluated:  'bg-green-400  cursor-default',
 };
 
-const STATUS_LABELS = {
-  read: 'leídos', summarized: 'resumidos', evaluated: 'evaluados',
-};
+const STATUS_LABELS = { read: 'leídos', summarized: 'resumidos', evaluated: 'evaluados' };
 
 function initials(name) {
   const p = name.trim().split(/\s+/);
@@ -43,25 +41,25 @@ const AdminArticles = () => {
 
   const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
   const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
-
-  const [articles, setArticles]             = useState([]);
-  const [loading, setLoading]               = useState(true);
-  const [showModal, setShowModal]           = useState(false);
-  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [articles, setArticles]         = useState([]);
+  const [total, setTotal]               = useState(null);
+  const [loading, setLoading]           = useState(true);
+  const [showModal, setShowModal]       = useState(false);
+  const [showBatchModal, setShowBatchModal]   = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
-  const [editingArticle, setEditingArticle] = useState(null);
+  const [editingArticle, setEditingArticle]   = useState(null);
   const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
-  const [search, setSearch]                 = useState('');
-  const [filterNoPdf, setFilterNoPdf]       = useState(false);
+  const [search, setSearch]             = useState('');
+  const [filterNoPdf, setFilterNoPdf]   = useState(false);
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
-  const [filters, setFilters]               = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
-  const [msg, setMsg]                       = useState('');
-  const [errMsg, setErrMsg]                 = useState('');
-  const [students, setStudents]             = useState([]);
-  const [matrix, setMatrix]                 = useState({});
-  const [loadingPdf, setLoadingPdf]         = useState(null);
-  const [uploadingPdf, setUploadingPdf]     = useState(null);
-  const [savingInline, setSavingInline]     = useState(null);
+  const [filters, setFilters]           = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
+  const [msg, setMsg]                   = useState('');
+  const [errMsg, setErrMsg]             = useState('');
+  const [students, setStudents]         = useState([]);
+  const [matrix, setMatrix]             = useState({});
+  const [loadingPdf, setLoadingPdf]     = useState(null);
+  const [uploadingPdf, setUploadingPdf] = useState(null);
+  const [savingInline, setSavingInline] = useState(null);
   const [fetchingAbstract, setFetchingAbstract] = useState(null);
   const [abstractPreview, setAbstractPreview]   = useState(null);
 
@@ -70,6 +68,7 @@ const AdminArticles = () => {
     try {
       const data = await adminService.getArticles(filters);
       setArticles(data.articles || []);
+      if (data.total != null) setTotal(data.total);
     } catch (err) { console.error('Error loading articles:', err); }
     finally { setLoading(false); }
   }, [filters]);
@@ -180,7 +179,7 @@ const AdminArticles = () => {
       if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
       fd.append('pdf', file);
       const updated = await adminService.updateArticle(article.id, fd);
-      const newPath = updated.dropbox_path ?? updated.article?.dropbox_path ?? updated.pdf_url ?? 'uploaded';
+      const newPath = updated.dropbox_path ?? updated.article?.dropbox_path ?? 'uploaded';
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, dropbox_path: newPath } : a));
       flash('PDF subido correctamente');
     } catch (err) {
@@ -246,7 +245,6 @@ const AdminArticles = () => {
     }
     return true;
   });
-
   if (filterNoPdf)      filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
   if (filterNoAbstract) filteredArticles = filteredArticles.filter((a) => !a.abstract);
 
@@ -255,6 +253,9 @@ const AdminArticles = () => {
     : 'todos los asignados';
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
+
+  const isFiltered = search || filterNoPdf || filterNoAbstract || userFilter ||
+    filters.is_milestone || (filters.year && filters.year !== '');
 
   return (
     <div className="space-y-6">
@@ -301,29 +302,31 @@ const AdminArticles = () => {
           </select>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
-          <p className="text-sm text-gray-600">Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos</p>
+          <p className="text-sm text-gray-600">
+            Mostrando{' '}
+            <span className="font-semibold">{filteredArticles.length}</span>
+            {isFiltered && total != null && filteredArticles.length !== total && (
+              <> de <span className="font-semibold">{total}</span> en total</>
+            )}
+            {!isFiltered && total != null && (
+              <> de <span className="font-semibold">{total}</span> en total</>
+            )}{' '}
+            artículos
+          </p>
           {students.length > 0 && (
             <p className="text-xs text-gray-400">
               • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado
             </p>
           )}
           <div className="flex gap-2 ml-auto">
-            <button
-              onClick={() => setFilterNoPdf((v) => !v)}
+            <button onClick={() => setFilterNoPdf((v) => !v)}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                 filterNoPdf ? 'bg-red-500 text-white border-red-500' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'
-              }`}
-            >
-              Sin PDF
-            </button>
-            <button
-              onClick={() => setFilterNoAbstract((v) => !v)}
+              }`}>Sin PDF</button>
+            <button onClick={() => setFilterNoAbstract((v) => !v)}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                 filterNoAbstract ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
-              }`}
-            >
-              Sin Abstract
-            </button>
+              }`}>Sin Abstract</button>
           </div>
         </div>
       </Card>
@@ -341,17 +344,10 @@ const AdminArticles = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
                   {students.length > 0 && (
                     <th className="w-6 px-1 py-3 text-center" title={userFilter ? 'Quitar filtro de estudiante' : 'Sin filtro activo'}>
-                      <button
-                        onClick={clearUserFilter}
-                        disabled={!userFilter}
+                      <button onClick={clearUserFilter} disabled={!userFilter}
                         className={`text-base leading-none transition-colors ${
-                          userFilter
-                            ? 'text-indigo-500 hover:text-indigo-700 cursor-pointer'
-                            : 'text-gray-300 cursor-default'
-                        }`}
-                      >
-                        ↺
-                      </button>
+                          userFilter ? 'text-indigo-500 hover:text-indigo-700 cursor-pointer' : 'text-gray-300 cursor-default'
+                        }`}>↺</button>
                     </th>
                   )}
                   {students.map((s) => {
@@ -360,20 +356,13 @@ const AdminArticles = () => {
                     return (
                       <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
                         <div>{initials(s.name)}</div>
-                        <button
-                          onClick={() => handleStudentCountClick(s, count)}
-                          disabled={count === 0}
+                        <button onClick={() => handleStudentCountClick(s, count)} disabled={count === 0}
                           title={count > 0 ? `Filtrar por ${s.name} (${count} asignados)` : 'Sin artículos asignados'}
                           className={`text-xs font-normal leading-tight rounded px-1 transition-colors ${
-                            count === 0
-                              ? 'text-gray-300 cursor-default'
-                              : isActive
-                                ? 'bg-indigo-600 text-white cursor-pointer'
-                                : 'text-indigo-500 hover:bg-indigo-100 cursor-pointer'
-                          }`}
-                        >
-                          {count}
-                        </button>
+                            count === 0 ? 'text-gray-300 cursor-default'
+                              : isActive ? 'bg-indigo-600 text-white cursor-pointer'
+                              : 'text-indigo-500 hover:bg-indigo-100 cursor-pointer'
+                          }`}>{count}</button>
                       </th>
                     );
                   })}
@@ -385,37 +374,28 @@ const AdminArticles = () => {
                   <tr><td colSpan={totalCols} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
                 ) : filteredArticles.map((article) => {
                   const { level, missing } = articleCompleteness(article);
-                  const saving            = savingInline === article.id;
-                  const isUploadingPdf    = uploadingPdf === article.id;
-                  const isFetchingAbs     = fetchingAbstract === article.id;
-                  const showAbsPreview    = abstractPreview?.id === article.id;
+                  const saving         = savingInline === article.id;
+                  const isUploadingPdf = uploadingPdf === article.id;
+                  const isFetchingAbs  = fetchingAbstract === article.id;
+                  const showAbsPreview = abstractPreview?.id === article.id;
                   return (
                     <Fragment key={article.id}>
                       <tr className={`hover:bg-gray-50 ${showAbsPreview ? 'bg-violet-50' : ''} ${saving ? 'opacity-60' : ''}`}>
-
                         <td className="px-6 py-4 max-w-xs">
                           <div className="flex items-start gap-2">
-                            <button
-                              title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
+                            <button title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
                               disabled={saving}
-                              onClick={() => handleInlineUpdate(article, {
-                                is_milestone: !article.is_milestone,
-                                priority: !article.is_milestone ? 5 : article.priority,
-                              })}
-                              className="shrink-0 mt-0.5 text-base leading-none hover:scale-125 transition-transform disabled:opacity-40"
-                            >
+                              onClick={() => handleInlineUpdate(article, { is_milestone: !article.is_milestone, priority: !article.is_milestone ? 5 : article.priority })}
+                              className="shrink-0 mt-0.5 text-base leading-none hover:scale-125 transition-transform disabled:opacity-40">
                               {article.is_milestone ? '⭐' : '☆'}
                             </button>
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold text-gray-900 truncate">{article.title}</p>
                               <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
                               {!article.abstract && !showAbsPreview && (
-                                <button
-                                  onClick={() => handleFetchAbstract(article)}
-                                  disabled={isFetchingAbs}
+                                <button onClick={() => handleFetchAbstract(article)} disabled={isFetchingAbs}
                                   className="mt-1 flex items-center gap-1 px-2 py-0.5 text-xs bg-violet-100 text-violet-700 rounded hover:bg-violet-200 disabled:opacity-50 disabled:cursor-wait transition-colors"
-                                  title="Obtener abstract desde DOI / PubMed"
-                                >
+                                  title="Obtener abstract desde DOI / PubMed">
                                   {isFetchingAbs ? (
                                     <><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Buscando…</>
                                   ) : '⬇️ Abstract'}
@@ -423,108 +403,67 @@ const AdminArticles = () => {
                               )}
                             </div>
                             {level !== 'ok' && (
-                              <span
-                                title={`Faltan: ${missing.join(', ')}`}
+                              <span title={`Faltan: ${missing.join(', ')}`}
                                 className={`shrink-0 mt-0.5 px-1.5 py-0.5 text-xs font-bold rounded cursor-pointer select-none ${
                                   level === 'warn' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
-                                }`}
-                              >
-                                {level === 'warn' ? '⚠️' : '!'}
-                              </span>
+                                }`}>{level === 'warn' ? '⚠️' : '!'}</span>
                             )}
                           </div>
                         </td>
-
                         <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
-
                         <td className="px-4 py-4">
-                          <select
-                            value={article.priority ?? 3}
-                            disabled={saving}
+                          <select value={article.priority ?? 3} disabled={saving}
                             onChange={(e) => handleInlineUpdate(article, { priority: parseInt(e.target.value) })}
                             className={`px-1.5 py-1 text-xs font-semibold rounded cursor-pointer border-0 focus:ring-2 focus:ring-prion-primary disabled:opacity-40 ${
                               article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
-                            }`}
-                          >
-                            {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>P{n}</option>)}
+                            }`}>
+                            {[1,2,3,4,5].map((n) => <option key={n} value={n}>P{n}</option>)}
                           </select>
                         </td>
-
                         <td className="px-4 py-4">
                           <div className="flex gap-1">
                             {article.dropbox_path ? (
-                              <button
-                                title="Abrir PDF"
-                                disabled={loadingPdf === article.id}
-                                onClick={() => handleOpenPdf(article)}
-                                className="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
-                              >
+                              <button title="Abrir PDF" disabled={loadingPdf === article.id} onClick={() => handleOpenPdf(article)}
+                                className="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50">
                                 {loadingPdf === article.id ? '…' : 'PDF'}
                               </button>
                             ) : isUploadingPdf ? (
                               <span className="px-2 py-1 text-xs bg-gray-100 text-gray-400 rounded flex items-center gap-1">
-                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                PDF
+                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>PDF
                               </span>
                             ) : (
-                              <button
-                                onClick={() => setPdfUploadTarget(article)}
-                                title="Sin PDF — haz clic para subir"
-                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer"
-                              >
-                                PDF
-                              </button>
+                              <button onClick={() => setPdfUploadTarget(article)} title="Sin PDF — haz clic para subir"
+                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer">PDF</button>
                             )}
-
                             {article.doi ? (
-                              <a
-                                href={`https://doi.org/${article.doi}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <a href={`https://doi.org/${article.doi}`} target="_blank" rel="noopener noreferrer"
                                 title={`Ver en web — doi.org/${article.doi}`}
-                                className="px-2 py-1 text-xs font-bold rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                              >
-                                DOI
-                              </a>
+                                className="px-2 py-1 text-xs font-bold rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200">DOI</a>
                             ) : article.pubmed_id ? (
-                              <a
-                                href={`https://pubmed.ncbi.nlm.nih.gov/${article.pubmed_id}/`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <a href={`https://pubmed.ncbi.nlm.nih.gov/${article.pubmed_id}/`} target="_blank" rel="noopener noreferrer"
                                 title={`Ver en PubMed — PMID ${article.pubmed_id}`}
-                                className="px-2 py-1 text-xs font-bold rounded bg-teal-100 text-teal-700 hover:bg-teal-200"
-                              >
-                                PMID
-                              </a>
+                                className="px-2 py-1 text-xs font-bold rounded bg-teal-100 text-teal-700 hover:bg-teal-200">PMID</a>
                             ) : (
                               <span title="Sin DOI ni PubMed ID" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">DOI</span>
                             )}
                           </div>
                         </td>
-
                         <td className="px-6 py-4 text-sm text-gray-600">
                           {article.times_read != null && <p>{article.times_read} lecturas</p>}
                           {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
                         </td>
-
                         {students.length > 0 && <td className="w-6" />}
-
                         {students.map((s) => {
-                          const asgn   = matrix[article.id]?.[s.id];
-                          const status = asgn?.status ?? 'none';
-                          const cls    = DOT_CLS[status] ?? DOT_CLS.none;
+                          const asgn = matrix[article.id]?.[s.id];
+                          const cls  = DOT_CLS[asgn?.status ?? 'none'] ?? DOT_CLS.none;
                           return (
                             <td key={s.id} className="px-2 py-4 text-center">
-                              <button
-                                title={asgn ? `${s.name}: ${status}` : `Asignar a ${s.name}`}
-                                onClick={() => handleDotClick(article.id, s)}
-                                disabled={!!asgn}
-                                className={`w-4 h-4 rounded-full inline-block transition-colors ${cls}`}
-                              />
+                              <button title={asgn ? `${s.name}: ${asgn.status}` : `Asignar a ${s.name}`}
+                                onClick={() => handleDotClick(article.id, s)} disabled={!!asgn}
+                                className={`w-4 h-4 rounded-full inline-block transition-colors ${cls}`} />
                             </td>
                           );
                         })}
-
                         <td className="px-6 py-4">
                           <div className="flex gap-2 flex-wrap">
                             <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
@@ -533,7 +472,6 @@ const AdminArticles = () => {
                           </div>
                         </td>
                       </tr>
-
                       {showAbsPreview && (
                         <tr className="bg-violet-50">
                           <td colSpan={totalCols} className="px-8 pb-5 pt-0">
@@ -543,14 +481,9 @@ const AdminArticles = () => {
                               </p>
                               <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{abstractPreview.text}</p>
                               <div className="flex gap-2 mt-4">
-                                <button onClick={() => setAbstractPreview(null)} className="px-4 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
-                                  Cancelar
-                                </button>
-                                <button
-                                  onClick={() => handleSaveAbstract(article)}
-                                  disabled={savingInline === article.id}
-                                  className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
-                                >
+                                <button onClick={() => setAbstractPreview(null)} className="px-4 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Cancelar</button>
+                                <button onClick={() => handleSaveAbstract(article)} disabled={savingInline === article.id}
+                                  className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50">
                                   {savingInline === article.id ? 'Guardando…' : 'Introducir'}
                                 </button>
                               </div>
@@ -567,28 +500,13 @@ const AdminArticles = () => {
         </Card>
       )}
 
-      <ArticleModal
-        isOpen={showModal}
-        onClose={() => { setShowModal(false); setEditingArticle(null); }}
-        onSave={editingArticle ? handleUpdateArticle : handleCreateArticle}
-        article={editingArticle}
-      />
-      <BatchImportModal
-        isOpen={showBatchModal}
-        onClose={() => setShowBatchModal(false)}
-        onImported={() => { loadArticles(); flash('Importación completada'); }}
-      />
-      <PdfUploadModal
-        isOpen={Boolean(pdfUploadTarget)}
-        onClose={() => setPdfUploadTarget(null)}
-        article={pdfUploadTarget}
-        onUpload={handlePdfUpload}
-      />
-      <PdfVerifyModal
-        isOpen={showVerifyModal}
-        onClose={() => setShowVerifyModal(false)}
-        onFixed={loadArticles}
-      />
+      <ArticleModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingArticle(null); }}
+        onSave={editingArticle ? handleUpdateArticle : handleCreateArticle} article={editingArticle} />
+      <BatchImportModal isOpen={showBatchModal} onClose={() => setShowBatchModal(false)}
+        onImported={() => { loadArticles(); flash('Importación completada'); }} />
+      <PdfUploadModal isOpen={Boolean(pdfUploadTarget)} onClose={() => setPdfUploadTarget(null)}
+        article={pdfUploadTarget} onUpload={handlePdfUpload} />
+      <PdfVerifyModal isOpen={showVerifyModal} onClose={() => setShowVerifyModal(false)} onFixed={loadArticles} />
     </div>
   );
 };
