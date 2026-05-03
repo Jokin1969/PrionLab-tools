@@ -930,6 +930,15 @@ const PrionPacks = (() => {
     (methods || []).forEach((m, idx) => list.appendChild(_createMethodItem(m, idx)));
     _setupAnchorButtons(list);
     _setupSupPreviews(list);
+    _initDragDrop(list, {
+      itemSelector: '.pp-method-item',
+      onReorder: () => {
+        _renumberMethods();
+        _refreshAllJumpButtons();
+        _recalcScore();
+        _scheduleAutosave();
+      },
+    });
     _refreshAllJumpButtons();
   }
 
@@ -939,8 +948,10 @@ const PrionPacks = (() => {
     const data = m || {};
     const div = document.createElement('div');
     div.className = 'pp-method-item';
+    div.draggable = true;
     div.innerHTML = `
       <div class="pp-method-header">
+        <i class="fas fa-grip-vertical pp-drag-handle" title="Arrastra para reordenar"></i>
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar método"></button>
         <span class="pp-method-number">M-${String(idx + 1).padStart(2, '0')}</span>
         <input type="text" id="${titleId}" class="pp-input pp-method-title-input" placeholder="Título del método…" value="${_esc(data.title || '')}" />
@@ -1008,6 +1019,15 @@ const PrionPacks = (() => {
     list.appendChild(item);
     _setupAnchorButtons(item);
     _setupSupPreviews(item);
+    _initDragDrop(list, {
+      itemSelector: '.pp-method-item',
+      onReorder: () => {
+        _renumberMethods();
+        _refreshAllJumpButtons();
+        _recalcScore();
+        _scheduleAutosave();
+      },
+    });
     if (focus) item.querySelector('input').focus();
     _scheduleAutosave();
     _updateCollapseIndicators();
@@ -1564,7 +1584,16 @@ const PrionPacks = (() => {
     }
     empty.style.display = 'none';
     findings.forEach((f, i) => container.appendChild(_createFindingBlock(f, i + 1)));
-    _initDragDrop(container);
+    _initDragDrop(container, {
+      itemSelector: '.pp-finding-block',
+      onReorder: () => {
+        _renumberFindings();
+        _refreshGapFindingSelects();
+        _recalcScore();
+        _refreshAllJumpButtons();
+        _scheduleAutosave();
+      },
+    });
     _updateCollapseIndicators();
     _setupAnchorButtons(container);
     _setupSupPreviews(container);
@@ -2217,7 +2246,16 @@ const PrionPacks = (() => {
     _setupSupPreviews(block);
     document.getElementById('findings-empty').style.display = 'none';
     block.querySelector('.pp-finding-title-input').focus();
-    _initDragDrop(container);
+    _initDragDrop(container, {
+      itemSelector: '.pp-finding-block',
+      onReorder: () => {
+        _renumberFindings();
+        _refreshGapFindingSelects();
+        _recalcScore();
+        _refreshAllJumpButtons();
+        _scheduleAutosave();
+      },
+    });
     _refreshGapFindingSelects();
     _recalcScore();
     _refreshAllJumpButtons();
@@ -2347,18 +2385,20 @@ const PrionPacks = (() => {
   }
 
   /* ── Drag & Drop ───────────────────────────────────────────────────────── */
-  function _initDragDrop(container) {
+  function _initDragDrop(container, opts) {
+    const itemSelector = opts?.itemSelector || '.pp-finding-block';
+    const onReorder    = opts?.onReorder    || (() => {});
     let dragging = null;
-    container.querySelectorAll('.pp-finding-block').forEach(block => {
+    container.querySelectorAll(itemSelector).forEach(block => {
+      if (block.dataset.dragWired === '1') return;
+      block.draggable = true;
       block.addEventListener('dragstart', e => {
         dragging = block; block.style.opacity = '.4'; e.dataTransfer.effectAllowed = 'move';
       });
       block.addEventListener('dragend', () => {
         dragging = null; block.style.opacity = '';
-        container.querySelectorAll('.pp-finding-block').forEach(b => b.classList.remove('drag-over'));
-        _renumberFindings();
-        _refreshGapFindingSelects();
-        _recalcScore();
+        container.querySelectorAll(itemSelector).forEach(b => b.classList.remove('drag-over'));
+        onReorder();
       });
       block.addEventListener('dragover', e => {
         e.preventDefault();
@@ -2366,11 +2406,12 @@ const PrionPacks = (() => {
         const mid = block.getBoundingClientRect().top + block.getBoundingClientRect().height / 2;
         if (e.clientY < mid) container.insertBefore(dragging, block);
         else block.insertAdjacentElement('afterend', dragging);
-        container.querySelectorAll('.pp-finding-block').forEach(b => b.classList.remove('drag-over'));
+        container.querySelectorAll(itemSelector).forEach(b => b.classList.remove('drag-over'));
         block.classList.add('drag-over');
       });
       block.addEventListener('dragleave', () => block.classList.remove('drag-over'));
       block.addEventListener('drop', e => { e.preventDefault(); block.classList.remove('drag-over'); });
+      block.dataset.dragWired = '1';
     });
   }
 

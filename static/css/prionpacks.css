@@ -855,7 +855,8 @@
 }
 
 .pp-finding-block:hover { border-color: var(--pp-border-light); box-shadow: var(--pp-shadow); }
-.pp-finding-block.drag-over { border-color: var(--pp-accent); box-shadow: 0 0 0 3px var(--pp-accent-glow); }
+.pp-finding-block.drag-over,
+.pp-method-item.drag-over { border-color: var(--pp-accent); box-shadow: 0 0 0 3px var(--pp-accent-glow); }
 
 .pp-finding-header {
   display: flex;
