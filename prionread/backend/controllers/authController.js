@@ -1,6 +1,7 @@
 const { User } = require('../models');
 const { generateToken } = require('../utils/jwt');
 const { generatePassword } = require('../utils/generatePassword');
+const emailService = require('../services/emailService');
 
 // --- Validation helpers ---
 
@@ -36,10 +37,11 @@ async function register(req, res) {
       photo_url: photo_url || null,
     });
 
-    // TODO: replace with real email sending
-    console.log('[AUTH] New user created — email would be sent:');
-    console.log(`  To: ${user.email}`);
-    console.log(`  Temp password: ${tempPassword}`);
+    try {
+      await emailService.sendWelcomeEmail(user, tempPassword);
+    } catch (emailErr) {
+      console.error('[register] Welcome email failed:', emailErr.message);
+    }
 
     return res.status(201).json({
       user: {

@@ -2,6 +2,8 @@ const { Op } = require('sequelize');
 const { Parser: CsvParser } = require('json2csv');
 const { User, UserArticle, Article, Evaluation, ArticleSummary } = require('../models');
 const { generatePassword } = require('../utils/generatePassword');
+const emailService = require('../services/emailService');
+const { calculateUserStats } = require('../utils/userStats');
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -275,12 +277,15 @@ async function resetUserPassword(req, res) {
     user.password = tempPassword; // bcrypt hook fires on save
     await user.save();
 
-    // TODO: replace with real email service
-    console.log('[RESET] Password reset — email would be sent:');
-    console.log(`  To:   ${user.email}`);
-    console.log(`  Pass: ${tempPassword}`);
+    let emailSent = false;
+    try {
+      await emailService.sendPasswordResetEmail(user, tempPassword);
+      emailSent = true;
+    } catch (emailErr) {
+      console.error('[resetUserPassword] Email failed:', emailErr.message);
+    }
 
-    return res.json({ tempPassword, email_sent: false });
+    return res.json({ tempPassword, email_sent: emailSent });
   } catch (err) {
     console.error('[resetUserPassword]', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -302,13 +307,30 @@ async function sendReminderToUser(req, res) {
 
     const customMessage = req.body?.message?.trim() || null;
 
-    // TODO: replace with real email service
-    console.log('[REMINDER] Email would be sent:');
-    console.log(`  To:      ${user.email}`);
-    console.log(`  Pending: ${pendingCount} article(s)`);
-    if (customMessage) console.log(`  Message: ${customMessage}`);
+    let emailSent = false;
+    try {
+      if (customMessage) {
+        await emailService.sendCustomEmail(user, customMessage);
+      } else {
+        const stats = await calculateUserStats(user.id);
+        const nextArticles = await Article.findAll({
+          include: [{
+            model: UserArticle,
+            as: 'userArticles',
+            where: { user_id: user.id, status: 'pending' },
+            required: true,
+          }],
+          order: [['priority', 'DESC'], ['year', 'DESC']],
+          limit: 5,
+        });
+        await emailService.sendReminderEmail(user, stats, nextArticles);
+      }
+      emailSent = true;
+    } catch (emailErr) {
+      console.error('[sendReminderToUser] Email failed:', emailErr.message);
+    }
 
-    return res.json({ email_sent: false, pending_articles: pendingCount });
+    return res.json({ email_sent: emailSent, pending_articles: pendingCount });
   } catch (err) {
     console.error('[sendReminderToUser]', err);
     res.status(500).json({ error: 'Internal server error' });
