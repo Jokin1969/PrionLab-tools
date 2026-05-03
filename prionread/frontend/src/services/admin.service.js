@@ -52,6 +52,32 @@ export const adminService = {
     return response.data;
   },
 
+  // Assignments
+  getUserAssignments: async (userId) => {
+    const response = await api.get(`/assignments/user/${userId}`);
+    return response.data;
+  },
+
+  assignArticles: async (userId, articleIds) => {
+    const response = await api.post('/assignments', { user_id: userId, article_ids: articleIds });
+    return response.data;
+  },
+
+  removeAssignment: async (assignmentId) => {
+    const response = await api.delete(`/assignments/${assignmentId}`);
+    return response.data;
+  },
+
+  bulkAssign: async (userIds, articleIds) => {
+    const response = await api.post('/assignments/bulk', { user_ids: userIds, article_ids: articleIds });
+    return response.data;
+  },
+
+  assignArticleToAll: async (articleId) => {
+    const response = await api.post(`/admin/articles/${articleId}/assign-to-all`);
+    return response.data;
+  },
+
   // Articles
   getArticles: async (filters = {}) => {
     const params = new URLSearchParams(filters);
@@ -86,19 +112,9 @@ export const adminService = {
     return response.data;
   },
 
-  // Assignments
-  assignArticles: async (userId, articleIds) => {
-    const response = await api.post('/assignments', { user_id: userId, article_ids: articleIds });
-    return response.data;
-  },
-
-  bulkAssign: async (userIds, articleIds) => {
-    const response = await api.post('/assignments/bulk', { user_ids: userIds, article_ids: articleIds });
-    return response.data;
-  },
-
-  assignArticleToAll: async (articleId) => {
-    const response = await api.post(`/admin/articles/${articleId}/assign-to-all`);
+  // Reports
+  bulkCreateUsers: async (users) => {
+    const response = await api.post('/users/bulk-create', { users });
     return response.data;
   },
 };

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { adminService } from '../../services/admin.service';
 import { UserModal } from '../../components/admin/UserModal';
+import { UserAssignmentsModal } from '../../components/admin/UserAssignmentsModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const AdminUsers = () => {
@@ -8,6 +9,7 @@ const AdminUsers = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [assignmentsUser, setAssignmentsUser] = useState(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [msg, setMsg] = useState('');
@@ -71,7 +73,7 @@ const AdminUsers = () => {
     const newPassword = window.prompt(
       `Nueva contraseña para ${userEmail}:\n(dejar vacío para generar automáticamente)`
     );
-    if (newPassword === null) return; // cancelado
+    if (newPassword === null) return;
     try {
       const data = await adminService.resetUserPassword(userId, newPassword || undefined);
       setPasswordBanner({ email: userEmail, password: data.tempPassword });
@@ -100,7 +102,7 @@ const AdminUsers = () => {
         </Button>
       </div>
 
-      {/* Password banner — persists until dismissed */}
+      {/* Password banner */}
       {passwordBanner && (
         <div className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3">
           <div className="flex items-start justify-between gap-4">
@@ -232,6 +234,13 @@ const AdminUsers = () => {
                       <td className="px-6 py-4">
                         <div className="flex gap-2 flex-wrap">
                           <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setAssignmentsUser(user)}
+                          >
+                            Asignaciones
+                          </Button>
+                          <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => { setEditingUser(user); setShowModal(true); }}
@@ -270,6 +279,12 @@ const AdminUsers = () => {
         onClose={() => { setShowModal(false); setEditingUser(null); }}
         onSave={editingUser ? handleUpdateUser : handleCreateUser}
         user={editingUser}
+      />
+
+      <UserAssignmentsModal
+        isOpen={!!assignmentsUser}
+        onClose={() => setAssignmentsUser(null)}
+        user={assignmentsUser}
       />
     </div>
   );
