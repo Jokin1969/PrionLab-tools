@@ -55,7 +55,7 @@ const AdminArticles = () => {
   const [students, setStudents]         = useState([]);
   const [matrix, setMatrix]             = useState({});
   const [loadingPdf, setLoadingPdf]     = useState(null);
-  const [savingInline, setSavingInline] = useState(null); // article id being saved
+  const [savingInline, setSavingInline] = useState(null);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -99,7 +99,6 @@ const AdminArticles = () => {
       fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
       fd.append('priority',     String(patch.priority ?? article.priority));
       await adminService.updateArticle(article.id, fd);
-      // Optimistic local update to avoid full reload flicker
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, ...patch } : a));
     } catch { flash('Error guardando cambio'); }
     finally { setSavingInline(null); }
@@ -239,7 +238,7 @@ const AdminArticles = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PDF</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
                   {students.map((s) => (
                     <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
@@ -258,7 +257,6 @@ const AdminArticles = () => {
                   return (
                     <tr key={article.id} className={`hover:bg-gray-50 ${saving ? 'opacity-60' : ''}`}>
 
-                      {/* Title + milestone toggle + completeness */}
                       <td className="px-6 py-4 max-w-xs">
                         <div className="flex items-start gap-2">
                           <button
@@ -289,10 +287,8 @@ const AdminArticles = () => {
                         </div>
                       </td>
 
-                      {/* Year */}
                       <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
 
-                      {/* Priority inline select */}
                       <td className="px-4 py-4">
                         <select
                           value={article.priority ?? 3}
@@ -308,29 +304,44 @@ const AdminArticles = () => {
                         </select>
                       </td>
 
-                      {/* PDF */}
+                      {/* PDF + DOI web link */}
                       <td className="px-4 py-4">
-                        <button
-                          title={article.dropbox_path ? 'Abrir PDF' : 'Sin PDF'}
-                          disabled={!article.dropbox_path || loadingPdf === article.id}
-                          onClick={() => handleOpenPdf(article)}
-                          className={`px-2 py-1 text-xs font-bold rounded ${
-                            article.dropbox_path
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          {loadingPdf === article.id ? '…' : 'PDF'}
-                        </button>
+                        <div className="flex gap-1">
+                          <button
+                            title={article.dropbox_path ? 'Abrir PDF' : 'Sin PDF'}
+                            disabled={!article.dropbox_path || loadingPdf === article.id}
+                            onClick={() => handleOpenPdf(article)}
+                            className={`px-2 py-1 text-xs font-bold rounded ${
+                              article.dropbox_path
+                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {loadingPdf === article.id ? '…' : 'PDF'}
+                          </button>
+                          {article.doi ? (
+                            <a
+                              href={`https://doi.org/${article.doi}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`Ver en web — doi.org/${article.doi}`}
+                              className="px-2 py-1 text-xs font-bold rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                            >
+                              DOI
+                            </a>
+                          ) : (
+                            <span title="Sin DOI" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">
+                              DOI
+                            </span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* Stats */}
                       <td className="px-6 py-4 text-sm text-gray-600">
                         {article.times_read != null && <p>{article.times_read} lecturas</p>}
                         {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
                       </td>
 
-                      {/* User dots */}
                       {students.map((s) => {
                         const asgn   = matrix[article.id]?.[s.id];
                         const status = asgn?.status ?? 'none';
@@ -348,7 +359,6 @@ const AdminArticles = () => {
                         );
                       })}
 
-                      {/* Actions */}
                       <td className="px-6 py-4">
                         <div className="flex gap-2 flex-wrap">
                           <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
