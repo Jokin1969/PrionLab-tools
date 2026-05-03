@@ -1,6 +1,6 @@
 const dbx = require('../config/dropbox');
 
-const ROOT_FOLDER = '/PrioLab tools/PrionRead';
+const ROOT_FOLDER = '/PrionLab tools/PrionRead';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ function wrapDropboxError(err, context) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Uploads a PDF buffer to /PrioLab tools/PrionRead/{doi|PMID_pmid|uuid}.pdf
+ * Uploads a PDF buffer to /PrionLab tools/PrionRead/{doi|PMID_pmid|uuid}.pdf
  * @param {Buffer} fileBuffer  - raw PDF bytes (from multer memoryStorage)
  * @param {object} article     - must contain at least { id, doi?, pubmed_id? }
  * @returns {string} dropbox_path stored in the DB
@@ -79,7 +79,7 @@ async function uploadPDF(fileBuffer, article) {
 
 /**
  * Generates a temporary download link valid for ~4 hours.
- * @param {string} dropboxFilePath  - e.g. /PrioLab tools/PrionRead/10.1016_....pdf
+ * @param {string} dropboxFilePath  - e.g. /PrionLab tools/PrionRead/10.1016_....pdf
  * @returns {string} HTTPS link
  */
 async function generateDownloadLink(dropboxFilePath) {
@@ -120,7 +120,7 @@ async function listFiles(folder = ROOT_FOLDER) {
 
 /**
  * Permanently deletes a file from Dropbox.
- * @param {string} dropboxFilePath - e.g. /PrioLab tools/PrionRead/10.1016_....pdf
+ * @param {string} dropboxFilePath - e.g. /PrionLab tools/PrionRead/10.1016_....pdf
  */
 async function deletePDF(dropboxFilePath) {
   if (!dropboxFilePath) {
