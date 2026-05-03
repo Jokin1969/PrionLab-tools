@@ -156,18 +156,25 @@ const AdminUsers = () => {
                     <td className="px-6 py-4 text-sm text-gray-600">{user.year_started || '—'}</td>
                     <td className="px-6 py-4">
                       <div className="grid grid-cols-4 gap-2">
-                        {STAT_BADGES.map(({ key, label, cls, filter }) => (
-                          <div key={key} className="flex flex-col items-center gap-0.5">
-                            <button
-                              title={`Ver artículos — ${label}`}
-                              onClick={() => navigate('/admin/articles', { state: { filterUser: user, filterStatuses: filter } })}
-                              className={`w-full text-center px-1 py-1 text-xs font-bold rounded hover:opacity-70 transition-opacity cursor-pointer ${cls}`}
-                            >
-                              {user.stats?.[key] ?? 0}
-                            </button>
-                            <span className="text-xs text-gray-400 leading-tight">{label}</span>
-                          </div>
-                        ))}
+                        {STAT_BADGES.map(({ key, label, cls, filter }) => {
+                          const count = user.stats?.[key] ?? 0;
+                          const active = count > 0;
+                          return (
+                            <div key={key} className="flex flex-col items-center gap-0.5">
+                              <button
+                                title={active ? `Ver artículos — ${label}` : undefined}
+                                disabled={!active}
+                                onClick={() => navigate('/admin/articles', { state: { filterUser: user, filterStatuses: filter } })}
+                                className={`w-full text-center px-1 py-1 text-xs font-bold rounded transition-opacity ${cls} ${
+                                  active ? 'hover:opacity-70 cursor-pointer' : 'opacity-40 cursor-default'
+                                }`}
+                              >
+                                {count}
+                              </button>
+                              <span className="text-xs text-gray-400 leading-tight">{label}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-6 py-4">
