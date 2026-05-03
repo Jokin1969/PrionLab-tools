@@ -7,6 +7,7 @@ const {
   checkFileExists,
   deletePDF,
   listFiles,
+  dropboxPath,
 } = require('../services/dropbox');
 const { Article, ArticleRating, sequelize } = require('../models');
 const { buildArticleQuery } = require('../utils/articleFilters');
@@ -135,14 +136,23 @@ async function createArticle(req, res) {
       is_milestone: fields.is_milestone || false,
       priority: fields.priority || 3,
     });
+
     if (req.file) {
       try {
-        const dropbox_path = await uploadPDF(req.file.buffer, article);
-        await article.update({ dropbox_path });
+        const dp = await uploadPDF(req.file.buffer, article);
+        await article.update({ dropbox_path: dp });
       } catch (err) {
         console.error('[createArticle] PDF upload failed after article creation:', err.message);
       }
+    } else if (article.doi || article.pubmed_id) {
+      // No file uploaded — check if the expected PDF already exists in Dropbox
+      try {
+        const expectedPath = dropboxPath(article);
+        const exists = await checkFileExists(expectedPath);
+        if (exists) await article.update({ dropbox_path: expectedPath });
+      } catch { /* best-effort — don't fail article creation */ }
     }
+
     return res.status(201).json({ article });
   } catch (err) {
     if (err.name === 'SequelizeUniqueConstraintError') {
@@ -294,11 +304,11 @@ async function uploadArticlePDF(req, res) {
     const article = await Article.findByPk(req.params.id);
     if (!article) return res.status(404).json({ error: 'Article not found' });
     if (!req.file) return res.status(400).json({ error: 'No PDF file received' });
-    let dropbox_path;
-    try { dropbox_path = await uploadPDF(req.file.buffer, article); }
+    let dropbox_path_val;
+    try { dropbox_path_val = await uploadPDF(req.file.buffer, article); }
     catch (err) { return serviceError(res, err); }
-    await article.update({ dropbox_path, dropbox_link: null });
-    return res.json({ dropbox_path });
+    await article.update({ dropbox_path: dropbox_path_val, dropbox_link: null });
+    return res.json({ dropbox_path: dropbox_path_val });
   } catch (err) {
     console.error('[uploadArticlePDF]', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -349,31 +359,55 @@ async function listDropboxFiles(req, res) {
   }
 }
 
+/**
+ * POST /api/admin/articles/verify-pdfs
+ * Full scan of ALL articles:
+ * - Articles WITH dropbox_path: verify the file still exists in Dropbox
+ * - Articles WITHOUT dropbox_path (but with doi/pmid): check expected path,
+ *   auto-link if found
+ * Returns per-article status: ok | missing | linked | no_pdf
+ */
 async function verifyArticlePDFs(req, res) {
   try {
     const articles = await Article.findAll({
-      where: { dropbox_path: { [Op.ne]: null } },
       attributes: ['id', 'title', 'doi', 'pubmed_id', 'dropbox_path'],
       order: [['title', 'ASC']],
     });
 
     const results = await Promise.all(
       articles.map(async (a) => {
-        const exists = await checkFileExists(a.dropbox_path).catch(() => false);
-        return {
-          id: a.id,
-          title: a.title,
-          doi: a.doi,
-          pubmed_id: a.pubmed_id,
-          dropbox_path: a.dropbox_path,
-          exists,
-        };
+        const base = { id: a.id, title: a.title, doi: a.doi, pubmed_id: a.pubmed_id };
+
+        if (a.dropbox_path) {
+          const exists = await checkFileExists(a.dropbox_path).catch(() => false);
+          return { ...base, status: exists ? 'ok' : 'missing', dropbox_path: a.dropbox_path };
+        }
+
+        if (a.doi || a.pubmed_id) {
+          const expectedPath = dropboxPath(a);
+          const exists = await checkFileExists(expectedPath).catch(() => false);
+          if (exists) {
+            await a.update({ dropbox_path: expectedPath });
+            return { ...base, status: 'linked', dropbox_path: expectedPath };
+          }
+          return { ...base, status: 'no_pdf', dropbox_path: null };
+        }
+
+        return { ...base, status: 'no_identifier', dropbox_path: null };
       })
     );
 
-    const ok      = results.filter((r) => r.exists).length;
-    const missing = results.filter((r) => !r.exists).length;
-    return res.json({ results, summary: { ok, missing, total: results.length } });
+    const count = (s) => results.filter((r) => r.status === s).length;
+    return res.json({
+      results,
+      summary: {
+        ok:      count('ok'),
+        missing: count('missing'),
+        linked:  count('linked'),
+        no_pdf:  count('no_pdf'),
+        total:   results.length,
+      },
+    });
   } catch (err) {
     console.error('[verifyArticlePDFs]', err);
     res.status(500).json({ error: 'Internal server error' });

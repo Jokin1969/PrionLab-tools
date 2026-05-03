@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
 import { BatchImportModal } from '../../components/admin/BatchImportModal';
+import { PdfUploadModal } from '../../components/admin/PdfUploadModal';
+import { PdfVerifyModal } from '../../components/admin/PdfVerifyModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const DOT_CLS = {
@@ -46,19 +48,22 @@ const AdminArticles = () => {
   const [loading, setLoading]               = useState(true);
   const [showModal, setShowModal]           = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
+  const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
   const [search, setSearch]                 = useState('');
   const [filterNoPdf, setFilterNoPdf]       = useState(false);
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
   const [filters, setFilters]               = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
   const [msg, setMsg]                       = useState('');
+  const [errMsg, setErrMsg]                 = useState('');
   const [students, setStudents]             = useState([]);
   const [matrix, setMatrix]                 = useState({});
   const [loadingPdf, setLoadingPdf]         = useState(null);
   const [uploadingPdf, setUploadingPdf]     = useState(null);
   const [savingInline, setSavingInline]     = useState(null);
   const [fetchingAbstract, setFetchingAbstract] = useState(null);
-  const [abstractPreview, setAbstractPreview]   = useState(null); // { id, text }
+  const [abstractPreview, setAbstractPreview]   = useState(null);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -80,12 +85,23 @@ const AdminArticles = () => {
   useEffect(() => { loadArticles(); }, [loadArticles]);
   useEffect(() => { loadMatrix(); },  [loadMatrix]);
 
-  const flash = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
+  const flash      = (text) => { setMsg(text);    setTimeout(() => setMsg(''),    3000); };
+  const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
 
   const clearUserFilter = () => {
     setUserFilter(null);
     setStatusFilter(null);
     navigate('/admin/articles', { replace: true, state: null });
+  };
+
+  const handleStudentCountClick = (student, count) => {
+    if (count === 0) return;
+    if (userFilter?.id === student.id && statusFilter === null) {
+      clearUserFilter();
+    } else {
+      setUserFilter(student);
+      setStatusFilter(null);
+    }
   };
 
   const handleInlineUpdate = async (article, patch) => {
@@ -96,24 +112,26 @@ const AdminArticles = () => {
       fd.append('authors',      Array.isArray(article.authors) ? article.authors.join(', ') : (article.authors || ''));
       fd.append('year',         article.year);
       fd.append('journal',      article.journal || '');
-      // Skip empty doi/pubmed_id — empty string triggers false 409 uniqueness conflict
       if (article.doi)       fd.append('doi',       article.doi);
       if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
-      fd.append('abstract',     article.abstract || '');
+      fd.append('abstract',     patch.abstract !== undefined ? patch.abstract : (article.abstract || ''));
       fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
       fd.append('priority',     String(patch.priority     ?? article.priority));
-      if (patch.abstract !== undefined) fd.append('abstract', patch.abstract);
       await adminService.updateArticle(article.id, fd);
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, ...patch } : a));
     } catch (err) {
-      flash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
+      errorFlash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
     } finally { setSavingInline(null); }
   };
 
   const handleCreateArticle = async (formData) => {
-    await adminService.createArticle(formData);
+    const data = await adminService.createArticle(formData);
     await loadArticles();
-    flash('Artículo creado correctamente');
+    if (data?.article?.dropbox_path) {
+      flash('Artículo creado y PDF enlazado automáticamente desde Dropbox ✓');
+    } else {
+      flash('Artículo creado correctamente');
+    }
   };
 
   const handleUpdateArticle = async (formData) => {
@@ -126,7 +144,7 @@ const AdminArticles = () => {
   const handleDeleteArticle = async (articleId, title) => {
     if (!window.confirm(`¿Eliminar artículo "${title}"?`)) return;
     try { await adminService.deleteArticle(articleId); await loadArticles(); flash('Artículo eliminado'); }
-    catch { flash('Error eliminando artículo'); }
+    catch { errorFlash('Error eliminando artículo'); }
   };
 
   const handleAssignToAll = async (articleId, title) => {
@@ -135,7 +153,7 @@ const AdminArticles = () => {
       const data = await adminService.assignArticleToAll(articleId);
       await loadMatrix();
       flash(`Asignado a ${data.assigned_to ?? data.count ?? 'todos los'} estudiantes`);
-    } catch { flash('Error asignando artículo'); }
+    } catch { errorFlash('Error asignando artículo'); }
   };
 
   const handleOpenPdf = async (article) => {
@@ -143,8 +161,13 @@ const AdminArticles = () => {
     setLoadingPdf(article.id);
     try {
       const data = await adminService.getArticlePdfLink(article.id);
-      window.open(data.url, '_blank');
-    } catch { flash('Error obteniendo enlace PDF'); }
+      const resp = await fetch(data.url);
+      if (!resp.ok) throw new Error('No se pudo descargar el PDF desde Dropbox');
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      window.open(objUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+    } catch (err) { errorFlash(err?.message || 'Error obteniendo enlace PDF'); }
     finally { setLoadingPdf(null); }
   };
 
@@ -161,13 +184,13 @@ const AdminArticles = () => {
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, dropbox_path: newPath } : a));
       flash('PDF subido correctamente');
     } catch (err) {
-      flash(err?.response?.data?.error || err?.message || 'Error subiendo PDF');
+      errorFlash(err?.response?.data?.error || err?.message || 'Error subiendo PDF');
     } finally { setUploadingPdf(null); }
   };
 
   const handleFetchAbstract = async (article) => {
     if (!article.doi && !article.pubmed_id) {
-      flash('Este artículo necesita DOI o PubMed ID para buscar el abstract');
+      errorFlash('Este artículo necesita DOI o PubMed ID para buscar el abstract');
       return;
     }
     setFetchingAbstract(article.id);
@@ -175,10 +198,13 @@ const AdminArticles = () => {
     try {
       const data = await adminService.fetchMetadata(article.doi, article.pubmed_id);
       const m = data.metadata ?? data;
-      if (!m.abstract) { flash('No se encontró abstract en la fuente (CrossRef / PubMed)'); return; }
+      if (!m.abstract) {
+        errorFlash('No se encontró abstract en CrossRef ni PubMed para este artículo');
+        return;
+      }
       setAbstractPreview({ id: article.id, text: m.abstract });
     } catch (err) {
-      flash(err?.response?.data?.error || err?.message || 'Error buscando abstract');
+      errorFlash(err?.response?.data?.error || err?.message || 'Error buscando abstract');
     } finally { setFetchingAbstract(null); }
   };
 
@@ -204,7 +230,7 @@ const AdminArticles = () => {
         delete next[articleId][student.id];
         return next;
       });
-      flash('Error asignando artículo');
+      errorFlash('Error asignando artículo');
     }
   };
 
@@ -228,6 +254,8 @@ const AdminArticles = () => {
     ? statusFilter.map((s) => STATUS_LABELS[s] ?? s).join(' / ')
     : 'todos los asignados';
 
+  const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -236,12 +264,16 @@ const AdminArticles = () => {
           <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setShowVerifyModal(true)} title="Verificar y sincronizar PDFs con Dropbox">
+            📎 Verificar y Sync PDFs
+          </Button>
           <Button variant="secondary" onClick={() => setShowBatchModal(true)}>Importar por DOI</Button>
           <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>+ Nuevo Artículo</Button>
         </div>
       </div>
 
-      {msg && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+      {msg    && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+      {errMsg && <div className="rounded-lg bg-red-50   border border-red-200   px-4 py-3 text-sm text-red-700">{errMsg}</div>}
 
       {userFilter && (
         <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 flex items-center justify-between">
@@ -307,17 +339,50 @@ const AdminArticles = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
-                  {students.map((s) => (
-                    <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
-                      {initials(s.name)}
+                  {students.length > 0 && (
+                    <th className="w-6 px-1 py-3 text-center" title={userFilter ? 'Quitar filtro de estudiante' : 'Sin filtro activo'}>
+                      <button
+                        onClick={clearUserFilter}
+                        disabled={!userFilter}
+                        className={`text-base leading-none transition-colors ${
+                          userFilter
+                            ? 'text-indigo-500 hover:text-indigo-700 cursor-pointer'
+                            : 'text-gray-300 cursor-default'
+                        }`}
+                      >
+                        ↺
+                      </button>
                     </th>
-                  ))}
+                  )}
+                  {students.map((s) => {
+                    const count    = articles.filter((a) => matrix[a.id]?.[s.id]).length;
+                    const isActive = userFilter?.id === s.id && statusFilter === null;
+                    return (
+                      <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
+                        <div>{initials(s.name)}</div>
+                        <button
+                          onClick={() => handleStudentCountClick(s, count)}
+                          disabled={count === 0}
+                          title={count > 0 ? `Filtrar por ${s.name} (${count} asignados)` : 'Sin artículos asignados'}
+                          className={`text-xs font-normal leading-tight rounded px-1 transition-colors ${
+                            count === 0
+                              ? 'text-gray-300 cursor-default'
+                              : isActive
+                                ? 'bg-indigo-600 text-white cursor-pointer'
+                                : 'text-indigo-500 hover:bg-indigo-100 cursor-pointer'
+                          }`}
+                        >
+                          {count}
+                        </button>
+                      </th>
+                    );
+                  })}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredArticles.length === 0 ? (
-                  <tr><td colSpan={6 + students.length} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
+                  <tr><td colSpan={totalCols} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
                 ) : filteredArticles.map((article) => {
                   const { level, missing } = articleCompleteness(article);
                   const saving            = savingInline === article.id;
@@ -344,7 +409,6 @@ const AdminArticles = () => {
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold text-gray-900 truncate">{article.title}</p>
                               <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                              {/* Abstract fetch button — only when no abstract */}
                               {!article.abstract && !showAbsPreview && (
                                 <button
                                   onClick={() => handleFetchAbstract(article)}
@@ -388,7 +452,6 @@ const AdminArticles = () => {
 
                         <td className="px-4 py-4">
                           <div className="flex gap-1">
-                            {/* PDF: rose if available (opens via API), grey upload if missing */}
                             {article.dropbox_path ? (
                               <button
                                 title="Abrir PDF"
@@ -404,14 +467,15 @@ const AdminArticles = () => {
                                 PDF
                               </span>
                             ) : (
-                              <label
-                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer select-none"
+                              <button
+                                onClick={() => setPdfUploadTarget(article)}
                                 title="Sin PDF — haz clic para subir"
+                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer"
                               >
-                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files[0]; if (f) handlePdfUpload(article, f); e.target.value = ''; }} />
                                 PDF
-                              </label>
+                              </button>
                             )}
+
                             {article.doi ? (
                               <a
                                 href={`https://doi.org/${article.doi}`}
@@ -422,8 +486,18 @@ const AdminArticles = () => {
                               >
                                 DOI
                               </a>
+                            ) : article.pubmed_id ? (
+                              <a
+                                href={`https://pubmed.ncbi.nlm.nih.gov/${article.pubmed_id}/`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`Ver en PubMed — PMID ${article.pubmed_id}`}
+                                className="px-2 py-1 text-xs font-bold rounded bg-teal-100 text-teal-700 hover:bg-teal-200"
+                              >
+                                PMID
+                              </a>
                             ) : (
-                              <span title="Sin DOI" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">DOI</span>
+                              <span title="Sin DOI ni PubMed ID" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">DOI</span>
                             )}
                           </div>
                         </td>
@@ -432,6 +506,8 @@ const AdminArticles = () => {
                           {article.times_read != null && <p>{article.times_read} lecturas</p>}
                           {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
                         </td>
+
+                        {students.length > 0 && <td className="w-6" />}
 
                         {students.map((s) => {
                           const asgn   = matrix[article.id]?.[s.id];
@@ -458,10 +534,9 @@ const AdminArticles = () => {
                         </td>
                       </tr>
 
-                      {/* Inline abstract preview */}
                       {showAbsPreview && (
                         <tr className="bg-violet-50">
-                          <td colSpan={6 + students.length} className="px-8 pb-5 pt-0">
+                          <td colSpan={totalCols} className="px-8 pb-5 pt-0">
                             <div className="rounded-lg border border-violet-200 bg-white shadow-sm p-4">
                               <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">
                                 Abstract obtenido — verifica y confirma
@@ -502,6 +577,17 @@ const AdminArticles = () => {
         isOpen={showBatchModal}
         onClose={() => setShowBatchModal(false)}
         onImported={() => { loadArticles(); flash('Importación completada'); }}
+      />
+      <PdfUploadModal
+        isOpen={Boolean(pdfUploadTarget)}
+        onClose={() => setPdfUploadTarget(null)}
+        article={pdfUploadTarget}
+        onUpload={handlePdfUpload}
+      />
+      <PdfVerifyModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+        onFixed={loadArticles}
       />
     </div>
   );
