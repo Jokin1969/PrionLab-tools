@@ -11,18 +11,19 @@ const STATUS = {
 };
 
 export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
-  const [raw, setRaw]       = useState('');
-  const [rows, setRows]     = useState([]);
+  const [raw, setRaw]         = useState('');
+  const [rows, setRows]       = useState([]);
   const [running, setRunning] = useState(false);
-  const [done, setDone]     = useState(false);
+  const [done, setDone]       = useState(false);
 
   const reset = () => { setRaw(''); setRows([]); setDone(false); };
 
   const handleClose = () => { reset(); onClose(); };
 
+  // Splits on newlines (Excel column paste), tabs (Excel multi-col), commas, semicolons
   const parseDois = (text) =>
     text
-      .split(/[\n,;]+/)
+      .split(/[\n\r\t,;]+/)
       .map((s) => s.trim())
       .filter(Boolean);
 
@@ -38,11 +39,9 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
       setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, status: 'loading' } : r));
 
       try {
-        // 1. Fetch metadata
         const meta = await adminService.fetchMetadata(doi, '');
         const m = meta.metadata ?? meta;
 
-        // 2. Create article
         const fd = new FormData();
         fd.append('title',        m.title     || doi);
         fd.append('authors',      Array.isArray(m.authors) ? m.authors.join(', ') : (m.authors || ''));
@@ -82,8 +81,9 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
         {rows.length === 0 ? (
           <>
             <p className="text-sm text-gray-600">
-              Pega los DOIs que quieres importar, uno por línea (o separados por coma o punto y coma).
-              Los metadatos se obtendrán automáticamente desde CrossRef o PubMed.
+              Pega los DOIs directamente desde una columna de Excel o cualquier listado.
+              Se acepta uno por línea, separados por coma, punto y coma o tabulador.
+              Los metadatos se obtendrán automáticamente desde CrossRef / PubMed.
             </p>
             <textarea
               rows={10}
@@ -92,7 +92,9 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
               onChange={(e) => setRaw(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-prion-primary resize-y"
             />
-            <p className="text-xs text-gray-400">{parseDois(raw).length} DOI{parseDois(raw).length !== 1 ? 's' : ''} detectado{parseDois(raw).length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-gray-400">
+              {parseDois(raw).length} DOI{parseDois(raw).length !== 1 ? 's' : ''} detectado{parseDois(raw).length !== 1 ? 's' : ''}
+            </p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={handleClose} type="button">Cancelar</Button>
               <Button onClick={handleStart} disabled={!parseDois(raw).length}>
@@ -102,7 +104,6 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
           </>
         ) : (
           <>
-            {/* Progress list */}
             <div className="max-h-96 overflow-y-auto space-y-1 pr-1">
               {rows.map((r, i) => {
                 const s = STATUS[r.status];
@@ -128,12 +129,11 @@ export const BatchImportModal = ({ isOpen, onClose, onImported }) => {
               })}
             </div>
 
-            {/* Summary */}
             {done && (
               <div className="flex gap-3 text-sm pt-2 border-t">
-                {counts.ok       > 0 && <span className="text-green-600">✓ {counts.ok} importado{counts.ok !== 1 ? 's' : ''}</span>}
-                {counts.duplicate> 0 && <span className="text-amber-500">△ {counts.duplicate} duplicado{counts.duplicate !== 1 ? 's' : ''}</span>}
-                {counts.error    > 0 && <span className="text-red-500">✗ {counts.error} error{counts.error !== 1 ? 'es' : ''}</span>}
+                {counts.ok        > 0 && <span className="text-green-600">✓ {counts.ok} importado{counts.ok !== 1 ? 's' : ''}</span>}
+                {counts.duplicate > 0 && <span className="text-amber-500">△ {counts.duplicate} duplicado{counts.duplicate !== 1 ? 's' : ''}</span>}
+                {counts.error     > 0 && <span className="text-red-500">✗ {counts.error} error{counts.error !== 1 ? 'es' : ''}</span>}
               </div>
             )}
 
