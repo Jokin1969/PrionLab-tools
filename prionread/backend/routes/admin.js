@@ -12,6 +12,7 @@ const {
   getArticleEngagement,
   assignArticleToAll,
 } = require('../controllers/adminArticleController');
+const notificationService = require('../services/notificationService');
 
 const router = Router();
 
@@ -34,6 +35,27 @@ router.get('/articles/analytics', getArticlesAnalytics);
 
 router.get('/articles/:articleId/engagement', getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all', assignArticleToAll);
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+router.post('/notifications/weekly-reminders', async (_req, res) => {
+  try {
+    const results = await notificationService.sendWeeklyRemindersToAll();
+    res.json({ ok: true, ...results });
+  } catch (err) {
+    console.error('[POST /notifications/weekly-reminders]', err);
+    res.status(500).json({ error: 'Failed to send weekly reminders' });
+  }
+});
+
+router.post('/notifications/inactivity-reminders', async (_req, res) => {
+  try {
+    const results = await notificationService.sendInactivityReminders();
+    res.json({ ok: true, ...results });
+  } catch (err) {
+    console.error('[POST /notifications/inactivity-reminders]', err);
+    res.status(500).json({ error: 'Failed to send inactivity reminders' });
+  }
+});
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 router.use('/reports', require('./reports'));

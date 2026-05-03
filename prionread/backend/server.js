@@ -28,6 +28,11 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`PrionRead backend running on port ${PORT}`);
+
+  if (process.env.ENABLE_CRON === 'true') {
+    const notificationService = require('./services/notificationService');
+    notificationService.initializeScheduledTasks();
+  }
 });
 
 module.exports = app;
