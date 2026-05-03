@@ -250,6 +250,9 @@ const AdminArticles = () => {
     ? statusFilter.map((s) => STATUS_LABELS[s] ?? s).join(' / ')
     : 'todos los asignados';
 
+  // +1 for the reset column when students are present
+  const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -333,9 +336,25 @@ const AdminArticles = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
+                  {students.length > 0 && (
+                    <th className="w-6 px-1 py-3 text-center" title={userFilter ? 'Quitar filtro de estudiante' : 'Sin filtro activo'}>
+                      <button
+                        onClick={clearUserFilter}
+                        disabled={!userFilter}
+                        className={`text-base leading-none transition-colors ${
+                          userFilter
+                            ? 'text-indigo-500 hover:text-indigo-700 cursor-pointer'
+                            : 'text-gray-300 cursor-default'
+                        }`}
+                      >
+                        ↺
+                      </button>
+                    </th>
+                  )}
                   {students.map((s) => {
-                    const count     = Object.values(matrix).filter((row) => row[s.id]).length;
-                    const isActive  = userFilter?.id === s.id && statusFilter === null;
+                    // Count only from articles currently loaded — matches what the filter will show
+                    const count    = articles.filter((a) => matrix[a.id]?.[s.id]).length;
+                    const isActive = userFilter?.id === s.id && statusFilter === null;
                     return (
                       <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
                         <div>{initials(s.name)}</div>
@@ -361,7 +380,7 @@ const AdminArticles = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredArticles.length === 0 ? (
-                  <tr><td colSpan={6 + students.length} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
+                  <tr><td colSpan={totalCols} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
                 ) : filteredArticles.map((article) => {
                   const { level, missing } = articleCompleteness(article);
                   const saving            = savingInline === article.id;
@@ -486,6 +505,9 @@ const AdminArticles = () => {
                           {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
                         </td>
 
+                        {/* Empty cell matching the reset ↺ column */}
+                        {students.length > 0 && <td className="w-6" />}
+
                         {students.map((s) => {
                           const asgn   = matrix[article.id]?.[s.id];
                           const status = asgn?.status ?? 'none';
@@ -513,7 +535,7 @@ const AdminArticles = () => {
 
                       {showAbsPreview && (
                         <tr className="bg-violet-50">
-                          <td colSpan={6 + students.length} className="px-8 pb-5 pt-0">
+                          <td colSpan={totalCols} className="px-8 pb-5 pt-0">
                             <div className="rounded-lg border border-violet-200 bg-white shadow-sm p-4">
                               <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">
                                 Abstract obtenido — verifica y confirma
