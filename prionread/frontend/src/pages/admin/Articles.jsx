@@ -27,12 +27,12 @@ function initials(name) {
 function articleCompleteness(article) {
   const missing = [];
   const authors = Array.isArray(article.authors) ? article.authors.join('') : (article.authors ?? '');
-  if (!authors.trim())          missing.push('autores');
+  if (!authors.trim())                    missing.push('autores');
   if (!article.doi && !article.pubmed_id) missing.push('DOI/PubMed');
-  if (!article.journal)         missing.push('revista');
-  if (!article.abstract)        missing.push('resumen');
-  if (!article.dropbox_path)    missing.push('PDF');
-  if (missing.length === 0)     return { level: 'ok' };
+  if (!article.journal)                   missing.push('revista');
+  if (!article.abstract)                  missing.push('resumen');
+  if (!article.dropbox_path)              missing.push('PDF');
+  if (missing.length === 0)               return { level: 'ok' };
   if (missing.length === 1 && missing[0] === 'resumen') return { level: 'warn', missing };
   return { level: 'error', missing };
 }
@@ -55,6 +55,7 @@ const AdminArticles = () => {
   const [students, setStudents]         = useState([]);
   const [matrix, setMatrix]             = useState({});
   const [loadingPdf, setLoadingPdf]     = useState(null);
+  const [savingInline, setSavingInline] = useState(null); // article id being saved
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -82,6 +83,26 @@ const AdminArticles = () => {
     setUserFilter(null);
     setStatusFilter(null);
     navigate('/admin/articles', { replace: true, state: null });
+  };
+
+  const handleInlineUpdate = async (article, patch) => {
+    setSavingInline(article.id);
+    try {
+      const fd = new FormData();
+      fd.append('title',        article.title || '');
+      fd.append('authors',      Array.isArray(article.authors) ? article.authors.join(', ') : (article.authors || ''));
+      fd.append('year',         article.year);
+      fd.append('journal',      article.journal || '');
+      fd.append('doi',          article.doi || '');
+      fd.append('pubmed_id',    article.pubmed_id || '');
+      fd.append('abstract',     article.abstract || '');
+      fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
+      fd.append('priority',     String(patch.priority ?? article.priority));
+      await adminService.updateArticle(article.id, fd);
+      // Optimistic local update to avoid full reload flicker
+      setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, ...patch } : a));
+    } catch { flash('Error guardando cambio'); }
+    finally { setSavingInline(null); }
   };
 
   const handleCreateArticle = async (formData) => {
@@ -217,7 +238,7 @@ const AdminArticles = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">P</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PDF</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
                   {students.map((s) => (
@@ -233,22 +254,33 @@ const AdminArticles = () => {
                   <tr><td colSpan={6 + students.length} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
                 ) : filteredArticles.map((article) => {
                   const { level, missing } = articleCompleteness(article);
+                  const saving = savingInline === article.id;
                   return (
-                    <tr key={article.id} className="hover:bg-gray-50">
+                    <tr key={article.id} className={`hover:bg-gray-50 ${saving ? 'opacity-60' : ''}`}>
+
+                      {/* Title + milestone toggle + completeness */}
                       <td className="px-6 py-4 max-w-xs">
                         <div className="flex items-start gap-2">
+                          <button
+                            title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
+                            disabled={saving}
+                            onClick={() => handleInlineUpdate(article, {
+                              is_milestone: !article.is_milestone,
+                              priority: !article.is_milestone ? 5 : article.priority,
+                            })}
+                            className="shrink-0 mt-0.5 text-base leading-none hover:scale-125 transition-transform disabled:opacity-40"
+                          >
+                            {article.is_milestone ? '⭐' : '☆'}
+                          </button>
                           <div className="min-w-0">
                             <p className="font-semibold text-gray-900 truncate">{article.title}</p>
                             <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                            {article.is_milestone && <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">⭐ Milestone</span>}
                           </div>
                           {level !== 'ok' && (
                             <span
                               title={`Faltan: ${missing.join(', ')}`}
                               className={`shrink-0 mt-0.5 px-1.5 py-0.5 text-xs font-bold rounded ${
-                                level === 'warn'
-                                  ? 'bg-amber-100 text-amber-600'
-                                  : 'bg-red-100 text-red-600'
+                                level === 'warn' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
                               }`}
                             >
                               {level === 'warn' ? '⚠️' : '!'}
@@ -256,12 +288,27 @@ const AdminArticles = () => {
                           )}
                         </div>
                       </td>
+
+                      {/* Year */}
                       <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 text-xs font-medium rounded ${article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                          P{article.priority ?? '—'}
-                        </span>
+
+                      {/* Priority inline select */}
+                      <td className="px-4 py-4">
+                        <select
+                          value={article.priority ?? 3}
+                          disabled={saving}
+                          onChange={(e) => handleInlineUpdate(article, { priority: parseInt(e.target.value) })}
+                          className={`px-1.5 py-1 text-xs font-semibold rounded cursor-pointer border-0 focus:ring-2 focus:ring-prion-primary disabled:opacity-40 ${
+                            article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                          }`}
+                        >
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <option key={n} value={n}>P{n}</option>
+                          ))}
+                        </select>
                       </td>
+
+                      {/* PDF */}
                       <td className="px-4 py-4">
                         <button
                           title={article.dropbox_path ? 'Abrir PDF' : 'Sin PDF'}
@@ -276,10 +323,14 @@ const AdminArticles = () => {
                           {loadingPdf === article.id ? '…' : 'PDF'}
                         </button>
                       </td>
+
+                      {/* Stats */}
                       <td className="px-6 py-4 text-sm text-gray-600">
                         {article.times_read != null && <p>{article.times_read} lecturas</p>}
                         {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
                       </td>
+
+                      {/* User dots */}
                       {students.map((s) => {
                         const asgn   = matrix[article.id]?.[s.id];
                         const status = asgn?.status ?? 'none';
@@ -296,6 +347,8 @@ const AdminArticles = () => {
                           </td>
                         );
                       })}
+
+                      {/* Actions */}
                       <td className="px-6 py-4">
                         <div className="flex gap-2 flex-wrap">
                           <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
