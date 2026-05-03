@@ -4,6 +4,7 @@ import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
 import { BatchImportModal } from '../../components/admin/BatchImportModal';
 import { PdfUploadModal } from '../../components/admin/PdfUploadModal';
+import { PdfVerifyModal } from '../../components/admin/PdfVerifyModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const DOT_CLS = {
@@ -47,6 +48,7 @@ const AdminArticles = () => {
   const [loading, setLoading]               = useState(true);
   const [showModal, setShowModal]           = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
   const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
   const [search, setSearch]                 = useState('');
@@ -61,7 +63,7 @@ const AdminArticles = () => {
   const [uploadingPdf, setUploadingPdf]     = useState(null);
   const [savingInline, setSavingInline]     = useState(null);
   const [fetchingAbstract, setFetchingAbstract] = useState(null);
-  const [abstractPreview, setAbstractPreview]   = useState(null); // { id, text }
+  const [abstractPreview, setAbstractPreview]   = useState(null);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -100,10 +102,8 @@ const AdminArticles = () => {
       fd.append('authors',      Array.isArray(article.authors) ? article.authors.join(', ') : (article.authors || ''));
       fd.append('year',         article.year);
       fd.append('journal',      article.journal || '');
-      // Skip empty doi/pubmed_id — empty string triggers false 409 uniqueness conflict
       if (article.doi)       fd.append('doi',       article.doi);
       if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
-      // Use patch value when present so abstract is only appended once
       fd.append('abstract',     patch.abstract !== undefined ? patch.abstract : (article.abstract || ''));
       fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
       fd.append('priority',     String(patch.priority     ?? article.priority));
@@ -243,6 +243,9 @@ const AdminArticles = () => {
           <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setShowVerifyModal(true)} title="Verificar que los PDFs existen en Dropbox">
+            📎 Verificar PDFs
+          </Button>
           <Button variant="secondary" onClick={() => setShowBatchModal(true)}>Importar por DOI</Button>
           <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>+ Nuevo Artículo</Button>
         </div>
@@ -352,7 +355,6 @@ const AdminArticles = () => {
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold text-gray-900 truncate">{article.title}</p>
                               <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                              {/* Abstract fetch button — only when no abstract */}
                               {!article.abstract && !showAbsPreview && (
                                 <button
                                   onClick={() => handleFetchAbstract(article)}
@@ -396,7 +398,6 @@ const AdminArticles = () => {
 
                         <td className="px-4 py-4">
                           <div className="flex gap-1">
-                            {/* PDF: rose if available (opens via API), spinner if uploading, grey button → modal if missing */}
                             {article.dropbox_path ? (
                               <button
                                 title="Abrir PDF"
@@ -421,7 +422,6 @@ const AdminArticles = () => {
                               </button>
                             )}
 
-                            {/* DOI → doi.org | PMID → PubMed | ninguno → gris */}
                             {article.doi ? (
                               <a
                                 href={`https://doi.org/${article.doi}`}
@@ -478,7 +478,6 @@ const AdminArticles = () => {
                         </td>
                       </tr>
 
-                      {/* Inline abstract preview */}
                       {showAbsPreview && (
                         <tr className="bg-violet-50">
                           <td colSpan={6 + students.length} className="px-8 pb-5 pt-0">
@@ -528,6 +527,11 @@ const AdminArticles = () => {
         onClose={() => setPdfUploadTarget(null)}
         article={pdfUploadTarget}
         onUpload={handlePdfUpload}
+      />
+      <PdfVerifyModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+        onFixed={loadArticles}
       />
     </div>
   );
