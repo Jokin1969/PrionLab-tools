@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { UserModal } from '../../components/admin/UserModal';
 import { UserAssignmentsModal } from '../../components/admin/UserAssignmentsModal';
@@ -12,12 +13,12 @@ const STAT_BADGES = [
 ];
 
 const AdminUsers = () => {
+  const navigate = useNavigate();
   const [users, setUsers]               = useState([]);
   const [loading, setLoading]           = useState(true);
   const [showModal, setShowModal]       = useState(false);
   const [editingUser, setEditingUser]   = useState(null);
-  const [assignmentsUser, setAssignmentsUser]         = useState(null);
-  const [assignmentsStatusFilter, setAssignmentsStatusFilter] = useState(null);
+  const [assignmentsUser, setAssignmentsUser] = useState(null);
   const [search, setSearch]             = useState('');
   const [roleFilter, setRoleFilter]     = useState('');
   const [msg, setMsg]                   = useState('');
@@ -73,16 +74,6 @@ const AdminUsers = () => {
       setPasswordBanner({ email: userEmail, password: data.tempPassword });
       flash(data.email_sent ? 'Contraseña reseteada y enviada por email' : 'Contraseña reseteada');
     } catch { flash('Error reseteando contraseña'); }
-  };
-
-  const openAssignments = (user, filter = null) => {
-    setAssignmentsUser(user);
-    setAssignmentsStatusFilter(filter);
-  };
-
-  const closeAssignments = () => {
-    setAssignmentsUser(null);
-    setAssignmentsStatusFilter(null);
   };
 
   const filteredUsers = users.filter(
@@ -168,8 +159,8 @@ const AdminUsers = () => {
                         {STAT_BADGES.map(({ key, label, cls, filter }) => (
                           <div key={key} className="flex flex-col items-center gap-0.5">
                             <button
-                              title={`Ver ${label}`}
-                              onClick={() => openAssignments(user, filter)}
+                              title={`Ver artículos — ${label}`}
+                              onClick={() => navigate('/admin/articles', { state: { filterUser: user, filterStatuses: filter } })}
                               className={`w-full text-center px-1 py-1 text-xs font-bold rounded hover:opacity-70 transition-opacity cursor-pointer ${cls}`}
                             >
                               {user.stats?.[key] ?? 0}
@@ -181,7 +172,7 @@ const AdminUsers = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2 flex-wrap">
-                        <Button variant="secondary" size="sm" onClick={() => openAssignments(user, null)}>Asignaciones</Button>
+                        <Button variant="secondary" size="sm" onClick={() => setAssignmentsUser(user)}>Asignaciones</Button>
                         <Button variant="ghost" size="sm" onClick={() => { setEditingUser(user); setShowModal(true); }}>Editar</Button>
                         <Button variant="ghost" size="sm" onClick={() => handleResetPassword(user.id, user.email)}>Reset Pass</Button>
                         {user.role !== 'admin' && (
@@ -198,7 +189,7 @@ const AdminUsers = () => {
       )}
 
       <UserModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingUser(null); }} onSave={editingUser ? handleUpdateUser : handleCreateUser} user={editingUser} />
-      <UserAssignmentsModal isOpen={!!assignmentsUser} onClose={closeAssignments} user={assignmentsUser} statusFilter={assignmentsStatusFilter} />
+      <UserAssignmentsModal isOpen={!!assignmentsUser} onClose={() => setAssignmentsUser(null)} user={assignmentsUser} />
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
 import { Card, Button, Input, Loader } from '../../components/common';
@@ -11,12 +12,25 @@ const DOT_CLS = {
   evaluated:  'bg-green-400  cursor-default',
 };
 
+const STATUS_LABELS = {
+  read: 'leídos',
+  summarized: 'resumidos',
+  evaluated: 'evaluados',
+};
+
 function initials(name) {
   const p = name.trim().split(/\s+/);
   return p.length >= 2 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : p[0].slice(0, 2).toUpperCase();
 }
 
 const AdminArticles = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // User+status filter injected from Users page
+  const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
+  const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
+
   const [articles, setArticles]       = useState([]);
   const [loading, setLoading]         = useState(true);
   const [showModal, setShowModal]     = useState(false);
@@ -49,6 +63,13 @@ const AdminArticles = () => {
   useEffect(() => { loadMatrix(); },  [loadMatrix]);
 
   const flash = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
+
+  const clearUserFilter = () => {
+    setUserFilter(null);
+    setStatusFilter(null);
+    // Clear the router state so back-navigation doesn't re-apply it
+    navigate('/admin/articles', { replace: true, state: null });
+  };
 
   const handleCreateArticle = async (formData) => {
     await adminService.createArticle(formData);
@@ -89,9 +110,8 @@ const AdminArticles = () => {
   };
 
   const handleDotClick = async (articleId, student) => {
-    if (matrix[articleId]?.[student.id]) return; // ya asignado
+    if (matrix[articleId]?.[student.id]) return;
     if (!window.confirm(`¿Asignar este artículo a ${student.name}?`)) return;
-    // Optimistic update
     setMatrix((prev) => ({
       ...prev,
       [articleId]: { ...(prev[articleId] || {}), [student.id]: { id: null, status: 'pending' } },
@@ -100,7 +120,6 @@ const AdminArticles = () => {
       await adminService.assignArticles(student.id, [articleId]);
       await loadMatrix();
     } catch {
-      // revert
       setMatrix((prev) => {
         const next = { ...prev, [articleId]: { ...(prev[articleId] || {}) } };
         delete next[articleId][student.id];
@@ -114,8 +133,18 @@ const AdminArticles = () => {
 
   const filteredArticles = articles.filter((a) => {
     const q = search.toLowerCase();
-    return a.title?.toLowerCase().includes(q) || authorsText(a.authors).toLowerCase().includes(q);
+    if (!a.title?.toLowerCase().includes(q) && !authorsText(a.authors).toLowerCase().includes(q)) return false;
+    if (userFilter) {
+      const asgn = matrix[a.id]?.[userFilter.id];
+      if (!asgn) return false;
+      if (statusFilter && !statusFilter.includes(asgn.status)) return false;
+    }
+    return true;
   });
+
+  const filterLabel = statusFilter
+    ? statusFilter.map((s) => STATUS_LABELS[s] ?? s).join(' / ')
+    : 'todos los asignados';
 
   return (
     <div className="space-y-6">
@@ -128,6 +157,16 @@ const AdminArticles = () => {
       </div>
 
       {msg && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+
+      {/* User filter banner */}
+      {userFilter && (
+        <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-indigo-800">
+            Mostrando <strong>{filterLabel}</strong> de <strong>{userFilter.name}</strong>
+          </p>
+          <button onClick={clearUserFilter} className="text-indigo-400 hover:text-indigo-700 text-xl font-bold leading-none ml-4">×</button>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -150,7 +189,7 @@ const AdminArticles = () => {
           <p className="text-sm text-gray-600">Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos</p>
           {students.length > 0 && (
             <p className="text-xs text-gray-400 mt-1">
-              Columnas de asignación: • gris = no asignado (clic para asignar)  • ● â pendiente  • • leído  • • resumido  • • evaluado
+              Columnas de asignación: • gris = no asignado (clic para asignar)  • ● pendiente  • leído  • resumido  • evaluado
             </p>
           )}
         </div>
@@ -181,21 +220,17 @@ const AdminArticles = () => {
                   <tr><td colSpan={6 + students.length} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
                 ) : filteredArticles.map((article) => (
                   <tr key={article.id} className="hover:bg-gray-50">
-                    {/* Title */}
                     <td className="px-6 py-4 max-w-xs">
                       <p className="font-semibold text-gray-900 truncate">{article.title}</p>
                       <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
                       {article.is_milestone && <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">⭐ Milestone</span>}
                     </td>
-                    {/* Year */}
                     <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
-                    {/* Priority */}
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 text-xs font-medium rounded ${article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                         P{article.priority ?? '—'}
                       </span>
                     </td>
-                    {/* PDF */}
                     <td className="px-4 py-4">
                       <button
                         title={article.dropbox_path ? 'Abrir PDF' : 'Sin PDF'}
@@ -210,12 +245,10 @@ const AdminArticles = () => {
                         {loadingPdf === article.id ? '…' : 'PDF'}
                       </button>
                     </td>
-                    {/* Stats */}
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {article.times_read != null && <p>{article.times_read} lecturas</p>}
                       {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
                     </td>
-                    {/* User dots */}
                     {students.map((s) => {
                       const asgn   = matrix[article.id]?.[s.id];
                       const status = asgn?.status ?? 'none';
@@ -232,7 +265,6 @@ const AdminArticles = () => {
                         </td>
                       );
                     })}
-                    {/* Actions */}
                     <td className="px-6 py-4">
                       <div className="flex gap-2 flex-wrap">
                         <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
