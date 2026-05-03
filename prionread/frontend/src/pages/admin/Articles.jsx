@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
+import { BatchImportModal } from '../../components/admin/BatchImportModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const DOT_CLS = {
@@ -23,24 +24,37 @@ function initials(name) {
   return p.length >= 2 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : p[0].slice(0, 2).toUpperCase();
 }
 
+function articleCompleteness(article) {
+  const missing = [];
+  const authors = Array.isArray(article.authors) ? article.authors.join('') : (article.authors ?? '');
+  if (!authors.trim())          missing.push('autores');
+  if (!article.doi && !article.pubmed_id) missing.push('DOI/PubMed');
+  if (!article.journal)         missing.push('revista');
+  if (!article.abstract)        missing.push('resumen');
+  if (!article.dropbox_path)    missing.push('PDF');
+  if (missing.length === 0)     return { level: 'ok' };
+  if (missing.length === 1 && missing[0] === 'resumen') return { level: 'warn', missing };
+  return { level: 'error', missing };
+}
+
 const AdminArticles = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // User+status filter injected from Users page
   const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
   const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
 
-  const [articles, setArticles]       = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [showModal, setShowModal]     = useState(false);
+  const [articles, setArticles]         = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [showModal, setShowModal]       = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
-  const [search, setSearch]           = useState('');
-  const [filters, setFilters]         = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
-  const [msg, setMsg]                 = useState('');
-  const [students, setStudents]       = useState([]);
-  const [matrix, setMatrix]           = useState({});
-  const [loadingPdf, setLoadingPdf]   = useState(null);
+  const [search, setSearch]             = useState('');
+  const [filters, setFilters]           = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
+  const [msg, setMsg]                   = useState('');
+  const [students, setStudents]         = useState([]);
+  const [matrix, setMatrix]             = useState({});
+  const [loadingPdf, setLoadingPdf]     = useState(null);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -67,7 +81,6 @@ const AdminArticles = () => {
   const clearUserFilter = () => {
     setUserFilter(null);
     setStatusFilter(null);
-    // Clear the router state so back-navigation doesn't re-apply it
     navigate('/admin/articles', { replace: true, state: null });
   };
 
@@ -153,12 +166,14 @@ const AdminArticles = () => {
           <h1 className="text-3xl font-bold text-gray-900">📚 Artículos</h1>
           <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
-        <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>+ Nuevo Artículo</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setShowBatchModal(true)}>Importar por DOI</Button>
+          <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>+ Nuevo Artículo</Button>
+        </div>
       </div>
 
       {msg && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
 
-      {/* User filter banner */}
       {userFilter && (
         <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 flex items-center justify-between">
           <p className="text-sm text-indigo-800">
@@ -168,7 +183,6 @@ const AdminArticles = () => {
         </div>
       )}
 
-      {/* Filters */}
       <Card>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
@@ -189,13 +203,12 @@ const AdminArticles = () => {
           <p className="text-sm text-gray-600">Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos</p>
           {students.length > 0 && (
             <p className="text-xs text-gray-400 mt-1">
-              Columnas de asignación: • gris = no asignado (clic para asignar)  • ● pendiente  • leído  • resumido  • evaluado
+              Columnas de asignación: • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado
             </p>
           )}
         </div>
       </Card>
 
-      {/* Table */}
       {loading ? <Loader /> : (
         <Card>
           <div className="overflow-x-auto">
@@ -218,62 +231,81 @@ const AdminArticles = () => {
               <tbody className="divide-y divide-gray-200">
                 {filteredArticles.length === 0 ? (
                   <tr><td colSpan={6 + students.length} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
-                ) : filteredArticles.map((article) => (
-                  <tr key={article.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 max-w-xs">
-                      <p className="font-semibold text-gray-900 truncate">{article.title}</p>
-                      <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                      {article.is_milestone && <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">⭐ Milestone</span>}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-xs font-medium rounded ${article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                        P{article.priority ?? '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <button
-                        title={article.dropbox_path ? 'Abrir PDF' : 'Sin PDF'}
-                        disabled={!article.dropbox_path || loadingPdf === article.id}
-                        onClick={() => handleOpenPdf(article)}
-                        className={`px-2 py-1 text-xs font-bold rounded ${
-                          article.dropbox_path
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        }`}
-                      >
-                        {loadingPdf === article.id ? '…' : 'PDF'}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {article.times_read != null && <p>{article.times_read} lecturas</p>}
-                      {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
-                    </td>
-                    {students.map((s) => {
-                      const asgn   = matrix[article.id]?.[s.id];
-                      const status = asgn?.status ?? 'none';
-                      const cls    = DOT_CLS[status] ?? DOT_CLS.none;
-                      const tip    = asgn ? `${s.name}: ${status}` : `Asignar a ${s.name}`;
-                      return (
-                        <td key={s.id} className="px-2 py-4 text-center">
-                          <button
-                            title={tip}
-                            onClick={() => handleDotClick(article.id, s)}
-                            disabled={!!asgn}
-                            className={`w-4 h-4 rounded-full inline-block transition-colors ${cls}`}
-                          />
-                        </td>
-                      );
-                    })}
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2 flex-wrap">
-                        <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
-                        <Button variant="secondary" size="sm" onClick={() => handleAssignToAll(article.id, article.title)}>Asignar a Todos</Button>
-                        <Button variant="danger" size="sm" onClick={() => handleDeleteArticle(article.id, article.title)}>Eliminar</Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                ) : filteredArticles.map((article) => {
+                  const { level, missing } = articleCompleteness(article);
+                  return (
+                    <tr key={article.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 max-w-xs">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900 truncate">{article.title}</p>
+                            <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
+                            {article.is_milestone && <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">⭐ Milestone</span>}
+                          </div>
+                          {level !== 'ok' && (
+                            <span
+                              title={`Faltan: ${missing.join(', ')}`}
+                              className={`shrink-0 mt-0.5 px-1.5 py-0.5 text-xs font-bold rounded ${
+                                level === 'warn'
+                                  ? 'bg-amber-100 text-amber-600'
+                                  : 'bg-red-100 text-red-600'
+                              }`}
+                            >
+                              {level === 'warn' ? '⚠️' : '!'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 text-xs font-medium rounded ${article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                          P{article.priority ?? '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <button
+                          title={article.dropbox_path ? 'Abrir PDF' : 'Sin PDF'}
+                          disabled={!article.dropbox_path || loadingPdf === article.id}
+                          onClick={() => handleOpenPdf(article)}
+                          className={`px-2 py-1 text-xs font-bold rounded ${
+                            article.dropbox_path
+                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {loadingPdf === article.id ? '…' : 'PDF'}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {article.times_read != null && <p>{article.times_read} lecturas</p>}
+                        {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
+                      </td>
+                      {students.map((s) => {
+                        const asgn   = matrix[article.id]?.[s.id];
+                        const status = asgn?.status ?? 'none';
+                        const cls    = DOT_CLS[status] ?? DOT_CLS.none;
+                        const tip    = asgn ? `${s.name}: ${status}` : `Asignar a ${s.name}`;
+                        return (
+                          <td key={s.id} className="px-2 py-4 text-center">
+                            <button
+                              title={tip}
+                              onClick={() => handleDotClick(article.id, s)}
+                              disabled={!!asgn}
+                              className={`w-4 h-4 rounded-full inline-block transition-colors ${cls}`}
+                            />
+                          </td>
+                        );
+                      })}
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2 flex-wrap">
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
+                          <Button variant="secondary" size="sm" onClick={() => handleAssignToAll(article.id, article.title)}>Asignar a Todos</Button>
+                          <Button variant="danger" size="sm" onClick={() => handleDeleteArticle(article.id, article.title)}>Eliminar</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -285,6 +317,12 @@ const AdminArticles = () => {
         onClose={() => { setShowModal(false); setEditingArticle(null); }}
         onSave={editingArticle ? handleUpdateArticle : handleCreateArticle}
         article={editingArticle}
+      />
+
+      <BatchImportModal
+        isOpen={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        onImported={() => { loadArticles(); flash('Importación completada'); }}
       />
     </div>
   );
