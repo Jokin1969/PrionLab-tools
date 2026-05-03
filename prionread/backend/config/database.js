@@ -1,8 +1,12 @@
 const { Sequelize } = require('sequelize');
 
+// Internal Railway hostnames (*.railway.internal) don't support SSL.
+// External/public URLs do — keep rejectUnauthorized:false for self-signed certs.
+const isInternalHost = (process.env.DATABASE_URL || '').includes('.railway.internal');
+
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  dialectOptions: {
+  dialectOptions: isInternalHost ? {} : {
     ssl: {
       require: true,
       rejectUnauthorized: false,
