@@ -1,244 +1,387 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  RiArrowLeftLine, RiCheckLine, RiRobot2Line, RiSaveLine,
-  RiStarLine, RiStarFill, RiExternalLinkLine,
-} from 'react-icons/ri';
-import api from '../../services/api';
-import { StatusBadge } from '../../components/ui/Badge';
-import Spinner from '../../components/ui/Spinner';
+import { studentService } from '../../services/student.service';
+import { Card, Button, Input, Loader, Modal } from '../../components/common';
 
-function StarRating({ value, onChange }) {
-  const [hover, setHover] = useState(0);
-  return (
-    <div className="flex gap-1">
-      {[1, 2, 3, 4, 5].map((n) => {
-        const filled = n <= (hover || value);
-        return (
-          <button
-            key={n}
-            type="button"
-            onClick={() => onChange(n)}
-            onMouseEnter={() => setHover(n)}
-            onMouseLeave={() => setHover(0)}
-            className="text-amber-400 hover:scale-110 transition-transform"
-          >
-            {filled ? <RiStarFill className="h-6 w-6" /> : <RiStarLine className="h-6 w-6" />}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-export default function ArticleDetail() {
+const ArticleDetail = () => {
   const { articleId } = useParams();
   const navigate = useNavigate();
 
   const [article, setArticle] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [evaluation, setEvaluation] = useState(null);
+  const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [msg, setMsg] = useState('');
 
+  // Summary states
   const [summaryText, setSummaryText] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [generatingAI, setGeneratingAI] = useState(false);
 
+  // Evaluation states
+  const [showEvalModal, setShowEvalModal] = useState(false);
+  const [evalQuestions, setEvalQuestions] = useState(null);
+  const [evalAnswers, setEvalAnswers] = useState([]);
+  const [submittingEval, setSubmittingEval] = useState(false);
+
+  // Rating states
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [ratingMsg, setRatingMsg] = useState('');
 
   useEffect(() => {
-    api.get(`/my-articles/${articleId}`)
-      .then((res) => {
-        const a = res.data.article ?? res.data;
-        setArticle(a);
-        if (a.summary?.content) setSummaryText(a.summary.content);
-        if (a.myRating) {
-          setRating(a.myRating.rating ?? 0);
-          setComment(a.myRating.comment ?? '');
-        }
-      })
-      .catch(() => setError('No se pudo cargar el artículo'))
-      .finally(() => setLoading(false));
+    loadArticleData();
   }, [articleId]);
 
-  async function markAsRead() {
-    setSaving(true);
+  const loadArticleData = async () => {
+    setLoading(true);
     try {
-      await api.post(`/my-articles/${articleId}/read`);
-      setArticle((prev) => ({ ...prev, status: 'read', UserArticle: { ...prev.UserArticle, status: 'read' } }));
-      setMsg('Marcado como leído');
-    } catch (err) {
-      setMsg(err.response?.data?.error || 'Error al marcar como leído');
-    } finally {
-      setSaving(false);
-    }
-  }
+      const [articleData, ratingsData] = await Promise.all([
+        studentService.getArticleDetail(articleId),
+        studentService.getArticleRatings(articleId),
+      ]);
 
-  async function saveSummary() {
-    setSaving(true);
+      setArticle(articleData.article ?? articleData);
+      setRatings(ratingsData.ratings || []);
+
+      try {
+        const summaryData = await studentService.getSummary(articleId);
+        setSummary(summaryData.summary);
+        setSummaryText(summaryData.summary?.content ?? '');
+      } catch {
+        // No summary yet
+      }
+
+      try {
+        const evalData = await studentService.getEvaluation(articleId);
+        setEvaluation(evalData.evaluation);
+      } catch {
+        // No evaluation yet
+      }
+    } catch (error) {
+      console.error('Error loading article:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSummary = async () => {
+    if (!summaryText.trim()) return;
+    setSavingSummary(true);
     try {
-      await api.post(`/my-articles/${articleId}/summary`, { content: summaryText });
-      setArticle((prev) => ({ ...prev, status: 'summarized' }));
-      setMsg('Resumen guardado');
-    } catch (err) {
-      setMsg(err.response?.data?.error || 'Error al guardar resumen');
+      await studentService.createSummary(articleId, summaryText);
+      loadArticleData();
+    } catch {
+      // error handled silently; could add toast here
     } finally {
-      setSaving(false);
+      setSavingSummary(false);
     }
-  }
+  };
 
-  async function generateAI() {
-    setAiLoading(true);
+  const handleGenerateAISummary = async () => {
+    setGeneratingAI(true);
     try {
-      const res = await api.post(`/my-articles/${articleId}/summary/ai`);
-      setSummaryText(res.data.content ?? res.data.summary ?? '');
-    } catch (err) {
-      setMsg(err.response?.data?.error || 'Error generando resumen IA');
+      const data = await studentService.generateAISummary(articleId);
+      setSummaryText(data.content ?? data.ai_summary ?? '');
+    } catch {
+      // error handled silently
     } finally {
-      setAiLoading(false);
+      setGeneratingAI(false);
     }
-  }
+  };
 
-  async function submitRating() {
-    if (!rating) return;
-    setSaving(true);
+  const handleStartEvaluation = async () => {
     try {
-      await api.post(`/articles/${articleId}/ratings`, { rating, comment });
-      setRatingMsg('Valoración guardada');
-    } catch (err) {
-      setRatingMsg(err.response?.data?.error || 'Error al guardar valoración');
-    } finally {
-      setSaving(false);
+      const data = await studentService.generateEvaluation(articleId);
+      setEvalQuestions(data.questions);
+      setEvalAnswers(new Array(data.questions.length).fill(null));
+      setShowEvalModal(true);
+    } catch {
+      // error handled silently
     }
-  }
+  };
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center p-12">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
+  const handleSubmitEvaluation = async () => {
+    if (evalAnswers.includes(null)) return;
+    setSubmittingEval(true);
+    try {
+      await studentService.submitEvaluation(articleId, evalQuestions, evalAnswers);
+      setShowEvalModal(false);
+      loadArticleData();
+    } catch {
+      // error handled silently
+    } finally {
+      setSubmittingEval(false);
+    }
+  };
 
-  if (error || !article) {
-    return (
-      <div className="p-6">
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error || 'Artículo no encontrado'}</p>
-      </div>
-    );
-  }
+  const handleRateArticle = async () => {
+    if (rating === 0) return;
+    try {
+      await studentService.rateArticle(articleId, rating, comment);
+      loadArticleData();
+      setRating(0);
+      setComment('');
+    } catch {
+      // error handled silently
+    }
+  };
 
-  const status = article.UserArticle?.status ?? article.status ?? 'pending';
-  const canSummarize = ['read', 'summarized', 'evaluated'].includes(status);
-  const canRate = canSummarize;
+  if (loading) return <Loader fullScreen />;
+  if (!article) return <div className="p-8 text-gray-500">Artículo no encontrado</div>;
 
   return (
-    <div className="mx-auto max-w-3xl p-6 space-y-6">
-      {/* Back */}
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800"
-      >
-        <RiArrowLeftLine className="h-4 w-4" />
-        Volver
-      </button>
+    <div className="space-y-6">
+      {/* Back button */}
+      <Button variant="ghost" onClick={() => navigate(-1)}>
+        ← Volver
+      </Button>
 
-      {/* Header */}
-      <div className="card p-6 space-y-3">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="text-xl font-bold text-gray-900 leading-snug">{article.title}</h1>
-          <StatusBadge status={status} />
-        </div>
-        <p className="text-sm text-gray-600">
-          {Array.isArray(article.authors) ? article.authors.join(', ') : article.authors}
-          {article.year && <span className="ml-2 text-gray-400">({article.year})</span>}
-        </p>
-        {article.journal && <p className="text-sm italic text-gray-500">{article.journal}</p>}
-        {article.abstract && (
-          <p className="text-sm text-gray-700 leading-relaxed border-t border-gray-100 pt-3">{article.abstract}</p>
-        )}
-        <div className="flex flex-wrap gap-2 pt-1">
-          {article.doi && (
-            <a
-              href={`https://doi.org/${article.doi}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 text-xs text-prion-primary hover:underline"
-            >
-              DOI <RiExternalLinkLine className="h-3 w-3" />
-            </a>
-          )}
-          {Array.isArray(article.tags) && article.tags.map((t) => (
-            <span key={t} className="rounded bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">{t}</span>
-          ))}
-        </div>
-
-        {msg && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{msg}</p>}
-
-        {status === 'pending' && (
-          <button onClick={markAsRead} disabled={saving} className="btn-primary flex items-center gap-2">
-            {saving ? <Spinner size="sm" /> : <RiCheckLine className="h-4 w-4" />}
-            Marcar como leído
-          </button>
-        )}
-      </div>
-
-      {/* Summary */}
-      {canSummarize && (
-        <div className="card p-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-800">Resumen crítico</h2>
-            <button
-              onClick={generateAI}
-              disabled={aiLoading}
-              className="btn-secondary flex items-center gap-2 text-xs"
-            >
-              {aiLoading ? <Spinner size="sm" /> : <RiRobot2Line className="h-4 w-4" />}
-              Generar con IA
-            </button>
+      {/* Article Info */}
+      <Card>
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">
+              {article.title}
+            </h1>
+            <p className="text-lg text-gray-700 mb-2">
+              {Array.isArray(article.authors) ? article.authors.join(', ') : article.authors}
+            </p>
+            <div className="flex items-center gap-4 text-sm text-gray-600 flex-wrap">
+              {article.journal && <span>{article.journal}</span>}
+              {article.journal && article.year && <span>•</span>}
+              {article.year && <span>{article.year}</span>}
+              {article.doi && (
+                <>
+                  <span>•</span>
+                  <a
+                    href={`https://doi.org/${article.doi}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-prion-primary hover:underline"
+                  >
+                    DOI: {article.doi}
+                  </a>
+                </>
+              )}
+            </div>
           </div>
-          <textarea
-            rows={8}
-            value={summaryText}
-            onChange={(e) => setSummaryText(e.target.value)}
-            placeholder="Escribe aquí tu resumen crítico del artículo..."
-            className="input resize-y"
-          />
-          <button
-            onClick={saveSummary}
-            disabled={saving || !summaryText.trim()}
-            className="btn-primary flex items-center gap-2"
-          >
-            {saving ? <Spinner size="sm" /> : <RiSaveLine className="h-4 w-4" />}
-            Guardar resumen
-          </button>
+          {article.is_milestone && (
+            <span className="shrink-0 px-4 py-2 bg-amber-100 text-amber-600 font-medium rounded ml-4">
+              ⭐ Milestone
+            </span>
+          )}
         </div>
-      )}
 
-      {/* Rating */}
-      {canRate && (
-        <div className="card p-6 space-y-3">
-          <h2 className="font-semibold text-gray-800">Tu valoración</h2>
-          <StarRating value={rating} onChange={setRating} />
-          <textarea
-            rows={3}
+        {/* Tags */}
+        {article.tags && article.tags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {article.tags.map((tag) => (
+              <span key={tag} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Abstract */}
+        {article.abstract && (
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-semibold text-gray-900 mb-2">Abstract</h3>
+            <p className="text-sm text-gray-700 leading-relaxed">{article.abstract}</p>
+          </div>
+        )}
+
+        {/* Download PDF */}
+        {article.dropbox_link && (
+          <div className="mt-6">
+            <a href={article.dropbox_link} target="_blank" rel="noopener noreferrer">
+              <Button variant="primary">📥 Descargar PDF</Button>
+            </a>
+          </div>
+        )}
+      </Card>
+
+      {/* Summary Section */}
+      <Card title="📝 Tu Resumen">
+        <textarea
+          value={summaryText}
+          onChange={(e) => setSummaryText(e.target.value)}
+          placeholder="Escribe aquí tu resumen del artículo..."
+          rows={8}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary resize-y"
+        />
+        <div className="flex gap-2 mt-4 flex-wrap">
+          <Button
+            onClick={handleSaveSummary}
+            loading={savingSummary}
+            disabled={!summaryText.trim()}
+          >
+            💾 Guardar Resumen
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleGenerateAISummary}
+            loading={generatingAI}
+          >
+            ✨ Generar con IA
+          </Button>
+        </div>
+        {summary?.is_ai_generated && (
+          <p className="mt-2 text-xs text-gray-400">✨ Este resumen fue generado con IA</p>
+        )}
+      </Card>
+
+      {/* Evaluation Section */}
+      <Card title="✅ Autoevaluación">
+        {evaluation ? (
+          <div className="p-6 bg-green-50 rounded-lg border border-green-200">
+            <p className="text-lg font-semibold text-green-800 mb-2">
+              ✓ Evaluación completada
+            </p>
+            <p className="text-3xl font-bold text-green-600 mb-2">
+              {evaluation.score}/10
+            </p>
+            <p className="text-sm text-gray-600">
+              {evaluation.passed ? '¡Aprobado! 🎉' : 'No aprobado'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Realizado el {new Date(evaluation.created_at).toLocaleDateString('es-ES')}
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-gray-600 mb-4">
+              Realiza una autoevaluación de 5-10 preguntas tipo test para comprobar tu comprensión del artículo.
+            </p>
+            <Button onClick={handleStartEvaluation}>
+              🎯 Iniciar Evaluación
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      {/* Rating Section */}
+      <Card title="⭐ Tu Valoración">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Valoración (1-5 estrellas)
+            </label>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setRating(star)}
+                  className="text-3xl hover:scale-110 transition-transform"
+                >
+                  {star <= rating ? '⭐' : '☆'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Input
+            label="Comentario (opcional)"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Comentario opcional..."
-            className="input resize-y"
+            placeholder="¿Qué te pareció el artículo?"
           />
-          {ratingMsg && <p className="text-sm text-green-700">{ratingMsg}</p>}
-          <button
-            onClick={submitRating}
-            disabled={saving || !rating}
-            className="btn-primary"
-          >
-            Guardar valoración
-          </button>
+
+          <Button onClick={handleRateArticle} disabled={rating === 0}>
+            Guardar Valoración
+          </Button>
         </div>
+      </Card>
+
+      {/* Other Ratings */}
+      {ratings.length > 0 && (
+        <Card title="💬 Valoraciones del Laboratorio">
+          <div className="space-y-4">
+            {ratings.map((r) => (
+              <div key={r.id} className="border-b border-gray-200 pb-4 last:border-0">
+                <div className="flex items-center gap-3 mb-2">
+                  {r.user?.photo_url ? (
+                    <img
+                      src={r.user.photo_url}
+                      alt={r.user.name}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-prion-primary">
+                      {r.user?.name?.[0]?.toUpperCase() ?? '?'}
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-semibold text-gray-900">{r.user?.name}</p>
+                    <p className="text-sm text-gray-600">
+                      {'⭐'.repeat(r.rating)} ({r.rating}/5)
+                    </p>
+                  </div>
+                </div>
+                {r.comment && (
+                  <p className="text-sm text-gray-700 ml-13 pl-1">{r.comment}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
+
+      {/* Evaluation Modal */}
+      <Modal
+        isOpen={showEvalModal}
+        onClose={() => setShowEvalModal(false)}
+        title="Autoevaluación"
+        size="lg"
+      >
+        {evalQuestions && (
+          <div className="space-y-6">
+            {evalQuestions.map((q, idx) => (
+              <div key={idx} className="p-4 bg-gray-50 rounded-lg">
+                <p className="font-semibold text-gray-900 mb-3">
+                  {idx + 1}. {q.question}
+                </p>
+                <div className="space-y-2">
+                  {q.options.map((option, optIdx) => (
+                    <label
+                      key={optIdx}
+                      className="flex items-center gap-3 p-2 hover:bg-white rounded cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name={`question-${idx}`}
+                        checked={evalAnswers[idx] === optIdx}
+                        onChange={() => {
+                          const newAnswers = [...evalAnswers];
+                          newAnswers[idx] = optIdx;
+                          setEvalAnswers(newAnswers);
+                        }}
+                        className="w-4 h-4 text-prion-primary"
+                      />
+                      <span className="text-sm text-gray-700">{option}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="flex gap-2 justify-end pt-4 border-t">
+              <Button variant="ghost" onClick={() => setShowEvalModal(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSubmitEvaluation}
+                loading={submittingEval}
+                disabled={evalAnswers.includes(null)}
+              >
+                Enviar Evaluación
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
-}
+};
+
+export default ArticleDetail;

@@ -13,12 +13,61 @@ export const studentService = {
   },
 
   markAsRead: async (articleId) => {
-    const response = await api.put(`/my-articles/${articleId}/mark-as-read`);
+    const response = await api.post(`/my-articles/${articleId}/read`);
     return response.data;
   },
 
   getArticleDetail: async (articleId) => {
     const response = await api.get(`/my-articles/${articleId}`);
+    return response.data;
+  },
+
+  createSummary: async (articleId, content, isAiGenerated = false) => {
+    const response = await api.post(`/my-articles/${articleId}/summary`, {
+      content,
+      is_ai_generated: isAiGenerated,
+    });
+    return response.data;
+  },
+
+  getSummary: async (articleId) => {
+    const response = await api.get(`/my-articles/${articleId}/summary`);
+    return response.data;
+  },
+
+  generateAISummary: async (articleId) => {
+    const response = await api.post(`/my-articles/${articleId}/summary/ai`);
+    return response.data;
+  },
+
+  generateEvaluation: async (articleId) => {
+    const response = await api.post(`/my-articles/${articleId}/generate-evaluation`);
+    return response.data;
+  },
+
+  submitEvaluation: async (articleId, questions, answers) => {
+    const response = await api.post(`/my-articles/${articleId}/submit-evaluation`, {
+      questions,
+      answers,
+    });
+    return response.data;
+  },
+
+  getEvaluation: async (articleId) => {
+    const response = await api.get(`/my-articles/${articleId}/evaluation`);
+    return response.data;
+  },
+
+  rateArticle: async (articleId, rating, comment) => {
+    const response = await api.post(`/articles/${articleId}/ratings`, {
+      rating,
+      comment,
+    });
+    return response.data;
+  },
+
+  getArticleRatings: async (articleId) => {
+    const response = await api.get(`/articles/${articleId}/ratings`);
     return response.data;
   },
 };
