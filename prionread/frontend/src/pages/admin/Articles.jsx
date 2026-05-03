@@ -42,6 +42,7 @@ const AdminArticles = () => {
   const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
   const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
   const [articles, setArticles]         = useState([]);
+  const [total, setTotal]               = useState(null);
   const [loading, setLoading]           = useState(true);
   const [showModal, setShowModal]       = useState(false);
   const [showBatchModal, setShowBatchModal]   = useState(false);
@@ -67,6 +68,7 @@ const AdminArticles = () => {
     try {
       const data = await adminService.getArticles(filters);
       setArticles(data.articles || []);
+      if (data.total != null) setTotal(data.total);
     } catch (err) { console.error('Error loading articles:', err); }
     finally { setLoading(false); }
   }, [filters]);
@@ -252,6 +254,9 @@ const AdminArticles = () => {
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
 
+  const isFiltered = search || filterNoPdf || filterNoAbstract || userFilter ||
+    filters.is_milestone || (filters.year && filters.year !== '');
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -297,7 +302,17 @@ const AdminArticles = () => {
           </select>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
-          <p className="text-sm text-gray-600">Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos</p>
+          <p className="text-sm text-gray-600">
+            Mostrando{' '}
+            <span className="font-semibold">{filteredArticles.length}</span>
+            {isFiltered && total != null && filteredArticles.length !== total && (
+              <> de <span className="font-semibold">{total}</span> en total</>
+            )}
+            {!isFiltered && total != null && (
+              <> de <span className="font-semibold">{total}</span> en total</>
+            )}{' '}
+            artículos
+          </p>
           {students.length > 0 && (
             <p className="text-xs text-gray-400">
               • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado

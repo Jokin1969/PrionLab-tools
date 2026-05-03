@@ -1,8 +1,8 @@
 const { Op } = require('sequelize');
 
 const ALLOWED_SORT = new Set(['year', 'title', 'priority', 'created_at', 'updated_at']);
-const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 500;
+const MAX_LIMIT = 500;
 
 /**
  * Builds a Sequelize-compatible { where, order, limit, offset } object
