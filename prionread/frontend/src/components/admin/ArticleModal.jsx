@@ -76,13 +76,25 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
       fd.append('authors',      formData.authors);
       fd.append('year',         formData.year);
       fd.append('journal',      formData.journal);
-      fd.append('doi',          formData.doi);
-      fd.append('pubmed_id',    formData.pubmed_id);
       fd.append('abstract',     formData.abstract);
       fd.append('is_milestone', formData.is_milestone);
       fd.append('priority',     formData.priority);
       const tagsArray = formData.tags.split(',').map((t) => t.trim()).filter(Boolean);
       fd.append('tags', JSON.stringify(tagsArray));
+
+      // For updates, only send doi/pubmed_id if the user actually changed them.
+      // The backend uniqueness check does not exclude the current article, so
+      // sending back the article's own ids would cause a false 409 conflict.
+      const isUpdate = Boolean(article);
+      const originalDoi   = article?.doi       ?? '';
+      const originalPmid  = article?.pubmed_id ?? '';
+      if (!isUpdate || formData.doi !== originalDoi) {
+        if (formData.doi) fd.append('doi', formData.doi);
+      }
+      if (!isUpdate || formData.pubmed_id !== originalPmid) {
+        if (formData.pubmed_id) fd.append('pubmed_id', formData.pubmed_id);
+      }
+
       if (pdfFile) fd.append('pdf', pdfFile);
       await onSave(fd);
       onClose();
