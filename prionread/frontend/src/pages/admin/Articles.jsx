@@ -147,8 +147,13 @@ const AdminArticles = () => {
     setLoadingPdf(article.id);
     try {
       const data = await adminService.getArticlePdfLink(article.id);
-      window.open(data.url, '_blank');
-    } catch { errorFlash('Error obteniendo enlace PDF'); }
+      const resp = await fetch(data.url);
+      if (!resp.ok) throw new Error('No se pudo descargar el PDF desde Dropbox');
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      window.open(objUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+    } catch (err) { errorFlash(err?.message || 'Error obteniendo enlace PDF'); }
     finally { setLoadingPdf(null); }
   };
 
