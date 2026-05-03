@@ -34,7 +34,9 @@ export const adminService = {
   getArticleById: async (articleId) => (await api.get(`/articles/${articleId}`)).data,
   createArticle: async (formData) =>
     (await api.post('/articles', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data,
-  updateArticle: async (articleId, formData) => (await api.put(`/articles/${articleId}`, formData)).data,
+  // Content-Type header required — without it multipart fields (including pdf) are not parsed correctly
+  updateArticle: async (articleId, formData) =>
+    (await api.put(`/articles/${articleId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data,
   deleteArticle: async (articleId) => (await api.delete(`/articles/${articleId}`)).data,
   fetchMetadata: async (doi, pubmedId) =>
     (await api.post('/articles/fetch-metadata', { doi, pubmed_id: pubmedId })).data,
