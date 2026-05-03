@@ -40,13 +40,13 @@ const AdminArticles = () => {
 
   const handleCreateArticle = async (formData) => {
     await adminService.createArticle(formData);
-    loadArticles();
+    await loadArticles();
     flash('Artículo creado correctamente');
   };
 
   const handleUpdateArticle = async (formData) => {
     await adminService.updateArticle(editingArticle.id, formData);
-    loadArticles();
+    await loadArticles();
     setEditingArticle(null);
     flash('Artículo actualizado correctamente');
   };
@@ -55,7 +55,7 @@ const AdminArticles = () => {
     if (!window.confirm(`¿Eliminar artículo "${title}"?`)) return;
     try {
       await adminService.deleteArticle(articleId);
-      loadArticles();
+      await loadArticles();
       flash('Artículo eliminado');
     } catch {
       flash('Error eliminando artículo');

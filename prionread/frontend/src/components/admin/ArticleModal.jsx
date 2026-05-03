@@ -230,14 +230,13 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
         {/* PDF Upload */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            PDF {!article && '(requerido)'}
+            PDF <span className="text-gray-400 font-normal">(opcional)</span>
           </label>
           <input
             type="file"
             accept=".pdf"
             onChange={(e) => setPdfFile(e.target.files[0])}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            required={!article}
           />
           {pdfFile && (
             <p className="text-xs text-gray-600 mt-1">

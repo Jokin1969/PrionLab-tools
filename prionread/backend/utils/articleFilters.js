@@ -20,8 +20,8 @@ function buildArticleQuery(query) {
     if (tags.length) where.tags = { [Op.contains]: tags };
   }
 
-  // ?is_milestone=true
-  if (query.is_milestone !== undefined) {
+  // ?is_milestone=true  (empty string = "Todos", skip filter)
+  if (query.is_milestone !== undefined && query.is_milestone !== '') {
     where.is_milestone = query.is_milestone === 'true';
   }
 
@@ -32,7 +32,7 @@ function buildArticleQuery(query) {
   }
 
   // ?year=2020
-  if (query.year !== undefined) {
+  if (query.year !== undefined && query.year !== '') {
     const y = parseInt(query.year, 10);
     if (!Number.isNaN(y)) where.year = y;
   }
