@@ -12,7 +12,7 @@ const { buildArticleQuery } = require('../utils/articleFilters');
 
 const CURRENT_YEAR = new Date().getFullYear();
 
-// ─── Error mapping ────────────────────────────────────────────────────────────
+// ─── Error mapping ─────────────────────────────────────────────────────────────
 
 const HTTP_STATUS = {
   INVALID_INPUT: 400,
@@ -108,7 +108,7 @@ const RATING_COUNT_LITERAL = literal(
   '(SELECT COUNT(*) FROM article_ratings WHERE article_id = "Article".id)'
 );
 
-// ─── CRUD ─────────────────────────────────────────────────────────────────────
+// ─── CRUD ───────────────────────────────────────────────────────────────────────
 
 // POST /api/articles
 async function createArticle(req, res) {
@@ -157,10 +157,10 @@ async function createArticle(req, res) {
       priority: fields.priority || 3,
     });
 
-    // Optional PDF upload
+    // Optional PDF upload — pass full article so filename uses DOI/PMID
     if (req.file) {
       try {
-        const dropbox_path = await uploadPDF(req.file.buffer, article.id);
+        const dropbox_path = await uploadPDF(req.file.buffer, article);
         await article.update({ dropbox_path });
       } catch (err) {
         // Article is created — PDF failure is non-fatal; warn but continue
@@ -276,13 +276,13 @@ async function updateArticle(req, res) {
       if (fields[key] !== undefined) article[key] = fields[key];
     }
 
-    // Replace PDF if a new file was uploaded
+    // Replace PDF if a new file was uploaded — pass full article for DOI/PMID filename
     if (req.file) {
       if (article.dropbox_path) {
         try { await deletePDF(article.dropbox_path); } catch { /* old file gone — fine */ }
       }
       try {
-        article.dropbox_path = await uploadPDF(req.file.buffer, article.id);
+        article.dropbox_path = await uploadPDF(req.file.buffer, article);
         article.dropbox_link = null;
       } catch (err) {
         return serviceError(res, err);
@@ -346,7 +346,7 @@ async function generateDownloadLinkHandler(req, res) {
   }
 }
 
-// ─── Metadata + Dropbox helpers (unchanged) ───────────────────────────────────
+// ─── Metadata + Dropbox helpers ───────────────────────────────────────────────────────────
 
 // POST /api/articles/fetch-metadata
 async function fetchMetadata(req, res) {
@@ -376,7 +376,8 @@ async function uploadArticlePDF(req, res) {
     if (!req.file) return res.status(400).json({ error: 'No PDF file received' });
     let dropbox_path;
     try {
-      dropbox_path = await uploadPDF(req.file.buffer, article.id);
+      // Pass full article so filename uses DOI/PMID
+      dropbox_path = await uploadPDF(req.file.buffer, article);
     } catch (err) {
       return serviceError(res, err);
     }
@@ -450,6 +451,66 @@ async function listDropboxFiles(req, res) {
   }
 }
 
+/**
+ * POST /api/admin/articles/sync-dropbox
+ *
+ * Scans the Dropbox folder and links any PDF whose filename matches an
+ * article's DOI or PMID to that article in the database.
+ *
+ * Naming conventions expected in Dropbox:
+ *   DOI  → 10.1016_j.cell.2020.01.001.pdf  (slashes replaced by underscores)
+ *   PMID → PMID_22654800.pdf
+ *
+ * Only updates articles that currently have no dropbox_path.
+ * Returns { matched, already_had_pdf, unmatched: [filenames] }
+ */
+async function syncDropboxPDFs(req, res) {
+  try {
+    let files;
+    try {
+      files = await listFiles();
+    } catch (err) {
+      return serviceError(res, err);
+    }
+
+    const results = { matched: 0, already_had_pdf: 0, unmatched: [] };
+
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+
+      const baseName = file.name.replace(/\.pdf$/i, '');
+      let article = null;
+
+      if (baseName.startsWith('PMID_')) {
+        const pmid = baseName.slice(5);
+        article = await Article.findOne({ where: { pubmed_id: pmid } });
+      } else {
+        // Attempt DOI match: convert underscores back to slashes
+        const doi = baseName.replace(/_/g, '/');
+        article = await Article.findOne({ where: { doi: doi.toLowerCase() } });
+      }
+
+      if (!article) {
+        results.unmatched.push(file.name);
+        continue;
+      }
+
+      if (article.dropbox_path) {
+        results.already_had_pdf++;
+        continue;
+      }
+
+      await article.update({ dropbox_path: file.path, dropbox_link: null });
+      results.matched++;
+    }
+
+    return res.json(results);
+  } catch (err) {
+    console.error('[syncDropboxPDFs]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   createArticle,
   getArticles,
@@ -462,4 +523,5 @@ module.exports = {
   getDownloadLink,
   deleteArticlePDF,
   listDropboxFiles,
+  syncDropboxPDFs,
 };
