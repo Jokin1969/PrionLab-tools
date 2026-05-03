@@ -1,82 +1,113 @@
-import { useState, useEffect, Fragment } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
 import { BatchImportModal } from '../../components/admin/BatchImportModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
-function articleCompleteness(article) {
-  const authorStr = Array.isArray(article.authors)
-    ? article.authors.join(', ')
-    : (article.authors ?? '');
-  const error = [];
-  if (!authorStr.trim()) error.push('autores');
-  if (!article.doi && !article.pubmed_id) error.push('DOI/PubMed');
-  if (!article.journal) error.push('revista');
-  if (!article.dropbox_path) error.push('PDF');
-  const warn = [];
-  if (!article.abstract) warn.push('abstract');
-  return { error, warn };
-}
-
-const PRIORITY_COLORS = {
-  1: 'bg-gray-100 text-gray-500',
-  2: 'bg-blue-100 text-blue-600',
-  3: 'bg-yellow-100 text-yellow-700',
-  4: 'bg-orange-100 text-orange-600',
-  5: 'bg-red-100 text-red-600',
+const DOT_CLS = {
+  none:       'bg-gray-200 hover:bg-gray-400 cursor-pointer',
+  pending:    'bg-amber-400  cursor-default',
+  read:       'bg-blue-400   cursor-default',
+  summarized: 'bg-purple-400 cursor-default',
+  evaluated:  'bg-green-400  cursor-default',
 };
 
-const AdminArticles = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
+const STATUS_LABELS = {
+  read: 'leídos', summarized: 'resumidos', evaluated: 'evaluados',
+};
 
-  const [articles, setArticles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+function initials(name) {
+  const p = name.trim().split(/\s+/);
+  return p.length >= 2 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : p[0].slice(0, 2).toUpperCase();
+}
+
+function articleCompleteness(article) {
+  const missing = [];
+  const authors = Array.isArray(article.authors) ? article.authors.join('') : (article.authors ?? '');
+  if (!authors.trim())                    missing.push('autores');
+  if (!article.doi && !article.pubmed_id) missing.push('DOI/PubMed');
+  if (!article.journal)                   missing.push('revista');
+  if (!article.abstract)                  missing.push('resumen');
+  if (!article.dropbox_path)              missing.push('PDF');
+  if (missing.length === 0)               return { level: 'ok' };
+  if (missing.length === 1 && missing[0] === 'resumen') return { level: 'warn', missing };
+  return { level: 'error', missing };
+}
+
+const AdminArticles = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
+  const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
+
+  const [articles, setArticles]             = useState([]);
+  const [loading, setLoading]               = useState(true);
+  const [showModal, setShowModal]           = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
-  const [search, setSearch] = useState('');
-  const [filterNoPdf, setFilterNoPdf] = useState(false);
+  const [search, setSearch]                 = useState('');
+  const [filterNoPdf, setFilterNoPdf]       = useState(false);
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
-  const [savingInline, setSavingInline] = useState(null);
-  const [uploadingPdf, setUploadingPdf] = useState(null);
+  const [filters, setFilters]               = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
+  const [msg, setMsg]                       = useState('');
+  const [students, setStudents]             = useState([]);
+  const [matrix, setMatrix]                 = useState({});
+  const [loadingPdf, setLoadingPdf]         = useState(null);
+  const [uploadingPdf, setUploadingPdf]     = useState(null);
+  const [savingInline, setSavingInline]     = useState(null);
   const [fetchingAbstract, setFetchingAbstract] = useState(null);
-  const [abstractPreview, setAbstractPreview] = useState(null); // { id, text }
-  const [filters, setFilters] = useState({
-    is_milestone: '',
-    year: '',
-    sort_by: 'year',
-    order: 'desc',
-  });
-  const [msg, setMsg] = useState('');
+  const [abstractPreview, setAbstractPreview]   = useState(null); // { id, text }
 
-  const filterUser = location.state?.filterUser ?? null;
-  const filterStatuses = location.state?.filterStatuses ?? null;
-
-  useEffect(() => {
-    loadArticles();
-  }, [filters]);
-
-  const loadArticles = async () => {
+  const loadArticles = useCallback(async () => {
     setLoading(true);
     try {
       const data = await adminService.getArticles(filters);
       setArticles(data.articles || []);
-    } catch (error) {
-      console.error('Error loading articles:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    } catch (err) { console.error('Error loading articles:', err); }
+    finally { setLoading(false); }
+  }, [filters]);
+
+  const loadMatrix = useCallback(async () => {
+    try {
+      const data = await adminService.getAssignmentsMatrix();
+      setStudents(data.students || []);
+      setMatrix(data.matrix   || {});
+    } catch (err) { console.error('Error loading matrix:', err); }
+  }, []);
+
+  useEffect(() => { loadArticles(); }, [loadArticles]);
+  useEffect(() => { loadMatrix(); },  [loadMatrix]);
+
+  const flash = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
   const clearUserFilter = () => {
+    setUserFilter(null);
+    setStatusFilter(null);
     navigate('/admin/articles', { replace: true, state: null });
   };
 
-  const flash = (text) => {
-    setMsg(text);
-    setTimeout(() => setMsg(''), 4000);
+  const handleInlineUpdate = async (article, patch) => {
+    setSavingInline(article.id);
+    try {
+      const fd = new FormData();
+      fd.append('title',        article.title || '');
+      fd.append('authors',      Array.isArray(article.authors) ? article.authors.join(', ') : (article.authors || ''));
+      fd.append('year',         article.year);
+      fd.append('journal',      article.journal || '');
+      // Skip empty doi/pubmed_id — empty string triggers false 409 uniqueness conflict
+      if (article.doi)       fd.append('doi',       article.doi);
+      if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
+      fd.append('abstract',     article.abstract || '');
+      fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
+      fd.append('priority',     String(patch.priority     ?? article.priority));
+      if (patch.abstract !== undefined) fd.append('abstract', patch.abstract);
+      await adminService.updateArticle(article.id, fd);
+      setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, ...patch } : a));
+    } catch (err) {
+      flash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
+    } finally { setSavingInline(null); }
   };
 
   const handleCreateArticle = async (formData) => {
@@ -94,67 +125,44 @@ const AdminArticles = () => {
 
   const handleDeleteArticle = async (articleId, title) => {
     if (!window.confirm(`¿Eliminar artículo "${title}"?`)) return;
-    try {
-      await adminService.deleteArticle(articleId);
-      await loadArticles();
-      flash('Artículo eliminado');
-    } catch {
-      flash('Error eliminando artículo');
-    }
+    try { await adminService.deleteArticle(articleId); await loadArticles(); flash('Artículo eliminado'); }
+    catch { flash('Error eliminando artículo'); }
   };
 
   const handleAssignToAll = async (articleId, title) => {
     if (!window.confirm(`¿Asignar "${title}" a TODOS los estudiantes?`)) return;
     try {
       const data = await adminService.assignArticleToAll(articleId);
+      await loadMatrix();
       flash(`Asignado a ${data.assigned_to ?? data.count ?? 'todos los'} estudiantes`);
-    } catch {
-      flash('Error asignando artículo');
-    }
+    } catch { flash('Error asignando artículo'); }
   };
 
-  const handleInlineUpdate = async (article, patch) => {
-    setSavingInline(article.id);
+  const handleOpenPdf = async (article) => {
+    if (!article.dropbox_path) return;
+    setLoadingPdf(article.id);
     try {
-      const fd = new FormData();
-      fd.append('title', article.title);
-      if (article.doi) fd.append('doi', article.doi);
-      if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
-      Object.entries(patch).forEach(([k, v]) => fd.append(k, String(v)));
-      await adminService.updateArticle(article.id, fd);
-      setArticles((prev) =>
-        prev.map((a) => (a.id === article.id ? { ...a, ...patch } : a))
-      );
-    } catch (err) {
-      flash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
-    } finally {
-      setSavingInline(null);
-    }
+      const data = await adminService.getArticlePdfLink(article.id);
+      window.open(data.url, '_blank');
+    } catch { flash('Error obteniendo enlace PDF'); }
+    finally { setLoadingPdf(null); }
   };
 
   const handlePdfUpload = async (article, file) => {
     setUploadingPdf(article.id);
     try {
       const fd = new FormData();
-      fd.append('title', article.title);
-      if (article.doi) fd.append('doi', article.doi);
+      fd.append('title', article.title || '');
+      if (article.doi)       fd.append('doi',       article.doi);
       if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
       fd.append('pdf', file);
       const updated = await adminService.updateArticle(article.id, fd);
-      const newPath =
-        updated.dropbox_path ??
-        updated.article?.dropbox_path ??
-        updated.pdf_url ??
-        'uploaded';
-      setArticles((prev) =>
-        prev.map((a) => (a.id === article.id ? { ...a, dropbox_path: newPath } : a))
-      );
+      const newPath = updated.dropbox_path ?? updated.article?.dropbox_path ?? updated.pdf_url ?? 'uploaded';
+      setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, dropbox_path: newPath } : a));
       flash('PDF subido correctamente');
     } catch (err) {
       flash(err?.response?.data?.error || err?.message || 'Error subiendo PDF');
-    } finally {
-      setUploadingPdf(null);
-    }
+    } finally { setUploadingPdf(null); }
   };
 
   const handleFetchAbstract = async (article) => {
@@ -167,16 +175,11 @@ const AdminArticles = () => {
     try {
       const data = await adminService.fetchMetadata(article.doi, article.pubmed_id);
       const m = data.metadata ?? data;
-      if (!m.abstract) {
-        flash('No se encontró abstract en la fuente (CrossRef / PubMed)');
-        return;
-      }
+      if (!m.abstract) { flash('No se encontró abstract en la fuente (CrossRef / PubMed)'); return; }
       setAbstractPreview({ id: article.id, text: m.abstract });
     } catch (err) {
       flash(err?.response?.data?.error || err?.message || 'Error buscando abstract');
-    } finally {
-      setFetchingAbstract(null);
-    }
+    } finally { setFetchingAbstract(null); }
   };
 
   const handleSaveAbstract = async (article) => {
@@ -185,111 +188,98 @@ const AdminArticles = () => {
     setAbstractPreview(null);
   };
 
-  const authorsText = (authors) =>
-    Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
+  const handleDotClick = async (articleId, student) => {
+    if (matrix[articleId]?.[student.id]) return;
+    if (!window.confirm(`¿Asignar este artículo a ${student.name}?`)) return;
+    setMatrix((prev) => ({
+      ...prev,
+      [articleId]: { ...(prev[articleId] || {}), [student.id]: { id: null, status: 'pending' } },
+    }));
+    try {
+      await adminService.assignArticles(student.id, [articleId]);
+      await loadMatrix();
+    } catch {
+      setMatrix((prev) => {
+        const next = { ...prev, [articleId]: { ...(prev[articleId] || {}) } };
+        delete next[articleId][student.id];
+        return next;
+      });
+      flash('Error asignando artículo');
+    }
+  };
 
-  let filteredArticles = articles.filter((article) => {
+  const authorsText = (authors) => Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
+
+  let filteredArticles = articles.filter((a) => {
     const q = search.toLowerCase();
-    const matchesSearch =
-      article.title?.toLowerCase().includes(q) ||
-      authorsText(article.authors).toLowerCase().includes(q);
-    const matchesUser =
-      !filterUser ||
-      article.assignments?.some((a) => a.user_id === filterUser.id);
-    const matchesStatus =
-      !filterStatuses ||
-      article.assignments?.some(
-        (a) => a.user_id === filterUser?.id && filterStatuses.includes(a.status)
-      );
-    return matchesSearch && matchesUser && matchesStatus;
+    if (!a.title?.toLowerCase().includes(q) && !authorsText(a.authors).toLowerCase().includes(q)) return false;
+    if (userFilter) {
+      const asgn = matrix[a.id]?.[userFilter.id];
+      if (!asgn) return false;
+      if (statusFilter && !statusFilter.includes(asgn.status)) return false;
+    }
+    return true;
   });
 
-  if (filterNoPdf) filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
+  if (filterNoPdf)      filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
   if (filterNoAbstract) filteredArticles = filteredArticles.filter((a) => !a.abstract);
+
+  const filterLabel = statusFilter
+    ? statusFilter.map((s) => STATUS_LABELS[s] ?? s).join(' / ')
+    : 'todos los asignados';
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">📚 Artículos</h1>
           <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setShowBatchModal(true)}>
-            📋 Importar DOI/PMID
-          </Button>
-          <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>
-            + Nuevo Artículo
-          </Button>
+          <Button variant="secondary" onClick={() => setShowBatchModal(true)}>Importar por DOI</Button>
+          <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>+ Nuevo Artículo</Button>
         </div>
       </div>
 
-      {msg && (
-        <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
-          {msg}
+      {msg && <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{msg}</div>}
+
+      {userFilter && (
+        <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-indigo-800">
+            Mostrando <strong>{filterLabel}</strong> de <strong>{userFilter.name}</strong>
+          </p>
+          <button onClick={clearUserFilter} className="text-indigo-400 hover:text-indigo-700 text-xl font-bold leading-none ml-4">×</button>
         </div>
       )}
 
-      {/* User filter banner */}
-      {filterUser && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-800">
-          <span>
-            Filtrando artículos de <strong>{filterUser.name}</strong>
-            {filterStatuses && ` · estados: ${filterStatuses.join(', ')}`}
-          </span>
-          <button
-            onClick={clearUserFilter}
-            className="ml-auto text-indigo-500 hover:text-indigo-700 font-medium"
-          >
-            × Quitar filtro
-          </button>
-        </div>
-      )}
-
-      {/* Filters */}
       <Card>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
-            <Input
-              placeholder="Buscar por título o autor..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <Input placeholder="Buscar por título o autor..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-
-          <select
-            value={filters.is_milestone}
-            onChange={(e) => setFilters((prev) => ({ ...prev, is_milestone: e.target.value }))}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
-          >
+          <select value={filters.is_milestone} onChange={(e) => setFilters((p) => ({ ...p, is_milestone: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary">
             <option value="">Todos</option>
             <option value="true">Solo Milestones</option>
             <option value="false">Solo Regulares</option>
           </select>
-
-          <select
-            value={filters.sort_by}
-            onChange={(e) => setFilters((prev) => ({ ...prev, sort_by: e.target.value }))}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
-          >
+          <select value={filters.sort_by} onChange={(e) => setFilters((p) => ({ ...p, sort_by: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary">
             <option value="year">Año</option>
             <option value="title">Título</option>
             <option value="priority">Prioridad</option>
           </select>
         </div>
-
         <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
-          <p className="text-sm text-gray-600">
-            Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos
-          </p>
+          <p className="text-sm text-gray-600">Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos</p>
+          {students.length > 0 && (
+            <p className="text-xs text-gray-400">
+              • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado
+            </p>
+          )}
           <div className="flex gap-2 ml-auto">
             <button
               onClick={() => setFilterNoPdf((v) => !v)}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                filterNoPdf
-                  ? 'bg-red-500 text-white border-red-500'
-                  : 'bg-white text-red-600 border-red-300 hover:bg-red-50'
+                filterNoPdf ? 'bg-red-500 text-white border-red-500' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'
               }`}
             >
               Sin PDF
@@ -297,9 +287,7 @@ const AdminArticles = () => {
             <button
               onClick={() => setFilterNoAbstract((v) => !v)}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                filterNoAbstract
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
+                filterNoAbstract ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
               }`}
             >
               Sin Abstract
@@ -308,229 +296,185 @@ const AdminArticles = () => {
         </div>
       </Card>
 
-      {/* Articles Table */}
-      {loading ? (
-        <Loader />
-      ) : (
+      {loading ? <Loader /> : (
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">P / ★</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
+                  {students.map((s) => (
+                    <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
+                      {initials(s.name)}
+                    </th>
+                  ))}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredArticles.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-400">
-                      No se encontraron artículos
-                    </td>
-                  </tr>
+                  <tr><td colSpan={6 + students.length} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
                 ) : filteredArticles.map((article) => {
-                  const { error, warn } = articleCompleteness(article);
-                  const isSaving = savingInline === article.id;
-                  const isUploadingPdf = uploadingPdf === article.id;
-                  const isFetchingAbstract = fetchingAbstract === article.id;
-                  const showAbstractPreview = abstractPreview?.id === article.id;
+                  const { level, missing } = articleCompleteness(article);
+                  const saving            = savingInline === article.id;
+                  const isUploadingPdf    = uploadingPdf === article.id;
+                  const isFetchingAbs     = fetchingAbstract === article.id;
+                  const showAbsPreview    = abstractPreview?.id === article.id;
                   return (
                     <Fragment key={article.id}>
-                      <tr className={`hover:bg-gray-50 ${
-                        showAbstractPreview ? 'bg-violet-50' : ''
-                      } ${isSaving ? 'opacity-60' : ''}`}>
-                        <td className="px-4 py-4 max-w-sm">
+                      <tr className={`hover:bg-gray-50 ${showAbsPreview ? 'bg-violet-50' : ''} ${saving ? 'opacity-60' : ''}`}>
+
+                        <td className="px-6 py-4 max-w-xs">
                           <div className="flex items-start gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 truncate">{article.title}</p>
-                              <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                              <div className="flex flex-wrap gap-1 mt-1 items-center">
-                                {article.is_milestone && (
-                                  <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">
-                                    ⭐ Milestone
-                                  </span>
-                                )}
-                                {article.tags?.slice(0, 2).map((tag) => (
-                                  <span key={tag} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                                    {tag}
-                                  </span>
-                                ))}
-                                {/* Abstract fetch button — only when no abstract */}
-                                {!article.abstract && !showAbstractPreview && (
-                                  <button
-                                    onClick={() => handleFetchAbstract(article)}
-                                    disabled={isFetchingAbstract}
-                                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-violet-100 text-violet-700 rounded hover:bg-violet-200 disabled:opacity-50 disabled:cursor-wait transition-colors"
-                                    title="Obtener abstract desde DOI / PubMed"
-                                  >
-                                    {isFetchingAbstract ? (
-                                      <>
-                                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                        </svg>
-                                        Buscando…
-                                      </>
-                                    ) : (
-                                      <>⬇️ Abstract</>
-                                    )}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                            {error.length > 0 && (
-                              <span
-                                title={`Falta: ${error.join(', ')}`}
-                                className="flex-shrink-0 text-red-500 font-bold text-sm cursor-pointer select-none"
-                              >
-                                !
-                              </span>
-                            )}
-                            {error.length === 0 && warn.length > 0 && (
-                              <span
-                                title={`Falta: ${warn.join(', ')}`}
-                                className="flex-shrink-0 text-sm cursor-pointer select-none"
-                              >
-                                ⚠️
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-sm text-gray-600">{article.year}</td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-1">
-                            <select
-                              value={article.priority ?? 3}
-                              disabled={isSaving}
-                              onChange={(e) =>
-                                handleInlineUpdate(article, { priority: parseInt(e.target.value) })
-                              }
-                              className={`text-xs px-1 py-0.5 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-400 ${
-                                PRIORITY_COLORS[article.priority ?? 3] ?? PRIORITY_COLORS[3]
-                              }`}
-                            >
-                              {[1, 2, 3, 4, 5].map((p) => (
-                                <option key={p} value={p}>P{p}</option>
-                              ))}
-                            </select>
                             <button
-                              disabled={isSaving}
-                              onClick={() =>
-                                handleInlineUpdate(article, {
-                                  is_milestone: !article.is_milestone,
-                                  ...(!article.is_milestone && { priority: 5 }),
-                                })
-                              }
-                              className="text-lg leading-none hover:scale-110 transition-transform disabled:opacity-40"
-                              title={article.is_milestone ? 'Quitar milestone' : 'Marcar milestone'}
+                              title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
+                              disabled={saving}
+                              onClick={() => handleInlineUpdate(article, {
+                                is_milestone: !article.is_milestone,
+                                priority: !article.is_milestone ? 5 : article.priority,
+                              })}
+                              className="shrink-0 mt-0.5 text-base leading-none hover:scale-125 transition-transform disabled:opacity-40"
                             >
                               {article.is_milestone ? '⭐' : '☆'}
                             </button>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-gray-900 truncate">{article.title}</p>
+                              <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
+                              {/* Abstract fetch button — only when no abstract */}
+                              {!article.abstract && !showAbsPreview && (
+                                <button
+                                  onClick={() => handleFetchAbstract(article)}
+                                  disabled={isFetchingAbs}
+                                  className="mt-1 flex items-center gap-1 px-2 py-0.5 text-xs bg-violet-100 text-violet-700 rounded hover:bg-violet-200 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                                  title="Obtener abstract desde DOI / PubMed"
+                                >
+                                  {isFetchingAbs ? (
+                                    <><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Buscando…</>
+                                  ) : '⬇️ Abstract'}
+                                </button>
+                              )}
+                            </div>
+                            {level !== 'ok' && (
+                              <span
+                                title={`Faltan: ${missing.join(', ')}`}
+                                className={`shrink-0 mt-0.5 px-1.5 py-0.5 text-xs font-bold rounded cursor-pointer select-none ${
+                                  level === 'warn' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                                }`}
+                              >
+                                {level === 'warn' ? '⚠️' : '!'}
+                              </span>
+                            )}
                           </div>
                         </td>
+
+                        <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
+
                         <td className="px-4 py-4">
-                          <div className="flex gap-1 flex-wrap items-center">
+                          <select
+                            value={article.priority ?? 3}
+                            disabled={saving}
+                            onChange={(e) => handleInlineUpdate(article, { priority: parseInt(e.target.value) })}
+                            className={`px-1.5 py-1 text-xs font-semibold rounded cursor-pointer border-0 focus:ring-2 focus:ring-prion-primary disabled:opacity-40 ${
+                              article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                            }`}
+                          >
+                            {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>P{n}</option>)}
+                          </select>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div className="flex gap-1">
+                            {/* PDF: rose if available (opens via API), grey upload if missing */}
                             {article.dropbox_path ? (
-                              <a
-                                href={article.dropbox_path}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded hover:bg-rose-200"
+                              <button
                                 title="Abrir PDF"
+                                disabled={loadingPdf === article.id}
+                                onClick={() => handleOpenPdf(article)}
+                                className="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
                               >
-                                PDF
-                              </a>
+                                {loadingPdf === article.id ? '…' : 'PDF'}
+                              </button>
                             ) : isUploadingPdf ? (
                               <span className="px-2 py-1 text-xs bg-gray-100 text-gray-400 rounded flex items-center gap-1">
-                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                </svg>
+                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                                 PDF
                               </span>
                             ) : (
                               <label
-                                className="px-2 py-1 text-xs bg-gray-200 text-gray-500 rounded hover:bg-gray-300 cursor-pointer select-none"
+                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer select-none"
                                 title="Sin PDF — haz clic para subir"
                               >
-                                <input
-                                  type="file"
-                                  accept=".pdf"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if (file) handlePdfUpload(article, file);
-                                    e.target.value = '';
-                                  }}
-                                />
+                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files[0]; if (f) handlePdfUpload(article, f); e.target.value = ''; }} />
                                 PDF
                               </label>
                             )}
-                            {article.doi && (
+                            {article.doi ? (
                               <a
                                 href={`https://doi.org/${article.doi}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
-                                title={`DOI: ${article.doi}`}
+                                title={`Ver en web — doi.org/${article.doi}`}
+                                className="px-2 py-1 text-xs font-bold rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
                               >
                                 DOI
                               </a>
+                            ) : (
+                              <span title="Sin DOI" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">DOI</span>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4">
+
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {article.times_read != null && <p>{article.times_read} lecturas</p>}
+                          {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
+                        </td>
+
+                        {students.map((s) => {
+                          const asgn   = matrix[article.id]?.[s.id];
+                          const status = asgn?.status ?? 'none';
+                          const cls    = DOT_CLS[status] ?? DOT_CLS.none;
+                          return (
+                            <td key={s.id} className="px-2 py-4 text-center">
+                              <button
+                                title={asgn ? `${s.name}: ${status}` : `Asignar a ${s.name}`}
+                                onClick={() => handleDotClick(article.id, s)}
+                                disabled={!!asgn}
+                                className={`w-4 h-4 rounded-full inline-block transition-colors ${cls}`}
+                              />
+                            </td>
+                          );
+                        })}
+
+                        <td className="px-6 py-4">
                           <div className="flex gap-2 flex-wrap">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => { setEditingArticle(article); setShowModal(true); }}
-                            >
-                              Editar
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => handleAssignToAll(article.id, article.title)}
-                            >
-                              Asignar a Todos
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => handleDeleteArticle(article.id, article.title)}
-                            >
-                              Eliminar
-                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
+                            <Button variant="secondary" size="sm" onClick={() => handleAssignToAll(article.id, article.title)}>Asignar a Todos</Button>
+                            <Button variant="danger" size="sm" onClick={() => handleDeleteArticle(article.id, article.title)}>Eliminar</Button>
                           </div>
                         </td>
                       </tr>
 
-                      {/* Inline abstract preview row */}
-                      {showAbstractPreview && (
+                      {/* Inline abstract preview */}
+                      {showAbsPreview && (
                         <tr className="bg-violet-50">
-                          <td colSpan={5} className="px-6 pb-5 pt-0">
+                          <td colSpan={6 + students.length} className="px-8 pb-5 pt-0">
                             <div className="rounded-lg border border-violet-200 bg-white shadow-sm p-4">
                               <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">
                                 Abstract obtenido — verifica y confirma
                               </p>
-                              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                                {abstractPreview.text}
-                              </p>
+                              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{abstractPreview.text}</p>
                               <div className="flex gap-2 mt-4">
-                                <button
-                                  onClick={() => setAbstractPreview(null)}
-                                  className="px-4 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                                >
+                                <button onClick={() => setAbstractPreview(null)} className="px-4 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
                                   Cancelar
                                 </button>
                                 <button
                                   onClick={() => handleSaveAbstract(article)}
                                   disabled={savingInline === article.id}
-                                  className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                  className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
                                 >
                                   {savingInline === article.id ? 'Guardando…' : 'Introducir'}
                                 </button>
@@ -554,11 +498,10 @@ const AdminArticles = () => {
         onSave={editingArticle ? handleUpdateArticle : handleCreateArticle}
         article={editingArticle}
       />
-
       <BatchImportModal
         isOpen={showBatchModal}
         onClose={() => setShowBatchModal(false)}
-        onImported={loadArticles}
+        onImported={() => { loadArticles(); flash('Importación completada'); }}
       />
     </div>
   );

@@ -2,102 +2,44 @@ import api from './api';
 
 export const adminService = {
   // Dashboard
-  getDashboard: async () => {
-    const response = await api.get('/admin/dashboard');
-    return response.data;
-  },
+  getDashboard: async () => (await api.get('/admin/dashboard')).data,
 
   // Users
-  getUsers: async (filters = {}) => {
-    const params = new URLSearchParams(filters);
-    const response = await api.get(`/users?${params}`);
-    return response.data;
-  },
+  getUsers: async (filters = {}) => (await api.get(`/users?${new URLSearchParams(filters)}`)).data,
+  getUserById: async (userId) => (await api.get(`/users/${userId}`)).data,
+  createUser: async (userData) => (await api.post('/auth/register', userData)).data,
+  updateUser: async (userId, userData) => (await api.put(`/users/${userId}`, userData)).data,
+  deleteUser: async (userId) => (await api.delete(`/users/${userId}`)).data,
+  bulkCreateUsers: async (users) => (await api.post('/users/bulk-create', { users })).data,
 
-  getUserById: async (userId) => {
-    const response = await api.get(`/users/${userId}`);
-    return response.data;
-  },
+  resetUserPassword: async (userId, password) =>
+    (await api.post(`/admin/users/${userId}/reset-password`, password ? { password } : {})).data,
 
-  createUser: async (userData) => {
-    const response = await api.post('/auth/register', userData);
-    return response.data;
-  },
-
-  updateUser: async (userId, userData) => {
-    const response = await api.put(`/users/${userId}`, userData);
-    return response.data;
-  },
-
-  deleteUser: async (userId) => {
-    const response = await api.delete(`/users/${userId}`);
-    return response.data;
-  },
-
-  bulkCreateUsers: async (users) => {
-    const response = await api.post('/users/bulk-create', { users });
-    return response.data;
-  },
-
-  resetUserPassword: async (userId) => {
-    const response = await api.post(`/admin/users/${userId}/reset-password`);
-    return response.data;
-  },
-
-  sendReminder: async (userId, message) => {
-    const response = await api.post(`/admin/users/${userId}/send-reminder`, { message });
-    return response.data;
-  },
-
-  // Articles
-  getArticles: async (filters = {}) => {
-    const params = new URLSearchParams(filters);
-    const response = await api.get(`/articles?${params}`);
-    return response.data;
-  },
-
-  getArticleById: async (articleId) => {
-    const response = await api.get(`/articles/${articleId}`);
-    return response.data;
-  },
-
-  createArticle: async (formData) => {
-    const response = await api.post('/articles', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
-  },
-
-  updateArticle: async (articleId, formData) => {
-    const response = await api.put(`/articles/${articleId}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
-  },
-
-  deleteArticle: async (articleId) => {
-    const response = await api.delete(`/articles/${articleId}`);
-    return response.data;
-  },
-
-  fetchMetadata: async (doi, pubmedId) => {
-    const response = await api.post('/articles/fetch-metadata', { doi, pubmed_id: pubmedId });
-    return response.data;
-  },
+  sendReminder: async (userId, message) =>
+    (await api.post(`/admin/users/${userId}/send-reminder`, { message })).data,
 
   // Assignments
-  assignArticles: async (userId, articleIds) => {
-    const response = await api.post('/assignments', { user_id: userId, article_ids: articleIds });
-    return response.data;
-  },
+  getUserAssignments: async (userId) => (await api.get(`/assignments/user/${userId}`)).data,
+  assignArticles: async (userId, articleIds) =>
+    (await api.post('/assignments', { user_id: userId, article_ids: articleIds })).data,
+  removeAssignment: async (assignmentId) => (await api.delete(`/assignments/${assignmentId}`)).data,
+  bulkAssign: async (userIds, articleIds) =>
+    (await api.post('/assignments/bulk', { user_ids: userIds, article_ids: articleIds })).data,
+  assignArticleToAll: async (articleId) =>
+    (await api.post(`/admin/articles/${articleId}/assign-to-all`)).data,
+  getAssignmentsMatrix: async () => (await api.get('/admin/articles/assignments-matrix')).data,
 
-  bulkAssign: async (userIds, articleIds) => {
-    const response = await api.post('/assignments/bulk', { user_ids: userIds, article_ids: articleIds });
-    return response.data;
-  },
-
-  assignArticleToAll: async (articleId) => {
-    const response = await api.post(`/admin/articles/${articleId}/assign-to-all`);
-    return response.data;
-  },
+  // Articles
+  getArticles: async (filters = {}) => (await api.get(`/articles?${new URLSearchParams(filters)}`)).data,
+  getArticleById: async (articleId) => (await api.get(`/articles/${articleId}`)).data,
+  createArticle: async (formData) =>
+    (await api.post('/articles', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data,
+  // Content-Type header required — without it multipart fields (including pdf) are not parsed correctly
+  updateArticle: async (articleId, formData) =>
+    (await api.put(`/articles/${articleId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data,
+  deleteArticle: async (articleId) => (await api.delete(`/articles/${articleId}`)).data,
+  fetchMetadata: async (doi, pubmedId) =>
+    (await api.post('/articles/fetch-metadata', { doi, pubmed_id: pubmedId })).data,
+  getArticlePdfLink: async (articleId) =>
+    (await api.post(`/articles/${articleId}/download-link`)).data,
 };
