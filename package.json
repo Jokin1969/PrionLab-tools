@@ -2,6 +2,6 @@
   "name": "prionlab-tools",
   "private": true,
   "scripts": {
-    "build": "cd prionread/frontend && npm ci && npm run build"
+    "build": "cd prionread/frontend && npm install && npm run build"
   }
 }
