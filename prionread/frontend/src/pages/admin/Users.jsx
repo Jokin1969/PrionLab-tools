@@ -17,6 +17,76 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// ── Welcome email preview modal ───────────────────────────────────────────────
+function WelcomePreviewModal({ user, onClose, onSend, sending }) {
+  const [html, setHtml]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]   = useState(null);
+
+  useEffect(() => {
+    adminService.getWelcomeEmailPreview(user.id)
+      .then((data) => setHtml(data.html))
+      .catch(() => setError('No se pudo cargar la vista previa'))
+      .finally(() => setLoading(false));
+  }, [user.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Vista previa del email de bienvenida</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Para: <strong>{user.name}</strong> ({user.email})
+              {user.welcome_email_sent_at && (
+                <span className="ml-2 text-amber-600">⚠️ Ya enviado el {fmtDate(user.welcome_email_sent_at)}</span>
+              )}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none">×</button>
+        </div>
+
+        {/* Preview area */}
+        <div className="flex-1 overflow-auto p-4 bg-gray-100">
+          {loading && <p className="text-center text-gray-500 py-10">Cargando vista previa…</p>}
+          {error   && <p className="text-center text-red-500 py-10">{error}</p>}
+          {html && (
+            <iframe
+              title="email-preview"
+              srcDoc={html}
+              className="w-full rounded-lg shadow bg-white"
+              style={{ minHeight: '520px', border: 'none' }}
+              sandbox="allow-same-origin"
+            />
+          )}
+        </div>
+
+        {/* Note + actions */}
+        <div className="px-5 py-4 border-t border-gray-200 shrink-0">
+          <p className="text-xs text-gray-400 mb-3">
+            La contraseña que verás es de ejemplo. Al enviar se generará una nueva contraseña aleatoria y la actual dejará de funcionar.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+              Cancelar
+            </button>
+            <button
+              onClick={onSend}
+              disabled={sending}
+              className="px-5 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {sending ? 'Enviando…' : user.welcome_email_sent_at ? '✉️ Reenviar bienvenida' : '✉️ Enviar bienvenida'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 const AdminUsers = () => {
   const navigate = useNavigate();
   const [users, setUsers]               = useState([]);
@@ -24,12 +94,13 @@ const AdminUsers = () => {
   const [showModal, setShowModal]       = useState(false);
   const [editingUser, setEditingUser]   = useState(null);
   const [assignmentsUser, setAssignmentsUser] = useState(null);
+  const [previewUser, setPreviewUser]   = useState(null);
   const [search, setSearch]             = useState('');
   const [roleFilter, setRoleFilter]     = useState('');
   const [msg, setMsg]                   = useState('');
   const [errMsg, setErrMsg]             = useState('');
   const [passwordBanner, setPasswordBanner] = useState(null);
-  const [sendingWelcome, setSendingWelcome] = useState(null);
+  const [sendingWelcome, setSendingWelcome] = useState(false);
 
   useEffect(() => { loadUsers(); }, [roleFilter]);
 
@@ -84,25 +155,21 @@ const AdminUsers = () => {
     } catch { errorFlash('Error reseteando contraseña'); }
   };
 
-  const handleSendWelcome = async (user) => {
-    const alreadySent = Boolean(user.welcome_email_sent_at);
-    const confirmMsg = alreadySent
-      ? `${user.name} ya recibió el email de bienvenida el ${fmtDate(user.welcome_email_sent_at)}.\n\n¿Reenviar? Esto generará una nueva contraseña temporal y la anterior dejará de funcionar.`
-      : `¿Enviar email de bienvenida a ${user.name}?\n\nSe generará una nueva contraseña temporal. La contraseña actual dejará de funcionar.`;
-    if (!window.confirm(confirmMsg)) return;
-
-    setSendingWelcome(user.id);
+  const handleSendWelcome = async () => {
+    if (!previewUser) return;
+    setSendingWelcome(true);
     try {
-      const data = await adminService.sendWelcomeEmail(user.id);
+      const data = await adminService.sendWelcomeEmail(previewUser.id);
       setUsers((prev) => prev.map((u) =>
-        u.id === user.id ? { ...u, welcome_email_sent_at: data.welcome_email_sent_at } : u
+        u.id === previewUser.id ? { ...u, welcome_email_sent_at: data.welcome_email_sent_at } : u
       ));
-      setPasswordBanner({ email: user.email, password: data.tempPassword, welcome: true });
-      flash(`Email de bienvenida enviado a ${user.email}`);
+      setPasswordBanner({ email: previewUser.email, password: data.tempPassword, welcome: true });
+      setPreviewUser(null);
+      flash(`Email de bienvenida enviado a ${previewUser.email}`);
     } catch (err) {
       errorFlash(err?.response?.data?.error || 'Error enviando email de bienvenida');
     } finally {
-      setSendingWelcome(null);
+      setSendingWelcome(false);
     }
   };
 
@@ -179,10 +246,10 @@ const AdminUsers = () => {
                         <div>
                           <p className="font-semibold text-gray-900">{user.name}</p>
                           <p className="text-sm text-gray-600">{user.email}</p>
-                          {user.welcome_email_sent_at ? (
-                            <p className="text-xs text-green-600 mt-0.5">✔️ Bienvenida enviada {fmtDate(user.welcome_email_sent_at)}</p>
-                          ) : (
-                            <p className="text-xs text-amber-500 mt-0.5">⏳ Sin email de bienvenida</p>
+                          {user.role === 'student' && (
+                            user.welcome_email_sent_at
+                              ? <p className="text-xs text-green-600 mt-0.5">✔️ Bienvenida enviada {fmtDate(user.welcome_email_sent_at)}</p>
+                              : <p className="text-xs text-amber-500 mt-0.5">⏳ Sin email de bienvenida</p>
                           )}
                         </div>
                       </div>
@@ -223,16 +290,15 @@ const AdminUsers = () => {
                         <Button variant="ghost" size="sm" onClick={() => handleResetPassword(user.id, user.email)}>Reset Pass</Button>
                         {user.role === 'student' && (
                           <button
-                            onClick={() => handleSendWelcome(user)}
-                            disabled={sendingWelcome === user.id}
-                            title={user.welcome_email_sent_at ? `Reenviar bienvenida (enviada ${fmtDate(user.welcome_email_sent_at)})` : 'Enviar email de bienvenida con credenciales y guía'}
-                            className={`px-2 py-1 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
+                            onClick={() => setPreviewUser(user)}
+                            title={user.welcome_email_sent_at ? `Reenviar bienvenida (enviada ${fmtDate(user.welcome_email_sent_at)})` : 'Ver y enviar email de bienvenida'}
+                            className={`px-2 py-1 text-xs font-medium rounded border transition-colors ${
                               user.welcome_email_sent_at
                                 ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                                 : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
                             }`}
                           >
-                            {sendingWelcome === user.id ? '…' : user.welcome_email_sent_at ? '✉️ Reenviar' : '✉️ Dar bienvenida'}
+                            {user.welcome_email_sent_at ? '✉️ Reenviar' : '✉️ Dar bienvenida'}
                           </button>
                         )}
                         {user.role !== 'admin' && (
@@ -250,6 +316,15 @@ const AdminUsers = () => {
 
       <UserModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingUser(null); }} onSave={editingUser ? handleUpdateUser : handleCreateUser} user={editingUser} />
       <UserAssignmentsModal isOpen={!!assignmentsUser} onClose={() => setAssignmentsUser(null)} user={assignmentsUser} />
+
+      {previewUser && (
+        <WelcomePreviewModal
+          user={previewUser}
+          onClose={() => setPreviewUser(null)}
+          onSend={handleSendWelcome}
+          sending={sendingWelcome}
+        />
+      )}
     </div>
   );
 };

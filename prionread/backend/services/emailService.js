@@ -34,7 +34,7 @@ const base = (content) => `
   </div>
 `;
 
-const step = (n, text) => `
+const stepHtml = (n, text) => `
   <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
     <tr>
       <td style="width:36px;vertical-align:top;">
@@ -45,7 +45,84 @@ const step = (n, text) => `
   </table>
 `;
 
+// Builds the onboarding email HTML — shared by sendOnboardingEmail and the preview endpoint
+function buildOnboardingHtml(user, tempPassword) {
+  return `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#111827;">
+
+      <!-- Header -->
+      <div style="background:#4F46E5;padding:32px 24px;text-align:center;border-radius:12px 12px 0 0;">
+        <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:0 0 8px;letter-spacing:2px;text-transform:uppercase;">Laboratorio de Investigación</p>
+        <h1 style="color:#ffffff;margin:0;font-size:26px;">📚 Bienvenid@ a PrionRead</h1>
+        <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Tu plataforma de lectura científica</p>
+      </div>
+
+      <!-- Body -->
+      <div style="background:#ffffff;padding:32px 24px;border:1px solid #e5e7eb;border-top:none;">
+
+        <p style="font-size:16px;margin-top:0;">Hola <strong>${user.name}</strong>,</p>
+        <p style="color:#374151;line-height:1.6;">Tu cuenta en PrionRead está lista. Aquí tienes todo lo que necesitas para empezar.</p>
+
+        <!-- Credentials -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #4F46E5;padding:20px;border-radius:0 8px 8px 0;margin:24px 0;">
+          <h3 style="margin:0 0 12px;color:#4F46E5;font-size:14px;letter-spacing:1px;">🔑 TUS CREDENCIALES DE ACCESO</h3>
+          <p style="margin:6px 0;color:#374151;"><strong>Email:</strong> ${user.email}</p>
+          <p style="margin:6px 0 8px;color:#374151;"><strong>Contraseña temporal:</strong></p>
+          <div style="background:#fff;border:2px dashed #4F46E5;padding:12px 16px;border-radius:6px;text-align:center;">
+            <code style="font-size:22px;letter-spacing:4px;color:#1e1b4b;font-weight:bold;">${tempPassword}</code>
+          </div>
+          <p style="margin:10px 0 0;color:#6b7280;font-size:12px;">⚠️ Cambia esta contraseña en tu perfil después de tu primer acceso.</p>
+        </div>
+
+        <!-- Why PrionRead -->
+        <div style="background:#faf5ff;border-left:4px solid #7C3AED;padding:20px;border-radius:0 8px 8px 0;margin:24px 0;">
+          <h3 style="margin:0 0 14px;color:#7C3AED;font-size:14px;letter-spacing:1px;">💡 POR QUÉ EXISTE PRIONREAD</h3>
+          <ol style="margin:0;padding-left:18px;color:#374151;line-height:1.9;font-size:14px;">
+            <li style="margin-bottom:8px;">PrionRead convierte la lectura científica en un hábito estructurado con artículos ya seleccionados para ti — no pierdes tiempo buscando qué leer.</li>
+            <li style="margin-bottom:8px;">Leer, resumir y autoevaluarte no es una obligación: es construir la <strong>munición intelectual</strong> que alimenta tu creatividad científica futura.</li>
+            <li style="margin-bottom:8px;">No hay ideas nuevas sin conocimiento previo — los papers de PrionRead son la materia prima de tus futuros descubrimientos.</li>
+            <li style="margin-bottom:8px;">Tu supervisor verá tu progreso: no para vigilar, sino para <strong>acompañarte</strong> y animarte cuando te estanques.</li>
+            <li>El compromiso es real (2–3 artículos/semana), pero es la inversión que más fruto da: base sólida, criterio lector y confianza científica para toda tu carrera.</li>
+          </ol>
+        </div>
+
+        <!-- Mini-guide -->
+        <div style="background:#f0fdf4;border-left:4px solid #10B981;padding:20px;border-radius:0 8px 8px 0;margin:24px 0;">
+          <h3 style="margin:0 0 16px;color:#047857;font-size:14px;letter-spacing:1px;">🚀 CÓMO EMPEZAR — 5 PASOS</h3>
+          ${stepHtml(1, 'Entra con tu email y contraseña temporal → <strong>cámbiala en tu perfil</strong> nada más acceder.')}
+          ${stepHtml(2, 'En <strong>Mis Artículos</strong> verás los que tienes asignados — empieza por los <span style="background:#FEF3C7;color:#92400E;padding:2px 5px;border-radius:3px;font-size:12px;">⭐ Milestones</span>, son los cimientos del campo.')}
+          ${stepHtml(3, 'Lee el PDF completo → escribe tu <strong>resumen</strong>. Hay asistencia de IA disponible, pero úsala <em>después</em> de leer, no antes.')}
+          ${stepHtml(4, 'Realiza la <strong>autoevaluación</strong> del artículo para consolidar lo aprendido. Es el gimnasio de tu comprensión científica.')}
+          ${stepHtml(5, 'Consulta tu <strong>Dashboard</strong> para ver tu progreso, logros y recomendaciones personalizadas según tus gaps de conocimiento.')}
+        </div>
+
+        <!-- CTA -->
+        <div style="text-align:center;margin:32px 0 16px;">
+          <a href="${FRONTEND_URL}/login"
+             style="display:inline-block;background:#4F46E5;color:white;padding:14px 36px;
+                    text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;">
+            Entrar en PrionRead →
+          </a>
+        </div>
+
+        <p style="color:#6b7280;font-size:13px;text-align:center;margin-top:8px;">
+          ¿Dudas o sugerencias? Escríbeme directamente o usa los comentarios dentro de la app.
+        </p>
+
+      </div>
+
+      <!-- Footer -->
+      <div style="background:#f9fafb;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;text-align:center;">
+        <p style="color:#9ca3af;font-size:12px;margin:0;">PrionRead – Sistema de Gestión de Lectura Científica</p>
+      </div>
+
+    </div>
+  `;
+}
+
 const emailService = {
+  buildOnboardingHtml,
+
   sendWelcomeEmail: async (user, tempPassword) => {
     await transporter.sendMail({
       from: `"PrionRead" <${process.env.SMTP_USER}>`,
@@ -79,77 +156,7 @@ const emailService = {
       from: `"PrionRead" <${process.env.SMTP_USER}>`,
       to: user.email,
       subject: '📚 Bienvenid@ a PrionRead — Tus credenciales y guía de inicio',
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#111827;">
-
-          <!-- Header -->
-          <div style="background:#4F46E5;padding:32px 24px;text-align:center;border-radius:12px 12px 0 0;">
-            <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:0 0 8px;letter-spacing:2px;text-transform:uppercase;">Laboratorio de Investigación</p>
-            <h1 style="color:#ffffff;margin:0;font-size:26px;">📚 Bienvenid@ a PrionRead</h1>
-            <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Tu plataforma de lectura científica</p>
-          </div>
-
-          <!-- Body -->
-          <div style="background:#ffffff;padding:32px 24px;border:1px solid #e5e7eb;border-top:none;">
-
-            <p style="font-size:16px;margin-top:0;">Hola <strong>${user.name}</strong>,</p>
-            <p style="color:#374151;line-height:1.6;">Tu cuenta en PrionRead está lista. Aquí tienes todo lo que necesitas para empezar.</p>
-
-            <!-- Credentials -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #4F46E5;padding:20px;border-radius:0 8px 8px 0;margin:24px 0;">
-              <h3 style="margin:0 0 12px;color:#4F46E5;font-size:14px;letter-spacing:1px;">🔑 TUS CREDENCIALES DE ACCESO</h3>
-              <p style="margin:6px 0;color:#374151;"><strong>Email:</strong> ${user.email}</p>
-              <p style="margin:6px 0 8px;color:#374151;"><strong>Contraseña temporal:</strong></p>
-              <div style="background:#fff;border:2px dashed #4F46E5;padding:12px 16px;border-radius:6px;text-align:center;">
-                <code style="font-size:22px;letter-spacing:4px;color:#1e1b4b;font-weight:bold;">${tempPassword}</code>
-              </div>
-              <p style="margin:10px 0 0;color:#6b7280;font-size:12px;">⚠️ Cambia esta contraseña en tu perfil después de tu primer acceso.</p>
-            </div>
-
-            <!-- Why PrionRead -->
-            <div style="background:#faf5ff;border-left:4px solid #7C3AED;padding:20px;border-radius:0 8px 8px 0;margin:24px 0;">
-              <h3 style="margin:0 0 14px;color:#7C3AED;font-size:14px;letter-spacing:1px;">💡 POR QUÉ EXISTE PRIONREAD</h3>
-              <ol style="margin:0;padding-left:18px;color:#374151;line-height:1.9;font-size:14px;">
-                <li style="margin-bottom:8px;">PrionRead convierte la lectura científica en un hábito estructurado con artículos ya seleccionados para ti — no pierdes tiempo buscando qué leer.</li>
-                <li style="margin-bottom:8px;">Leer, resumir y autoevaluarte no es una obligación: es construir la <strong>munición intelectual</strong> que alimenta tu creatividad científica futura.</li>
-                <li style="margin-bottom:8px;">No hay ideas nuevas sin conocimiento previo — los papers de PrionRead son la materia prima de tus futuros descubrimientos.</li>
-                <li style="margin-bottom:8px;">Tu supervisor verá tu progreso: no para vigilar, sino para <strong>acompañarte</strong> y animarte cuando te estanques.</li>
-                <li>El compromiso es real (2–3 artículos/semana), pero es la inversión que más fruto da: base sólida, criterio lector y confianza científica para toda tu carrera.</li>
-              </ol>
-            </div>
-
-            <!-- Mini-guide -->
-            <div style="background:#f0fdf4;border-left:4px solid #10B981;padding:20px;border-radius:0 8px 8px 0;margin:24px 0;">
-              <h3 style="margin:0 0 16px;color:#047857;font-size:14px;letter-spacing:1px;">🚀 CÓMO EMPEZAR — 5 PASOS</h3>
-              ${step(1, 'Entra con tu email y contraseña temporal → <strong>cámbiala en tu perfil</strong> nada más acceder.')}
-              ${step(2, 'En <strong>Mis Artículos</strong> verás los que tienes asignados — empieza por los <span style="background:#FEF3C7;color:#92400E;padding:2px 5px;border-radius:3px;font-size:12px;">⭐ Milestones</span>, son los cimientos del campo.')}
-              ${step(3, 'Lee el PDF completo → escribe tu <strong>resumen</strong>. Hay asistencia de IA disponible, pero úsala <em>después</em> de leer, no antes.')}
-              ${step(4, 'Realiza la <strong>autoevaluación</strong> del artículo para consolidar lo aprendido. Es el gimnasio de tu comprensión científica.')}
-              ${step(5, 'Consulta tu <strong>Dashboard</strong> para ver tu progreso, logros y recomendaciones personalizadas según tus gaps de conocimiento.')}
-            </div>
-
-            <!-- CTA -->
-            <div style="text-align:center;margin:32px 0 16px;">
-              <a href="${FRONTEND_URL}/login"
-                 style="display:inline-block;background:#4F46E5;color:white;padding:14px 36px;
-                        text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;">
-                Entrar en PrionRead →
-              </a>
-            </div>
-
-            <p style="color:#6b7280;font-size:13px;text-align:center;margin-top:8px;">
-              ¿Dudas o sugerencias? Escríbeme directamente o usa los comentarios dentro de la app.
-            </p>
-
-          </div>
-
-          <!-- Footer -->
-          <div style="background:#f9fafb;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;text-align:center;">
-            <p style="color:#9ca3af;font-size:12px;margin:0;">PrionRead – Sistema de Gestión de Lectura Científica</p>
-          </div>
-
-        </div>
-      `,
+      html: buildOnboardingHtml(user, tempPassword),
     });
     console.log(`✉️  Onboarding enviado a ${user.email}`);
   },

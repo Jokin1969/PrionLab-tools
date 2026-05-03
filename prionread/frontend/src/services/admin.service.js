@@ -18,6 +18,9 @@ export const adminService = {
   sendReminder: async (userId, message) =>
     (await api.post(`/admin/users/${userId}/send-reminder`, { message })).data,
 
+  getWelcomeEmailPreview: async (userId) =>
+    (await api.get(`/admin/users/${userId}/welcome-preview`)).data,
+
   sendWelcomeEmail: async (userId) =>
     (await api.post(`/admin/users/${userId}/send-welcome`)).data,
 

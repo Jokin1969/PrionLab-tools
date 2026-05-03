@@ -21,7 +21,20 @@ router.get('/users/:userId/detailed-stats',    getUserDetailedStats);
 router.post('/users/:userId/reset-password',   resetUserPassword);
 router.post('/users/:userId/send-reminder',    sendReminderToUser);
 
-// Welcome / onboarding email
+// Welcome email preview (no send, no password change)
+router.get('/users/:userId/welcome-preview', async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const html = emailService.buildOnboardingHtml(user, 'ejemplo-contraseña');
+    res.json({ html });
+  } catch (err) {
+    console.error('[GET /admin/users/:userId/welcome-preview]', err);
+    res.status(500).json({ error: 'Error generando vista previa' });
+  }
+});
+
+// Send welcome / onboarding email (generates new temp password)
 router.post('/users/:userId/send-welcome', async (req, res) => {
   try {
     const user = await User.findByPk(req.params.userId);
