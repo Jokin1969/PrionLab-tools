@@ -9,7 +9,13 @@ const STATUS = {
   evaluated:  { label: 'Evaluado',   cls: 'bg-green-100 text-green-700' },
 };
 
-export const UserAssignmentsModal = ({ isOpen, onClose, user }) => {
+const FILTER_LABELS = {
+  read:       'Leídos',
+  summarized: 'Resumidos',
+  evaluated:  'Evaluados',
+};
+
+export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = null }) => {
   const [assignments, setAssignments]     = useState([]);
   const [allArticles, setAllArticles]     = useState([]);
   const [loading, setLoading]             = useState(false);
@@ -70,6 +76,14 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user }) => {
 
   const assignedIds = new Set(assignments.map((a) => a.article?.id).filter(Boolean));
 
+  const visibleAssignments = statusFilter
+    ? assignments.filter((a) => statusFilter.includes(a.status))
+    : assignments;
+
+  const filterLabel = statusFilter
+    ? statusFilter.map((s) => FILTER_LABELS[s] ?? s).join(' / ')
+    : null;
+
   const unassigned = allArticles.filter(
     (a) =>
       !assignedIds.has(a.id) &&
@@ -90,20 +104,31 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user }) => {
 
         {/* ── Assigned articles ── */}
         <section>
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">
-            Artículos asignados{' '}
-            <span className="font-normal text-gray-400">({assignments.length})</span>
-          </h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-sm font-semibold text-gray-700">
+              Artículos asignados{' '}
+              <span className="font-normal text-gray-400">
+                ({visibleAssignments.length}{statusFilter ? ` de ${assignments.length}` : ''})
+              </span>
+            </h3>
+            {filterLabel && (
+              <span className="px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-600 border border-blue-200">
+                Filtro: {filterLabel}
+              </span>
+            )}
+          </div>
 
           {loading ? (
             <Loader />
-          ) : assignments.length === 0 ? (
+          ) : visibleAssignments.length === 0 ? (
             <p className="text-sm text-gray-400 py-6 text-center">
-              Este usuario no tiene artículos asignados todavía.
+              {statusFilter
+                ? 'No hay artículos con este estado.'
+                : 'Este usuario no tiene artículos asignados todavía.'}
             </p>
           ) : (
             <div className="max-h-64 overflow-y-auto space-y-1 pr-1">
-              {assignments.map((a) => {
+              {visibleAssignments.map((a) => {
                 const st = STATUS[a.status] ?? STATUS.pending;
                 const authorsText =
                   typeof a.article?.authors === 'string'

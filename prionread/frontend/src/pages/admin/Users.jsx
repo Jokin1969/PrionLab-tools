@@ -5,10 +5,10 @@ import { UserAssignmentsModal } from '../../components/admin/UserAssignmentsModa
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const STAT_BADGES = [
-  { key: 'total_assigned',   label: 'Asig',  cls: 'bg-gray-100  text-gray-600'  },
-  { key: 'total_read',       label: 'Leídos', cls: 'bg-blue-100  text-blue-700'  },
-  { key: 'total_summarized', label: 'Res',   cls: 'bg-purple-100 text-purple-700' },
-  { key: 'total_evaluated',  label: 'Eval',  cls: 'bg-green-100  text-green-700' },
+  { key: 'total_assigned',   label: 'Asig',   cls: 'bg-gray-100   text-gray-600',   filter: null },
+  { key: 'total_read',       label: 'Leídos', cls: 'bg-blue-100   text-blue-700',   filter: ['read', 'summarized', 'evaluated'] },
+  { key: 'total_summarized', label: 'Res',    cls: 'bg-purple-100 text-purple-700', filter: ['summarized', 'evaluated'] },
+  { key: 'total_evaluated',  label: 'Eval',   cls: 'bg-green-100  text-green-700',  filter: ['evaluated'] },
 ];
 
 const AdminUsers = () => {
@@ -16,7 +16,8 @@ const AdminUsers = () => {
   const [loading, setLoading]           = useState(true);
   const [showModal, setShowModal]       = useState(false);
   const [editingUser, setEditingUser]   = useState(null);
-  const [assignmentsUser, setAssignmentsUser] = useState(null);
+  const [assignmentsUser, setAssignmentsUser]         = useState(null);
+  const [assignmentsStatusFilter, setAssignmentsStatusFilter] = useState(null);
   const [search, setSearch]             = useState('');
   const [roleFilter, setRoleFilter]     = useState('');
   const [msg, setMsg]                   = useState('');
@@ -72,6 +73,16 @@ const AdminUsers = () => {
       setPasswordBanner({ email: userEmail, password: data.tempPassword });
       flash(data.email_sent ? 'Contraseña reseteada y enviada por email' : 'Contraseña reseteada');
     } catch { flash('Error reseteando contraseña'); }
+  };
+
+  const openAssignments = (user, filter = null) => {
+    setAssignmentsUser(user);
+    setAssignmentsStatusFilter(filter);
+  };
+
+  const closeAssignments = () => {
+    setAssignmentsUser(null);
+    setAssignmentsStatusFilter(null);
   };
 
   const filteredUsers = users.filter(
@@ -153,18 +164,24 @@ const AdminUsers = () => {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{user.year_started || '—'}</td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-1 flex-wrap">
-                        {STAT_BADGES.map(({ key, label, cls }) => (
-                          <span key={key} title={label} className={`px-2 py-0.5 text-xs font-bold rounded ${cls}`}>
-                            {user.stats?.[key] ?? 0}
-                          </span>
+                      <div className="grid grid-cols-4 gap-2">
+                        {STAT_BADGES.map(({ key, label, cls, filter }) => (
+                          <div key={key} className="flex flex-col items-center gap-0.5">
+                            <button
+                              title={`Ver ${label}`}
+                              onClick={() => openAssignments(user, filter)}
+                              className={`w-full text-center px-1 py-1 text-xs font-bold rounded hover:opacity-70 transition-opacity cursor-pointer ${cls}`}
+                            >
+                              {user.stats?.[key] ?? 0}
+                            </button>
+                            <span className="text-xs text-gray-400 leading-tight">{label}</span>
+                          </div>
                         ))}
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">asig / leídos / res / eval</p>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2 flex-wrap">
-                        <Button variant="secondary" size="sm" onClick={() => setAssignmentsUser(user)}>Asignaciones</Button>
+                        <Button variant="secondary" size="sm" onClick={() => openAssignments(user, null)}>Asignaciones</Button>
                         <Button variant="ghost" size="sm" onClick={() => { setEditingUser(user); setShowModal(true); }}>Editar</Button>
                         <Button variant="ghost" size="sm" onClick={() => handleResetPassword(user.id, user.email)}>Reset Pass</Button>
                         {user.role !== 'admin' && (
@@ -181,7 +198,7 @@ const AdminUsers = () => {
       )}
 
       <UserModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingUser(null); }} onSave={editingUser ? handleUpdateUser : handleCreateUser} user={editingUser} />
-      <UserAssignmentsModal isOpen={!!assignmentsUser} onClose={() => setAssignmentsUser(null)} user={assignmentsUser} />
+      <UserAssignmentsModal isOpen={!!assignmentsUser} onClose={closeAssignments} user={assignmentsUser} statusFilter={assignmentsStatusFilter} />
     </div>
   );
 };
