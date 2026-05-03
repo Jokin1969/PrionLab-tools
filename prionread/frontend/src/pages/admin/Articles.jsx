@@ -1,14 +1,45 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
+import { BatchImportModal } from '../../components/admin/BatchImportModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
+function articleCompleteness(article) {
+  const authorStr = Array.isArray(article.authors)
+    ? article.authors.join(', ')
+    : (article.authors ?? '');
+  const error = [];
+  if (!authorStr.trim()) error.push('autores');
+  if (!article.doi && !article.pubmed_id) error.push('DOI/PubMed');
+  if (!article.journal) error.push('revista');
+  if (!article.dropbox_path) error.push('PDF');
+  const warn = [];
+  if (!article.abstract) warn.push('abstract');
+  return { error, warn };
+}
+
+const PRIORITY_COLORS = {
+  1: 'bg-gray-100 text-gray-500',
+  2: 'bg-blue-100 text-blue-600',
+  3: 'bg-yellow-100 text-yellow-700',
+  4: 'bg-orange-100 text-orange-600',
+  5: 'bg-red-100 text-red-600',
+};
+
 const AdminArticles = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
   const [search, setSearch] = useState('');
+  const [filterNoPdf, setFilterNoPdf] = useState(false);
+  const [filterNoAbstract, setFilterNoAbstract] = useState(false);
+  const [savingInline, setSavingInline] = useState(null);
   const [filters, setFilters] = useState({
     is_milestone: '',
     year: '',
@@ -16,6 +47,9 @@ const AdminArticles = () => {
     order: 'desc',
   });
   const [msg, setMsg] = useState('');
+
+  const filterUser = location.state?.filterUser ?? null;
+  const filterStatuses = location.state?.filterStatuses ?? null;
 
   useEffect(() => {
     loadArticles();
@@ -31,6 +65,10 @@ const AdminArticles = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearUserFilter = () => {
+    navigate('/admin/articles', { replace: true, state: null });
   };
 
   const flash = (text) => {
@@ -72,16 +110,47 @@ const AdminArticles = () => {
     }
   };
 
+  const handleInlineUpdate = async (article, patch) => {
+    setSavingInline(article.id);
+    try {
+      const fd = new FormData();
+      fd.append('title', article.title);
+      // Only send doi/pubmed_id when non-empty — empty string triggers false 409 conflicts
+      if (article.doi) fd.append('doi', article.doi);
+      if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
+      Object.entries(patch).forEach(([k, v]) => fd.append(k, String(v)));
+      await adminService.updateArticle(article.id, fd);
+      setArticles((prev) =>
+        prev.map((a) => (a.id === article.id ? { ...a, ...patch } : a))
+      );
+    } catch (err) {
+      flash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
+    } finally {
+      setSavingInline(null);
+    }
+  };
+
   const authorsText = (authors) =>
     Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
 
-  const filteredArticles = articles.filter((article) => {
+  let filteredArticles = articles.filter((article) => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch =
       article.title?.toLowerCase().includes(q) ||
-      authorsText(article.authors).toLowerCase().includes(q)
-    );
+      authorsText(article.authors).toLowerCase().includes(q);
+    const matchesUser =
+      !filterUser ||
+      article.assignments?.some((a) => a.user_id === filterUser.id);
+    const matchesStatus =
+      !filterStatuses ||
+      article.assignments?.some(
+        (a) => a.user_id === filterUser?.id && filterStatuses.includes(a.status)
+      );
+    return matchesSearch && matchesUser && matchesStatus;
   });
+
+  if (filterNoPdf) filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
+  if (filterNoAbstract) filteredArticles = filteredArticles.filter((a) => !a.abstract);
 
   return (
     <div className="space-y-6">
@@ -91,14 +160,35 @@ const AdminArticles = () => {
           <h1 className="text-3xl font-bold text-gray-900">📚 Artículos</h1>
           <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
-        <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>
-          + Nuevo Artículo
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setShowBatchModal(true)}>
+            📋 Importar DOI/PMID
+          </Button>
+          <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>
+            + Nuevo Artículo
+          </Button>
+        </div>
       </div>
 
       {msg && (
         <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
           {msg}
+        </div>
+      )}
+
+      {/* User filter banner */}
+      {filterUser && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-800">
+          <span>
+            Filtrando artículos de <strong>{filterUser.name}</strong>
+            {filterStatuses && ` · estados: ${filterStatuses.join(', ')}`}
+          </span>
+          <button
+            onClick={clearUserFilter}
+            className="ml-auto text-indigo-500 hover:text-indigo-700 font-medium"
+          >
+            × Quitar filtro
+          </button>
         </div>
       )}
 
@@ -134,10 +224,32 @@ const AdminArticles = () => {
           </select>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
           <p className="text-sm text-gray-600">
             Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos
           </p>
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={() => setFilterNoPdf((v) => !v)}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterNoPdf
+                  ? 'bg-red-500 text-white border-red-500'
+                  : 'bg-white text-red-600 border-red-300 hover:bg-red-50'
+              }`}
+            >
+              Sin PDF
+            </button>
+            <button
+              onClick={() => setFilterNoAbstract((v) => !v)}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterNoAbstract
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
+              }`}
+            >
+              Sin Abstract
+            </button>
+          </div>
         </div>
       </Card>
 
@@ -150,11 +262,11 @@ const AdminArticles = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prioridad</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">P / ★</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -164,67 +276,133 @@ const AdminArticles = () => {
                       No se encontraron artículos
                     </td>
                   </tr>
-                ) : filteredArticles.map((article) => (
-                  <tr key={article.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 max-w-sm">
-                      <p className="font-semibold text-gray-900 truncate">{article.title}</p>
-                      <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {article.is_milestone && (
-                          <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">
-                            ⭐ Milestone
-                          </span>
-                        )}
-                        {article.tags?.slice(0, 2).map((tag) => (
-                          <span key={tag} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-xs font-medium rounded ${
-                        article.priority >= 4
-                          ? 'bg-red-100 text-red-600'
-                          : 'bg-blue-100 text-blue-600'
-                      }`}>
-                        P{article.priority ?? '—'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {article.times_read != null && <p>{article.times_read} lecturas</p>}
-                      {article.avg_rating != null && (
-                        <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2 flex-wrap">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setEditingArticle(article); setShowModal(true); }}
-                        >
-                          Editar
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleAssignToAll(article.id, article.title)}
-                        >
-                          Asignar a Todos
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDeleteArticle(article.id, article.title)}
-                        >
-                          Eliminar
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                ) : filteredArticles.map((article) => {
+                  const { error, warn } = articleCompleteness(article);
+                  const isSaving = savingInline === article.id;
+                  return (
+                    <tr key={article.id} className={`hover:bg-gray-50 ${isSaving ? 'opacity-60' : ''}`}>
+                      <td className="px-4 py-4 max-w-sm">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 truncate">{article.title}</p>
+                            <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {article.is_milestone && (
+                                <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-600 rounded">
+                                  ⭐ Milestone
+                                </span>
+                              )}
+                              {article.tags?.slice(0, 2).map((tag) => (
+                                <span key={tag} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          {error.length > 0 && (
+                            <span
+                              title={`Falta: ${error.join(', ')}`}
+                              className="flex-shrink-0 text-red-500 font-bold text-sm cursor-help"
+                            >
+                              !
+                            </span>
+                          )}
+                          {error.length === 0 && warn.length > 0 && (
+                            <span
+                              title={`Falta: ${warn.join(', ')}`}
+                              className="flex-shrink-0 text-sm cursor-help"
+                            >
+                              ⚠️
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">{article.year}</td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={article.priority ?? 3}
+                            disabled={isSaving}
+                            onChange={(e) =>
+                              handleInlineUpdate(article, { priority: parseInt(e.target.value) })
+                            }
+                            className={`text-xs px-1 py-0.5 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-400 ${
+                              PRIORITY_COLORS[article.priority ?? 3] ?? PRIORITY_COLORS[3]
+                            }`}
+                          >
+                            {[1, 2, 3, 4, 5].map((p) => (
+                              <option key={p} value={p}>P{p}</option>
+                            ))}
+                          </select>
+                          <button
+                            disabled={isSaving}
+                            onClick={() =>
+                              handleInlineUpdate(article, {
+                                is_milestone: !article.is_milestone,
+                                ...(!article.is_milestone && { priority: 5 }),
+                              })
+                            }
+                            className="text-lg leading-none hover:scale-110 transition-transform disabled:opacity-40"
+                            title={article.is_milestone ? 'Quitar milestone' : 'Marcar milestone'}
+                          >
+                            {article.is_milestone ? '⭐' : '☆'}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex gap-1 flex-wrap">
+                          {article.dropbox_path && (
+                            <a
+                              href={article.dropbox_path}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                              title="Abrir PDF"
+                            >
+                              PDF
+                            </a>
+                          )}
+                          {article.doi && (
+                            <a
+                              href={`https://doi.org/${article.doi}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
+                              title={`DOI: ${article.doi}`}
+                            >
+                              DOI
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setEditingArticle(article); setShowModal(true); }}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleAssignToAll(article.id, article.title)}
+                          >
+                            Asignar a Todos
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteArticle(article.id, article.title)}
+                          >
+                            Eliminar
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -236,6 +414,12 @@ const AdminArticles = () => {
         onClose={() => { setShowModal(false); setEditingArticle(null); }}
         onSave={editingArticle ? handleUpdateArticle : handleCreateArticle}
         article={editingArticle}
+      />
+
+      <BatchImportModal
+        isOpen={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        onImported={loadArticles}
       />
     </div>
   );
