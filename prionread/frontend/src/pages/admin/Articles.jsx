@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
@@ -14,9 +14,7 @@ const DOT_CLS = {
 };
 
 const STATUS_LABELS = {
-  read: 'leídos',
-  summarized: 'resumidos',
-  evaluated: 'evaluados',
+  read: 'leídos', summarized: 'resumidos', evaluated: 'evaluados',
 };
 
 function initials(name) {
@@ -44,18 +42,23 @@ const AdminArticles = () => {
   const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
   const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
 
-  const [articles, setArticles]         = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [showModal, setShowModal]       = useState(false);
+  const [articles, setArticles]             = useState([]);
+  const [loading, setLoading]               = useState(true);
+  const [showModal, setShowModal]           = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
-  const [search, setSearch]             = useState('');
-  const [filters, setFilters]           = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
-  const [msg, setMsg]                   = useState('');
-  const [students, setStudents]         = useState([]);
-  const [matrix, setMatrix]             = useState({});
-  const [loadingPdf, setLoadingPdf]     = useState(null);
-  const [savingInline, setSavingInline] = useState(null);
+  const [search, setSearch]                 = useState('');
+  const [filterNoPdf, setFilterNoPdf]       = useState(false);
+  const [filterNoAbstract, setFilterNoAbstract] = useState(false);
+  const [filters, setFilters]               = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
+  const [msg, setMsg]                       = useState('');
+  const [students, setStudents]             = useState([]);
+  const [matrix, setMatrix]                 = useState({});
+  const [loadingPdf, setLoadingPdf]         = useState(null);
+  const [uploadingPdf, setUploadingPdf]     = useState(null);
+  const [savingInline, setSavingInline]     = useState(null);
+  const [fetchingAbstract, setFetchingAbstract] = useState(null);
+  const [abstractPreview, setAbstractPreview]   = useState(null); // { id, text }
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -93,15 +96,18 @@ const AdminArticles = () => {
       fd.append('authors',      Array.isArray(article.authors) ? article.authors.join(', ') : (article.authors || ''));
       fd.append('year',         article.year);
       fd.append('journal',      article.journal || '');
-      fd.append('doi',          article.doi || '');
-      fd.append('pubmed_id',    article.pubmed_id || '');
+      // Skip empty doi/pubmed_id — empty string triggers false 409 uniqueness conflict
+      if (article.doi)       fd.append('doi',       article.doi);
+      if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
       fd.append('abstract',     article.abstract || '');
       fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
-      fd.append('priority',     String(patch.priority ?? article.priority));
+      fd.append('priority',     String(patch.priority     ?? article.priority));
+      if (patch.abstract !== undefined) fd.append('abstract', patch.abstract);
       await adminService.updateArticle(article.id, fd);
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, ...patch } : a));
-    } catch { flash('Error guardando cambio'); }
-    finally { setSavingInline(null); }
+    } catch (err) {
+      flash(err?.response?.data?.error || err?.message || 'Error guardando cambio');
+    } finally { setSavingInline(null); }
   };
 
   const handleCreateArticle = async (formData) => {
@@ -142,6 +148,46 @@ const AdminArticles = () => {
     finally { setLoadingPdf(null); }
   };
 
+  const handlePdfUpload = async (article, file) => {
+    setUploadingPdf(article.id);
+    try {
+      const fd = new FormData();
+      fd.append('title', article.title || '');
+      if (article.doi)       fd.append('doi',       article.doi);
+      if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
+      fd.append('pdf', file);
+      const updated = await adminService.updateArticle(article.id, fd);
+      const newPath = updated.dropbox_path ?? updated.article?.dropbox_path ?? updated.pdf_url ?? 'uploaded';
+      setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, dropbox_path: newPath } : a));
+      flash('PDF subido correctamente');
+    } catch (err) {
+      flash(err?.response?.data?.error || err?.message || 'Error subiendo PDF');
+    } finally { setUploadingPdf(null); }
+  };
+
+  const handleFetchAbstract = async (article) => {
+    if (!article.doi && !article.pubmed_id) {
+      flash('Este artículo necesita DOI o PubMed ID para buscar el abstract');
+      return;
+    }
+    setFetchingAbstract(article.id);
+    setAbstractPreview(null);
+    try {
+      const data = await adminService.fetchMetadata(article.doi, article.pubmed_id);
+      const m = data.metadata ?? data;
+      if (!m.abstract) { flash('No se encontró abstract en la fuente (CrossRef / PubMed)'); return; }
+      setAbstractPreview({ id: article.id, text: m.abstract });
+    } catch (err) {
+      flash(err?.response?.data?.error || err?.message || 'Error buscando abstract');
+    } finally { setFetchingAbstract(null); }
+  };
+
+  const handleSaveAbstract = async (article) => {
+    if (!abstractPreview) return;
+    await handleInlineUpdate(article, { abstract: abstractPreview.text });
+    setAbstractPreview(null);
+  };
+
   const handleDotClick = async (articleId, student) => {
     if (matrix[articleId]?.[student.id]) return;
     if (!window.confirm(`¿Asignar este artículo a ${student.name}?`)) return;
@@ -164,7 +210,7 @@ const AdminArticles = () => {
 
   const authorsText = (authors) => Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
 
-  const filteredArticles = articles.filter((a) => {
+  let filteredArticles = articles.filter((a) => {
     const q = search.toLowerCase();
     if (!a.title?.toLowerCase().includes(q) && !authorsText(a.authors).toLowerCase().includes(q)) return false;
     if (userFilter) {
@@ -174,6 +220,9 @@ const AdminArticles = () => {
     }
     return true;
   });
+
+  if (filterNoPdf)      filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
+  if (filterNoAbstract) filteredArticles = filteredArticles.filter((a) => !a.abstract);
 
   const filterLabel = statusFilter
     ? statusFilter.map((s) => STATUS_LABELS[s] ?? s).join(' / ')
@@ -219,13 +268,31 @@ const AdminArticles = () => {
             <option value="priority">Prioridad</option>
           </select>
         </div>
-        <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
           <p className="text-sm text-gray-600">Mostrando <span className="font-semibold">{filteredArticles.length}</span> artículos</p>
           {students.length > 0 && (
-            <p className="text-xs text-gray-400 mt-1">
-              Columnas de asignación: • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado
+            <p className="text-xs text-gray-400">
+              • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado
             </p>
           )}
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={() => setFilterNoPdf((v) => !v)}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterNoPdf ? 'bg-red-500 text-white border-red-500' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'
+              }`}
+            >
+              Sin PDF
+            </button>
+            <button
+              onClick={() => setFilterNoAbstract((v) => !v)}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterNoAbstract ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
+              }`}
+            >
+              Sin Abstract
+            </button>
+          </div>
         </div>
       </Card>
 
@@ -253,120 +320,170 @@ const AdminArticles = () => {
                   <tr><td colSpan={6 + students.length} className="px-6 py-10 text-center text-sm text-gray-400">No se encontraron artículos</td></tr>
                 ) : filteredArticles.map((article) => {
                   const { level, missing } = articleCompleteness(article);
-                  const saving = savingInline === article.id;
+                  const saving            = savingInline === article.id;
+                  const isUploadingPdf    = uploadingPdf === article.id;
+                  const isFetchingAbs     = fetchingAbstract === article.id;
+                  const showAbsPreview    = abstractPreview?.id === article.id;
                   return (
-                    <tr key={article.id} className={`hover:bg-gray-50 ${saving ? 'opacity-60' : ''}`}>
+                    <Fragment key={article.id}>
+                      <tr className={`hover:bg-gray-50 ${showAbsPreview ? 'bg-violet-50' : ''} ${saving ? 'opacity-60' : ''}`}>
 
-                      <td className="px-6 py-4 max-w-xs">
-                        <div className="flex items-start gap-2">
-                          <button
-                            title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
-                            disabled={saving}
-                            onClick={() => handleInlineUpdate(article, {
-                              is_milestone: !article.is_milestone,
-                              priority: !article.is_milestone ? 5 : article.priority,
-                            })}
-                            className="shrink-0 mt-0.5 text-base leading-none hover:scale-125 transition-transform disabled:opacity-40"
-                          >
-                            {article.is_milestone ? '⭐' : '☆'}
-                          </button>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-gray-900 truncate">{article.title}</p>
-                            <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
-                          </div>
-                          {level !== 'ok' && (
-                            <span
-                              title={`Faltan: ${missing.join(', ')}`}
-                              className={`shrink-0 mt-0.5 px-1.5 py-0.5 text-xs font-bold rounded ${
-                                level === 'warn' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
-                              }`}
+                        <td className="px-6 py-4 max-w-xs">
+                          <div className="flex items-start gap-2">
+                            <button
+                              title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
+                              disabled={saving}
+                              onClick={() => handleInlineUpdate(article, {
+                                is_milestone: !article.is_milestone,
+                                priority: !article.is_milestone ? 5 : article.priority,
+                              })}
+                              className="shrink-0 mt-0.5 text-base leading-none hover:scale-125 transition-transform disabled:opacity-40"
                             >
-                              {level === 'warn' ? '⚠️' : '!'}
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                              {article.is_milestone ? '⭐' : '☆'}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-gray-900 truncate">{article.title}</p>
+                              <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
+                              {/* Abstract fetch button — only when no abstract */}
+                              {!article.abstract && !showAbsPreview && (
+                                <button
+                                  onClick={() => handleFetchAbstract(article)}
+                                  disabled={isFetchingAbs}
+                                  className="mt-1 flex items-center gap-1 px-2 py-0.5 text-xs bg-violet-100 text-violet-700 rounded hover:bg-violet-200 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                                  title="Obtener abstract desde DOI / PubMed"
+                                >
+                                  {isFetchingAbs ? (
+                                    <><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Buscando…</>
+                                  ) : '⬇️ Abstract'}
+                                </button>
+                              )}
+                            </div>
+                            {level !== 'ok' && (
+                              <span
+                                title={`Faltan: ${missing.join(', ')}`}
+                                className={`shrink-0 mt-0.5 px-1.5 py-0.5 text-xs font-bold rounded cursor-pointer select-none ${
+                                  level === 'warn' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                                }`}
+                              >
+                                {level === 'warn' ? '⚠️' : '!'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
 
-                      <td className="px-4 py-4">
-                        <select
-                          value={article.priority ?? 3}
-                          disabled={saving}
-                          onChange={(e) => handleInlineUpdate(article, { priority: parseInt(e.target.value) })}
-                          className={`px-1.5 py-1 text-xs font-semibold rounded cursor-pointer border-0 focus:ring-2 focus:ring-prion-primary disabled:opacity-40 ${
-                            article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
-                          }`}
-                        >
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <option key={n} value={n}>P{n}</option>
-                          ))}
-                        </select>
-                      </td>
-
-                      {/* PDF + DOI web link */}
-                      <td className="px-4 py-4">
-                        <div className="flex gap-1">
-                          <button
-                            title={article.dropbox_path ? 'Abrir PDF' : 'Sin PDF'}
-                            disabled={!article.dropbox_path || loadingPdf === article.id}
-                            onClick={() => handleOpenPdf(article)}
-                            className={`px-2 py-1 text-xs font-bold rounded ${
-                              article.dropbox_path
-                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        <td className="px-4 py-4">
+                          <select
+                            value={article.priority ?? 3}
+                            disabled={saving}
+                            onChange={(e) => handleInlineUpdate(article, { priority: parseInt(e.target.value) })}
+                            className={`px-1.5 py-1 text-xs font-semibold rounded cursor-pointer border-0 focus:ring-2 focus:ring-prion-primary disabled:opacity-40 ${
+                              article.priority >= 4 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
                             }`}
                           >
-                            {loadingPdf === article.id ? '…' : 'PDF'}
-                          </button>
-                          {article.doi ? (
-                            <a
-                              href={`https://doi.org/${article.doi}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={`Ver en web — doi.org/${article.doi}`}
-                              className="px-2 py-1 text-xs font-bold rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                            >
-                              DOI
-                            </a>
-                          ) : (
-                            <span title="Sin DOI" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">
-                              DOI
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                            {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>P{n}</option>)}
+                          </select>
+                        </td>
 
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {article.times_read != null && <p>{article.times_read} lecturas</p>}
-                        {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
-                      </td>
+                        <td className="px-4 py-4">
+                          <div className="flex gap-1">
+                            {/* PDF: rose if available (opens via API), grey upload if missing */}
+                            {article.dropbox_path ? (
+                              <button
+                                title="Abrir PDF"
+                                disabled={loadingPdf === article.id}
+                                onClick={() => handleOpenPdf(article)}
+                                className="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+                              >
+                                {loadingPdf === article.id ? '…' : 'PDF'}
+                              </button>
+                            ) : isUploadingPdf ? (
+                              <span className="px-2 py-1 text-xs bg-gray-100 text-gray-400 rounded flex items-center gap-1">
+                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                PDF
+                              </span>
+                            ) : (
+                              <label
+                                className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer select-none"
+                                title="Sin PDF — haz clic para subir"
+                              >
+                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files[0]; if (f) handlePdfUpload(article, f); e.target.value = ''; }} />
+                                PDF
+                              </label>
+                            )}
+                            {article.doi ? (
+                              <a
+                                href={`https://doi.org/${article.doi}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`Ver en web — doi.org/${article.doi}`}
+                                className="px-2 py-1 text-xs font-bold rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                              >
+                                DOI
+                              </a>
+                            ) : (
+                              <span title="Sin DOI" className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-400">DOI</span>
+                            )}
+                          </div>
+                        </td>
 
-                      {students.map((s) => {
-                        const asgn   = matrix[article.id]?.[s.id];
-                        const status = asgn?.status ?? 'none';
-                        const cls    = DOT_CLS[status] ?? DOT_CLS.none;
-                        const tip    = asgn ? `${s.name}: ${status}` : `Asignar a ${s.name}`;
-                        return (
-                          <td key={s.id} className="px-2 py-4 text-center">
-                            <button
-                              title={tip}
-                              onClick={() => handleDotClick(article.id, s)}
-                              disabled={!!asgn}
-                              className={`w-4 h-4 rounded-full inline-block transition-colors ${cls}`}
-                            />
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {article.times_read != null && <p>{article.times_read} lecturas</p>}
+                          {article.avg_rating  != null && <p className="text-xs">⭐ {Number(article.avg_rating).toFixed(1)}</p>}
+                        </td>
+
+                        {students.map((s) => {
+                          const asgn   = matrix[article.id]?.[s.id];
+                          const status = asgn?.status ?? 'none';
+                          const cls    = DOT_CLS[status] ?? DOT_CLS.none;
+                          return (
+                            <td key={s.id} className="px-2 py-4 text-center">
+                              <button
+                                title={asgn ? `${s.name}: ${status}` : `Asignar a ${s.name}`}
+                                onClick={() => handleDotClick(article.id, s)}
+                                disabled={!!asgn}
+                                className={`w-4 h-4 rounded-full inline-block transition-colors ${cls}`}
+                              />
+                            </td>
+                          );
+                        })}
+
+                        <td className="px-6 py-4">
+                          <div className="flex gap-2 flex-wrap">
+                            <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
+                            <Button variant="secondary" size="sm" onClick={() => handleAssignToAll(article.id, article.title)}>Asignar a Todos</Button>
+                            <Button variant="danger" size="sm" onClick={() => handleDeleteArticle(article.id, article.title)}>Eliminar</Button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Inline abstract preview */}
+                      {showAbsPreview && (
+                        <tr className="bg-violet-50">
+                          <td colSpan={6 + students.length} className="px-8 pb-5 pt-0">
+                            <div className="rounded-lg border border-violet-200 bg-white shadow-sm p-4">
+                              <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">
+                                Abstract obtenido — verifica y confirma
+                              </p>
+                              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{abstractPreview.text}</p>
+                              <div className="flex gap-2 mt-4">
+                                <button onClick={() => setAbstractPreview(null)} className="px-4 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={() => handleSaveAbstract(article)}
+                                  disabled={savingInline === article.id}
+                                  className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                                >
+                                  {savingInline === article.id ? 'Guardando…' : 'Introducir'}
+                                </button>
+                              </div>
+                            </div>
                           </td>
-                        );
-                      })}
-
-                      <td className="px-6 py-4">
-                        <div className="flex gap-2 flex-wrap">
-                          <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
-                          <Button variant="secondary" size="sm" onClick={() => handleAssignToAll(article.id, article.title)}>Asignar a Todos</Button>
-                          <Button variant="danger" size="sm" onClick={() => handleDeleteArticle(article.id, article.title)}>Eliminar</Button>
-                        </div>
-                      </td>
-                    </tr>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -381,7 +498,6 @@ const AdminArticles = () => {
         onSave={editingArticle ? handleUpdateArticle : handleCreateArticle}
         article={editingArticle}
       />
-
       <BatchImportModal
         isOpen={showBatchModal}
         onClose={() => setShowBatchModal(false)}
