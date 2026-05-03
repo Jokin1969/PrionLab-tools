@@ -42,4 +42,9 @@ export const adminService = {
     (await api.post('/articles/fetch-metadata', { doi, pubmed_id: pubmedId })).data,
   getArticlePdfLink: async (articleId) =>
     (await api.post(`/articles/${articleId}/download-link`)).data,
+
+  // PDF health
+  verifyPdfs: async () => (await api.post('/admin/articles/verify-pdfs')).data,
+  clearPdfLink: async (articleId) => (await api.delete(`/articles/${articleId}/pdf-link`)).data,
+  syncDropboxPdfs: async () => (await api.post('/admin/articles/sync-dropbox')).data,
 };

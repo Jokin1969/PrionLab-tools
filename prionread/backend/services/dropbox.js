@@ -37,7 +37,7 @@ function wrapDropboxError(err, context) {
   const status = err?.status || err?.error?.error_summary;
 
   if (err?.status === 409 || String(status).includes('not_found')) {
-    return Object.assign(new Error(`File not found in Dropbox`), { code: 'NOT_FOUND' });
+    return Object.assign(new Error('File not found in Dropbox'), { code: 'NOT_FOUND' });
   }
   if (err?.status === 429) {
     return Object.assign(new Error('Dropbox rate limit reached'), { code: 'RATE_LIMITED' });
@@ -79,19 +79,37 @@ async function uploadPDF(fileBuffer, article) {
 
 /**
  * Generates a temporary download link valid for ~4 hours.
- * @param {string} dropboxFilePath  - e.g. /PrionLab tools/PrionRead/10.1016_....pdf
+ * @param {string} dropboxFilePath
  * @returns {string} HTTPS link
  */
 async function generateDownloadLink(dropboxFilePath) {
   if (!dropboxFilePath) {
     throw Object.assign(new Error('dropbox_path is required'), { code: 'INVALID_INPUT' });
   }
-
   try {
     const result = await dbx.filesGetTemporaryLink({ path: dropboxFilePath });
     return result.result.link;
   } catch (err) {
     throw wrapDropboxError(err, 'generateDownloadLink');
+  }
+}
+
+/**
+ * Checks whether a file exists in Dropbox without generating a download link.
+ * Returns true if found, false if not found, throws on other errors.
+ * @param {string} dropboxFilePath
+ * @returns {boolean}
+ */
+async function checkFileExists(dropboxFilePath) {
+  if (!dropboxFilePath) return false;
+  try {
+    await dbx.filesGetMetadata({ path: dropboxFilePath });
+    return true;
+  } catch (err) {
+    if (err?.status === 409 || String(err?.error?.error_summary || '').includes('not_found')) {
+      return false;
+    }
+    throw wrapDropboxError(err, 'checkFileExists');
   }
 }
 
@@ -112,7 +130,6 @@ async function listFiles(folder = ROOT_FOLDER) {
         modified: e.server_modified,
       }));
   } catch (err) {
-    // An empty or non-existent folder returns a specific error; treat as empty list
     if (err?.status === 409) return [];
     throw wrapDropboxError(err, 'listFiles');
   }
@@ -120,20 +137,18 @@ async function listFiles(folder = ROOT_FOLDER) {
 
 /**
  * Permanently deletes a file from Dropbox.
- * @param {string} dropboxFilePath - e.g. /PrionLab tools/PrionRead/10.1016_....pdf
+ * @param {string} dropboxFilePath
  */
 async function deletePDF(dropboxFilePath) {
   if (!dropboxFilePath) {
     throw Object.assign(new Error('dropbox_path is required'), { code: 'INVALID_INPUT' });
   }
-
   try {
     await dbx.filesDeleteV2({ path: dropboxFilePath });
   } catch (err) {
-    // If already gone, treat as success — idempotent delete
     if (err?.status === 409) return;
     throw wrapDropboxError(err, 'deletePDF');
   }
 }
 
-module.exports = { uploadPDF, generateDownloadLink, listFiles, deletePDF };
+module.exports = { uploadPDF, generateDownloadLink, checkFileExists, listFiles, deletePDF };
