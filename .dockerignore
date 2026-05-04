@@ -1,0 +1,7 @@
+prionread/frontend/node_modules
+prionread/backend/node_modules
+**/__pycache__
+**/*.pyc
+.git
+.gitignore
+*.md

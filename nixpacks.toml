@@ -1,8 +1,5 @@
 [phases.setup]
-cmds = [
-  "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -",
-  "apt-get install -y nodejs"
-]
+nixPkgs = ["nodejs_20"]
 
 [phases.install]
 cmds = [
