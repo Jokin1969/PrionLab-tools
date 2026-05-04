@@ -263,25 +263,38 @@ const AdminArticles = () => {
 
   const authorsText = (authors) => Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
 
+  const articleToRow = (article) => ({
+    DOI:       article.doi        || '',
+    PMID:      article.pubmed_id  || '',
+    Título:    article.title      || '',
+    Autores:   authorsText(article.authors),
+    Año:       article.year       || '',
+    Revista:   article.journal    || '',
+    Tags:      (article.tags || []).join(', '),
+    Prioridad: article.priority   || '',
+    Milestone: article.is_milestone ? 'Sí' : 'No',
+    PDF:       article.dropbox_path ? 'Sí' : 'No',
+  });
+
+  const COL_WIDTHS = [16, 12, 60, 40, 6, 30, 20, 10, 10, 6].map((w) => ({ wch: w }));
+
   const downloadArticleXlsx = (article) => {
-    const row = {
-      DOI:       article.doi        || '',
-      PMID:      article.pubmed_id  || '',
-      Título:    article.title      || '',
-      Autores:   authorsText(article.authors),
-      Año:       article.year       || '',
-      Revista:   article.journal    || '',
-      Tags:      (article.tags || []).join(', '),
-      Prioridad: article.priority   || '',
-      Milestone: article.is_milestone ? 'Sí' : 'No',
-      PDF:       article.dropbox_path ? 'Sí' : 'No',
-    };
-    const ws = XLSX.utils.json_to_sheet([row]);
-    ws['!cols'] = [16, 12, 60, 40, 6, 30, 20, 10, 10, 6].map((w) => ({ wch: w }));
+    const ws = XLSX.utils.json_to_sheet([articleToRow(article)]);
+    ws['!cols'] = COL_WIDTHS;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Artículo');
     const safeName = (article.title || 'articulo').slice(0, 50).replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_');
     XLSX.writeFile(wb, `${safeName}.xlsx`);
+  };
+
+  const downloadAllXlsx = (articleList) => {
+    if (!articleList.length) return;
+    const ws = XLSX.utils.json_to_sheet(articleList.map(articleToRow));
+    ws['!cols'] = COL_WIDTHS;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Artículos');
+    const ts = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `articulos_${ts}.xlsx`);
   };
 
   let filteredArticles = articles.filter((a) => {
@@ -315,6 +328,14 @@ const AdminArticles = () => {
           <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => downloadAllXlsx(filteredArticles)}
+            disabled={filteredArticles.length === 0}
+            title={`Exportar ${filteredArticles.length} artículo${filteredArticles.length !== 1 ? 's' : ''} a Excel`}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            📊 XLS ({filteredArticles.length})
+          </button>
           <Button variant="ghost" onClick={() => setShowDuplicatesModal(true)} title="Detectar artículos duplicados o muy similares">
             🔍 Buscar duplicados
           </Button>
