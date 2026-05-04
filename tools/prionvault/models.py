@@ -1,9 +1,15 @@
 """PrionVault SQLAlchemy models.
 
-The `Article` model intentionally maps the SAME `articles` table that
-PrionRead's Sequelize ORM writes to. We declare only the columns we need
-to read or write from Flask; PostgreSQL ignores any columns SQLAlchemy
-isn't aware of.
+The `PrionVaultArticle` model maps the SAME `articles` table that
+PrionRead's Sequelize ORM writes to from the Node backend. We declare
+only the columns we need to read or write from Flask; PostgreSQL
+ignores any columns SQLAlchemy isn't aware of.
+
+The class is named `PrionVaultArticle` rather than just `Article` so
+it never collides in SQLAlchemy's class registry with anything else
+that might one day declare its own `Article` model. The local alias
+`Article = PrionVaultArticle` is kept at the bottom of the file so
+existing imports keep working.
 """
 import uuid
 from datetime import datetime
@@ -15,11 +21,25 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, TSVECTOR
 from sqlalchemy.orm import relationship
 
-from database.config import Base
+from sqlalchemy.orm import DeclarativeBase
 
 
-# ── Article (canonical, shared with PrionRead via the `articles` table) ──────
-class Article(Base):
+# Use a SEPARATE declarative base for PrionVault so its models cannot
+# clash with the project-wide `database.config.Base` (which already
+# manages users, labs, manuscripts, publications, etc.). The shared
+# global Base would otherwise raise a SAWarning for any duplicate
+# class name across the codebase, and could conflict on the `articles`
+# table that Sequelize manages from the PrionRead Node backend.
+class PVBase(DeclarativeBase):
+    pass
+
+
+# Public alias for clarity inside this module.
+Base = PVBase
+
+
+# ── PrionVaultArticle (maps the shared `articles` table) ────────────────────
+class PrionVaultArticle(Base):
     __tablename__ = "articles"
 
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -251,5 +271,13 @@ class UsageEvent(Base):
     cost_usd    = Column(Numeric(10, 5))
     tokens_in   = Column(Integer)
     tokens_out  = Column(Integer)
-    metadata    = Column(JSONB, default=dict)
+    # `metadata` is a reserved attribute on SQLAlchemy DeclarativeBase
+    # (used internally to expose the Table catalogue), so we map the
+    # Python attribute as `meta` while keeping the SQL column name.
+    meta        = Column("metadata", JSONB, default=dict)
     created_at  = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
+# Backwards-compat alias: existing imports (`from . import models`,
+# `models.Article.query`) keep working without changes.
+Article = PrionVaultArticle

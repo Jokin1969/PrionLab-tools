@@ -228,24 +228,32 @@ def create_app() -> Flask:
     from tools.prionread import prionread_bp
     app.register_blueprint(prionread_bp)
 
-    # PrionVault — registered defensively. Any import / blueprint error is
-    # logged but never aborts boot, so a bug in PrionVault never takes
-    # PrionRead or PrionPacks down.
-    try:
-        from tools.prionvault import prionvault_bp
-        app.register_blueprint(prionvault_bp)
-    except Exception as e:
-        app.logger.error('PrionVault blueprint registration failed: %s', e, exc_info=True)
+    # PrionVault — opt-out kill switch.
+    # Set DISABLE_PRIONVAULT=1 in Railway env vars to skip every
+    # PrionVault-related import / registration / migration. Use as a
+    # safety valve if the new module ever causes deploy issues; the
+    # rest of the Flask app keeps working exactly like before.
+    if os.environ.get('DISABLE_PRIONVAULT', '').strip() not in ('', '0', 'false', 'False'):
+        app.logger.warning('PrionVault disabled via DISABLE_PRIONVAULT env var.')
+    else:
+        # Registered defensively. Any import / blueprint error is logged
+        # but never aborts boot, so a bug in PrionVault never takes
+        # PrionRead or PrionPacks down.
+        try:
+            from tools.prionvault import prionvault_bp
+            app.register_blueprint(prionvault_bp)
+        except Exception as e:
+            app.logger.error('PrionVault blueprint registration failed: %s', e, exc_info=True)
 
-    # Schedule PrionVault DB migrations in a background daemon thread.
-    # This MUST be non-blocking — Railway's healthcheck has a 30 s timeout
-    # and gunicorn cannot answer /health if we sit here applying SQL.
-    # Errors inside the thread are logged but never crash the app.
-    try:
-        from tools.prionvault.migrate import schedule_pending_migrations
-        schedule_pending_migrations(app)
-    except Exception as e:
-        app.logger.warning('PrionVault migration scheduler failed: %s', e)
+        # Schedule PrionVault DB migrations in a background daemon thread.
+        # MUST be non-blocking — Railway's healthcheck has a 30 s timeout
+        # and gunicorn cannot answer /health if we sit here applying SQL.
+        # Errors inside the thread are logged but never crash the app.
+        try:
+            from tools.prionvault.migrate import schedule_pending_migrations
+            schedule_pending_migrations(app)
+        except Exception as e:
+            app.logger.warning('PrionVault migration scheduler failed: %s', e)
 
     try:
         from tools.prionpacks.models import bootstrap_demo_data
