@@ -52,4 +52,7 @@ export const adminService = {
   verifyPdfs: async () => (await api.post('/admin/articles/verify-pdfs')).data,
   clearPdfLink: async (articleId) => (await api.delete(`/articles/${articleId}/pdf-link`)).data,
   syncDropboxPdfs: async () => (await api.post('/admin/articles/sync-dropbox')).data,
+
+  // Duplicate detection
+  findDuplicates: async () => (await api.get('/admin/articles/find-duplicates')).data,
 };

@@ -172,4 +172,79 @@ async function assignArticleToAll(req, res) {
   }
 }
 
-module.exports = { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll };
+// ─── GET /api/admin/articles/find-duplicates ─────────────────────────────────
+
+function tokenize(str) {
+  return new Set(
+    (str || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+  );
+}
+
+function jaccardSimilarity(a, b) {
+  if (!a.size || !b.size) return 0;
+  let intersect = 0;
+  for (const t of a) if (b.has(t)) intersect++;
+  return intersect / (a.size + b.size - intersect);
+}
+
+function normalizeDoi(doi) {
+  return (doi || '').trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//i, '');
+}
+
+async function findDuplicateArticles(_req, res) {
+  try {
+    const articles = await Article.findAll({
+      attributes: ['id', 'title', 'authors', 'year', 'journal', 'doi', 'pubmed_id'],
+      raw: true,
+    });
+
+    const pairs = [];
+    const seen = new Set();
+
+    for (let i = 0; i < articles.length; i++) {
+      const a = articles[i];
+      const tokA = tokenize(a.title);
+      const doiA = normalizeDoi(a.doi);
+      const pmidA = (a.pubmed_id || '').trim();
+
+      for (let j = i + 1; j < articles.length; j++) {
+        const b = articles[j];
+        const key = `${a.id}:${b.id}`;
+        if (seen.has(key)) continue;
+
+        const reasons = [];
+        let score = 0;
+
+        if (doiA && doiA === normalizeDoi(b.doi)) {
+          reasons.push('DOI idéntico');
+          score = 1.0;
+        }
+
+        const pmidB = (b.pubmed_id || '').trim();
+        if (pmidA && pmidA === pmidB) {
+          reasons.push('PMID idéntico');
+          score = Math.max(score, 1.0);
+        }
+
+        const titleScore = jaccardSimilarity(tokA, tokenize(b.title));
+        if (titleScore >= 0.75) {
+          reasons.push(`Título similar (${Math.round(titleScore * 100)}%)`);
+          score = Math.max(score, titleScore);
+        }
+
+        if (reasons.length > 0) {
+          seen.add(key);
+          pairs.push({ a, b, score: Math.round(score * 100) / 100, reasons });
+        }
+      }
+    }
+
+    pairs.sort((x, y) => y.score - x.score);
+    return res.json({ pairs, total: pairs.length });
+  } catch (err) {
+    console.error('[findDuplicateArticles]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+module.exports = { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll, findDuplicateArticles };
