@@ -228,21 +228,24 @@ def create_app() -> Flask:
     from tools.prionread import prionread_bp
     app.register_blueprint(prionread_bp)
 
-    from tools.prionvault import prionvault_bp
-    app.register_blueprint(prionvault_bp)
-
-    # Auto-apply PrionVault DB migrations on boot. Idempotent and tracked;
-    # failures only log a warning, the app keeps booting.
+    # PrionVault — registered defensively. Any import / blueprint error is
+    # logged but never aborts boot, so a bug in PrionVault never takes
+    # PrionRead or PrionPacks down.
     try:
-        from tools.prionvault.migrate import run_pending_migrations
-        result = run_pending_migrations(app)
-        if result.get('applied'):
-            app.logger.info('PrionVault migrations applied: %s',
-                            [m['name'] for m in result['applied']])
-        if result.get('errors'):
-            app.logger.error('PrionVault migration errors: %s', result['errors'])
+        from tools.prionvault import prionvault_bp
+        app.register_blueprint(prionvault_bp)
     except Exception as e:
-        app.logger.warning('PrionVault migration runner failed: %s', e)
+        app.logger.error('PrionVault blueprint registration failed: %s', e, exc_info=True)
+
+    # Schedule PrionVault DB migrations in a background daemon thread.
+    # This MUST be non-blocking — Railway's healthcheck has a 30 s timeout
+    # and gunicorn cannot answer /health if we sit here applying SQL.
+    # Errors inside the thread are logged but never crash the app.
+    try:
+        from tools.prionvault.migrate import schedule_pending_migrations
+        schedule_pending_migrations(app)
+    except Exception as e:
+        app.logger.warning('PrionVault migration scheduler failed: %s', e)
 
     try:
         from tools.prionpacks.models import bootstrap_demo_data
