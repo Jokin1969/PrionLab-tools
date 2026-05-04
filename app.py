@@ -231,6 +231,19 @@ def create_app() -> Flask:
     from tools.prionvault import prionvault_bp
     app.register_blueprint(prionvault_bp)
 
+    # Auto-apply PrionVault DB migrations on boot. Idempotent and tracked;
+    # failures only log a warning, the app keeps booting.
+    try:
+        from tools.prionvault.migrate import run_pending_migrations
+        result = run_pending_migrations(app)
+        if result.get('applied'):
+            app.logger.info('PrionVault migrations applied: %s',
+                            [m['name'] for m in result['applied']])
+        if result.get('errors'):
+            app.logger.error('PrionVault migration errors: %s', result['errors'])
+    except Exception as e:
+        app.logger.warning('PrionVault migration runner failed: %s', e)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()

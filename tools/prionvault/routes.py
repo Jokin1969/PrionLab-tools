@@ -350,3 +350,49 @@ def api_generate_summary(aid):
 def api_semantic_search():
     """Stub. Wired up in Phase 5 with pgvector + Voyage + Claude."""
     return jsonify({"error": "not_implemented_yet"}), 501
+
+
+# ── Migration runner: admin-only manual trigger + status ────────────────────
+@prionvault_bp.route("/api/admin/migrations", methods=["GET"])
+@admin_required
+def api_migrations_status():
+    """List which PrionVault migrations have been applied to this DB.
+
+    Useful when the admin wants to confirm the schema is up to date without
+    looking at server logs. Read-only.
+    """
+    s = _session()
+    try:
+        # Tolerant query — table may not exist yet on first boot.
+        rows = s.execute(sql_text(
+            """
+            SELECT name, sha256, applied_at, runtime_ms
+            FROM applied_migrations
+            ORDER BY applied_at DESC
+            """
+        )).all()
+        return jsonify({
+            "applied": [
+                {"name": r.name, "sha": r.sha256, "applied_at": r.applied_at.isoformat(),
+                 "runtime_ms": r.runtime_ms}
+                for r in rows
+            ],
+        })
+    except Exception as e:
+        return jsonify({"applied": [], "error": str(e)}), 200
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/admin/migrations/run", methods=["POST"])
+@admin_required
+def api_migrations_run():
+    """Force-run any pending PrionVault migrations now.
+
+    The runner is also called automatically on app boot (see app.py), so
+    this endpoint is mainly a safety valve when the admin wants to apply
+    a freshly-pushed migration without redeploying.
+    """
+    from .migrate import run_pending_migrations
+    summary = run_pending_migrations()
+    return jsonify(summary)
