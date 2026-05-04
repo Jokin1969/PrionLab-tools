@@ -93,13 +93,27 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = nul
           .includes(search.toLowerCase()))
   );
 
+  const unassignedMilestones = allArticles.filter(
+    (a) => !assignedIds.has(a.id) && a.is_milestone
+  );
+
   const allUnassignedSelected = unassigned.length > 0 && unassigned.every((a) => selected.includes(a.id));
+  const allMilestonesSelected = unassignedMilestones.length > 0 && unassignedMilestones.every((a) => selected.includes(a.id));
 
   const handleToggleSelectAll = () => {
     if (allUnassignedSelected) {
       setSelected([]);
     } else {
       setSelected(unassigned.map((a) => a.id));
+    }
+  };
+
+  const handleToggleMilestones = () => {
+    if (allMilestonesSelected) {
+      setSelected((prev) => prev.filter((id) => !unassignedMilestones.some((a) => a.id === id)));
+    } else {
+      const milestoneIds = unassignedMilestones.map((a) => a.id);
+      setSelected((prev) => [...new Set([...prev, ...milestoneIds])]);
     }
   };
 
@@ -185,14 +199,26 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = nul
         <section className="border-t pt-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-gray-700">Asignar artículos</h3>
-            {unassigned.length > 0 && (
-              <button
-                onClick={handleToggleSelectAll}
-                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
-              >
-                {allUnassignedSelected ? 'Deseleccionar todos' : `Seleccionar todos (${unassigned.length})`}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {unassignedMilestones.length > 0 && (
+                <button
+                  onClick={handleToggleMilestones}
+                  className="text-xs font-medium text-amber-600 hover:text-amber-800 underline underline-offset-2"
+                >
+                  {allMilestonesSelected
+                    ? `Deseleccionar milestones`
+                    : `⭐ Milestones (${unassignedMilestones.length})`}
+                </button>
+              )}
+              {unassigned.length > 0 && (
+                <button
+                  onClick={handleToggleSelectAll}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
+                >
+                  {allUnassignedSelected ? 'Deseleccionar todos' : `Seleccionar todos (${unassigned.length})`}
+                </button>
+              )}
+            </div>
           </div>
           <input
             type="text"
@@ -219,7 +245,8 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = nul
                     checked={selected.includes(article.id)}
                     onChange={() => toggleSelect(article.id)}
                   />
-                  <span className="text-sm text-gray-800 truncate">
+                  <span className="text-sm text-gray-800 truncate flex items-center gap-1">
+                    {article.is_milestone && <span title="Milestone">⭐</span>}
                     {article.title}
                     <span className="text-gray-400 ml-1">({article.year})</span>
                   </span>
