@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}PrionVault — PrionLab Tools{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/prionvault.css') }}" />
+<meta name="pv-user-role"  content="{{ session.role }}">
+<meta name="pv-user-id"    content="{{ session.user_id }}">
+{% endblock %}
+
+{% block main_body %}
+<div id="prionvault-app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="pv-sidebar">
+    <div class="pv-sidebar-header">
+      <i class="fas fa-book-open pv-brand-icon"></i>
+      <div>
+        <span class="pv-brand-name">PrionVault</span>
+        <span class="pv-brand-sub">Prion-research library</span>
+      </div>
+    </div>
+
+    <nav class="pv-sidebar-nav">
+      <h4 class="pv-sidebar-section">📚 Library</h4>
+      <button class="pv-nav-btn" data-filter="all">
+        All articles <span class="pv-count" id="count-total">—</span>
+      </button>
+      <button class="pv-nav-btn" data-filter="recent">
+        Recently added
+      </button>
+      <button class="pv-nav-btn" data-filter="no-summary">
+        Without AI summary <span class="pv-count" id="count-no-summary">—</span>
+      </button>
+      <button class="pv-nav-btn" data-filter="indexed">
+        Indexed for AI <span class="pv-count" id="count-indexed">—</span>
+      </button>
+
+      <h4 class="pv-sidebar-section">🏷 Tags <button class="pv-tag-add pv-admin-only" id="btn-new-tag" title="Create tag">+</button></h4>
+      <div class="pv-tag-list" id="tag-list"></div>
+
+      <h4 class="pv-sidebar-section pv-admin-only">⚙ Tools</h4>
+      <button class="pv-nav-btn pv-admin-only" id="btn-import-pdfs" disabled title="Available in Phase 2">
+        <i class="fas fa-upload"></i> Import PDFs
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-reindex-all" disabled title="Available in Phase 4">
+        <i class="fas fa-sync"></i> Re-index all
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-manage-queue" disabled title="Available in Phase 2">
+        <i class="fas fa-list-check"></i> Ingest queue
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ── Main area ───────────────────────────────────────────────────────── -->
+  <main class="pv-main">
+
+    <!-- Search bar -->
+    <div class="pv-search-bar">
+      <div class="pv-search-input-wrap">
+        <i class="fas fa-search pv-search-icon"></i>
+        <input type="text" id="pv-search-input" class="pv-search-input"
+               placeholder="Search title, abstract, authors, journal…"
+               autocomplete="off" />
+        <button class="pv-search-mode" id="btn-search-mode"
+                title="Toggle AI semantic search (coming in Phase 5)">
+          <i class="fas fa-bolt"></i>
+        </button>
+      </div>
+
+      <div class="pv-filter-row">
+        <label>Year
+          <input type="number" id="filter-year-min" placeholder="from" min="1900" max="2100">
+          <input type="number" id="filter-year-max" placeholder="to"   min="1900" max="2100">
+        </label>
+        <label>Journal
+          <input type="text" id="filter-journal" placeholder="any">
+        </label>
+        <label>Sort
+          <select id="filter-sort">
+            <option value="added_desc">Recently added</option>
+            <option value="added_asc">Oldest added</option>
+            <option value="year_desc">Year (newest)</option>
+            <option value="year_asc">Year (oldest)</option>
+            <option value="title_asc">Title A → Z</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="pv-results-header">
+      <span id="pv-result-count">—</span>
+      <span class="pv-result-sep">·</span>
+      <span id="pv-result-page">page 1</span>
+    </div>
+
+    <div id="pv-results-grid" class="pv-results-grid"></div>
+
+    <div id="pv-pagination" class="pv-pagination"></div>
+  </main>
+
+  <!-- ── Article detail modal ───────────────────────────────────────────── -->
+  <div id="pv-detail-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card">
+      <button class="pv-modal-close" id="pv-detail-close" aria-label="Close">×</button>
+      <div id="pv-detail-content">…</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/prionvault.js') }}"></script>
+{% endblock %}
