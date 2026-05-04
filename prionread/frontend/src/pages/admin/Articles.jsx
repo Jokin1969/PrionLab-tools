@@ -2,6 +2,22 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { adminService } from '../../services/admin.service';
+
+function SortBtn({ label, col, sortBy, order, onSort }) {
+  const active = sortBy === col;
+  return (
+    <button
+      onClick={() => onSort(col)}
+      className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors group"
+      title={active ? (order === 'asc' ? 'Ordenar descendente' : 'Ordenar ascendente') : `Ordenar por ${label}`}
+    >
+      {label}
+      <span className={`text-[10px] leading-none ${active ? 'text-prion-primary' : 'text-gray-300 group-hover:text-gray-400'}`}>
+        {active ? (order === 'asc' ? '▲' : '▼') : '⇅'}
+      </span>
+    </button>
+  );
+}
 import { ArticleModal } from '../../components/admin/ArticleModal';
 import { BatchImportModal } from '../../components/admin/BatchImportModal';
 import { PdfUploadModal } from '../../components/admin/PdfUploadModal';
@@ -237,6 +253,14 @@ const AdminArticles = () => {
     }
   };
 
+  const handleSort = (col) => {
+    setFilters((p) => ({
+      ...p,
+      sort_by: col,
+      order: p.sort_by === col && p.order === 'desc' ? 'asc' : 'desc',
+    }));
+  };
+
   const authorsText = (authors) => Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
 
   const downloadArticleXlsx = (article) => {
@@ -315,7 +339,7 @@ const AdminArticles = () => {
       )}
 
       <Card>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2">
             <Input placeholder="Buscar por título o autor..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
@@ -323,11 +347,6 @@ const AdminArticles = () => {
             <option value="">Todos</option>
             <option value="true">Solo Milestones</option>
             <option value="false">Solo Regulares</option>
-          </select>
-          <select value={filters.sort_by} onChange={(e) => setFilters((p) => ({ ...p, sort_by: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary">
-            <option value="year">Año</option>
-            <option value="title">Título</option>
-            <option value="priority">Prioridad</option>
           </select>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
@@ -367,15 +386,19 @@ const AdminArticles = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    <button
-                      onClick={() => setFilterMilestone((v) => !v)}
-                      title={filterMilestone ? 'Mostrar todos los artículos' : 'Mostrar solo milestones'}
-                      className="mr-1 text-base leading-none hover:scale-125 transition-transform align-middle">
-                      {filterMilestone ? '⭐' : '☆'}
-                    </button>
-                    Artículo
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setFilterMilestone((v) => !v)}
+                        title={filterMilestone ? 'Mostrar todos los artículos' : 'Mostrar solo milestones'}
+                        className="text-base leading-none hover:scale-125 transition-transform">
+                        {filterMilestone ? '⭐' : '☆'}
+                      </button>
+                      <SortBtn label="Artículo" col="title" sortBy={filters.sort_by} order={filters.order} onSort={handleSort} />
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <SortBtn label="Año" col="year" sortBy={filters.sort_by} order={filters.order} onSort={handleSort} />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>

@@ -1,6 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
+
+function SortBtn({ label, col, sortBy, dir, onSort }) {
+  const active = sortBy === col;
+  return (
+    <button
+      onClick={() => onSort(col)}
+      className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors group"
+      title={active ? (dir === 'asc' ? 'Ordenar descendente' : 'Ordenar ascendente') : `Ordenar por ${label}`}
+    >
+      {label}
+      <span className={`text-[10px] leading-none ${active ? 'text-prion-primary' : 'text-gray-300 group-hover:text-gray-400'}`}>
+        {active ? (dir === 'asc' ? '▲' : '▼') : '⇅'}
+      </span>
+    </button>
+  );
+}
 import { UserModal } from '../../components/admin/UserModal';
 import { UserAssignmentsModal } from '../../components/admin/UserAssignmentsModal';
 import { Card, Button, Input, Loader } from '../../components/common';
@@ -97,6 +113,7 @@ const AdminUsers = () => {
   const [previewUser, setPreviewUser]   = useState(null);
   const [search, setSearch]             = useState('');
   const [roleFilter, setRoleFilter]     = useState('');
+  const [userSort, setUserSort]         = useState({ by: 'name', dir: 'asc' });
   const [msg, setMsg]                   = useState('');
   const [errMsg, setErrMsg]             = useState('');
   const [passwordBanner, setPasswordBanner] = useState(null);
@@ -173,10 +190,25 @@ const AdminUsers = () => {
     }
   };
 
-  const filteredUsers = users.filter(
-    (u) => u.name?.toLowerCase().includes(search.toLowerCase()) ||
-            u.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleUserSort = (col) => {
+    setUserSort((p) => ({ by: col, dir: p.by === col && p.dir === 'asc' ? 'desc' : 'asc' }));
+  };
+
+  const filteredUsers = users
+    .filter((u) =>
+      u.name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.email?.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      const { by, dir } = userSort;
+      let va, vb;
+      if (by === 'name')  { va = (a.name  || '').toLowerCase(); vb = (b.name  || '').toLowerCase(); }
+      if (by === 'role')  { va = (a.role  || '').toLowerCase(); vb = (b.role  || '').toLowerCase(); }
+      if (by === 'year')  { va = a.year_started ?? 0;           vb = b.year_started ?? 0; }
+      if (va < vb) return dir === 'asc' ? -1 :  1;
+      if (va > vb) return dir === 'asc' ?  1 : -1;
+      return 0;
+    });
 
   return (
     <div className="space-y-6">
@@ -226,9 +258,15 @@ const AdminUsers = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <SortBtn label="Usuario" col="name" sortBy={userSort.by} dir={userSort.dir} onSort={handleUserSort} />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <SortBtn label="Rol" col="role" sortBy={userSort.by} dir={userSort.dir} onSort={handleUserSort} />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <SortBtn label="Año" col="year" sortBy={userSort.by} dir={userSort.dir} onSort={handleUserSort} />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículos</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                 </tr>
