@@ -2537,6 +2537,50 @@
   background: #fef2f2;
 }
 
+/* ── Introduction References sub-section ─────────────────────────────────── */
+.pp-intro-refs-sub {
+  margin-top: 16px;
+  border-top: 1px solid var(--pp-border);
+  padding-top: 14px;
+}
+.pp-intro-refs-sub-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.pp-intro-refs-sub-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pp-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pp-intro-refs-sub-label i { color: #4a6fa5; }
+.pp-intro-references-list { margin-top: 0; }
+
+/* Ri-XX items use blue accent to distinguish from R-XX */
+.pp-intro-reference-item {
+  border-left-color: #4a6fa5;
+}
+.pp-intro-reference-item .pp-reference-number {
+  color: #4a6fa5;
+}
+.pp-intro-reference-item .pp-doi-chip,
+.pp-intro-reference-item .pp-doi-chip-sm {
+  border-color: rgba(74, 111, 165, 0.35);
+  color: #4a6fa5;
+}
+.pp-intro-reference-item .pp-doi-chip:hover,
+.pp-intro-reference-item .pp-doi-chip-sm:hover {
+  background: #4a6fa5;
+  color: #fff;
+  border-color: #4a6fa5;
+}
+
 /* ── DOI chip row ─────────────────────────────────────────────────────────── */
 .pp-doi-chips {
   display: flex;

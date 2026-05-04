@@ -641,6 +641,13 @@ const PrionPacks = (() => {
     document.getElementById('section-references').style.display = refsVisible ? '' : 'none';
     _updateToggleBtn('btn-toggle-references', refsVisible, 'fa-list', 'References');
 
+    // Introduction References (Ri-XX)
+    const rawIntroRefs = pkg?.introReferences;
+    let introRefs = [];
+    if (Array.isArray(rawIntroRefs)) introRefs = rawIntroRefs.filter(r => r && String(r).trim());
+    else if (typeof rawIntroRefs === 'string' && rawIntroRefs.trim()) introRefs = [rawIntroRefs.trim()];
+    _renderIntroReferencesList(introRefs);
+
     // Methods — multi-field. Each item has {title, body}. Legacy single-string
     // value (or list of strings) is wrapped into a list of body-only items.
     const rawMethods = pkg?.methods;
@@ -822,9 +829,10 @@ const PrionPacks = (() => {
     const pid = state.currentId;
     if (!pid) return null;
     if (type === 'f') return `pp-col:${pid}:f:${el.dataset.id}`;
-    const sel = type === 'm' ? '#methods-list .pp-method-item'
-              : type === 'r' ? '#references-list .pp-reference-item'
-              :                '#gaps-missing-list .pp-gap-item';
+    const sel = type === 'm'  ? '#methods-list .pp-method-item'
+              : type === 'r'  ? '#references-list .pp-reference-item'
+              : type === 'ir' ? '#intro-references-list .pp-reference-item'
+              :                 '#gaps-missing-list .pp-gap-item';
     const idx = Array.from(document.querySelectorAll(sel)).indexOf(el);
     return idx >= 0 ? `pp-col:${pid}:${type}:${idx}` : null;
   }
@@ -927,6 +935,153 @@ ${refsText}`;
       .filter(Boolean);
   }
 
+  /* ── Introduction References (Ri-XX) ─────────────────────────────────── */
+
+  function _renderIntroReferencesList(refs) {
+    const list = document.getElementById('intro-references-list');
+    if (!list) return;
+    list.innerHTML = '';
+    (refs || []).forEach((r, idx) => list.appendChild(_createIntroReferenceItem(r, idx)));
+    if (state.currentId) {
+      list.querySelectorAll('.pp-reference-item').forEach((item, idx) => {
+        if (localStorage.getItem(`pp-col:${state.currentId}:ir:${idx}`) === '1')
+          item.classList.add('pp-reference-collapsed');
+      });
+    }
+    _setupAnchorButtons(list);
+    _setupSupPreviews(list);
+    _updateIntroReferencesCount();
+    _refreshAllJumpButtons();
+  }
+
+  function _createIntroReferenceItem(text, idx) {
+    const id      = `field-intro-reference-${idx}`;
+    const chipsId = `intro-reference-doi-chips-${idx}`;
+    const div = document.createElement('div');
+    div.className = 'pp-reference-item pp-intro-reference-item';
+    div.innerHTML = `
+      <div class="pp-reference-header">
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar referencia"></button>
+        <span class="pp-reference-number">Ri-${String(idx + 1).padStart(2, '0')}</span>
+        <span class="pp-reference-preview"></span>
+        <span class="pp-reference-header-doi"></span>
+        <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Ref. Intro ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
+        <button type="button" class="pp-btn-icon btn-remove" title="Eliminar referencia"><i class="fas fa-trash"></i></button>
+      </div>
+      <div class="pp-reference-body">
+        <textarea id="${id}" class="pp-textarea pp-reference-textarea pp-intro-reference-textarea" rows="6" placeholder="Pega aquí una referencia de introducción (título, autores, DOI, resumen…)"></textarea>
+        <div id="${chipsId}" class="pp-doi-chips"></div>
+      </div>`;
+    const ta        = div.querySelector('textarea');
+    const chips     = div.querySelector('.pp-doi-chips');
+    const headerDoi = div.querySelector('.pp-reference-header-doi');
+    const preview   = div.querySelector('.pp-reference-preview');
+    ta.value = text || '';
+    const refreshPreview = () => {
+      const first = (ta.value || '').split('\n').find(l => l.trim()) || '';
+      const clipped = first.length > 90 ? first.slice(0, 90) + '…' : first;
+      preview.innerHTML = _supHtml(clipped);
+    };
+    const refreshHeaderDoi = () => {
+      const matches = (ta.value || '').match(_DOI_RE) || [];
+      headerDoi.innerHTML = '';
+      if (matches.length) {
+        const first = matches[0];
+        const a = document.createElement('a');
+        a.className = 'pp-doi-chip pp-doi-chip-sm';
+        a.href = `https://doi.org/${first}`;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.title = first;
+        a.textContent = first;
+        a.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(a);
+      }
+    };
+    ta.addEventListener('input', () => {
+      _renderDoiChipsFor(ta, chips);
+      refreshPreview();
+      refreshHeaderDoi();
+      _scheduleAutosave();
+    });
+    div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      div.classList.toggle('pp-reference-collapsed');
+      _saveItemCollapse('ir', div, div.classList.contains('pp-reference-collapsed'));
+    });
+    div.querySelector('.btn-remove').addEventListener('click', () => {
+      div.remove();
+      _renumberIntroReferences();
+      _scheduleAutosave();
+      _updateCollapseIndicators();
+      _updateIntroReferencesCount();
+      _refreshAllJumpButtons();
+    });
+    _renderDoiChipsFor(ta, chips);
+    refreshPreview();
+    refreshHeaderDoi();
+    return div;
+  }
+
+  function _updateIntroReferencesCount() {
+    const span = document.getElementById('intro-references-count');
+    if (!span) return;
+    const n = document.querySelectorAll('#intro-references-list .pp-reference-item').length;
+    span.textContent = n > 0 ? `(${n})` : '';
+    const collapseBtn = document.getElementById('btn-collapse-all-intro-refs');
+    if (collapseBtn) collapseBtn.style.display = n > 0 ? '' : 'none';
+  }
+
+  function _toggleCollapseAllIntroRefs() {
+    const items = document.querySelectorAll('#intro-references-list .pp-reference-item');
+    if (!items.length) return;
+    const allCollapsed = Array.from(items).every(el => el.classList.contains('pp-reference-collapsed'));
+    items.forEach(el => {
+      el.classList.toggle('pp-reference-collapsed', !allCollapsed);
+      _saveItemCollapse('ir', el, !allCollapsed);
+    });
+    const btn = document.getElementById('btn-collapse-all-intro-refs');
+    if (btn) btn.innerHTML = allCollapsed
+      ? '<i class="fas fa-expand-alt"></i> Expandir todo'
+      : '<i class="fas fa-compress-alt"></i> Colapsar todo';
+  }
+
+  function _renumberIntroReferences() {
+    document.querySelectorAll('#intro-references-list .pp-reference-item').forEach((item, i) => {
+      const id      = `field-intro-reference-${i}`;
+      const chipsId = `intro-reference-doi-chips-${i}`;
+      item.querySelector('.pp-reference-number').textContent = `Ri-${String(i + 1).padStart(2, '0')}`;
+      const ta    = item.querySelector('textarea');
+      const aiBtn = item.querySelector('.pp-ai-btn');
+      const chips = item.querySelector('.pp-doi-chips');
+      ta.id = id;
+      aiBtn.dataset.fieldId = id;
+      aiBtn.dataset.aiLabel = `Ref. Intro ${i + 1}`;
+      chips.id = chipsId;
+    });
+  }
+
+  function _addIntroReference(focus = true) {
+    const list = document.getElementById('intro-references-list');
+    if (!list) return;
+    const idx  = list.children.length;
+    const item = _createIntroReferenceItem('', idx);
+    list.appendChild(item);
+    _setupAnchorButtons(item);
+    _setupSupPreviews(item);
+    _updateIntroReferencesCount();
+    _refreshAllJumpButtons();
+    _scheduleAutosave();
+    if (focus) item.querySelector('textarea')?.focus();
+  }
+
+  function _collectIntroReferences() {
+    return Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
+      .map(t => (t.value || '').trim())
+      .filter(Boolean);
+  }
+
   /* ── Quick-jump buttons in section headers ────────────────────────────── */
   function _refreshAllJumpButtons() {
     _refreshJumpButtonsFor({
@@ -942,6 +1097,13 @@ ${refsText}`;
       itemSelector:'#methods-list .pp-method-item',
       itemCollapsedClass: 'pp-method-collapsed',
       prefix: 'M-',
+    });
+    _refreshJumpButtonsFor({
+      containerId: 'intro-references-jump',
+      sectionId:   'section-introduction',
+      itemSelector:'#intro-references-list .pp-reference-item',
+      itemCollapsedClass: 'pp-reference-collapsed',
+      prefix: 'Ri-',
     });
     _refreshJumpButtonsFor({
       containerId: 'references-jump',
@@ -1635,6 +1797,7 @@ ${refsText}`;
       abstract: document.getElementById('field-abstract').value.trim() || null,
       authorSummary: document.getElementById('field-authorsummary').value.trim() || null,
       introduction: document.getElementById('field-introduction').value.trim() || null,
+      introReferences: _collectIntroReferences(),
       methods: _collectMethods(),
       discussion: document.getElementById('field-discussion').value.trim() || null,
       acknowledgments: document.getElementById('field-acknowledgments').value.trim() || null,
@@ -2658,6 +2821,15 @@ ${refsText}`;
     document.getElementById('btn-discuss-claude')?.addEventListener('click', () => _askClaudeDiscussion());
     // Delegated AI toggle for dynamic reference rows
     document.getElementById('references-list')?.addEventListener('click', e => {
+      const aiBtn = e.target.closest('.pp-ai-btn');
+      if (aiBtn && e.currentTarget.contains(aiBtn)) {
+        aiBtn.classList.toggle('active');
+      }
+    });
+    // Introduction References
+    document.getElementById('btn-add-intro-reference')?.addEventListener('click', () => _addIntroReference(true));
+    document.getElementById('btn-collapse-all-intro-refs')?.addEventListener('click', () => _toggleCollapseAllIntroRefs());
+    document.getElementById('intro-references-list')?.addEventListener('click', e => {
       const aiBtn = e.target.closest('.pp-ai-btn');
       if (aiBtn && e.currentTarget.contains(aiBtn)) {
         aiBtn.classList.toggle('active');
