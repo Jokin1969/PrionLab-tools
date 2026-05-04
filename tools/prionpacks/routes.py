@@ -133,6 +133,28 @@ def api_download_docx(pkg_id):
     )
 
 
+# ── Package list DOCX ─────────────────────────────────────────────────────────
+
+@prionpacks_bp.route('/api/packages/list-docx', methods=['GET'])
+@login_required
+def api_list_docx():
+    from .docx_generator import generate_packages_list_docx
+
+    pkgs = models.list_packages()
+    try:
+        docx_bytes = generate_packages_list_docx(pkgs, datetime.now())
+    except Exception as exc:
+        logger.exception('List DOCX generation error')
+        return jsonify({'error': str(exc)}), 500
+
+    filename = f'PrionPacks_Lista_{datetime.now().strftime("%Y%m%d")}.docx'
+    return Response(
+        docx_bytes,
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
 # ── Send for review ───────────────────────────────────────────────────────────
 
 @prionpacks_bp.route('/api/packages/<pkg_id>/send-review', methods=['POST'])

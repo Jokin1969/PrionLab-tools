@@ -11,7 +11,7 @@
 {% block main_body %}
 <div id="prionpacks-app">
 
-  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────────────────── -->
   <aside class="pp-sidebar">
     <div class="pp-sidebar-header">
       <div class="pp-sidebar-brand">
@@ -64,7 +64,7 @@
     </div>
   </aside>
 
-  <!-- ── Main Area ───────────────────────────────────────────────────────── -->
+  <!-- ── Main Area ─────────────────────────────────────────────────────────────────────── -->
   <main class="pp-main">
 
     <!-- Dashboard view -->
@@ -75,6 +75,9 @@
           <p class="pp-page-sub">Overview of your research packages</p>
         </div>
         <div class="pp-page-actions">
+          <a class="pp-btn pp-btn-secondary" id="btn-list-packages-docx" href="/prionpacks/api/packages/list-docx">
+            <i class="fas fa-file-word"></i> Lista PrionPacks
+          </a>
           <button class="pp-btn pp-btn-primary" id="btn-new-package-main">
             <i class="fas fa-plus"></i> New Package
           </button>
@@ -133,6 +136,7 @@
           <span class="pp-editor-pkg-id" id="editor-id-badge">PRP-NEW</span>
           <span class="pp-autosave-status" id="autosave-status"></span>
         </div>
+        <h1 id="title-display" class="pp-title-display pp-title-display-empty pp-editor-inline-title">Untitled package</h1>
         <div class="pp-editor-toolbar-actions">
           <button class="pp-active-toggle is-active" id="btn-active-toggle" type="button" title="Activo">
             <i class="fas fa-toggle-on"></i> <span class="pp-active-toggle-label">Activo</span>
@@ -154,11 +158,6 @@
         <button class="pp-btn-dashboard" id="btn-back-dashboard">
           <i class="fas fa-th-large"></i> Dashboard
         </button>
-      </div>
-
-      <!-- Title bar — full width below toolbar (read-only display) -->
-      <div class="pp-title-bar">
-        <h1 id="title-display" class="pp-title-display pp-title-display-empty">Untitled package</h1>
       </div>
 
       <div class="pp-editor-layout">
@@ -426,6 +425,12 @@
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-list"></i> References <span class="pp-section-count" id="references-count"></span></h2>
               <div class="pp-section-jump" id="references-jump"></div>
+              <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-collapse-all-refs" type="button" style="display:none;">
+                <i class="fas fa-compress-alt"></i> Colapsar todo
+              </button>
+              <button class="pp-btn pp-btn-sm pp-claude-ask-btn" id="btn-discuss-claude" type="button" title="Pedir a Claude que sugiera temas de Discusión basándose en las referencias">
+                <i class="fas fa-robot"></i> Claude Discusión
+              </button>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-reference" type="button">
                 <i class="fas fa-plus"></i> Add Reference
               </button>
@@ -530,7 +535,7 @@
 
 ## Qué es
 
-PrionPacks es una herramienta web (Flask + JavaScript vanilla) diseñada para organizar y desarrollar paquetes de investigación científica en el campo de las enfermedades priónicas y la neurodegeneración. Cada "paquete" (PrionPack) es un contenedor estructurado de información que representa un trabajo de investigación en curso: un manuscrito, una revisión, un caso clínico, un proyecto experimental, etc.
+PrionPacks es una herramienta web (Flask + JavaScript vanilla) diseñada para organizar y desarrollar paquetes de investigación científica en el campo de las enfermedades priónicas y la neurodegeneración. Cada “paquete” (PrionPack) es un contenedor estructurado de información que representa un trabajo de investigación en curso: un manuscrito, una revisión, un caso clínico, un proyecto experimental, etc.
 
 La idea central es que un paquete agrupa todo el material conceptual y textual de un trabajo —desde la idea inicial hasta el borrador del manuscrito— de modo que el investigador pueda: (1) ir rellenando secciones de forma progresiva, (2) usar IA (Claude) como copiloto sobre cualquier campo, y (3) exportar en cualquier momento a Word para revisión.
 
@@ -552,13 +557,13 @@ Cada paquete tiene un ID único (PRP-001, PRP-002...), un estado activo/inactivo
 - Methods: texto de materiales y métodos.
 
 ### Main Findings (siempre visible)
-Lista ordenable (drag & drop) de hallazgos del trabajo. Cada finding tiene:
-- Title: título corto del hallazgo (botón "Translate with Claude" para versión en inglés).
+Lista ordenable (drag &amp; drop) de hallazgos del trabajo. Cada finding tiene:
+- Title: título corto del hallazgo (botón “Translate with Claude” para versión en inglés).
 - Description: descripción detallada.
 - Figures: lista de figuras asociadas. Cada figura tiene una descripción (input), una imagen subida (drop, browse, o paste con Ctrl+V) y un pie de figura (textarea con botones AI y Claude — Claude puede ver la imagen y generar el caption).
 - Tables: lista de tablas asociadas con descripción.
 
-### Gaps & Next Steps (siempre visible)
+### Gaps &amp; Next Steps (siempre visible)
 Lista de lagunas o información que falta para cerrar el trabajo. Cada gap tiene:
 - Missing info: qué falta.
 - Needed experiment (sub-campo desplegable): qué experimento concreto resolvería esa laguna.
@@ -591,8 +596,8 @@ Cada sección tiene un triángulo en la esquina superior izquierda que pliega/de
 
 El sistema usa la API de Anthropic (clave que el usuario configura). Hay dos tipos de botones:
 
-1. Botones "AI" (toggle): marcan un campo como contexto para una pregunta posterior. Se pueden activar varios.
-2. Botones "Claude": lanzan una pregunta a Claude. La pregunta envía:
+1. Botones “AI” (toggle): marcan un campo como contexto para una pregunta posterior. Se pueden activar varios.
+2. Botones “Claude”: lanzan una pregunta a Claude. La pregunta envía:
    - Todos los campos con AI activo como contexto.
    - El campo donde está el botón Claude como objetivo de la pregunta.
    - Opcionalmente, la imagen de una figura (vision) o PDFs de Investigations (document blocks).
@@ -607,15 +612,15 @@ El resultado se muestra en un modal para copiarlo al campo si interesa.
 ## Salidas
 
 - Word (.docx): genera el documento completo del paquete con todas las secciones, figuras embebidas con sus pies, tablas, gaps formateados, etc. Versionado automático (v1, v2…) cada vez que se envía para revisión.
-- Email para revisión: envío del Word generado por SMTP a uno o varios "colegas" predefinidos (Hasier Eraña, Carlos Díaz, Jorge Moreno).
-- Export ManuscriptForge → PrionPack: la herramienta hermana ManuscriptForge genera secciones administrativas estandarizadas (Author Order, Funding, Acknowledgments, Competing Interests, CReDiT, Introduction, Methods) a partir del directorio de miembros y grants, y permite exportarlas directamente a un campo del paquete vía botón "📦 Exportar a PrionPacks".
+- Email para revisión: envío del Word generado por SMTP a uno o varios “colegas” predefinidos (Hasier Eraña, Carlos Díaz, Jorge Moreno).
+- Export ManuscriptForge → PrionPack: la herramienta hermana ManuscriptForge genera secciones administrativas estandarizadas (Author Order, Funding, Acknowledgments, Competing Interests, CReDiT, Introduction, Methods) a partir del directorio de miembros y grants, y permite exportarlas directamente a un campo del paquete vía botón “📦 Exportar a PrionPacks”.
 
 ## Para qué se usa
 
 El usuario es investigador en biología de priones / neurodegeneración (CIC bioGUNE). Usa PrionPacks para:
 
 1. Capturar ideas en bruto en Investigations (papers leídos, notas).
-2. Estructurar findings a medida que se generan datos experimentales, asociándoles figuras (gels, IHC, imágenes de microscopía, gráficos).
+2. Estructurar findings a medida que se generan datos experimentales, asociando les figuras (gels, IHC, imágenes de microscopía, gráficos).
 3. Identificar gaps que requieren más experimentos antes de poder publicar.
 4. Redactar cada sección del manuscrito con apoyo de Claude (Abstract, Introduction, Methods, Discussion…), usando como contexto los findings y la información de partida.
 5. Iterar con coautores generando Word con versionado, recibiendo comentarios, y reincorporándolos.
@@ -643,10 +648,10 @@ Devuelve EXACTAMENTE estos seis bloques, en este orden, sin añadir nada antes n
 Título: &lt;título completo del artículo, en su idioma original&gt;
 Autores: &lt;lista de autores tal y como aparecen en el artículo, con sus iniciales y grados académicos cuando se indiquen (BSc, MD, PhD, DPhil…), separados por punto y coma&gt;
 
-Revista: &lt;nombre completo de la revista en su forma oficial (p. ej. "The New England Journal of Medicine", "Brain", "PLOS Pathogens"). Si solo aparece la abreviatura, expándela. Si no aparece en el material, escribe literalmente: "El texto proporcionado no indica la revista."&gt;
-Año: &lt;año de publicación con cuatro cifras (p. ej. 1996). Si solo aparece la fecha completa, devuelve únicamente el año. Si no aparece, escribe literalmente: "El texto proporcionado no indica el año."&gt;
+Revista: &lt;nombre completo de la revista en su forma oficial (p. ej. “The New England Journal of Medicine”, “Brain”, “PLOS Pathogens”). Si solo aparece la abreviatura, expándela. Si no aparece en el material, escribe literalmente: “El texto proporcionado no indica la revista.”&gt;
+Año: &lt;año de publicación con cuatro cifras (p. ej. 1996). Si solo aparece la fecha completa, devuelve únicamente el año. Si no aparece, escribe literalmente: “El texto proporcionado no indica el año.”&gt;
 
-DOI: &lt;DOI del artículo en formato 10.xxxx/yyyy. Si no aparece en el texto que te he dado, escribe literalmente: "El texto proporcionado no incluye el DOI del artículo."&gt;
+DOI: &lt;DOI del artículo en formato 10.xxxx/yyyy. Si no aparece en el texto que te he dado, escribe literalmente: “El texto proporcionado no incluye el DOI del artículo.”&gt;
 
 Resumen:
 &lt;resumen en español de entre 2 y 4 párrafos, con un tono de manuscrito científico de neurociencia / neurodegeneración. Debe contener:
@@ -657,14 +662,14 @@ Resumen:
 
 3. Un párrafo final con la INTERPRETACIÓN de los autores y la CONCLUSIÓN principal: qué aporta el trabajo al diagnóstico, a la clasificación de la enfermedad, a la fisiopatología o a las futuras líneas de investigación.
 
-Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, PrPC, CJD (o ECJ), GSS, FFI, RT-QuIC, octarrepetido, OPRI, vCJD, etc. No traduzcas siglas ni nombres de genes. Traduce al español de España todo lo demás. No abrevies en exceso: el objetivo es que el resumen sirva como nota de lectura y como entrada en el campo "Investigations" de un paquete PrionPack, así que prefiere ser detallado a ser breve.&gt;
+Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, PrPC, CJD (o ECJ), GSS, FFI, RT-QuIC, octarrepetido, OPRI, vCJD, etc. No traduzcas siglas ni nombres de genes. Traduce al español de España todo lo demás. No abrevies en exceso: el objetivo es que el resumen sirva como nota de lectura y como entrada en el campo “Investigations” de un paquete PrionPack, así que prefiere ser detallado a ser breve.&gt;
 
 # Reglas adicionales
 
 - Si el texto que te paso es solo el abstract o partes sueltas, hazme el mejor resumen posible con lo que hay y NO inventes datos que no estén en el material.
 - Si detectas que el artículo está en inglés, traduce todo el contenido del resumen al español manteniendo la terminología técnica.
 - Si encuentras varios DOI en el texto, devuelve únicamente el del artículo principal (no el de las referencias).
-- No añadas ninguna línea de "espero que te sirva", ni saludos, ni meta-comentarios. Solo los cuatro bloques.</pre>
+- No añadas ninguna línea de “espero que te sirva”, ni saludos, ni meta-comentarios. Solo los cuatro bloques.</pre>
         </div>
 
       </div>

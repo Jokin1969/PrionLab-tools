@@ -727,6 +727,12 @@ const PrionPacks = (() => {
     if (!list) return;
     list.innerHTML = '';
     (refs || []).forEach((r, idx) => list.appendChild(_createReferenceItem(r, idx)));
+    if (state.currentId) {
+      list.querySelectorAll('.pp-reference-item').forEach((item, idx) => {
+        if (localStorage.getItem(`pp-col:${state.currentId}:r:${idx}`) === '1')
+          item.classList.add('pp-reference-collapsed');
+      });
+    }
     _setupAnchorButtons(list);
     _setupSupPreviews(list);
     _updateReferencesCount();
@@ -786,6 +792,7 @@ const PrionPacks = (() => {
       e.preventDefault();
       e.stopPropagation();
       div.classList.toggle('pp-reference-collapsed');
+      _saveItemCollapse('r', div, div.classList.contains('pp-reference-collapsed'));
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -806,6 +813,82 @@ const PrionPacks = (() => {
     if (!span) return;
     const n = document.querySelectorAll('#references-list .pp-reference-item').length;
     span.textContent = n > 0 ? `(${n})` : '';
+    const collapseBtn = document.getElementById('btn-collapse-all-refs');
+    if (collapseBtn) collapseBtn.style.display = n > 0 ? '' : 'none';
+  }
+
+  // ── Collapse-state persistence helpers (per package, per item) ──────────
+  function _itemColKey(type, el) {
+    const pid = state.currentId;
+    if (!pid) return null;
+    if (type === 'f') return `pp-col:${pid}:f:${el.dataset.id}`;
+    const sel = type === 'm' ? '#methods-list .pp-method-item'
+              : type === 'r' ? '#references-list .pp-reference-item'
+              :                '#gaps-missing-list .pp-gap-item';
+    const idx = Array.from(document.querySelectorAll(sel)).indexOf(el);
+    return idx >= 0 ? `pp-col:${pid}:${type}:${idx}` : null;
+  }
+  function _saveItemCollapse(type, el, collapsed) {
+    const k = _itemColKey(type, el);
+    if (!k) return;
+    if (collapsed) localStorage.setItem(k, '1');
+    else           localStorage.removeItem(k);
+  }
+
+  function _toggleCollapseAllRefs() {
+    const items = document.querySelectorAll('#references-list .pp-reference-item');
+    if (!items.length) return;
+    const allCollapsed = Array.from(items).every(el => el.classList.contains('pp-reference-collapsed'));
+    items.forEach(el => {
+      el.classList.toggle('pp-reference-collapsed', !allCollapsed);
+      _saveItemCollapse('r', el, !allCollapsed);
+    });
+    const btn = document.getElementById('btn-collapse-all-refs');
+    if (btn) btn.innerHTML = allCollapsed
+      ? '<i class="fas fa-expand-alt"></i> Expandir todo'
+      : '<i class="fas fa-compress-alt"></i> Colapsar todo';
+  }
+
+  async function _askClaudeDiscussion() {
+    const refs = Array.from(document.querySelectorAll('#references-list .pp-reference-item textarea'))
+      .map(ta => ta.value.trim()).filter(Boolean);
+    if (!refs.length) { toast('No hay referencias para analizar.', 'error'); return; }
+
+    const pkg      = state.currentId ? PPStorage.get(state.currentId) : null;
+    const pkgTitle = pkg?.title || document.getElementById('title-display')?.textContent?.trim() || 'este manuscrito';
+    const refsText = refs.map((r, i) => `[R-${String(i + 1).padStart(2, '0')}] ${r}`).join('\n\n---\n\n');
+
+    const prompt = `A continuación se presentan las referencias bibliográficas del PrionPack titulado "${pkgTitle}". Estas referencias fueron seleccionadas por su relevancia para el manuscrito, especialmente para la sección de Discusión.
+
+Analiza cuidadosamente el contenido de cada referencia y genera un listado estructurado de los temas de discusión más interesantes que podrían abordarse en la sección de Discusión del manuscrito. Para cada tema incluye: (1) el tema concreto, (2) las referencias que lo sustentan (ej. R-01, R-03), y (3) por qué sería relevante discutirlo en el contexto del manuscrito.
+
+Referencias:
+
+${refsText}`;
+
+    const btn = document.getElementById('btn-discuss-claude');
+    if (btn) btn.classList.add('loading');
+    _showClaudeModal(null, null, null);
+    try {
+      const response = await PPApi.askClaude([], 'Discusión del manuscrito', prompt, null, []);
+      const modal      = document.getElementById('pp-claude-modal');
+      const loading    = document.getElementById('pp-claude-loading');
+      const responseEl = document.getElementById('pp-claude-response-text');
+      const footer     = document.getElementById('pp-claude-modal-footer');
+      const hint       = document.getElementById('pp-claude-field-hint');
+      loading.style.display    = 'none';
+      responseEl.style.display = '';
+      responseEl.textContent   = response;
+      footer.style.display     = '';
+      hint.textContent         = '→ Temas de Discusión sugeridos';
+      _claudeModalCallback     = null;
+      modal.style.display      = '';
+    } catch (e) {
+      _closeClaudeModal();
+      await _handleClaudeError(e, 'Error llamando a Claude');
+    } finally {
+      if (btn) btn.classList.remove('loading');
+    }
   }
 
   function _renumberReferences() {
@@ -928,6 +1011,12 @@ const PrionPacks = (() => {
     if (!list) return;
     list.innerHTML = '';
     (methods || []).forEach((m, idx) => list.appendChild(_createMethodItem(m, idx)));
+    if (state.currentId) {
+      list.querySelectorAll('.pp-method-item').forEach((item, idx) => {
+        if (localStorage.getItem(`pp-col:${state.currentId}:m:${idx}`) === '1')
+          item.classList.add('pp-method-collapsed');
+      });
+    }
     _setupAnchorButtons(list);
     _setupSupPreviews(list);
     _initDragDrop(list, {
@@ -974,6 +1063,7 @@ const PrionPacks = (() => {
       e.preventDefault();
       e.stopPropagation();
       div.classList.toggle('pp-method-collapsed');
+      _saveItemCollapse('m', div, div.classList.contains('pp-method-collapsed'));
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -1067,7 +1157,7 @@ const PrionPacks = (() => {
       ta.dataset.anchorWrapped = '1';
 
       // Restore previously-anchored height
-      const key   = 'pp-anchor-h:' + ta.id;
+      const key   = 'pp-anchor-h:' + (state.currentId || 'new') + ':' + ta.id;
       const saved = localStorage.getItem(key);
       if (saved) {
         ta.style.height = saved;
@@ -1605,6 +1695,8 @@ const PrionPacks = (() => {
     div.className = 'pp-finding-block';
     div.dataset.id = finding.id;
     div.draggable = true;
+    if (state.currentId && localStorage.getItem(`pp-col:${state.currentId}:f:${finding.id}`) === '1')
+      div.classList.add('pp-finding-collapsed');
     const enBadge = finding.titleEnglish
       ? _buildEnBadgeHTML(finding.titleEnglish) : '';
 
@@ -1968,6 +2060,12 @@ const PrionPacks = (() => {
         _updateFindingGapIndicators();
       });
     });
+    if (state.currentId) {
+      list.querySelectorAll('.pp-gap-item').forEach((item, idx) => {
+        if (localStorage.getItem(`pp-col:${state.currentId}:g:${idx}`) === '1')
+          item.classList.add('pp-gap-collapsed');
+      });
+    }
     _renumberGaps();
     _updateCollapseIndicators();
     _refreshAllJumpButtons();
@@ -1991,7 +2089,7 @@ const PrionPacks = (() => {
     const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
-        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-gap-collapse-btn" title="Plegar / desplegar gap" onclick="this.closest('.pp-gap-item').classList.toggle('pp-gap-collapsed');event.stopPropagation();"></button>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-gap-collapse-btn" title="Plegar / desplegar gap" ></button>
         <span class="pp-gap-number"></span>
         <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
         <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
@@ -2556,6 +2654,8 @@ const PrionPacks = (() => {
       }
     });
     document.getElementById('btn-add-reference')?.addEventListener('click', () => _addReference(true));
+    document.getElementById('btn-collapse-all-refs')?.addEventListener('click', () => _toggleCollapseAllRefs());
+    document.getElementById('btn-discuss-claude')?.addEventListener('click', () => _askClaudeDiscussion());
     // Delegated AI toggle for dynamic reference rows
     document.getElementById('references-list')?.addEventListener('click', e => {
       const aiBtn = e.target.closest('.pp-ai-btn');
@@ -2597,7 +2697,11 @@ const PrionPacks = (() => {
       if (collapseBtn) {
         e.preventDefault();
         e.stopPropagation();
-        collapseBtn.closest('.pp-finding-block')?.classList.toggle('pp-finding-collapsed');
+        const block = collapseBtn.closest('.pp-finding-block');
+        if (block) {
+          block.classList.toggle('pp-finding-collapsed');
+          _saveItemCollapse('f', block, block.classList.contains('pp-finding-collapsed'));
+        }
         return;
       }
       const aiBtn = e.target.closest('.pp-ai-btn');
@@ -2624,8 +2728,19 @@ const PrionPacks = (() => {
       }
     });
 
-    // Event delegation for gap AI toggles
+    // Event delegation for gap AI toggles and collapse
     document.getElementById('gaps-missing-list').addEventListener('click', e => {
+      const colBtn = e.target.closest('.pp-gap-collapse-btn');
+      if (colBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = colBtn.closest('.pp-gap-item');
+        if (item) {
+          item.classList.toggle('pp-gap-collapsed');
+          _saveItemCollapse('g', item, item.classList.contains('pp-gap-collapsed'));
+        }
+        return;
+      }
       const aiBtn = e.target.closest('.pp-ai-btn');
       if (aiBtn) aiBtn.classList.toggle('active');
     });

@@ -299,7 +299,24 @@
 }
 
 .pp-editor-toolbar-left { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.pp-editor-toolbar-actions { display: flex; align-items: center; gap: 6px; }
+.pp-editor-toolbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* Title inside the sticky toolbar — fills remaining horizontal space */
+.pp-editor-inline-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0 16px;
+  font-size: 17px;
+  font-weight: 700;
+  font-family: 'Crimson Pro', Georgia, serif;
+  color: var(--pp-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+  background: transparent;
+}
 
 .pp-editor-pkg-id {
   font-family: 'JetBrains Mono', monospace;
@@ -365,25 +382,6 @@
 }
 .pp-btn-word:hover { background: #15803d; }
 
-/* Title bar */
-.pp-title-bar {
-  background: var(--pp-primary);
-  border-bottom: 2px solid var(--pp-accent);
-  padding: 0 24px;
-}
-
-.pp-title-display {
-  margin: 0;
-  background: transparent;
-  color: var(--pp-text);
-  font-size: 24px;
-  font-weight: 700;
-  font-family: 'Crimson Pro', Georgia, serif;
-  line-height: 1.4;
-  padding: 18px 0;
-  word-wrap: break-word;
-  word-break: break-word;
-}
 .pp-title-display-empty {
   color: var(--pp-text-dim);
   font-weight: 400;

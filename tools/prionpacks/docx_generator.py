@@ -6,6 +6,7 @@ from datetime import datetime
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
@@ -26,6 +27,9 @@ _REF_SUMMARY_HEADERS = re.compile(
     r'^\s*(Resumen|Resumen del artículo|Abstract)\s*:?\s*$',
     re.IGNORECASE | re.MULTILINE,
 )
+
+# DOI pattern: matches "DOI: 10.xxxx/..." (case-insensitive)
+_DOI_RE = re.compile(r'(DOI:\s*)(10\.\d{4,}[./][^\s,;]+)', re.IGNORECASE)
 
 
 def _apply_font(run, *, size=None, bold=None, italic=None, color=None):
@@ -55,6 +59,41 @@ def add_runs(paragraph, text, *, size=None, bold=None, italic=None, color=None):
     if pos < len(text):
         r = paragraph.add_run(text[pos:])
         _apply_font(r, size=size, bold=bold, italic=italic, color=color)
+
+def _hyperlink_url(para, display: str, url: str, *, pt: int = 10):
+    """Add an external URL hyperlink run to `para` (blue underlined)."""
+    r_id = para.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    hl = OxmlElement('w:hyperlink')
+    hl.set(qn('r:id'), r_id)
+    r = OxmlElement('w:r')
+    rpr = OxmlElement('w:rPr')
+    c = OxmlElement('w:color'); c.set(qn('w:val'), '0563C1')
+    u = OxmlElement('w:u');     u.set(qn('w:val'), 'single')
+    sz = OxmlElement('w:sz');   sz.set(qn('w:val'), str(pt * 2))
+    rpr.append(c); rpr.append(u); rpr.append(sz)
+    t = OxmlElement('w:t'); t.text = display
+    r.append(rpr); r.append(t)
+    hl.append(r)
+    para._p.append(hl)
+
+
+def add_runs_with_doi(paragraph, text, *, size=None, bold=None, italic=None, color=None):
+    """Like add_runs() but turns DOI values into clickable doi.org hyperlinks."""
+    if not text:
+        return
+    pt = int(size.pt) if size else 10
+    last = 0
+    for m in _DOI_RE.finditer(text):
+        if m.start() > last:
+            add_runs(paragraph, text[last:m.start()], size=size, bold=bold, italic=italic, color=color)
+        label_run = paragraph.add_run(m.group(1))
+        _apply_font(label_run, size=size, bold=bold, italic=italic, color=color)
+        doi_val = m.group(2).rstrip('.,;)')
+        _hyperlink_url(paragraph, doi_val, f'https://doi.org/{doi_val}', pt=pt)
+        last = m.end()
+    if last < len(text):
+        add_runs(paragraph, text[last:], size=size, bold=bold, italic=italic, color=color)
+
 
 PRIORITY_ES = {'high': 'Alta', 'medium': 'Media', 'low': 'Baja', 'none': '—'}
 TYPE_ES = {
@@ -86,6 +125,16 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     sec.bottom_margin = Cm(2.2)
     sec.left_margin   = Cm(2.5)
     sec.right_margin  = Cm(2.5)
+
+    # ── Page header: PRP-### · date ──────────────────────────────────────────────────────────
+    hdr = sec.header
+    hp = hdr.paragraphs[0] if hdr.paragraphs else hdr.add_paragraph()
+    hp.clear()
+    hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_id = hp.add_run(pkg.get('id', 'PRP'))
+    r_id.font.bold = True; r_id.font.size = Pt(8); r_id.font.color.rgb = _TEAL
+    r_sep = hp.add_run('  ·  ' + send_date.strftime('%d/%m/%Y'))
+    r_sep.font.size = Pt(8); r_sep.font.color.rgb = _DIM
 
     # ── Title ────────────────────────────────────────────────────────────────────────────────
     t = doc.add_paragraph()
@@ -361,16 +410,23 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         _section_heading(doc, 'REFERENCIAS')
         for i, ref in enumerate(refs_list, 1):
             header, abstract = _split_reference(ref)
-            # Bibliographic line as Heading 3 — gives collapse triangle in Word 2013+
+            # Heading 3 gives collapse triangle in Word 2013+; w:collapsed hides body by default
             p = doc.add_paragraph(style='Heading 3')
+            pPr = p._p.get_or_add_pPr()
+            collapsed_el = OxmlElement('w:collapsed')
+            collapsed_el.set(qn('w:val'), '1')
+            pPr.append(collapsed_el)
             r_num = p.add_run(f'[{i}] ')
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = _TEAL
-            add_runs(p, header, size=Pt(10), color=_DARK)
+            # Render header with DOI as a clickable hyperlink
+            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             # Abstract as normal paragraph — hidden when heading is collapsed
             if abstract:
                 p_abs = doc.add_paragraph()
                 add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
-            doc.add_paragraph()
+            # Explicit spacer between references
+            sep = doc.add_paragraph()
+            sep.paragraph_format.space_after = Pt(8)
 
     # ── CReDiT ────────────────────────────────────────────────────────────────────────────────
     credit = (pkg.get('credit') or '').strip()
@@ -385,6 +441,58 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     r_ft = p_ft.add_run(
         f'Documento generado automáticamente por PrionLab Tools · '
         f'v{version} · {send_date.strftime("%d %b %Y")}'
+    )
+    r_ft.font.size = Pt(8); r_ft.font.color.rgb = _DIM
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
+    """Generate a compact Word catalogue listing all PrionPacks (id + title)."""
+    doc = Document()
+    sec = doc.sections[0]
+    sec.top_margin = Cm(2.0); sec.bottom_margin = Cm(2.2)
+    sec.left_margin = Cm(2.5); sec.right_margin = Cm(2.5)
+
+    # Header
+    hdr = sec.header
+    hp = hdr.paragraphs[0] if hdr.paragraphs else hdr.add_paragraph()
+    hp.clear(); hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_h = hp.add_run('PrionPacks · Lista general')
+    r_h.font.bold = True; r_h.font.size = Pt(8); r_h.font.color.rgb = _TEAL
+    r_hd = hp.add_run('  ·  ' + gen_date.strftime('%d/%m/%Y'))
+    r_hd.font.size = Pt(8); r_hd.font.color.rgb = _DIM
+
+    # Document title
+    t = doc.add_paragraph()
+    add_runs(t, 'Lista de PrionPacks', size=Pt(18), bold=True, color=_TEAL)
+    sub = doc.add_paragraph()
+    r_sub = sub.add_run(f'Generado el {gen_date.strftime("%d/%m/%Y %H:%M")}  ·  {len(packages)} paquetes')
+    r_sub.font.size = Pt(9); r_sub.font.color.rgb = _DIM
+    doc.add_paragraph()
+
+    _section_heading(doc, 'PAQUETES DE INFORMACIÓN')
+
+    for pkg in sorted(packages, key=lambda p: p.get('id', '')):
+        p = doc.add_paragraph()
+        r_id = p.add_run(pkg.get('id', '—') + '  ')
+        r_id.font.bold = True; r_id.font.size = Pt(10); r_id.font.color.rgb = _TEAL
+        add_runs(p, pkg.get('title', 'Sin título'), size=Pt(10), color=_DARK)
+        # Optional: one-line description in dim italic
+        desc = (pkg.get('description') or '').strip()
+        if desc:
+            short_desc = desc[:120] + ('…' if len(desc) > 120 else '')
+            p_d = doc.add_paragraph()
+            add_runs(p_d, short_desc, size=Pt(9), italic=True, color=_DIM)
+            p_d.paragraph_format.left_indent = Cm(0.8)
+        doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+    # Footer
+    p_ft = doc.add_paragraph()
+    r_ft = p_ft.add_run(
+        f'Lista generada automáticamente por PrionLab Tools · {gen_date.strftime("%d %b %Y")}'
     )
     r_ft.font.size = Pt(8); r_ft.font.color.rgb = _DIM
 
