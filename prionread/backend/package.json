@@ -25,7 +25,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^6.9.13",
     "openai": "^4.52.3",
-    "pdf-parse": "^2.4.5",
+    "pdf-parse": "^1.1.1",
     "pdfkit": "^0.15.0",
     "pg": "^8.11.5",
     "pg-hstore": "^2.3.4",
