@@ -22,20 +22,22 @@ export const PdfAnalyzeModal = ({ isOpen, onClose, onImported }) => {
   const [error, setError]         = useState('');
   const [meta, setMeta]           = useState(null);
   const [saving, setSaving]       = useState(false);
+  const [pdfFile, setPdfFile]     = useState(null);
   const inputRef = useRef();
 
-  const reset = () => { setResult(null); setError(''); setMeta(null); };
+  const reset = () => { setResult(null); setError(''); setMeta(null); setPdfFile(null); };
   const handleClose = () => { reset(); onClose(); };
 
   const analyze = async (file) => {
     if (!file || file.type !== 'application/pdf') {
       setError('Solo se aceptan archivos PDF'); return;
     }
-    setAnalyzing(true); setResult(null); setError(''); setMeta(null);
+    setAnalyzing(true); setResult(null); setError(''); setMeta(null); setPdfFile(null);
     try {
       const data = await adminService.analyzePdf(file);
       setResult(data);
       setMeta(data.metadata ? { ...data.metadata } : null);
+      setPdfFile(file);
     } catch (err) {
       setError(err?.response?.data?.error || err?.message || 'Error analizando el PDF');
     } finally {
@@ -57,6 +59,7 @@ export const PdfAnalyzeModal = ({ isOpen, onClose, onImported }) => {
       Object.entries(meta).forEach(([k, v]) => {
         if (v != null) fd.append(k, Array.isArray(v) ? JSON.stringify(v) : String(v));
       });
+      if (pdfFile) fd.append('pdf', pdfFile);
       await adminService.createArticle(fd);
       if (onImported) onImported();
       handleClose();
@@ -71,8 +74,8 @@ export const PdfAnalyzeModal = ({ isOpen, onClose, onImported }) => {
     <Modal isOpen={isOpen} onClose={handleClose} title="Importar artículo desde PDF" size="lg">
       <div className="space-y-4">
         <p className="text-sm text-gray-600">
-          Arrastra un PDF o selecciónalo. Se extrae el DOI, se consulta CrossRef / PubMed
-          y se rellena el formulario automáticamente.
+          Arrastra un PDF o selecciónalo. Se extrae el DOI, se consulta CrossRef / PubMed,
+          se rellena el formulario y el PDF se sube automáticamente a Dropbox.
         </p>
 
         {/* Drop zone */}
@@ -118,11 +121,13 @@ export const PdfAnalyzeModal = ({ isOpen, onClose, onImported }) => {
               <span className="text-sm text-green-800">DOI encontrado: <code className="font-mono">{result.doi}</code></span>
             </div>
 
-            {/* Dropbox filename */}
-            <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2">
-              <p className="text-xs font-semibold text-blue-700 mb-0.5">Nombre del fichero en Dropbox</p>
-              <code className="text-sm text-blue-900 break-all">{result.dropbox_filename}</code>
-              <p className="text-xs text-blue-500 mt-0.5">Carpeta: /PrionLab tools/PrionRead/</p>
+            {/* Dropbox destination */}
+            <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2 flex items-start gap-2">
+              <span className="text-blue-500 mt-0.5">☁</span>
+              <div>
+                <p className="text-xs font-semibold text-blue-700 mb-0.5">Se subirá a Dropbox como</p>
+                <code className="text-sm text-blue-900 break-all">/PrionLab tools/PrionRead/{result.dropbox_filename}</code>
+              </div>
             </div>
 
             {meta ? (
@@ -153,7 +158,7 @@ export const PdfAnalyzeModal = ({ isOpen, onClose, onImported }) => {
                     Analizar otro PDF
                   </button>
                   <Button onClick={handleCreate} loading={saving} disabled={!meta.title}>
-                    Crear artículo
+                    Crear artículo y subir a Dropbox
                   </Button>
                 </div>
               </>
