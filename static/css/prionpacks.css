@@ -2565,7 +2565,8 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  flex: 1;        /* pushes clip + jump + buttons to the right */
+  min-width: 0;
 }
 .pp-intro-refs-sub-label i { color: #4a6fa5; }
 .pp-intro-references-list { margin-top: 0; }
