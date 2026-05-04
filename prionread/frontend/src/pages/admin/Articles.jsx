@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { adminService } from '../../services/admin.service';
 import { ArticleModal } from '../../components/admin/ArticleModal';
 import { BatchImportModal } from '../../components/admin/BatchImportModal';
@@ -52,8 +53,9 @@ const AdminArticles = () => {
   const [editingArticle, setEditingArticle]   = useState(null);
   const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
   const [search, setSearch]             = useState('');
-  const [filterNoPdf, setFilterNoPdf]   = useState(false);
+  const [filterNoPdf, setFilterNoPdf]         = useState(false);
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
+  const [filterMilestone, setFilterMilestone]   = useState(false);
   const [filters, setFilters]           = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
   const [msg, setMsg]                   = useState('');
   const [errMsg, setErrMsg]             = useState('');
@@ -237,6 +239,27 @@ const AdminArticles = () => {
 
   const authorsText = (authors) => Array.isArray(authors) ? authors.join(', ') : (authors ?? '');
 
+  const downloadArticleXlsx = (article) => {
+    const row = {
+      DOI:       article.doi        || '',
+      PMID:      article.pubmed_id  || '',
+      Título:    article.title      || '',
+      Autores:   authorsText(article.authors),
+      Año:       article.year       || '',
+      Revista:   article.journal    || '',
+      Tags:      (article.tags || []).join(', '),
+      Prioridad: article.priority   || '',
+      Milestone: article.is_milestone ? 'Sí' : 'No',
+      PDF:       article.dropbox_path ? 'Sí' : 'No',
+    };
+    const ws = XLSX.utils.json_to_sheet([row]);
+    ws['!cols'] = [16, 12, 60, 40, 6, 30, 20, 10, 10, 6].map((w) => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Artículo');
+    const safeName = (article.title || 'articulo').slice(0, 50).replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_');
+    XLSX.writeFile(wb, `${safeName}.xlsx`);
+  };
+
   let filteredArticles = articles.filter((a) => {
     const q = search.toLowerCase();
     if (!a.title?.toLowerCase().includes(q) && !authorsText(a.authors).toLowerCase().includes(q)) return false;
@@ -249,6 +272,7 @@ const AdminArticles = () => {
   });
   if (filterNoPdf)      filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
   if (filterNoAbstract) filteredArticles = filteredArticles.filter((a) => !a.abstract);
+  if (filterMilestone)  filteredArticles = filteredArticles.filter((a) => a.is_milestone);
 
   const filterLabel = statusFilter
     ? statusFilter.map((s) => STATUS_LABELS[s] ?? s).join(' / ')
@@ -256,7 +280,7 @@ const AdminArticles = () => {
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
 
-  const isFiltered = search || filterNoPdf || filterNoAbstract || userFilter ||
+  const isFiltered = search || filterNoPdf || filterNoAbstract || filterMilestone || userFilter ||
     filters.is_milestone || (filters.year && filters.year !== '');
 
   return (
@@ -342,7 +366,15 @@ const AdminArticles = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <button
+                      onClick={() => setFilterMilestone((v) => !v)}
+                      title={filterMilestone ? 'Mostrar todos los artículos' : 'Mostrar solo milestones'}
+                      className="mr-1 text-base leading-none hover:scale-125 transition-transform align-middle">
+                      {filterMilestone ? '⭐' : '☆'}
+                    </button>
+                    Artículo
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Año</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
@@ -472,6 +504,12 @@ const AdminArticles = () => {
                         <td className="px-6 py-4">
                           <div className="flex gap-2 flex-wrap">
                             <Button variant="ghost" size="sm" onClick={() => { setEditingArticle(article); setShowModal(true); }}>Editar</Button>
+                            <button
+                              onClick={() => downloadArticleXlsx(article)}
+                              title="Descargar datos en Excel"
+                              className="px-2 py-1 text-xs font-bold rounded bg-green-100 text-green-700 hover:bg-green-200 transition-colors">
+                              📊 XLS
+                            </button>
                             <Button variant="secondary" size="sm" onClick={() => handleAssignToAll(article.id, article.title)}>Asignar a Todos</Button>
                             <Button variant="danger" size="sm" onClick={() => handleDeleteArticle(article.id, article.title)}>Eliminar</Button>
                           </div>
