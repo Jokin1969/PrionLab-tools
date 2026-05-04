@@ -339,16 +339,7 @@ const AdminArticles = () => {
       )}
 
       <Card>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2">
-            <Input placeholder="Buscar por título o autor..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <select value={filters.is_milestone} onChange={(e) => setFilters((p) => ({ ...p, is_milestone: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary">
-            <option value="">Todos</option>
-            <option value="true">Solo Milestones</option>
-            <option value="false">Solo Regulares</option>
-          </select>
-        </div>
+        <Input placeholder="Buscar por título o autor..." value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
           <p className="text-sm text-gray-600">
             Mostrando{' '}
@@ -375,6 +366,10 @@ const AdminArticles = () => {
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                 filterNoAbstract ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
               }`}>Sin Abstract</button>
+            <button
+              onClick={() => { setFilterNoPdf(false); setFilterNoAbstract(false); setFilterMilestone(false); setSearch(''); setFilters((p) => ({ ...p, is_milestone: '' })); }}
+              className="px-3 py-1 text-xs font-medium rounded-full border transition-colors bg-white text-gray-600 border-gray-300 hover:bg-gray-100"
+            >Todos</button>
           </div>
         </div>
       </Card>
@@ -399,7 +394,9 @@ const AdminArticles = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     <SortBtn label="Año" col="year" sortBy={filters.sort_by} order={filters.order} onSort={handleSort} />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prio</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <SortBtn label="Prio" col="priority" sortBy={filters.sort_by} order={filters.order} onSort={handleSort} />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
                   {students.length > 0 && (
