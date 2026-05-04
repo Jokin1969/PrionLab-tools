@@ -190,7 +190,7 @@
             </div>
             <div class="pp-form-group pp-alt-titles-editor" id="alt-titles-group">
               <div class="pp-label-ai-row">
-                <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--empty" id="btn-toggle-alt-titles" title="Plegar / desplegar títulos alternativos"></button>
+                <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--empty" id="btn-toggle-alt-titles" title="Collapse / expand alternative titles"></button>
                 <label class="pp-label pp-label-sm">Alternative titles</label>
                 <button type="button" class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-add-alt-title">
                   <i class="fas fa-plus"></i> Add alternative title
@@ -316,7 +316,7 @@
                 </button>
                 <div class="pp-section-jump" id="intro-references-jump"></div>
                 <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-collapse-all-intro-refs" type="button" style="display:none;">
-                  <i class="fas fa-compress-alt"></i> Colapsar todo
+                  <i class="fas fa-compress-alt"></i> Collapse all
                 </button>
                 <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-intro-reference" type="button">
                   <i class="fas fa-plus"></i> Add Reference
@@ -382,13 +382,13 @@
             <div class="pp-section-header">
               <h2 class="pp-section-title"><i class="fas fa-comments"></i> Discussion</h2>
               <div class="pp-field-ai-actions">
-                <button class="pp-ai-btn" data-field-id="field-discussion" data-ai-label="Discusión" title="Incluir como contexto para Claude">AI</button>
-                <button class="pp-claude-ask-btn" data-source-id="field-discussion" data-source-label="Discusión" title="Preguntar a Claude">
+                <button class="pp-ai-btn" data-field-id="field-discussion" data-ai-label="Discussion" title="Include as context for Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-discussion" data-source-label="Discussion" title="Ask Claude">
                   <i class="fas fa-robot"></i> Claude
                 </button>
               </div>
             </div>
-            <textarea id="field-discussion" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Escribe la discusión…"></textarea>
+            <textarea id="field-discussion" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Write the discussion…"></textarea>
           </div>
 
           <!-- Acknowledgments section -->
@@ -447,10 +447,10 @@
               <h2 class="pp-section-title"><i class="fas fa-list"></i> References <span class="pp-section-count" id="references-count"></span></h2>
               <div class="pp-section-jump" id="references-jump"></div>
               <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-collapse-all-refs" type="button" style="display:none;">
-                <i class="fas fa-compress-alt"></i> Colapsar todo
+                <i class="fas fa-compress-alt"></i> Collapse all
               </button>
-              <button class="pp-btn pp-btn-sm pp-claude-ask-btn" id="btn-discuss-claude" type="button" title="Pedir a Claude que sugiera temas de Discusión basándose en las referencias">
-                <i class="fas fa-robot"></i> Claude Discusión
+              <button class="pp-btn pp-btn-sm pp-claude-ask-btn" id="btn-discuss-claude" type="button" title="Ask Claude to suggest Discussion topics based on the references">
+                <i class="fas fa-robot"></i> Claude Discussion
               </button>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-reference" type="button">
                 <i class="fas fa-plus"></i> Add Reference
@@ -545,7 +545,7 @@
         <!-- Doc 1 — PrionPacks general overview -->
         <div class="pp-doc-block" id="doc-block-overview">
           <div class="pp-doc-block-header">
-            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Plegar / desplegar este documento"></button>
+            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Collapse / expand this document"></button>
             <h2 class="pp-doc-block-title"><i class="fas fa-cube"></i> Contexto general de PrionPacks</h2>
             <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-prionpacks-overview" title="Copiar este texto al portapapeles">
               <i class="fas fa-copy"></i> Copy to clipboard
@@ -653,7 +653,7 @@ El asistente debe asumir que el contenido suele estar en español o inglés cien
         <!-- Doc 2 — Article summarizer prompt -->
         <div class="pp-doc-block" id="doc-block-summary">
           <div class="pp-doc-block-header">
-            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Plegar / desplegar este documento"></button>
+            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Collapse / expand this document"></button>
             <h2 class="pp-doc-block-title"><i class="fas fa-file-alt"></i> Resumen de artículo científico</h2>
             <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-article-summary" title="Copiar este prompt al portapapeles">
               <i class="fas fa-copy"></i> Copy to clipboard

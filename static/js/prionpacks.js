@@ -760,7 +760,7 @@ const PrionPacks = (() => {
     div.className = 'pp-reference-item';
     div.innerHTML = `
       <div class="pp-reference-header">
-        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar referencia"></button>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
         <span class="pp-reference-number">R-${String(idx + 1).padStart(2, '0')}</span>
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
@@ -860,8 +860,8 @@ const PrionPacks = (() => {
     });
     const btn = document.getElementById('btn-collapse-all-refs');
     if (btn) btn.innerHTML = allCollapsed
-      ? '<i class="fas fa-expand-alt"></i> Expandir todo'
-      : '<i class="fas fa-compress-alt"></i> Colapsar todo';
+      ? '<i class="fas fa-expand-alt"></i> Expand all'
+      : '<i class="fas fa-compress-alt"></i> Collapse all';
   }
 
   async function _askClaudeDiscussion() {
@@ -968,7 +968,7 @@ ${refsText}`;
     div.className = 'pp-reference-item pp-intro-reference-item';
     div.innerHTML = `
       <div class="pp-reference-header">
-        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar referencia"></button>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
         <span class="pp-reference-number">Ri-${String(idx + 1).padStart(2, '0')}</span>
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
@@ -1050,8 +1050,8 @@ ${refsText}`;
     });
     const btn = document.getElementById('btn-collapse-all-intro-refs');
     if (btn) btn.innerHTML = allCollapsed
-      ? '<i class="fas fa-expand-alt"></i> Expandir todo'
-      : '<i class="fas fa-compress-alt"></i> Colapsar todo';
+      ? '<i class="fas fa-expand-alt"></i> Expand all'
+      : '<i class="fas fa-compress-alt"></i> Collapse all';
   }
 
   function _renumberIntroReferences() {
@@ -1210,7 +1210,7 @@ ${refsText}`;
     div.innerHTML = `
       <div class="pp-method-header">
         <i class="fas fa-grip-vertical pp-drag-handle" title="Arrastra para reordenar"></i>
-        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Plegar / desplegar método"></button>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand method"></button>
         <span class="pp-method-number">M-${String(idx + 1).padStart(2, '0')}</span>
         <input type="text" id="${titleId}" class="pp-input pp-method-title-input" placeholder="Título del método…" value="${_esc(data.title || '')}" />
         <button type="button" class="pp-ai-btn" data-field-id="${titleId}" data-ai-label="Método ${idx + 1} — título" title="Incluir el título como contexto para Claude">AI</button>
@@ -1590,7 +1590,7 @@ ${refsText}`;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'pp-collapse-btn pp-collapse-btn--empty';
-      btn.title = 'Plegar / desplegar sección';
+      btn.title = 'Collapse / expand section';
       btn.innerHTML = '<i class="fas fa-caret-down"></i>';
       btn.addEventListener('click', () => {
         const collapsed = card.classList.toggle('pp-card-collapsed');
@@ -1879,7 +1879,7 @@ ${refsText}`;
     div.innerHTML = `
       <div class="pp-finding-header">
         <i class="fas fa-grip-vertical pp-drag-handle"></i>
-        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-finding-collapse-btn" title="Plegar / desplegar finding"></button>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-finding-collapse-btn" title="Collapse / expand finding"></button>
         <span class="pp-finding-number">F-${String(num).padStart(2,'0')}</span>
         <input type="text" id="ftitle-${finding.id}" class="pp-finding-title-input" placeholder="Finding title…" value="${_esc(finding.title||'')}" />
         <button class="pp-ai-btn" data-field-id="ftitle-${finding.id}" data-ai-label="Finding título: ${_esc(finding.title||'(sin título)')}" title="Incluir título como contexto para Claude">AI</button>
@@ -2265,7 +2265,7 @@ ${refsText}`;
     const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
-        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-gap-collapse-btn" title="Plegar / desplegar gap" ></button>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-gap-collapse-btn" title="Collapse / expand gap" ></button>
         <span class="pp-gap-number"></span>
         <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
         <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
