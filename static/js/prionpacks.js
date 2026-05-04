@@ -1564,6 +1564,12 @@ ${refsText}`;
     return items.map((r, i) => `[${i + 1}] ${r}`).join('\n\n');
   }
 
+  function _collectIntroReferencesText() {
+    const items = Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
+      .map(t => t.value.trim()).filter(Boolean);
+    return items.map((r, i) => `[Ri-${String(i + 1).padStart(2, '0')}] ${r}`).join('\n\n');
+  }
+
   function _setupCollapsibleSections() {
     document.querySelectorAll('.pp-card-section').forEach(card => {
       const header = card.querySelector('.pp-section-header');
@@ -2837,6 +2843,25 @@ ${refsText}`;
       const aiBtn = e.target.closest('.pp-ai-btn');
       if (aiBtn && e.currentTarget.contains(aiBtn)) {
         aiBtn.classList.toggle('active');
+      }
+    });
+    document.getElementById('btn-clip-intro-refs')?.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = _collectIntroReferencesText();
+      if (!text || !text.trim()) { toast('No hay referencias de introducción.', 'error'); return; }
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('Referencias de introducción copiadas al portapapeles.', 'success');
+      } catch {
+        const tmp = document.createElement('textarea');
+        tmp.value = text;
+        document.body.appendChild(tmp);
+        tmp.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch {}
+        tmp.remove();
+        toast(ok ? 'Referencias de introducción copiadas al portapapeles.' : 'No se pudo copiar.', ok ? 'success' : 'error');
       }
     });
     document.getElementById('btn-toggle-credit').addEventListener('click', () =>
