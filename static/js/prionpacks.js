@@ -727,6 +727,12 @@ const PrionPacks = (() => {
     if (!list) return;
     list.innerHTML = '';
     (refs || []).forEach((r, idx) => list.appendChild(_createReferenceItem(r, idx)));
+    if (state.currentId) {
+      list.querySelectorAll('.pp-reference-item').forEach((item, idx) => {
+        if (localStorage.getItem(`pp-col:${state.currentId}:r:${idx}`) === '1')
+          item.classList.add('pp-reference-collapsed');
+      });
+    }
     _setupAnchorButtons(list);
     _setupSupPreviews(list);
     _updateReferencesCount();
@@ -786,6 +792,7 @@ const PrionPacks = (() => {
       e.preventDefault();
       e.stopPropagation();
       div.classList.toggle('pp-reference-collapsed');
+      _saveItemCollapse('r', div, div.classList.contains('pp-reference-collapsed'));
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -808,6 +815,24 @@ const PrionPacks = (() => {
     span.textContent = n > 0 ? `(${n})` : '';
     const collapseBtn = document.getElementById('btn-collapse-all-refs');
     if (collapseBtn) collapseBtn.style.display = n > 0 ? '' : 'none';
+  }
+
+  // ── Collapse-state persistence helpers (per package, per item) ──────────
+  function _itemColKey(type, el) {
+    const pid = state.currentId;
+    if (!pid) return null;
+    if (type === 'f') return `pp-col:${pid}:f:${el.dataset.id}`;
+    const sel = type === 'm' ? '#methods-list .pp-method-item'
+              : type === 'r' ? '#references-list .pp-reference-item'
+              :                '#gaps-missing-list .pp-gap-item';
+    const idx = Array.from(document.querySelectorAll(sel)).indexOf(el);
+    return idx >= 0 ? `pp-col:${pid}:${type}:${idx}` : null;
+  }
+  function _saveItemCollapse(type, el, collapsed) {
+    const k = _itemColKey(type, el);
+    if (!k) return;
+    if (collapsed) localStorage.setItem(k, '1');
+    else           localStorage.removeItem(k);
   }
 
   function _toggleCollapseAllRefs() {
@@ -941,6 +966,12 @@ const PrionPacks = (() => {
     if (!list) return;
     list.innerHTML = '';
     (methods || []).forEach((m, idx) => list.appendChild(_createMethodItem(m, idx)));
+    if (state.currentId) {
+      list.querySelectorAll('.pp-method-item').forEach((item, idx) => {
+        if (localStorage.getItem(`pp-col:${state.currentId}:m:${idx}`) === '1')
+          item.classList.add('pp-method-collapsed');
+      });
+    }
     _setupAnchorButtons(list);
     _setupSupPreviews(list);
     _initDragDrop(list, {
@@ -987,6 +1018,7 @@ const PrionPacks = (() => {
       e.preventDefault();
       e.stopPropagation();
       div.classList.toggle('pp-method-collapsed');
+      _saveItemCollapse('m', div, div.classList.contains('pp-method-collapsed'));
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -1080,7 +1112,7 @@ const PrionPacks = (() => {
       ta.dataset.anchorWrapped = '1';
 
       // Restore previously-anchored height
-      const key   = 'pp-anchor-h:' + ta.id;
+      const key   = 'pp-anchor-h:' + (state.currentId || 'new') + ':' + ta.id;
       const saved = localStorage.getItem(key);
       if (saved) {
         ta.style.height = saved;
@@ -1618,6 +1650,8 @@ const PrionPacks = (() => {
     div.className = 'pp-finding-block';
     div.dataset.id = finding.id;
     div.draggable = true;
+    if (state.currentId && localStorage.getItem(`pp-col:${state.currentId}:f:${finding.id}`) === '1')
+      div.classList.add('pp-finding-collapsed');
     const enBadge = finding.titleEnglish
       ? _buildEnBadgeHTML(finding.titleEnglish) : '';
 
@@ -1981,6 +2015,12 @@ const PrionPacks = (() => {
         _updateFindingGapIndicators();
       });
     });
+    if (state.currentId) {
+      list.querySelectorAll('.pp-gap-item').forEach((item, idx) => {
+        if (localStorage.getItem(`pp-col:${state.currentId}:g:${idx}`) === '1')
+          item.classList.add('pp-gap-collapsed');
+      });
+    }
     _renumberGaps();
     _updateCollapseIndicators();
     _refreshAllJumpButtons();
@@ -2004,7 +2044,7 @@ const PrionPacks = (() => {
     const gid = 'gapm-' + (++_gapCounter);
     return `<div class="pp-gap-item${hasFinding}">
       <div class="pp-gap-item-top">
-        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-gap-collapse-btn" title="Plegar / desplegar gap" onclick="this.closest('.pp-gap-item').classList.toggle('pp-gap-collapsed');event.stopPropagation();"></button>
+        <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-gap-collapse-btn" title="Plegar / desplegar gap" ></button>
         <span class="pp-gap-number"></span>
         <input type="text" id="${gid}" value="${_esc(text)}" placeholder="Missing information…" />
         <button class="pp-ai-btn pp-ai-btn-xs" data-field-id="${gid}" data-ai-label="Gap (info faltante)" title="Contexto para Claude">AI</button>
@@ -2611,7 +2651,11 @@ const PrionPacks = (() => {
       if (collapseBtn) {
         e.preventDefault();
         e.stopPropagation();
-        collapseBtn.closest('.pp-finding-block')?.classList.toggle('pp-finding-collapsed');
+        const block = collapseBtn.closest('.pp-finding-block');
+        if (block) {
+          block.classList.toggle('pp-finding-collapsed');
+          _saveItemCollapse('f', block, block.classList.contains('pp-finding-collapsed'));
+        }
         return;
       }
       const aiBtn = e.target.closest('.pp-ai-btn');
@@ -2638,8 +2682,19 @@ const PrionPacks = (() => {
       }
     });
 
-    // Event delegation for gap AI toggles
+    // Event delegation for gap AI toggles and collapse
     document.getElementById('gaps-missing-list').addEventListener('click', e => {
+      const colBtn = e.target.closest('.pp-gap-collapse-btn');
+      if (colBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = colBtn.closest('.pp-gap-item');
+        if (item) {
+          item.classList.toggle('pp-gap-collapsed');
+          _saveItemCollapse('g', item, item.classList.contains('pp-gap-collapsed'));
+        }
+        return;
+      }
       const aiBtn = e.target.closest('.pp-ai-btn');
       if (aiBtn) aiBtn.classList.toggle('active');
     });
