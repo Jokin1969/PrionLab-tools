@@ -2842,6 +2842,21 @@ ${refsText}`;
     // Introduction References
     document.getElementById('btn-add-intro-reference')?.addEventListener('click', () => _addIntroReference(true));
     document.getElementById('btn-collapse-all-intro-refs')?.addEventListener('click', () => _toggleCollapseAllIntroRefs());
+
+    // Intro References sub-section collapse triangle (left of the label)
+    const introRefsSub = document.getElementById('intro-refs-sub');
+    const introRefsBtn = document.querySelector('.pp-intro-refs-collapse-btn');
+    if (introRefsSub && introRefsBtn) {
+      const KEY = 'pp-collapse:intro-refs-sub';
+      if (localStorage.getItem(KEY) === '1') introRefsSub.classList.add('pp-intro-refs-collapsed');
+      introRefsBtn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const collapsed = introRefsSub.classList.toggle('pp-intro-refs-collapsed');
+        if (collapsed) localStorage.setItem(KEY, '1');
+        else           localStorage.removeItem(KEY);
+      });
+    }
     document.getElementById('intro-references-list')?.addEventListener('click', e => {
       const aiBtn = e.target.closest('.pp-ai-btn');
       if (aiBtn && e.currentTarget.contains(aiBtn)) {
