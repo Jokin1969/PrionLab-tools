@@ -7,6 +7,7 @@ const PrionPacks = (() => {
     currentId: null,
     view: 'dashboard',
     search: '',
+    searchMode: 'simple',  // 'simple' | 'advanced'
     filterStatus: 'all',
     filterPriority: 'all',
   };
@@ -78,21 +79,51 @@ const PrionPacks = (() => {
     return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   }
 
-  function _matchesSearch(p, q) {
-    if (!q) return true;
-    const missingInfo = (p.gaps?.missingInfo || []).map(g => typeof g === 'string' ? g : g.text);
-    const fields = [
+  // Flatten a package into a single normalised "haystack" string covering
+  // every user-typed field (top-level cards, findings, gaps, methods,
+  // references, alt-titles, etc.) so the search hits content inside the
+  // reference abstracts too.
+  function _packageHaystack(p) {
+    const parts = [
       p.title, p.id, p.description, p.introduction, p.discussion,
       p.coAuthors, p.affiliations, p.abstract, p.authorSummary,
-      p.acknowledgments, p.funding, p.conflictsOfInterest, p.references,
-      ...(p.findings || []).flatMap(f => [
+      p.acknowledgments, p.funding, p.conflictsOfInterest, p.credit,
+      ...(p.altTitles || []),
+      ...(Array.isArray(p.references) ? p.references : [p.references]),
+      ...(Array.isArray(p.introReferences) ? p.introReferences : [p.introReferences]),
+      ...((p.methods || []).flatMap(m => typeof m === 'string' ? [m] : [m?.title, m?.body])),
+      ...((p.findings || []).flatMap(f => [
         f.title, f.titleEnglish, f.description,
         ...(f.figures || []).flatMap(fig => [fig.description, fig.caption]),
         ...(f.tables  || []).map(tbl => tbl.description),
-      ]),
-      ...missingInfo,
+      ])),
+      ...((p.gaps?.missingInfo || []).flatMap(g => typeof g === 'string'
+        ? [g]
+        : [g?.text, g?.neededExperiment])),
     ];
-    return fields.some(v => v && _norm(v).includes(q));
+    return parts.map(_norm).filter(Boolean).join('   ');
+  }
+
+  // Split an advanced query on , ; tab newline OR runs of 2+ spaces.
+  // Single-space-separated phrases are preserved as one token so the user
+  // can still search for "RT-QuIC sensitivity" without having to quote it.
+  function _splitAdvancedTokens(q) {
+    return String(q || '')
+      .split(/[,;\t\n]|\s{2,}/)
+      .map(t => _norm(t.trim()))
+      .filter(Boolean);
+  }
+
+  function _matchesSearch(p, q) {
+    if (!q) return true;
+    const haystack = _packageHaystack(p);
+    if (state.searchMode === 'advanced') {
+      const tokens = _splitAdvancedTokens(q);
+      if (!tokens.length) return true;
+      // OR-semantics: a package matches if ANY of the tokens is found.
+      return tokens.some(t => haystack.includes(t));
+    }
+    return haystack.includes(_norm(q));
   }
 
   function _filteredPackages() {
@@ -2752,9 +2783,49 @@ ${refsText}`;
       });
     });
 
-    document.getElementById('pp-search').addEventListener('input', e => {
+    const searchInput = document.getElementById('pp-search');
+    const searchHint  = document.getElementById('pp-search-hint');
+    const searchMode  = document.getElementById('btn-search-mode');
+
+    function _refreshSearchHint() {
+      if (!searchHint) return;
+      if (state.searchMode !== 'advanced' || !state.search.trim()) {
+        searchHint.style.display = 'none';
+        searchHint.textContent = '';
+        return;
+      }
+      const tokens = _splitAdvancedTokens(state.search);
+      const matches = _filteredPackages().length;
+      searchHint.style.display = '';
+      searchHint.textContent = `${tokens.length} term${tokens.length === 1 ? '' : 's'} · ${matches} match${matches === 1 ? '' : 'es'}`;
+    }
+
+    function _applySearchMode() {
+      const advanced = state.searchMode === 'advanced';
+      searchMode?.classList.toggle('is-active', advanced);
+      searchInput.placeholder = advanced
+        ? 'Paste DOIs / terms separated by , ; tab or new line…'
+        : 'Search all fields…';
+      _refreshSearchHint();
+    }
+
+    // Restore saved mode (so it survives reloads, like the rest of the UI)
+    if (localStorage.getItem('pp-search-mode') === 'advanced') {
+      state.searchMode = 'advanced';
+    }
+    _applySearchMode();
+
+    searchInput.addEventListener('input', e => {
       state.search = e.target.value;
       _renderDashboard();
+      _refreshSearchHint();
+    });
+    searchMode?.addEventListener('click', () => {
+      state.searchMode = state.searchMode === 'advanced' ? 'simple' : 'advanced';
+      localStorage.setItem('pp-search-mode', state.searchMode);
+      _applySearchMode();
+      _renderDashboard();
+      searchInput.focus();
     });
     document.getElementById('filter-status').addEventListener('change', e => {
       state.filterStatus = e.target.value;

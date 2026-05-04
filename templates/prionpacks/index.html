@@ -27,7 +27,11 @@
       <div class="pp-search-wrap">
         <i class="fas fa-search pp-search-icon"></i>
         <input type="text" id="pp-search" class="pp-search-input" placeholder="Search all fields…" autocomplete="off" />
+        <button type="button" class="pp-search-mode-btn" id="btn-search-mode" title="Toggle advanced multi-token search (paste DOIs separated by commas, tabs, spaces or new lines)">
+          <i class="fas fa-bolt"></i>
+        </button>
       </div>
+      <div id="pp-search-hint" class="pp-search-hint" style="display:none;"></div>
     </div>
 
     <div class="pp-sidebar-filters">

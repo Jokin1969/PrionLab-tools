@@ -106,7 +106,7 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   background: var(--pp-secondary);
   border: 1px solid var(--pp-border);
   color: var(--pp-text);
-  padding: 8px 10px 8px 32px;
+  padding: 8px 34px 8px 32px;  /* extra right padding for the mode toggle */
   border-radius: var(--pp-radius-sm);
   font-size: 13px;
   font-family: inherit;
@@ -118,6 +118,43 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-search-input:focus {
   border-color: var(--pp-accent);
   box-shadow: 0 0 0 3px var(--pp-accent-glow);
+}
+
+/* ── Search mode toggle (advanced multi-token mode) ─────────────────────── */
+.pp-search-mode-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--pp-text-dim);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.pp-search-mode-btn:hover { color: var(--pp-text); background: rgba(0,0,0,0.05); }
+.pp-search-mode-btn.is-active {
+  background: var(--pp-accent);
+  border-color: var(--pp-accent);
+  color: #fff;
+}
+.pp-search-mode-btn.is-active:hover { background: #126060; }
+
+.pp-search-hint {
+  margin-top: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--pp-text-dim);
+  letter-spacing: .3px;
+  text-transform: uppercase;
 }
 
 /* Filters */
