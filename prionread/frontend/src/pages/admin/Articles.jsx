@@ -397,7 +397,7 @@ const AdminArticles = () => {
 
       {loading ? <Loader /> : (
         <Card>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-visible">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -468,7 +468,23 @@ const AdminArticles = () => {
                               {article.is_milestone ? '⭐' : '☆'}
                             </button>
                             <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-gray-900 truncate">{article.title}</p>
+                              <div className="relative group/tooltip">
+                                <p className="font-semibold text-gray-900 truncate cursor-pointer">{article.title}</p>
+                                <div className="pointer-events-none absolute left-0 top-full mt-1 z-50 hidden group-hover/tooltip:block w-96 max-w-[min(384px,80vw)] rounded-lg border border-gray-200 bg-white shadow-xl p-3 space-y-1.5">
+                                  <p className="font-semibold text-gray-900 text-sm leading-snug">{article.title}</p>
+                                  {authorsText(article.authors) && (
+                                    <p className="text-xs text-gray-600">{authorsText(article.authors)}</p>
+                                  )}
+                                  {(article.journal || article.year) && (
+                                    <p className="text-xs text-gray-400 italic">
+                                      {[article.journal, article.year].filter(Boolean).join(' · ')}
+                                    </p>
+                                  )}
+                                  {article.abstract && (
+                                    <p className="text-xs text-gray-700 leading-relaxed border-t border-gray-100 pt-1.5 line-clamp-6">{article.abstract}</p>
+                                  )}
+                                </div>
+                              </div>
                               <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
                               {!article.abstract && !showAbsPreview && (
                                 <button onClick={() => handleFetchAbstract(article)} disabled={isFetchingAbs}
