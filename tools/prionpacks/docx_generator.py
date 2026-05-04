@@ -21,6 +21,12 @@ _WHITE     = RGBColor(0xff, 0xff, 0xff)
 # Markdown-style superscript: PrP^Sc^ -> PrP + superscript("Sc")
 _SUP_RE = re.compile(r'\^([^\^\s][^\^]*?)\^')
 
+# Header line that introduces the abstract block inside a reference string
+_REF_SUMMARY_HEADERS = re.compile(
+    r'^\s*(Resumen|Resumen del artículo|Abstract)\s*:?\s*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 def _apply_font(run, *, size=None, bold=None, italic=None, color=None):
     if size is not None:   run.font.size = size
@@ -57,17 +63,31 @@ TYPE_ES = {
 }
 
 
+def _split_reference(ref: str) -> tuple:
+    """Return (header, abstract) by splitting at a 'Resumen:'/'Abstract:' line.
+
+    If no such marker exists the full text is returned as header with an
+    empty abstract string.
+    """
+    if not ref:
+        return '', ''
+    m = _REF_SUMMARY_HEADERS.search(ref)
+    if not m:
+        return ref.rstrip(), ''
+    return ref[:m.start()].rstrip(), ref[m.end():].strip()
+
+
 def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes:
     doc = Document()
 
-    # ── Page margins ──────────────────────────────────────────────────────────
+    # ── Page margins ────────────────────────────────────────────────────────────────────────────
     sec = doc.sections[0]
     sec.top_margin    = Cm(2.0)
     sec.bottom_margin = Cm(2.2)
     sec.left_margin   = Cm(2.5)
     sec.right_margin  = Cm(2.5)
 
-    # ── Title ─────────────────────────────────────────────────────────────────
+    # ── Title ────────────────────────────────────────────────────────────────────────────────
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.LEFT
     add_runs(t, pkg.get('title', 'Sin título'), size=Pt(22), bold=True, color=_TEAL)
@@ -93,7 +113,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
 
     doc.add_paragraph()
 
-    # ── Description ───────────────────────────────────────────────────────────
+    # ── Description ──────────────────────────────────────────────────────────────────────────
     desc = (pkg.get('description') or '').strip()
     if desc:
         _section_heading(doc, 'DESCRIPCIÓN BREVE')
@@ -101,7 +121,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, desc, italic=True, size=Pt(10), color=_DIM)
         doc.add_paragraph()
 
-    # ── Co-authors ────────────────────────────────────────────────────────────
+    # ── Co-authors ──────────────────────────────────────────────────────────────────────────
     coauthors = (pkg.get('coAuthors') or '').strip()
     if coauthors:
         _section_heading(doc, 'CO-AUTORES')
@@ -109,7 +129,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, coauthors, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Affiliations ──────────────────────────────────────────────────────────
+    # ── Affiliations ─────────────────────────────────────────────────────────────────────────
     affiliations = (pkg.get('affiliations') or '').strip()
     if affiliations:
         _section_heading(doc, 'AFILIACIONES')
@@ -117,7 +137,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, affiliations, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Abstract ──────────────────────────────────────────────────────────────
+    # ── Abstract ──────────────────────────────────────────────────────────────────────────────
     abstract = (pkg.get('abstract') or '').strip()
     if abstract:
         _section_heading(doc, 'ABSTRACT')
@@ -125,7 +145,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, abstract, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Author Summary ────────────────────────────────────────────────────────
+    # ── Author Summary ─────────────────────────────────────────────────────────────────────────
     author_summary = (pkg.get('authorSummary') or '').strip()
     if author_summary:
         _section_heading(doc, 'RESUMEN PARA AUTORES')
@@ -133,7 +153,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, author_summary, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Introduction ─────────────────────────────────────────────────────────
+    # ── Introduction ─────────────────────────────────────────────────────────────────────────
     intro = (pkg.get('introduction') or '').strip()
     if intro:
         _section_heading(doc, 'INTRODUCCIÓN')
@@ -141,7 +161,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, intro, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Methods (multi-field: list of {title, body}) ─────────────────────────
+    # ── Methods (multi-field: list of {title, body}) ──────────────────────────────────────────
     methods_raw = pkg.get('methods')
     if isinstance(methods_raw, list):
         methods_list = []
@@ -174,7 +194,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
                 add_runs(p_b, m['body'], size=Pt(10), color=_DARK)
             doc.add_paragraph()
 
-    # ── Investigations ────────────────────────────────────────────────────────
+    # ── Investigations ──────────────────────────────────────────────────────────────────────────
     inv = pkg.get('investigations') or {}
     inv_text  = (inv.get('text') or '').strip()
     inv_files = inv.get('files') or []
@@ -192,7 +212,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
                 add_runs(p2, f.get('name', 'documento'), size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Pre-process gaps for linking ──────────────────────────────────────────
+    # ── Pre-process gaps for linking ────────────────────────────────────────────────
     raw_missing = pkg.get('gaps', {}).get('missingInfo', [])
     gap_items = []
     for i, g in enumerate(raw_missing):
@@ -206,12 +226,12 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
                 'neededExperiment': g.get('neededExperiment') or '',
             })
 
-    gaps_for_finding: dict[str, list] = {}
+    gaps_for_finding: dict = {}
     for gi in gap_items:
         if gi['fid']:
             gaps_for_finding.setdefault(gi['fid'], []).append(gi)
 
-    # ── Findings ──────────────────────────────────────────────────────────────
+    # ── Findings ─────────────────────────────────────────────────────────────────────────────
     findings = pkg.get('findings', [])
     if findings:
         _section_heading(doc, 'HALLAZGOS PRINCIPALES')
@@ -262,7 +282,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
 
             doc.add_paragraph()
 
-    # ── Gaps & Next Steps ─────────────────────────────────────────────────────
+    # ── Gaps & Next Steps ─────────────────────────────────────────────────────────────────
     _section_heading(doc, 'GAPS & NEXT STEPS')
 
     if gap_items:
@@ -297,7 +317,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
 
     doc.add_paragraph()
 
-    # ── Discussion ────────────────────────────────────────────────────────────
+    # ── Discussion ──────────────────────────────────────────────────────────────────────────
     disc = (pkg.get('discussion') or '').strip()
     if disc:
         _section_heading(doc, 'DISCUSIÓN')
@@ -305,7 +325,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, disc, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Acknowledgments ───────────────────────────────────────────────────────
+    # ── Acknowledgments ───────────────────────────────────────────────────────────────────────
     acknowledgments = (pkg.get('acknowledgments') or '').strip()
     if acknowledgments:
         _section_heading(doc, 'AGRADECIMIENTOS')
@@ -313,7 +333,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, acknowledgments, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Funding ───────────────────────────────────────────────────────────────
+    # ── Funding ────────────────────────────────────────────────────────────────────────────
     funding = (pkg.get('funding') or '').strip()
     if funding:
         _section_heading(doc, 'FINANCIACIÓN')
@@ -321,7 +341,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, funding, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Conflicts of Interest ─────────────────────────────────────────────────
+    # ── Conflicts of Interest ───────────────────────────────────────────────────────────────
     conflicts = (pkg.get('conflictsOfInterest') or '').strip()
     if conflicts:
         _section_heading(doc, 'CONFLICTOS DE INTERÉS')
@@ -329,7 +349,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, conflicts, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── References ────────────────────────────────────────────────────────────
+    # ── References ───────────────────────────────────────────────────────────────────────────
     refs_raw = pkg.get('references')
     if isinstance(refs_raw, list):
         refs_list = [str(r).strip() for r in refs_raw if isinstance(r, str) and r.strip()]
@@ -340,13 +360,19 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if refs_list:
         _section_heading(doc, 'REFERENCIAS')
         for i, ref in enumerate(refs_list, 1):
-            p = doc.add_paragraph()
+            header, abstract = _split_reference(ref)
+            # Bibliographic line as Heading 3 — gives collapse triangle in Word 2013+
+            p = doc.add_paragraph(style='Heading 3')
             r_num = p.add_run(f'[{i}] ')
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = _TEAL
-            add_runs(p, _strip_reference_summary(ref), size=Pt(10), color=_DARK)
+            add_runs(p, header, size=Pt(10), color=_DARK)
+            # Abstract as normal paragraph — hidden when heading is collapsed
+            if abstract:
+                p_abs = doc.add_paragraph()
+                add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
             doc.add_paragraph()
 
-    # ── CReDiT ────────────────────────────────────────────────────────────────
+    # ── CReDiT ────────────────────────────────────────────────────────────────────────────────
     credit = (pkg.get('credit') or '').strip()
     if credit:
         _section_heading(doc, 'CONTRIBUCIÓN DE AUTORÍA (CReDiT)')
@@ -354,7 +380,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, credit, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
-    # ── Footer ────────────────────────────────────────────────────────────────
+    # ── Footer ──────────────────────────────────────────────────────────────────────────────
     p_ft = doc.add_paragraph()
     r_ft = p_ft.add_run(
         f'Documento generado automáticamente por PrionLab Tools · '
@@ -374,25 +400,6 @@ def _section_heading(doc: Document, text: str):
     run.font.size  = Pt(10)
     run.font.color.rgb = _TEAL
     _para_border_bottom(p)
-
-
-_REF_SUMMARY_HEADERS = re.compile(
-    r'^\s*(Resumen|Resumen del artículo|Abstract)\s*:?\s*$',
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
-def _strip_reference_summary(ref: str) -> str:
-    """Trim a multi-line reference block so the Word output keeps only the
-    bibliographic header (Título / Autores / Revista / Año / DOI…) and drops
-    any "Resumen:" body that comes after it. We cut at the first line that
-    matches a "Resumen" / "Abstract" header. Trailing blank lines are removed.
-    """
-    if not ref:
-        return ''
-    m = _REF_SUMMARY_HEADERS.search(ref)
-    head = ref[:m.start()] if m else ref
-    return head.rstrip()
 
 
 def _dim_para(doc: Document, text: str):
