@@ -5,6 +5,7 @@ import { ArticleModal } from '../../components/admin/ArticleModal';
 import { BatchImportModal } from '../../components/admin/BatchImportModal';
 import { PdfUploadModal } from '../../components/admin/PdfUploadModal';
 import { PdfVerifyModal } from '../../components/admin/PdfVerifyModal';
+import { DuplicatesModal } from '../../components/admin/DuplicatesModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const DOT_CLS = {
@@ -46,7 +47,8 @@ const AdminArticles = () => {
   const [loading, setLoading]           = useState(true);
   const [showModal, setShowModal]       = useState(false);
   const [showBatchModal, setShowBatchModal]   = useState(false);
-  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [showVerifyModal, setShowVerifyModal]       = useState(false);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
   const [editingArticle, setEditingArticle]   = useState(null);
   const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
   const [search, setSearch]             = useState('');
@@ -265,6 +267,9 @@ const AdminArticles = () => {
           <p className="text-gray-600 mt-1">Gestiona la biblioteca del laboratorio</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setShowDuplicatesModal(true)} title="Detectar artículos duplicados o muy similares">
+            🔍 Buscar duplicados
+          </Button>
           <Button variant="ghost" onClick={() => setShowVerifyModal(true)} title="Verificar y sincronizar PDFs con Dropbox">
             📎 Verificar y Sync PDFs
           </Button>
@@ -507,6 +512,7 @@ const AdminArticles = () => {
       <PdfUploadModal isOpen={Boolean(pdfUploadTarget)} onClose={() => setPdfUploadTarget(null)}
         article={pdfUploadTarget} onUpload={handlePdfUpload} />
       <PdfVerifyModal isOpen={showVerifyModal} onClose={() => setShowVerifyModal(false)} onFixed={loadArticles} />
+      <DuplicatesModal isOpen={showDuplicatesModal} onClose={() => setShowDuplicatesModal(false)} onDeleted={loadArticles} />
     </div>
   );
 };
