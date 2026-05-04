@@ -126,6 +126,16 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     sec.left_margin   = Cm(2.5)
     sec.right_margin  = Cm(2.5)
 
+    # ── Page header: PRP-### · date ──────────────────────────────────────────────────────────
+    hdr = sec.header
+    hp = hdr.paragraphs[0] if hdr.paragraphs else hdr.add_paragraph()
+    hp.clear()
+    hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_id = hp.add_run(pkg.get('id', 'PRP'))
+    r_id.font.bold = True; r_id.font.size = Pt(8); r_id.font.color.rgb = _TEAL
+    r_sep = hp.add_run('  ·  ' + send_date.strftime('%d/%m/%Y'))
+    r_sep.font.size = Pt(8); r_sep.font.color.rgb = _DIM
+
     # ── Title ────────────────────────────────────────────────────────────────────────────────
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -431,6 +441,58 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     r_ft = p_ft.add_run(
         f'Documento generado automáticamente por PrionLab Tools · '
         f'v{version} · {send_date.strftime("%d %b %Y")}'
+    )
+    r_ft.font.size = Pt(8); r_ft.font.color.rgb = _DIM
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
+    """Generate a compact Word catalogue listing all PrionPacks (id + title)."""
+    doc = Document()
+    sec = doc.sections[0]
+    sec.top_margin = Cm(2.0); sec.bottom_margin = Cm(2.2)
+    sec.left_margin = Cm(2.5); sec.right_margin = Cm(2.5)
+
+    # Header
+    hdr = sec.header
+    hp = hdr.paragraphs[0] if hdr.paragraphs else hdr.add_paragraph()
+    hp.clear(); hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_h = hp.add_run('PrionPacks · Lista general')
+    r_h.font.bold = True; r_h.font.size = Pt(8); r_h.font.color.rgb = _TEAL
+    r_hd = hp.add_run('  ·  ' + gen_date.strftime('%d/%m/%Y'))
+    r_hd.font.size = Pt(8); r_hd.font.color.rgb = _DIM
+
+    # Document title
+    t = doc.add_paragraph()
+    add_runs(t, 'Lista de PrionPacks', size=Pt(18), bold=True, color=_TEAL)
+    sub = doc.add_paragraph()
+    r_sub = sub.add_run(f'Generado el {gen_date.strftime("%d/%m/%Y %H:%M")}  ·  {len(packages)} paquetes')
+    r_sub.font.size = Pt(9); r_sub.font.color.rgb = _DIM
+    doc.add_paragraph()
+
+    _section_heading(doc, 'PAQUETES DE INFORMACIÓN')
+
+    for pkg in sorted(packages, key=lambda p: p.get('id', '')):
+        p = doc.add_paragraph()
+        r_id = p.add_run(pkg.get('id', '—') + '  ')
+        r_id.font.bold = True; r_id.font.size = Pt(10); r_id.font.color.rgb = _TEAL
+        add_runs(p, pkg.get('title', 'Sin título'), size=Pt(10), color=_DARK)
+        # Optional: one-line description in dim italic
+        desc = (pkg.get('description') or '').strip()
+        if desc:
+            short_desc = desc[:120] + ('…' if len(desc) > 120 else '')
+            p_d = doc.add_paragraph()
+            add_runs(p_d, short_desc, size=Pt(9), italic=True, color=_DIM)
+            p_d.paragraph_format.left_indent = Cm(0.8)
+        doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+    # Footer
+    p_ft = doc.add_paragraph()
+    r_ft = p_ft.add_run(
+        f'Lista generada automáticamente por PrionLab Tools · {gen_date.strftime("%d %b %Y")}'
     )
     r_ft.font.size = Pt(8); r_ft.font.color.rgb = _DIM
 
