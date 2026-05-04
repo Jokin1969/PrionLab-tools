@@ -55,4 +55,11 @@ export const adminService = {
 
   // Duplicate detection
   findDuplicates: async () => (await api.get('/admin/articles/find-duplicates')).data,
+
+  // PDF → metadata analysis
+  analyzePdf: async (file) => {
+    const fd = new FormData();
+    fd.append('pdf', file);
+    return (await api.post('/articles/analyze-pdf', fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+  },
 };

@@ -14,6 +14,7 @@ const {
   deleteArticlePDF,
   listDropboxFiles,
   clearPdfLink,
+  analyzePdf,
 } = require('../controllers/articleController');
 
 const router = Router();
@@ -21,6 +22,7 @@ const router = Router();
 // ── Static routes first (must come before /:id) ───────────────────────────────
 
 router.post('/fetch-metadata', authenticate, requireAdmin, fetchMetadata);
+router.post('/analyze-pdf', authenticate, requireAdmin, upload.single('pdf'), handleUploadError, analyzePdf);
 router.get('/dropbox/files', authenticate, requireAdmin, listDropboxFiles);
 
 // ── Collection routes ─────────────────────────────────────────────────────────

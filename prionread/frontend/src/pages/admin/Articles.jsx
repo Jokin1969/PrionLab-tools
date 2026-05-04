@@ -23,6 +23,7 @@ import { BatchImportModal } from '../../components/admin/BatchImportModal';
 import { PdfUploadModal } from '../../components/admin/PdfUploadModal';
 import { PdfVerifyModal } from '../../components/admin/PdfVerifyModal';
 import { DuplicatesModal } from '../../components/admin/DuplicatesModal';
+import { PdfAnalyzeModal } from '../../components/admin/PdfAnalyzeModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
 const DOT_CLS = {
@@ -66,6 +67,7 @@ const AdminArticles = () => {
   const [showBatchModal, setShowBatchModal]   = useState(false);
   const [showVerifyModal, setShowVerifyModal]       = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [showPdfAnalyzeModal, setShowPdfAnalyzeModal] = useState(false);
   const [editingArticle, setEditingArticle]   = useState(null);
   const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
   const [search, setSearch]             = useState('');
@@ -342,6 +344,7 @@ const AdminArticles = () => {
           <Button variant="ghost" onClick={() => setShowVerifyModal(true)} title="Verificar y sincronizar PDFs con Dropbox">
             📎 Verificar y Sync PDFs
           </Button>
+          <Button variant="secondary" onClick={() => setShowPdfAnalyzeModal(true)}>📄 Importar desde PDF</Button>
           <Button variant="secondary" onClick={() => setShowBatchModal(true)}>Importar por DOI</Button>
           <Button onClick={() => { setEditingArticle(null); setShowModal(true); }}>+ Nuevo Artículo</Button>
         </div>
@@ -608,6 +611,7 @@ const AdminArticles = () => {
         article={pdfUploadTarget} onUpload={handlePdfUpload} />
       <PdfVerifyModal isOpen={showVerifyModal} onClose={() => setShowVerifyModal(false)} onFixed={loadArticles} />
       <DuplicatesModal isOpen={showDuplicatesModal} onClose={() => setShowDuplicatesModal(false)} onDeleted={loadArticles} />
+      <PdfAnalyzeModal isOpen={showPdfAnalyzeModal} onClose={() => setShowPdfAnalyzeModal(false)} onImported={() => { loadArticles(); }} />
     </div>
   );
 };

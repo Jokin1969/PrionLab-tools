@@ -1,4 +1,5 @@
 const { Op, literal } = require('sequelize');
+const pdfParse = require('pdf-parse');
 const { fetchArticleByDOI } = require('../services/crossref');
 const { fetchArticleByPubMedID, searchPubMedByDOI } = require('../services/pubmed');
 const {
@@ -407,8 +408,48 @@ async function syncDropboxPDFs(req, res) {
   }
 }
 
+// ─── POST /api/articles/analyze-pdf ──────────────────────────────────────────
+// Extracts DOI from uploaded PDF, fetches metadata, returns preview + Dropbox filename.
+
+const DOI_REGEX = /\b10\.\d{4,}\/(?:[^\s,;>\]()]+|\([^)]*\))+/g;
+
+async function analyzePdf(req, res) {
+  if (!req.file) return res.status(400).json({ error: 'No PDF file provided' });
+  try {
+    const { text } = await pdfParse(req.file.buffer, { max: 3 }); // first 3 pages
+    const matches = text.match(DOI_REGEX) || [];
+    // Deduplicate and pick shortest (often the article DOI, not reference DOIs)
+    const candidates = [...new Set(matches.map((d) => d.toLowerCase().replace(/[.)]+$/, '')))];
+    if (!candidates.length) {
+      return res.status(422).json({ error: 'No se encontró ningún DOI en el PDF', candidates: [] });
+    }
+    const doi = candidates[0];
+
+    let metadata = null;
+    let source = 'crossref';
+    try {
+      metadata = await fetchArticleByDOI(doi);
+    } catch {
+      try {
+        const pmid = await searchPubMedByDOI(doi);
+        if (pmid) { metadata = await fetchArticleByPubMedID(pmid); source = 'pubmed'; }
+      } catch { /* both failed */ }
+    }
+
+    const dropbox_filename = metadata
+      ? dropboxPath({ doi: metadata.doi, pubmed_id: metadata.pubmed_id }).split('/').pop()
+      : `${doi.replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
+
+    return res.json({ doi, candidates, metadata, source, dropbox_filename });
+  } catch (err) {
+    console.error('[analyzePdf]', err);
+    res.status(500).json({ error: 'Error procesando el PDF' });
+  }
+}
+
 module.exports = {
   createArticle, getArticles, getArticleById, updateArticle, deleteArticle,
   generateDownloadLinkHandler, fetchMetadata, uploadArticlePDF, getDownloadLink,
   deleteArticlePDF, listDropboxFiles, verifyArticlePDFs, clearPdfLink, syncDropboxPDFs,
+  analyzePdf,
 };
