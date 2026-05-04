@@ -651,15 +651,15 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   display: grid;
   grid-template-columns: 1fr 300px;
   gap: 24px;
-  /* Slightly more space at the top so the Basic Information card's priority
-     dots / AI buttons sit visibly below the sticky toolbar shadow rather
-     than being clipped by it. */
-  padding: 36px 24px 24px;
+  /* Generous top padding so the Basic Information section header — including
+     the priority circles on its right — sits comfortably below the sticky
+     toolbar (toolbar is ~50 px tall, anchored at top:60 px under the navbar). */
+  padding: 64px 24px 24px;
   align-items: start;
 }
 /* Each card gets scroll-margin so jumping (via F-NN / R-NN buttons) leaves
    enough room above the section header for the sticky toolbar. */
-.pp-editor-form > .pp-card-section { scroll-margin-top: 110px; }
+.pp-editor-form > .pp-card-section { scroll-margin-top: 130px; }
 
 .pp-editor-form { display: flex; flex-direction: column; gap: 20px; min-height: calc(100vh - 60px); }
 
