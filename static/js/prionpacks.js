@@ -714,7 +714,10 @@ const PrionPacks = (() => {
   }
 
   /* ── References (multi-field with per-field DOI chips & AI toggles) ───── */
-  const _DOI_RE = /\b10\.\d{4,}\/[^\s,;)>\]]+/g;
+  // Matches DOIs including those with parenthesised segments like (00) or (02).
+  // Alternation: plain chars  |  complete (…) group — so a trailing ) in prose
+  // is never consumed, but 10.1016/s0896-6273(00)00046-5 is matched whole.
+  const _DOI_RE = /\b10\.\d{4,}\/(?:[^\s,;>\]()]+|\([^)]*\))+/g;
 
   function _renderDoiChipsFor(textarea, container) {
     if (!container) return;
