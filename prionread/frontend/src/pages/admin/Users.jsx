@@ -240,15 +240,28 @@ const AdminUsers = () => {
       {errMsg && <div className="rounded-lg bg-red-50   border border-red-200   px-4 py-3 text-sm text-red-700">{errMsg}</div>}
 
       <Card>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2">
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
             <Input placeholder="Buscar por nombre o email..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary">
-            <option value="">Todos los roles</option>
-            <option value="student">Estudiantes</option>
-            <option value="admin">Administradores</option>
-          </select>
+          <button
+            onClick={() => setRoleFilter((v) => v === 'admin' ? '' : 'admin')}
+            title={roleFilter === 'admin' ? 'Mostrando solo administradores — clic para ver todos' : 'Filtrar administradores'}
+            className={`shrink-0 w-10 h-10 rounded-lg border text-xl transition-colors ${
+              roleFilter === 'admin'
+                ? 'bg-amber-100 border-amber-400 text-amber-700'
+                : 'bg-white border-gray-300 text-gray-400 hover:border-amber-300 hover:text-amber-500'
+            }`}
+          >👑</button>
+          <button
+            onClick={() => setRoleFilter((v) => v === 'student' ? '' : 'student')}
+            title={roleFilter === 'student' ? 'Mostrando solo estudiantes — clic para ver todos' : 'Filtrar estudiantes'}
+            className={`shrink-0 w-10 h-10 rounded-lg border text-xl transition-colors ${
+              roleFilter === 'student'
+                ? 'bg-blue-100 border-blue-400 text-blue-700'
+                : 'bg-white border-gray-300 text-gray-400 hover:border-blue-300 hover:text-blue-500'
+            }`}
+          >🎓</button>
         </div>
       </Card>
 
