@@ -32,6 +32,9 @@
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
+/* When inside PrionPacks, offset anchor/programmatic scroll for sticky nav+toolbar */
+html:has(#prionpacks-app) { scroll-padding-top: 130px; }
+
 .site-main:has(#prionpacks-app) { padding: 0; }
 
 #prionpacks-app {
@@ -262,7 +265,12 @@
 
 /* ── Main area ───────────────────────────────────────────────────────────── */
 
-.pp-main { flex: 1; overflow-y: auto; min-width: 0; }
+.pp-main {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+  scroll-padding-top: 130px; /* nav (60) + toolbar (~52) + buffer */
+}
 
 .pp-view { display: none; }
 .pp-view.active { display: block; }
@@ -647,7 +655,7 @@
   align-items: start;
 }
 
-.pp-editor-form { display: flex; flex-direction: column; gap: 20px; }
+.pp-editor-form { display: flex; flex-direction: column; gap: 20px; min-height: calc(100vh - 60px); }
 
 .pp-editor-sidebar {
   display: flex;
@@ -666,7 +674,7 @@
   box-shadow: var(--pp-shadow);
 }
 
-.pp-card-section { padding: 20px; }
+.pp-card-section { padding: 20px; scroll-margin-top: 130px; }
 
 .pp-section-title {
   font-size: 15px;

@@ -60,6 +60,10 @@ const PrionPacks = (() => {
     _populateEditor(pkg);
     showView('editor');
     _highlightSidebarItem(id);
+    // Reset scroll so the first card is fully visible below the sticky toolbar
+    const main = document.querySelector('.pp-main');
+    if (main) main.scrollTop = 0;
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
   /* ── Dashboard ─────────────────────────────────────────────────────────── */
