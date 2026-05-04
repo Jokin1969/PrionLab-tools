@@ -353,7 +353,7 @@ const AdminUsers = () => {
       )}
 
       <UserModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingUser(null); }} onSave={editingUser ? handleUpdateUser : handleCreateUser} user={editingUser} />
-      <UserAssignmentsModal isOpen={!!assignmentsUser} onClose={() => setAssignmentsUser(null)} user={assignmentsUser} />
+      <UserAssignmentsModal isOpen={!!assignmentsUser} onClose={() => { setAssignmentsUser(null); loadUsers(); }} user={assignmentsUser} />
 
       {previewUser && (
         <WelcomePreviewModal
