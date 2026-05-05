@@ -3,7 +3,7 @@ const { User, UserArticle, sequelize } = require('../models');
 const { generatePassword } = require('../utils/generatePassword');
 const { calculateRecentActivity } = require('../utils/userStats');
 
-const SAFE_ATTRS = ['id', 'name', 'email', 'role', 'photo_url', 'year_started', 'created_at', 'updated_at'];
+const SAFE_ATTRS = ['id', 'name', 'email', 'role', 'photo_url', 'year_started', 'welcome_email_sent_at', 'created_at', 'updated_at'];
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
