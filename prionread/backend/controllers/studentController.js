@@ -269,6 +269,18 @@ async function generateEvaluation(req, res) {
     const article = ua.article;
     if (!article) return res.status(404).json({ error: 'Article data not found' });
 
+    // If an evaluation already exists, reuse its questions so the student sees
+    // the same test and can review / improve their answers.
+    const existing = await Evaluation.findOne({
+      where: { user_article_id: ua.id },
+      order: [['created_at', 'DESC']],
+    });
+
+    if (existing) {
+      const questionsForClient = existing.questions.map(({ question, options }) => ({ question, options }));
+      return res.json({ questions: questionsForClient, previous_answers: existing.answers });
+    }
+
     if (!article.abstract && !article.title) {
       return res.status(422).json({ error: 'Article has insufficient data for evaluation generation' });
     }
@@ -291,7 +303,7 @@ async function generateEvaluation(req, res) {
     await Evaluation.create({ user_article_id: ua.id, questions, answers: [] });
 
     const questionsForClient = questions.map(({ question, options }) => ({ question, options }));
-    return res.json({ questions: questionsForClient });
+    return res.json({ questions: questionsForClient, previous_answers: [] });
   } catch (err) {
     console.error('[generateEvaluation]', err);
     res.status(500).json({ error: 'Internal server error' });

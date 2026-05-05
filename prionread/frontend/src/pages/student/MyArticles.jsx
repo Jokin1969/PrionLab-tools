@@ -39,12 +39,13 @@ const FilterBtn = ({ active, count, onClick, children }) => (
 );
 
 const MyArticles = () => {
-  const [allArticles, setAllArticles] = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const [allArticles, setAllArticles]   = useState([]);
+  const [loading, setLoading]           = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
-  const [search, setSearch]           = useState('');
-  const [sortBy, setSortBy]           = useState('priority');
-  const [order, setOrder]             = useState('desc');
+  const [search, setSearch]             = useState('');
+  const [searchAbstract, setSearchAbstract] = useState(false);
+  const [sortBy, setSortBy]             = useState('priority');
+  const [order, setOrder]               = useState('desc');
 
   useEffect(() => { loadArticles(); }, [sortBy, order]);
 
@@ -82,13 +83,21 @@ const MyArticles = () => {
     return allArticles.filter((a) => {
       if (statusFilter && a.status !== statusFilter) return false;
       if (q) {
-        const title   = (a.title   || '').toLowerCase();
-        const authors = Array.isArray(a.authors) ? a.authors.join(' ').toLowerCase() : (a.authors || '').toLowerCase();
-        if (!title.includes(q) && !authors.includes(q)) return false;
+        const fields = [
+          a.title,
+          Array.isArray(a.authors) ? a.authors.join(' ') : a.authors,
+          a.journal,
+          a.year != null ? String(a.year) : '',
+          a.doi,
+          a.pubmed_id,
+          Array.isArray(a.tags) ? a.tags.join(' ') : '',
+          searchAbstract ? a.abstract : '',
+        ].map((f) => (f || '').toLowerCase());
+        if (!fields.some((f) => f.includes(q))) return false;
       }
       return true;
     });
-  }, [allArticles, statusFilter, search]);
+  }, [allArticles, statusFilter, search, searchAbstract]);
 
   const handleMarkAsRead = async (articleId) => {
     try { await studentService.markAsRead(articleId); loadArticles(); } catch { /* silent */ }
@@ -108,12 +117,26 @@ const MyArticles = () => {
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-md p-4 space-y-3">
-        {/* Search — full width */}
-        <Input
-          placeholder="Buscar por título, autor..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        {/* Search row */}
+        <div className="flex gap-2 items-center">
+          <Input
+            placeholder="Buscar por título, autores, revista, año, DOI…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1"
+          />
+          <button
+            onClick={() => setSearchAbstract((v) => !v)}
+            title={searchAbstract ? 'Buscar también en el abstract (activo)' : 'Activar búsqueda en el abstract'}
+            className={`shrink-0 px-3 py-2 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+              searchAbstract
+                ? 'bg-prion-primary text-white border-prion-primary'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-prion-primary hover:text-prion-primary'
+            }`}
+          >
+            Abstract
+          </button>
+        </div>
 
         {/* Status filter with counts */}
         <div className="flex flex-wrap gap-2">
