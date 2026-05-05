@@ -97,14 +97,16 @@ def api_list_articles():
         item_ids = [a.id for a in items]
         prionread_counts = {}
         if item_ids:
-            from sqlalchemy import func as sqlfunc
-            rows = s.query(
-                models.UserArticleLink.article_id,
-                sqlfunc.count(models.UserArticleLink.id)
-            ).filter(
-                models.UserArticleLink.article_id.in_(item_ids)
-            ).group_by(models.UserArticleLink.article_id).all()
-            prionread_counts = {r[0]: r[1] for r in rows}
+            try:
+                rows = s.query(
+                    models.UserArticleLink.article_id,
+                    func.count(models.UserArticleLink.id)
+                ).filter(
+                    models.UserArticleLink.article_id.in_(item_ids)
+                ).group_by(models.UserArticleLink.article_id).all()
+                prionread_counts = {r[0]: r[1] for r in rows}
+            except Exception as exc:
+                logger.warning("Could not query user_articles: %s", exc)
 
         role = _viewer_role()
         def _serial(a):
