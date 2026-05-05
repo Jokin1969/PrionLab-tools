@@ -164,12 +164,8 @@
 
         <!-- Language flags -->
         <div class="nb-flags">
-          <a href="{{ lang_url('es') }}" class="nb-flag {% if current_locale == 'es' %}nb-active{% endif %}" title="Español">
-            <img src="{{ url_for('static', filename='img/flags/es.png') }}" alt="ES" onerror="this.replaceWith(document.createTextNode('ES'))" />
-          </a>
-          <a href="{{ lang_url('en') }}" class="nb-flag {% if current_locale == 'en' %}nb-active{% endif %}" title="English">
-            <img src="{{ url_for('static', filename='img/flags/en.png') }}" alt="EN" onerror="this.replaceWith(document.createTextNode('EN'))" />
-          </a>
+          <a href="{{ lang_url('es') }}" class="nb-flag {% if current_locale == 'es' %}nb-active{% endif %}" title="Español">🇪🇸</a>
+          <a href="{{ lang_url('en') }}" class="nb-flag {% if current_locale == 'en' %}nb-active{% endif %}" title="English">🇬🇧</a>
         </div>
 
         <!-- User dropdown -->
