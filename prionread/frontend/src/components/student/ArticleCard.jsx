@@ -23,10 +23,9 @@ export const ArticleCard = ({ article, onMarkAsRead }) => {
   const handleDownloadPdf = async () => {
     setFetchingPdf(true);
     try {
-      const data = await studentService.getPdfLink(article.id);
-      window.open(data.link, '_blank', 'noopener,noreferrer');
+      await studentService.openPdf(article.id);
     } catch {
-      alert('No se pudo obtener el enlace al PDF.');
+      alert('No se pudo abrir el PDF.');
     } finally {
       setFetchingPdf(false);
     }

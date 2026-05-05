@@ -71,8 +71,12 @@ export const studentService = {
     return response.data;
   },
 
-  getPdfLink: async (articleId) => {
-    const response = await api.get(`/articles/${articleId}/pdf/link`);
-    return response.data;
+  openPdf: async (articleId) => {
+    const response = await api.get(`/articles/${articleId}/pdf/view`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    // Revoke after the tab has had time to load
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return win;
   },
 };

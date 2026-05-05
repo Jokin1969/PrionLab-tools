@@ -1,4 +1,5 @@
 const { Op, literal } = require('sequelize');
+const axios = require('axios');
 const pdfParse = require('pdf-parse');
 const { fetchArticleByDOI } = require('../services/crossref');
 const { fetchArticleByPubMedID, searchPubMedByDOI } = require('../services/pubmed');
@@ -299,6 +300,28 @@ async function getDownloadLink(req, res) {
   }
 }
 
+async function viewPdf(req, res) {
+  try {
+    const article = await Article.findByPk(req.params.id, { attributes: ['id', 'title', 'dropbox_path'] });
+    if (!article) return res.status(404).json({ error: 'Article not found' });
+    if (!article.dropbox_path) return res.status(404).json({ error: 'No PDF uploaded for this article' });
+    let link;
+    try { link = await dbxDownloadLink(article.dropbox_path); }
+    catch (err) { return serviceError(res, err); }
+    const upstream = await axios.get(link, { responseType: 'stream' });
+    const filename = article.dropbox_path.split('/').pop() || 'article.pdf';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    if (upstream.headers['content-length']) {
+      res.setHeader('Content-Length', upstream.headers['content-length']);
+    }
+    upstream.data.pipe(res);
+  } catch (err) {
+    console.error('[viewPdf]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 async function deleteArticlePDF(req, res) {
   try {
     const article = await Article.findByPk(req.params.id);
@@ -451,5 +474,5 @@ module.exports = {
   createArticle, getArticles, getArticleById, updateArticle, deleteArticle,
   generateDownloadLinkHandler, fetchMetadata, uploadArticlePDF, getDownloadLink,
   deleteArticlePDF, listDropboxFiles, verifyArticlePDFs, clearPdfLink, syncDropboxPDFs,
-  analyzePdf,
+  analyzePdf, viewPdf,
 };

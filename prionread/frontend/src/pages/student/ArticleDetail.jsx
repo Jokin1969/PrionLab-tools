@@ -98,10 +98,9 @@ const ArticleDetail = () => {
   const handleDownloadPdf = async () => {
     setFetchingPdf(true);
     try {
-      const data = await studentService.getPdfLink(articleId);
-      window.open(data.link, '_blank', 'noopener,noreferrer');
+      await studentService.openPdf(articleId);
     } catch {
-      alert('No se pudo obtener el enlace al PDF. Inténtalo de nuevo.');
+      alert('No se pudo abrir el PDF. Inténtalo de nuevo.');
     } finally {
       setFetchingPdf(false);
     }

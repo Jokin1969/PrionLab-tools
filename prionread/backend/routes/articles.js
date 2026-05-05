@@ -15,6 +15,7 @@ const {
   listDropboxFiles,
   clearPdfLink,
   analyzePdf,
+  viewPdf,
 } = require('../controllers/articleController');
 
 const router = Router();
@@ -76,6 +77,7 @@ router.post(
 );
 
 router.get('/:id/pdf/link', authenticate, getDownloadLink);
+router.get('/:id/pdf/view', authenticate, viewPdf);
 router.delete('/:id/pdf', authenticate, requireAdmin, deleteArticlePDF);
 router.delete('/:id/pdf-link', authenticate, requireAdmin, clearPdfLink);
 
