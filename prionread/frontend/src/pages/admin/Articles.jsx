@@ -301,6 +301,9 @@ const AdminArticles = () => {
     XLSX.writeFile(wb, `articulos_${ts}.xlsx`);
   };
 
+  // eslint-disable-next-line no-misleading-character-class
+  const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
   const articleFields = (a, withAbstract) => {
     const base = [
       a.title,
@@ -310,8 +313,8 @@ const AdminArticles = () => {
       a.doi,
       a.pubmed_id,
       (a.tags || []).join(' '),
-    ].map((s) => (s || '').toLowerCase());
-    if (withAbstract) base.push((a.abstract || '').toLowerCase());
+    ].map(norm);
+    if (withAbstract) base.push(norm(a.abstract));
     return base;
   };
 
@@ -320,13 +323,13 @@ const AdminArticles = () => {
 
     // Main search: all space-separated terms must match (AND)
     if (search.trim()) {
-      const terms = search.toLowerCase().trim().split(/\s+/);
+      const terms = norm(search.trim()).split(/\s+/);
       if (!terms.every((t) => fields.some((f) => f.includes(t)))) return false;
     }
 
     // Advanced search: tokens separated by comma / semicolon / tab / newline → OR
     if (advSearch.trim()) {
-      const tokens = advSearch.split(/[,;\n\r\t]+/).map((s) => s.trim()).filter(Boolean).map((s) => s.toLowerCase());
+      const tokens = advSearch.split(/[,;\n\r\t]+/).map((s) => norm(s.trim())).filter(Boolean);
       if (tokens.length > 0 && !tokens.some((t) => fields.some((f) => f.includes(t)))) return false;
     }
 

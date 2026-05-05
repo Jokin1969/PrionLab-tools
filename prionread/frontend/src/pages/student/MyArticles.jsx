@@ -77,9 +77,12 @@ const MyArticles = () => {
     return c;
   }, [allArticles]);
 
+  // eslint-disable-next-line no-misleading-character-class
+  const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
   // Apply status + search filters in the client
   const articles = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = norm(search.trim());
     return allArticles.filter((a) => {
       if (statusFilter && a.status !== statusFilter) return false;
       if (q) {
@@ -92,7 +95,7 @@ const MyArticles = () => {
           a.pubmed_id,
           Array.isArray(a.tags) ? a.tags.join(' ') : '',
           searchAbstract ? a.abstract : '',
-        ].map((f) => (f || '').toLowerCase());
+        ].map((f) => norm(f));
         if (!fields.some((f) => f.includes(q))) return false;
       }
       return true;
