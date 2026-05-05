@@ -1,8 +1,8 @@
 """Upload a PDF to the canonical PrionVault location in Dropbox.
 
 Layout decided with the user:
-    /PrionVault/<year>/<doi-slug>.pdf
-    /PrionVault/unknown/<md5>.pdf       (fallback when no DOI/year)
+    /PrionLab tools/PrionVault/<year>/<doi-slug>.pdf
+    /PrionLab tools/PrionVault/unknown/<md5>.pdf       (fallback when no DOI/year)
 
 Both PrionVault and PrionRead read this same path. PrionRead just
 references the row by article_id; the PDF lives once.
@@ -44,9 +44,9 @@ def build_path(*, doi: Optional[str], year: Optional[int],
                md5: Optional[str], filename_hint: Optional[str] = None) -> str:
     """Compute the canonical Dropbox path for a paper.
 
-    DOI + year known    -> /PrionVault/<year>/<doi-slug>.pdf
-    Year known, no DOI  -> /PrionVault/<year>/<md5>.pdf
-    Nothing known       -> /PrionVault/unknown/<md5_or_filename>.pdf
+    DOI + year known    -> /PrionLab tools/PrionVault/<year>/<doi-slug>.pdf
+    Year known, no DOI  -> /PrionLab tools/PrionVault/<year>/<md5>.pdf
+    Nothing known       -> /PrionLab tools/PrionVault/unknown/<md5_or_filename>.pdf
     """
     if year:
         year_str = str(year)
@@ -64,7 +64,7 @@ def build_path(*, doi: Optional[str], year: Optional[int],
     else:
         name = "unknown.pdf"
 
-    return f"/PrionVault/{year_str}/{name}"
+    return f"/PrionLab tools/PrionVault/{year_str}/{name}"
 
 
 def upload_pdf(content: bytes, target_path: str,
