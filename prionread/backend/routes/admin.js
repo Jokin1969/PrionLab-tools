@@ -45,12 +45,28 @@ router.post('/users/:userId/send-welcome', async (req, res) => {
     user.welcome_email_sent_at = new Date();
     await user.save();
 
-    await emailService.sendOnboardingEmail(user, tempPassword);
+    // DB is updated regardless of email outcome — always return 200 so the
+    // UI can reflect the new welcome_email_sent_at state.
+    let emailSent = false;
+    let emailError = null;
+    try {
+      await emailService.sendOnboardingEmail(user, tempPassword);
+      emailSent = true;
+    } catch (emailErr) {
+      emailError = emailErr.message;
+      console.error('[POST /admin/users/:userId/send-welcome] email failed:', emailErr);
+    }
 
-    res.json({ ok: true, welcome_email_sent_at: user.welcome_email_sent_at, tempPassword });
+    res.json({
+      ok: true,
+      welcome_email_sent_at: user.welcome_email_sent_at,
+      tempPassword,
+      email_sent: emailSent,
+      ...(emailError ? { email_error: emailError } : {}),
+    });
   } catch (err) {
     console.error('[POST /admin/users/:userId/send-welcome]', err);
-    res.status(500).json({ error: 'Error enviando email de bienvenida' });
+    res.status(500).json({ error: 'Error guardando usuario' });
   }
 });
 

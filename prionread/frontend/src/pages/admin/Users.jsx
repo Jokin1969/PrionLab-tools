@@ -182,7 +182,11 @@ const AdminUsers = () => {
       ));
       setPasswordBanner({ email: previewUser.email, password: data.tempPassword, welcome: true });
       setPreviewUser(null);
-      flash(`Email de bienvenida enviado a ${previewUser.email}`);
+      if (data.email_sent === false) {
+        errorFlash(`Bienvenida registrada, pero el email no se pudo enviar: ${data.email_error || 'error SMTP'}`);
+      } else {
+        flash(`Email de bienvenida enviado a ${previewUser.email}`);
+      }
     } catch (err) {
       errorFlash(err?.response?.data?.error || 'Error enviando email de bienvenida');
     } finally {

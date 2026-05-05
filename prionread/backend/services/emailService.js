@@ -22,7 +22,12 @@ if (!process.env.FRONTEND_URL) {
   console.warn('⚠️  FRONTEND_URL no está definida — los enlaces en emails no funcionarán correctamente.');
 }
 
+// FRONTEND_URL is the bare host (e.g. https://web-production-5517e.up.railway.app).
+// PRIONREAD_BASE is the sub-path where PrionRead is mounted (default: /prionread).
+// Together they form the root of all in-app links sent in emails.
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+const PRIONREAD_BASE = (process.env.PRIONREAD_BASE || '/prionread').replace(/\/$/, '');
+const APP_URL = `${FRONTEND_URL}${PRIONREAD_BASE}`;
 
 const base = (content) => `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
@@ -98,7 +103,7 @@ function buildOnboardingHtml(user, tempPassword) {
 
         <!-- CTA -->
         <div style="text-align:center;margin:32px 0 16px;">
-          <a href="${FRONTEND_URL}/login"
+          <a href="${APP_URL}/login"
              style="display:inline-block;background:#4F46E5;color:white;padding:14px 36px;
                     text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;">
             Entrar en PrionRead →
@@ -140,7 +145,7 @@ const emailService = {
         </div>
         <p>⚠️ Por favor, <strong>cambia tu contraseña</strong> después de tu primer inicio de sesión.</p>
         <p>
-          <a href="${FRONTEND_URL}/login"
+          <a href="${APP_URL}/login"
              style="display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px;
                     text-decoration: none; border-radius: 6px; margin-top: 20px;">
             Iniciar Sesión
@@ -177,7 +182,7 @@ const emailService = {
         </div>
         <p>⚠️ Por favor, cambia esta contraseña lo antes posible desde tu perfil.</p>
         <p>
-          <a href="${FRONTEND_URL}/login"
+          <a href="${APP_URL}/login"
              style="display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px;
                     text-decoration: none; border-radius: 6px; margin-top: 20px;">
             Iniciar Sesión
@@ -222,7 +227,7 @@ const emailService = {
           <ul style="list-style: none; padding: 0;">${articleItems}</ul>
         ` : ''}
         <p>
-          <a href="${FRONTEND_URL}/my-articles"
+          <a href="${APP_URL}/my-articles"
              style="display: inline-block; background-color: #10B981; color: white; padding: 12px 24px;
                     text-decoration: none; border-radius: 6px; margin-top: 20px;">
             Ver Mis Artículos
@@ -245,7 +250,7 @@ const emailService = {
           ${message.replace(/\n/g, '<br>')}
         </div>
         <p>
-          <a href="${FRONTEND_URL}/dashboard"
+          <a href="${APP_URL}/dashboard"
              style="display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px;
                     text-decoration: none; border-radius: 6px; margin-top: 20px;">
             Ir a PrionRead
