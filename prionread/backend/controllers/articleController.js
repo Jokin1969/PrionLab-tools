@@ -485,11 +485,14 @@ async function analyzePdf(req, res) {
       } catch { /* both failed */ }
     }
 
-    const dropbox_filename = metadata
-      ? dropboxPath({ doi: metadata.doi, pubmed_id: metadata.pubmed_id }).split('/').pop()
+    const dropbox_path = metadata
+      ? dropboxPath({ doi: metadata.doi, pubmed_id: metadata.pubmed_id, year: metadata.year })
+      : null;
+    const dropbox_filename = dropbox_path
+      ? dropbox_path.split('/').pop()
       : `${doi.replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
 
-    return res.json({ doi, candidates, metadata, source, dropbox_filename });
+    return res.json({ doi, candidates, metadata, source, dropbox_path, dropbox_filename });
   } catch (err) {
     console.error('[analyzePdf]', err);
     res.status(500).json({ error: 'Error procesando el PDF' });

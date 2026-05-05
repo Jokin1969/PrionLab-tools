@@ -126,7 +126,7 @@ export const PdfAnalyzeModal = ({ isOpen, onClose, onImported }) => {
               <span className="text-blue-500 mt-0.5">☁</span>
               <div>
                 <p className="text-xs font-semibold text-blue-700 mb-0.5">Se subirá a Dropbox como</p>
-                <code className="text-sm text-blue-900 break-all">/PrionLab tools/PrionRead/{result.dropbox_filename}</code>
+                <code className="text-sm text-blue-900 break-all">{result.dropbox_path ?? result.dropbox_filename}</code>
               </div>
             </div>
 
