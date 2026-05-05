@@ -3,7 +3,7 @@ const { User, UserArticle, sequelize } = require('../models');
 const { generatePassword } = require('../utils/generatePassword');
 const { calculateRecentActivity } = require('../utils/userStats');
 
-const SAFE_ATTRS = ['id', 'name', 'email', 'role', 'photo_url', 'year_started', 'welcome_email_sent_at', 'created_at', 'updated_at'];
+const SAFE_ATTRS = ['id', 'name', 'email', 'role', 'photo_url', 'year_started', 'welcome_email_sent_at', 'admin_set_password', 'created_at', 'updated_at'];
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -167,7 +167,7 @@ async function bulkCreateUsers(req, res) {
       if (existing) { errors.push({ index: i, email, reason: 'Email already registered' }); continue; }
       try {
         const tempPassword = generatePassword(10);
-        const user = await User.create({ name: name.trim(), email: email.toLowerCase(), password: tempPassword, role, year_started: year_started || null });
+        const user = await User.create({ name: name.trim(), email: email.toLowerCase(), password: tempPassword, admin_set_password: tempPassword, role, year_started: year_started || null });
         console.log(`[BULK] Created ${user.email} — temp password: ${tempPassword}`);
         created.push({ id: user.id, name: user.name, email: user.email, role: user.role, tempPassword });
       } catch { errors.push({ index: i, email, reason: 'Creation failed' }); }

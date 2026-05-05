@@ -32,6 +32,7 @@ async function register(req, res) {
       name: name.trim(),
       email: email.toLowerCase(),
       password: tempPassword,
+      admin_set_password: tempPassword,
       role,
       year_started: year_started || null,
       photo_url: photo_url || null,
@@ -124,6 +125,7 @@ async function changePassword(req, res) {
     if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
 
     user.password = newPassword;
+    user.admin_set_password = null; // cleared when user sets their own password
     await user.save();
 
     return res.json({ success: true });

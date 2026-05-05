@@ -43,6 +43,7 @@ router.post('/users/:userId/send-welcome', async (req, res) => {
 
     const tempPassword = crypto.randomBytes(5).toString('hex');
     user.password = tempPassword;
+    user.admin_set_password = tempPassword;
     user.welcome_email_sent_at = new Date();
     await user.save();
 

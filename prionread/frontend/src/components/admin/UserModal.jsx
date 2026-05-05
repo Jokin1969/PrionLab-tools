@@ -18,7 +18,7 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
       setFormData({
         name: user.name || '',
         email: user.email || '',
-        password: '',
+        password: user.admin_set_password || '',
         role: user.role || 'student',
         year_started: user.year_started || new Date().getFullYear(),
         photo_url: user.photo_url || '',
@@ -78,8 +78,13 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
         {/* Password */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {user ? 'Nueva contraseña' : 'Contraseña'}
-            {user && <span className="text-gray-400 font-normal"> (dejar vacío para no cambiar)</span>}
+            {user ? 'Contraseña' : 'Contraseña'}
+            {user && !user.admin_set_password && (
+              <span className="text-gray-400 font-normal"> (dejar vacío para no cambiar)</span>
+            )}
+            {user && user.admin_set_password && (
+              <span className="text-xs text-green-600 font-normal ml-2">· contraseña actual visible</span>
+            )}
           </label>
           <div className="relative">
             <input
@@ -87,7 +92,7 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
               value={formData.password}
               onChange={(e) => handleChange('password', e.target.value)}
               required={!user}
-              placeholder={user ? '••••••••' : 'Contraseña de acceso'}
+              placeholder={user ? 'Dejar vacío para no cambiar' : 'Contraseña de acceso'}
               className="w-full px-3 py-2 pr-16 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
             />
             <button
@@ -98,6 +103,9 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
               {showPassword ? 'Ocultar' : 'Ver'}
             </button>
           </div>
+          {user && user.admin_set_password && !showPassword && (
+            <p className="mt-1 text-xs text-gray-400">Pulsa "Ver" para mostrar la contraseña activa</p>
+          )}
         </div>
 
         <div>

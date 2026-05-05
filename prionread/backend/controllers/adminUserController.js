@@ -264,6 +264,7 @@ async function resetUserPassword(req, res) {
     // Use the provided password or generate a random one
     const tempPassword = req.body?.password || generatePassword(10);
     user.password = tempPassword;
+    user.admin_set_password = tempPassword;
     await user.save();
 
     let emailSent = false;

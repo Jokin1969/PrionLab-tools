@@ -38,6 +38,12 @@ const User = sequelize.define('User', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  // Last admin-set plain-text password (shown to admin in edit modal)
+  // Cleared when user changes their own password via self-service.
+  admin_set_password: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
 }, {
   tableName: 'users',
   timestamps: true,
