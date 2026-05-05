@@ -2738,10 +2738,40 @@ ${refsText}`;
     });
   }
 
+  /* ── Manual Dropbox backup ─────────────────────────────────────────────── */
+  async function _runManualBackup() {
+    const btn = document.getElementById('btn-backup-dropbox');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
+    try {
+      const res = await fetch('/prionpacks/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        toast('✓ Backup guardado en Dropbox correctamente', 'success');
+      } else if (data.status === 'skipped') {
+        toast('Sin cambios desde el último backup — no era necesario subir', 'info');
+      } else {
+        toast('⚠ Error en el backup: ' + (data.message || 'error desconocido'), 'error');
+      }
+    } catch (e) {
+      toast('⚠ No se pudo conectar con el servidor para el backup', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
+  }
+
   /* ── Global events ─────────────────────────────────────────────────────── */
   function _bindGlobalEvents() {
     document.getElementById('btn-new-package').addEventListener('click', () => showEditor(null));
     document.getElementById('btn-new-package-main').addEventListener('click', () => showEditor(null));
+    document.getElementById('btn-backup-dropbox')?.addEventListener('click', _runManualBackup);
     document.getElementById('btn-first-package')?.addEventListener('click', () => showEditor(null));
     document.getElementById('btn-back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('btn-save-package').addEventListener('click', savePackage);
