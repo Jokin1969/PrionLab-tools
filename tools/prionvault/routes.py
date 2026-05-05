@@ -711,15 +711,32 @@ def api_migrations_status():
 @prionvault_bp.route("/api/admin/migrations/run", methods=["POST"])
 @admin_required
 def api_migrations_run():
-    """Force-run any pending PrionVault migrations now.
-
-    The runner is also called automatically on app boot (see app.py), so
-    this endpoint is mainly a safety valve when the admin wants to apply
-    a freshly-pushed migration without redeploying.
-    """
+    """Force-run any pending PrionVault migrations now."""
     from .migrate import run_pending_migrations
     summary = run_pending_migrations()
     return jsonify(summary)
+
+
+@prionvault_bp.route("/api/admin/migrations/force-rerun", methods=["POST"])
+@admin_required
+def api_migrations_force_rerun():
+    """Delete the applied_migrations tracking rows and re-run all migrations.
+
+    Use this when a migration was recorded as applied but some statements
+    actually failed (e.g. CREATE EXTENSION needs superuser). All statements
+    use IF NOT EXISTS guards so re-running is safe.
+    """
+    from .migrate import run_pending_migrations
+    from sqlalchemy import text as _text
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(_text(
+                "DELETE FROM applied_migrations WHERE name = ANY(:names)"
+            ), {"names": ["001_prionvault_tables.sql", "003_fix_step_column.sql"]})
+    except Exception as exc:
+        return jsonify({"error": f"could not clear migration log: {exc}"}), 500
+    summary = run_pending_migrations()
+    return jsonify({"forced": True, **summary})
 
 
 @prionvault_bp.route("/api/admin/debug/db", methods=["GET"])
