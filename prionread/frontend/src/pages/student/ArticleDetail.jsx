@@ -259,12 +259,17 @@ const ArticleDetail = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Valoración (1-5 estrellas)</label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <button key={star} onClick={() => setRating(star)} className="text-3xl hover:scale-110 transition-transform">
+                  <button key={star} onClick={() => setRating(rating === star ? 0 : star)} title={rating === star ? 'Quitar valoración' : `${star} estrella${star > 1 ? 's' : ''}`} className="text-3xl hover:scale-110 transition-transform">
                     {star <= rating ? '⭐' : '☆'}
                   </button>
                 ))}
+                {rating > 0 && (
+                  <button onClick={() => setRating(0)} className="ml-1 text-xs text-gray-400 hover:text-red-500 underline underline-offset-2 transition-colors">
+                    Quitar
+                  </button>
+                )}
               </div>
             </div>
             <Input label="Comentario (opcional)" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="¿Qué te pareció el artículo?" />

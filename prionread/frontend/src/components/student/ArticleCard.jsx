@@ -4,8 +4,9 @@ import { Button } from '../common';
 import { studentService } from '../../services/student.service';
 
 export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
-  const [fetchingPdf, setFetchingPdf]   = useState(false);
-  const [showBlockMsg, setShowBlockMsg] = useState(false);
+  const [fetchingPdf, setFetchingPdf]       = useState(false);
+  const [showBlockMsg, setShowBlockMsg]     = useState(false);
+  const [confirmUnmark, setConfirmUnmark]   = useState(false);
 
   const statusColors = {
     pending:   'bg-gray-100 text-gray-600',
@@ -117,7 +118,7 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
             </button>
           )
         ) : (
-          <Button variant="ghost" size="sm" onClick={() => onUnmarkAsRead(article.id)}>
+          <Button variant="ghost" size="sm" onClick={() => setConfirmUnmark(true)}>
             ↩ Desmarcar como leído
           </Button>
         )}
@@ -131,6 +132,26 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
       </div>
 
       {/* Blocked message */}
+      {confirmUnmark && (
+        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-3 text-xs text-red-800 space-y-2">
+          <p className="font-semibold">⚠️ Ten en cuenta que al desmarcar este artículo como leído se borrarán tu resumen, autoevaluación y valoración. Esta acción no se puede deshacer.</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setConfirmUnmark(false); onUnmarkAsRead(article.id); }}
+              className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
+            >
+              Sí, desmarcar y borrar
+            </button>
+            <button
+              onClick={() => setConfirmUnmark(false)}
+              className="px-3 py-1 bg-white border border-red-200 text-red-700 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {showBlockMsg && (
         <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           El artículo se marcará como leído automáticamente al guardar la valoración.

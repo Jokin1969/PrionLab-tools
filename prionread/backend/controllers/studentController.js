@@ -151,7 +151,13 @@ async function unmarkAsRead(req, res) {
   try {
     const ua = await findUserArticle(req.user.id, req.params.articleId);
     if (!ua) return res.status(404).json({ error: 'Article not assigned to you' });
-    await ua.update({ status: 'pending', read_date: null });
+    // Delete all progress data for this assignment
+    await Promise.all([
+      ArticleRating.destroy({ where: { user_id: req.user.id, article_id: req.params.articleId } }),
+      Evaluation.destroy({ where: { user_article_id: ua.id } }),
+      ArticleSummary.destroy({ where: { user_article_id: ua.id } }),
+    ]);
+    await ua.update({ status: 'pending', read_date: null, summary_date: null, evaluation_date: null });
     return res.json({ updated: true, current_status: 'pending' });
   } catch (err) {
     console.error('[unmarkAsRead]', err);
