@@ -2738,6 +2738,85 @@ ${refsText}`;
     });
   }
 
+  /* ── Restore from backup modal ─────────────────────────────────────────── */
+  function _openRestoreModal() {
+    const modal = document.getElementById('pp-restore-modal');
+    modal.style.display = 'flex';
+    _loadRestoreList();
+  }
+
+  function _closeRestoreModal() {
+    document.getElementById('pp-restore-modal').style.display = 'none';
+  }
+
+  async function _loadRestoreList() {
+    const list = document.getElementById('pp-restore-list');
+    list.innerHTML = '<div class="pp-restore-loading"><i class="fas fa-spinner fa-spin"></i> Cargando backups…</div>';
+    try {
+      const res = await fetch('/prionpacks/api/backup/list');
+      const backups = await res.json();
+      if (!backups.length) {
+        list.innerHTML = '<div class="pp-restore-empty"><i class="fas fa-cloud" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px;"></i>No hay backups disponibles en Dropbox todavía.</div>';
+        return;
+      }
+      list.innerHTML = backups.map(b => {
+        const raw = b.timestamp || '';
+        const date = raw.length === 15
+          ? `${raw.slice(6,8)}/${raw.slice(4,6)}/${raw.slice(0,4)}  ${raw.slice(9,11)}:${raw.slice(11,13)}:${raw.slice(13,15)}`
+          : raw;
+        return `
+        <div class="pp-restore-item">
+          <div class="pp-restore-item-icon"><i class="fas fa-file-archive"></i></div>
+          <div class="pp-restore-item-body">
+            <div class="pp-restore-item-date">${date}</div>
+            <div class="pp-restore-item-meta">${b.size_kb} KB · ${_esc(b.name)}</div>
+          </div>
+          <button class="pp-restore-item-btn" data-path="${_esc(b.path)}" data-name="${_esc(date)}">
+            <i class="fas fa-undo-alt"></i> Restaurar
+          </button>
+        </div>`;
+      }).join('');
+
+      list.querySelectorAll('.pp-restore-item-btn').forEach(btn => {
+        btn.addEventListener('click', () => _confirmRestore(btn.dataset.path, btn.dataset.name));
+      });
+    } catch (e) {
+      list.innerHTML = '<div class="pp-restore-empty" style="color:#ef4444;"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar la lista de backups.</div>';
+    }
+  }
+
+  async function _confirmRestore(path, dateLabel) {
+    const ok = confirm(
+      `¿Restaurar el backup del ${dateLabel}?\n\n` +
+      `Se sustituirán TODOS los datos actuales. Se guardará una copia local antes de sobreescribir.\n\n` +
+      `Esta acción no se puede deshacer desde la interfaz.`
+    );
+    if (!ok) return;
+
+    const btn = document.querySelector(`.pp-restore-item-btn[data-path="${CSS.escape(path)}"]`);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+
+    try {
+      const res = await fetch('/prionpacks/api/backup/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        _closeRestoreModal();
+        toast('✓ Datos restaurados correctamente. Recargando…', 'success');
+        setTimeout(() => location.reload(), 1800);
+      } else {
+        toast('⚠ Error al restaurar: ' + (data.message || 'error desconocido'), 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-undo-alt"></i> Restaurar'; }
+      }
+    } catch (e) {
+      toast('⚠ No se pudo conectar con el servidor', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-undo-alt"></i> Restaurar'; }
+    }
+  }
+
   /* ── Manual Dropbox backup ─────────────────────────────────────────────── */
   async function _runManualBackup() {
     const btn = document.getElementById('btn-backup-dropbox');
@@ -2772,6 +2851,10 @@ ${refsText}`;
     document.getElementById('btn-new-package').addEventListener('click', () => showEditor(null));
     document.getElementById('btn-new-package-main').addEventListener('click', () => showEditor(null));
     document.getElementById('btn-backup-dropbox')?.addEventListener('click', _runManualBackup);
+    document.getElementById('btn-open-restore')?.addEventListener('click', _openRestoreModal);
+    document.getElementById('pp-restore-modal-close')?.addEventListener('click', _closeRestoreModal);
+    document.getElementById('pp-restore-modal-cancel')?.addEventListener('click', _closeRestoreModal);
+    document.getElementById('pp-restore-backdrop')?.addEventListener('click', _closeRestoreModal);
     document.getElementById('btn-first-package')?.addEventListener('click', () => showEditor(null));
     document.getElementById('btn-back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('btn-save-package').addEventListener('click', savePackage);
