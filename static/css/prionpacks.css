@@ -602,9 +602,46 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   font-size: 11px;
   color: var(--pp-accent);
   font-family: 'JetBrains Mono', monospace;
-  margin-bottom: 4px;
+  margin-bottom: 1px;
   font-weight: 600;
 }
+
+/* Responsible owner card backgrounds + hover */
+.pp-pkg-card[data-responsible="joaquin"] { background: #dbeafe; border-color: #bfdbfe; }
+.pp-pkg-card[data-responsible="joaquin"]:hover { background: #bfdbfe; border-color: #93c5fd; }
+.pp-pkg-card[data-responsible="hasier"]  { background: #dcfce7; border-color: #bbf7d0; }
+.pp-pkg-card[data-responsible="hasier"]:hover  { background: #bbf7d0; border-color: #86efac; }
+.pp-pkg-card[data-responsible="jorge"]   { background: #ffedd5; border-color: #fed7aa; }
+.pp-pkg-card[data-responsible="jorge"]:hover   { background: #fed7aa; border-color: #fdba74; }
+.pp-pkg-card[data-responsible="carlos"]  { background: #ede9fe; border-color: #ddd6fe; }
+.pp-pkg-card[data-responsible="carlos"]:hover  { background: #ddd6fe; border-color: #c4b5fd; }
+
+/* PRP-## badge color per responsible */
+.pp-pkg-card[data-responsible="joaquin"] .pp-pkg-card-id { color: #1d4ed8; }
+.pp-pkg-card[data-responsible="hasier"]  .pp-pkg-card-id { color: #15803d; }
+.pp-pkg-card[data-responsible="jorge"]   .pp-pkg-card-id { color: #c2410c; }
+.pp-pkg-card[data-responsible="carlos"]  .pp-pkg-card-id { color: #7c3aed; }
+
+/* Responsible initials badge */
+.pp-responsible-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(0,0,0,.12);
+  margin-left: auto;
+  align-self: flex-start;
+}
+.pp-responsible-badge[data-responsible="joaquin"] { background: #93c5fd; color: #1e40af; }
+.pp-responsible-badge[data-responsible="hasier"]  { background: #86efac; color: #15803d; }
+.pp-responsible-badge[data-responsible="jorge"]   { background: #fdba74; color: #c2410c; }
+.pp-responsible-badge[data-responsible="carlos"]  { background: #c4b5fd; color: #6d28d9; }
 
 .pp-pkg-card-title { font-size: 15px; font-weight: 600; color: var(--pp-text); margin-bottom: 4px; line-height: 1.3; }
 

@@ -237,3 +237,35 @@ def api_send_review(pkg_id):
         'sent':    sent,
         'failed':  failed,
     })
+
+
+# ── Dropbox Backup ────────────────────────────────────────────────────────────
+
+@prionpacks_bp.route('/api/backup', methods=['POST'])
+@login_required
+def api_backup():
+    from . import backup
+    force = request.get_json(force=True, silent=True) or {}
+    result = backup.run_backup(force=bool(force.get('force')))
+    return jsonify(result)
+
+
+@prionpacks_bp.route('/api/backup/list', methods=['GET'])
+@login_required
+def api_backup_list():
+    from . import backup
+    return jsonify(backup.list_backups())
+
+
+@prionpacks_bp.route('/api/backup/restore', methods=['POST'])
+@login_required
+def api_backup_restore():
+    from . import backup
+    data = request.get_json(force=True, silent=True) or {}
+    path = (data.get('path') or '').strip()
+    if not path:
+        return jsonify({'error': 'path requerido'}), 400
+    result = backup.restore_backup(path)
+    if result['status'] == 'error':
+        return jsonify(result), 500
+    return jsonify(result)

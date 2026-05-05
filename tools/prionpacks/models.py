@@ -17,6 +17,7 @@ DEMO_PACKAGES = [
         "description": "Análisis de la formación de agregados proteicos en ratones SNCA triplicados bajo condiciones de estrés oxidativo.",
         "type": "research",
         "priority": "high",
+        "responsible": "joaquin",
         "active": True,
         "coAuthors": "",
         "affiliations": "",
@@ -46,6 +47,7 @@ DEMO_PACKAGES = [
         "description": "Estudio de la propagación transneuronal de tau hiperfosforilado en modelos de tauopatía.",
         "type": "research",
         "priority": "high",
+        "responsible": "hasier",
         "active": True,
         "findings": [
             {"id": "f1", "title": "Propagación axonal de tau-p231", "titleEnglish": "Axonal propagation of tau-p231", "description": "Inyección estereotáxica en corteza entorrinal seguida de detección en hipocampo a 3 meses.", "figures": [{"id": "fig1", "description": "Mapa de propagación por IHC seriada sagital"}, {"id": "fig2", "description": "Cuantificación de neuronas positivas tau-p231 por región"}, {"id": "fig3", "description": "Microscopía electrónica de filamentos tau"}]},
@@ -63,6 +65,7 @@ DEMO_PACKAGES = [
         "description": "Revisión sistemática de marcadores en líquido cefalorraquídeo para diagnóstico precoz.",
         "type": "review",
         "priority": "medium",
+        "responsible": "jorge",
         "active": True,
         "findings": [
             {"id": "f1", "title": "Meta-análisis RT-QuIC 47 estudios", "titleEnglish": "Meta-analysis RT-QuIC 47 studies", "description": "Sensibilidad pooled 92.3% (IC95% 89-95%), especificidad 99.1% en estudios >100 pacientes.", "figures": [{"id": "fig1", "description": "Forest plot sensibilidad/especificidad RT-QuIC"}, {"id": "fig2", "description": "Curva ROC combinación biomarcadores"}]},
@@ -80,6 +83,7 @@ DEMO_PACKAGES = [
         "description": "Descripción de caso index con inicio psiquiátrico prominente y diagnóstico diferido 14 meses.",
         "type": "case",
         "priority": "low",
+        "responsible": "carlos",
         "active": True,
         "findings": [
             {"id": "f1", "title": "Evolución clínica y cronología diagnóstica", "titleEnglish": "Clinical evolution and diagnostic timeline", "description": "Mujer 28 años con depresión atípica, alucinaciones visuales 8 meses, mioclonías semana 38, EEG típico semana 52.", "figures": [{"id": "fig1", "description": "Línea temporal síntomas con correlato diagnóstico"}, {"id": "fig2", "description": "Series RM: secuencia DWI meses 6, 10 y 14"}]},

@@ -171,6 +171,16 @@ const PrionPacks = (() => {
     });
   }
 
+  function _responsibleConfig(r) {
+    const map = {
+      joaquin: { initials: 'JC', label: 'Joaquín Castilla' },
+      hasier:  { initials: 'HE', label: 'Hasier Eraña' },
+      jorge:   { initials: 'JM', label: 'Jorge Moreno' },
+      carlos:  { initials: 'CD', label: 'Carlos Díaz' },
+    };
+    return map[r] || null;
+  }
+
   function _pkgCardHTML(p) {
     const score = p.scores?.total ?? 0;
     const fillClass = score >= 90 ? 'pp-fill-complete' : score >= 50 ? 'pp-fill-progress' : 'pp-fill-initial';
@@ -179,8 +189,12 @@ const PrionPacks = (() => {
     const inactive = p.active === false;
     const inactiveCls = inactive ? ' pp-pkg-card-inactive' : '';
     const inactiveBadge = inactive ? '<span class="pp-inactive-badge">Inactivo</span>' : '';
+    const resp = _responsibleConfig(p.responsible);
+    const respBadge = resp
+      ? `<div class="pp-responsible-badge" data-responsible="${p.responsible}" title="${resp.label}">${resp.initials}</div>`
+      : '';
     return `
-    <div class="pp-pkg-card${inactiveCls}" data-id="${p.id}">
+    <div class="pp-pkg-card${inactiveCls}" data-id="${p.id}" data-responsible="${p.responsible||''}">
       <div class="pp-pkg-card-header">
         <div class="pp-pkg-priority-dot" data-id="${p.id}" data-priority="${p.priority}"
           style="background:${_priorityColor(p.priority)};" title="Click to change priority"></div>
@@ -188,6 +202,7 @@ const PrionPacks = (() => {
           <div class="pp-pkg-card-id">${p.id} ${inactiveBadge}</div>
           <div class="pp-pkg-card-title">${_supHtml(p.title)}</div>
         </div>
+        ${respBadge}
       </div>
       <div class="pp-pkg-card-progress">
         <div class="pp-progress-header"><span>Completeness</span><span>${score}%</span></div>
@@ -622,6 +637,7 @@ const PrionPacks = (() => {
     document.getElementById('field-description').value = pkg?.description || '';
 
     _setPriority(pkg?.priority || 'none');
+    document.getElementById('field-responsible').value = pkg?.responsible || '';
     _renderFindings(pkg?.findings || []);
 
     const missingInfo = (pkg?.gaps?.missingInfo || []).map(g =>
@@ -1622,7 +1638,8 @@ ${refsText}`;
       btn.type = 'button';
       btn.className = 'pp-collapse-btn pp-collapse-btn--empty';
       btn.title = 'Collapse / expand section';
-      btn.innerHTML = '<i class="fas fa-caret-down"></i>';
+      const alreadyCollapsed = card.classList.contains('pp-card-collapsed');
+      btn.innerHTML = `<i class="fas ${alreadyCollapsed ? 'fa-caret-right' : 'fa-caret-down'}"></i>`;
       btn.addEventListener('click', () => {
         const collapsed = card.classList.toggle('pp-card-collapsed');
         const i = btn.querySelector('i');
@@ -1835,6 +1852,7 @@ ${refsText}`;
       altTitles: _collectAltTitlesFromEditor(),
       description: document.getElementById('field-description').value.trim(),
       priority: _getCurrentPriority(),
+      responsible: document.getElementById('field-responsible').value || null,
       active: _getCurrentActive(),
       coAuthors: document.getElementById('field-coauthors').value.trim() || null,
       affiliations: document.getElementById('field-affiliations').value.trim() || null,
