@@ -11,6 +11,7 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
   const [pdfFile, setPdfFile]             = useState(null);
   const [saving, setSaving]               = useState(false);
   const [fetchingMetadata, setFetchingMetadata] = useState(false);
+  const [openingPdf, setOpeningPdf]       = useState(false);
   const [error, setError]                 = useState('');
 
   useEffect(() => {
@@ -107,6 +108,21 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
 
   const hasPdf = Boolean(article?.dropbox_path);
 
+  const handleOpenPdf = async () => {
+    if (!article?.id) return;
+    setOpeningPdf(true);
+    try {
+      const data = await adminService.getArticlePdfLink(article.id);
+      const resp = await fetch(data.url);
+      if (!resp.ok) throw new Error('No se pudo obtener el PDF');
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      window.open(objUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+    } catch { setError('No se pudo abrir el PDF. Inténtalo de nuevo.'); }
+    finally { setOpeningPdf(false); }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={article ? 'Editar Artículo' : 'Nuevo Artículo'} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -179,9 +195,14 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
           {hasPdf && (
             <div className="flex items-center gap-3 mb-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
               <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>
-              <a href={article.dropbox_path} target="_blank" rel="noopener noreferrer" className="text-sm text-green-700 hover:text-green-900 hover:underline truncate flex-1">
-                Ver PDF actual
-              </a>
+              <button
+                type="button"
+                onClick={handleOpenPdf}
+                disabled={openingPdf}
+                className="text-sm text-green-700 hover:text-green-900 hover:underline truncate flex-1 text-left disabled:opacity-50"
+              >
+                {openingPdf ? 'Abriendo PDF…' : 'Ver PDF actual'}
+              </button>
             </div>
           )}
 
