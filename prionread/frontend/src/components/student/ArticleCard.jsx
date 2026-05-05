@@ -103,7 +103,7 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
         </Link>
 
         {/* Mark / unmark as read */}
-        {article.status === 'pending' ? (
+        {article.status !== 'read' ? (
           canMarkAsRead ? (
             <Button variant="secondary" size="sm" onClick={() => onMarkAsRead(article.id)}>
               ✓ Marcar como leído
@@ -133,9 +133,8 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
       {/* Blocked message */}
       {showBlockMsg && (
         <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Para marcar como leído necesitas completar antes:{' '}
-          <span className="font-semibold">{missing.join(', ')}</span>.
-          Accede al detalle del artículo para completarlos.
+          El artículo se marcará como leído automáticamente al guardar la valoración.
+          Aún falta: <span className="font-semibold">{missing.join(', ')}</span>.
         </p>
       )}
     </div>

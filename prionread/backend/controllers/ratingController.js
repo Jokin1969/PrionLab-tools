@@ -1,4 +1,4 @@
-const { Article, ArticleRating, User } = require('../models');
+const { Article, ArticleRating, User, UserArticle } = require('../models');
 
 // ─── POST /api/articles/:articleId/rate ──────────────────────────────────────
 
@@ -35,6 +35,15 @@ async function createOrUpdateRating(req, res) {
         rating: r,
         comment: comment !== undefined ? comment?.trim() || null : ratingRecord.comment,
       });
+    }
+
+    // Auto-mark the article as read once the student has completed all steps:
+    // summary saved + evaluation done + this rating saved.
+    const ua = await UserArticle.findOne({
+      where: { user_id: req.user.id, article_id: article.id },
+    });
+    if (ua && ua.summary_date && ua.evaluation_date && ua.status !== 'read') {
+      await ua.update({ status: 'read', read_date: new Date() });
     }
 
     return res.status(created ? 201 : 200).json({ rating: ratingRecord });

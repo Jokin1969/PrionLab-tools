@@ -189,9 +189,9 @@ async function createOrUpdateSummary(req, res) {
       });
     }
 
-    // Advance status to 'summarized' if it hasn't reached that level yet
-    if (statusRank(ua.status) < statusRank('summarized')) {
-      await ua.update({ status: 'summarized', summary_date: new Date() });
+    // Record when the summary was first saved (don't change status — that happens on rating)
+    if (!ua.summary_date) {
+      await ua.update({ summary_date: new Date() });
     }
 
     return res.status(201).json({ summary });
@@ -331,9 +331,6 @@ async function submitEvaluation(req, res) {
     if (!evaluation) {
       return res.status(404).json({ error: 'No evaluation generated yet' });
     }
-    if (evaluation.score != null) {
-      return res.status(409).json({ error: 'Evaluation already submitted' });
-    }
 
     const questions = evaluation.questions;
     if (answers.length !== questions.length) {
@@ -346,8 +343,9 @@ async function submitEvaluation(req, res) {
 
     await evaluation.update({ answers, score, passed });
 
-    if (statusRank(ua.status) < statusRank('evaluated')) {
-      await ua.update({ status: 'evaluated', evaluation_date: new Date() });
+    // Record when evaluation was first completed (don't change status — that happens on rating)
+    if (!ua.evaluation_date) {
+      await ua.update({ evaluation_date: new Date() });
     }
 
     return res.json({ score, passed, correct: correctCount, total: questions.length });
