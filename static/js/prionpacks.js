@@ -1638,7 +1638,8 @@ ${refsText}`;
       btn.type = 'button';
       btn.className = 'pp-collapse-btn pp-collapse-btn--empty';
       btn.title = 'Collapse / expand section';
-      btn.innerHTML = '<i class="fas fa-caret-down"></i>';
+      const alreadyCollapsed = card.classList.contains('pp-card-collapsed');
+      btn.innerHTML = `<i class="fas ${alreadyCollapsed ? 'fa-caret-right' : 'fa-caret-down'}"></i>`;
       btn.addEventListener('click', () => {
         const collapsed = card.classList.toggle('pp-card-collapsed');
         const i = btn.querySelector('i');

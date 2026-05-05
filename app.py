@@ -70,6 +70,30 @@ def _start_maintenance_scheduler(app: Flask) -> None:
         app.logger.warning("Maintenance scheduler not started: %s", e)
 
 
+def _start_prionpacks_backup_scheduler(app: Flask) -> None:
+    """Periodically back up prionpacks.json to Dropbox if changes are detected."""
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from tools.prionpacks.backup import run_backup
+
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(
+            run_backup,
+            trigger='interval',
+            hours=config.PRIONPACKS_BACKUP_INTERVAL_HOURS,
+            id='prionpacks_dropbox_backup',
+            replace_existing=True,
+        )
+        scheduler.start()
+        app._prionpacks_backup_scheduler = scheduler
+        app.logger.info(
+            "PrionPacks backup scheduler started (every %dh → Dropbox)",
+            config.PRIONPACKS_BACKUP_INTERVAL_HOURS,
+        )
+    except Exception as e:
+        app.logger.warning("PrionPacks backup scheduler not started: %s", e)
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = config.SECRET_KEY
@@ -223,6 +247,12 @@ def create_app() -> Flask:
     app.register_blueprint(spanish_academic_bp)
 
     try:
+        from tools.prionpacks import prionpacks_bp
+        app.register_blueprint(prionpacks_bp)
+    except Exception as e:
+        app.logger.warning("PrionPacks blueprint failed: %s", e)
+
+    try:
         import database.help_system  # noqa: F401 — registers models with Base.metadata
         from database.config import db as _db
         if _db.is_configured():
@@ -247,6 +277,14 @@ def create_app() -> Flask:
             _start_maintenance_scheduler(app)
     except Exception as e:
         app.logger.warning("Maintenance scheduler init failed: %s", e)
+
+    # PrionPacks Dropbox backup scheduler
+    try:
+        import os as _os
+        if not app.debug or _os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            _start_prionpacks_backup_scheduler(app)
+    except Exception as e:
+        app.logger.warning("PrionPacks backup scheduler init failed: %s", e)
 
     # Background job manager for external API enrichment
     try:
