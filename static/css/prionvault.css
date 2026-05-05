@@ -8,9 +8,11 @@
   --pv-border:    #e1e4e8;
   --pv-text:      #1f2933;
   --pv-text-dim:  #6b7280;
-  --pv-accent:    #4338ca;        /* indigo-700 — biblioteca */
-  --pv-accent-bg: #eef2ff;
-  --pv-accent-strong: #312e81;
+  /* Dark green to match the navbar PrionVault link (#166534, Tailwind
+     green-800). Used everywhere as the brand accent. */
+  --pv-accent:    #166534;
+  --pv-accent-bg: #dcfce7;        /* green-100 */
+  --pv-accent-strong: #14532d;    /* green-900 */
   --pv-radius:    8px;
   --pv-radius-sm: 4px;
 }
@@ -229,8 +231,11 @@ body.pv-role-admin button.pv-admin-only { display: flex !important; }
 }
 .pv-modal-card {
   position: relative;
-  margin: 5vh auto; width: min(880px, 92vw);
-  max-height: 88vh; overflow-y: auto;
+  /* Push the card down so the header (PrionLab navbar + page title) is
+     never visually overlapped by the modal. 100 px top gives clearance
+     above the modal's title icon, matching the user's request. */
+  margin: 100px auto 5vh; width: min(880px, 92vw);
+  max-height: calc(100vh - 140px); overflow-y: auto;
   background: var(--pv-card);
   border-radius: var(--pv-radius);
   box-shadow: 0 25px 60px rgba(0,0,0,0.25);
