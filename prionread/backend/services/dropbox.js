@@ -1,6 +1,6 @@
 const dbx = require('../config/dropbox');
 
-const ROOT_FOLDER = '/PrionLab tools/PrionRead';
+const ROOT_FOLDER = '/PrionLab tools/PrionVault';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -12,9 +12,10 @@ function sanitizeForFilename(str) {
 
 /**
  * Returns the expected Dropbox path for an article's PDF.
- * Priority: DOI → PMID → UUID fallback
+ * Layout: /PrionLab tools/PrionVault/<year>/<doi|pmid|uuid>.pdf
  */
 function dropboxPath(article) {
+  const year = article.year || 'unknown';
   let name;
   if (article.doi) {
     name = sanitizeForFilename(article.doi);
@@ -23,7 +24,7 @@ function dropboxPath(article) {
   } else {
     name = sanitizeForFilename(article.id);
   }
-  return `${ROOT_FOLDER}/${name}.pdf`;
+  return `${ROOT_FOLDER}/${year}/${name}.pdf`;
 }
 
 function wrapDropboxError(err, context) {
