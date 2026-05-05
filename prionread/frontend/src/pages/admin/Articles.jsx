@@ -86,6 +86,20 @@ const AdminArticles = () => {
   const [savingInline, setSavingInline] = useState(null);
   const [fetchingAbstract, setFetchingAbstract] = useState(null);
   const [abstractPreview, setAbstractPreview]   = useState(null);
+  const [tooltipArticle, setTooltipArticle]     = useState(null);
+  const [tooltipStyle, setTooltipStyle]         = useState({});
+
+  const handleTitleMouseEnter = (e, article) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const tooltipWidth = Math.min(384, window.innerWidth * 0.8);
+    const left = Math.min(rect.left, window.innerWidth - tooltipWidth - 8);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    setTooltipStyle(spaceBelow < 220
+      ? { position: 'fixed', left, bottom: window.innerHeight - rect.top + 4, width: tooltipWidth }
+      : { position: 'fixed', left, top: rect.bottom + 4, width: tooltipWidth });
+    setTooltipArticle(article);
+  };
+  const handleTitleMouseLeave = () => setTooltipArticle(null);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -533,23 +547,11 @@ const AdminArticles = () => {
                               {article.is_milestone ? '⭐' : '☆'}
                             </button>
                             <div className="min-w-0 flex-1">
-                              <div className="relative group/tooltip">
-                                <p className="font-semibold text-gray-900 truncate cursor-pointer">{article.title}</p>
-                                <div className="pointer-events-none absolute left-0 top-full mt-1 z-50 hidden group-hover/tooltip:block w-96 max-w-[min(384px,80vw)] rounded-lg border border-gray-200 bg-white shadow-xl p-3 space-y-1.5">
-                                  <p className="font-semibold text-gray-900 text-sm leading-snug">{article.title}</p>
-                                  {authorsText(article.authors) && (
-                                    <p className="text-xs text-gray-600">{authorsText(article.authors)}</p>
-                                  )}
-                                  {(article.journal || article.year) && (
-                                    <p className="text-xs text-gray-400 italic">
-                                      {[article.journal, article.year].filter(Boolean).join(' · ')}
-                                    </p>
-                                  )}
-                                  {article.abstract && (
-                                    <p className="text-xs text-gray-700 leading-relaxed border-t border-gray-100 pt-1.5 line-clamp-6">{article.abstract}</p>
-                                  )}
-                                </div>
-                              </div>
+                              <p
+                                className="font-semibold text-gray-900 truncate cursor-pointer"
+                                onMouseEnter={(e) => handleTitleMouseEnter(e, article)}
+                                onMouseLeave={handleTitleMouseLeave}
+                              >{article.title}</p>
                               <p className="text-sm text-gray-600 truncate">{authorsText(article.authors)}</p>
                               {!article.abstract && !showAbsPreview && (
                                 <button onClick={() => handleFetchAbstract(article)} disabled={isFetchingAbs}
@@ -663,6 +665,23 @@ const AdminArticles = () => {
             </table>
           </div>
         </Card>
+      )}
+
+      {tooltipArticle && (
+        <div style={{ ...tooltipStyle, zIndex: 9999 }} className="pointer-events-none rounded-lg border border-gray-200 bg-white shadow-xl p-3 space-y-1.5">
+          <p className="font-semibold text-gray-900 text-sm leading-snug">{tooltipArticle.title}</p>
+          {authorsText(tooltipArticle.authors) && (
+            <p className="text-xs text-gray-600">{authorsText(tooltipArticle.authors)}</p>
+          )}
+          {(tooltipArticle.journal || tooltipArticle.year) && (
+            <p className="text-xs text-gray-400 italic">
+              {[tooltipArticle.journal, tooltipArticle.year].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          {tooltipArticle.abstract && (
+            <p className="text-xs text-gray-700 leading-relaxed border-t border-gray-100 pt-1.5 line-clamp-6">{tooltipArticle.abstract}</p>
+          )}
+        </div>
       )}
 
       <ArticleModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingArticle(null); }}
