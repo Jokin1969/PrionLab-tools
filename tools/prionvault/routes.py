@@ -94,17 +94,21 @@ def api_list_articles():
         items = query.offset((page - 1) * page_size).limit(page_size).all()
 
         # Which of these articles are in PrionRead, and how many users per article?
+        # Uses a separate session so a failure here never aborts the main
+        # session's transaction (avoids "current transaction is aborted").
         item_ids = [a.id for a in items]
         prionread_counts = {}
         if item_ids:
             try:
-                rows = s.query(
-                    models.UserArticleLink.article_id,
-                    func.count(models.UserArticleLink.id)
-                ).filter(
-                    models.UserArticleLink.article_id.in_(item_ids)
-                ).group_by(models.UserArticleLink.article_id).all()
-                prionread_counts = {r[0]: r[1] for r in rows}
+                from sqlalchemy.orm import Session as _SASession
+                with _SASession(db.engine) as _s2:
+                    rows = _s2.query(
+                        models.UserArticleLink.article_id,
+                        func.count(models.UserArticleLink.id)
+                    ).filter(
+                        models.UserArticleLink.article_id.in_(item_ids)
+                    ).group_by(models.UserArticleLink.article_id).all()
+                    prionread_counts = {r[0]: r[1] for r in rows}
             except Exception as exc:
                 logger.warning("Could not query user_articles: %s", exc)
 
@@ -119,8 +123,12 @@ def api_list_articles():
             "page":     page,
             "size":     page_size,
         })
+    except Exception as exc:
+        logger.exception("PrionVault api_list_articles failed")
+        s.rollback()
+        return jsonify({"error": "internal error", "detail": str(exc)}), 500
     finally:
-        s.close()
+        db.Session.remove()
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>", methods=["GET"])
@@ -155,22 +163,28 @@ def api_article_stats():
     """Aggregate counts for the sidebar facets."""
     s = _session()
     try:
-        Article = models.Article
-        total            = s.query(func.count(Article.id)).scalar() or 0
-        with_summary_ai  = s.query(func.count(Article.id))\
-                            .filter(Article.summary_ai.isnot(None)).scalar() or 0
-        with_extraction  = s.query(func.count(Article.id))\
-                            .filter(Article.extraction_status == "extracted").scalar() or 0
-        indexed          = s.query(func.count(Article.id))\
-                            .filter(Article.indexed_at.isnot(None)).scalar() or 0
+        # Use raw SQL to avoid depending on all SQLAlchemy column mappings
+        # being present in the DB (some are added by our migration).
+        row = s.execute(sql_text("""
+            SELECT
+              COUNT(*)                                       AS total,
+              COUNT(*) FILTER (WHERE summary_ai IS NOT NULL) AS with_summary_ai,
+              COUNT(*) FILTER (WHERE extraction_status = 'extracted') AS with_extraction,
+              COUNT(*) FILTER (WHERE indexed_at IS NOT NULL) AS indexed
+            FROM articles
+        """)).first()
         return jsonify({
-            "total":           total,
-            "with_summary_ai": with_summary_ai,
-            "with_extraction": with_extraction,
-            "indexed":         indexed,
+            "total":           row[0] if row else 0,
+            "with_summary_ai": row[1] if row else 0,
+            "with_extraction": row[2] if row else 0,
+            "indexed":         row[3] if row else 0,
         })
+    except Exception as exc:
+        logger.exception("PrionVault api_article_stats failed")
+        s.rollback()
+        return jsonify({"error": "internal error", "detail": str(exc)}), 500
     finally:
-        s.close()
+        db.Session.remove()
 
 
 # ── Tags (read available to all, write admin-only) ──────────────────────────

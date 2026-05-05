@@ -239,7 +239,7 @@ class IngestJob(Base):
     pdf_filename  = Column(Text)
     pdf_md5       = Column(CHAR(32))
     status        = Column(String(20), default="queued", nullable=False)
-    step          = Column(String(40))
+    step          = Column(Text)
     error         = Column(Text)
     attempts      = Column(Integer, default=0, nullable=False)
     created_by    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

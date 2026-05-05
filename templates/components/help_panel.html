@@ -218,7 +218,7 @@
 
 {# Expose page context to JS #}
 <script>
-  window.HELP_PAGE_CONTEXT = {{ page_context | tojson if page_context is defined else '""' }};
+  window.HELP_PAGE_CONTEXT = {{ (page_context if page_context is defined else '') | tojson }};
   window.HELP_USER_LOGGED_IN = true;
   window.HELP_LANG = {{ session.get('language', 'es') | tojson }};
 </script>

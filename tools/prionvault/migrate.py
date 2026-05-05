@@ -37,6 +37,7 @@ _MIGRATIONS_DIR = _REPO_ROOT / "migrations"
 
 _PRIONVAULT_MIGRATIONS = (
     "001_prionvault_tables.sql",
+    "003_fix_step_column.sql",
 )
 
 _BOOTSTRAP_SQL = """
