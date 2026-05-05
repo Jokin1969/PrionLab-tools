@@ -54,81 +54,175 @@ def api_list_articles():
 
     s = _session()
     try:
-        Article = models.Article
-        query = s.query(Article)
-
-        # Full-text search (uses the GIN index on search_vector)
-        if q:
-            ts_query = func.plainto_tsquery("simple", q)
-            query = query.filter(Article.search_vector.op("@@")(ts_query))
-
-        if year_min is not None:
-            query = query.filter(Article.year >= year_min)
-        if year_max is not None:
-            query = query.filter(Article.year <= year_max)
-        if journal:
-            query = query.filter(Article.journal.ilike(f"%{journal}%"))
-        if tag_id:
-            query = (query.join(models.ArticleTagLink,
-                                models.ArticleTagLink.article_id == Article.id)
-                          .filter(models.ArticleTagLink.tag_id == tag_id))
-        if has_summary == "ai":
-            query = query.filter(Article.summary_ai.isnot(None))
-        elif has_summary == "human":
-            query = query.filter(Article.summary_human.isnot(None))
-        elif has_summary == "none":
-            query = query.filter(Article.summary_ai.is_(None),
-                                 Article.summary_human.is_(None))
-
-        # Sorting
-        order_map = {
-            "added_desc":   Article.created_at.desc(),
-            "added_asc":    Article.created_at.asc(),
-            "year_desc":    Article.year.desc().nullslast(),
-            "year_asc":     Article.year.asc().nullsfirst(),
-            "title_asc":    Article.title.asc(),
-        }
-        query = query.order_by(order_map.get(sort, Article.created_at.desc()))
-
-        total = query.count()
-        items = query.offset((page - 1) * page_size).limit(page_size).all()
-
-        # Which of these articles are in PrionRead, and how many users per article?
-        # Uses a separate session so a failure here never aborts the main
-        # session's transaction (avoids "current transaction is aborted").
-        item_ids = [a.id for a in items]
-        prionread_counts = {}
-        if item_ids:
-            try:
-                from sqlalchemy.orm import Session as _SASession
-                with _SASession(db.engine) as _s2:
-                    rows = _s2.query(
-                        models.UserArticleLink.article_id,
-                        func.count(models.UserArticleLink.id)
-                    ).filter(
-                        models.UserArticleLink.article_id.in_(item_ids)
-                    ).group_by(models.UserArticleLink.article_id).all()
-                    prionread_counts = {r[0]: r[1] for r in rows}
-            except Exception as exc:
-                logger.warning("Could not query user_articles: %s", exc)
-
-        role = _viewer_role()
-        def _serial(a):
-            d = a.to_dict(viewer_role=role, in_prionread=(a.id in prionread_counts))
-            d["prionread_count"] = prionread_counts.get(a.id, 0)
-            return d
-        return jsonify({
-            "items":    [_serial(a) for a in items],
-            "total":    total,
-            "page":     page,
-            "size":     page_size,
-        })
+        return _list_articles_impl(s, q, year_min, year_max, journal,
+                                   tag_id, has_summary, sort, page, page_size)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
         return jsonify({"error": "internal error", "detail": str(exc)}), 500
     finally:
         db.Session.remove()
+
+
+def _list_articles_impl(s, q, year_min, year_max, journal,
+                        tag_id, has_summary, sort, page, page_size):
+    """Core of api_list_articles. Separated so the caller can cleanly catch
+    all exceptions and still run the finally/remove."""
+
+    # ── Detect which PrionVault columns exist (cached per process) ──────────
+    pv_cols = _get_pv_columns(s)
+
+    # ── Build WHERE clause using raw SQL to be resilient to missing cols ────
+    conditions = []
+    params: dict = {}
+
+    if q:
+        conditions.append(
+            "search_vector @@ plainto_tsquery('simple', :q)"
+            if "search_vector" in pv_cols
+            else "(title ILIKE :q_like OR coalesce(abstract,'') ILIKE :q_like)"
+        )
+        params["q"] = q
+        params["q_like"] = f"%{q}%"
+
+    if year_min is not None:
+        conditions.append("year >= :year_min")
+        params["year_min"] = year_min
+    if year_max is not None:
+        conditions.append("year <= :year_max")
+        params["year_max"] = year_max
+    if journal:
+        conditions.append("journal ILIKE :journal")
+        params["journal"] = f"%{journal}%"
+
+    if has_summary == "ai" and "summary_ai" in pv_cols:
+        conditions.append("summary_ai IS NOT NULL")
+    elif has_summary == "human" and "summary_human" in pv_cols:
+        conditions.append("summary_human IS NOT NULL")
+    elif has_summary == "none" and "summary_ai" in pv_cols:
+        conditions.append("summary_ai IS NULL AND summary_human IS NULL")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    sort_map = {
+        "added_desc": "created_at DESC NULLS LAST",
+        "added_asc":  "created_at ASC NULLS FIRST",
+        "year_desc":  "year DESC NULLS LAST",
+        "year_asc":   "year ASC NULLS FIRST",
+        "title_asc":  "title ASC",
+    }
+    order = sort_map.get(sort, "created_at DESC NULLS LAST")
+
+    # Build SELECT list: always include base columns; add pv cols if present.
+    base_cols = "id, title, authors, year, journal, doi, pubmed_id, abstract, tags, is_milestone, priority, dropbox_path, dropbox_link, created_at, updated_at"
+    pv_select = ", ".join(
+        c for c in
+        ["pdf_md5", "pdf_pages", "extraction_status", "indexed_at",
+         "summary_ai", "summary_human", "source"]
+        if c in pv_cols
+    )
+    select_cols = base_cols + (f", {pv_select}" if pv_select else "")
+
+    if tag_id:
+        from_clause = (
+            "FROM articles "
+            "JOIN article_tag_link ON article_tag_link.article_id = articles.id "
+            "AND article_tag_link.tag_id = :tag_id"
+        )
+        params["tag_id"] = tag_id
+    else:
+        from_clause = "FROM articles"
+
+    count_sql = sql_text(f"SELECT COUNT(*) {from_clause} {where}")
+    total = s.execute(count_sql, params).scalar() or 0
+
+    offset = (page - 1) * page_size
+    params["limit"] = page_size
+    params["offset"] = offset
+    list_sql = sql_text(
+        f"SELECT {select_cols} {from_clause} {where} ORDER BY {order} LIMIT :limit OFFSET :offset"
+    )
+    rows = s.execute(list_sql, params).all()
+    col_names = list(rows[0]._fields) if rows else []
+
+    # ── PrionRead counts (separate session) ─────────────────────────────────
+    prionread_counts = {}
+    if rows:
+        try:
+            import uuid as _uuid
+            from sqlalchemy.orm import Session as _SASession
+            item_ids = [_uuid.UUID(str(r[col_names.index("id")])) for r in rows]
+            with _SASession(db.engine) as _s2:
+                pr_rows = _s2.query(
+                    models.UserArticleLink.article_id,
+                    func.count(models.UserArticleLink.id)
+                ).filter(
+                    models.UserArticleLink.article_id.in_(item_ids)
+                ).group_by(models.UserArticleLink.article_id).all()
+                prionread_counts = {r[0]: r[1] for r in pr_rows}
+        except Exception as exc:
+            logger.warning("Could not query user_articles: %s", exc)
+
+    role = _viewer_role()
+    is_admin = (role == "admin")
+
+    def _row_to_dict(r):
+        d = dict(zip(col_names, r))
+        aid = _uuid.UUID(str(d["id"]))
+        in_pr = aid in prionread_counts
+        out = {
+            "id":            str(d["id"]),
+            "title":         d.get("title") or "",
+            "authors":       d.get("authors") or "",
+            "journal":       d.get("journal"),
+            "year":          d.get("year"),
+            "doi":           d.get("doi"),
+            "pubmed_id":     d.get("pubmed_id"),
+            "tags_legacy":   d.get("tags") or [],
+            "tags":          [],   # tag objects loaded separately if needed
+            "priority":      d.get("priority"),
+            "is_milestone":  d.get("is_milestone"),
+            "pdf_pages":     d.get("pdf_pages"),
+            "extraction_status": d.get("extraction_status") or "pending",
+            "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
+            "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
+            "has_summary_ai":    bool(d.get("summary_ai")),
+            "has_summary_human": False,
+            "in_prionread":  in_pr,
+            "prionread_count": prionread_counts.get(aid, 0),
+        }
+        if is_admin:
+            out["pdf_md5"]          = d.get("pdf_md5")
+            out["source"]           = d.get("source")
+            out["pdf_dropbox_path"] = d.get("dropbox_path")
+        return out
+
+    import uuid as _uuid
+    return jsonify({
+        "items": [_row_to_dict(r) for r in rows],
+        "total": total,
+        "page":  page,
+        "size":  page_size,
+    })
+
+
+_pv_columns_cache: set | None = None
+
+def _get_pv_columns(s) -> set:
+    """Return the set of column names that exist in `articles`. Cached."""
+    global _pv_columns_cache
+    if _pv_columns_cache is not None:
+        return _pv_columns_cache
+    try:
+        rows = s.execute(sql_text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'articles'"
+        )).all()
+        _pv_columns_cache = {r[0] for r in rows}
+    except Exception as exc:
+        logger.warning("Could not introspect articles columns: %s", exc)
+        _pv_columns_cache = set()
+    return _pv_columns_cache
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>", methods=["GET"])
@@ -163,22 +257,34 @@ def api_article_stats():
     """Aggregate counts for the sidebar facets."""
     s = _session()
     try:
-        # Use raw SQL to avoid depending on all SQLAlchemy column mappings
-        # being present in the DB (some are added by our migration).
-        row = s.execute(sql_text("""
-            SELECT
-              COUNT(*)                                       AS total,
-              COUNT(*) FILTER (WHERE summary_ai IS NOT NULL) AS with_summary_ai,
-              COUNT(*) FILTER (WHERE extraction_status = 'extracted') AS with_extraction,
-              COUNT(*) FILTER (WHERE indexed_at IS NOT NULL) AS indexed
-            FROM articles
-        """)).first()
-        return jsonify({
-            "total":           row[0] if row else 0,
-            "with_summary_ai": row[1] if row else 0,
-            "with_extraction": row[2] if row else 0,
-            "indexed":         row[3] if row else 0,
-        })
+        # Try the full query first (requires migration 001 columns).
+        try:
+            row = s.execute(sql_text("""
+                SELECT
+                  COUNT(*)                                       AS total,
+                  COUNT(*) FILTER (WHERE summary_ai IS NOT NULL) AS with_summary_ai,
+                  COUNT(*) FILTER (WHERE extraction_status = 'extracted') AS with_extraction,
+                  COUNT(*) FILTER (WHERE indexed_at IS NOT NULL) AS indexed
+                FROM articles
+            """)).first()
+            return jsonify({
+                "total":           row[0] if row else 0,
+                "with_summary_ai": row[1] if row else 0,
+                "with_extraction": row[2] if row else 0,
+                "indexed":         row[3] if row else 0,
+            })
+        except Exception as col_exc:
+            # Migration 001 columns not yet present — fall back to simple count.
+            logger.warning("PrionVault stats full query failed (%s), falling back", col_exc)
+            s.rollback()
+            row = s.execute(sql_text("SELECT COUNT(*) FROM articles")).first()
+            return jsonify({
+                "total": row[0] if row else 0,
+                "with_summary_ai": 0,
+                "with_extraction": 0,
+                "indexed": 0,
+                "_migration_pending": True,
+            })
     except Exception as exc:
         logger.exception("PrionVault api_article_stats failed")
         s.rollback()
@@ -589,3 +695,33 @@ def api_migrate_prionread_pdfs():
     except Exception as exc:
         logger.exception("PrionRead PDF relocation failed")
         return jsonify({"error": str(exc)}), 500
+
+
+@prionvault_bp.route("/api/admin/debug/schema", methods=["GET"])
+@admin_required
+def api_admin_debug_schema():
+    """Return which columns actually exist in `articles` and whether the
+    PrionVault migration columns are present. Helps diagnose 500 errors."""
+    s = _session()
+    try:
+        rows = s.execute(sql_text("""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_name = 'articles'
+            ORDER BY ordinal_position
+        """)).all()
+        cols = {r[0]: {"type": r[1], "nullable": r[2]} for r in rows}
+        pv_cols = ["pdf_md5", "pdf_size_bytes", "pdf_pages", "extracted_text",
+                   "extraction_status", "extraction_error", "summary_ai",
+                   "summary_human", "indexed_at", "index_version", "source",
+                   "source_metadata", "added_by_id", "search_vector"]
+        return jsonify({
+            "all_columns": list(cols.keys()),
+            "pv_migration_columns": {c: c in cols for c in pv_cols},
+            "migration_complete": all(c in cols for c in pv_cols),
+        })
+    except Exception as exc:
+        s.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        db.Session.remove()
