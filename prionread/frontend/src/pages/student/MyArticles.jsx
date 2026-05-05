@@ -1,7 +1,35 @@
 import { useState, useEffect } from 'react';
 import { studentService } from '../../services/student.service';
 import { ArticleCard } from '../../components/student/ArticleCard';
-import { Loader, Button, Input } from '../../components/common';
+import { Loader, Input } from '../../components/common';
+
+const STATUS_BTNS = [
+  { value: '',           label: 'Todos' },
+  { value: 'pending',    label: '⏳ Pendientes' },
+  { value: 'read',       label: '📖 Leídos' },
+  { value: 'summarized', label: '📝 Resumidos' },
+  { value: 'evaluated',  label: '✅ Evaluados' },
+];
+
+const SORT_BTNS = [
+  { value: 'priority',  label: '🎯 Prioridad' },
+  { value: 'year',      label: '📅 Año' },
+  { value: 'title',     label: '🔤 Título' },
+  { value: 'read_date', label: '✓ Leídos' },
+];
+
+const FilterBtn = ({ active, onClick, children }) => (
+  <button
+    onClick={onClick}
+    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+      active
+        ? 'bg-prion-primary text-white border-prion-primary'
+        : 'bg-white text-gray-600 border-gray-200 hover:border-prion-primary hover:text-prion-primary'
+    }`}
+  >
+    {children}
+  </button>
+);
 
 const MyArticles = () => {
   const [articles, setArticles] = useState([]);
@@ -56,63 +84,52 @@ const MyArticles = () => {
     }
   };
 
-  const handleFilterChange = (key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  };
+  const set = (key, value) => setFilters((prev) => ({ ...prev, [key]: value }));
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">📚 Mis Artículos</h1>
-        <p className="text-gray-600 mt-1">
-          Gestiona tu biblioteca personal de lectura científica
-        </p>
+        <p className="text-gray-600 mt-1">Gestiona tu biblioteca personal de lectura científica</p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Search */}
-          <div className="md:col-span-2">
-            <Input
-              placeholder="Buscar por título, autor..."
-              value={filters.search}
-              onChange={(e) => handleFilterChange('search', e.target.value)}
-            />
-          </div>
+      <div className="bg-white rounded-lg shadow-md p-4 space-y-3">
+        {/* Search — full width */}
+        <Input
+          placeholder="Buscar por título, autor..."
+          value={filters.search}
+          onChange={(e) => set('search', e.target.value)}
+        />
 
-          {/* Status filter */}
-          <select
-            value={filters.status}
-            onChange={(e) => handleFilterChange('status', e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
-          >
-            <option value="">Todos los estados</option>
-            <option value="pending">Pendientes</option>
-            <option value="read">Leídos</option>
-            <option value="summarized">Resumidos</option>
-            <option value="evaluated">Evaluados</option>
-          </select>
-
-          {/* Sort */}
-          <select
-            value={filters.sort_by}
-            onChange={(e) => handleFilterChange('sort_by', e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-prion-primary"
-          >
-            <option value="priority">Prioridad</option>
-            <option value="year">Año</option>
-            <option value="title">Título</option>
-            <option value="read_date">Fecha lectura</option>
-          </select>
+        {/* Status filter */}
+        <div className="flex flex-wrap gap-2">
+          {STATUS_BTNS.map(({ value, label }) => (
+            <FilterBtn key={value} active={filters.status === value} onClick={() => set('status', value)}>
+              {label}
+            </FilterBtn>
+          ))}
         </div>
 
-        {/* Stats row */}
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Mostrando <span className="font-semibold">{articles.length}</span> artículos
-          </p>
+        {/* Sort */}
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-100 items-center">
+          <span className="text-xs text-gray-400 mr-1">Ordenar:</span>
+          {SORT_BTNS.map(({ value, label }) => (
+            <FilterBtn key={value} active={filters.sort_by === value} onClick={() => set('sort_by', value)}>
+              {label}
+            </FilterBtn>
+          ))}
+          <button
+            onClick={() => set('order', filters.order === 'asc' ? 'desc' : 'asc')}
+            className="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-500 hover:border-prion-primary hover:text-prion-primary transition-colors"
+            title="Invertir orden"
+          >
+            {filters.order === 'asc' ? '↑' : '↓'}
+          </button>
+          <span className="ml-auto text-xs text-gray-500">
+            <span className="font-semibold">{articles.length}</span> artículos
+          </span>
         </div>
       </div>
 
