@@ -8,10 +8,11 @@ const studentLinks = [
 ];
 
 const adminLinks = [
-  { to: '/admin/dashboard', icon: '📈', label: 'Dashboard' },
-  { to: '/admin/users',     icon: '👥', label: 'Usuarios' },
-  { to: '/admin/articles',  icon: '📄', label: 'Artículos' },
-  { to: '/admin/reports',   icon: '📊', label: 'Reportes' },
+  { to: '/admin/dashboard',     icon: '📈', label: 'Dashboard' },
+  { to: '/admin/users',         icon: '👥', label: 'Usuarios' },
+  { to: '/admin/articles',      icon: '📄', label: 'Artículos' },
+  { to: '/admin/reports',       icon: '📊', label: 'Reportes' },
+  { to: '/admin/notifications', icon: '🔔', label: 'Notificaciones' },
 ];
 
 const PRIONVAULT_URL = 'https://web-production-5517e.up.railway.app/prionvault/';

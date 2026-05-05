@@ -6,6 +6,8 @@ const UserArticle = require('./UserArticle');
 const ArticleSummary = require('./ArticleSummary');
 const Evaluation = require('./Evaluation');
 const ArticleRating = require('./ArticleRating');
+const NotificationRule = require('./NotificationRule');
+const NotificationLog = require('./NotificationLog');
 
 // User <-> Article through UserArticle
 User.hasMany(UserArticle, { foreignKey: 'user_id', as: 'userArticles' });
@@ -27,6 +29,14 @@ Article.hasMany(ArticleRating, { foreignKey: 'article_id', as: 'ratings' });
 ArticleRating.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 ArticleRating.belongsTo(Article, { foreignKey: 'article_id', as: 'article' });
 
+// NotificationRule <-> NotificationLog
+NotificationRule.hasMany(NotificationLog, { foreignKey: 'rule_id', as: 'logs' });
+NotificationLog.belongsTo(NotificationRule, { foreignKey: 'rule_id', as: 'rule' });
+NotificationLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+// NotificationRule -> target user (optional)
+NotificationRule.belongsTo(User, { foreignKey: 'target_user_id', as: 'targetUser' });
+
 module.exports = {
   sequelize,
   User,
@@ -35,4 +45,6 @@ module.exports = {
   ArticleSummary,
   Evaluation,
   ArticleRating,
+  NotificationRule,
+  NotificationLog,
 };

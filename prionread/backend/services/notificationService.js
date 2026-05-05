@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const emailService = require('./emailService');
 const recommendationEngine = require('../utils/recommendationEngine');
-const { User, UserArticle, Article } = require('../models');
+const { User, UserArticle, Article, NotificationRule, NotificationLog } = require('../models');
 
 const INACTIVITY_DAYS = 14;
 
@@ -112,6 +112,65 @@ async function sendInactivityReminders() {
   return results;
 }
 
+// ─── Threshold alert check ────────────────────────────────────────────────────
+
+async function checkThresholdRules() {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  const rules = await NotificationRule.findAll({ where: { is_active: true } });
+  if (!rules.length) return { checked: 0, sent: 0 };
+
+  const admins = await User.findAll({ where: { role: 'admin' } });
+  if (!admins.length) {
+    console.warn('[notificationService] no admin users found for threshold alerts');
+    return { checked: rules.length, sent: 0 };
+  }
+
+  let sent = 0;
+  let errors = 0;
+
+  for (const rule of rules) {
+    const whereUser = { role: 'student' };
+    if (rule.target_user_id) whereUser.id = rule.target_user_id;
+    const students = await User.findAll({ where: whereUser });
+
+    for (const student of students) {
+      try {
+        const rows = await UserArticle.findAll({ where: { user_id: student.id }, attributes: ['status'] });
+        const total = rows.length;
+        if (total === 0) continue;
+
+        const pending = rows.filter((r) => r.status === 'pending').length;
+
+        const conditionMet =
+          rule.type === 'articles_remaining'
+            ? pending <= rule.threshold
+            : (pending / total) * 100 <= rule.threshold;
+
+        if (!conditionMet) continue;
+
+        const alreadySent = await NotificationLog.findOne({
+          where: { rule_id: rule.id, user_id: student.id, sent_date: today },
+        });
+        if (alreadySent) continue;
+
+        for (const admin of admins) {
+          await emailService.sendThresholdAlertEmail(admin, student, rule, { total, pending });
+        }
+
+        await NotificationLog.create({ rule_id: rule.id, user_id: student.id, sent_date: today });
+        sent++;
+      } catch (err) {
+        console.error(`[notificationService] threshold rule ${rule.id} student ${student.id}:`, err.message);
+        errors++;
+      }
+    }
+  }
+
+  console.log(`[notificationService] threshold alerts: sent=${sent} errors=${errors}`);
+  return { checked: rules.length, sent, errors };
+}
+
 // ─── Scheduler ────────────────────────────────────────────────────────────────
 
 function initializeScheduledTasks() {
@@ -134,6 +193,14 @@ function initializeScheduledTasks() {
     );
   }, { timezone: 'Europe/Madrid' });
 
+  // Daily threshold alerts — every day at 08:00 Europe/Madrid
+  cron.schedule('0 8 * * *', () => {
+    console.log('[notificationService] running threshold alerts');
+    checkThresholdRules().catch((err) =>
+      console.error('[notificationService] threshold cron error:', err)
+    );
+  }, { timezone: 'Europe/Madrid' });
+
   console.log('[notificationService] scheduled tasks initialized');
 }
 
@@ -141,5 +208,6 @@ module.exports = {
   sendWeeklyReminder,
   sendWeeklyRemindersToAll,
   sendInactivityReminders,
+  checkThresholdRules,
   initializeScheduledTasks,
 };

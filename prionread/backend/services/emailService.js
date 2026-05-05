@@ -268,6 +268,102 @@ const emailService = {
     });
     console.log(`✉️  Email personalizado enviado a ${user.email}`);
   },
+
+  // ─── Threshold alert to admin ──────────────────────────────────────────────
+  async sendThresholdAlertEmail(admin, student, rule, stats) {
+    const { total, pending } = stats;
+    const readCount = total - pending;
+    const completedPct = total > 0 ? Math.round((readCount / total) * 100) : 0;
+    const pendingPct   = total > 0 ? Math.round((pending / total) * 100) : 0;
+
+    const conditionDesc = rule.type === 'articles_remaining'
+      ? `le quedan solo <strong>${pending}</strong> artículo${pending !== 1 ? 's' : ''} pendientes (umbral configurado: ≤&nbsp;${rule.threshold})`
+      : `le queda por leer el <strong>${pendingPct}%</strong> de sus artículos asignados (umbral configurado: ≤&nbsp;${rule.threshold}%)`;
+
+    const subject = rule.type === 'articles_remaining'
+      ? `🔔 PrionRead — ${student.name} le quedan solo ${pending} artículo${pending !== 1 ? 's' : ''} pendientes`
+      : `🔔 PrionRead — ${student.name} ha completado el ${completedPct}% de su lista de lectura`;
+
+    const html = base(`
+      <div style="background:#4F46E5;padding:28px 24px;text-align:center;border-radius:12px 12px 0 0;">
+        <p style="color:rgba(255,255,255,0.8);font-size:12px;margin:0 0 6px;letter-spacing:2px;text-transform:uppercase;">Alerta de Seguimiento</p>
+        <h1 style="color:#fff;margin:0;font-size:22px;">🔔 Progreso del Estudiante</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:14px;">PrionRead · Panel de Administración</p>
+      </div>
+      <div style="background:#fff;padding:28px 24px;border:1px solid #e5e7eb;border-top:none;">
+
+        <p style="font-size:15px;margin-top:0;">Hola <strong>${admin.name}</strong>,</p>
+        <p style="color:#374151;line-height:1.7;font-size:14px;">
+          El estudiante <strong>${student.name}</strong>
+          (<a href="mailto:${student.email}" style="color:#4F46E5;">${student.email}</a>)
+          ${conditionDesc}.
+        </p>
+
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:20px 0;">
+          <p style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;margin:0 0 14px;letter-spacing:1px;">
+            Estadísticas actuales
+          </p>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:8px 0;font-size:14px;color:#374151;border-bottom:1px solid #f1f5f9;">
+                📚 Artículos asignados
+              </td>
+              <td style="padding:8px 0;font-size:15px;font-weight:700;color:#111827;text-align:right;border-bottom:1px solid #f1f5f9;">
+                ${total}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-size:14px;color:#374151;border-bottom:1px solid #f1f5f9;">
+                ✅ Artículos leídos
+              </td>
+              <td style="padding:8px 0;font-size:15px;font-weight:700;color:#059669;text-align:right;border-bottom:1px solid #f1f5f9;">
+                ${readCount}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-size:14px;color:#374151;">
+                ⏳ Artículos pendientes
+              </td>
+              <td style="padding:8px 0;font-size:15px;font-weight:700;color:#d97706;text-align:right;">
+                ${pending}
+              </td>
+            </tr>
+          </table>
+
+          <div style="margin-top:18px;">
+            <div style="background:#e0e7ff;border-radius:100px;height:10px;overflow:hidden;">
+              <div style="background:#4F46E5;height:10px;width:${completedPct}%;border-radius:100px;transition:width 0.3s;"></div>
+            </div>
+            <p style="text-align:right;font-size:12px;color:#6b7280;margin:5px 0 0;">
+              ${completedPct}% completado · ${pendingPct}% pendiente
+            </p>
+          </div>
+        </div>
+
+        ${rule.label ? `<p style="color:#6b7280;font-size:13px;font-style:italic;margin-bottom:16px;">📌 Regla activa: <em>${rule.label}</em></p>` : ''}
+
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 18px;font-size:13px;color:#92400e;line-height:1.6;">
+          Esta notificación se enviará <strong>una vez al día</strong> mientras se mantenga la condición.<br>
+          Puedes gestionar las reglas de notificación desde el panel de administración de PrionRead.
+        </div>
+
+        <div style="text-align:center;margin-top:24px;">
+          <a href="${APP_URL}/admin/dashboard"
+             style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">
+            Ir al Panel de Administración
+          </a>
+        </div>
+      </div>
+    `);
+
+    await transporter.sendMail({
+      from: `"PrionRead" <${process.env.SMTP_USER}>`,
+      to: admin.email,
+      subject,
+      html,
+    });
+    console.log(`✉️  Alerta de umbral enviada a ${admin.email} sobre ${student.name}`);
+  },
 };
 
 module.exports = emailService;

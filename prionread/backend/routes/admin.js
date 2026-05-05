@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { Op } = require('sequelize');
 const crypto = require('crypto');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getGlobalDashboard } = require('../controllers/adminDashboardController');
@@ -7,7 +8,7 @@ const { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assign
 const { verifyArticlePDFs, syncDropboxPDFs } = require('../controllers/articleController');
 const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
-const { User } = require('../models');
+const { User, NotificationRule, NotificationLog } = require('../models');
 
 const router = Router();
 router.use(authenticate, requireAdmin);
@@ -83,6 +84,109 @@ router.get('/articles/find-duplicates', findDuplicateArticles);
 
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);
+
+// ─── Notification Rules CRUD ──────────────────────────────────────────────────
+
+router.get('/notification-rules', async (_req, res) => {
+  try {
+    const rules = await NotificationRule.findAll({
+      include: [
+        { model: User, as: 'targetUser', attributes: ['id', 'name', 'email'], required: false },
+      ],
+      order: [['created_at', 'DESC']],
+    });
+
+    // Enrich each rule with last_sent and trigger_count (last 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const enriched = await Promise.all(rules.map(async (rule) => {
+      const [lastLog, triggerCount] = await Promise.all([
+        NotificationLog.findOne({
+          where: { rule_id: rule.id },
+          order: [['sent_date', 'DESC']],
+          attributes: ['sent_date', 'user_id'],
+          include: [{ model: User, as: 'user', attributes: ['name'] }],
+        }),
+        NotificationLog.count({ where: { rule_id: rule.id, sent_date: { [Op.gte]: thirtyDaysAgo } } }),
+      ]);
+      return {
+        ...rule.toJSON(),
+        last_sent: lastLog?.sent_date ?? null,
+        last_sent_student: lastLog?.user?.name ?? null,
+        trigger_count_30d: triggerCount,
+      };
+    }));
+
+    res.json({ rules: enriched });
+  } catch (err) {
+    console.error('[GET /admin/notification-rules]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/notification-rules', async (req, res) => {
+  try {
+    const { type, threshold, target_user_id, label } = req.body;
+    if (!['articles_remaining', 'articles_percentage'].includes(type)) {
+      return res.status(400).json({ error: 'type must be articles_remaining or articles_percentage' });
+    }
+    const n = parseInt(threshold, 10);
+    if (isNaN(n) || n < 1) return res.status(400).json({ error: 'threshold must be a positive integer' });
+    if (type === 'articles_percentage' && n > 100) {
+      return res.status(400).json({ error: 'percentage threshold cannot exceed 100' });
+    }
+    const rule = await NotificationRule.create({
+      type,
+      threshold: n,
+      target_user_id: target_user_id || null,
+      label: label?.trim() || null,
+    });
+    res.status(201).json({ rule });
+  } catch (err) {
+    console.error('[POST /admin/notification-rules]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/notification-rules/:id', async (req, res) => {
+  try {
+    const rule = await NotificationRule.findByPk(req.params.id);
+    if (!rule) return res.status(404).json({ error: 'Rule not found' });
+    const allowed = ['is_active', 'threshold', 'label'];
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) rule[key] = req.body[key];
+    }
+    await rule.save();
+    res.json({ rule });
+  } catch (err) {
+    console.error('[PATCH /admin/notification-rules/:id]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/notification-rules/:id', async (req, res) => {
+  try {
+    const rule = await NotificationRule.findByPk(req.params.id);
+    if (!rule) return res.status(404).json({ error: 'Rule not found' });
+    await NotificationLog.destroy({ where: { rule_id: rule.id } });
+    await rule.destroy();
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error('[DELETE /admin/notification-rules/:id]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/notification-rules/run', async (_req, res) => {
+  try {
+    const result = await notificationService.checkThresholdRules();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[POST /admin/notification-rules/run]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Legacy scheduled notifications ─────────────────────────────────────────
 
 // Notifications
 router.post('/notifications/weekly-reminders', async (_req, res) => {

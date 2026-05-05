@@ -12,6 +12,7 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminUsers from './pages/admin/Users';
 import AdminArticles from './pages/admin/Articles';
 import AdminReports from './pages/admin/Reports';
+import AdminNotifications from './pages/admin/Notifications';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -70,6 +71,11 @@ function App() {
       <Route path="/admin/reports" element={
         <ProtectedRoute requireAdmin>
           <MainLayout><AdminReports /></MainLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/notifications" element={
+        <ProtectedRoute requireAdmin>
+          <MainLayout><AdminNotifications /></MainLayout>
         </ProtectedRoute>
       } />
 
