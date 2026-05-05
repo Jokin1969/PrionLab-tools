@@ -93,19 +93,26 @@ def api_list_articles():
         total = query.count()
         items = query.offset((page - 1) * page_size).limit(page_size).all()
 
-        # Which of these articles are in PrionRead (have a user_articles row)?
+        # Which of these articles are in PrionRead, and how many users per article?
         item_ids = [a.id for a in items]
-        prionread_ids = set()
+        prionread_counts = {}
         if item_ids:
-            rows = s.query(models.UserArticleLink.article_id).filter(
+            from sqlalchemy import func as sqlfunc
+            rows = s.query(
+                models.UserArticleLink.article_id,
+                sqlfunc.count(models.UserArticleLink.id)
+            ).filter(
                 models.UserArticleLink.article_id.in_(item_ids)
-            ).distinct().all()
-            prionread_ids = {r[0] for r in rows}
+            ).group_by(models.UserArticleLink.article_id).all()
+            prionread_counts = {r[0]: r[1] for r in rows}
 
         role = _viewer_role()
+        def _serial(a):
+            d = a.to_dict(viewer_role=role, in_prionread=(a.id in prionread_counts))
+            d["prionread_count"] = prionread_counts.get(a.id, 0)
+            return d
         return jsonify({
-            "items":    [a.to_dict(viewer_role=role, in_prionread=(a.id in prionread_ids))
-                         for a in items],
+            "items":    [_serial(a) for a in items],
             "total":    total,
             "page":     page,
             "size":     page_size,
@@ -320,21 +327,16 @@ def api_send_to_prionread(aid):
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/send-to-prionread", methods=["DELETE"])
-@login_required
+@admin_required
 def api_remove_from_prionread(aid):
-    """Remove the user_articles row to unlink from PrionRead."""
-    user_id = _viewer_id()
-    if not user_id:
-        return jsonify({"error": "not authenticated"}), 401
+    """Remove ALL user_articles rows for this article (admin only)."""
     s = _session()
     try:
-        link = s.query(models.UserArticleLink).filter_by(
-            user_id=user_id, article_id=aid
-        ).first()
-        if link:
-            s.delete(link)
-            s.commit()
-        return jsonify({"ok": True, "in_prionread": False})
+        count = s.query(models.UserArticleLink).filter_by(article_id=aid).count()
+        s.query(models.UserArticleLink).filter_by(article_id=aid).delete()
+        s.commit()
+        logger.info("Removed article %s from PrionRead (%d user rows deleted)", aid, count)
+        return jsonify({"ok": True, "in_prionread": False, "removed_count": count})
     finally:
         s.close()
 

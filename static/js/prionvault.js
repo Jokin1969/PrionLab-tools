@@ -166,6 +166,7 @@
         <button class="pv-prionread-btn ${a.in_prionread ? 'active' : ''}"
                 data-aid="${esc(a.id)}"
                 data-in="${a.in_prionread ? '1' : '0'}"
+                data-count="${a.prionread_count || 0}"
                 title="${a.in_prionread ? 'En PrionRead (clic para quitar)' : 'Enviar a PrionRead'}">📚</button>
       </div>
       ${a.tags && a.tags.length ? `<div class="pv-card-tags">${tags}</div>` : ''}
@@ -180,7 +181,11 @@
 
   async function togglePrionRead(btn, aid) {
     const inPrionRead = btn.dataset.in === '1';
-    if (!inPrionRead) {
+    if (inPrionRead) {
+      const count = parseInt(btn.dataset.count || '0', 10);
+      const who = count > 1 ? `${count} usuarios` : count === 1 ? '1 usuario' : 'ningún usuario';
+      if (!confirm(`Este artículo está asignado a ${who} en PrionRead.\n¿Quitar para todos?`)) return;
+    } else {
       if (!confirm('¿Deseas enviar este artículo a PrionRead?')) return;
     }
     btn.disabled = true;
