@@ -168,7 +168,11 @@ const MyArticles = () => {
             {order === 'asc' ? '↑' : '↓'}
           </button>
           <span className="ml-auto text-xs text-gray-500">
-            <span className="font-semibold">{articles.length}</span> artículos
+            <span className="font-semibold">
+              {articles.length < allArticles.length
+                ? `${articles.length}/${allArticles.length}`
+                : articles.length}
+            </span>{' '}artículos
           </span>
         </div>
       </div>
