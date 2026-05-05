@@ -27,12 +27,21 @@ _DOI_LABEL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# PMID patterns: "PMID: 12345678", "PubMed ID: 12345678", "PMID12345678",
+# "PubMed PMID: 12345678", "Medline PMID: 12345678".
+# PMIDs are 1-8 digits; we require at least 5 to avoid false positives.
+_PMID_RE = re.compile(
+    r"(?:PubMed(?:\s+PMID)?|PMID|Medline\s+PMID|PubMed\s+ID)\s*:?\s*(\d{5,8})\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class ExtractionResult:
     text:       str           # the full extracted text (may be empty)
     pages:      int           # number of pages
     doi:        Optional[str] # best DOI candidate found, normalised lowercase
+    pmid:       Optional[str] # PubMed ID found in the text, if any
     title_hint: Optional[str] # first non-empty line of the first page,
                               # useful as a fallback for CrossRef title lookup
     error:      Optional[str] # short error string if extraction failed
@@ -57,6 +66,14 @@ def find_doi_in_text(text: str) -> Optional[str]:
     # Fallback: any matching pattern.
     m = _DOI_RE.search(text)
     return normalise_doi(m.group(0)) if m else None
+
+
+def find_pmid_in_text(text: str) -> Optional[str]:
+    """Return the first plausible PubMed ID found in `text`, or None."""
+    if not text:
+        return None
+    m = _PMID_RE.search(text)
+    return m.group(1) if m else None
 
 
 def _extract_first_meaningful_line(text: str) -> Optional[str]:
@@ -114,10 +131,11 @@ def extract_pdf(source: Union[str, Path, bytes, io.IOBase]) -> ExtractionResult:
             text=full,
             pages=pages,
             doi=find_doi_in_text(full),
+            pmid=find_pmid_in_text(full),
             title_hint=_extract_first_meaningful_line(full),
             error=None if (full or pages == 0) else "no_text_extracted",
         )
     except Exception as exc:
         logger.warning("PDF extraction failed: %s", exc, exc_info=False)
-        return ExtractionResult(text="", pages=0, doi=None, title_hint=None,
-                                error=str(exc)[:300])
+        return ExtractionResult(text="", pages=0, doi=None, pmid=None,
+                                title_hint=None, error=str(exc)[:300])

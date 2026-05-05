@@ -236,10 +236,75 @@ def pubmed_by_doi(doi: str) -> Optional[Metadata]:
     )
 
 
+def pubmed_by_pmid(pmid: str) -> Optional[Metadata]:
+    """Fetch metadata from PubMed using a PMID directly (no esearch needed).
+
+    Also tries to extract the DOI from the ArticleIdList so CrossRef can
+    later fill gaps (abstract, etc.).
+    """
+    if not pmid:
+        return None
+    try:
+        r = requests.get(_PUBMED_ESUMMARY, params={
+            "db": "pubmed",
+            "id": pmid,
+            "retmode": "json",
+        }, headers=_HDRS, timeout=_TIMEOUT)
+        r.raise_for_status()
+    except Exception as exc:
+        logger.debug("PubMed esummary by PMID %s failed: %s", pmid, exc)
+        return None
+
+    summary = (r.json().get("result") or {}).get(pmid) or {}
+    if not summary or summary.get("uid") != pmid:
+        return None
+
+    # PubMed ArticleIdList often contains the DOI.
+    doi = None
+    for aid in summary.get("articleids") or []:
+        if (aid.get("idtype") or "").lower() == "doi":
+            raw = (aid.get("value") or "").strip().lower()
+            if raw:
+                doi = raw
+                break
+
+    authors = "; ".join(
+        (a.get("name") or "").strip()
+        for a in (summary.get("authors") or [])
+        if a.get("name")
+    ) or None
+
+    year = None
+    m = re.match(r"(\d{4})", summary.get("pubdate") or "")
+    if m:
+        year = int(m.group(1))
+
+    return Metadata(
+        doi=doi,
+        pubmed_id=pmid,
+        title=(summary.get("title") or "").rstrip(".").strip() or None,
+        authors=authors,
+        journal=summary.get("fulljournalname") or summary.get("source"),
+        year=year,
+        volume=summary.get("volume"),
+        issue=summary.get("issue"),
+        pages=summary.get("pages"),
+        source="pubmed_pmid",
+        raw=summary,
+    )
+
+
 # ── Public entrypoint ───────────────────────────────────────────────────────
 def resolve_metadata(*, doi: Optional[str] = None,
+                     pmid_hint: Optional[str] = None,
                      title_hint: Optional[str] = None) -> Optional[Metadata]:
-    """Try the resolver chain. Returns None only if EVERY step fails."""
+    """Try the resolver chain. Returns None only if EVERY step fails.
+
+    Priority order:
+      1. DOI  → CrossRef (best metadata) → PubMed-by-DOI
+      2. PMID → PubMed-by-PMID; then CrossRef-by-title to recover the DOI
+      3. Title hint → CrossRef title search
+    """
     if doi:
         meta = crossref_by_doi(doi)
         if meta and meta.title:
@@ -248,6 +313,20 @@ def resolve_metadata(*, doi: Optional[str] = None,
         meta = pubmed_by_doi(doi)
         if meta and meta.title:
             return meta
+
+    if pmid_hint and not doi:
+        meta = pubmed_by_pmid(pmid_hint)
+        if meta and meta.title:
+            # If PubMed didn't return a DOI, try CrossRef by title to get one.
+            if not meta.doi and meta.title:
+                cr = crossref_by_title(meta.title, year_hint=meta.year)
+                if cr and cr.doi:
+                    meta.doi = cr.doi
+                    # Also enrich with CrossRef abstract if PubMed had none.
+                    if not meta.abstract and cr.abstract:
+                        meta.abstract = cr.abstract
+            return meta
+
     if title_hint:
         meta = crossref_by_title(title_hint)
         if meta and meta.title:

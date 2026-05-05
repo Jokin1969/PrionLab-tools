@@ -57,7 +57,8 @@ def _process_job(job: ingest_queue.Job) -> None:
         ingest_queue.bump_attempt_or_fail(job.id,
             f"PDF extraction failed: {extraction.error}")
         return
-    doi = extraction.doi
+    doi  = extraction.doi
+    pmid = extraction.pmid
 
     # ── 2. Dedup BEFORE we hit Dropbox or CrossRef ─────────────────────
     dup_id, reason = find_duplicate(doi=doi, pdf_md5=md5)
@@ -74,7 +75,8 @@ def _process_job(job: ingest_queue.Job) -> None:
 
     # ── 3. Resolve metadata (CrossRef -> PubMed -> title search) ───────
     ingest_queue.mark_step(job.id, status="resolving", step="crossref")
-    meta = resolve_metadata(doi=doi, title_hint=extraction.title_hint)
+    meta = resolve_metadata(doi=doi, pmid_hint=pmid,
+                            title_hint=extraction.title_hint)
     final_doi  = (meta.doi if meta and meta.doi else doi)
     title      = (meta.title if meta else None) or (extraction.title_hint or staged.stem)
     year       = (meta.year if meta else None)
@@ -113,7 +115,6 @@ def _process_job(job: ingest_queue.Job) -> None:
         source=meta_source, added_by=job.created_by,
     )
 
-    year_str = str(year) if year else "unknown"
     id_type  = "doi" if final_doi else ("pmid" if pubmed_id else "md5")
     summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}"
     ingest_queue.mark_step(job.id, status="done", step=summary,
