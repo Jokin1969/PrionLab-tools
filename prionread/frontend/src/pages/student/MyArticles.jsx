@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { studentService } from '../../services/student.service';
 import { ArticleCard } from '../../components/student/ArticleCard';
 import { Loader, Input } from '../../components/common';
@@ -18,47 +18,50 @@ const SORT_BTNS = [
   { value: 'read_date', label: '✓ Leídos' },
 ];
 
-const FilterBtn = ({ active, onClick, children }) => (
+const FilterBtn = ({ active, count, onClick, children }) => (
   <button
     onClick={onClick}
-    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap flex items-center gap-1.5 ${
       active
         ? 'bg-prion-primary text-white border-prion-primary'
         : 'bg-white text-gray-600 border-gray-200 hover:border-prion-primary hover:text-prion-primary'
     }`}
   >
     {children}
+    {count != null && (
+      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+        active ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-500'
+      }`}>
+        {count}
+      </span>
+    )}
   </button>
 );
 
 const MyArticles = () => {
-  const [articles, setArticles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
-    status: '',
-    search: '',
-    sort_by: 'priority',
-    order: 'desc',
-  });
+  const [allArticles, setAllArticles] = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch]           = useState('');
+  const [sortBy, setSortBy]           = useState('priority');
+  const [order, setOrder]             = useState('desc');
 
-  useEffect(() => {
-    loadArticles();
-  }, [filters]);
+  useEffect(() => { loadArticles(); }, [sortBy, order]);
 
   const loadArticles = async () => {
     setLoading(true);
     try {
-      const data = await studentService.getMyArticles(filters);
-      const flat = (data.articles || []).map(({ assignment, article }) => ({
+      // Fetch all — status filtering is done client-side so counts are always available
+      const data = await studentService.getMyArticles({ sort_by: sortBy, order });
+      setAllArticles((data.articles || []).map(({ assignment, article }) => ({
         ...article,
-        status: assignment?.status,
-        read_date: assignment?.read_date,
-        summary_date: assignment?.summary_date,
+        status:          assignment?.status,
+        read_date:       assignment?.read_date,
+        summary_date:    assignment?.summary_date,
         evaluation_date: assignment?.evaluation_date,
         has_user_rating: assignment?.has_user_rating,
-        assignment_id: assignment?.id,
-      }));
-      setArticles(flat);
+        assignment_id:   assignment?.id,
+      })));
     } catch (error) {
       console.error('Error loading articles:', error);
     } finally {
@@ -66,25 +69,34 @@ const MyArticles = () => {
     }
   };
 
+  // Counts per status (always from full list, ignoring current search)
+  const counts = useMemo(() => {
+    const c = { '': allArticles.length };
+    for (const a of allArticles) c[a.status] = (c[a.status] || 0) + 1;
+    return c;
+  }, [allArticles]);
+
+  // Apply status + search filters in the client
+  const articles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allArticles.filter((a) => {
+      if (statusFilter && a.status !== statusFilter) return false;
+      if (q) {
+        const title   = (a.title   || '').toLowerCase();
+        const authors = Array.isArray(a.authors) ? a.authors.join(' ').toLowerCase() : (a.authors || '').toLowerCase();
+        if (!title.includes(q) && !authors.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [allArticles, statusFilter, search]);
+
   const handleMarkAsRead = async (articleId) => {
-    try {
-      await studentService.markAsRead(articleId);
-      loadArticles();
-    } catch (error) {
-      console.error('Error marking as read:', error);
-    }
+    try { await studentService.markAsRead(articleId); loadArticles(); } catch { /* silent */ }
   };
 
   const handleUnmarkAsRead = async (articleId) => {
-    try {
-      await studentService.unmarkAsRead(articleId);
-      loadArticles();
-    } catch (error) {
-      console.error('Error unmarking as read:', error);
-    }
+    try { await studentService.unmarkAsRead(articleId); loadArticles(); } catch { /* silent */ }
   };
-
-  const set = (key, value) => setFilters((prev) => ({ ...prev, [key]: value }));
 
   return (
     <div className="space-y-6">
@@ -99,14 +111,19 @@ const MyArticles = () => {
         {/* Search — full width */}
         <Input
           placeholder="Buscar por título, autor..."
-          value={filters.search}
-          onChange={(e) => set('search', e.target.value)}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
 
-        {/* Status filter */}
+        {/* Status filter with counts */}
         <div className="flex flex-wrap gap-2">
           {STATUS_BTNS.map(({ value, label }) => (
-            <FilterBtn key={value} active={filters.status === value} onClick={() => set('status', value)}>
+            <FilterBtn
+              key={value}
+              active={statusFilter === value}
+              count={counts[value] ?? 0}
+              onClick={() => setStatusFilter(value)}
+            >
               {label}
             </FilterBtn>
           ))}
@@ -116,16 +133,16 @@ const MyArticles = () => {
         <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-100 items-center">
           <span className="text-xs text-gray-400 mr-1">Ordenar:</span>
           {SORT_BTNS.map(({ value, label }) => (
-            <FilterBtn key={value} active={filters.sort_by === value} onClick={() => set('sort_by', value)}>
+            <FilterBtn key={value} active={sortBy === value} onClick={() => setSortBy(value)}>
               {label}
             </FilterBtn>
           ))}
           <button
-            onClick={() => set('order', filters.order === 'asc' ? 'desc' : 'asc')}
+            onClick={() => setOrder((o) => o === 'asc' ? 'desc' : 'asc')}
             className="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-500 hover:border-prion-primary hover:text-prion-primary transition-colors"
             title="Invertir orden"
           >
-            {filters.order === 'asc' ? '↑' : '↓'}
+            {order === 'asc' ? '↑' : '↓'}
           </button>
           <span className="ml-auto text-xs text-gray-500">
             <span className="font-semibold">{articles.length}</span> artículos
