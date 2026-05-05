@@ -357,6 +357,7 @@ async function listDropboxFiles(req, res) {
  * - Without dropbox_path + has doi/pmid: check expected path, auto-link if found (linked | no_pdf)
  */
 async function verifyArticlePDFs(req, res) {
+  const ROOT_FOLDER = '/PrionLab tools/PrionVault';
   try {
     const articles = await Article.findAll({
       attributes: ['id', 'title', 'doi', 'pubmed_id', 'dropbox_path'],
@@ -366,6 +367,18 @@ async function verifyArticlePDFs(req, res) {
       articles.map(async (a) => {
         const base = { id: a.id, title: a.title, doi: a.doi, pubmed_id: a.pubmed_id };
         if (a.dropbox_path) {
+          // Detect stale paths that don't belong to the current PrionVault folder
+          if (!a.dropbox_path.startsWith(ROOT_FOLDER)) {
+            const expectedPath = (a.doi || a.pubmed_id) ? dropboxPath(a) : null;
+            if (expectedPath) {
+              const existsAtNew = await checkFileExists(expectedPath).catch(() => false);
+              if (existsAtNew) {
+                await a.update({ dropbox_path: expectedPath, dropbox_link: null });
+                return { ...base, status: 'stale_fixed', old_path: a.dropbox_path, dropbox_path: expectedPath };
+              }
+            }
+            return { ...base, status: 'stale_path', dropbox_path: a.dropbox_path };
+          }
           const exists = await checkFileExists(a.dropbox_path).catch(() => false);
           return { ...base, status: exists ? 'ok' : 'missing', dropbox_path: a.dropbox_path };
         }
@@ -384,7 +397,15 @@ async function verifyArticlePDFs(req, res) {
     const count = (s) => results.filter((r) => r.status === s).length;
     return res.json({
       results,
-      summary: { ok: count('ok'), missing: count('missing'), linked: count('linked'), no_pdf: count('no_pdf'), total: results.length },
+      summary: {
+        ok: count('ok'),
+        missing: count('missing'),
+        linked: count('linked'),
+        stale_fixed: count('stale_fixed'),
+        stale_path: count('stale_path'),
+        no_pdf: count('no_pdf'),
+        total: results.length,
+      },
     });
   } catch (err) {
     console.error('[verifyArticlePDFs]', err);
@@ -405,13 +426,15 @@ async function clearPdfLink(req, res) {
 }
 
 async function syncDropboxPDFs(req, res) {
+  const ROOT_FOLDER = '/PrionLab tools/PrionVault';
   try {
     let files;
     try { files = await listFiles(); }
     catch (err) { return serviceError(res, err); }
-    const results = { matched: 0, updated: 0, already_ok: 0, unmatched: [] };
+    const results = { matched: 0, updated: 0, stale_migrated: 0, already_ok: 0, unmatched: [] };
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+      if (!file.path_lower.includes(ROOT_FOLDER.toLowerCase())) continue; // skip files outside PrionVault
       const baseName = file.name.replace(/\.pdf$/i, '');
       let article = null;
       if (baseName.startsWith('PMID_')) {
@@ -421,8 +444,11 @@ async function syncDropboxPDFs(req, res) {
       }
       if (!article) { results.unmatched.push(file.name); continue; }
       if (article.dropbox_path === file.path) { results.already_ok++; continue; }
+      const wasStale = article.dropbox_path && !article.dropbox_path.startsWith(ROOT_FOLDER);
       await article.update({ dropbox_path: file.path, dropbox_link: null });
-      article.dropbox_path ? results.updated++ : results.matched++;
+      if (wasStale) results.stale_migrated++;
+      else if (article.dropbox_path) results.updated++;
+      else results.matched++;
     }
     return res.json(results);
   } catch (err) {

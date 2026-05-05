@@ -3,11 +3,13 @@ import { Modal, Button } from '../common';
 import { adminService } from '../../services/admin.service';
 
 const STATUS_CONFIG = {
-  ok:            { color: 'text-green-600', bg: '',            icon: '✓', label: 'Verificado' },
-  linked:        { color: 'text-blue-700',  bg: 'bg-blue-50', icon: '⟳', label: 'Enlazado automáticamente' },
-  missing:       { color: 'text-red-600',   bg: 'bg-red-50',  icon: '✗', label: 'Archivo no encontrado en Dropbox' },
-  no_pdf:        { color: 'text-gray-400',  bg: '',           icon: '—', label: 'Sin PDF' },
-  no_identifier: { color: 'text-gray-400',  bg: '',           icon: '—', label: 'Sin DOI ni PMID' },
+  ok:            { color: 'text-green-600',  bg: '',               icon: '✓', label: 'Verificado' },
+  linked:        { color: 'text-blue-700',   bg: 'bg-blue-50',    icon: '⟳', label: 'Enlazado automáticamente' },
+  stale_fixed:   { color: 'text-teal-700',   bg: 'bg-teal-50',    icon: '⇒', label: 'Ruta antigua corregida a PrionVault' },
+  stale_path:    { color: 'text-orange-700', bg: 'bg-orange-50',  icon: '⚠', label: 'Ruta apunta fuera de PrionVault' },
+  missing:       { color: 'text-red-600',    bg: 'bg-red-50',     icon: '✗', label: 'Archivo no encontrado en Dropbox' },
+  no_pdf:        { color: 'text-gray-400',   bg: '',              icon: '—', label: 'Sin PDF' },
+  no_identifier: { color: 'text-gray-400',   bg: '',              icon: '—', label: 'Sin DOI ni PMID' },
 };
 
 export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
@@ -23,7 +25,7 @@ export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
     try {
       const data = await adminService.verifyPdfs();
       setResults(data);
-      if (data.summary.linked > 0 && onFixed) onFixed();
+      if ((data.summary.linked > 0 || data.summary.stale_fixed > 0) && onFixed) onFixed();
     } catch (err) {
       setError(err?.response?.data?.error || err?.message || 'Error verificando PDFs');
     } finally {
@@ -34,10 +36,14 @@ export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
   const handleClear = async (articleId) => {
     setClearing(articleId);
     try {
+      const target = results.results.find((r) => r.id === articleId);
       await adminService.clearPdfLink(articleId);
       setResults((prev) => ({
         ...prev,
-        summary: { ...prev.summary, missing: prev.summary.missing - 1 },
+        summary: {
+          ...prev.summary,
+          [target?.status]: Math.max(0, (prev.summary[target?.status] || 0) - 1),
+        },
         results: prev.results.map((r) =>
           r.id === articleId ? { ...r, status: 'no_pdf', dropbox_path: null } : r
         ),
@@ -53,7 +59,7 @@ export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
   const handleClose = () => { setResults(null); setError(''); onClose(); };
 
   const visibleResults = results?.results.filter(
-    (r) => r.status !== 'ok' && r.status !== 'no_identifier'
+    (r) => r.status !== 'ok' && r.status !== 'no_identifier' && r.status !== 'no_pdf'
   ) ?? [];
 
   return (
@@ -87,6 +93,16 @@ export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
                   ⟳ {results.summary.linked} enlazados ahora
                 </span>
               )}
+              {results.summary.stale_fixed > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full bg-teal-100 text-teal-700">
+                  ⇒ {results.summary.stale_fixed} rutas antiguas corregidas
+                </span>
+              )}
+              {results.summary.stale_path > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full bg-orange-100 text-orange-700">
+                  ⚠ {results.summary.stale_path} rutas fuera de PrionVault
+                </span>
+              )}
               {results.summary.missing > 0 && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full bg-red-100 text-red-700">
                   ✗ {results.summary.missing} rotos
@@ -102,6 +118,20 @@ export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
                 Se han enlazado automáticamente{' '}
                 <strong>{results.summary.linked} PDF{results.summary.linked > 1 ? 's' : ''}</strong>{' '}
                 encontrados en Dropbox. La tabla de artículos se ha actualizado.
+              </div>
+            )}
+            {results.summary.stale_fixed > 0 && (
+              <div className="rounded-lg bg-teal-50 border border-teal-200 px-4 py-3 text-sm text-teal-800">
+                Se han corregido automáticamente{' '}
+                <strong>{results.summary.stale_fixed} ruta{results.summary.stale_fixed > 1 ? 's' : ''}</strong>{' '}
+                que apuntaban fuera de PrionVault. Ahora apuntan a la ubicación correcta.
+              </div>
+            )}
+            {results.summary.stale_path > 0 && (
+              <div className="rounded-lg bg-orange-50 border border-orange-200 px-4 py-3 text-sm text-orange-800">
+                <strong>{results.summary.stale_path} artículo{results.summary.stale_path > 1 ? 's' : ''}</strong>{' '}
+                tiene rutas fuera de PrionVault que no se pudieron corregir automáticamente.
+                Revísalos manualmente o usa "Sincronizar desde Dropbox" para actualizarlos.
               </div>
             )}
 
@@ -133,6 +163,9 @@ export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
                             {!r.doi && r.pubmed_id && <p className="text-xs text-gray-400 font-mono">PMID {r.pubmed_id}</p>}
                           </td>
                           <td className="px-4 py-3">
+                            {r.status === 'stale_fixed' && r.old_path && (
+                              <p className="text-xs text-gray-400 line-through break-all mb-1">{r.old_path}</p>
+                            )}
                             {r.dropbox_path
                               ? <code className="text-xs text-gray-600 break-all">{r.dropbox_path}</code>
                               : <span className="text-xs text-gray-400 italic">sin ruta</span>}
@@ -141,7 +174,7 @@ export const PdfVerifyModal = ({ isOpen, onClose, onFixed }) => {
                             <span className={`font-bold ${cfg.color}`} title={cfg.label}>{cfg.icon}</span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            {r.status === 'missing' && (
+                            {(r.status === 'missing' || r.status === 'stale_path') && (
                               <button
                                 onClick={() => handleClear(r.id)}
                                 disabled={clearing === r.id}
