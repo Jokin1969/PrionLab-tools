@@ -57,15 +57,53 @@ def _normalise_url(url: str) -> str:
     return url
 
 
+def _build_url_from_components() -> Optional[str]:
+    """Some Railway plans inject PG* components instead of (or in
+    addition to) DATABASE_URL. Build the URL ourselves if we have them."""
+    host = os.environ.get("PGHOST") or os.environ.get("POSTGRES_HOST")
+    user = os.environ.get("PGUSER") or os.environ.get("POSTGRES_USER")
+    pwd  = os.environ.get("PGPASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+    db_  = os.environ.get("PGDATABASE") or os.environ.get("POSTGRES_DB") or "railway"
+    port = os.environ.get("PGPORT") or os.environ.get("POSTGRES_PORT") or "5432"
+    if host and user and pwd:
+        from urllib.parse import quote_plus
+        return (f"postgresql://{quote_plus(user)}:{quote_plus(pwd)}"
+                f"@{host}:{port}/{db_}")
+    return None
+
+
+def _discover_database_url() -> str:
+    """Try every place the URL might live. Return empty if truly nothing."""
+    raw = (os.environ.get("DATABASE_URL")
+           or os.environ.get("POSTGRES_URL")
+           or os.environ.get("PG_URL")
+           or "").strip()
+    if raw:
+        return _normalise_url(raw)
+    built = _build_url_from_components()
+    if built:
+        return built
+    # Last resort: look at the singleton, in case it captured a URL we
+    # cannot see directly (e.g. injected through python-dotenv at boot).
+    try:
+        from database.config import db as _db
+        url = getattr(_db, "database_url", "") or ""
+        if url:
+            return _normalise_url(url)
+    except Exception:
+        pass
+    return ""
+
+
 def _get_engine():
     """Return a working SQLAlchemy engine.
 
     Order of preference:
       1. The project-wide singleton at `database.config.db.engine`.
-      2. A locally-built fallback engine from $DATABASE_URL.
+      2. A locally-built fallback engine, URL discovered via every
+         common env-var name.
 
-    Raises RuntimeError only if both paths fail (i.e. DATABASE_URL is
-    missing entirely).
+    Raises RuntimeError only if every path fails.
     """
     try:
         from database.config import db as _db
@@ -80,15 +118,20 @@ def _get_engine():
     with _engine_lock:
         if _local_engine is not None:
             return _local_engine
-        url = _normalise_url(os.environ.get("DATABASE_URL", "").strip())
+        url = _discover_database_url()
         if not url:
+            available = sorted(k for k in os.environ
+                               if any(t in k.upper() for t in
+                                      ("DATABASE", "POSTGRES", "PG")))
             raise RuntimeError(
-                "PrionVault queue: DATABASE_URL is not set; cannot reach Postgres."
+                "PrionVault queue: cannot find a Postgres URL. Tried "
+                "DATABASE_URL, POSTGRES_URL, PG_URL and PG*/POSTGRES_* "
+                "components. Visible related env vars: " + (", ".join(available) or "(none)")
             )
         _local_engine = create_engine(
             url, pool_pre_ping=True, pool_recycle=300, future=True,
         )
-        logger.info("PrionVault queue: built local fallback engine from DATABASE_URL.")
+        logger.info("PrionVault queue: built local fallback engine from discovered URL.")
         return _local_engine
 
 

@@ -445,6 +445,47 @@ def api_migrations_run():
     return jsonify(summary)
 
 
+@prionvault_bp.route("/api/admin/debug/db", methods=["GET"])
+@admin_required
+def api_admin_debug_db():
+    """Surface what PrionVault sees about the DB connection.
+
+    Helps diagnose situations where Phase 1 endpoints work (they go
+    through `db.Session()`) but Phase 2 enqueue fails (we build a
+    local engine). Lists which env vars are visible without leaking
+    their values.
+    """
+    import os
+    related = sorted(k for k in os.environ
+                     if any(t in k.upper() for t in
+                            ("DATABASE", "POSTGRES", "PG")))
+    info = {
+        "env_var_names_visible": related,
+        "DATABASE_URL_present":  "DATABASE_URL" in os.environ,
+        "DATABASE_URL_len":      len(os.environ.get("DATABASE_URL", "")),
+        "POSTGRES_URL_present":  "POSTGRES_URL" in os.environ,
+        "PGHOST_present":        "PGHOST" in os.environ,
+    }
+    try:
+        from database.config import db as _db
+        info["singleton_engine"]   = getattr(_db, "engine", None) is not None
+        info["singleton_session"]  = getattr(_db, "Session", None) is not None
+        info["singleton_url_len"]  = len(getattr(_db, "database_url", "") or "")
+    except Exception as exc:
+        info["singleton_error"] = str(exc)
+    try:
+        from .ingestion.queue import _get_engine
+        eng = _get_engine()
+        info["queue_engine"] = "ok"
+        info["queue_engine_url_kind"] = (
+            "shared singleton" if eng is getattr(__import__("database.config", fromlist=["db"]), "db").engine
+            else "local fallback"
+        )
+    except Exception as exc:
+        info["queue_engine_error"] = str(exc)
+    return jsonify(info)
+
+
 @prionvault_bp.route("/api/admin/migrate-prionread-pdfs", methods=["POST"])
 @admin_required
 def api_migrate_prionread_pdfs():
