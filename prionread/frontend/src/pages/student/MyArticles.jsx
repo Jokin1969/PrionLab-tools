@@ -21,7 +21,13 @@ const MyArticles = () => {
     setLoading(true);
     try {
       const data = await studentService.getMyArticles(filters);
-      setArticles(data.articles || []);
+      const flat = (data.articles || []).map(({ assignment, article }) => ({
+        ...article,
+        status: assignment?.status,
+        read_date: assignment?.read_date,
+        assignment_id: assignment?.id,
+      }));
+      setArticles(flat);
     } catch (error) {
       console.error('Error loading articles:', error);
     } finally {

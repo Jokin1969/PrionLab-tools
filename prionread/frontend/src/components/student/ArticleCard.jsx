@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../common';
+import { studentService } from '../../services/student.service';
 
 export const ArticleCard = ({ article, onMarkAsRead }) => {
+  const [fetchingPdf, setFetchingPdf] = useState(false);
+
   const statusColors = {
     pending: 'bg-gray-100 text-gray-600',
     read: 'bg-blue-100 text-blue-600',
@@ -14,6 +18,18 @@ export const ArticleCard = ({ article, onMarkAsRead }) => {
     read: 'Leído',
     summarized: 'Resumido',
     evaluated: 'Evaluado',
+  };
+
+  const handleDownloadPdf = async () => {
+    setFetchingPdf(true);
+    try {
+      const data = await studentService.getPdfLink(article.id);
+      window.open(data.link, '_blank', 'noopener,noreferrer');
+    } catch {
+      alert('No se pudo obtener el enlace al PDF.');
+    } finally {
+      setFetchingPdf(false);
+    }
   };
 
   return (
@@ -83,12 +99,10 @@ export const ArticleCard = ({ article, onMarkAsRead }) => {
           </Button>
         )}
 
-        {article.dropbox_link && (
-          <a href={article.dropbox_link} target="_blank" rel="noopener noreferrer">
-            <Button variant="ghost" size="sm">
-              📄 PDF
-            </Button>
-          </a>
+        {article.dropbox_path && (
+          <Button variant="ghost" size="sm" onClick={handleDownloadPdf} loading={fetchingPdf} disabled={fetchingPdf}>
+            📄 PDF
+          </Button>
         )}
       </div>
     </div>
