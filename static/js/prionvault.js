@@ -272,9 +272,222 @@
     document.querySelector('#pv-detail-modal .pv-modal-backdrop')
       .addEventListener('click', closeDetail);
 
+    // ── Admin: Import + Queue modals ───────────────────────────────────
+    if (IS_ADMIN) {
+      wireImport();
+      wireQueue();
+    }
+
     refreshStats();
     refreshTags();
     loadArticles();
+  }
+
+  // ── Import modal (admin only) ────────────────────────────────────────
+  let _importPolling = null;
+  function wireImport() {
+    const btn       = document.getElementById('btn-import-pdfs');
+    const modal     = document.getElementById('pv-import-modal');
+    const closeBtn  = document.getElementById('pv-import-close');
+    const dropzone  = document.getElementById('pv-dropzone');
+    const fileInput = document.getElementById('pv-file-input');
+    const fileInputPlain = document.getElementById('pv-file-input-plain');
+    const pickFiles  = document.getElementById('pv-pick-files');
+    const pickFolder = document.getElementById('pv-pick-folder');
+    const progress   = document.getElementById('pv-import-progress');
+    if (!btn || !modal) return;
+
+    const open  = () => { modal.style.display = ''; startProgressPolling(); };
+    const close = () => { modal.style.display = 'none'; stopProgressPolling(); };
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    pickFiles.addEventListener('click',  () => fileInputPlain.click());
+    pickFolder.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change',      e => uploadFiles(e.target.files));
+    fileInputPlain.addEventListener('change', e => uploadFiles(e.target.files));
+
+    // Drag-and-drop
+    ['dragenter', 'dragover'].forEach(ev =>
+      dropzone.addEventListener(ev, e => {
+        e.preventDefault(); e.stopPropagation();
+        dropzone.classList.add('is-drag');
+      })
+    );
+    ['dragleave', 'drop'].forEach(ev =>
+      dropzone.addEventListener(ev, e => {
+        e.preventDefault(); e.stopPropagation();
+        dropzone.classList.remove('is-drag');
+      })
+    );
+    dropzone.addEventListener('drop', async e => {
+      const files = await collectFilesFromDataTransfer(e.dataTransfer);
+      if (files.length) uploadFiles(files);
+    });
+  }
+
+  // Walk the dropped DataTransfer (which may include folders) and return
+  // a flat list of File objects whose names end in .pdf.
+  async function collectFilesFromDataTransfer(dt) {
+    const out = [];
+    if (!dt || !dt.items) {
+      Array.from(dt.files || []).forEach(f => {
+        if (f.name.toLowerCase().endsWith('.pdf')) out.push(f);
+      });
+      return out;
+    }
+    const entries = Array.from(dt.items).map(it => it.webkitGetAsEntry?.()).filter(Boolean);
+    const walk = async entry => {
+      if (entry.isFile) {
+        await new Promise(res => entry.file(f => {
+          if (f.name.toLowerCase().endsWith('.pdf')) out.push(f);
+          res();
+        }));
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const children = await new Promise(res => reader.readEntries(res));
+        for (const c of children) await walk(c);
+      }
+    };
+    for (const e of entries) await walk(e);
+    return out;
+  }
+
+  async function uploadFiles(files) {
+    const arr = Array.from(files || []).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (!arr.length) return;
+    const progress = document.getElementById('pv-import-progress');
+    progress.style.display = '';
+    progress.innerHTML = '';
+    appendProgress(`Queueing ${arr.length} PDF${arr.length === 1 ? '' : 's'}…`, 'info');
+
+    // Send in batches of 25 to avoid hitting upload limits.
+    const BATCH = 25;
+    let queued = 0;
+    for (let i = 0; i < arr.length; i += BATCH) {
+      const batch = arr.slice(i, i + BATCH);
+      const fd = new FormData();
+      batch.forEach(f => fd.append('file', f, f.name));
+      try {
+        const r = await fetch('/prionvault/api/ingest/upload', {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: fd,
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          appendProgress(`Batch ${i/BATCH+1}: ${err.error || r.status}`, 'error');
+          continue;
+        }
+        const j = await r.json();
+        queued += j.queued || 0;
+        appendProgress(`Batch ${i/BATCH+1}: ${j.queued} queued.`, 'ok');
+      } catch (e) {
+        appendProgress(`Batch ${i/BATCH+1}: ${e.message}`, 'error');
+      }
+    }
+    appendProgress(`Total queued: ${queued} / ${arr.length}.`, 'info');
+    refreshStats();
+  }
+
+  function appendProgress(text, kind) {
+    const progress = document.getElementById('pv-import-progress');
+    if (!progress) return;
+    const row = document.createElement('div');
+    row.className = 'pv-row';
+    const colour = kind === 'error' ? '#b91c1c' : kind === 'ok' ? '#15803d' : '';
+    row.innerHTML = `<span style="color:${colour}">●</span> <b>${new Date().toLocaleTimeString()}</b> ${escapeHtml(text)}`;
+    progress.appendChild(row);
+    progress.scrollTop = progress.scrollHeight;
+  }
+
+  function startProgressPolling() {
+    stopProgressPolling();
+    const tick = async () => {
+      try {
+        const r = await fetch('/prionvault/api/ingest/status?recent=10', { credentials: 'same-origin' });
+        if (!r.ok) return;
+        const s = await r.json();
+        appendProgress(
+          `queued: ${s.queued} · processing: ${s.processing} · done: ${s.done} ` +
+          `· duplicate: ${s.duplicate} · failed: ${s.failed}`, 'info');
+        if (s.queued + s.processing === 0) {
+          stopProgressPolling();
+        }
+      } catch (e) { /* ignore transient */ }
+    };
+    _importPolling = setInterval(tick, 4000);
+  }
+  function stopProgressPolling() {
+    if (_importPolling) { clearInterval(_importPolling); _importPolling = null; }
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ── Queue panel ──────────────────────────────────────────────────────
+  let _queuePolling = null;
+  function wireQueue() {
+    const btn      = document.getElementById('btn-manage-queue');
+    const modal    = document.getElementById('pv-queue-modal');
+    const closeBtn = document.getElementById('pv-queue-close');
+    if (!btn || !modal) return;
+
+    btn.addEventListener('click', () => {
+      modal.style.display = '';
+      refreshQueue();
+      _queuePolling = setInterval(refreshQueue, 4000);
+    });
+    const close = () => {
+      modal.style.display = 'none';
+      if (_queuePolling) { clearInterval(_queuePolling); _queuePolling = null; }
+    };
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+  }
+
+  async function refreshQueue() {
+    try {
+      const r = await fetch('/prionvault/api/ingest/status?recent=80', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const s = await r.json();
+      const counts = document.getElementById('pv-queue-counts');
+      counts.innerHTML = `
+        <span>queued: <b>${s.queued}</b></span>
+        <span class="pv-pill-proc">processing: <b>${s.processing}</b></span>
+        <span class="pv-pill-done">done: <b>${s.done}</b></span>
+        <span class="pv-pill-dup">duplicate: <b>${s.duplicate}</b></span>
+        <span class="pv-pill-fail">failed: <b>${s.failed}</b></span>
+      `;
+      const tbody = document.getElementById('pv-queue-rows');
+      tbody.innerHTML = '';
+      s.recent.forEach(j => tbody.appendChild(renderJobRow(j)));
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderJobRow(j) {
+    const tr = document.createElement('tr');
+    const showRetry = (j.status === 'failed' || j.status === 'duplicate');
+    tr.innerHTML = `
+      <td>${j.id}</td>
+      <td title="${escapeHtml(j.pdf_filename || '')}">${escapeHtml((j.pdf_filename || '').slice(0, 60))}</td>
+      <td class="pv-status">${escapeHtml(j.status)}</td>
+      <td class="pv-status">${escapeHtml(j.step || '')}</td>
+      <td class="pv-error">${escapeHtml(j.error || '')}</td>
+      <td>${j.created_at ? j.created_at.slice(0,16).replace('T',' ') : ''}</td>
+      <td>${showRetry ? `<button class="pv-btn-retry" data-job="${j.id}">Retry</button>` : ''}</td>
+    `;
+    if (showRetry) {
+      tr.querySelector('.pv-btn-retry').addEventListener('click', async () => {
+        const r = await fetch('/prionvault/api/ingest/retry/' + j.id, { method: 'POST', credentials: 'same-origin' });
+        if (r.ok) refreshQueue();
+      });
+    }
+    return tr;
   }
 
   document.addEventListener('DOMContentLoaded', init);

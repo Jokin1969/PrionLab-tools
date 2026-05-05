@@ -41,14 +41,14 @@
       <div class="pv-tag-list" id="tag-list"></div>
 
       <h4 class="pv-sidebar-section pv-admin-only">⚙ Tools</h4>
-      <button class="pv-nav-btn pv-admin-only" id="btn-import-pdfs" disabled title="Available in Phase 2">
+      <button class="pv-nav-btn pv-admin-only" id="btn-import-pdfs">
         <i class="fas fa-upload"></i> Import PDFs
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-manage-queue">
+        <i class="fas fa-list-check"></i> Ingest queue
       </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-reindex-all" disabled title="Available in Phase 4">
         <i class="fas fa-sync"></i> Re-index all
-      </button>
-      <button class="pv-nav-btn pv-admin-only" id="btn-manage-queue" disabled title="Available in Phase 2">
-        <i class="fas fa-list-check"></i> Ingest queue
       </button>
     </nav>
   </aside>
@@ -107,6 +107,59 @@
     <div class="pv-modal-card">
       <button class="pv-modal-close" id="pv-detail-close" aria-label="Close">×</button>
       <div id="pv-detail-content">…</div>
+    </div>
+  </div>
+
+  <!-- ── Import PDFs modal (admin) ───────────────────────────────────────── -->
+  <div id="pv-import-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card">
+      <button class="pv-modal-close" id="pv-import-close" aria-label="Close">×</button>
+      <h2 style="margin-top:0"><i class="fas fa-upload"></i> Import PDFs</h2>
+      <p style="color:var(--pv-text-dim);font-size:13px">
+        Drop a folder or several PDFs. Each one is queued, the text is
+        extracted, the DOI is auto-resolved against CrossRef + PubMed,
+        and the file is uploaded to <code>/PrionVault/&lt;year&gt;/&lt;doi&gt;.pdf</code>
+        in Dropbox. Duplicates (by DOI or MD5) are skipped.
+      </p>
+
+      <label class="pv-dropzone" id="pv-dropzone">
+        <input type="file" id="pv-file-input" accept=".pdf,application/pdf"
+               multiple webkitdirectory directory style="display:none">
+        <div class="pv-dropzone-inner">
+          <i class="fas fa-cloud-upload-alt" style="font-size:42px;color:var(--pv-accent);"></i>
+          <p style="margin:8px 0 4px;font-weight:600">Drop PDFs or a folder here</p>
+          <p style="margin:0;color:var(--pv-text-dim);font-size:12px">
+            …or click to browse · multiple selection / nested folders supported
+          </p>
+        </div>
+      </label>
+
+      <!-- Same input but plain (no folder mode) for "individual files" choice -->
+      <input type="file" id="pv-file-input-plain" accept=".pdf,application/pdf" multiple style="display:none">
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="pv-btn-soft" id="pv-pick-files">📄 Pick individual files</button>
+        <button class="pv-btn-soft" id="pv-pick-folder">📁 Pick a folder</button>
+      </div>
+
+      <div id="pv-import-progress" class="pv-import-progress" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ── Ingest queue modal (admin) ──────────────────────────────────────── -->
+  <div id="pv-queue-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card pv-modal-card-wide">
+      <button class="pv-modal-close" id="pv-queue-close" aria-label="Close">×</button>
+      <h2 style="margin-top:0"><i class="fas fa-list-check"></i> Ingest queue</h2>
+      <div class="pv-queue-counts" id="pv-queue-counts">…</div>
+      <table class="pv-queue-table">
+        <thead><tr>
+          <th>#</th><th>File</th><th>Status</th><th>Step</th>
+          <th>Error</th><th>Created</th><th></th>
+        </tr></thead>
+        <tbody id="pv-queue-rows"></tbody>
+      </table>
     </div>
   </div>
 

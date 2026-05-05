@@ -21,3 +21,6 @@ anthropic>=0.40.0
 aiohttp>=3.8.0
 redis>=4.5.0
 lxml>=4.9.0
+
+# PrionVault — PDF text extraction for the bulk-ingest pipeline
+pdfplumber>=0.11.0

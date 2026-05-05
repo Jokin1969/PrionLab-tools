@@ -322,20 +322,67 @@ def api_article_delete(aid):
         s.close()
 
 
-# ── Stubs reserved for upcoming phases ──────────────────────────────────────
+# ── Bulk ingestion (Phase 2) ────────────────────────────────────────────────
 @prionvault_bp.route("/api/ingest/upload", methods=["POST"])
 @admin_required
 def api_ingest_upload():
-    """Stub. Wired up in Phase 2 (bulk PDF ingestion)."""
-    return jsonify({"error": "not_implemented_yet"}), 501
+    """Receive one or more PDFs and enqueue ingest jobs.
+
+    Accepts `multipart/form-data` with one or more files under field name
+    `file` (or `files`). Returns the ids of the enqueued jobs.
+    """
+    from .ingestion import queue as ingest_queue
+
+    files = request.files.getlist("file") + request.files.getlist("files")
+    files = [f for f in files if f and f.filename]
+    if not files:
+        return jsonify({"error": "no files"}), 400
+
+    user_id = _viewer_id()
+    job_ids = []
+    for f in files:
+        try:
+            content = f.read()
+            if not content:
+                continue
+            jid = ingest_queue.enqueue_pdf(content=content,
+                                           filename=f.filename,
+                                           user_id=user_id)
+            job_ids.append(jid)
+        except Exception as exc:
+            logger.exception("PrionVault enqueue failed for %s", f.filename)
+            return jsonify({"error": f"enqueue failed: {exc}",
+                            "queued": len(job_ids), "job_ids": job_ids}), 500
+
+    return jsonify({"queued": len(job_ids), "job_ids": job_ids}), 202
 
 
 @prionvault_bp.route("/api/ingest/status", methods=["GET"])
 @admin_required
 def api_ingest_status():
-    """Stub. Returns the queue snapshot once the ingest worker is live."""
-    return jsonify({"queued": 0, "processing": 0, "done": 0,
-                    "failed": 0, "duplicate": 0, "recent": []})
+    """Aggregate counts + last 30 jobs for the admin progress panel."""
+    from .ingestion import queue as ingest_queue
+    recent = max(1, min(100, request.args.get("recent", 30, type=int)))
+    return jsonify(ingest_queue.snapshot(recent=recent))
+
+
+@prionvault_bp.route("/api/ingest/jobs", methods=["GET"])
+@admin_required
+def api_ingest_jobs():
+    """List jobs filtered by status (full-page admin view)."""
+    from .ingestion import queue as ingest_queue
+    status = request.args.get("status")
+    limit  = max(1, min(500, request.args.get("limit", 100, type=int)))
+    return jsonify({"items": ingest_queue.list_jobs(status=status, limit=limit)})
+
+
+@prionvault_bp.route("/api/ingest/retry/<int:job_id>", methods=["POST"])
+@admin_required
+def api_ingest_retry(job_id):
+    from .ingestion import queue as ingest_queue
+    if ingest_queue.retry(job_id):
+        return jsonify({"ok": True})
+    return jsonify({"error": "job not found or not in failed/duplicate state"}), 400
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/summary", methods=["POST"])
@@ -396,3 +443,27 @@ def api_migrations_run():
     from .migrate import run_pending_migrations
     summary = run_pending_migrations()
     return jsonify(summary)
+
+
+@prionvault_bp.route("/api/admin/migrate-prionread-pdfs", methods=["POST"])
+@admin_required
+def api_migrate_prionread_pdfs():
+    """One-shot relocation of PrionRead's existing PDFs in Dropbox to the
+    canonical /PrionVault/<year>/<doi>.pdf layout.
+
+    Body (JSON, optional):
+        {"dry_run": true,   "limit": 5}    # preview only
+        {"dry_run": false}                  # do it
+    """
+    data = request.get_json(silent=True) or {}
+    dry_run = bool(data.get("dry_run", False))
+    limit   = data.get("limit")
+    try:
+        # Lazy import: this script is heavy and imports the Dropbox SDK.
+        from importlib import import_module
+        mod = import_module("migrations.002_relocate_prionread_pdfs")
+        result = mod.relocate_all(dry_run=dry_run, limit=limit)
+        return jsonify(result.to_dict())
+    except Exception as exc:
+        logger.exception("PrionRead PDF relocation failed")
+        return jsonify({"error": str(exc)}), 500

@@ -248,3 +248,85 @@ body.pv-role-admin button.pv-admin-only { display: flex !important; }
   padding: 60px 20px; text-align: center;
   color: var(--pv-text-dim);
 }
+
+/* ── Import / Queue modals ─────────────────────────────────────────────── */
+.pv-modal-card-wide { width: min(1100px, 96vw); }
+
+.pv-dropzone {
+  display: block;
+  border: 2px dashed var(--pv-border);
+  border-radius: var(--pv-radius);
+  padding: 28px 24px;
+  text-align: center;
+  background: var(--pv-bg);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.pv-dropzone:hover,
+.pv-dropzone.is-drag {
+  border-color: var(--pv-accent);
+  background: var(--pv-accent-bg);
+}
+.pv-dropzone-inner p { font-size: 14px; }
+
+.pv-btn-soft {
+  background: #fff; border: 1px solid var(--pv-border);
+  color: var(--pv-text); padding: 6px 12px; border-radius: 4px;
+  font-size: 13px; cursor: pointer;
+}
+.pv-btn-soft:hover { border-color: var(--pv-accent); color: var(--pv-accent); }
+
+.pv-import-progress {
+  margin-top: 16px;
+  background: var(--pv-bg);
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-sm);
+  padding: 10px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--pv-text-dim);
+  max-height: 250px;
+  overflow-y: auto;
+}
+.pv-import-progress .pv-row {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 3px 0; border-bottom: 1px dashed var(--pv-border);
+}
+.pv-import-progress .pv-row:last-child { border-bottom: none; }
+.pv-import-progress .pv-row b { color: var(--pv-text); }
+
+.pv-queue-counts {
+  display: flex; gap: 14px; margin: 10px 0 14px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+.pv-queue-counts span {
+  background: var(--pv-bg); border: 1px solid var(--pv-border);
+  padding: 4px 10px; border-radius: 4px;
+}
+.pv-queue-counts .pv-pill-done   { background: #dcfce7; border-color: #86efac; color: #166534; }
+.pv-queue-counts .pv-pill-fail   { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+.pv-queue-counts .pv-pill-dup    { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.pv-queue-counts .pv-pill-proc   { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+
+.pv-queue-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pv-queue-table th, .pv-queue-table td {
+  border-bottom: 1px solid var(--pv-border);
+  padding: 6px 8px; text-align: left; vertical-align: top;
+}
+.pv-queue-table th {
+  font-weight: 700; color: var(--pv-text-dim);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+}
+.pv-queue-table td.pv-status {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+}
+.pv-queue-table td.pv-error {
+  color: #b91c1c; font-size: 11px; max-width: 280px;
+  word-break: break-word;
+}
+.pv-queue-table .pv-btn-retry {
+  background: var(--pv-accent); color: #fff; border: none;
+  padding: 4px 8px; border-radius: 4px; font-size: 11px;
+  cursor: pointer;
+}
+.pv-queue-table .pv-btn-retry:hover { background: var(--pv-accent-strong); }

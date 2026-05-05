@@ -255,6 +255,15 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('PrionVault migration scheduler failed: %s', e)
 
+        # Start the ingest worker (also a daemon thread, also non-blocking).
+        # Set PRIONVAULT_WORKER_DISABLED=1 to opt out (e.g. on a worker-only
+        # deployment where the web instance shouldn't process jobs).
+        try:
+            from tools.prionvault.ingestion.worker import start_worker
+            start_worker()
+        except Exception as e:
+            app.logger.warning('PrionVault ingest worker failed to start: %s', e)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()
