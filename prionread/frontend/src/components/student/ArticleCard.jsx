@@ -25,6 +25,8 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
   const hasEvaluation = !!article.evaluation_date;
   const hasRating     = !!article.has_user_rating;
   const canMarkAsRead = hasSummary && hasEvaluation && hasRating;
+  // Article was unmarked with old code that didn't clean up progress data
+  const hasOrphanedData = article.status !== 'read' && (hasSummary || hasEvaluation || hasRating);
 
   const missing = [
     !hasSummary    && 'el resumen',
@@ -105,18 +107,25 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
 
         {/* Mark / unmark as read */}
         {article.status !== 'read' ? (
-          canMarkAsRead ? (
-            <Button variant="secondary" size="sm" onClick={() => onMarkAsRead(article.id)}>
-              ✓ Marcar como leído
-            </Button>
-          ) : (
-            <button
-              onClick={handleBlockedClick}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-gray-50 text-gray-400 cursor-pointer select-none opacity-60 hover:opacity-80 transition-opacity"
-            >
-              ✓ Marcar como leído
-            </button>
-          )
+          <>
+            {canMarkAsRead ? (
+              <Button variant="secondary" size="sm" onClick={() => onMarkAsRead(article.id)}>
+                ✓ Marcar como leído
+              </Button>
+            ) : (
+              <button
+                onClick={handleBlockedClick}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-gray-50 text-gray-400 cursor-pointer select-none opacity-60 hover:opacity-80 transition-opacity"
+              >
+                ✓ Marcar como leído
+              </button>
+            )}
+            {hasOrphanedData && (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmUnmark(true)}>
+                🗑 Limpiar historial
+              </Button>
+            )}
+          </>
         ) : (
           <Button variant="ghost" size="sm" onClick={() => setConfirmUnmark(true)}>
             ↩ Desmarcar como leído
@@ -134,13 +143,13 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
       {/* Blocked message */}
       {confirmUnmark && (
         <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-3 text-xs text-red-800 space-y-2">
-          <p className="font-semibold">⚠️ Ten en cuenta que al desmarcar este artículo como leído se borrarán tu resumen, autoevaluación y valoración. Esta acción no se puede deshacer.</p>
+          <p className="font-semibold">⚠️ Se borrarán el resumen, la autoevaluación y la valoración de este artículo. Esta acción no se puede deshacer.</p>
           <div className="flex gap-2">
             <button
               onClick={() => { setConfirmUnmark(false); onUnmarkAsRead(article.id); }}
               className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
             >
-              Sí, desmarcar y borrar
+              Sí, borrar todo
             </button>
             <button
               onClick={() => setConfirmUnmark(false)}

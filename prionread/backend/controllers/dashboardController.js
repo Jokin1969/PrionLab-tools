@@ -103,8 +103,11 @@ function buildStats(userArticles) {
 
   for (const ua of userArticles) {
     counts[ua.status] = (counts[ua.status] || 0) + 1;
-    for (const ev of ua.evaluations || []) {
-      if (ev.score != null) scores.push(ev.score);
+    // Only count scores from fully completed readings (status='read') to avoid stale orphaned data
+    if (ua.status === 'read') {
+      for (const ev of ua.evaluations || []) {
+        if (ev.score != null) scores.push(ev.score);
+      }
     }
   }
 
