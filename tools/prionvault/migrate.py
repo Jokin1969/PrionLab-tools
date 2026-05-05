@@ -60,7 +60,11 @@ def _split_sql(text_blob: str) -> list[str]:
     ourselves) and respects $$-delimited PL/pgSQL bodies (functions).
     """
     # Drop top-level transaction wrappers; we create our own.
-    body = re.sub(r"^\s*(BEGIN|COMMIT)\s*;?\s*$", "", text_blob,
+    # Require a semicolon for BEGIN so we don't strip BEGIN from inside
+    # PL/pgSQL function / DO block bodies (those never have a trailing ;).
+    body = re.sub(r"^\s*BEGIN\s*;\s*$", "", text_blob,
+                  flags=re.MULTILINE | re.IGNORECASE)
+    body = re.sub(r"^\s*COMMIT\s*;?\s*$", "", body,
                   flags=re.MULTILINE | re.IGNORECASE)
 
     statements = []

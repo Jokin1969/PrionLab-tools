@@ -209,8 +209,8 @@ CREATE TABLE IF NOT EXISTS prionvault_usage (
   created_at   TIMESTAMPTZ  DEFAULT NOW() NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS prionvault_usage_user_day_idx
-  ON prionvault_usage (user_id, (date_trunc('day', created_at)));
+CREATE INDEX IF NOT EXISTS prionvault_usage_user_created_idx
+  ON prionvault_usage (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS prionvault_usage_action_idx
   ON prionvault_usage (action, created_at DESC);
 

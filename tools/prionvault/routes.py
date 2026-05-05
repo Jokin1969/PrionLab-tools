@@ -722,6 +722,36 @@ def api_migrations_run():
     return jsonify(summary)
 
 
+@prionvault_bp.route("/api/admin/migrations/force-rerun", methods=["POST"])
+@admin_required
+def api_migrations_force_rerun():
+    """Delete the applied_migrations tracking rows and re-run all migrations.
+
+    Use this when a migration was recorded as applied but some statements
+    actually failed (e.g. CREATE EXTENSION needs superuser). All statements
+    use IF NOT EXISTS guards so re-running is safe.
+    """
+    from .migrate import run_pending_migrations
+    from sqlalchemy import text as _text
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(_text(
+                "DELETE FROM applied_migrations WHERE name = ANY(:names)"
+            ), {"names": ["001_prionvault_tables.sql", "003_fix_step_column.sql"]})
+    except Exception as exc:
+        return jsonify({"error": f"could not clear migration log: {exc}"}), 500
+    summary = run_pending_migrations()
+    # Invalidate per-process column caches so the next request re-introspects.
+    global _pv_columns_cache
+    _pv_columns_cache = None
+    try:
+        from .ingestion import worker as _worker
+        _worker._articles_col_cache = None
+    except Exception:
+        pass
+    return jsonify({"forced": True, **summary})
+
+
 @prionvault_bp.route("/api/admin/debug/db", methods=["GET"])
 @admin_required
 def api_admin_debug_db():
