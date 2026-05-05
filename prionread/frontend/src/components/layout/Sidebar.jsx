@@ -15,7 +15,8 @@ const adminLinks = [
   { to: '/admin/notifications', icon: '🔔', label: 'Notificaciones' },
 ];
 
-const PRIONVAULT_URL = 'https://web-production-5517e.up.railway.app/prionvault/';
+const PRIONVAULT_URL  = 'https://web-production-5517e.up.railway.app/prionvault/';
+const PRIONPACKS_URL  = 'https://web-production-5517e.up.railway.app/prionpacks/index';
 
 export const Sidebar = () => {
   const { isAdmin } = useAuth();
@@ -45,7 +46,7 @@ export const Sidebar = () => {
         </ul>
 
         {isAdmin && (
-          <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="mt-4 pt-4 border-t border-gray-100 space-y-1">
             <a
               href={PRIONVAULT_URL}
               target="_blank"
@@ -54,6 +55,16 @@ export const Sidebar = () => {
             >
               <span className="text-xl">🗄️</span>
               <span className="font-medium">PrionVault</span>
+              <span className="ml-auto text-gray-400 text-xs">↗</span>
+            </a>
+            <a
+              href={PRIONPACKS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <span className="text-xl">📦</span>
+              <span className="font-medium">PrionPacks</span>
               <span className="ml-auto text-gray-400 text-xs">↗</span>
             </a>
           </div>
