@@ -98,9 +98,10 @@
           <span class="nb-label">PrionRead</span>
         </a>
 
-        <!-- PrionVault link — only if the blueprint is registered, so the
-             navbar still renders when DISABLE_PRIONVAULT=1 is in effect. -->
-        {% if 'prionvault.index' in current_app.view_functions %}
+        <!-- PrionVault link — rendered only when the blueprint is registered.
+             Backed by an app context processor (see app.py) so the link
+             silently disappears when DISABLE_PRIONVAULT=1 is in effect. -->
+        {% if has_prionvault %}
         <a href="{{ url_for('prionvault.index') }}" class="nb-link" style="color:#4338ca;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M3 10h5"/><path d="M3 14h5"/></svg>
           <span class="nb-label">PrionVault</span>

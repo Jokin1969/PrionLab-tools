@@ -296,6 +296,17 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("Background job manager init failed: %s", e)
 
+    # ── Template context: expose feature flags so navbar / footer can
+    # conditionally render links without raising BuildError when a module
+    # is disabled or its blueprint failed to register.
+    @app.context_processor
+    def _inject_app_features():
+        return {
+            "has_prionvault": "prionvault.index" in app.view_functions,
+            "has_prionread":  "prionread.index"  in app.view_functions,
+            "has_prionpacks": "prionpacks.index" in app.view_functions,
+        }
+
     # ── Routes ───────────────────────────────────────────────────────────────
 
     @app.route("/")
