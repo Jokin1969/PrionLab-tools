@@ -1,11 +1,11 @@
-"""PrionVault ingest worker — consumes jobs from `prionvault_ingest_job`.
+"""PrionVault ingest worker - consumes jobs from `prionvault_ingest_job`.
 
 Runs as a daemon thread inside the Flask process. One worker pulls one
 job at a time and processes the full pipeline:
 
     queued -> uploading -> extracting -> resolving -> done
-                                      \-> duplicate
-                                      \-> failed (after 3 attempts)
+                                      -> duplicate
+                                      -> failed (after 3 attempts)
 """
 from __future__ import annotations
 
