@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const routes = require('./routes');
+const { sequelize } = require('./models');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -76,13 +77,23 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`PrionRead backend running on port ${PORT}`);
+sequelize.sync({ alter: true })
+  .then(() => {
+    console.log('Database models synchronized.');
+    app.listen(PORT, () => {
+      console.log(`PrionRead backend running on port ${PORT}`);
 
-  if (process.env.ENABLE_CRON === 'true') {
-    const notificationService = require('./services/notificationService');
-    notificationService.initializeScheduledTasks();
-  }
-});
+      if (process.env.ENABLE_CRON === 'true') {
+        const notificationService = require('./services/notificationService');
+        notificationService.initializeScheduledTasks();
+      }
+    });
+  })
+  .catch((err) => {
+    console.error('Database sync failed, starting anyway:', err.message);
+    app.listen(PORT, () => {
+      console.log(`PrionRead backend running on port ${PORT}`);
+    });
+  });
 
 module.exports = app;
