@@ -1,4 +1,4 @@
-const { UserArticle, Article, Evaluation, User } = require('../models');
+const { UserArticle, Article, Evaluation, ArticleRating, User } = require('../models');
 const recommendationEngine = require('../utils/recommendationEngine');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -16,23 +16,20 @@ const ARTICLE_ATTRS = ['id', 'title', 'authors', 'year', 'priority', 'is_milesto
  * Evaluations are included to surface scores in activity feed.
  */
 async function fetchUserArticles(userId) {
-  return UserArticle.findAll({
-    where: { user_id: userId },
-    attributes: ['id', 'status', 'read_date', 'summary_date', 'evaluation_date', 'updated_at'],
-    include: [
-      {
-        model: Article,
-        as: 'article',
-        attributes: ARTICLE_ATTRS,
-      },
-      {
-        model: Evaluation,
-        as: 'evaluations',
-        attributes: ['score', 'passed', 'created_at'],
-        required: false,
-      },
-    ],
-  });
+  const [rows, ratings] = await Promise.all([
+    UserArticle.findAll({
+      where: { user_id: userId },
+      attributes: ['id', 'article_id', 'status', 'read_date', 'summary_date', 'evaluation_date', 'updated_at'],
+      include: [
+        { model: Article, as: 'article', attributes: ARTICLE_ATTRS },
+        { model: Evaluation, as: 'evaluations', attributes: ['score', 'passed', 'created_at'], required: false },
+      ],
+    }),
+    ArticleRating.findAll({ where: { user_id: userId }, attributes: ['article_id', 'rating'] }),
+  ]);
+  const ratingMap = new Map(ratings.map((r) => [r.article_id, r.rating]));
+  for (const ua of rows) ua.user_rating = ratingMap.get(ua.article_id) ?? null;
+  return rows;
 }
 
 /** Pending articles sorted by milestone → priority → recency — for recommendations. */
@@ -133,7 +130,7 @@ function buildRecentActivity(userArticles) {
     const article_id = ua.article?.id || null;
 
     if (ua.read_date) {
-      events.push({ type: 'read', article_id, article_title: title, date: ua.read_date });
+      events.push({ type: 'read', article_id, article_title: title, date: ua.read_date, user_rating: ua.user_rating ?? null });
     }
     if (ua.summary_date) {
       events.push({ type: 'summarized', article_id, article_title: title, date: ua.summary_date });

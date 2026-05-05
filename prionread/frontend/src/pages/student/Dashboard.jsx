@@ -160,9 +160,14 @@ const StudentDashboard = () => {
                   <p className="text-xs text-gray-600 truncate">
                     {activity.article_title}
                   </p>
-                  {activity.score && (
+                  {activity.score != null && (
                     <p className="text-xs text-green-600 font-medium">
                       Puntuación: {activity.score}/10
+                    </p>
+                  )}
+                  {activity.user_rating != null && (
+                    <p className="text-xs text-amber-500">
+                      {'⭐'.repeat(activity.user_rating)}{'☆'.repeat(5 - activity.user_rating)}
                     </p>
                   )}
                 </div>

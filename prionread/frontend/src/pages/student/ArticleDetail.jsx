@@ -13,9 +13,9 @@ const ArticleDetail = () => {
   const [ratings, setRatings]       = useState([]);
   const [loading, setLoading]       = useState(true);
 
-  const [summaryText, setSummaryText]   = useState('');
+  const [summaryText, setSummaryText]     = useState('');
   const [savingSummary, setSavingSummary] = useState(false);
-  const [generatingAI, setGeneratingAI] = useState(false);
+  const [generatingAI, setGeneratingAI]   = useState(false);
 
   const [showEvalModal, setShowEvalModal]   = useState(false);
   const [evalQuestions, setEvalQuestions]   = useState(null);
@@ -23,9 +23,12 @@ const ArticleDetail = () => {
   const [submittingEval, setSubmittingEval] = useState(false);
   const [generatingEval, setGeneratingEval] = useState(false);
 
-  const [rating, setRating]   = useState(0);
-  const [comment, setComment] = useState('');
+  const [rating, setRating]         = useState(0);
+  const [comment, setComment]       = useState('');
+  const [fetchingPdf, setFetchingPdf] = useState(false);
 
+  // Scroll to top whenever the article changes
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [articleId]);
   useEffect(() => { loadArticleData(); }, [articleId]);
 
   const loadArticleData = async () => {
@@ -77,7 +80,9 @@ const ArticleDetail = () => {
     try {
       const data = await studentService.generateEvaluation(articleId);
       setEvalQuestions(data.questions);
-      setEvalAnswers(new Array(data.questions.length).fill(null));
+      // Pre-fill previous answers if redoing (null means unanswered)
+      const prev = data.previous_answers ?? [];
+      setEvalAnswers(data.questions.map((_, i) => prev[i] ?? null));
       setShowEvalModal(true);
     } catch { /* silent */ }
     finally { setGeneratingEval(false); }
@@ -94,6 +99,17 @@ const ArticleDetail = () => {
     finally { setSubmittingEval(false); }
   };
 
+  const handleDownloadPdf = async () => {
+    setFetchingPdf(true);
+    try {
+      await studentService.openPdf(articleId);
+    } catch {
+      alert('No se pudo abrir el PDF. Inténtalo de nuevo.');
+    } finally {
+      setFetchingPdf(false);
+    }
+  };
+
   const handleRateArticle = async () => {
     if (rating === 0) return;
     try {
@@ -106,6 +122,9 @@ const ArticleDetail = () => {
 
   if (loading) return <Loader fullScreen />;
   if (!article) return <div className="p-8 text-gray-500">Artículo no encontrado</div>;
+
+  const hasSummary    = !!summary;
+  const hasEvaluation = !!evaluation;
 
   return (
     <div className="space-y-6">
@@ -153,11 +172,11 @@ const ArticleDetail = () => {
           </div>
         )}
 
-        {article.dropbox_link && (
+        {article.dropbox_path && (
           <div className="mt-6">
-            <a href={article.dropbox_link} target="_blank" rel="noopener noreferrer">
-              <Button variant="primary">📥 Descargar PDF</Button>
-            </a>
+            <Button variant="primary" onClick={handleDownloadPdf} loading={fetchingPdf} disabled={fetchingPdf}>
+              📥 Descargar PDF
+            </Button>
           </div>
         )}
       </Card>
@@ -192,51 +211,71 @@ const ArticleDetail = () => {
 
       {/* Evaluation */}
       <Card title="✅ Autoevaluación">
-        {evaluation ? (
-          <div className="p-6 bg-green-50 rounded-lg border border-green-200">
-            <p className="text-lg font-semibold text-green-800 mb-2">✓ Evaluación completada</p>
-            <p className="text-3xl font-bold text-green-600 mb-2">{evaluation.score}/10</p>
-            <p className="text-sm text-gray-600">{evaluation.passed ? '¡Aprobado! 🎉' : 'No aprobado'}</p>
-            <p className="text-xs text-gray-500 mt-2">
-              Realizado el {new Date(evaluation.created_at).toLocaleDateString('es-ES')}
-            </p>
-          </div>
+        {!hasSummary ? (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            Guarda primero tu resumen del artículo para poder acceder a la autoevaluación.
+          </p>
         ) : (
-          <div>
-            <p className="text-gray-600 mb-4">
-              La IA generará un test de comprensión basado en el título y abstract del artículo.
-              Tendrás entre 5 y 10 preguntas tipo test con 4 opciones cada una.
-            </p>
+          <div className="space-y-4">
+            {evaluation && (
+              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                <p className="text-base font-semibold text-green-800 mb-1">✓ Última evaluación</p>
+                <p className="text-3xl font-bold text-green-600">{evaluation.score}/10</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  {evaluation.passed ? '¡Aprobado! 🎉' : 'No aprobado'} · {evaluation.correct}/{evaluation.total} correctas
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {new Date(evaluation.created_at).toLocaleDateString('es-ES')}
+                </p>
+              </div>
+            )}
             <div className="flex gap-3 items-center flex-wrap">
               <Button onClick={handleStartEvaluation} loading={generatingEval} disabled={generatingEval}>
-                🎯 Iniciar Evaluación
+                {evaluation ? '🔄 Rehacer evaluación' : '🎯 Iniciar Evaluación'}
               </Button>
               {generatingEval && (
                 <span className="text-sm text-indigo-600 animate-pulse">
-                  La IA está preparando las preguntas… puede tardar unos segundos
+                  {evaluation ? 'Cargando preguntas…' : 'La IA está preparando las preguntas… puede tardar unos segundos'}
                 </span>
               )}
             </div>
+            {!evaluation && (
+              <p className="text-sm text-gray-500">
+                La IA generará un test de comprensión basado en el título y abstract del artículo.
+                Tendrás entre 5 y 10 preguntas tipo test con 4 opciones cada una.
+              </p>
+            )}
           </div>
         )}
       </Card>
 
       {/* Rating */}
       <Card title="⭐ Tu Valoración">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Valoración (1-5 estrellas)</label>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button key={star} onClick={() => setRating(star)} className="text-3xl hover:scale-110 transition-transform">
-                  {star <= rating ? '⭐' : '☆'}
-                </button>
-              ))}
+        {!hasEvaluation ? (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            Completa primero la autoevaluación para poder valorar el artículo.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Valoración (1-5 estrellas)</label>
+              <div className="flex gap-2 items-center">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button key={star} onClick={() => setRating(rating === star ? 0 : star)} title={rating === star ? 'Quitar valoración' : `${star} estrella${star > 1 ? 's' : ''}`} className="text-3xl hover:scale-110 transition-transform">
+                    {star <= rating ? '⭐' : '☆'}
+                  </button>
+                ))}
+                {rating > 0 && (
+                  <button onClick={() => setRating(0)} className="ml-1 text-xs text-gray-400 hover:text-red-500 underline underline-offset-2 transition-colors">
+                    Quitar
+                  </button>
+                )}
+              </div>
             </div>
+            <Input label="Comentario (opcional)" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="¿Qué te pareció el artículo?" />
+            <Button onClick={handleRateArticle} disabled={rating === 0}>Guardar Valoración</Button>
           </div>
-          <Input label="Comentario (opcional)" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="¿Qué te pareció el artículo?" />
-          <Button onClick={handleRateArticle} disabled={rating === 0}>Guardar Valoración</Button>
-        </div>
+        )}
       </Card>
 
       {/* Other ratings */}
