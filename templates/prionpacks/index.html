@@ -82,6 +82,9 @@
           <button class="pp-btn pp-btn-secondary" id="btn-backup-dropbox" title="Guardar copia de seguridad en Dropbox ahora">
             <i class="fas fa-cloud-upload-alt"></i> Backup Dropbox
           </button>
+          <button class="pp-btn pp-btn-ghost pp-btn-restore-open" id="btn-open-restore" title="Restaurar datos desde un backup de Dropbox">
+            <i class="fas fa-history"></i> Restaurar
+          </button>
           <a class="pp-btn pp-btn-secondary" id="btn-list-packages-docx" href="/prionpacks/api/packages/list-docx">
             <i class="fas fa-file-word"></i> Lista PrionPacks
           </a>
@@ -840,6 +843,30 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
 </div>
 
 <div id="pp-toast-container" class="pp-toast-container"></div>
+
+<!-- Restore from backup modal -->
+<div id="pp-restore-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-restore-modal-title">
+  <div class="pp-modal-backdrop" id="pp-restore-backdrop"></div>
+  <div class="pp-restore-modal-card">
+    <div class="pp-send-modal-header">
+      <span class="pp-send-modal-title" id="pp-restore-modal-title">
+        <i class="fas fa-history" style="color:#7c3aed;"></i> Restaurar desde backup
+      </span>
+      <button id="pp-restore-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <p class="pp-send-modal-desc" style="margin-bottom:16px;">
+      Selecciona el backup que quieres restaurar. <strong>Se sustituirán todos los datos actuales</strong> por los del backup elegido. Se guardará una copia local de seguridad antes de sobreescribir.
+    </p>
+    <div id="pp-restore-list" class="pp-restore-list">
+      <div class="pp-restore-loading"><i class="fas fa-spinner fa-spin"></i> Cargando backups…</div>
+    </div>
+    <div class="pp-send-modal-footer">
+      <button class="pp-btn pp-btn-ghost" id="pp-restore-modal-cancel">Cancelar</button>
+    </div>
+  </div>
+</div>
 
 <script src="{{ url_for('static', filename='js/prionpacks-storage.js') }}"></script>
 <script src="{{ url_for('static', filename='js/prionpacks-api.js') }}"></script>
