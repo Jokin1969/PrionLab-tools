@@ -55,17 +55,42 @@ def normalise_doi(doi: str) -> str:
 
 
 def find_doi_in_text(text: str) -> Optional[str]:
-    """Return the first plausible DOI in `text`, normalised, or None."""
+    """Return the best DOI candidate from `text`, normalised, or None.
+
+    Strategy (mirrors PrionRead's approach):
+      1. Collect all labelled DOIs (DOI: 10.xxx/yyy) from the first page only.
+         These are authoritative; pick the shortest (the paper's own DOI is
+         typically shorter than reference DOIs).
+      2. If none found on page 1, try the full text labelled matches.
+      3. Last resort: bare DOI pattern anywhere, again shortest wins.
+    A paper's own DOI is nearly always shorter than reference DOIs.
+    """
     if not text:
         return None
-    # Try labelled form first (DOI: 10.xxxx/yyyy) — more reliable.
-    for m in _DOI_LABEL_RE.finditer(text):
+
+    # Limit to first 3 000 chars (≈ first page) for the high-confidence pass.
+    head = text[:3000]
+    candidates: list[str] = []
+
+    for m in _DOI_LABEL_RE.finditer(head):
         cand = normalise_doi(m.group(1))
         if cand and len(cand) >= 7:
-            return cand
-    # Fallback: any matching pattern.
-    m = _DOI_RE.search(text)
-    return normalise_doi(m.group(0)) if m else None
+            candidates.append(cand)
+
+    if not candidates:
+        # Try full text with labelled form.
+        for m in _DOI_LABEL_RE.finditer(text):
+            cand = normalise_doi(m.group(1))
+            if cand and len(cand) >= 7:
+                candidates.append(cand)
+
+    if candidates:
+        return min(candidates, key=len)
+
+    # Last resort: bare DOI pattern, collect all, pick shortest.
+    all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(text)]
+    all_bare = [c for c in all_bare if len(c) >= 7]
+    return min(all_bare, key=len) if all_bare else None
 
 
 def find_pmid_in_text(text: str) -> Optional[str]:
