@@ -47,10 +47,21 @@ def find_duplicate(
             if row:
                 return row[0], "doi"
         if pdf_md5:
-            row = conn.execute(
-                text("SELECT id FROM articles WHERE pdf_md5 = :m LIMIT 1"),
-                {"m": pdf_md5},
-            ).first()
-            if row:
-                return row[0], "md5"
+            # pdf_md5 column is added by migration 001. Skip the MD5 check
+            # gracefully if the column doesn't exist yet.
+            try:
+                row = conn.execute(
+                    text("SELECT id FROM articles WHERE pdf_md5 = :m LIMIT 1"),
+                    {"m": pdf_md5},
+                ).first()
+                if row:
+                    return row[0], "md5"
+            except Exception as exc:
+                if "pdf_md5" in str(exc):
+                    logger.warning(
+                        "Skipping MD5 dedup — column pdf_md5 missing "
+                        "(migration 001 pending?): %s", exc
+                    )
+                else:
+                    logger.warning("MD5 dedup query failed: %s", exc)
     return None, None

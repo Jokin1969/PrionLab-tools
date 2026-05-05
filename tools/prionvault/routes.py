@@ -711,12 +711,7 @@ def api_migrations_status():
 @prionvault_bp.route("/api/admin/migrations/run", methods=["POST"])
 @admin_required
 def api_migrations_run():
-    """Force-run any pending PrionVault migrations now.
-
-    The runner is also called automatically on app boot (see app.py), so
-    this endpoint is mainly a safety valve when the admin wants to apply
-    a freshly-pushed migration without redeploying.
-    """
+    """Force-run any pending PrionVault migrations now."""
     from .migrate import run_pending_migrations
     summary = run_pending_migrations()
     return jsonify(summary)

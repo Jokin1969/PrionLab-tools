@@ -18,16 +18,24 @@ transporter.verify((error) => {
   }
 });
 
-if (!process.env.FRONTEND_URL) {
-  console.warn('⚠️  FRONTEND_URL no está definida — los enlaces en emails no funcionarán correctamente.');
-}
-
-// FRONTEND_URL is the bare host (e.g. https://web-production-5517e.up.railway.app).
-// PRIONREAD_BASE is the sub-path where PrionRead is mounted (default: /prionread).
-// Together they form the root of all in-app links sent in emails.
+// FRONTEND_URL must be set in Railway env vars to the Flask host:
+//   FRONTEND_URL=https://web-production-5517e.up.railway.app
+// PRIONREAD_BASE is the sub-path (default /prionread). Together they form
+// the absolute base URL used in all email links.
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const PRIONREAD_BASE = (process.env.PRIONREAD_BASE || '/prionread').replace(/\/$/, '');
 const APP_URL = `${FRONTEND_URL}${PRIONREAD_BASE}`;
+
+if (!FRONTEND_URL) {
+  console.error(
+    '❌ FRONTEND_URL is not set. Email links will be relative (broken).\n' +
+    '   Set FRONTEND_URL=https://web-production-5517e.up.railway.app in Railway env vars.'
+  );
+} else if (!APP_URL.startsWith('http')) {
+  console.error(`❌ APP_URL does not look absolute: "${APP_URL}". Check FRONTEND_URL.`);
+} else {
+  console.log(`✅ Email links will use: ${APP_URL}`);
+}
 
 const base = (content) => `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
