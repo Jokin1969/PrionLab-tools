@@ -14,7 +14,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from database.config import db
+from .queue import _get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +33,12 @@ def find_duplicate(
     Returns (article_id, reason) on hit, or (None, None) on miss.
     `reason` is one of: 'doi', 'md5'.
     """
-    if not getattr(db, "engine", None):
+    try:
+        eng = _get_engine()
+    except Exception:
         return None, None
 
-    with db.engine.connect() as conn:
+    with eng.connect() as conn:
         if doi:
             row = conn.execute(
                 text("SELECT id FROM articles WHERE lower(doi) = :d LIMIT 1"),

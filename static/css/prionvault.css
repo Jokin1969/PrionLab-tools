@@ -1,6 +1,20 @@
-/* PrionVault — initial stylesheet (Phase 1)
-   Style language: closer to PrionPacks (teal accent) but with an indigo
-   primary so the two libraries feel related but distinct. */
+/* PrionVault stylesheet
+   Brand colour: dark green (#166534, Tailwind green-800), distinct from
+   PrionPacks (teal) and PrionRead (indigo). */
+
+/* Navbar override: when the user is on /prionvault/, the global
+   .nb-link.nb-active rule forces a generic blue background. Replace it
+   with our green so PrionVault has the same colour treatment as the
+   other modules. The non-active text colour is set inline in base.html
+   so this override only kicks in for the highlighted state. */
+a.nb-link[href^="/prionvault"]              { color: #166534 !important; }
+a.nb-link[href^="/prionvault"].nb-active    {
+  background: #166534 !important;
+  color: #ffffff !important;
+}
+a.nb-link[href^="/prionvault"].nb-active:hover {
+  background: #14532d !important;
+}
 
 :root {
   --pv-bg:        #f7f8fa;

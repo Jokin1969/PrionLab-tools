@@ -7,6 +7,12 @@ Why persistent (BD-backed) instead of in-memory:
   - `SELECT ... FOR UPDATE SKIP LOCKED` lets multiple workers (current
     or future) pull jobs without stepping on each other.
 
+Why we build our own engine:
+  - We try the project-wide singleton from `database.config.db` first,
+    but fall back to a fresh engine built from $DATABASE_URL if the
+    singleton is None for any reason. This makes the queue robust to
+    import-order quirks during gunicorn worker boot.
+
 Lifecycle of a job:
     queued
       -> uploading       (worker picked it up, uploading to Dropbox)
@@ -19,30 +25,71 @@ Lifecycle of a job:
 """
 from __future__ import annotations
 
-import base64
-import io
 import logging
 import os
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import IO, List, Optional, Union
+from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import text
-
-from database.config import db
+from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
 _MAX_ATTEMPTS = 3
-# Where the worker stages PDFs on disk before processing. Containers on
-# Railway have ephemeral storage but it survives within a single boot,
-# which is enough for the worker's own pipeline.
+# Where the worker stages PDFs on disk before processing.
 _STAGING_DIR = Path(os.environ.get("PRIONVAULT_STAGING_DIR",
                                    tempfile.gettempdir())) / "prionvault_staging"
 _STAGING_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ── Engine bootstrap (resilient) ───────────────────────────────────────────
+_local_engine = None
+_engine_lock = threading.Lock()
+
+
+def _normalise_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
+
+
+def _get_engine():
+    """Return a working SQLAlchemy engine.
+
+    Order of preference:
+      1. The project-wide singleton at `database.config.db.engine`.
+      2. A locally-built fallback engine from $DATABASE_URL.
+
+    Raises RuntimeError only if both paths fail (i.e. DATABASE_URL is
+    missing entirely).
+    """
+    try:
+        from database.config import db as _db
+        if getattr(_db, "engine", None) is not None:
+            return _db.engine
+    except Exception as exc:
+        logger.warning("PrionVault queue: cannot use database.config.db (%s)", exc)
+
+    global _local_engine
+    if _local_engine is not None:
+        return _local_engine
+    with _engine_lock:
+        if _local_engine is not None:
+            return _local_engine
+        url = _normalise_url(os.environ.get("DATABASE_URL", "").strip())
+        if not url:
+            raise RuntimeError(
+                "PrionVault queue: DATABASE_URL is not set; cannot reach Postgres."
+            )
+        _local_engine = create_engine(
+            url, pool_pre_ping=True, pool_recycle=300, future=True,
+        )
+        logger.info("PrionVault queue: built local fallback engine from DATABASE_URL.")
+        return _local_engine
 
 
 @dataclass
@@ -56,22 +103,7 @@ class Job:
     error:        Optional[str]
     attempts:     int
     created_by:   Optional[UUID]
-    staged_path:  Optional[str]   # local on-disk PDF (set by enqueue, used by worker)
-
-
-def _ensure_db():
-    """Raise a clear error if the SQLAlchemy engine is missing.
-
-    Both `db.engine` and `db.Session` are set together in
-    `DatabaseConfig._setup()`; a missing engine usually means
-    DATABASE_URL was not present at import time. Surfacing the message
-    here is much friendlier than a downstream AttributeError.
-    """
-    if not getattr(db, "engine", None) or not getattr(db, "Session", None):
-        raise RuntimeError(
-            "PrionVault: database not configured (DATABASE_URL missing or "
-            "engine failed to initialise). Check Railway env vars."
-        )
+    staged_path:  Optional[str]
 
 
 # ── Enqueue ────────────────────────────────────────────────────────────────
@@ -81,16 +113,14 @@ def enqueue_pdf(*, content: bytes, filename: str,
 
     Returns the new job id. Raises if the DB is unreachable.
     """
-    _ensure_db()
-    # Stage to disk first so the worker doesn't keep large blobs in memory.
     safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)[:120]
     staged = _STAGING_DIR / f"{int(datetime.utcnow().timestamp() * 1000)}_{safe_name}"
     staged.write_bytes(content)
 
     md5 = _md5_of(content)
-    s = db.Session()
-    try:
-        row = s.execute(text(
+    eng = _get_engine()
+    with eng.begin() as conn:
+        row = conn.execute(text(
             """
             INSERT INTO prionvault_ingest_job
               (pdf_filename, pdf_md5, status, step, created_by, created_at)
@@ -99,13 +129,7 @@ def enqueue_pdf(*, content: bytes, filename: str,
             """
         ), {"fn": str(staged), "md5": md5,
             "uid": str(user_id) if user_id else None}).first()
-        s.commit()
-        return int(row[0])
-    except Exception:
-        s.rollback()
-        raise
-    finally:
-        s.close()
+    return int(row[0])
 
 
 # ── Worker-side: claim the next job ────────────────────────────────────────
@@ -115,11 +139,9 @@ def claim_next() -> Optional[Job]:
     Uses SELECT ... FOR UPDATE SKIP LOCKED so concurrent workers never
     pick the same job.
     """
-    if not getattr(db, "engine", None):
-        return None
-    s = db.Session()
-    try:
-        row = s.execute(text(
+    eng = _get_engine()
+    with eng.begin() as conn:
+        row = conn.execute(text(
             """
             SELECT id FROM prionvault_ingest_job
             WHERE status = 'queued'
@@ -129,10 +151,9 @@ def claim_next() -> Optional[Job]:
             """
         )).first()
         if row is None:
-            s.commit()
             return None
         jid = int(row[0])
-        s.execute(text(
+        conn.execute(text(
             """
             UPDATE prionvault_ingest_job
                SET status = 'uploading', step = 'claimed',
@@ -140,23 +161,18 @@ def claim_next() -> Optional[Job]:
              WHERE id = :id
             """
         ), {"id": jid})
-
-        full = s.execute(text(
+        full = conn.execute(text(
             "SELECT id, article_id, pdf_filename, pdf_md5, status, step,"
             " error, attempts, created_by FROM prionvault_ingest_job WHERE id = :id"
         ), {"id": jid}).first()
-        s.commit()
-    except Exception:
-        s.rollback()
-        raise
-    finally:
-        s.close()
 
     return Job(
         id=full.id, article_id=full.article_id, pdf_filename=full.pdf_filename,
         pdf_md5=full.pdf_md5, status=full.status, step=full.step,
         error=full.error, attempts=full.attempts, created_by=full.created_by,
-        staged_path=full.pdf_filename if full.pdf_filename and Path(full.pdf_filename).exists() else None,
+        staged_path=(full.pdf_filename
+                     if full.pdf_filename and Path(full.pdf_filename).exists()
+                     else None),
     )
 
 
@@ -165,9 +181,9 @@ def mark_step(job_id: int, *, status: str, step: str,
               article_id: Optional[UUID] = None,
               error: Optional[str] = None) -> None:
     finishing = status in ("done", "failed", "duplicate")
-    s = db.Session()
-    try:
-        s.execute(text(
+    eng = _get_engine()
+    with eng.begin() as conn:
+        conn.execute(text(
             """
             UPDATE prionvault_ingest_job
                SET status = :status,
@@ -182,27 +198,22 @@ def mark_step(job_id: int, *, status: str, step: str,
             "aid": str(article_id) if article_id else None,
             "finishing": finishing, "id": job_id,
         })
-        s.commit()
-    except Exception:
-        s.rollback()
-        raise
-    finally:
-        s.close()
 
 
-def bump_attempt_or_fail(job_id: int, error: str, max_attempts: int = _MAX_ATTEMPTS) -> str:
+def bump_attempt_or_fail(job_id: int, error: str,
+                         max_attempts: int = _MAX_ATTEMPTS) -> str:
     """Increment attempts; if at limit, mark failed; otherwise re-queue.
 
     Returns the new status.
     """
-    s = db.Session()
-    try:
-        row = s.execute(text(
+    eng = _get_engine()
+    with eng.begin() as conn:
+        row = conn.execute(text(
             "SELECT attempts FROM prionvault_ingest_job WHERE id = :id"
         ), {"id": job_id}).first()
         attempts = (row.attempts if row else 0) + 1
         new_status = "failed" if attempts >= max_attempts else "queued"
-        s.execute(text(
+        conn.execute(text(
             """
             UPDATE prionvault_ingest_job
                SET attempts = :a,
@@ -212,31 +223,27 @@ def bump_attempt_or_fail(job_id: int, error: str, max_attempts: int = _MAX_ATTEM
              WHERE id = :id
             """
         ), {"a": attempts, "st": new_status, "err": error[:500], "id": job_id})
-        s.commit()
-        return new_status
-    except Exception:
-        s.rollback()
-        raise
-    finally:
-        s.close()
+    return new_status
 
 
 # ── Status snapshot for the admin panel ─────────────────────────────────────
 def snapshot(*, recent: int = 30) -> dict:
-    if not getattr(db, "engine", None):
+    try:
+        eng = _get_engine()
+    except Exception as exc:
+        logger.warning("PrionVault queue: snapshot — no engine (%s)", exc)
         return {"queued": 0, "processing": 0, "done": 0, "failed": 0,
                 "duplicate": 0, "recent": []}
-    s = db.Session()
-    try:
-        agg_rows = s.execute(text(
+
+    with eng.connect() as conn:
+        agg_rows = conn.execute(text(
             "SELECT status, COUNT(*) FROM prionvault_ingest_job GROUP BY status"
         )).all()
         agg = {r[0]: int(r[1]) for r in agg_rows}
-        # Map "uploading|extracting|resolving|indexing" -> "processing".
         processing = sum(agg.get(st, 0) for st in
                          ("uploading", "extracting", "resolving", "indexing"))
 
-        recent_rows = s.execute(text(
+        recent_rows = conn.execute(text(
             """
             SELECT id, article_id, pdf_filename, status, step, error,
                    attempts, created_at, finished_at
@@ -245,8 +252,6 @@ def snapshot(*, recent: int = 30) -> dict:
             LIMIT :n
             """
         ), {"n": recent}).all()
-    finally:
-        s.close()
 
     def _short_filename(p):
         if not p:
@@ -277,7 +282,9 @@ def snapshot(*, recent: int = 30) -> dict:
 
 
 def list_jobs(*, status: Optional[str] = None, limit: int = 100) -> List[dict]:
-    if not getattr(db, "engine", None):
+    try:
+        eng = _get_engine()
+    except Exception:
         return []
     sql = ("SELECT id, article_id, pdf_filename, status, step, error,"
            " attempts, created_at, finished_at FROM prionvault_ingest_job")
@@ -287,11 +294,8 @@ def list_jobs(*, status: Optional[str] = None, limit: int = 100) -> List[dict]:
         params["s"] = status
     sql += " ORDER BY created_at DESC LIMIT :n"
     params["n"] = limit
-    s = db.Session()
-    try:
-        rows = s.execute(text(sql), params).all()
-    finally:
-        s.close()
+    with eng.connect() as conn:
+        rows = conn.execute(text(sql), params).all()
     return [
         {
             "id":           int(r.id),
@@ -309,11 +313,12 @@ def list_jobs(*, status: Optional[str] = None, limit: int = 100) -> List[dict]:
 
 def retry(job_id: int) -> bool:
     """Reset a failed/duplicate job to queued so the worker tries again."""
-    if not getattr(db, "engine", None):
-        return False
-    s = db.Session()
     try:
-        res = s.execute(text(
+        eng = _get_engine()
+    except Exception:
+        return False
+    with eng.begin() as conn:
+        res = conn.execute(text(
             """
             UPDATE prionvault_ingest_job
                SET status = 'queued', step = 'retry-requested',
@@ -321,13 +326,7 @@ def retry(job_id: int) -> bool:
              WHERE id = :id AND status IN ('failed', 'duplicate')
             """
         ), {"id": job_id})
-        s.commit()
         return res.rowcount > 0
-    except Exception:
-        s.rollback()
-        raise
-    finally:
-        s.close()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
