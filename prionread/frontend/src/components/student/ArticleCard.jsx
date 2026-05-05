@@ -3,22 +3,33 @@ import { Link } from 'react-router-dom';
 import { Button } from '../common';
 import { studentService } from '../../services/student.service';
 
-export const ArticleCard = ({ article, onMarkAsRead }) => {
-  const [fetchingPdf, setFetchingPdf] = useState(false);
+export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
+  const [fetchingPdf, setFetchingPdf]   = useState(false);
+  const [showBlockMsg, setShowBlockMsg] = useState(false);
 
   const statusColors = {
-    pending: 'bg-gray-100 text-gray-600',
-    read: 'bg-blue-100 text-blue-600',
-    summarized: 'bg-indigo-100 text-indigo-600',
+    pending:   'bg-gray-100 text-gray-600',
+    read:      'bg-blue-100 text-blue-600',
+    summarized:'bg-indigo-100 text-indigo-600',
     evaluated: 'bg-green-100 text-green-600',
   };
-
   const statusLabels = {
-    pending: 'Pendiente',
-    read: 'Leído',
-    summarized: 'Resumido',
+    pending:   'Pendiente',
+    read:      'Leído',
+    summarized:'Resumido',
     evaluated: 'Evaluado',
   };
+
+  const hasSummary    = !!article.summary_date;
+  const hasEvaluation = !!article.evaluation_date;
+  const hasRating     = !!article.has_user_rating;
+  const canMarkAsRead = hasSummary && hasEvaluation && hasRating;
+
+  const missing = [
+    !hasSummary    && 'el resumen',
+    !hasEvaluation && 'la autoevaluación',
+    !hasRating     && 'la valoración',
+  ].filter(Boolean);
 
   const handleDownloadPdf = async () => {
     setFetchingPdf(true);
@@ -29,6 +40,11 @@ export const ArticleCard = ({ article, onMarkAsRead }) => {
     } finally {
       setFetchingPdf(false);
     }
+  };
+
+  const handleBlockedClick = () => {
+    setShowBlockMsg(true);
+    setTimeout(() => setShowBlockMsg(false), 4000);
   };
 
   return (
@@ -81,29 +97,47 @@ export const ArticleCard = ({ article, onMarkAsRead }) => {
       )}
 
       {/* Actions */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
         <Link to={`/my-articles/${article.id}`}>
-          <Button variant="primary" size="sm">
-            Ver Detalle
-          </Button>
+          <Button variant="primary" size="sm">Ver Detalle</Button>
         </Link>
 
-        {article.status === 'pending' && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onMarkAsRead(article.id)}
-          >
-            Marcar como Leído
+        {/* Mark / unmark as read */}
+        {article.status === 'pending' ? (
+          canMarkAsRead ? (
+            <Button variant="secondary" size="sm" onClick={() => onMarkAsRead(article.id)}>
+              ✓ Marcar como leído
+            </Button>
+          ) : (
+            <button
+              onClick={handleBlockedClick}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-gray-50 text-gray-400 cursor-pointer select-none opacity-60 hover:opacity-80 transition-opacity"
+            >
+              ✓ Marcar como leído
+            </button>
+          )
+        ) : (
+          <Button variant="ghost" size="sm" onClick={() => onUnmarkAsRead(article.id)}>
+            ↩ Desmarcar como leído
           </Button>
         )}
 
+        {/* PDF */}
         {article.dropbox_path && (
           <Button variant="ghost" size="sm" onClick={handleDownloadPdf} loading={fetchingPdf} disabled={fetchingPdf}>
             📄 PDF
           </Button>
         )}
       </div>
+
+      {/* Blocked message */}
+      {showBlockMsg && (
+        <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Para marcar como leído necesitas completar antes:{' '}
+          <span className="font-semibold">{missing.join(', ')}</span>.
+          Accede al detalle del artículo para completarlos.
+        </p>
+      )}
     </div>
   );
 };

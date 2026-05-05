@@ -25,6 +25,9 @@ const MyArticles = () => {
         ...article,
         status: assignment?.status,
         read_date: assignment?.read_date,
+        summary_date: assignment?.summary_date,
+        evaluation_date: assignment?.evaluation_date,
+        has_user_rating: assignment?.has_user_rating,
         assignment_id: assignment?.id,
       }));
       setArticles(flat);
@@ -41,6 +44,15 @@ const MyArticles = () => {
       loadArticles();
     } catch (error) {
       console.error('Error marking as read:', error);
+    }
+  };
+
+  const handleUnmarkAsRead = async (articleId) => {
+    try {
+      await studentService.unmarkAsRead(articleId);
+      loadArticles();
+    } catch (error) {
+      console.error('Error unmarking as read:', error);
     }
   };
 
@@ -118,6 +130,7 @@ const MyArticles = () => {
               key={article.id}
               article={article}
               onMarkAsRead={handleMarkAsRead}
+              onUnmarkAsRead={handleUnmarkAsRead}
             />
           ))}
         </div>

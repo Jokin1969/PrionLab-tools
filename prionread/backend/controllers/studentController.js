@@ -29,6 +29,7 @@ function avgRating(ratings = []) {
 function formatUserArticle(ua) {
   const ratingsArr = ua.article?.ratings || [];
   const articleJson = ua.article ? ua.article.toJSON() : null;
+  const hasUserRating = ratingsArr.some((r) => r.user_id === ua.user_id);
   if (articleJson) delete articleJson.ratings;
 
   return {
@@ -38,6 +39,7 @@ function formatUserArticle(ua) {
       read_date: ua.read_date,
       summary_date: ua.summary_date,
       evaluation_date: ua.evaluation_date,
+      has_user_rating: hasUserRating,
       updated_at: ua.updated_at,
     },
     article: articleJson ? { ...articleJson, avg_rating: avgRating(ratingsArr) } : null,
@@ -88,7 +90,7 @@ async function getMyArticles(req, res) {
         {
           model: Article,
           as: 'article',
-          include: [{ model: ArticleRating, as: 'ratings', attributes: ['rating'], required: false }],
+          include: [{ model: ArticleRating, as: 'ratings', attributes: ['rating', 'user_id'], required: false }],
         },
       ],
       order,
@@ -111,7 +113,7 @@ async function getMyArticleDetail(req, res) {
         {
           model: Article,
           as: 'article',
-          include: [{ model: ArticleRating, as: 'ratings', attributes: ['rating'], required: false }],
+          include: [{ model: ArticleRating, as: 'ratings', attributes: ['rating', 'user_id'], required: false }],
         },
       ],
     });
@@ -139,6 +141,20 @@ async function markAsRead(req, res) {
     return res.json({ updated: true, current_status: 'read' });
   } catch (err) {
     console.error('[markAsRead]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ─── PUT /api/my-articles/:articleId/unmark-as-read ──────────────────────────
+
+async function unmarkAsRead(req, res) {
+  try {
+    const ua = await findUserArticle(req.user.id, req.params.articleId);
+    if (!ua) return res.status(404).json({ error: 'Article not assigned to you' });
+    await ua.update({ status: 'pending', read_date: null });
+    return res.json({ updated: true, current_status: 'pending' });
+  } catch (err) {
+    console.error('[unmarkAsRead]', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -369,6 +385,7 @@ module.exports = {
   getMyArticles,
   getMyArticleDetail,
   markAsRead,
+  unmarkAsRead,
   createOrUpdateSummary,
   getSummary,
   generateAISummary,

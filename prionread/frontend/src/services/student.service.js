@@ -17,6 +17,11 @@ export const studentService = {
     return response.data;
   },
 
+  unmarkAsRead: async (articleId) => {
+    const response = await api.put(`/my-articles/${articleId}/unmark-as-read`);
+    return response.data;
+  },
+
   getArticleDetail: async (articleId) => {
     const response = await api.get(`/my-articles/${articleId}`);
     return response.data;

@@ -4,6 +4,7 @@ const {
   getMyArticles,
   getMyArticleDetail,
   markAsRead,
+  unmarkAsRead,
   createOrUpdateSummary,
   getSummary,
   generateAISummary,
@@ -25,6 +26,7 @@ router.get('/', getMyArticles);
 // ── Per-article ───────────────────────────────────────────────────────────────
 router.get('/:articleId', getMyArticleDetail);
 router.put('/:articleId/mark-as-read', markAsRead);
+router.put('/:articleId/unmark-as-read', unmarkAsRead);
 
 // ── Summary sub-resource ──────────────────────────────────────────────────────
 router.post('/:articleId/summary', createOrUpdateSummary);
