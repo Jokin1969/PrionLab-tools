@@ -71,6 +71,8 @@ const AdminArticles = () => {
   const [editingArticle, setEditingArticle]   = useState(null);
   const [pdfUploadTarget, setPdfUploadTarget] = useState(null);
   const [search, setSearch]             = useState('');
+  const [advSearch, setAdvSearch]       = useState('');
+  const [searchAbstract, setSearchAbstract] = useState(false);
   const [filterNoPdf, setFilterNoPdf]         = useState(false);
   const [filterNoAbstract, setFilterNoAbstract] = useState(false);
   const [filterMilestone, setFilterMilestone]   = useState(false);
@@ -299,9 +301,35 @@ const AdminArticles = () => {
     XLSX.writeFile(wb, `articulos_${ts}.xlsx`);
   };
 
+  const articleFields = (a, withAbstract) => {
+    const base = [
+      a.title,
+      authorsText(a.authors),
+      a.journal,
+      String(a.year || ''),
+      a.doi,
+      a.pubmed_id,
+      (a.tags || []).join(' '),
+    ].map((s) => (s || '').toLowerCase());
+    if (withAbstract) base.push((a.abstract || '').toLowerCase());
+    return base;
+  };
+
   let filteredArticles = articles.filter((a) => {
-    const q = search.toLowerCase();
-    if (!a.title?.toLowerCase().includes(q) && !authorsText(a.authors).toLowerCase().includes(q)) return false;
+    const fields = articleFields(a, searchAbstract);
+
+    // Main search: all space-separated terms must match (AND)
+    if (search.trim()) {
+      const terms = search.toLowerCase().trim().split(/\s+/);
+      if (!terms.every((t) => fields.some((f) => f.includes(t)))) return false;
+    }
+
+    // Advanced search: tokens separated by comma / semicolon / tab / newline → OR
+    if (advSearch.trim()) {
+      const tokens = advSearch.split(/[,;\n\r\t]+/).map((s) => s.trim()).filter(Boolean).map((s) => s.toLowerCase());
+      if (tokens.length > 0 && !tokens.some((t) => fields.some((f) => f.includes(t)))) return false;
+    }
+
     if (userFilter) {
       const asgn = matrix[a.id]?.[userFilter.id];
       if (!asgn) return false;
@@ -319,7 +347,7 @@ const AdminArticles = () => {
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
 
-  const isFiltered = search || filterNoPdf || filterNoAbstract || filterMilestone || userFilter ||
+  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterMilestone || userFilter ||
     filters.is_milestone || (filters.year && filters.year !== '');
 
   return (
@@ -363,15 +391,42 @@ const AdminArticles = () => {
       )}
 
       <Card>
-        <Input placeholder="Buscar por título o autor..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex gap-2 items-start">
+          <div className="flex-1 min-w-0">
+            <input
+              type="text"
+              placeholder="Buscar por título, autor, DOI, año, revista, tags…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-prion-primary"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <textarea
+              placeholder="Búsquedas avanzadas: pega varios DOIs, años, autores… separados por coma, punto y coma, tabulador o salto de línea (OR)"
+              value={advSearch}
+              onChange={(e) => setAdvSearch(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-prion-primary resize-none placeholder:text-gray-400"
+            />
+          </div>
+          <button
+            onClick={() => setSearchAbstract((v) => !v)}
+            title={searchAbstract ? 'Excluir abstract de la búsqueda' : 'Incluir abstract en la búsqueda'}
+            className={`shrink-0 px-3 py-2 text-xs font-medium rounded-lg border transition-colors ${
+              searchAbstract
+                ? 'bg-prion-primary text-white border-prion-primary'
+                : 'bg-white text-gray-500 border-gray-300 hover:border-prion-primary hover:text-prion-primary'
+            }`}
+          >
+            Abstract
+          </button>
+        </div>
         <div className="mt-4 pt-4 border-t border-gray-200 flex items-center flex-wrap gap-3">
           <p className="text-sm text-gray-600">
             Mostrando{' '}
             <span className="font-semibold">{filteredArticles.length}</span>
-            {isFiltered && total != null && filteredArticles.length !== total && (
-              <> de <span className="font-semibold">{total}</span> en total</>
-            )}
-            {!isFiltered && total != null && (
+            {total != null && (
               <> de <span className="font-semibold">{total}</span> en total</>
             )}{' '}
             artículos
@@ -391,7 +446,11 @@ const AdminArticles = () => {
                 filterNoAbstract ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
               }`}>Sin Abstract</button>
             <button
-              onClick={() => { setFilterNoPdf(false); setFilterNoAbstract(false); setFilterMilestone(false); setSearch(''); setFilters((p) => ({ ...p, is_milestone: '' })); }}
+              onClick={() => {
+                setFilterNoPdf(false); setFilterNoAbstract(false); setFilterMilestone(false);
+                setSearch(''); setAdvSearch(''); setSearchAbstract(false);
+                setFilters((p) => ({ ...p, is_milestone: '' }));
+              }}
               className="px-3 py-1 text-xs font-medium rounded-full border transition-colors bg-white text-gray-600 border-gray-300 hover:bg-gray-100"
             >Todos</button>
           </div>
