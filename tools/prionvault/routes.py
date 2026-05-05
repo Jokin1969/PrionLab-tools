@@ -230,25 +230,115 @@ def _get_pv_columns(s) -> set:
 def api_article_detail(aid):
     s = _session()
     try:
-        a = s.get(models.Article, aid)
-        if a is None:
+        pv_cols = _get_pv_columns(s)
+
+        # Build SELECT list dynamically so missing migration columns don't 500.
+        base_cols = (
+            "id, title, authors, year, journal, doi, pubmed_id, abstract, "
+            "tags, is_milestone, priority, dropbox_path, dropbox_link, "
+            "created_at, updated_at"
+        )
+        optional = [
+            "pdf_md5", "pdf_size_bytes", "pdf_pages",
+            "extraction_status", "extraction_error",
+            "summary_ai", "summary_human",
+            "indexed_at", "index_version",
+            "source", "source_metadata", "added_by_id",
+        ]
+        pv_select = ", ".join(c for c in optional if c in pv_cols)
+        select_cols = base_cols + (f", {pv_select}" if pv_select else "")
+
+        row = s.execute(
+            sql_text(f"SELECT {select_cols} FROM articles WHERE id = :aid"),
+            {"aid": str(aid)},
+        ).first()
+
+        if row is None:
             return jsonify({"error": "not found"}), 404
-        out = a.to_dict(include_text=True, include_extracted=False,
-                        viewer_role=_viewer_role())
+
+        d = dict(zip(row._fields, row))
+        role = _viewer_role()
+        is_admin = (role == "admin")
+
+        out = {
+            "id":            str(d["id"]),
+            "title":         d.get("title") or "",
+            "authors":       d.get("authors") or "",
+            "journal":       d.get("journal"),
+            "year":          d.get("year"),
+            "doi":           d.get("doi"),
+            "pubmed_id":     d.get("pubmed_id"),
+            "tags_legacy":   d.get("tags") or [],
+            "tags":          [],
+            "priority":      d.get("priority"),
+            "is_milestone":  d.get("is_milestone"),
+            "pdf_pages":     d.get("pdf_pages"),
+            "extraction_status": d.get("extraction_status") or "pending",
+            "extraction_error":  d.get("extraction_error"),
+            "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
+            "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
+            "abstract":      d.get("abstract"),
+            "summary_ai":    d.get("summary_ai"),
+            "summary_human": d.get("summary_human"),
+            "has_summary_ai":    bool(d.get("summary_ai")),
+            "has_summary_human": bool(d.get("summary_human")),
+            "in_prionread":  False,  # enriched below
+        }
+        if is_admin:
+            out["pdf_md5"]          = d.get("pdf_md5")
+            out["pdf_size_bytes"]   = d.get("pdf_size_bytes")
+            out["source"]           = d.get("source")
+            out["pdf_dropbox_path"] = d.get("dropbox_path")
+
+        # Tags (use separate session to avoid contaminating main one)
+        try:
+            from sqlalchemy.orm import Session as _SASession
+            with _SASession(db.engine) as _s2:
+                tag_rows = _s2.execute(sql_text(
+                    "SELECT t.id, t.name, t.color "
+                    "FROM article_tag t "
+                    "JOIN article_tag_link l ON l.tag_id = t.id "
+                    "WHERE l.article_id = :aid"
+                ), {"aid": str(aid)}).all()
+                out["tags"] = [{"id": r.id, "name": r.name, "color": r.color}
+                               for r in tag_rows]
+        except Exception as exc:
+            logger.warning("Could not load tags for article %s: %s", aid, exc)
+
+        # PrionRead membership
+        try:
+            from sqlalchemy.orm import Session as _SASession
+            with _SASession(db.engine) as _s2:
+                pr_count = _s2.execute(sql_text(
+                    "SELECT COUNT(*) FROM user_articles WHERE article_id = :aid"
+                ), {"aid": str(aid)}).scalar() or 0
+                out["in_prionread"] = pr_count > 0
+                out["prionread_count"] = pr_count
+        except Exception as exc:
+            logger.warning("Could not query user_articles for article %s: %s", aid, exc)
 
         # Visible annotations: own + published-by-others; admin sees all.
         viewer_id = _viewer_id()
-        ann_q = s.query(models.ArticleAnnotation).filter_by(article_id=aid)
-        if _viewer_role() != "admin":
-            ann_q = ann_q.filter(or_(
-                models.ArticleAnnotation.user_id == viewer_id,
-                models.ArticleAnnotation.is_published.is_(True),
-            ))
-        out["annotations"] = [ann.to_dict(viewer_user_id=viewer_id)
-                              for ann in ann_q.order_by(models.ArticleAnnotation.created_at).all()]
+        try:
+            ann_q = s.query(models.ArticleAnnotation).filter_by(article_id=aid)
+            if not is_admin:
+                ann_q = ann_q.filter(or_(
+                    models.ArticleAnnotation.user_id == viewer_id,
+                    models.ArticleAnnotation.is_published.is_(True),
+                ))
+            out["annotations"] = [ann.to_dict(viewer_user_id=viewer_id)
+                                  for ann in ann_q.order_by(models.ArticleAnnotation.created_at).all()]
+        except Exception as exc:
+            logger.warning("Could not load annotations for article %s: %s", aid, exc)
+            out["annotations"] = []
+
         return jsonify(out)
+    except Exception as exc:
+        logger.exception("PrionVault api_article_detail failed")
+        s.rollback()
+        return jsonify({"error": "internal error", "detail": str(exc)}), 500
     finally:
-        s.close()
+        db.Session.remove()
 
 
 @prionvault_bp.route("/api/articles/stats", methods=["GET"])
