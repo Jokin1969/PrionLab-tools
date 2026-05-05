@@ -225,6 +225,16 @@ body.pv-role-admin button.pv-admin-only { display: flex !important; }
 }
 .pv-card-flag.indexed { background: #dcfce7; color: #15803d; }
 
+.pv-prionread-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; padding: 0 2px; opacity: 0.25;
+  transition: opacity 0.15s, transform 0.1s;
+  line-height: 1;
+}
+.pv-prionread-btn:hover { opacity: 0.6; transform: scale(1.15); }
+.pv-prionread-btn.active { opacity: 1; }
+.pv-prionread-btn:disabled { cursor: wait; }
+
 /* Pagination */
 .pv-pagination { margin: 18px 0; display: flex; gap: 4px; flex-wrap: wrap; }
 .pv-pagination button {

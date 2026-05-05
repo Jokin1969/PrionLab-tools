@@ -93,8 +93,19 @@ def api_list_articles():
         total = query.count()
         items = query.offset((page - 1) * page_size).limit(page_size).all()
 
+        # Which of these articles are in PrionRead (have a user_articles row)?
+        item_ids = [a.id for a in items]
+        prionread_ids = set()
+        if item_ids:
+            rows = s.query(models.UserArticleLink.article_id).filter(
+                models.UserArticleLink.article_id.in_(item_ids)
+            ).distinct().all()
+            prionread_ids = {r[0] for r in rows}
+
+        role = _viewer_role()
         return jsonify({
-            "items":    [a.to_dict(viewer_role=_viewer_role()) for a in items],
+            "items":    [a.to_dict(viewer_role=role, in_prionread=(a.id in prionread_ids))
+                         for a in items],
             "total":    total,
             "page":     page,
             "size":     page_size,
@@ -272,6 +283,58 @@ def api_delete_annotation(ann_id):
         s.delete(ann)
         s.commit()
         return jsonify({"ok": True})
+    finally:
+        s.close()
+
+
+# ── Send to PrionRead ────────────────────────────────────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/send-to-prionread", methods=["POST"])
+@login_required
+def api_send_to_prionread(aid):
+    """Create a user_articles row so the article appears in PrionRead."""
+    user_id = _viewer_id()
+    if not user_id:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not found"}), 404
+        existing = s.query(models.UserArticleLink).filter_by(
+            user_id=user_id, article_id=aid
+        ).first()
+        if existing:
+            return jsonify({"ok": True, "in_prionread": True})
+        import uuid as _uuid
+        link = models.UserArticleLink(
+            id=_uuid.uuid4(),
+            user_id=user_id,
+            article_id=aid,
+            status="pending",
+        )
+        s.add(link)
+        s.commit()
+        return jsonify({"ok": True, "in_prionread": True})
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/send-to-prionread", methods=["DELETE"])
+@login_required
+def api_remove_from_prionread(aid):
+    """Remove the user_articles row to unlink from PrionRead."""
+    user_id = _viewer_id()
+    if not user_id:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        link = s.query(models.UserArticleLink).filter_by(
+            user_id=user_id, article_id=aid
+        ).first()
+        if link:
+            s.delete(link)
+            s.commit()
+        return jsonify({"ok": True, "in_prionread": False})
     finally:
         s.close()
 

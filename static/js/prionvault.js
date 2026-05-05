@@ -161,11 +161,43 @@
         ${a.year ? '<span class="pv-card-meta-sep">·</span>' + a.year : ''}
         ${a.doi ? '<span class="pv-card-meta-sep">·</span><span title="' + esc(a.doi) + '">DOI</span>' : ''}
       </div>
-      <div class="pv-card-flags" style="display:flex;gap:6px">${flagSummary} ${flagIndexed}</div>
+      <div class="pv-card-flags" style="display:flex;gap:6px;align-items:center">
+        ${flagSummary} ${flagIndexed}
+        <button class="pv-prionread-btn ${a.in_prionread ? 'active' : ''}"
+                data-aid="${esc(a.id)}"
+                data-in="${a.in_prionread ? '1' : '0'}"
+                title="${a.in_prionread ? 'En PrionRead (clic para quitar)' : 'Enviar a PrionRead'}">📚</button>
+      </div>
       ${a.tags && a.tags.length ? `<div class="pv-card-tags">${tags}</div>` : ''}
     `;
+    card.querySelector('.pv-prionread-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      togglePrionRead(e.currentTarget, a.id);
+    });
     card.addEventListener('click', () => openDetail(a.id));
     return card;
+  }
+
+  async function togglePrionRead(btn, aid) {
+    const inPrionRead = btn.dataset.in === '1';
+    if (!inPrionRead) {
+      if (!confirm('¿Deseas enviar este artículo a PrionRead?')) return;
+    }
+    btn.disabled = true;
+    try {
+      const method = inPrionRead ? 'DELETE' : 'POST';
+      const r = await fetch(`/prionvault/api/articles/${aid}/send-to-prionread`, { method });
+      const data = await r.json();
+      if (data.ok) {
+        btn.dataset.in = data.in_prionread ? '1' : '0';
+        btn.classList.toggle('active', data.in_prionread);
+        btn.title = data.in_prionread ? 'En PrionRead (clic para quitar)' : 'Enviar a PrionRead';
+      }
+    } catch (e) {
+      console.error('togglePrionRead failed', e);
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function renderPagination({ total, page, size }) {

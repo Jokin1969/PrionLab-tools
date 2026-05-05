@@ -91,7 +91,8 @@ class PrionVaultArticle(Base):
                                       passive_deletes=True)
 
     # ── Serialisation helpers ───────────────────────────────────────────────
-    def to_dict(self, include_text=False, include_extracted=False, viewer_role=None):
+    def to_dict(self, include_text=False, include_extracted=False, viewer_role=None,
+                in_prionread=False):
         """Frontend-friendly dict.
 
         - `include_text`: include abstract + summaries (default true except
@@ -120,6 +121,7 @@ class PrionVaultArticle(Base):
             "added_at":      self.created_at.isoformat() if self.created_at else None,
             "has_summary_ai":    bool(self.summary_ai),
             "has_summary_human": bool(self.summary_human),
+            "in_prionread":      in_prionread,
         }
         if include_text:
             d["abstract"]      = self.abstract
@@ -276,6 +278,25 @@ class UsageEvent(Base):
     # Python attribute as `meta` while keeping the SQL column name.
     meta        = Column("metadata", JSONB, default=dict)
     created_at  = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
+# ── UserArticleLink (maps PrionRead's user_articles table) ──────────────────
+class UserArticleLink(Base):
+    __tablename__ = "user_articles"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False)
+    article_id = Column(UUID(as_uuid=True), ForeignKey("articles.id", ondelete="CASCADE"),
+                        nullable=False)
+    status     = Column(String(20), default="pending")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow,
+                        onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id", name="user_articles_user_article_unique"),
+    )
 
 
 # Backwards-compat alias: existing imports (`from . import models`,
