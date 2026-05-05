@@ -386,7 +386,7 @@ async function syncDropboxPDFs(req, res) {
     let files;
     try { files = await listFiles(); }
     catch (err) { return serviceError(res, err); }
-    const results = { matched: 0, already_had_pdf: 0, unmatched: [] };
+    const results = { matched: 0, updated: 0, already_ok: 0, unmatched: [] };
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.pdf')) continue;
       const baseName = file.name.replace(/\.pdf$/i, '');
@@ -397,9 +397,9 @@ async function syncDropboxPDFs(req, res) {
         article = await Article.findOne({ where: { doi: baseName.replace(/_/g, '/').toLowerCase() } });
       }
       if (!article) { results.unmatched.push(file.name); continue; }
-      if (article.dropbox_path) { results.already_had_pdf++; continue; }
+      if (article.dropbox_path === file.path) { results.already_ok++; continue; }
       await article.update({ dropbox_path: file.path, dropbox_link: null });
-      results.matched++;
+      article.dropbox_path ? results.updated++ : results.matched++;
     }
     return res.json(results);
   } catch (err) {

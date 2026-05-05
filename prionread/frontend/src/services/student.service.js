@@ -70,4 +70,9 @@ export const studentService = {
     const response = await api.get(`/articles/${articleId}/ratings`);
     return response.data;
   },
+
+  getPdfLink: async (articleId) => {
+    const response = await api.get(`/articles/${articleId}/pdf/link`);
+    return response.data;
+  },
 };

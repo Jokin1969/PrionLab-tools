@@ -87,8 +87,14 @@ async function checkFileExists(dropboxFilePath) {
 
 async function listFiles(folder = ROOT_FOLDER) {
   try {
-    const result = await dbx.filesListFolder({ path: folder, recursive: false });
-    return result.result.entries
+    const entries = [];
+    let result = await dbx.filesListFolder({ path: folder, recursive: true });
+    entries.push(...result.result.entries);
+    while (result.result.has_more) {
+      result = await dbx.filesListFolderContinue({ cursor: result.result.cursor });
+      entries.push(...result.result.entries);
+    }
+    return entries
       .filter((e) => e['.tag'] === 'file')
       .map((e) => ({ name: e.name, path: e.path_lower, size: e.size, modified: e.server_modified }));
   } catch (err) {

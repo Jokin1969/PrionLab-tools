@@ -23,8 +23,9 @@ const ArticleDetail = () => {
   const [submittingEval, setSubmittingEval] = useState(false);
   const [generatingEval, setGeneratingEval] = useState(false);
 
-  const [rating, setRating]   = useState(0);
-  const [comment, setComment] = useState('');
+  const [rating, setRating]         = useState(0);
+  const [comment, setComment]       = useState('');
+  const [fetchingPdf, setFetchingPdf] = useState(false);
 
   useEffect(() => { loadArticleData(); }, [articleId]);
 
@@ -94,6 +95,18 @@ const ArticleDetail = () => {
     finally { setSubmittingEval(false); }
   };
 
+  const handleDownloadPdf = async () => {
+    setFetchingPdf(true);
+    try {
+      const data = await studentService.getPdfLink(articleId);
+      window.open(data.link, '_blank', 'noopener,noreferrer');
+    } catch {
+      alert('No se pudo obtener el enlace al PDF. Inténtalo de nuevo.');
+    } finally {
+      setFetchingPdf(false);
+    }
+  };
+
   const handleRateArticle = async () => {
     if (rating === 0) return;
     try {
@@ -153,11 +166,11 @@ const ArticleDetail = () => {
           </div>
         )}
 
-        {article.dropbox_link && (
+        {article.dropbox_path && (
           <div className="mt-6">
-            <a href={article.dropbox_link} target="_blank" rel="noopener noreferrer">
-              <Button variant="primary">📥 Descargar PDF</Button>
-            </a>
+            <Button variant="primary" onClick={handleDownloadPdf} loading={fetchingPdf} disabled={fetchingPdf}>
+              📥 Descargar PDF
+            </Button>
           </div>
         )}
       </Card>
