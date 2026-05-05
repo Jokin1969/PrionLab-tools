@@ -444,7 +444,7 @@
     stopProgressPolling();
     const tick = async () => {
       try {
-        const r = await fetch('/prionvault/api/ingest/status?recent=10', { credentials: 'same-origin' });
+        const r = await fetch('/prionvault/api/ingest/status?recent=50', { credentials: 'same-origin' });
         if (!r.ok) return;
         const s = await r.json();
         appendProgress(
@@ -452,10 +452,39 @@
           `· duplicate: ${s.duplicate} · failed: ${s.failed}`, 'info');
         if (s.queued + s.processing === 0) {
           stopProgressPolling();
+          _showImportSummary(s.recent || []);
         }
       } catch (e) { /* ignore transient */ }
     };
     _importPolling = setInterval(tick, 4000);
+  }
+
+  function _showImportSummary(jobs) {
+    if (!jobs.length) return;
+    appendProgress('── Resumen por fichero ──', 'info');
+    jobs.forEach(j => {
+      const fname = j.pdf_filename || '(sin nombre)';
+      const step  = j.step || '';
+      let kind = 'ok', label = '';
+      if (j.status === 'done') {
+        const doi   = step.match(/doi=([^\s|]+)/)?.[1];
+        const pmid  = step.match(/pmid=([^\s|]+)/)?.[1];
+        const path  = step.match(/\| (\/[^\s]+)/)?.[1];
+        const id    = doi ? `DOI: ${doi}` : pmid ? `PMID: ${pmid}` : '';
+        const folder = path ? path.split('/').slice(0, -1).join('/') : '';
+        label = `✓ ${fname} → ${id}${folder ? ' → ' + folder : ''}`;
+      } else if (j.status === 'duplicate') {
+        const by = step.match(/by ([^\s|]+)/)?.[1] || '';
+        label = `⟳ ${fname} — duplicado (${by})`;
+        kind = 'info';
+      } else if (j.status === 'failed') {
+        label = `✗ ${fname} — error: ${j.error || step}`;
+        kind = 'error';
+      } else {
+        label = `${fname} — ${j.status}`;
+      }
+      appendProgress(label, kind);
+    });
   }
   function stopProgressPolling() {
     if (_importPolling) { clearInterval(_importPolling); _importPolling = null; }

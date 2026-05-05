@@ -64,9 +64,11 @@ def _process_job(job: ingest_queue.Job) -> None:
     if dup_id is not None:
         logger.info("Job %d duplicate of article %s (%s) — skipping ingest",
                     job.id, dup_id, reason)
-        ingest_queue.mark_step(job.id, status="duplicate", step=f"dedup:{reason}",
+        doi_info = f" doi={doi}" if doi else ""
+        ingest_queue.mark_step(job.id, status="duplicate",
+                               step=f"duplicate | by {reason}{doi_info}",
                                article_id=dup_id,
-                               error=f"Already in library by {reason}.")
+                               error=f"Already in library (matched by {reason}).")
         _cleanup_staged(staged)
         return
 
@@ -110,7 +112,10 @@ def _process_job(job: ingest_queue.Job) -> None:
         source=meta_source, added_by=job.created_by,
     )
 
-    ingest_queue.mark_step(job.id, status="done", step="ingested",
+    year_str = str(year) if year else "unknown"
+    id_type  = "doi" if final_doi else ("pmid" if pubmed_id else "md5")
+    summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}"
+    ingest_queue.mark_step(job.id, status="done", step=summary,
                            article_id=article_id)
     _cleanup_staged(staged)
 
