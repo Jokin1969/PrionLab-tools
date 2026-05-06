@@ -2922,7 +2922,7 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   font-size: 13px;
 }
 .pp-btn-members:hover { background: var(--pp-secondary); color: var(--pp-text); }
-.pp-footer-sep { border: none; border-top: 1px solid var(--pp-border); margin: 2rem 0 0; }
+.pp-footer-sep { border: none; border-top: 1px solid var(--pp-border); margin: 4px 0 0; }
 
 /* ── Member modal ─────────────────────────────────────────────────────────── */
 
