@@ -689,6 +689,124 @@ def api_ingest_retry(job_id):
     return jsonify({"error": "job not found or not in failed/duplicate state"}), 400
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/count-pages", methods=["POST"])
+@admin_required
+def api_count_pdf_pages(aid):
+    """Download the article PDF from Dropbox and store its page count.
+
+    Fetches `dropbox_path` from the DB, downloads the file via the Dropbox
+    SDK, counts pages with pdfplumber, then writes `pdf_pages` back to the
+    articles row. Safe to call multiple times — will overwrite an existing value.
+    """
+    s = _session()
+    try:
+        row = s.execute(
+            sql_text("SELECT dropbox_path, pdf_pages FROM articles WHERE id = :aid"),
+            {"aid": str(aid)},
+        ).first()
+        if row is None:
+            return jsonify({"error": "not found"}), 404
+
+        dropbox_path = row[0]
+        if not dropbox_path:
+            return jsonify({"error": "no dropbox_path on this article"}), 422
+
+        pages = _count_pages_from_dropbox(dropbox_path)
+        if pages is None:
+            return jsonify({"error": "could not count pages — check Dropbox config or PDF path"}), 500
+
+        s.execute(
+            sql_text("UPDATE articles SET pdf_pages = :p WHERE id = :aid"),
+            {"p": pages, "aid": str(aid)},
+        )
+        s.commit()
+        return jsonify({"pdf_pages": pages})
+    except Exception as exc:
+        logger.exception("api_count_pdf_pages failed for %s", aid)
+        s.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        db.Session.remove()
+
+
+@prionvault_bp.route("/api/admin/backfill-pdf-pages", methods=["POST"])
+@admin_required
+def api_backfill_pdf_pages():
+    """Count pages for all articles that have a dropbox_path but no pdf_pages.
+
+    Body (JSON, optional): {"limit": 20}   — cap how many to process at once
+    (default 50). Returns counts of how many succeeded/failed.
+    """
+    data = request.get_json(silent=True) or {}
+    limit = max(1, min(500, int(data.get("limit", 50))))
+
+    s = _session()
+    try:
+        pv_cols = _get_pv_columns(s)
+        if "pdf_pages" not in pv_cols:
+            return jsonify({"error": "pdf_pages column not present — run migrations first"}), 422
+
+        rows = s.execute(sql_text(
+            "SELECT id::text, dropbox_path FROM articles "
+            "WHERE dropbox_path IS NOT NULL AND pdf_pages IS NULL "
+            "ORDER BY created_at DESC LIMIT :lim"
+        ), {"lim": limit}).all()
+
+        done, failed = 0, 0
+        errors = []
+        for art_id, dpath in rows:
+            try:
+                pages = _count_pages_from_dropbox(dpath)
+                if pages is not None:
+                    s.execute(
+                        sql_text("UPDATE articles SET pdf_pages = :p WHERE id = :aid"),
+                        {"p": pages, "aid": art_id},
+                    )
+                    done += 1
+                else:
+                    failed += 1
+                    errors.append({"id": art_id, "error": "count returned None"})
+            except Exception as exc:
+                failed += 1
+                errors.append({"id": art_id, "error": str(exc)[:200]})
+        s.commit()
+        return jsonify({
+            "processed": done + failed,
+            "updated":   done,
+            "failed":    failed,
+            "errors":    errors[:20],
+        })
+    except Exception as exc:
+        logger.exception("api_backfill_pdf_pages failed")
+        s.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        db.Session.remove()
+
+
+def _count_pages_from_dropbox(dropbox_path: str):
+    """Download PDF from Dropbox and return page count, or None on failure."""
+    try:
+        from core.dropbox_client import get_client
+        import pdfplumber
+        import io as _io
+    except Exception as exc:
+        logger.warning("_count_pages_from_dropbox: import failed: %s", exc)
+        return None
+
+    client = get_client()
+    if client is None:
+        return None
+    try:
+        _meta, response = client.files_download(dropbox_path)
+        content = response.content
+        with pdfplumber.open(_io.BytesIO(content)) as pdf:
+            return len(pdf.pages)
+    except Exception as exc:
+        logger.warning("_count_pages_from_dropbox(%s): %s", dropbox_path, exc)
+        return None
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/summary", methods=["POST"])
 @admin_required
 def api_generate_summary(aid):
