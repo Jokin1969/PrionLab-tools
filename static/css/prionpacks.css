@@ -235,7 +235,7 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-package-item-bar { flex: 1; height: 3px; background: var(--pp-border); border-radius: 2px; overflow: hidden; }
 .pp-package-item-bar-fill { height: 100%; background: var(--pp-accent); border-radius: 2px; transition: width .3s; }
 
-.pp-sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--pp-border); display: flex; flex-direction: column; gap: 8px; }
+.pp-sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--pp-border); display: flex; flex-direction: column; gap: 8px; margin-bottom: 2.5rem; }
 .pp-btn-docs {
   background: #f3f4f6;
   color: #1f2937;
