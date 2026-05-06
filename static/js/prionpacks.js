@@ -3,6 +3,24 @@
 const PrionPacks = (() => {
   /* ── State ─────────────────────────────────────────────────────────────── */
   let _packages = [];
+  let _members  = [];
+
+  // Curated palette: value (stored in member), bg (card), hover, badge (initials circle + toolbar badge), text (dark)
+  const MEMBER_PALETTE = [
+    { value:'#3b82f6', bg:'#dbeafe', hover:'#bfdbfe', badge:'#93c5fd', text:'#1e40af' }, // blue
+    { value:'#22c55e', bg:'#dcfce7', hover:'#bbf7d0', badge:'#86efac', text:'#15803d' }, // green
+    { value:'#f97316', bg:'#ffedd5', hover:'#fed7aa', badge:'#fdba74', text:'#c2410c' }, // orange
+    { value:'#a855f7', bg:'#ede9fe', hover:'#ddd6fe', badge:'#c4b5fd', text:'#6d28d9' }, // purple
+    { value:'#ec4899', bg:'#fce7f3', hover:'#fbcfe8', badge:'#f9a8d4', text:'#be185d' }, // pink
+    { value:'#ef4444', bg:'#fee2e2', hover:'#fecaca', badge:'#fca5a5', text:'#b91c1c' }, // red
+    { value:'#14b8a6', bg:'#ccfbf1', hover:'#99f6e4', badge:'#5eead4', text:'#0f766e' }, // teal
+    { value:'#6366f1', bg:'#e0e7ff', hover:'#c7d2fe', badge:'#a5b4fc', text:'#4338ca' }, // indigo
+    { value:'#eab308', bg:'#fef9c3', hover:'#fef08a', badge:'#fde047', text:'#a16207' }, // yellow
+    { value:'#84cc16', bg:'#f7fee7', hover:'#ecfccb', badge:'#bef264', text:'#4d7c0f' }, // lime
+    { value:'#06b6d4', bg:'#cffafe', hover:'#a5f3fc', badge:'#67e8f9', text:'#0e7490' }, // cyan
+    { value:'#f43f5e', bg:'#ffe4e6', hover:'#fecdd3', badge:'#fda4af', text:'#be123c' }, // rose
+  ];
+
   let state = {
     currentId: null,
     view: 'dashboard',
@@ -21,6 +39,7 @@ const PrionPacks = (() => {
   async function init() {
     _bindGlobalEvents();
     _bindModalEvents();
+    _bindMembersEvents();
     _loadApiKeyField();
     _bindKeyboardShortcuts();
     await _fetchAndRender();
@@ -33,7 +52,20 @@ const PrionPacks = (() => {
       toast('Could not load packages from server: ' + e.message, 'error');
       _packages = [];
     }
+    try {
+      _members = await _fetchMembers();
+    } catch (e) {
+      _members = [];
+    }
+    _renderResponsibleChips();
+    _syncResponsibleChips();
     _renderDashboard();
+  }
+
+  async function _fetchMembers() {
+    const res = await fetch('/prionpacks/api/members');
+    if (!res.ok) throw new Error(res.statusText);
+    return res.json();
   }
 
   /* ── Navigation ────────────────────────────────────────────────────────── */
@@ -177,14 +209,15 @@ const PrionPacks = (() => {
     });
   }
 
-  function _responsibleConfig(r) {
-    const map = {
-      joaquin: { initials: 'JC', label: 'Joaquín Castilla' },
-      hasier:  { initials: 'HE', label: 'Hasier Eraña' },
-      jorge:   { initials: 'JM', label: 'Jorge Moreno' },
-      carlos:  { initials: 'CD', label: 'Carlos Díaz' },
-    };
-    return map[r] || null;
+  function _memberColors(hexColor) {
+    return MEMBER_PALETTE.find(p => p.value === hexColor) || MEMBER_PALETTE[0];
+  }
+
+  function _responsibleConfig(id) {
+    const m = _members.find(m => m.id === id);
+    if (!m) return null;
+    const c = _memberColors(m.color);
+    return { initials: m.initials, label: `${m.name} ${m.surname}`, ...c };
   }
 
   function _pkgCardHTML(p) {
@@ -196,11 +229,14 @@ const PrionPacks = (() => {
     const inactiveCls = inactive ? ' pp-pkg-card-inactive' : '';
     const inactiveBadge = inactive ? '<span class="pp-inactive-badge">Inactivo</span>' : '';
     const resp = _responsibleConfig(p.responsible);
+    const cardStyle = resp
+      ? `--m-bg:${resp.bg};--m-hover:${resp.hover};--m-badge:${resp.badge};--m-text:${resp.text};`
+      : '';
     const respBadge = resp
-      ? `<div class="pp-responsible-badge" data-responsible="${p.responsible}" title="${resp.label}">${resp.initials}</div>`
+      ? `<div class="pp-responsible-badge" style="background:${resp.badge};color:${resp.text};" title="${_esc(resp.label)}">${_esc(resp.initials)}</div>`
       : '';
     return `
-    <div class="pp-pkg-card${inactiveCls}" data-id="${p.id}" data-responsible="${p.responsible||''}">
+    <div class="pp-pkg-card${inactiveCls}" data-id="${p.id}" data-responsible="${_esc(p.responsible||'')}" style="${cardStyle}">
       <div class="pp-pkg-card-header">
         <div class="pp-pkg-priority-dot" data-id="${p.id}" data-priority="${p.priority}"
           style="background:${_priorityColor(p.priority)};" title="Click to change priority"></div>
@@ -611,7 +647,7 @@ const PrionPacks = (() => {
 
     const idBadge = document.getElementById('editor-id-badge');
     idBadge.textContent = isNew ? 'PRP-NEW' : pkg.id;
-    idBadge.dataset.responsible = (!isNew && pkg.responsible) ? pkg.responsible : '';
+    _applyMemberColorToBadge(idBadge, !isNew ? pkg.responsible : null);
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
     document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
     const vBadge = document.getElementById('editor-version-badge');
@@ -645,7 +681,10 @@ const PrionPacks = (() => {
     document.getElementById('field-description').value = pkg?.description || '';
 
     _setPriority(pkg?.priority || 'none');
-    document.getElementById('field-responsible').value = pkg?.responsible || '';
+    const respSel = document.getElementById('field-responsible');
+    respSel.innerHTML = '<option value="">— Sin asignar —</option>' +
+      _members.map(m => `<option value="${_esc(m.id)}">${_esc(m.name + ' ' + m.surname)}</option>`).join('');
+    respSel.value = pkg?.responsible || '';
     _renderFindings(pkg?.findings || []);
 
     const missingInfo = (pkg?.gaps?.missingInfo || []).map(g =>
@@ -2631,7 +2670,7 @@ ${refsText}`;
       }
       const savedBadge = document.getElementById('editor-id-badge');
       savedBadge.textContent = saved.id;
-      savedBadge.dataset.responsible = saved.responsible || '';
+      _applyMemberColorToBadge(savedBadge, saved.responsible);
       document.getElementById('btn-delete-package').style.display = '';
       document.getElementById('btn-send-review').style.display = '';
       const dlWord = document.getElementById('btn-download-word');
@@ -3117,7 +3156,7 @@ ${refsText}`;
     });
 
     document.getElementById('field-responsible').addEventListener('change', e => {
-      document.getElementById('editor-id-badge').dataset.responsible = e.target.value;
+      _applyMemberColorToBadge(document.getElementById('editor-id-badge'), e.target.value);
     });
 
     // Investigations file input
@@ -3312,10 +3351,37 @@ ${refsText}`;
     });
   }
 
+  function _renderResponsibleChips() {
+    const container = document.getElementById('filter-responsible-chips');
+    if (!container) return;
+    const cur = state.filterResponsible;
+    const memberChips = _members.map(m => {
+      const c = _memberColors(m.color);
+      return `<button class="pp-resp-chip${cur === m.id ? ' active' : ''}" data-responsible="${_esc(m.id)}"
+        title="${_esc(m.name + ' ' + m.surname)}"
+        style="--m-badge:${c.badge};--m-text:${c.text};--m-bg:${c.bg};">${_esc(m.initials)}</button>`;
+    }).join('');
+    container.innerHTML =
+      `<button class="pp-resp-chip pp-resp-chip-all${cur === 'all' ? ' active' : ''}" data-responsible="all" title="Todos">Todos</button>` +
+      memberChips +
+      `<button class="pp-resp-chip pp-resp-chip-none${cur === 'none' ? ' active' : ''}" data-responsible="none" title="Sin asignar">—</button>`;
+  }
+
   function _syncResponsibleChips() {
     document.querySelectorAll('#filter-responsible-chips .pp-resp-chip').forEach(chip => {
       chip.classList.toggle('active', chip.dataset.responsible === state.filterResponsible);
     });
+  }
+
+  function _applyMemberColorToBadge(el, responsibleId) {
+    const resp = responsibleId ? _responsibleConfig(responsibleId) : null;
+    if (resp) {
+      el.style.setProperty('--m-badge', resp.badge);
+      el.style.setProperty('--m-text',  resp.text);
+    } else {
+      el.style.removeProperty('--m-badge');
+      el.style.removeProperty('--m-text');
+    }
   }
 
   function _loadApiKeyField() {
@@ -3386,6 +3452,189 @@ ${refsText}`;
     el.innerHTML = `<i class="fas ${icon}"></i> ${_esc(msg)}`;
     c.appendChild(el);
     setTimeout(() => el.remove(), 3500);
+  }
+
+  /* ── Members view ──────────────────────────────────────────────────────── */
+
+  function showMembers() {
+    showView('members');
+    _renderMembersGrid();
+  }
+
+  function _renderMembersGrid() {
+    const grid = document.getElementById('pp-members-grid');
+    if (!grid) return;
+    if (!_members.length) {
+      grid.innerHTML = '<div class="pp-members-empty"><i class="fas fa-users"></i><p>No hay miembros aún. Crea el primero.</p></div>';
+      return;
+    }
+    grid.innerHTML = _members.map(m => {
+      const c = _memberColors(m.color);
+      return `
+      <div class="pp-member-card" data-id="${_esc(m.id)}">
+        <div class="pp-member-avatar" style="background:${c.badge};color:${c.text};">${_esc(m.initials)}</div>
+        <div class="pp-member-info">
+          <div class="pp-member-name">${_esc(m.name + ' ' + m.surname)}</div>
+          <div class="pp-member-email">${_esc(m.email || '—')}</div>
+        </div>
+        <div class="pp-member-swatch" style="background:${m.color};" title="${m.color}"></div>
+        <div class="pp-member-actions">
+          <button class="pp-btn-icon btn-edit-member" data-id="${_esc(m.id)}" title="Editar">
+            <i class="fas fa-pen"></i>
+          </button>
+          <button class="pp-btn-icon btn-delete-member pp-btn-icon-danger" data-id="${_esc(m.id)}" title="Eliminar">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.btn-edit-member').forEach(btn =>
+      btn.addEventListener('click', () => _openMemberModal(btn.dataset.id)));
+    grid.querySelectorAll('.btn-delete-member').forEach(btn =>
+      btn.addEventListener('click', () => _deleteMember(btn.dataset.id)));
+  }
+
+  let _editingMemberId = null;
+  let _selectedColor   = MEMBER_PALETTE[0].value;
+
+  function _openMemberModal(memberId) {
+    _editingMemberId = memberId || null;
+    const m = memberId ? _members.find(x => x.id === memberId) : null;
+
+    document.getElementById('pp-member-modal-title').innerHTML =
+      memberId ? '<i class="fas fa-user-edit"></i> Editar miembro'
+               : '<i class="fas fa-user-plus"></i> Añadir miembro';
+    document.getElementById('member-name').value     = m?.name     || '';
+    document.getElementById('member-surname').value  = m?.surname  || '';
+    document.getElementById('member-initials').value = m?.initials || '';
+    document.getElementById('member-email').value    = m?.email    || '';
+    document.getElementById('member-password').value = '';
+    document.getElementById('member-pwd-hint').style.display = memberId ? '' : 'none';
+    document.getElementById('pp-member-error').style.display = 'none';
+
+    _selectedColor = m?.color || MEMBER_PALETTE[0].value;
+    _renderColorPalette();
+    document.getElementById('pp-member-modal').style.display = 'flex';
+    document.getElementById('member-name').focus();
+  }
+
+  function _renderColorPalette() {
+    const el = document.getElementById('member-color-palette');
+    el.innerHTML = MEMBER_PALETTE.map(p =>
+      `<button type="button" class="pp-color-swatch${p.value === _selectedColor ? ' selected' : ''}"
+        data-color="${p.value}" style="background:${p.value};" title="${p.value}">
+        ${p.value === _selectedColor ? '<i class="fas fa-check"></i>' : ''}
+      </button>`
+    ).join('');
+    el.querySelectorAll('.pp-color-swatch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _selectedColor = btn.dataset.color;
+        _renderColorPalette();
+      });
+    });
+  }
+
+  function _closeMemberModal() {
+    document.getElementById('pp-member-modal').style.display = 'none';
+    _editingMemberId = null;
+  }
+
+  async function _saveMember() {
+    const name    = document.getElementById('member-name').value.trim();
+    const surname = document.getElementById('member-surname').value.trim();
+    if (!name || !surname) {
+      _showMemberError('Nombre y apellidos son obligatorios.');
+      return;
+    }
+    const payload = {
+      name, surname,
+      initials: document.getElementById('member-initials').value.trim() || undefined,
+      email:    document.getElementById('member-email').value.trim(),
+      color:    _selectedColor,
+    };
+    const pwd = document.getElementById('member-password').value;
+    if (pwd) payload.password = pwd;
+
+    const saveBtn = document.getElementById('pp-member-modal-save');
+    saveBtn.disabled = true;
+    try {
+      let res;
+      if (_editingMemberId) {
+        res = await fetch(`/prionpacks/api/members/${_editingMemberId}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch('/prionpacks/api/members', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) { _showMemberError(data.error || 'Error al guardar.'); return; }
+
+      _members = await _fetchMembers();
+      _renderResponsibleChips();
+      _syncResponsibleChips();
+      _closeMemberModal();
+      _renderMembersGrid();
+      toast(_editingMemberId ? 'Miembro actualizado.' : 'Miembro creado.', 'success');
+    } catch (e) {
+      _showMemberError('Error de red: ' + e.message);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  async function _deleteMember(memberId) {
+    const m = _members.find(x => x.id === memberId);
+    if (!m || !confirm(`¿Eliminar a ${m.name} ${m.surname}? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await fetch(`/prionpacks/api/members/${memberId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+      _members = await _fetchMembers();
+      _renderResponsibleChips();
+      _syncResponsibleChips();
+      _renderMembersGrid();
+      toast('Miembro eliminado.', 'success');
+    } catch (e) {
+      toast('Error al eliminar: ' + e.message, 'error');
+    }
+  }
+
+  function _showMemberError(msg) {
+    const el = document.getElementById('pp-member-error');
+    el.textContent = msg;
+    el.style.display = '';
+  }
+
+  function _bindMembersEvents() {
+    document.getElementById('btn-show-members')?.addEventListener('click', showMembers);
+    document.getElementById('btn-members-back')?.addEventListener('click', showDashboard);
+    document.getElementById('btn-add-member')?.addEventListener('click', () => _openMemberModal(null));
+    document.getElementById('pp-member-modal-close')?.addEventListener('click', _closeMemberModal);
+    document.getElementById('pp-member-modal-cancel')?.addEventListener('click', _closeMemberModal);
+    document.getElementById('pp-member-backdrop')?.addEventListener('click', _closeMemberModal);
+    document.getElementById('pp-member-modal-save')?.addEventListener('click', _saveMember);
+    document.getElementById('btn-member-pwd-toggle')?.addEventListener('click', () => {
+      const inp = document.getElementById('member-password');
+      const icon = document.querySelector('#btn-member-pwd-toggle i');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      icon.className = inp.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+    });
+    // Auto-derive initials from name+surname inputs
+    const autoInitials = () => {
+      const ini = document.getElementById('member-initials');
+      if (ini && !ini.dataset.userEdited) {
+        const n = document.getElementById('member-name').value.trim();
+        const s = document.getElementById('member-surname').value.trim();
+        ini.value = ((n[0] || '') + (s[0] || '')).toUpperCase();
+      }
+    };
+    document.getElementById('member-name')?.addEventListener('input', autoInitials);
+    document.getElementById('member-surname')?.addEventListener('input', autoInitials);
+    document.getElementById('member-initials')?.addEventListener('input', function() {
+      this.dataset.userEdited = this.value ? '1' : '';
+    });
   }
 
   return {

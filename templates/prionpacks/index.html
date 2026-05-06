@@ -57,12 +57,7 @@
       <div class="pp-filter-group">
         <label class="pp-filter-label">Responsable</label>
         <div class="pp-resp-chips" id="filter-responsible-chips">
-          <button class="pp-resp-chip pp-resp-chip-all active" data-responsible="all" title="Todos">Todos</button>
-          <button class="pp-resp-chip" data-responsible="joaquin" title="Joaquín Castilla">JC</button>
-          <button class="pp-resp-chip" data-responsible="hasier"  title="Hasier Eraña">HE</button>
-          <button class="pp-resp-chip" data-responsible="jorge"   title="Jorge Moreno">JM</button>
-          <button class="pp-resp-chip" data-responsible="carlos"  title="Carlos Díaz">CD</button>
-          <button class="pp-resp-chip pp-resp-chip-none" data-responsible="none" title="Sin asignar">—</button>
+          <!-- rendered dynamically by JS from members list -->
         </div>
       </div>
     </div>
@@ -75,6 +70,9 @@
       </button>
       <button class="pp-btn pp-btn-secondary pp-btn-full pp-btn-docs" id="btn-show-docs" title="Documentación general de PrionPacks">
         <i class="fas fa-book"></i> Documentation
+      </button>
+      <button class="pp-btn pp-btn-ghost pp-btn-full pp-btn-members" id="btn-show-members">
+        <i class="fas fa-users"></i> Equipo
       </button>
     </div>
   </aside>
@@ -728,6 +726,27 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
       </div>
     </div>
 
+    <!-- Members view -->
+    <div id="view-members" class="pp-view">
+      <div class="pp-page-header">
+        <div>
+          <h1 class="pp-page-title"><i class="fas fa-users"></i> Equipo</h1>
+          <p class="pp-page-sub">Miembros del grupo y sus colores de responsable</p>
+        </div>
+        <div class="pp-page-actions">
+          <button class="pp-btn pp-btn-ghost" id="btn-members-back">
+            <i class="fas fa-arrow-left"></i> Dashboard
+          </button>
+          <button class="pp-btn pp-btn-primary" id="btn-add-member">
+            <i class="fas fa-user-plus"></i> Añadir miembro
+          </button>
+        </div>
+      </div>
+      <div id="pp-members-grid" class="pp-members-grid">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -850,6 +869,70 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
       <img id="pp-fig-view-img" class="pp-fig-view-img" alt="Figure" />
     </div>
     <div id="pp-fig-view-caption" class="pp-fig-view-caption" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Member create/edit modal -->
+<div id="pp-member-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-member-modal-title">
+  <div class="pp-modal-backdrop" id="pp-member-backdrop"></div>
+  <div class="pp-member-modal-card">
+    <div class="pp-send-modal-header">
+      <span class="pp-send-modal-title" id="pp-member-modal-title">
+        <i class="fas fa-user-plus"></i> Añadir miembro
+      </span>
+      <button id="pp-member-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="pp-member-form">
+      <div class="pp-member-form-row">
+        <div class="pp-form-group">
+          <label class="pp-label">Nombre <span class="pp-required">*</span></label>
+          <input type="text" id="member-name" class="pp-input" placeholder="Joaquín" autocomplete="off" />
+        </div>
+        <div class="pp-form-group">
+          <label class="pp-label">Apellidos <span class="pp-required">*</span></label>
+          <input type="text" id="member-surname" class="pp-input" placeholder="Castilla" autocomplete="off" />
+        </div>
+      </div>
+      <div class="pp-member-form-row">
+        <div class="pp-form-group pp-form-group-narrow">
+          <label class="pp-label">Iniciales</label>
+          <input type="text" id="member-initials" class="pp-input pp-input-mono" maxlength="3" placeholder="JC" autocomplete="off" />
+        </div>
+        <div class="pp-form-group">
+          <label class="pp-label">Email</label>
+          <input type="email" id="member-email" class="pp-input" placeholder="jcastilla@cicbiogune.es" autocomplete="off" />
+        </div>
+      </div>
+      <div class="pp-form-group">
+        <label class="pp-label">Contraseña
+          <span class="pp-hint" id="member-pwd-hint">(vacío = no cambiar)</span>
+        </label>
+        <div class="pp-input-wrap">
+          <input type="password" id="member-password" class="pp-input" placeholder="Nueva contraseña…" autocomplete="new-password" />
+          <button type="button" class="pp-btn-icon pp-input-reveal" id="btn-member-pwd-toggle" title="Mostrar/ocultar">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
+      </div>
+      <div class="pp-form-group">
+        <label class="pp-label">Color</label>
+        <div class="pp-color-palette" id="member-color-palette">
+          <!-- rendered by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="pp-member-error" id="pp-member-error" style="display:none"></div>
+
+    <div class="pp-send-modal-footer">
+      <button class="pp-btn pp-btn-ghost" id="pp-member-modal-cancel">Cancelar</button>
+      <button class="pp-btn pp-btn-primary" id="pp-member-modal-save">
+        <i class="fas fa-save"></i> Guardar
+      </button>
+    </div>
   </div>
 </div>
 

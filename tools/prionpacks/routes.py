@@ -6,14 +6,17 @@ from flask import Response, jsonify, render_template, request
 from core.decorators import login_required
 from . import prionpacks_bp
 from . import models
+from . import members as members_module
 
 logger = logging.getLogger(__name__)
 
-COLLEAGUES: dict[str, dict] = {
-    'herana':  {'name': 'Hasier Eraña',  'email': 'herana@cicbiogune.es'},
-    'cdiza':   {'name': 'Carlos Díaz',   'email': 'cdiza@cicbiogune.es'},
-    'jmoreno': {'name': 'Jorge Moreno',  'email': 'jmoreno@cicbiogune.es'},
-}
+
+def _colleagues():
+    """Build the COLLEAGUES dict dynamically from the members store."""
+    result = {}
+    for m in members_module.list_members():
+        result[m['id']] = {'name': f"{m['name']} {m['surname']}", 'email': m['email']}
+    return result
 
 
 @prionpacks_bp.route('/')
@@ -174,7 +177,7 @@ def api_send_review(pkg_id):
 
     colleagues = []
     for k in keys:
-        c = COLLEAGUES.get(k)
+        c = _colleagues().get(k)
         if not c:
             return jsonify({'error': f'Destinatario no válido: {k}'}), 400
         colleagues.append(c)
@@ -269,3 +272,38 @@ def api_backup_restore():
     if result['status'] == 'error':
         return jsonify(result), 500
     return jsonify(result)
+
+
+# ── Members ───────────────────────────────────────────────────────────────────
+
+@prionpacks_bp.route('/api/members', methods=['GET'])
+@login_required
+def api_members_list():
+    return jsonify(members_module.list_members())
+
+
+@prionpacks_bp.route('/api/members', methods=['POST'])
+@login_required
+def api_members_create():
+    data = request.get_json(force=True, silent=True) or {}
+    if not (data.get('name') or '').strip() or not (data.get('surname') or '').strip():
+        return jsonify({'error': 'name y surname son obligatorios'}), 400
+    m = members_module.create_member(data)
+    return jsonify(m), 201
+
+
+@prionpacks_bp.route('/api/members/<member_id>', methods=['PUT'])
+@login_required
+def api_members_update(member_id):
+    data = request.get_json(force=True, silent=True) or {}
+    m = members_module.update_member(member_id, data)
+    if m is None:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify(m)
+
+
+@prionpacks_bp.route('/api/members/<member_id>', methods=['DELETE'])
+@login_required
+def api_members_delete(member_id):
+    members_module.delete_member(member_id)
+    return jsonify({'ok': True})
