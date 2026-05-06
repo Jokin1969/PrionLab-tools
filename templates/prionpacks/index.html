@@ -11,8 +11,22 @@
 {% block main_body %}
 <div id="prionpacks-app">
 
+  <!-- ── Mobile top bar (hidden on desktop) ──────────────────────────────────────────── -->
+  <div class="pp-mobile-topbar" id="pp-mobile-topbar">
+    <button class="pp-mobile-hamburger" id="btn-mobile-hamburger" aria-label="Abrir menú">
+      <i class="fas fa-bars"></i>
+    </button>
+    <span class="pp-mobile-brand"><i class="fas fa-cube"></i> PrionPacks</span>
+    <button class="pp-btn pp-btn-primary pp-mobile-new-btn" id="btn-mobile-new" aria-label="Nuevo package">
+      <i class="fas fa-plus"></i>
+    </button>
+  </div>
+
+  <!-- ── Mobile overlay backdrop ─────────────────────────────────────────────────────── -->
+  <div class="pp-mobile-overlay" id="pp-mobile-overlay"></div>
+
   <!-- ── Sidebar ──────────────────────────────────────────────────────────────────────── -->
-  <aside class="pp-sidebar">
+  <aside class="pp-sidebar" id="pp-sidebar">
     <div class="pp-sidebar-header">
       <div class="pp-sidebar-brand">
         <i class="fas fa-cube pp-brand-icon"></i>
@@ -21,6 +35,9 @@
           <span class="pp-brand-sub">Research Packages</span>
         </div>
       </div>
+      <button class="pp-sidebar-close" id="btn-sidebar-close" aria-label="Cerrar menú">
+        <i class="fas fa-times"></i>
+      </button>
     </div>
 
     <div class="pp-sidebar-search">
@@ -950,6 +967,45 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
     </div>
     <div class="pp-send-modal-footer">
       <button class="pp-btn pp-btn-ghost" id="pp-restore-modal-cancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Floating Action Button (mobile only) ────────────────────────────────────────── -->
+<button class="pp-fab" id="btn-fab-new" title="Nuevo Package" aria-label="Nuevo Package">
+  <i class="fas fa-plus"></i>
+</button>
+
+<!-- ── Notes Panel ──────────────────────────────────────────────────────────────────── -->
+<div class="pp-notes-backdrop" id="pp-notes-backdrop"></div>
+<div class="pp-notes-panel" id="pp-notes-panel" role="dialog" aria-modal="true" aria-label="Notas">
+  <div class="pp-notes-panel-header">
+    <div class="pp-notes-panel-header-left">
+      <i class="fas fa-sticky-note pp-notes-panel-icon"></i>
+      <span class="pp-notes-panel-pkg-id" id="notes-panel-pkg-id"></span>
+      <span class="pp-notes-panel-label">Notas rápidas</span>
+    </div>
+    <button class="pp-btn-icon" id="btn-notes-close" aria-label="Cerrar notas">
+      <i class="fas fa-times"></i>
+    </button>
+  </div>
+  <div class="pp-notes-body">
+    <div class="pp-notes-grid" id="pp-notes-grid">
+      <!-- rendered dynamically -->
+    </div>
+    <div class="pp-notes-add">
+      <div class="pp-notes-colors" id="pp-notes-colors">
+        <!-- color swatches rendered by JS -->
+      </div>
+      <div class="pp-notes-input-row">
+        <textarea id="pp-notes-textarea" class="pp-notes-textarea" placeholder="Escribe tu nota… o usa el micrófono 🎤" rows="3"></textarea>
+        <button class="pp-notes-mic" id="btn-notes-mic" title="Dictar nota con voz" type="button" aria-label="Dictar nota">
+          <i class="fas fa-microphone"></i>
+        </button>
+      </div>
+      <button class="pp-btn pp-btn-primary pp-btn-full" id="btn-notes-add" type="button">
+        <i class="fas fa-plus"></i> Añadir nota
+      </button>
     </div>
   </div>
 </div>

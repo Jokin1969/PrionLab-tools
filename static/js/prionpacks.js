@@ -31,6 +31,20 @@ const PrionPacks = (() => {
     filterResponsible: 'all',
   };
 
+  // Post-it note colors (bg, text-on-bg)
+  const NOTE_COLORS = [
+    { value: '#fef9c3', text: '#713f12', name: 'Amarillo' },
+    { value: '#fce7f3', text: '#831843', name: 'Rosa' },
+    { value: '#dbeafe', text: '#1e3a8a', name: 'Azul' },
+    { value: '#dcfce7', text: '#14532d', name: 'Verde' },
+    { value: '#ffedd5', text: '#7c2d12', name: 'Naranja' },
+    { value: '#f3e8ff', text: '#3b0764', name: 'Lavanda' },
+  ];
+
+  let _notesPkgId   = null;   // package currently shown in notes panel
+  let _notesColor   = NOTE_COLORS[0].value; // selected color for new note
+  let _micRecog     = null;   // SpeechRecognition instance
+
   let _imgUploadCallback = null; // set while image-upload modal is open
 
   const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low', none: 'No priority' };
@@ -40,6 +54,8 @@ const PrionPacks = (() => {
     _bindGlobalEvents();
     _bindModalEvents();
     _bindMembersEvents();
+    _bindNotesEvents();
+    _bindMobileEvents();
     _loadApiKeyField();
     _bindKeyboardShortcuts();
     await _fetchAndRender();
@@ -202,10 +218,13 @@ const PrionPacks = (() => {
     empty.style.display = 'none';
     grid.innerHTML = packages.map(_pkgCardHTML).join('');
     grid.querySelectorAll('.pp-pkg-card').forEach(card => {
-      card.addEventListener('click', () => showEditor(card.dataset.id));
+      card.addEventListener('click', () => { _closeMobileSidebar(); showEditor(card.dataset.id); });
     });
     grid.querySelectorAll('.pp-pkg-priority-dot').forEach(dot => {
       dot.addEventListener('click', e => { e.stopPropagation(); _cyclePriorityCard(dot); });
+    });
+    grid.querySelectorAll('.pp-notes-badge').forEach(btn => {
+      btn.addEventListener('click', e => { e.stopPropagation(); _openNotes(btn.dataset.notesId); });
     });
   }
 
@@ -254,6 +273,7 @@ const PrionPacks = (() => {
       </div>
       <div class="pp-pkg-card-footer">
         <span>${findings} finding${findings !== 1 ? 's' : ''}</span>
+        ${_notesBadgeHTML(p)}
         <span>${date}</span>
       </div>
     </div>`;
@@ -2899,6 +2919,8 @@ ${refsText}`;
   function _bindGlobalEvents() {
     document.getElementById('btn-new-package').addEventListener('click', () => showEditor(null));
     document.getElementById('btn-new-package-main').addEventListener('click', () => showEditor(null));
+    document.getElementById('btn-fab-new')?.addEventListener('click', () => showEditor(null));
+    document.getElementById('btn-mobile-new')?.addEventListener('click', () => { _closeMobileSidebar(); showEditor(null); });
     document.getElementById('btn-backup-dropbox')?.addEventListener('click', _runManualBackup);
     document.getElementById('btn-open-restore')?.addEventListener('click', _openRestoreModal);
     document.getElementById('pp-restore-modal-close')?.addEventListener('click', _closeRestoreModal);
@@ -3634,6 +3656,192 @@ ${refsText}`;
     document.getElementById('member-surname')?.addEventListener('input', autoInitials);
     document.getElementById('member-initials')?.addEventListener('input', function() {
       this.dataset.userEdited = this.value ? '1' : '';
+    });
+  }
+
+  /* ── Mobile sidebar ────────────────────────────────────────────────────── */
+
+  function _openMobileSidebar() {
+    const sidebar  = document.getElementById('pp-sidebar');
+    const overlay  = document.getElementById('pp-mobile-overlay');
+    sidebar?.classList.add('pp-sidebar-open');
+    if (overlay) { overlay.style.display = 'block'; requestAnimationFrame(() => overlay.classList.add('active')); }
+    document.body.style.overflow = 'hidden';
+  }
+
+  function _closeMobileSidebar() {
+    const sidebar = document.getElementById('pp-sidebar');
+    const overlay = document.getElementById('pp-mobile-overlay');
+    sidebar?.classList.remove('pp-sidebar-open');
+    overlay?.classList.remove('active');
+    document.body.style.overflow = '';
+    if (overlay) setTimeout(() => { if (!overlay.classList.contains('active')) overlay.style.display = ''; }, 260);
+  }
+
+  function _bindMobileEvents() {
+    document.getElementById('btn-mobile-hamburger')?.addEventListener('click', _openMobileSidebar);
+    document.getElementById('btn-sidebar-close')?.addEventListener('click', _closeMobileSidebar);
+    document.getElementById('pp-mobile-overlay')?.addEventListener('click', _closeMobileSidebar);
+    // Close sidebar when navigating to docs/members
+    document.getElementById('btn-show-docs')?.addEventListener('click', _closeMobileSidebar, true);
+    document.getElementById('btn-show-members')?.addEventListener('click', _closeMobileSidebar, true);
+  }
+
+  /* ── Notes helpers ──────────────────────────────────────────────────────── */
+
+  function _notesBadgeHTML(p) {
+    const count = (p.notes || []).length;
+    const hasCls = count > 0 ? ' has-notes' : '';
+    const icon = count > 0 ? 'fas fa-sticky-note' : 'far fa-sticky-note';
+    const label = count > 0 ? ` ${count}` : '';
+    return `<button class="pp-notes-badge${hasCls}" data-notes-id="${_esc(p.id)}" title="${count > 0 ? count + ' nota' + (count !== 1 ? 's' : '') : 'Añadir nota'}"><i class="${icon}"></i>${label}</button>`;
+  }
+
+  function _openNotes(pkgId) {
+    _notesPkgId = pkgId;
+    const pkg   = _packages.find(p => p.id === pkgId);
+    const backdrop = document.getElementById('pp-notes-backdrop');
+    const panel    = document.getElementById('pp-notes-panel');
+    document.getElementById('notes-panel-pkg-id').textContent = pkgId || '';
+    _renderNotesGrid(pkg?.notes || []);
+    _renderNotesColors();
+    backdrop.style.display = 'block';
+    panel.style.display = 'flex';
+    requestAnimationFrame(() => { backdrop.classList.add('active'); panel.classList.add('active'); });
+    document.getElementById('pp-notes-textarea').value = '';
+    document.getElementById('pp-notes-textarea').focus();
+  }
+
+  function _closeNotes() {
+    const backdrop = document.getElementById('pp-notes-backdrop');
+    const panel    = document.getElementById('pp-notes-panel');
+    backdrop?.classList.remove('active');
+    panel?.classList.remove('active');
+    if (backdrop) setTimeout(() => { backdrop.style.display = ''; }, 300);
+    if (panel)    setTimeout(() => { panel.style.display = ''; }, 300);
+    _stopVoice();
+    _notesPkgId = null;
+  }
+
+  function _renderNotesColors() {
+    const container = document.getElementById('pp-notes-colors');
+    if (!container) return;
+    container.innerHTML = '<span class="pp-notes-colors-label">Color:</span>' +
+      NOTE_COLORS.map(c =>
+        `<button class="pp-note-color-swatch${c.value === _notesColor ? ' selected' : ''}"
+           style="background:${c.value}; border-color:${c.value === _notesColor ? c.text : 'transparent'};"
+           data-color="${c.value}" title="${c.name}"></button>`
+      ).join('');
+    container.querySelectorAll('.pp-note-color-swatch').forEach(sw => {
+      sw.addEventListener('click', () => {
+        _notesColor = sw.dataset.color;
+        _renderNotesColors();
+      });
+    });
+  }
+
+  function _renderNotesGrid(notes) {
+    const grid = document.getElementById('pp-notes-grid');
+    if (!grid) return;
+    if (!notes.length) { grid.innerHTML = ''; return; }
+    const colorMap = Object.fromEntries(NOTE_COLORS.map(c => [c.value, c.text]));
+    grid.innerHTML = notes.map(n => {
+      const textColor = colorMap[n.color] || '#374151';
+      const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) : '';
+      return `<div class="pp-note-card" style="background:${n.color};color:${textColor};" data-note-id="${_esc(n.id)}">
+        <div class="pp-note-card-text">${_esc(n.text)}</div>
+        <div class="pp-note-card-footer">
+          <span class="pp-note-card-date">${date}</span>
+          <button class="pp-note-card-delete" data-note-id="${_esc(n.id)}" title="Eliminar nota"><i class="fas fa-trash-alt"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+    grid.querySelectorAll('.pp-note-card-delete').forEach(btn => {
+      btn.addEventListener('click', e => { e.stopPropagation(); _deleteNote(btn.dataset.noteId); });
+    });
+  }
+
+  async function _addNote() {
+    if (!_notesPkgId) return;
+    const textarea = document.getElementById('pp-notes-textarea');
+    const text = (textarea?.value || '').trim();
+    if (!text) { toast('Escribe algo antes de añadir la nota.', 'error'); return; }
+    const pkg = _packages.find(p => p.id === _notesPkgId);
+    if (!pkg) return;
+    const newNote = { id: `n${Date.now()}`, text, color: _notesColor, createdAt: new Date().toISOString() };
+    const notes = [...(pkg.notes || []), newNote];
+    try {
+      const saved = await PPStorage.update(_notesPkgId, { notes });
+      const idx = _packages.findIndex(p => p.id === _notesPkgId);
+      if (idx >= 0) _packages[idx] = saved;
+      _renderNotesGrid(saved.notes || []);
+      _renderSidebarList();
+      textarea.value = '';
+    } catch (e) { toast('Error guardando la nota: ' + e.message, 'error'); }
+  }
+
+  async function _deleteNote(noteId) {
+    if (!_notesPkgId) return;
+    const pkg = _packages.find(p => p.id === _notesPkgId);
+    if (!pkg) return;
+    const notes = (pkg.notes || []).filter(n => n.id !== noteId);
+    try {
+      const saved = await PPStorage.update(_notesPkgId, { notes });
+      const idx = _packages.findIndex(p => p.id === _notesPkgId);
+      if (idx >= 0) _packages[idx] = saved;
+      _renderNotesGrid(saved.notes || []);
+      _renderSidebarList();
+    } catch (e) { toast('Error eliminando la nota: ' + e.message, 'error'); }
+  }
+
+  /* ── Voice input (SpeechRecognition) ───────────────────────────────────── */
+
+  function _startVoice(textarea) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) { toast('Tu navegador no soporta entrada de voz.', 'error'); return; }
+    if (_micRecog) { _stopVoice(); return; }
+    const mic = document.getElementById('btn-notes-mic');
+    _micRecog = new SpeechRecognition();
+    _micRecog.lang = 'es-ES';
+    _micRecog.continuous = false;
+    _micRecog.interimResults = true;
+    mic?.classList.add('listening');
+    let interim = '';
+    _micRecog.onresult = e => {
+      interim = '';
+      let final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      if (final) {
+        textarea.value = (textarea.value + ' ' + final).trim();
+        interim = '';
+      }
+    };
+    _micRecog.onerror = () => _stopVoice();
+    _micRecog.onend   = () => _stopVoice();
+    _micRecog.start();
+  }
+
+  function _stopVoice() {
+    _micRecog?.stop();
+    _micRecog = null;
+    document.getElementById('btn-notes-mic')?.classList.remove('listening');
+  }
+
+  /* ── Notes event bindings ───────────────────────────────────────────────── */
+
+  function _bindNotesEvents() {
+    document.getElementById('btn-notes-close')?.addEventListener('click', _closeNotes);
+    document.getElementById('pp-notes-backdrop')?.addEventListener('click', _closeNotes);
+    document.getElementById('btn-notes-add')?.addEventListener('click', _addNote);
+    document.getElementById('btn-notes-mic')?.addEventListener('click', () => {
+      const ta = document.getElementById('pp-notes-textarea');
+      _startVoice(ta);
+    });
+    document.getElementById('pp-notes-textarea')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); _addNote(); }
     });
   }
 
