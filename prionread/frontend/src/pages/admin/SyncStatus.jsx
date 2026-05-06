@@ -102,8 +102,9 @@ export default function SyncStatus() {
   const [assigningId, setAssigningId]     = useState(null);
   const [sendingToVaultId, setSendingToVaultId] = useState(null);
   const [flash, setFlash]                 = useState('');
-  const [migrating, setMigrating]         = useState(false);
+  const [migrating, setMigrating]           = useState(false);
   const [markingPending, setMarkingPending] = useState(false);
+  const [backfillingPages, setBackfillingPages] = useState(false);
 
   useEffect(() => { loadSync(); }, []);
 
@@ -153,6 +154,26 @@ export default function SyncStatus() {
     }
   };
 
+
+  const handleBackfillPages = async () => {
+    setBackfillingPages(true);
+    try {
+      const r = await adminService.backfillPdfPages(100);
+      if (r.processed === 0) {
+        setFlash('✅ Todos los PDFs ya tienen número de páginas registrado');
+      } else {
+        const parts = [`${r.updated} de ${r.processed} PDFs actualizados`];
+        if (r.failed > 0) parts.push(`${r.failed} fallaron`);
+        setFlash('✅ ' + parts.join(' · '));
+      }
+      setTimeout(() => setFlash(''), 6000);
+    } catch (err) {
+      setFlash('❌ ' + (err?.response?.data?.error || 'Error contando páginas'));
+      setTimeout(() => setFlash(''), 5000);
+    } finally {
+      setBackfillingPages(false);
+    }
+  };
 
   const handleAssignAll = async (articleId) => {
     setAssigningId(articleId);
@@ -262,6 +283,19 @@ export default function SyncStatus() {
                 className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-700 text-white hover:bg-amber-800 disabled:opacity-50 flex items-center gap-1.5"
               >
                 {migrating ? <Spinner size="sm" /> : '⚙️'} Aplicar migración
+              </button>
+            </div>
+          )}
+
+          {/* ── Admin tools strip ── */}
+          {data.has_prionvault_columns && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                onClick={handleBackfillPages}
+                disabled={backfillingPages}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+              >
+                {backfillingPages ? <Spinner size="sm" /> : '📄'} Contar páginas PDF
               </button>
             </div>
           )}

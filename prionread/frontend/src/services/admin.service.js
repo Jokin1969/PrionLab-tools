@@ -67,6 +67,7 @@ export const adminService = {
   getSyncStatus: async () => (await api.get('/admin/sync/status')).data,
   runPrionVaultMigration: async () => (await api.post('/admin/sync/run-migration')).data,
   markPendingForPrionVault: async () => (await api.post('/admin/sync/mark-pending')).data,
+  backfillPdfPages: async (limit = 50) => (await api.post('/admin/sync/backfill-pdf-pages', { limit })).data,
 
   // Notification rules
   getNotificationRules: async () => (await api.get('/admin/notification-rules')).data,

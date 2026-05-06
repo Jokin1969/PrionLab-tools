@@ -185,6 +185,51 @@ router.post('/sync/run-migration', async (_req, res) => {
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);
 
+// ─── PDF page backfill ────────────────────────────────────────────────────────
+// Downloads each PDF from Dropbox and counts pages via pdf-parse.
+// Processes articles that have dropbox_path but no pdf_pages yet.
+router.post('/sync/backfill-pdf-pages', async (req, res) => {
+  const { sequelize: sq } = require('../models');
+  const dbx = require('../config/dropbox');
+  const pdfParse = require('pdf-parse');
+
+  const limit = Math.min(500, Math.max(1, parseInt(req.body?.limit ?? 50, 10) || 50));
+
+  try {
+    const rows = await sq.query(
+      `SELECT id::text, dropbox_path FROM articles
+       WHERE dropbox_path IS NOT NULL AND pdf_pages IS NULL
+       ORDER BY created_at DESC LIMIT :limit`,
+      { replacements: { limit }, type: sq.QueryTypes.SELECT }
+    );
+
+    if (!rows.length) return res.json({ processed: 0, updated: 0, failed: 0, errors: [] });
+
+    let updated = 0;
+    const errors = [];
+
+    for (const { id, dropbox_path } of rows) {
+      try {
+        const dl = await dbx.filesDownload({ path: dropbox_path });
+        const buf = Buffer.from(dl.result.fileBinary);
+        const { numpages } = await pdfParse(buf, { max: 0 });
+        await sq.query(
+          'UPDATE articles SET pdf_pages = :p WHERE id = :id',
+          { replacements: { p: numpages, id }, type: sq.QueryTypes.UPDATE }
+        );
+        updated++;
+      } catch (err) {
+        errors.push({ id, error: err.message?.slice(0, 200) ?? 'unknown' });
+      }
+    }
+
+    res.json({ processed: rows.length, updated, failed: errors.length, errors: errors.slice(0, 20) });
+  } catch (err) {
+    console.error('[POST /admin/sync/backfill-pdf-pages]', err);
+    res.status(500).json({ error: 'Error during PDF page backfill' });
+  }
+});
+
 // ─── Notification Rules CRUD ──────────────────────────────────────────────────
 
 router.get('/notification-rules', async (_req, res) => {
