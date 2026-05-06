@@ -68,26 +68,70 @@ router.get('/articles/find-duplicates', findDuplicateArticles);
 // PrionVault ↔ PrionRead sync status
 router.get('/sync/status', getSyncStatus);
 
-// Mark "only in PrionRead" articles as pending in PrionVault pipeline
+// Mark "only in PrionRead" articles as pending in PrionVault pipeline,
+// auto-linking Dropbox PDFs that already exist at the expected path.
 router.post('/sync/mark-pending', async (_req, res) => {
   const { sequelize: sq } = require('../models');
+  const { dropboxPath, listFiles } = require('../services/dropbox');
+
+  // Verify PrionVault columns exist
   try {
-    // Ensure the columns exist first
     await sq.query("SELECT extraction_status, source FROM articles LIMIT 0");
   } catch {
     return res.status(409).json({ error: 'PrionVault columns not yet migrated. Run the migration first.' });
   }
+
   try {
-    const [, meta] = await sq.query(
-      `UPDATE articles
-       SET extraction_status = 'pending',
-           source = COALESCE(NULLIF(source, ''), 'prionread')
+    // Find qualifying articles: assigned to students, no PDF processed yet
+    const rows = await sq.query(
+      `SELECT id, doi, pubmed_id, dropbox_path, source FROM articles
        WHERE id IN (SELECT DISTINCT article_id FROM user_articles)
          AND (pdf_md5 IS NULL)
          AND (extraction_status IS NULL OR extraction_status = 'pending')`,
-      { type: sq.QueryTypes.UPDATE }
+      { type: sq.QueryTypes.SELECT }
     );
-    res.json({ ok: true, updated: meta ?? 0 });
+
+    if (!rows.length) return res.json({ ok: true, updated: 0, pdfs_linked: 0, needs_pdf: 0 });
+
+    // Scan Dropbox once — build a lowercase-path → real-path map
+    let fileMap = new Map();
+    try {
+      const files = await listFiles();
+      for (const f of files) fileMap.set(f.path.toLowerCase(), f.path);
+    } catch {
+      // Dropbox unavailable — continue without PDF auto-linking
+    }
+
+    let pdfsLinked = 0;
+    let needsPdf = 0;
+
+    for (const row of rows) {
+      let newDropboxPath = null;
+
+      if (!row.dropbox_path) {
+        const expected = dropboxPath(row);
+        if (fileMap.has(expected.toLowerCase())) {
+          newDropboxPath = expected;
+          pdfsLinked++;
+        } else {
+          needsPdf++;
+        }
+      }
+
+      await sq.query(
+        `UPDATE articles
+         SET extraction_status = 'pending',
+             source = COALESCE(NULLIF(source, ''), 'prionread')
+             ${newDropboxPath ? ", dropbox_path = :dp, dropbox_link = NULL" : ""}
+         WHERE id = :id`,
+        {
+          replacements: { id: row.id, ...(newDropboxPath ? { dp: newDropboxPath } : {}) },
+          type: sq.QueryTypes.UPDATE,
+        }
+      );
+    }
+
+    res.json({ ok: true, updated: rows.length, pdfs_linked: pdfsLinked, needs_pdf: needsPdf });
   } catch (err) {
     console.error('[POST /admin/sync/mark-pending]', err);
     res.status(500).json({ error: 'Error marking articles as pending' });

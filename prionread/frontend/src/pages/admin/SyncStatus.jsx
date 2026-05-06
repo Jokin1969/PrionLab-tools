@@ -157,9 +157,12 @@ export default function SyncStatus() {
   const handleMarkPending = async () => {
     setMarkingPending(true);
     try {
-      const result = await adminService.markPendingForPrionVault();
-      setFlash(`✅ ${result.updated ?? 0} artículo${result.updated !== 1 ? 's' : ''} marcado${result.updated !== 1 ? 's' : ''} como pendiente en PrionVault`);
-      setTimeout(() => setFlash(''), 5000);
+      const r = await adminService.markPendingForPrionVault();
+      const parts = [`${r.updated ?? 0} artículo${r.updated !== 1 ? 's' : ''} enviado${r.updated !== 1 ? 's' : ''} al pipeline`];
+      if (r.pdfs_linked > 0) parts.push(`${r.pdfs_linked} PDF${r.pdfs_linked !== 1 ? 's' : ''} reasociado${r.pdfs_linked !== 1 ? 's' : ''} de Dropbox`);
+      if (r.needs_pdf > 0)   parts.push(`${r.needs_pdf} aún ${r.needs_pdf !== 1 ? 'necesitan' : 'necesita'} PDF`);
+      setFlash('✅ ' + parts.join(' · '));
+      setTimeout(() => setFlash(''), 6000);
       await loadSync();
     } catch (err) {
       setFlash('❌ ' + (err?.response?.data?.error || 'Error marcando artículos'));
