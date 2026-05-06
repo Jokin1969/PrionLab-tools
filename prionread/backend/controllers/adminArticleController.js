@@ -263,11 +263,9 @@ async function getSyncStatus(_req, res) {
         "SELECT pdf_md5, extraction_status FROM articles LIMIT 0",
         { type: sequelize.QueryTypes.SELECT }
       );
-      // Both columns exist
       hasPvCols = true;
-      pvExpr = "(pdf_md5 IS NOT NULL OR (extraction_status IS NOT NULL AND extraction_status != 'pending'))";
+      pvExpr = "(pdf_md5 IS NOT NULL OR extraction_status IS NOT NULL)";
     } catch {
-      // Try each column individually
       try {
         await sequelize.query("SELECT pdf_md5 FROM articles LIMIT 0", { type: sequelize.QueryTypes.SELECT });
         hasPvCols = true;
@@ -277,8 +275,8 @@ async function getSyncStatus(_req, res) {
         await sequelize.query("SELECT extraction_status FROM articles LIMIT 0", { type: sequelize.QueryTypes.SELECT });
         hasPvCols = true;
         pvExpr = hasPvCols && pvExpr !== 'FALSE'
-          ? `(${pvExpr} OR (extraction_status IS NOT NULL AND extraction_status != 'pending'))`
-          : "(extraction_status IS NOT NULL AND extraction_status != 'pending')";
+          ? `(${pvExpr} OR extraction_status IS NOT NULL)`
+          : "extraction_status IS NOT NULL";
       } catch { /* column missing */ }
     }
 

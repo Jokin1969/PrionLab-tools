@@ -42,20 +42,22 @@ def index():
 @prionvault_bp.route("/api/articles", methods=["GET"])
 @login_required
 def api_list_articles():
-    q          = (request.args.get("q") or "").strip()
-    year_min   = request.args.get("year_min", type=int)
-    year_max   = request.args.get("year_max", type=int)
-    journal    = (request.args.get("journal") or "").strip()
-    tag_id     = request.args.get("tag", type=int)
+    q           = (request.args.get("q") or "").strip()
+    year_min    = request.args.get("year_min", type=int)
+    year_max    = request.args.get("year_max", type=int)
+    journal     = (request.args.get("journal") or "").strip()
+    tag_id      = request.args.get("tag", type=int)
     has_summary = request.args.get("has_summary")
-    sort       = request.args.get("sort", "added_desc")
-    page       = max(1, request.args.get("page", 1, type=int))
-    page_size  = min(100, max(1, request.args.get("size", 25, type=int)))
+    in_prionread_raw = request.args.get("in_prionread")
+    in_prionread = True if in_prionread_raw == "1" else (False if in_prionread_raw == "0" else None)
+    sort        = request.args.get("sort", "added_desc")
+    page        = max(1, request.args.get("page", 1, type=int))
+    page_size   = min(100, max(1, request.args.get("size", 25, type=int)))
 
     s = _session()
     try:
         return _list_articles_impl(s, q, year_min, year_max, journal,
-                                   tag_id, has_summary, sort, page, page_size)
+                                   tag_id, has_summary, in_prionread, sort, page, page_size)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -65,7 +67,7 @@ def api_list_articles():
 
 
 def _list_articles_impl(s, q, year_min, year_max, journal,
-                        tag_id, has_summary, sort, page, page_size):
+                        tag_id, has_summary, in_prionread, sort, page, page_size):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -101,6 +103,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("summary_human IS NOT NULL")
     elif has_summary == "none" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NULL AND summary_human IS NULL")
+
+    if in_prionread is True:
+        conditions.append(
+            "EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = articles.id)"
+        )
+    elif in_prionread is False:
+        conditions.append(
+            "NOT EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = articles.id)"
+        )
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
