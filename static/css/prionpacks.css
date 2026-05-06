@@ -2335,6 +2335,324 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 }
 .pp-inv-chip-remove:hover { opacity: 1; color: #dc2626; }
 
+/* ── Mobile top bar ─────────────────────────────────────────────────────── */
+
+.pp-mobile-topbar {
+  display: none; /* hidden on desktop */
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: var(--pp-sidebar-bg);
+  border-bottom: 1px solid var(--pp-border);
+  align-items: center;
+  padding: 0 12px;
+  gap: 10px;
+  z-index: 150;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.pp-mobile-hamburger {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--pp-text);
+  padding: 8px;
+  min-width: 40px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--pp-radius-sm);
+}
+.pp-mobile-hamburger:hover { background: var(--pp-secondary); }
+.pp-mobile-brand {
+  flex: 1;
+  font-weight: 700;
+  font-size: 15px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--pp-text);
+  white-space: nowrap;
+}
+.pp-mobile-brand i { color: var(--pp-accent); margin-right: 4px; }
+.pp-mobile-new-btn { padding: 0 14px; min-height: 36px; font-size: 18px; }
+
+/* ── Mobile overlay backdrop ────────────────────────────────────────────── */
+
+.pp-mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 199;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.pp-mobile-overlay.active { opacity: 1; pointer-events: auto; }
+
+/* ── Sidebar close button (mobile) ─────────────────────────────────────── */
+
+.pp-sidebar-close {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--pp-text-muted);
+  padding: 6px;
+  border-radius: var(--pp-radius-sm);
+  min-width: 36px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+}
+.pp-sidebar-close:hover { background: var(--pp-secondary); color: var(--pp-text); }
+
+/* ── Floating Action Button ─────────────────────────────────────────────── */
+
+.pp-fab {
+  display: none; /* shown only on mobile via media query */
+  position: fixed;
+  bottom: 24px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--pp-accent);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  font-size: 24px;
+  box-shadow: 0 4px 16px rgba(0,127,104,0.4);
+  align-items: center;
+  justify-content: center;
+  z-index: 120;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.pp-fab:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0,127,104,0.5); }
+.pp-fab:active { transform: scale(0.95); }
+
+/* ── Notes badge on package cards ──────────────────────────────────────── */
+
+.pp-notes-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--pp-text-muted);
+  padding: 2px 6px;
+  border-radius: 10px;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+  min-height: 24px;
+}
+.pp-notes-badge:hover { background: #fef9c3; color: #a16207; }
+.pp-notes-badge.has-notes { color: #a16207; }
+.pp-notes-badge.has-notes i { color: #f59e0b; }
+.pp-notes-badge i { font-size: 11px; }
+
+/* ── Notes panel ────────────────────────────────────────────────────────── */
+
+.pp-notes-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 300;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.pp-notes-backdrop.active { opacity: 1; }
+
+.pp-notes-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 0;
+  width: 420px;
+  max-height: 80vh;
+  background: var(--pp-primary);
+  border: 1px solid var(--pp-border);
+  border-bottom: none;
+  border-radius: var(--pp-radius) var(--pp-radius) 0 0;
+  box-shadow: 0 -4px 32px rgba(0,0,0,0.15);
+  z-index: 301;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
+}
+.pp-notes-panel.active { transform: translateY(0); }
+
+.pp-notes-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--pp-border);
+  background: linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%);
+  flex-shrink: 0;
+}
+.pp-notes-panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pp-notes-panel-icon { color: #f59e0b; font-size: 16px; }
+.pp-notes-panel-pkg-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pp-accent);
+  background: var(--pp-accent-glow);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.pp-notes-panel-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pp-text);
+}
+
+.pp-notes-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.pp-notes-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-content: start;
+  min-height: 80px;
+  scrollbar-width: thin;
+}
+.pp-notes-grid:empty::after {
+  content: 'Sin notas todavía. ¡Añade la primera!';
+  grid-column: 1 / -1;
+  color: var(--pp-text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+  font-style: italic;
+}
+
+.pp-note-card {
+  position: relative;
+  border-radius: 8px;
+  padding: 10px 10px 28px;
+  min-height: 80px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06);
+  cursor: default;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.5;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.pp-note-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+.pp-note-card-text { color: inherit; }
+.pp-note-card-footer {
+  position: absolute;
+  bottom: 6px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pp-note-card-date { font-size: 10px; opacity: 0.6; }
+.pp-note-card-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s, background 0.15s;
+  color: inherit;
+}
+.pp-note-card:hover .pp-note-card-delete { opacity: 0.7; }
+.pp-note-card-delete:hover { opacity: 1 !important; background: rgba(0,0,0,0.12); }
+
+.pp-notes-add {
+  border-top: 1px solid var(--pp-border);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  background: var(--pp-bg);
+}
+.pp-notes-colors {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pp-note-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.pp-note-color-swatch:hover { transform: scale(1.2); }
+.pp-note-color-swatch.selected { border-color: var(--pp-text); transform: scale(1.15); }
+.pp-notes-colors-label { font-size: 11px; color: var(--pp-text-muted); font-weight: 600; letter-spacing: 0.5px; }
+
+.pp-notes-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.pp-notes-textarea {
+  flex: 1;
+  background: var(--pp-secondary);
+  border: 1px solid var(--pp-border-light);
+  color: var(--pp-text);
+  padding: 8px 10px;
+  border-radius: var(--pp-radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  resize: none;
+  transition: border-color 0.2s;
+  line-height: 1.5;
+}
+.pp-notes-textarea:focus { border-color: var(--pp-accent); background: #ffffff; }
+.pp-notes-mic {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid var(--pp-border);
+  background: var(--pp-bg);
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--pp-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.pp-notes-mic:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.pp-notes-mic.listening { background: #dc2626; color: #ffffff; border-color: #dc2626; animation: pp-mic-pulse 1s ease-in-out infinite; }
+@keyframes pp-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1200px) {
@@ -2351,13 +2669,96 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   .pp-editor-layout { padding: 16px 20px; }
 }
 
+/* ── Mobile (≤680px) — complete redesign ────────────────────────────────── */
+
 @media (max-width: 680px) {
-  #prionpacks-app { flex-direction: column; }
-  .pp-sidebar { width: 100%; min-width: unset; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--pp-border); }
-  .pp-package-list { max-height: 200px; }
-  .pp-metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  /* Show mobile top bar */
+  .pp-mobile-topbar { display: flex; }
+  .pp-sidebar-close { display: flex; }
+
+  /* App layout stays flex row; sidebar becomes overlay drawer */
+  #prionpacks-app { flex-direction: row; }
+
+  /* Sidebar: fixed overlay drawer that slides in from left */
+  .pp-sidebar {
+    position: fixed;
+    left: 0;
+    top: 60px;
+    bottom: 0;
+    width: 85vw;
+    max-width: 300px;
+    height: auto;
+    min-width: unset;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+    overflow-y: auto;
+    border-right: 1px solid var(--pp-border);
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+  .pp-sidebar.pp-sidebar-open { transform: translateX(0); }
+  .pp-mobile-overlay { display: block; }
+
+  /* Main content: full width, padded for mobile topbar */
+  .pp-main { width: 100%; padding-top: 48px; }
+
+  /* FAB visible on dashboard */
+  .pp-fab { display: flex; }
+
+  /* Package list: no max-height constraint in drawer */
+  .pp-package-list { max-height: none; }
+
+  /* Touch-friendly card interactions */
+  .pp-pkg-card { cursor: pointer; }
+  .pp-pkg-card:active { opacity: 0.9; }
+
+  /* Dashboard page header */
+  .pp-page-header {
+    padding: 16px 16px 12px;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .pp-page-actions { flex-wrap: wrap; gap: 6px; }
+  .pp-btn { min-height: 44px; }
+  .pp-btn-sm { min-height: 36px; }
+
+  /* Metrics grid */
+  .pp-metrics-grid { grid-template-columns: repeat(2, 1fr); padding: 12px 16px; }
+  .pp-cards-grid { padding: 0 12px 80px; } /* extra bottom padding for FAB */
+
+  /* Forms: single column */
   .pp-form-row { grid-template-columns: 1fr; }
-  .pp-page-actions { flex-wrap: wrap; }
+
+  /* Editor: full screen feel */
+  .pp-editor-toolbar {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+    top: 60px;
+  }
+  .pp-editor-toolbar-left { flex: 1; min-width: 0; overflow: hidden; }
+  .pp-editor-toolbar-actions { gap: 4px; flex-wrap: wrap; }
+  .pp-editor-layout { padding: 8px 12px 100px; gap: 16px; }
+  .pp-editor-form .pp-card-section { scroll-margin-top: 110px; }
+
+  /* Notes panel: full-width bottom sheet on mobile */
+  .pp-notes-panel {
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-height: 90vh;
+    border-radius: 20px 20px 0 0;
+  }
+  .pp-notes-grid { grid-template-columns: 1fr 1fr; }
+
+  /* Bigger mic button on mobile */
+  .pp-notes-mic { width: 52px; height: 52px; font-size: 20px; }
+
+  /* Section header: stack on narrow screens */
+  .pp-section-header { flex-wrap: wrap; gap: 6px; }
+  .pp-select-responsible { max-width: 130px !important; width: 130px !important; }
 }
 
 /* ── Standalone toggle row (extracted from Basic Info) ───────────────────── */

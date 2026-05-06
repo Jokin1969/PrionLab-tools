@@ -205,6 +205,7 @@ def create_package(data: dict) -> dict:
         'findings': data.get('findings', []),
         'gaps': data.get('gaps', {'missingInfo': []}),
         'scores': data.get('scores', {'findings': 0, 'figures': 0, 'gaps': 0, 'total': 0}),
+        'notes': data.get('notes', []),
         'createdAt': now,
         'lastModified': now,
     }
