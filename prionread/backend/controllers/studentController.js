@@ -202,9 +202,18 @@ async function createOrUpdateSummary(req, res) {
       });
     }
 
-    // Record when the summary was first saved (don't change status — that happens on rating)
+    // Record when the summary was first saved
     if (!ua.summary_date) {
       await ua.update({ summary_date: new Date() });
+    }
+
+    // Auto-mark as read if all three phases are now complete
+    const [freshUa, existingRating] = await Promise.all([
+      ua.reload(),
+      ArticleRating.findOne({ where: { user_id: req.user.id, article_id: req.params.articleId } }),
+    ]);
+    if (freshUa.summary_date && freshUa.evaluation_date && existingRating && freshUa.status !== 'read') {
+      await freshUa.update({ status: 'read', read_date: new Date() });
     }
 
     return res.status(201).json({ summary });
@@ -356,9 +365,18 @@ async function submitEvaluation(req, res) {
 
     await evaluation.update({ answers, score, passed });
 
-    // Record when evaluation was first completed (don't change status — that happens on rating)
+    // Record when evaluation was first completed
     if (!ua.evaluation_date) {
       await ua.update({ evaluation_date: new Date() });
+    }
+
+    // Auto-mark as read if all three phases are now complete
+    const [freshUa, existingRating] = await Promise.all([
+      ua.reload(),
+      ArticleRating.findOne({ where: { user_id: req.user.id, article_id: req.params.articleId } }),
+    ]);
+    if (freshUa.summary_date && freshUa.evaluation_date && existingRating && freshUa.status !== 'read') {
+      await freshUa.update({ status: 'read', read_date: new Date() });
     }
 
     return res.json({ score, passed, correct: correctCount, total: questions.length });

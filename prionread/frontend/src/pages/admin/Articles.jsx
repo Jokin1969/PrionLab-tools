@@ -458,9 +458,28 @@ const AdminArticles = () => {
             artículos
           </p>
           {students.length > 0 && (
-            <p className="text-xs text-gray-400">
-              • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado
-            </p>
+            <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-gray-300 flex-shrink-0" />
+                no asignado
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-amber-400 flex-shrink-0" />
+                pendiente
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-blue-400 flex-shrink-0" />
+                leído
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-purple-400 flex-shrink-0" />
+                resumido
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-green-400 flex-shrink-0" />
+                evaluado
+              </span>
+            </div>
           )}
           <div className="flex gap-2 ml-auto">
             <button onClick={() => setFilterNoPdf((v) => !v)}
