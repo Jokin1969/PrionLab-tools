@@ -814,14 +814,15 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-section-header .pp-section-title { margin: 0; }
 
 .pp-select-responsible {
-  width: 170px;
-  font-size: 12px;
-  padding: 4px 8px;
-  height: 30px;
-  color: var(--pp-text-muted);
-  border-color: var(--pp-border);
-  border-radius: var(--pp-radius-sm);
-  background: var(--pp-bg);
+  max-width: 150px !important;
+  width: 150px !important;
+  font-size: 12px !important;
+  padding: 4px 8px !important;
+  height: 30px !important;
+  color: var(--pp-text) !important;
+  border-color: var(--pp-border) !important;
+  border-radius: var(--pp-radius-sm) !important;
+  background: var(--pp-bg) !important;
   cursor: pointer;
 }
 
