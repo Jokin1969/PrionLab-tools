@@ -163,17 +163,17 @@
     row.addEventListener('mouseleave', () => { row.style.background = ''; });
 
     const tags = (a.tags || []).slice(0, 4).map(t =>
-      `<span style="display:inline-flex;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:500;
+      `<span style="display:inline-flex;padding:1px 9px;border-radius:20px;font-size:12px;font-weight:500;
                     ${t.color ? `background:${esc(t.color)}18;color:${esc(t.color)};` : 'background:#eef2ff;color:#4f46e5;'}"
             >${esc(t.name)}</span>`
     ).join('');
 
     const badges = [
       a.has_summary_ai
-        ? '<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
+        ? '<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
         : '',
       a.indexed_at
-        ? '<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
+        ? '<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
         : '',
     ].filter(Boolean).join('');
 
@@ -184,10 +184,10 @@
     row.innerHTML = `
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
-          <span style="font-size:13px;font-weight:600;color:#111827;line-height:1.4;">${supHtml(a.title || '(no title)')}</span>
-          ${a.year ? `<span style="font-size:11px;color:#9ca3af;flex-shrink:0;font-variant-numeric:tabular-nums;">${a.year}</span>` : ''}
+          <span style="font-size:15px;font-weight:600;color:#111827;line-height:1.4;">${supHtml(a.title || '(no title)')}</span>
+          ${a.year ? `<span style="font-size:12px;color:#9ca3af;flex-shrink:0;font-variant-numeric:tabular-nums;">${a.year}</span>` : ''}
         </div>
-        <p style="margin:0 0 ${hasMeta ? '5px' : '0'};font-size:12px;color:#6b7280;
+        <p style="margin:0 0 ${hasMeta ? '5px' : '0'};font-size:13px;color:#6b7280;
                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           ${authors}${journal}
         </p>
@@ -213,7 +213,7 @@
   async function togglePrionRead(btn, aid) {
     const inPrionRead = btn.dataset.in === '1';
     if (inPrionRead) {
-      window.open('/prionread/admin/articles', '_blank', 'noopener');
+      window.open(`/prionread/admin/articles?open=${aid}`, '_blank', 'noopener');
       return;
     }
     if (!confirm('¿Enviar este artículo a PrionRead y asignarlo a todos los estudiantes?')) return;
@@ -289,10 +289,10 @@
         : '';
 
       content.innerHTML = `
-        <h2 style="margin:0 0 12px;font-size:18px;font-weight:700;color:#111827;line-height:1.35;padding-right:24px;">
+        <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111827;line-height:1.35;padding-right:24px;">
           ${supHtml(a.title)}
         </h2>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:13px;color:#6b7280;margin-bottom:16px;">
+        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:14px;color:#6b7280;margin-bottom:16px;">
           ${a.authors ? esc(a.authors) : '—'}
           ${a.journal ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${esc(a.journal)}` : ''}
           ${a.year    ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${a.year}` : ''}
@@ -301,20 +301,20 @@
                             style="color:#0F3460;text-decoration:none;">${esc(a.doi)}</a>` : ''}
         </div>
         ${a.abstract ? `
-          <h3 style="font-size:13px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Abstract</h3>
-          <p style="font-size:13px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.abstract)}</p>
+          <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Abstract</h3>
+          <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.abstract)}</p>
         ` : ''}
         ${a.summary_ai ? `
-          <h3 style="font-size:13px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">AI summary</h3>
-          <p style="font-size:13px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_ai)}</p>
+          <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">AI summary</h3>
+          <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_ai)}</p>
         ` : ''}
         ${a.summary_human ? `
-          <h3 style="font-size:13px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Human notes</h3>
-          <p style="font-size:13px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_human)}</p>
+          <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Human notes</h3>
+          <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_human)}</p>
         ` : ''}
         ${tagHtml}
         <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f3f4f6;
-                    font-size:11px;color:#9ca3af;font-family:ui-monospace,monospace;">
+                    font-size:12px;color:#9ca3af;font-family:ui-monospace,monospace;">
           Added: ${a.added_at ? esc(a.added_at.slice(0, 10)) : '—'}
           · Status: ${esc(a.extraction_status || 'pending')}
           ${a.indexed_at ? ' · Indexed: ' + esc(a.indexed_at.slice(0, 10)) : ''}

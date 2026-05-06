@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { adminService } from '../../services/admin.service';
@@ -58,6 +58,9 @@ function articleCompleteness(article) {
 const AdminArticles = () => {
   const location = useLocation();
   const navigate = useNavigate();
+
+  const openId = new URLSearchParams(location.search).get('open');
+  const highlightRef = useRef(null);
 
   const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
   const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
@@ -122,6 +125,11 @@ const AdminArticles = () => {
 
   useEffect(() => { loadArticles(); }, [loadArticles]);
   useEffect(() => { loadMatrix(); },  [loadMatrix]);
+  useEffect(() => {
+    if (openId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [openId, articles]);
 
   const flash      = (text) => { setMsg(text);    setTimeout(() => setMsg(''),    3000); };
   const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
@@ -538,7 +546,10 @@ const AdminArticles = () => {
                   const showAbsPreview = abstractPreview?.id === article.id;
                   return (
                     <Fragment key={article.id}>
-                      <tr className={`hover:bg-gray-50 ${showAbsPreview ? 'bg-violet-50' : ''} ${saving ? 'opacity-60' : ''}`}>
+                      <tr
+                        ref={openId === article.id ? highlightRef : null}
+                        className={`hover:bg-gray-50 ${openId === article.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''} ${showAbsPreview ? 'bg-violet-50' : ''} ${saving ? 'opacity-60' : ''}`}
+                      >
                         <td className="px-6 py-4 max-w-xs">
                           <div className="flex items-start gap-2">
                             <button title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}

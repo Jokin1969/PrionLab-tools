@@ -879,7 +879,7 @@ def api_admin_sync_status():
         if "pdf_md5" in pv_cols:
             pv_parts.append("a.pdf_md5 IS NOT NULL")
         if "extraction_status" in pv_cols:
-            pv_parts.append("a.extraction_status IS NOT NULL AND a.extraction_status != 'pending'")
+            pv_parts.append("a.extraction_status IS NOT NULL")
         pv_expr = "(" + " OR ".join(pv_parts) + ")" if pv_parts else "FALSE"
 
         # Select base fields + computed flags

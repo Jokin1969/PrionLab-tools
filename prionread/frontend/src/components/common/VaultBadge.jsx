@@ -13,7 +13,7 @@ export function VaultBadge({ articleId, inPrionvault: initialIn, size = 'md' }) 
     e.preventDefault();
     e.stopPropagation();
     if (inPv) {
-      window.open(PRIONVAULT_BASE, '_blank', 'noopener');
+      window.open(`${PRIONVAULT_BASE}?open=${articleId}`, '_blank', 'noopener');
       return;
     }
     setLoading(true);
