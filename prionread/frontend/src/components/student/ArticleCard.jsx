@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../common';
+import { VaultBadge } from '../common/VaultBadge';
 import { studentService } from '../../services/student.service';
 
 export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
@@ -68,9 +69,12 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
         </div>
 
         <div className="ml-4 flex flex-col items-end gap-2 shrink-0">
-          <span className={`px-3 py-1 text-xs font-medium rounded-full ${statusColors[article.status] ?? statusColors.pending}`}>
-            {statusLabels[article.status] ?? 'Pendiente'}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <VaultBadge articleId={article.id} inPrionvault={article.in_prionvault ?? false} />
+            <span className={`px-3 py-1 text-xs font-medium rounded-full ${statusColors[article.status] ?? statusColors.pending}`}>
+              {statusLabels[article.status] ?? 'Pendiente'}
+            </span>
+          </div>
           {article.is_milestone && (
             <span className="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-600 rounded">
               ⭐ Milestone

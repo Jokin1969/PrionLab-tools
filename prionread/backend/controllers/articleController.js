@@ -170,6 +170,21 @@ async function createArticle(req, res) {
   }
 }
 
+// Returns { [articleId]: boolean } — true if the article is in the PrionVault pipeline
+async function _prionvaultMap(ids) {
+  if (!ids.length) return {};
+  try {
+    const idList = ids.map((id) => `'${id}'`).join(',');
+    const rows = await sequelize.query(
+      `SELECT id, (pdf_md5 IS NOT NULL OR extraction_status IS NOT NULL) AS in_pv FROM articles WHERE id IN (${idList})`,
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    return Object.fromEntries(rows.map((r) => [r.id, !!r.in_pv]));
+  } catch {
+    return {};
+  }
+}
+
 async function getArticles(req, res) {
   try {
     const { where, order, limit, offset, page } = buildArticleQuery(req.query);
@@ -178,11 +193,49 @@ async function getArticles(req, res) {
       attributes: { include: [[AVG_RATING_LITERAL, 'avg_rating'], [RATING_COUNT_LITERAL, 'rating_count']] },
       distinct: true,
     });
-    return res.json({ articles: rows, total: count, page, limit, total_pages: Math.ceil(count / limit) });
+    const pvMap = await _prionvaultMap(rows.map((r) => r.id));
+    const articles = rows.map((r) => ({ ...r.toJSON(), in_prionvault: pvMap[r.id] ?? false }));
+    return res.json({ articles, total: count, page, limit, total_pages: Math.ceil(count / limit) });
   } catch (err) {
     console.error('[getArticles]', err);
     res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+async function sendToProtonVault(req, res) {
+  try {
+    await sequelize.query("SELECT extraction_status, source FROM articles LIMIT 0");
+  } catch {
+    return res.status(409).json({ error: 'PrionVault columns not yet migrated. Run the migration first.' });
+  }
+  const id = req.params.id;
+  const [row] = await sequelize.query(
+    'SELECT id, doi, pubmed_id, dropbox_path, pdf_md5, extraction_status FROM articles WHERE id = :id',
+    { replacements: { id }, type: sequelize.QueryTypes.SELECT }
+  );
+  if (!row) return res.status(404).json({ error: 'Article not found' });
+  if (row.pdf_md5 || row.extraction_status) return res.json({ ok: true, in_prionvault: true });
+
+  let pdf_linked = false;
+  if (!row.dropbox_path) {
+    try {
+      const files = await listFiles();
+      const fileMap = new Map(files.map((f) => [f.path.toLowerCase(), f.path]));
+      const expected = dropboxPath(row);
+      if (fileMap.has(expected.toLowerCase())) {
+        await sequelize.query(
+          'UPDATE articles SET dropbox_path = :dp, dropbox_link = NULL WHERE id = :id',
+          { replacements: { dp: expected, id }, type: sequelize.QueryTypes.UPDATE }
+        );
+        pdf_linked = true;
+      }
+    } catch { /* Dropbox unavailable */ }
+  }
+  await sequelize.query(
+    "UPDATE articles SET extraction_status = 'pending', source = COALESCE(NULLIF(source,''), 'prionread') WHERE id = :id",
+    { replacements: { id }, type: sequelize.QueryTypes.UPDATE }
+  );
+  return res.json({ ok: true, in_prionvault: true, queued: true, pdf_linked });
 }
 
 async function getArticleById(req, res) {
@@ -436,4 +489,5 @@ module.exports = {
   createArticle, getArticles, getArticleById, updateArticle, deleteArticle,
   generateDownloadLinkHandler, fetchMetadata, uploadArticlePDF, getDownloadLink,
   deleteArticlePDF, listDropboxFiles, verifyArticlePDFs, clearPdfLink, syncDropboxPDFs,
+  sendToProtonVault, _prionvaultMap,
 };

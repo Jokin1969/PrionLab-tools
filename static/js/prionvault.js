@@ -182,21 +182,19 @@
   async function togglePrionRead(btn, aid) {
     const inPrionRead = btn.dataset.in === '1';
     if (inPrionRead) {
-      const count = parseInt(btn.dataset.count || '0', 10);
-      const who = count > 1 ? `${count} usuarios` : count === 1 ? '1 usuario' : 'ningún usuario';
-      if (!confirm(`Este artículo está asignado a ${who} en PrionRead.\n¿Quitar para todos?`)) return;
-    } else {
-      if (!confirm('¿Deseas enviar este artículo a PrionRead?')) return;
+      // Colored → navigate to PrionRead admin article list
+      window.open('/prionread/admin/articles', '_blank', 'noopener');
+      return;
     }
+    if (!confirm('¿Enviar este artículo a PrionRead y asignarlo a todos los estudiantes?')) return;
     btn.disabled = true;
     try {
-      const method = inPrionRead ? 'DELETE' : 'POST';
-      const r = await fetch(`/prionvault/api/articles/${aid}/send-to-prionread`, { method });
+      const r = await fetch(`/prionvault/api/articles/${aid}/send-to-prionread`, { method: 'POST' });
       const data = await r.json();
       if (data.ok) {
-        btn.dataset.in = data.in_prionread ? '1' : '0';
-        btn.classList.toggle('active', data.in_prionread);
-        btn.title = data.in_prionread ? 'En PrionRead (clic para quitar)' : 'Enviar a PrionRead';
+        btn.dataset.in = '1';
+        btn.classList.add('active');
+        btn.title = 'En PrionRead — clic para abrir PrionRead ↗';
       }
     } catch (e) {
       console.error('togglePrionRead failed', e);
@@ -318,7 +316,11 @@
 
     refreshStats();
     refreshTags();
-    loadArticles();
+    loadArticles().then(() => {
+      // Deep-link: ?open=<articleId> opens the article detail on page load
+      const openId = new URLSearchParams(window.location.search).get('open');
+      if (openId) openDetail(openId);
+    });
   }
 
   // ── Import modal (admin only) ────────────────────────────────────────
