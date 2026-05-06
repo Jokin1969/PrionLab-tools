@@ -112,6 +112,7 @@ export default function SyncStatus() {
   const [search, setSearch] = useState('');
   const [assigningId, setAssigningId] = useState(null);
   const [flash, setFlash] = useState('');
+  const [migrating, setMigrating] = useState(false);
 
   useEffect(() => { loadSync(); }, []);
 
@@ -125,6 +126,21 @@ export default function SyncStatus() {
       setError(err?.response?.data?.error || 'Error cargando datos de sincronización');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunMigration = async () => {
+    setMigrating(true);
+    try {
+      await adminService.runPrionVaultMigration();
+      setFlash('Migración ejecutada. Recargando datos…');
+      setTimeout(() => setFlash(''), 5000);
+      await loadSync();
+    } catch (err) {
+      setFlash('❌ ' + (err?.response?.data?.error || 'Error ejecutando migración'));
+      setTimeout(() => setFlash(''), 5000);
+    } finally {
+      setMigrating(false);
     }
   };
 
@@ -192,9 +208,18 @@ export default function SyncStatus() {
       ) : data ? (
         <>
           {!data.has_prionvault_columns && (
-            <div className="mb-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-sm">
-              ⚠️ Las columnas de PrionVault (<code>pdf_md5</code>, <code>extraction_status</code>) no se detectaron en la base de datos compartida.
-              La columna "Solo en PrionVault" estará vacía hasta que PrionVault sincronice la base de datos.
+            <div className="mb-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-sm flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1">
+                ⚠️ Las columnas de PrionVault (<code>pdf_md5</code>, <code>extraction_status</code>) no existen todavía en la base de datos compartida.
+                La migración de PrionVault puede no haberse aplicado. Pulsa el botón para ejecutarla ahora.
+              </div>
+              <button
+                onClick={handleRunMigration}
+                disabled={migrating}
+                className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-700 text-white hover:bg-amber-800 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {migrating ? <Spinner size="sm" /> : '⚙️'} Aplicar migración
+              </button>
             </div>
           )}
 

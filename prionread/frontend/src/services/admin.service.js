@@ -65,6 +65,7 @@ export const adminService = {
 
   // PrionVault ↔ PrionRead sync
   getSyncStatus: async () => (await api.get('/admin/sync/status')).data,
+  runPrionVaultMigration: async () => (await api.post('/admin/sync/run-migration')).data,
 
   // Notification rules
   getNotificationRules: async () => (await api.get('/admin/notification-rules')).data,

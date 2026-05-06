@@ -86,6 +86,32 @@ router.get('/articles/find-duplicates', findDuplicateArticles);
 // PrionVault ↔ PrionRead sync status
 router.get('/sync/status', getSyncStatus);
 
+// Apply PrionVault columns to the shared articles table (idempotent)
+router.post('/sync/run-migration', async (_req, res) => {
+  const { sequelize: sq } = require('../models');
+  const statements = [
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_md5           CHAR(32)",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_size_bytes    BIGINT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_pages         INTEGER",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_status VARCHAR(20) DEFAULT 'pending'",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_error  TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_ai        TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_human     TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS indexed_at        TIMESTAMPTZ",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS source            VARCHAR(40) DEFAULT 'manual'",
+  ];
+  const results = { ok: [], failed: [] };
+  for (const stmt of statements) {
+    try {
+      await sq.query(stmt);
+      results.ok.push(stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0]);
+    } catch (err) {
+      results.failed.push({ column: stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0], error: err.message });
+    }
+  }
+  res.json({ applied: results.ok.length, errors: results.failed.length, results });
+});
+
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);
 
