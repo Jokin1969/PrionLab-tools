@@ -622,6 +622,10 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-pkg-card[data-responsible="jorge"]   .pp-pkg-card-id { color: #c2410c; }
 .pp-pkg-card[data-responsible="carlos"]  .pp-pkg-card-id { color: #7c3aed; }
 
+/* Unassigned packages — subtle warm-gray tint */
+.pp-pkg-card[data-responsible=""] { background: #f8fafc; border-color: #e2e8f0; }
+.pp-pkg-card[data-responsible=""]:hover { background: #f1f5f9; border-color: #cbd5e1; }
+
 /* Responsible initials badge */
 .pp-responsible-badge {
   width: 28px;
@@ -642,6 +646,45 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-responsible-badge[data-responsible="hasier"]  { background: #86efac; color: #15803d; }
 .pp-responsible-badge[data-responsible="jorge"]   { background: #fdba74; color: #c2410c; }
 .pp-responsible-badge[data-responsible="carlos"]  { background: #c4b5fd; color: #6d28d9; }
+
+/* ── Responsible filter chips ──────────────────────────────────────────────── */
+.pp-resp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+.pp-resp-chip {
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 13px;
+  border: 1.5px solid var(--pp-border);
+  background: var(--pp-bg);
+  color: var(--pp-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .1s;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pp-resp-chip:hover { filter: brightness(.95); transform: translateY(-1px); }
+.pp-resp-chip-all           { font-family: inherit; font-size: 11px; font-weight: 600; }
+.pp-resp-chip-none          { letter-spacing: .05em; }
+
+/* Per-person colors for chips */
+.pp-resp-chip[data-responsible="joaquin"]         { border-color: #bfdbfe; color: #1e40af; }
+.pp-resp-chip[data-responsible="joaquin"].active  { background: #93c5fd; border-color: #93c5fd; color: #1e40af; }
+.pp-resp-chip[data-responsible="hasier"]          { border-color: #bbf7d0; color: #15803d; }
+.pp-resp-chip[data-responsible="hasier"].active   { background: #86efac; border-color: #86efac; color: #15803d; }
+.pp-resp-chip[data-responsible="jorge"]           { border-color: #fed7aa; color: #c2410c; }
+.pp-resp-chip[data-responsible="jorge"].active    { background: #fdba74; border-color: #fdba74; color: #c2410c; }
+.pp-resp-chip[data-responsible="carlos"]          { border-color: #ddd6fe; color: #6d28d9; }
+.pp-resp-chip[data-responsible="carlos"].active   { background: #c4b5fd; border-color: #c4b5fd; color: #6d28d9; }
+.pp-resp-chip[data-responsible="none"]            { border-color: #e2e8f0; color: #94a3b8; }
+.pp-resp-chip[data-responsible="none"].active     { background: #e2e8f0; border-color: #cbd5e1; color: #64748b; }
+.pp-resp-chip-all.active                          { background: var(--pp-accent); border-color: var(--pp-accent); color: #fff; }
 
 .pp-pkg-card-title { font-size: 15px; font-weight: 600; color: var(--pp-text); margin-bottom: 4px; line-height: 1.3; }
 
