@@ -343,15 +343,15 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   z-index: 4;
 }
 
-.pp-editor-toolbar-left { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.pp-editor-toolbar-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
 .pp-editor-toolbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
-/* Title inside the sticky toolbar — fills remaining horizontal space */
+/* Title inside the sticky toolbar — sits right next to the PRP-## badge */
 .pp-editor-inline-title {
   flex: 1;
   min-width: 0;
   margin: 0;
-  padding: 0 16px;
+  padding: 0;
   font-size: 17px;
   font-weight: 700;
   font-family: 'Crimson Pro', Georgia, serif;
@@ -373,7 +373,15 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   border-radius: 6px;
   padding: 4px 12px;
   letter-spacing: 0.05em;
+  transition: background .2s, color .2s, border-color .2s;
+  flex-shrink: 0;
 }
+
+/* PRP-## badge colors per responsible (editor toolbar) */
+.pp-editor-pkg-id[data-responsible="joaquin"] { background: #93c5fd; color: #1e40af; border-color: #60a5fa; }
+.pp-editor-pkg-id[data-responsible="hasier"]  { background: #86efac; color: #15803d; border-color: #4ade80; }
+.pp-editor-pkg-id[data-responsible="jorge"]   { background: #fdba74; color: #c2410c; border-color: #fb923c; }
+.pp-editor-pkg-id[data-responsible="carlos"]  { background: #c4b5fd; color: #6d28d9; border-color: #a78bfa; }
 
 .pp-autosave-status {
   font-size: 11px;

@@ -609,7 +609,9 @@ const PrionPacks = (() => {
       if (imgAiBtn) imgAiBtn.classList.remove('active');
     });
 
-    document.getElementById('editor-id-badge').textContent = isNew ? 'PRP-NEW' : pkg.id;
+    const idBadge = document.getElementById('editor-id-badge');
+    idBadge.textContent = isNew ? 'PRP-NEW' : pkg.id;
+    idBadge.dataset.responsible = (!isNew && pkg.responsible) ? pkg.responsible : '';
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
     document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
     const vBadge = document.getElementById('editor-version-badge');
@@ -2627,7 +2629,9 @@ ${refsText}`;
         _packages.push(saved);
         state.currentId = saved.id;
       }
-      document.getElementById('editor-id-badge').textContent = saved.id;
+      const savedBadge = document.getElementById('editor-id-badge');
+      savedBadge.textContent = saved.id;
+      savedBadge.dataset.responsible = saved.responsible || '';
       document.getElementById('btn-delete-package').style.display = '';
       document.getElementById('btn-send-review').style.display = '';
       const dlWord = document.getElementById('btn-download-word');
@@ -3110,6 +3114,10 @@ ${refsText}`;
     // Active/Inactive toggle
     document.getElementById('btn-active-toggle').addEventListener('click', () => {
       _setActiveState(!_getCurrentActive());
+    });
+
+    document.getElementById('field-responsible').addEventListener('change', e => {
+      document.getElementById('editor-id-badge').dataset.responsible = e.target.value;
     });
 
     // Investigations file input
