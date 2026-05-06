@@ -16,17 +16,18 @@ function validationError(res, message) {
 // POST /api/auth/register  (admin only)
 async function register(req, res) {
   try {
-    const { name, email, role = 'student', year_started, photo_url } = req.body;
+    const { name, email, password, role = 'student', year_started, photo_url } = req.body;
 
     if (!name || !name.trim()) return validationError(res, 'Name is required');
     if (!email) return validationError(res, 'Email is required');
     if (!isValidEmail(email)) return validationError(res, 'Invalid email address');
     if (!['admin', 'student'].includes(role)) return validationError(res, 'Role must be admin or student');
+    if (password && password.length < 6) return validationError(res, 'Password must be at least 6 characters');
 
     const existing = await User.findOne({ where: { email: email.toLowerCase() } });
     if (existing) return validationError(res, 'Email already registered');
 
-    const tempPassword = generatePassword(10);
+    const tempPassword = password?.trim() || generatePassword(10);
 
     const user = await User.create({
       name: name.trim(),

@@ -12,8 +12,10 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
+    setSaveError('');
     if (user) {
       setFormData({
         name: user.name || '',
@@ -42,12 +44,13 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaveError('');
     setSaving(true);
     try {
       await onSave(formData);
       onClose();
-    } catch {
-      // error surfaced by parent
+    } catch (err) {
+      setSaveError(err?.response?.data?.error || err?.message || 'Error guardando usuario');
     } finally {
       setSaving(false);
     }
@@ -133,6 +136,12 @@ export const UserModal = ({ isOpen, onClose, onSave, user = null }) => {
           onChange={(e) => handleChange('photo_url', e.target.value)}
           placeholder="https://..."
         />
+
+        {saveError && (
+          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
+            {saveError}
+          </div>
+        )}
 
         <div className="flex gap-2 justify-end pt-4 border-t">
           <Button variant="ghost" onClick={onClose} type="button">

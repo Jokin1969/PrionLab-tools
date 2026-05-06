@@ -139,9 +139,9 @@ const AdminUsers = () => {
   const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
 
   const handleCreateUser = async (userData) => {
-    await adminService.createUser(userData);
+    const data = await adminService.createUser(userData);
     await loadUsers();
-    if (userData.password) setPasswordBanner({ email: userData.email, password: userData.password });
+    if (data.tempPassword) setPasswordBanner({ email: userData.email, password: data.tempPassword });
     flash('Usuario creado correctamente');
   };
 
