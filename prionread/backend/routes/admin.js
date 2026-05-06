@@ -68,6 +68,58 @@ router.get('/articles/find-duplicates', findDuplicateArticles);
 // PrionVault ↔ PrionRead sync status
 router.get('/sync/status', getSyncStatus);
 
+// Mark "only in PrionRead" articles as pending in PrionVault pipeline
+router.post('/sync/mark-pending', async (_req, res) => {
+  const { sequelize: sq } = require('../models');
+  try {
+    // Ensure the columns exist first
+    await sq.query("SELECT extraction_status, source FROM articles LIMIT 0");
+  } catch {
+    return res.status(409).json({ error: 'PrionVault columns not yet migrated. Run the migration first.' });
+  }
+  try {
+    const [, meta] = await sq.query(
+      `UPDATE articles
+       SET extraction_status = 'pending',
+           source = COALESCE(NULLIF(source, ''), 'prionread')
+       WHERE id IN (SELECT DISTINCT article_id FROM user_articles)
+         AND (pdf_md5 IS NULL)
+         AND (extraction_status IS NULL OR extraction_status = 'pending')`,
+      { type: sq.QueryTypes.UPDATE }
+    );
+    res.json({ ok: true, updated: meta ?? 0 });
+  } catch (err) {
+    console.error('[POST /admin/sync/mark-pending]', err);
+    res.status(500).json({ error: 'Error marking articles as pending' });
+  }
+});
+
+// Apply PrionVault columns to the shared articles table (idempotent)
+router.post('/sync/run-migration', async (_req, res) => {
+  const { sequelize: sq } = require('../models');
+  const statements = [
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_md5           CHAR(32)",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_size_bytes    BIGINT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_pages         INTEGER",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_status VARCHAR(20) DEFAULT 'pending'",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_error  TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_ai        TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_human     TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS indexed_at        TIMESTAMPTZ",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS source            VARCHAR(40) DEFAULT 'manual'",
+  ];
+  const results = { ok: [], failed: [] };
+  for (const stmt of statements) {
+    try {
+      await sq.query(stmt);
+      results.ok.push(stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0]);
+    } catch (err) {
+      results.failed.push({ column: stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0], error: err.message });
+    }
+  }
+  res.json({ applied: results.ok.length, errors: results.failed.length, results });
+});
+
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);
 
