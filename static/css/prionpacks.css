@@ -813,6 +813,18 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 
 .pp-section-header .pp-section-title { margin: 0; }
 
+.pp-select-responsible {
+  width: 170px;
+  font-size: 12px;
+  padding: 4px 8px;
+  height: 30px;
+  color: var(--pp-text-muted);
+  border-color: var(--pp-border);
+  border-radius: var(--pp-radius-sm);
+  background: var(--pp-bg);
+  cursor: pointer;
+}
+
 /* ── Form Elements ───────────────────────────────────────────────────────── */
 
 .pp-form-group { display: flex; flex-direction: column; gap: 6px; }
