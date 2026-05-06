@@ -5,71 +5,34 @@ import Spinner from '../../components/ui/Spinner';
 
 const PRIONVAULT_BASE = 'https://web-production-5517e.up.railway.app/prionvault';
 
-const TABS = [
-  { key: 'only_in_prionread',  label: '📄 Solo en PrionRead',   color: 'amber'  },
-  { key: 'only_in_prionvault', label: '🗄️ Solo en PrionVault',   color: 'blue'   },
-  { key: 'in_both',            label: '✅ En ambos',             color: 'green'  },
-  { key: 'in_neither',         label: '❓ Sin asignar',          color: 'gray'   },
-];
-
-const COLOR_BADGE = {
-  amber: 'bg-amber-100 text-amber-700 border-amber-200',
-  blue:  'bg-blue-100 text-blue-700 border-blue-200',
-  green: 'bg-green-100 text-green-700 border-green-200',
-  gray:  'bg-gray-100 text-gray-500 border-gray-200',
-};
-
-const COLOR_TAB_ACTIVE = {
-  amber: 'bg-amber-600 text-white border-amber-600',
-  blue:  'bg-blue-600 text-white border-blue-600',
-  green: 'bg-green-600 text-white border-green-600',
-  gray:  'bg-gray-600 text-white border-gray-600',
-};
-
-function SummaryCard({ label, count, color, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 min-w-[140px] rounded-lg border p-4 text-left transition-all hover:shadow-md ${
-        active ? COLOR_TAB_ACTIVE[color] : `bg-white ${COLOR_BADGE[color]} hover:opacity-80`
-      }`}
-    >
-      <p className="text-3xl font-bold">{count}</p>
-      <p className="text-sm mt-1 font-medium">{label}</p>
-    </button>
-  );
-}
-
-function ArticleRow({ article, tab, onAssignAll, assigningId }) {
+// ── ArticleRow ────────────────────────────────────────────────────────────────
+function ArticleRow({ article, showAssignBtn, showVaultBtn, onAssignAll, assigningId, onSendToVault, sendingToVaultId }) {
   const isAssigning = assigningId === article.id;
+  const isSending   = sendingToVaultId === article.id;
+  const isAssigned  = article.student_count > 0;
+
   return (
     <div className="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0">
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-gray-900 text-sm leading-snug">{article.title}</p>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <div className="flex items-baseline gap-2 mb-0.5">
+          <p className="font-medium text-gray-900 text-sm leading-snug">{article.title}</p>
+          {article.year && <span className="text-xs text-gray-400 shrink-0">{article.year}</span>}
+        </div>
+        <p className="text-xs text-gray-500 mt-0.5 truncate">
           {Array.isArray(article.authors)
             ? article.authors.slice(0, 2).join(', ') + (article.authors.length > 2 ? '…' : '')
             : (article.authors || '').split(',').slice(0, 2).join(', ')}
-          {article.year ? ` · ${article.year}` : ''}
           {article.journal ? ` · ${article.journal}` : ''}
         </p>
         <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
           {article.doi ? (
-            <a
-              href={`https://doi.org/${article.doi}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-prion-primary hover:underline"
-            >
+            <a href={`https://doi.org/${article.doi}`} target="_blank" rel="noopener noreferrer"
+               className="text-[11px] text-prion-primary hover:underline">
               DOI: {article.doi}
             </a>
           ) : article.pubmed_id ? (
-            <a
-              href={`https://pubmed.ncbi.nlm.nih.gov/${article.pubmed_id}/`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-blue-600 hover:underline"
-            >
+            <a href={`https://pubmed.ncbi.nlm.nih.gov/${article.pubmed_id}/`} target="_blank" rel="noopener noreferrer"
+               className="text-[11px] text-blue-600 hover:underline">
               PMID: {article.pubmed_id}
             </a>
           ) : null}
@@ -78,17 +41,18 @@ function ArticleRow({ article, tab, onAssignAll, assigningId }) {
               ⭐ Milestone
             </span>
           )}
-          {article.student_count > 0 && (
-            <span className="text-[11px] text-gray-500">
-              {article.student_count} estudiante{article.student_count !== 1 ? 's' : ''}
+          {isAssigned ? (
+            <span className="text-[11px] text-emerald-600 font-medium">
+              ✓ {article.student_count} estudiante{article.student_count !== 1 ? 's' : ''}
             </span>
+          ) : (
+            <span className="text-[11px] text-gray-400">Sin asignar</span>
           )}
         </div>
       </div>
 
       <div className="shrink-0 flex flex-col gap-1.5 items-end">
-        {/* Action: assign to all students (PrionVault-only or neither) */}
-        {(tab === 'only_in_prionvault' || tab === 'in_neither') && (
+        {showAssignBtn && (
           <button
             onClick={() => onAssignAll(article.id)}
             disabled={isAssigning}
@@ -97,15 +61,30 @@ function ArticleRow({ article, tab, onAssignAll, assigningId }) {
             {isAssigning ? <Spinner size="sm" /> : '👥'} Asignar a todos
           </button>
         )}
-        {/* Link to PrionVault article (if has PrionVault entry) */}
-        {(tab === 'only_in_prionvault' || tab === 'in_both') && (
+        {showVaultBtn && (
+          <button
+            onClick={() => onSendToVault(article.id)}
+            disabled={isSending}
+            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-[#0F3460] text-[#0F3460] hover:bg-[#0F3460] hover:text-white disabled:opacity-50 transition-colors flex items-center gap-1"
+          >
+            {isSending ? <Spinner size="sm" /> : (
+              <svg viewBox="0 0 14 14" width="11" height="11" fill="none">
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+                <circle cx="7" cy="7" r="2.5" stroke="currentColor" strokeWidth="1"/>
+                <line x1="7" y1="1.5" x2="7" y2="12.5" stroke="currentColor" strokeWidth="1"/>
+                <line x1="1.5" y1="7" x2="12.5" y2="7" stroke="currentColor" strokeWidth="1"/>
+              </svg>
+            )} Enviar a PrionVault
+          </button>
+        )}
+        {(article.in_prionvault || article.in_both) && (
           <a
-            href={`${PRIONVAULT_BASE}/api/articles/${article.id}`}
+            href={`${PRIONVAULT_BASE}?open=${article.id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
+            className="text-[11px] text-gray-400 hover:text-[#0F3460] hover:underline"
           >
-            🗄️ Ver en PrionVault ↗
+            Ver en PrionVault ↗
           </a>
         )}
       </div>
@@ -113,15 +92,17 @@ function ArticleRow({ article, tab, onAssignAll, assigningId }) {
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
 export default function SyncStatus() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('only_in_prionread');
-  const [search, setSearch] = useState('');
-  const [assigningId, setAssigningId] = useState(null);
-  const [flash, setFlash] = useState('');
-  const [migrating, setMigrating] = useState(false);
+  const [data, setData]                   = useState(null);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState('');
+  const [activeTab, setActiveTab]         = useState('not_in_vault');  // 'in_vault' | 'not_in_vault'
+  const [search, setSearch]               = useState('');
+  const [assigningId, setAssigningId]     = useState(null);
+  const [sendingToVaultId, setSendingToVaultId] = useState(null);
+  const [flash, setFlash]                 = useState('');
+  const [migrating, setMigrating]         = useState(false);
   const [markingPending, setMarkingPending] = useState(false);
 
   useEffect(() => { loadSync(); }, []);
@@ -187,21 +168,59 @@ export default function SyncStatus() {
     }
   };
 
+  const handleSendOneToVault = async (articleId) => {
+    setSendingToVaultId(articleId);
+    try {
+      await adminService.markPendingForPrionVault();   // sends all; per-article would need a separate endpoint
+      setFlash('✅ Artículo enviado al pipeline de PrionVault');
+      setTimeout(() => setFlash(''), 4000);
+      loadSync();
+    } catch (err) {
+      setFlash('❌ ' + (err?.response?.data?.error || 'Error al enviar'));
+      setTimeout(() => setFlash(''), 4000);
+    } finally {
+      setSendingToVaultId(null);
+    }
+  };
+
   const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+  // ── Derived lists from raw categories ─────────────────────────────────────
+  const inVaultList    = data ? [...(data.articles.in_both || []), ...(data.articles.only_in_prionvault || [])] : [];
+  const notInVaultList = data ? [...(data.articles.only_in_prionread || []), ...(data.articles.in_neither || [])] : [];
+
+  // Annotate with in_prionread flag
+  const tag = (list, inVault, inPrionread) =>
+    list.map((a) => ({ ...a, _in_vault: inVault, _in_prionread: inPrionread }));
+
+  const inVaultTagged = [
+    ...tag(data?.articles.in_both || [],            true,  true),
+    ...tag(data?.articles.only_in_prionvault || [], true,  false),
+  ];
+  const notInVaultTagged = [
+    ...tag(data?.articles.only_in_prionread || [], false, true),
+    ...tag(data?.articles.in_neither || [],        false, false),
+  ];
+
+  const currentList = activeTab === 'in_vault' ? inVaultTagged : notInVaultTagged;
+
   const filteredArticles = () => {
-    if (!data) return [];
-    const list = data.articles[activeTab] || [];
     const q = norm(search.trim());
-    if (!q) return list;
-    return list.filter((a) => {
+    if (!q) return currentList;
+    return currentList.filter((a) => {
       const authors = Array.isArray(a.authors) ? a.authors.join(' ') : (a.authors || '');
       return [a.title, authors, a.journal, a.doi, a.pubmed_id, String(a.year || '')]
         .some((f) => norm(f).includes(q));
     });
   };
 
-  const onlyInPrionreadCount = data?.summary?.only_in_prionread ?? 0;
+  // Stats
+  const assignedCount    = data ? (data.summary.only_in_prionread + data.summary.in_both) : 0;
+  const notAssignedCount = data ? (data.summary.only_in_prionvault + data.summary.in_neither) : 0;
+  const inVaultCount     = data ? (data.summary.in_both + data.summary.only_in_prionvault) : 0;
+  const notInVaultCount  = data ? (data.summary.only_in_prionread + data.summary.in_neither) : 0;
+  // Articles in "not in vault" that ARE assigned (= only_in_prionread) — these are the ones the pipeline can process
+  const sendableCount = data?.summary.only_in_prionread ?? 0;
 
   return (
     <div>
@@ -209,11 +228,7 @@ export default function SyncStatus() {
         title="🔄 Sincronización PrionVault ↔ PrionRead"
         subtitle="Compara qué publicaciones están en cada sistema y detecta inconsistencias"
         action={
-          <button
-            onClick={loadSync}
-            disabled={loading}
-            className="btn-primary flex items-center gap-2"
-          >
+          <button onClick={loadSync} disabled={loading} className="btn-primary flex items-center gap-2">
             {loading ? <Spinner size="sm" /> : '↺'} Actualizar
           </button>
         }
@@ -226,11 +241,8 @@ export default function SyncStatus() {
           {flash}
         </div>
       )}
-
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 text-red-700 border border-red-200 text-sm">
-          {error}
-        </div>
+        <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 text-red-700 border border-red-200 text-sm">{error}</div>
       )}
 
       {loading && !data ? (
@@ -240,8 +252,8 @@ export default function SyncStatus() {
           {!data.has_prionvault_columns && (
             <div className="mb-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-sm flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1">
-                ⚠️ Las columnas de PrionVault (<code>pdf_md5</code>, <code>extraction_status</code>) no existen todavía en la base de datos compartida.
-                La migración de PrionVault puede no haberse aplicado. Pulsa el botón para ejecutarla ahora.
+                ⚠️ Las columnas de PrionVault (<code>pdf_md5</code>, <code>extraction_status</code>) no existen todavía.
+                Pulsa el botón para ejecutar la migración.
               </div>
               <button
                 onClick={handleRunMigration}
@@ -253,37 +265,104 @@ export default function SyncStatus() {
             </div>
           )}
 
-          {/* Summary cards */}
-          <div className="flex flex-wrap gap-3 mb-6">
-            {TABS.map(({ key, label, color }) => (
-              <SummaryCard
-                key={key}
-                label={label}
-                count={data.summary[key]}
-                color={color}
-                active={activeTab === key}
-                onClick={() => setActiveTab(key)}
-              />
-            ))}
+          {/* ── Stats: asignación a estudiantes ── */}
+          <div className="flex flex-wrap gap-3 mb-5">
+            <div className="flex-1 min-w-[140px] rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-3xl font-bold text-emerald-700">{assignedCount}</p>
+              <p className="text-sm mt-1 font-medium text-emerald-700">✓ Asignados a estudiantes</p>
+              <p className="text-xs text-emerald-600 mt-0.5 opacity-70">tienen al menos un estudiante asignado</p>
+            </div>
+            <div className="flex-1 min-w-[140px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-3xl font-bold text-gray-500">{notAssignedCount}</p>
+              <p className="text-sm mt-1 font-medium text-gray-600">Sin asignar</p>
+              <p className="text-xs text-gray-500 mt-0.5 opacity-70">no aparecen en ningún plan lector</p>
+            </div>
           </div>
 
-          {/* Explanation banner */}
-          <div className="mb-4 px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-600 space-y-1">
-            {activeTab === 'only_in_prionread' && (
-              <p>📄 <strong>Solo en PrionRead:</strong> Artículos añadidos manualmente a PrionRead sin pasar por el pipeline de ingesta de PrionVault (sin PDF procesado ni metadatos enriquecidos). Usa el botón de abajo para marcarlos como pendientes en PrionVault y subirles el PDF.</p>
-            )}
-            {activeTab === 'only_in_prionvault' && (
-              <p>🗄️ <strong>Solo en PrionVault:</strong> Artículos procesados en PrionVault (tienen PDF/metadatos) pero no asignados a ningún estudiante en PrionRead. Usa "Asignar a todos" para incorporarlos al plan lector.</p>
-            )}
-            {activeTab === 'in_both' && (
-              <p>✅ <strong>En ambos sistemas:</strong> Artículos correctamente procesados en PrionVault y asignados a estudiantes en PrionRead. Todo OK.</p>
-            )}
-            {activeTab === 'in_neither' && (
-              <p>❓ <strong>Sin asignar en ninguno:</strong> Artículos que existen en la base de datos pero no tienen asignaciones de estudiantes ni datos de PrionVault. Pueden ser artículos recién añadidos o incompletos.</p>
-            )}
+          {/* ── Tabs: PrionVault status ── */}
+          <div className="flex gap-3 mb-4">
+            <button
+              onClick={() => setActiveTab('in_vault')}
+              className={`flex-1 min-w-[160px] rounded-xl border-2 p-4 text-left transition-all ${
+                activeTab === 'in_vault'
+                  ? 'border-[#0F3460] bg-[#0F3460] text-white'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-[#0F3460] hover:shadow-sm'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                  activeTab === 'in_vault' ? 'bg-white/20' : 'bg-[#0F3460]/10'
+                }`}>
+                  <svg viewBox="0 0 16 16" width="18" height="18" fill="none">
+                    <circle cx="8" cy="8" r="6.5" stroke={activeTab === 'in_vault' ? 'white' : '#0F3460'} strokeWidth="1.4"/>
+                    <circle cx="8" cy="8" r="3"   stroke={activeTab === 'in_vault' ? 'white' : '#0F3460'} strokeWidth="1.1"/>
+                    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke={activeTab === 'in_vault' ? 'white' : '#0F3460'} strokeWidth="1.1"/>
+                    <line x1="1.5" y1="8" x2="14.5" y2="8" stroke={activeTab === 'in_vault' ? 'white' : '#0F3460'} strokeWidth="1.1"/>
+                    <line x1="3.2" y1="3.2" x2="12.8" y2="12.8" stroke={activeTab === 'in_vault' ? 'white' : '#0F3460'} strokeWidth="1.1"/>
+                    <line x1="12.8" y1="3.2" x2="3.2" y2="12.8" stroke={activeTab === 'in_vault' ? 'white' : '#0F3460'} strokeWidth="1.1"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{inVaultCount}</p>
+                  <p className="text-sm font-semibold">En PrionVault</p>
+                  <p className={`text-xs mt-0.5 ${activeTab === 'in_vault' ? 'text-white/70' : 'text-gray-400'}`}>
+                    con PDF procesado o en pipeline
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('not_in_vault')}
+              className={`flex-1 min-w-[160px] rounded-xl border-2 p-4 text-left transition-all ${
+                activeTab === 'not_in_vault'
+                  ? 'border-amber-500 bg-amber-500 text-white'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-amber-400 hover:shadow-sm'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-xl ${
+                  activeTab === 'not_in_vault' ? 'bg-white/20' : 'bg-amber-50'
+                }`}>
+                  📄
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{notInVaultCount}</p>
+                  <p className="text-sm font-semibold">No en PrionVault</p>
+                  <p className={`text-xs mt-0.5 ${activeTab === 'not_in_vault' ? 'text-white/70' : 'text-gray-400'}`}>
+                    sin PDF ni datos de PrionVault
+                  </p>
+                </div>
+              </div>
+            </button>
           </div>
 
-          {/* Search + bulk action */}
+          {/* ── Bulk action (only for "not in vault" tab) ── */}
+          {activeTab === 'not_in_vault' && sendableCount > 0 && data.has_prionvault_columns && (
+            <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+              <div className="flex-1 text-sm text-amber-800">
+                <strong>{sendableCount}</strong> artículo{sendableCount !== 1 ? 's' : ''} asignado{sendableCount !== 1 ? 's' : ''} a estudiantes aún no están en PrionVault.
+                Los PDFs se reasociarán automáticamente si ya existen en Dropbox.
+              </div>
+              <button
+                onClick={handleMarkPending}
+                disabled={markingPending}
+                className="shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
+              >
+                {markingPending ? <Spinner size="sm" /> : (
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+                    <circle cx="8" cy="8" r="6.5" stroke="white" strokeWidth="1.4"/>
+                    <circle cx="8" cy="8" r="3" stroke="white" strokeWidth="1.1"/>
+                    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="white" strokeWidth="1.1"/>
+                    <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="white" strokeWidth="1.1"/>
+                  </svg>
+                )}
+                Enviar {sendableCount} a PrionVault
+              </button>
+            </div>
+          )}
+
+          {/* ── Search + count ── */}
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <input
               type="text"
@@ -292,29 +371,16 @@ export default function SyncStatus() {
               onChange={(e) => setSearch(e.target.value)}
               className="input w-full max-w-md"
             />
-            {activeTab === 'only_in_prionread' && onlyInPrionreadCount > 0 && data.has_prionvault_columns && (
-              <button
-                onClick={handleMarkPending}
-                disabled={markingPending}
-                className="px-3 py-2 text-xs font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
-              >
-                {markingPending ? <Spinner size="sm" /> : '🔄'} Enviar {onlyInPrionreadCount} a pipeline de PrionVault
-              </button>
-            )}
+            <span className="text-sm text-gray-400">
+              {filteredArticles().length}{search ? ` / ${currentList.length}` : ''} artículos
+            </span>
           </div>
 
-          {/* Article list */}
+          {/* ── Article list ── */}
           <div className="card p-4 md:p-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-gray-800">
-                {TABS.find((t) => t.key === activeTab)?.label}
-              </h2>
-              <span className="text-sm text-gray-500">
-                {filteredArticles().length}
-                {search && ` / ${(data.articles[activeTab] || []).length}`} artículos
-              </span>
-            </div>
-
+            <h2 className="font-semibold text-gray-800 mb-3">
+              {activeTab === 'in_vault' ? '🗄️ Artículos en PrionVault' : '📄 Artículos sin datos en PrionVault'}
+            </h2>
             {filteredArticles().length === 0 ? (
               <p className="text-gray-400 text-sm py-8 text-center">
                 {search ? 'No hay resultados para esta búsqueda' : 'No hay artículos en esta categoría'}
@@ -325,9 +391,12 @@ export default function SyncStatus() {
                   <ArticleRow
                     key={article.id}
                     article={article}
-                    tab={activeTab}
+                    showAssignBtn={!article._in_prionread}
+                    showVaultBtn={!article._in_vault && article._in_prionread}
                     onAssignAll={handleAssignAll}
                     assigningId={assigningId}
+                    onSendToVault={handleSendOneToVault}
+                    sendingToVaultId={sendingToVaultId}
                   />
                 ))}
               </div>

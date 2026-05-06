@@ -263,7 +263,7 @@ async function getSyncStatus(_req, res) {
 
     // Build the "in PrionVault" expression from whichever columns exist
     const pvExpr = hasPvCols
-      ? [pvCols.has('pdf_md5') && 'pdf_md5 IS NOT NULL', pvCols.has('extraction_status') && "extraction_status IS NOT NULL AND extraction_status != 'pending'"]
+      ? [pvCols.has('pdf_md5') && 'pdf_md5 IS NOT NULL', pvCols.has('extraction_status') && 'extraction_status IS NOT NULL']
           .filter(Boolean)
           .join(' OR ')
       : 'FALSE';

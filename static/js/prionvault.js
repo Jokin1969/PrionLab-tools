@@ -32,6 +32,7 @@
     journal: '',
     tagId: null,
     hasSummary: null,
+    inPrionread: null,   // null = all, true = in PrionRead, false = not in PrionRead
     page: 1,
     size: 25,
   };
@@ -117,13 +118,14 @@
   // ── render: article list ───────────────────────────────────────────────
   async function loadArticles() {
     const params = new URLSearchParams();
-    if (state.q)          params.set('q', state.q);
-    if (state.sort)       params.set('sort', state.sort);
-    if (state.yearMin)    params.set('year_min', state.yearMin);
-    if (state.yearMax)    params.set('year_max', state.yearMax);
-    if (state.journal)    params.set('journal', state.journal);
-    if (state.tagId)      params.set('tag', state.tagId);
-    if (state.hasSummary) params.set('has_summary', state.hasSummary);
+    if (state.q)                   params.set('q', state.q);
+    if (state.sort)                params.set('sort', state.sort);
+    if (state.yearMin)             params.set('year_min', state.yearMin);
+    if (state.yearMax)             params.set('year_max', state.yearMax);
+    if (state.journal)             params.set('journal', state.journal);
+    if (state.tagId)               params.set('tag', state.tagId);
+    if (state.hasSummary)          params.set('has_summary', state.hasSummary);
+    if (state.inPrionread !== null) params.set('in_prionread', state.inPrionread ? '1' : '0');
     params.set('page', state.page);
     params.set('size', state.size);
 
@@ -354,6 +356,24 @@
     }, 250));
     document.getElementById('filter-sort').addEventListener('change', e => {
       state.sort = e.target.value; state.page = 1; loadArticles();
+    });
+
+    const prBtn = document.getElementById('btn-filter-prionread');
+    prBtn.addEventListener('click', () => {
+      // Cycle: null → true → false → null
+      state.inPrionread = state.inPrionread === null ? true : state.inPrionread === true ? false : null;
+      state.page = 1;
+      const labels = {
+        null:  '📚 PrionRead: todos',
+        true:  '📚 En PrionRead ✓',
+        false: '📚 No en PrionRead ✓',
+      };
+      prBtn.textContent = labels[state.inPrionread];
+      const active = state.inPrionread !== null;
+      prBtn.style.background     = active ? '#0F3460' : 'white';
+      prBtn.style.color          = active ? 'white' : '#374151';
+      prBtn.style.borderColor    = active ? '#0F3460' : '#e5e7eb';
+      loadArticles();
     });
 
     document.querySelectorAll('.pv-sidebar-nav .pv-nav-btn[data-filter], aside .pv-nav-btn[data-filter]')
