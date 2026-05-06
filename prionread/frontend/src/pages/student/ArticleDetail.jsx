@@ -132,10 +132,10 @@ const ArticleDetail = () => {
 
       {/* Article Info */}
       <Card>
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">{article.title}</h1>
-            <p className="text-lg text-gray-700 mb-2">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900 mb-3">{article.title}</h1>
+            <p className="text-sm md:text-lg text-gray-700 mb-2">
               {Array.isArray(article.authors) ? article.authors.join(', ') : article.authors}
             </p>
             <div className="flex items-center gap-4 text-sm text-gray-600 flex-wrap">
@@ -153,7 +153,7 @@ const ArticleDetail = () => {
             </div>
           </div>
           {article.is_milestone && (
-            <span className="shrink-0 px-4 py-2 bg-amber-100 text-amber-600 font-medium rounded ml-4">⭐ Milestone</span>
+            <span className="shrink-0 self-start px-3 py-1 bg-amber-100 text-amber-600 font-medium rounded text-sm">⭐ Milestone</span>
           )}
         </div>
 

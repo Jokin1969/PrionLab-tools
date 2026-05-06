@@ -63,7 +63,7 @@ export default function Profile() {
     <div>
       <PageHeader title="Mi Perfil" subtitle="Gestiona tu información y contraseña" />
 
-      <div className="mx-auto max-w-lg p-6 space-y-6">
+      <div className="mx-auto max-w-lg p-0 md:p-6 space-y-4 md:space-y-6">
         {/* Avatar */}
         <div className="flex items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100 text-2xl font-bold text-prion-primary">
@@ -79,7 +79,7 @@ export default function Profile() {
         </div>
 
         {/* Profile form */}
-        <div className="card p-6 space-y-4">
+        <div className="card p-4 md:p-6 space-y-4">
           <h2 className="flex items-center gap-2 font-semibold text-gray-800">
             <RiUser3Line className="h-4 w-4" />
             Información personal
@@ -109,7 +109,7 @@ export default function Profile() {
         </div>
 
         {/* Password form */}
-        <div className="card p-6 space-y-4">
+        <div className="card p-4 md:p-6 space-y-4">
           <h2 className="flex items-center gap-2 font-semibold text-gray-800">
             <RiLockLine className="h-4 w-4" />
             Cambiar contraseña

@@ -10,30 +10,34 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+      <div className="flex items-start md:items-center justify-center min-h-screen px-3 pt-3 pb-3 md:px-4 md:pt-4 md:pb-20 text-center sm:p-0">
+
         {/* Overlay */}
         <div
           className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
           onClick={onClose}
         />
 
-        {/* Modal */}
+        {/* Modal panel */}
         <div className={`relative inline-block w-full ${sizes[size]} overflow-hidden text-left align-middle transition-all transform bg-white rounded-lg shadow-xl`}>
+
           {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <div className="px-4 py-3 md:px-6 md:py-4 border-b border-gray-200 flex items-center justify-between gap-2">
+            <h3 className="text-base md:text-lg font-semibold text-gray-900">{title}</h3>
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              aria-label="Cerrar"
             >
               ✕
             </button>
           </div>
 
           {/* Content */}
-          <div className="px-6 py-4">
+          <div className="px-4 py-4 md:px-6">
             {children}
           </div>
+
         </div>
       </div>
     </div>

@@ -33,10 +33,10 @@ const StudentDashboard = () => {
   const totalAssigned = stats.total_assigned || 1;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
           ¡Hola, {user.name}! 👋
         </h1>
         <p className="text-gray-600 mt-1">
@@ -45,7 +45,7 @@ const StudentDashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         <StatCard
           icon="📚"
           label="Artículos Asignados"
@@ -84,7 +84,7 @@ const StudentDashboard = () => {
         <ProgressChart data={progress_by_month} />
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Next Recommended */}
         <Card
           title="🎯 Próximas Lecturas Recomendadas"

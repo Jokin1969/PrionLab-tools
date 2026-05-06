@@ -51,11 +51,11 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
+    <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between mb-3 md:mb-4">
+        <div className="flex-1 min-w-0">
           <Link to={`/my-articles/${article.id}`}>
-            <h3 className="text-lg font-semibold text-gray-900 hover:text-prion-primary mb-2">
+            <h3 className="text-base md:text-lg font-semibold text-gray-900 hover:text-prion-primary mb-2 truncate">
               {article.title}
             </h3>
           </Link>
