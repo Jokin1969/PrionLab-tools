@@ -10,6 +10,7 @@ const PrionPacks = (() => {
     searchMode: 'simple',  // 'simple' | 'advanced'
     filterStatus: 'all',
     filterPriority: 'all',
+    filterResponsible: 'all',
   };
 
   let _imgUploadCallback = null; // set while image-upload modal is open
@@ -135,6 +136,11 @@ const PrionPacks = (() => {
       if (state.filterStatus === 'progress' && (s < 50 || s >= 90)) return false;
       if (state.filterStatus === 'complete' && s < 90) return false;
       if (state.filterPriority !== 'all' && p.priority !== state.filterPriority) return false;
+      if (state.filterResponsible !== 'all') {
+        const r = p.responsible || '';
+        if (state.filterResponsible === 'none' && r) return false;
+        if (state.filterResponsible !== 'none' && r !== state.filterResponsible) return false;
+      }
       return true;
     });
   }
@@ -2946,6 +2952,11 @@ ${refsText}`;
     }
     _applySearchMode();
 
+    // Restore responsible filter
+    const savedResp = localStorage.getItem('pp-filter-responsible');
+    if (savedResp) state.filterResponsible = savedResp;
+    _syncResponsibleChips();
+
     searchInput.addEventListener('input', e => {
       state.search = e.target.value;
       _renderDashboard();
@@ -2965,6 +2976,15 @@ ${refsText}`;
     });
     document.getElementById('filter-priority').addEventListener('change', e => {
       state.filterPriority = e.target.value;
+      _renderDashboard();
+    });
+
+    document.getElementById('filter-responsible-chips').addEventListener('click', e => {
+      const chip = e.target.closest('.pp-resp-chip');
+      if (!chip) return;
+      state.filterResponsible = chip.dataset.responsible;
+      localStorage.setItem('pp-filter-responsible', state.filterResponsible);
+      _syncResponsibleChips();
       _renderDashboard();
     });
 
@@ -3281,6 +3301,12 @@ ${refsText}`;
   function _syncMetricButtons() {
     document.querySelectorAll('.pp-metric-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.filter === state.filterStatus);
+    });
+  }
+
+  function _syncResponsibleChips() {
+    document.querySelectorAll('#filter-responsible-chips .pp-resp-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.responsible === state.filterResponsible);
     });
   }
 
