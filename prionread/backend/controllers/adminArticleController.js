@@ -247,4 +247,72 @@ async function findDuplicateArticles(_req, res) {
   }
 }
 
-module.exports = { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll, findDuplicateArticles };
+module.exports = { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll, findDuplicateArticles, getSyncStatus };
+
+// ─── GET /api/admin/sync/status ──────────────────────────────────────────────
+
+async function getSyncStatus(_req, res) {
+  try {
+    // Check which PrionVault-specific columns exist (they may not if PV hasn't run migrations)
+    const colRows = await sequelize.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'articles' AND column_name IN ('pdf_md5','extraction_status')",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    const pvCols = new Set(colRows.map((r) => r.column_name));
+    const hasPvCols = pvCols.has('pdf_md5') || pvCols.has('extraction_status');
+
+    // Build the "in PrionVault" expression from whichever columns exist
+    const pvExpr = hasPvCols
+      ? [pvCols.has('pdf_md5') && 'pdf_md5 IS NOT NULL', pvCols.has('extraction_status') && "extraction_status IS NOT NULL AND extraction_status != 'pending'"]
+          .filter(Boolean)
+          .join(' OR ')
+      : 'FALSE';
+
+    const rows = await sequelize.query(
+      `SELECT
+         a.id,
+         a.title,
+         a.authors,
+         a.year,
+         a.journal,
+         a.doi,
+         a.pubmed_id,
+         a.tags,
+         a.is_milestone,
+         a.priority,
+         a.dropbox_path,
+         a.created_at,
+         (${pvExpr}) AS in_prionvault,
+         EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = a.id) AS in_prionread,
+         (SELECT COUNT(*)::int FROM user_articles ua WHERE ua.article_id = a.id) AS student_count
+       FROM articles a
+       ORDER BY a.created_at DESC`,
+      { type: sequelize.QueryTypes.SELECT }
+    );
+
+    const in_both             = rows.filter((r) => r.in_prionvault && r.in_prionread);
+    const only_in_prionvault  = rows.filter((r) => r.in_prionvault && !r.in_prionread);
+    const only_in_prionread   = rows.filter((r) => !r.in_prionvault && r.in_prionread);
+    const in_neither          = rows.filter((r) => !r.in_prionvault && !r.in_prionread);
+
+    res.json({
+      has_prionvault_columns: hasPvCols,
+      summary: {
+        total:               rows.length,
+        in_both:             in_both.length,
+        only_in_prionvault:  only_in_prionvault.length,
+        only_in_prionread:   only_in_prionread.length,
+        in_neither:          in_neither.length,
+      },
+      articles: {
+        in_both,
+        only_in_prionvault,
+        only_in_prionread,
+        in_neither,
+      },
+    });
+  } catch (err) {
+    console.error('[getSyncStatus]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}

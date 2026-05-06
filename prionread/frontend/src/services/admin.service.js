@@ -55,4 +55,21 @@ export const adminService = {
 
   // Duplicate detection
   findDuplicates: async () => (await api.get('/admin/articles/find-duplicates')).data,
+
+  // PDF → metadata analysis
+  analyzePdf: async (file) => {
+    const fd = new FormData();
+    fd.append('pdf', file);
+    return (await api.post('/articles/analyze-pdf', fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+  },
+
+  // PrionVault ↔ PrionRead sync
+  getSyncStatus: async () => (await api.get('/admin/sync/status')).data,
+
+  // Notification rules
+  getNotificationRules: async () => (await api.get('/admin/notification-rules')).data,
+  createNotificationRule: async (data) => (await api.post('/admin/notification-rules', data)).data,
+  updateNotificationRule: async (id, data) => (await api.patch(`/admin/notification-rules/${id}`, data)).data,
+  deleteNotificationRule: async (id) => (await api.delete(`/admin/notification-rules/${id}`)).data,
+  runNotificationRules: async () => (await api.post('/admin/notification-rules/run')).data,
 };

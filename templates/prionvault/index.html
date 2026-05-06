@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}PrionVault — PrionLab Tools{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/prionvault.css') }}" />
+<meta name="pv-user-role"  content="{{ session.role }}">
+<meta name="pv-user-id"    content="{{ session.user_id }}">
+{% endblock %}
+
+{% block main_body %}
+<div id="prionvault-app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="pv-sidebar">
+    <div class="pv-sidebar-header">
+      <i class="fas fa-book-open pv-brand-icon"></i>
+      <div>
+        <span class="pv-brand-name">PrionVault</span>
+        <span class="pv-brand-sub">Prion-research library</span>
+      </div>
+    </div>
+
+    <nav class="pv-sidebar-nav">
+      <h4 class="pv-sidebar-section">📚 Library</h4>
+      <button class="pv-nav-btn" data-filter="all">
+        All articles <span class="pv-count" id="count-total">—</span>
+      </button>
+      <button class="pv-nav-btn" data-filter="recent">
+        Recently added
+      </button>
+      <button class="pv-nav-btn" data-filter="no-summary">
+        Without AI summary <span class="pv-count" id="count-no-summary">—</span>
+      </button>
+      <button class="pv-nav-btn" data-filter="indexed">
+        Indexed for AI <span class="pv-count" id="count-indexed">—</span>
+      </button>
+
+      <h4 class="pv-sidebar-section">🏷 Tags <button class="pv-tag-add pv-admin-only" id="btn-new-tag" title="Create tag">+</button></h4>
+      <div class="pv-tag-list" id="tag-list"></div>
+
+      <h4 class="pv-sidebar-section pv-admin-only">⚙ Tools</h4>
+      <button class="pv-nav-btn pv-admin-only" id="btn-import-pdfs">
+        <i class="fas fa-upload"></i> Import PDFs
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-manage-queue">
+        <i class="fas fa-list-check"></i> Ingest queue
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-sync-status">
+        <i class="fas fa-arrows-rotate"></i> Sync con PrionRead
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-reindex-all" disabled title="Available in Phase 4">
+        <i class="fas fa-sync"></i> Re-index all
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ── Main area ───────────────────────────────────────────────────────── -->
+  <main class="pv-main">
+
+    <!-- Search bar -->
+    <div class="pv-search-bar">
+      <div class="pv-search-input-wrap">
+        <i class="fas fa-search pv-search-icon"></i>
+        <input type="text" id="pv-search-input" class="pv-search-input"
+               placeholder="Search title, abstract, authors, journal…"
+               autocomplete="off" />
+        <button class="pv-search-mode" id="btn-search-mode"
+                title="Toggle AI semantic search (coming in Phase 5)">
+          <i class="fas fa-bolt"></i>
+        </button>
+      </div>
+
+      <div class="pv-filter-row">
+        <label>Year
+          <input type="number" id="filter-year-min" placeholder="from" min="1900" max="2100">
+          <input type="number" id="filter-year-max" placeholder="to"   min="1900" max="2100">
+        </label>
+        <label>Journal
+          <input type="text" id="filter-journal" placeholder="any">
+        </label>
+        <label>Sort
+          <select id="filter-sort">
+            <option value="added_desc">Recently added</option>
+            <option value="added_asc">Oldest added</option>
+            <option value="year_desc">Year (newest)</option>
+            <option value="year_asc">Year (oldest)</option>
+            <option value="title_asc">Title A → Z</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="pv-results-header">
+      <span id="pv-result-count">—</span>
+      <span class="pv-result-sep">·</span>
+      <span id="pv-result-page">page 1</span>
+    </div>
+
+    <div id="pv-results-grid" class="pv-results-grid"></div>
+
+    <div id="pv-pagination" class="pv-pagination"></div>
+  </main>
+
+  <!-- ── Article detail modal ───────────────────────────────────────────── -->
+  <div id="pv-detail-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card">
+      <button class="pv-modal-close" id="pv-detail-close" aria-label="Close">×</button>
+      <div id="pv-detail-content">…</div>
+    </div>
+  </div>
+
+  <!-- ── Import PDFs modal (admin) ───────────────────────────────────────── -->
+  <div id="pv-import-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card">
+      <button class="pv-modal-close" id="pv-import-close" aria-label="Close">×</button>
+      <h2 style="margin-top:0"><i class="fas fa-upload"></i> Import PDFs</h2>
+      <p style="color:var(--pv-text-dim);font-size:13px">
+        Drop a folder or several PDFs. Each one is queued, the text is
+        extracted, the DOI is auto-resolved against CrossRef + PubMed,
+        and the file is uploaded to <code>/PrionVault/&lt;year&gt;/&lt;doi&gt;.pdf</code>
+        in Dropbox. Duplicates (by DOI or MD5) are skipped.
+      </p>
+
+      <label class="pv-dropzone" id="pv-dropzone">
+        <input type="file" id="pv-file-input" accept=".pdf,application/pdf"
+               multiple webkitdirectory directory style="display:none">
+        <div class="pv-dropzone-inner">
+          <i class="fas fa-cloud-upload-alt" style="font-size:42px;color:var(--pv-accent);"></i>
+          <p style="margin:8px 0 4px;font-weight:600">Drop PDFs or a folder here</p>
+          <p style="margin:0;color:var(--pv-text-dim);font-size:12px">
+            …or click to browse · multiple selection / nested folders supported
+          </p>
+        </div>
+      </label>
+
+      <!-- Same input but plain (no folder mode) for "individual files" choice -->
+      <input type="file" id="pv-file-input-plain" accept=".pdf,application/pdf" multiple style="display:none">
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="pv-btn-soft" id="pv-pick-files">📄 Pick individual files</button>
+        <button class="pv-btn-soft" id="pv-pick-folder">📁 Pick a folder</button>
+      </div>
+
+      <div id="pv-import-progress" class="pv-import-progress" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ── Ingest queue modal (admin) ──────────────────────────────────────── -->
+  <div id="pv-queue-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card pv-modal-card-wide">
+      <button class="pv-modal-close" id="pv-queue-close" aria-label="Close">×</button>
+      <h2 style="margin-top:0"><i class="fas fa-list-check"></i> Ingest queue</h2>
+      <div class="pv-queue-counts" id="pv-queue-counts">…</div>
+      <table class="pv-queue-table">
+        <thead><tr>
+          <th>#</th><th>File</th><th>Status</th><th>Step</th>
+          <th>Error</th><th>Created</th><th></th>
+        </tr></thead>
+        <tbody id="pv-queue-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+  <!-- ── Sync status modal (admin) ──────────────────────────────────────── -->
+  <div id="pv-sync-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card pv-modal-card-wide">
+      <button class="pv-modal-close" id="pv-sync-close" aria-label="Close">×</button>
+      <h2 style="margin-top:0"><i class="fas fa-arrows-rotate"></i> Sync PrionVault ↔ PrionRead</h2>
+      <p style="color:var(--pv-text-dim);font-size:13px;margin-bottom:12px">
+        Compara qué publicaciones están en cada sistema para evitar duplicaciones y detectar artículos sin asignar.
+      </p>
+      <div id="pv-sync-summary" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px"></div>
+      <div id="pv-sync-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+      <div id="pv-sync-list" style="max-height:420px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+<script src="{{ url_for('static', filename='js/prionvault.js') }}"></script>
+{% endblock %}

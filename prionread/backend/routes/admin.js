@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getGlobalDashboard } = require('../controllers/adminDashboardController');
 const { getUserDetailedStats, exportUsersCSV, resetUserPassword, sendReminderToUser } = require('../controllers/adminUserController');
-const { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll, findDuplicateArticles } = require('../controllers/adminArticleController');
+const { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll, findDuplicateArticles, getSyncStatus } = require('../controllers/adminArticleController');
 const { verifyArticlePDFs, syncDropboxPDFs } = require('../controllers/articleController');
 const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
@@ -64,6 +64,9 @@ router.post('/articles/sync-dropbox', syncDropboxPDFs);
 
 // Duplicate detection
 router.get('/articles/find-duplicates', findDuplicateArticles);
+
+// PrionVault ↔ PrionRead sync status
+router.get('/sync/status', getSyncStatus);
 
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);

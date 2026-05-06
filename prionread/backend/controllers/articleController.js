@@ -87,6 +87,31 @@ const RATING_COUNT_LITERAL = literal(
   '(SELECT COUNT(*) FROM article_ratings WHERE article_id = "Article".id)'
 );
 
+async function _articleConflictPayload(article) {
+  try {
+    const [pvRow] = await sequelize.query(
+      `SELECT
+         (pdf_md5 IS NOT NULL) AS has_pdf_md5,
+         (extraction_status IS NOT NULL AND extraction_status != 'pending') AS has_extraction
+       FROM articles WHERE id = :id`,
+      { replacements: { id: article.id }, type: sequelize.QueryTypes.SELECT }
+    );
+    const in_prionvault = !!(pvRow?.has_pdf_md5 || pvRow?.has_extraction);
+    const [{ cnt }] = await sequelize.query(
+      'SELECT COUNT(*)::int AS cnt FROM user_articles WHERE article_id = :id',
+      { replacements: { id: article.id }, type: sequelize.QueryTypes.SELECT }
+    );
+    return {
+      existing_article: { id: article.id, title: article.title, doi: article.doi, pubmed_id: article.pubmed_id },
+      in_prionvault,
+      in_prionread: cnt > 0,
+      student_count: cnt,
+    };
+  } catch {
+    return { existing_article: { id: article.id, title: article.title } };
+  }
+}
+
 async function createArticle(req, res) {
   try {
     let fields = coerceFields(req.body);
@@ -102,11 +127,11 @@ async function createArticle(req, res) {
     if (errs.length) return res.status(400).json({ errors: errs });
     if (fields.doi) {
       const exists = await Article.findOne({ where: { doi: fields.doi.toLowerCase() } });
-      if (exists) return res.status(409).json({ error: 'An article with this DOI already exists' });
+      if (exists) return res.status(409).json({ ...(await _articleConflictPayload(exists)), error: 'An article with this DOI already exists' });
     }
     if (fields.pubmed_id) {
       const exists = await Article.findOne({ where: { pubmed_id: String(fields.pubmed_id) } });
-      if (exists) return res.status(409).json({ error: 'An article with this PubMed ID already exists' });
+      if (exists) return res.status(409).json({ ...(await _articleConflictPayload(exists)), error: 'An article with this PubMed ID already exists' });
     }
     const article = await Article.create({
       title: String(fields.title).trim(),
