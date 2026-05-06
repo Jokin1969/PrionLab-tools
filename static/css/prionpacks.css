@@ -2905,10 +2905,11 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 /* Sidebar Equipo button */
 .pp-btn-members {
   color: var(--pp-text-muted);
-  border-color: var(--pp-border);
+  border-color: transparent;
   font-size: 13px;
 }
 .pp-btn-members:hover { background: var(--pp-secondary); color: var(--pp-text); }
+.pp-footer-sep { border: none; border-top: 1px solid var(--pp-border); margin: 0; }
 
 /* ── Member modal ─────────────────────────────────────────────────────────── */
 
