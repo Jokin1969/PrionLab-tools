@@ -22,6 +22,8 @@ transporter.verify((error) => {
 //   FRONTEND_URL=https://web-production-5517e.up.railway.app
 // PRIONREAD_BASE is the sub-path (default /prionread). Together they form
 // the absolute base URL used in all email links.
+
+const firstName = (name) => (name || '').trim().split(/\s+/)[0];
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const PRIONREAD_BASE = (process.env.PRIONREAD_BASE || '/prionread').replace(/\/$/, '');
 const APP_URL = `${FRONTEND_URL}${PRIONREAD_BASE}`;
@@ -73,7 +75,7 @@ function buildOnboardingHtml(user, tempPassword) {
       <!-- Body -->
       <div style="background:#ffffff;padding:32px 24px;border:1px solid #e5e7eb;border-top:none;">
 
-        <p style="font-size:16px;margin-top:0;">Hola <strong>${user.name}</strong>,</p>
+        <p style="font-size:16px;margin-top:0;">Hola <strong>${firstName(user.name)}</strong>,</p>
         <p style="color:#374151;line-height:1.6;">Tu cuenta en PrionRead está lista. Aquí tienes todo lo que necesitas para empezar.</p>
 
         <!-- Credentials -->
@@ -143,7 +145,7 @@ const emailService = {
       subject: '🎓 Bienvenido a PrionRead',
       html: base(`
         <h1 style="color: #4F46E5;">¡Bienvenido a PrionRead!</h1>
-        <p>Hola ${user.name},</p>
+        <p>Hola ${firstName(user.name)},</p>
         <p>Tu cuenta ha sido creada. Aquí están tus credenciales de acceso:</p>
         <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
           <p><strong>Email:</strong> ${user.email}</p>
@@ -181,7 +183,7 @@ const emailService = {
       subject: '🔑 Tu contraseña ha sido reseteada',
       html: base(`
         <h1 style="color: #4F46E5;">Contraseña Reseteada</h1>
-        <p>Hola ${user.name},</p>
+        <p>Hola ${firstName(user.name)},</p>
         <p>Tu contraseña ha sido reseteada por el administrador.</p>
         <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
           <p><strong>Nueva contraseña temporal:</strong></p>
@@ -223,7 +225,7 @@ const emailService = {
       subject: '📚 PrionRead: Tu resumen semanal',
       html: base(`
         <h1 style="color: #4F46E5;">📚 Tu Resumen Semanal</h1>
-        <p>Hola ${user.name},</p>
+        <p>Hola ${firstName(user.name)},</p>
         <div style="background-color: #f0fdf4; border-left: 4px solid #10B981; padding: 15px; margin: 20px 0;">
           <h3 style="margin-top: 0; color: #047857;">Tu Progreso</h3>
           <p style="margin: 5px 0;">✅ Artículos evaluados: <strong>${stats.evaluated || 0}</strong></p>
@@ -253,7 +255,7 @@ const emailService = {
       subject: '📬 Mensaje del Administrador – PrionRead',
       html: base(`
         <h1 style="color: #4F46E5;">Mensaje del Administrador</h1>
-        <p>Hola ${user.name},</p>
+        <p>Hola ${firstName(user.name)},</p>
         <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
           ${message.replace(/\n/g, '<br>')}
         </div>

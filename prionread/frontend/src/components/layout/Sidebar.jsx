@@ -13,6 +13,7 @@ const adminLinks = [
   { to: '/admin/articles',      icon: '📄', label: 'Artículos' },
   { to: '/admin/reports',       icon: '📊', label: 'Reportes' },
   { to: '/admin/notifications', icon: '🔔', label: 'Notificaciones' },
+  { to: '/admin/sync',          icon: '🔄', label: 'Sincronización' },
 ];
 
 const PRIONVAULT_URL  = 'https://web-production-5517e.up.railway.app/prionvault/';

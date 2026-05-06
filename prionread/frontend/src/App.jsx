@@ -13,6 +13,7 @@ import AdminUsers from './pages/admin/Users';
 import AdminArticles from './pages/admin/Articles';
 import AdminReports from './pages/admin/Reports';
 import AdminNotifications from './pages/admin/Notifications';
+import AdminSyncStatus from './pages/admin/SyncStatus';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -76,6 +77,11 @@ function App() {
       <Route path="/admin/notifications" element={
         <ProtectedRoute requireAdmin>
           <MainLayout><AdminNotifications /></MainLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/sync" element={
+        <ProtectedRoute requireAdmin>
+          <MainLayout><AdminSyncStatus /></MainLayout>
         </ProtectedRoute>
       } />
 

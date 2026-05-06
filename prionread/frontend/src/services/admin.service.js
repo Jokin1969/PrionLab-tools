@@ -63,6 +63,9 @@ export const adminService = {
     return (await api.post('/articles/analyze-pdf', fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
   },
 
+  // PrionVault ↔ PrionRead sync
+  getSyncStatus: async () => (await api.get('/admin/sync/status')).data,
+
   // Notification rules
   getNotificationRules: async () => (await api.get('/admin/notification-rules')).data,
   createNotificationRule: async (data) => (await api.post('/admin/notification-rules', data)).data,

@@ -309,10 +309,11 @@
     document.querySelector('#pv-detail-modal .pv-modal-backdrop')
       .addEventListener('click', closeDetail);
 
-    // ── Admin: Import + Queue modals ───────────────────────────────────
+    // ── Admin: Import + Queue + Sync modals ──────────────────────────────
     if (IS_ADMIN) {
       wireImport();
       wireQueue();
+      wireSync();
     }
 
     refreshStats();
@@ -554,6 +555,138 @@
       });
     }
     return tr;
+  }
+
+  // ── Sync status modal (admin only) ──────────────────────────────────────
+  const SYNC_TABS = [
+    { key: 'only_in_prionread',  label: '📄 Solo en PrionRead',   color: '#b45309' },
+    { key: 'only_in_prionvault', label: '🗄️ Solo en PrionVault',  color: '#1d4ed8' },
+    { key: 'in_both',            label: '✅ En ambos',            color: '#166534' },
+    { key: 'in_neither',         label: '❓ Sin asignar',         color: '#6b7280' },
+  ];
+
+  function wireSync() {
+    const btn      = document.getElementById('btn-sync-status');
+    const modal    = document.getElementById('pv-sync-modal');
+    const closeBtn = document.getElementById('pv-sync-close');
+    if (!btn || !modal) return;
+
+    let syncData = null;
+    let activeTab = 'only_in_prionread';
+
+    const open = async () => {
+      modal.style.display = 'flex';
+      renderSyncLoading();
+      try {
+        const r = await fetch('/prionvault/api/admin/sync/status', { credentials: 'same-origin' });
+        syncData = await r.json();
+        renderSync();
+      } catch (e) {
+        document.getElementById('pv-sync-list').innerHTML =
+          '<p style="color:#dc2626;padding:16px">Error cargando datos de sincronización.</p>';
+      }
+    };
+
+    const close = () => { modal.style.display = 'none'; };
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    function renderSyncLoading() {
+      document.getElementById('pv-sync-summary').innerHTML = '<p style="color:var(--pv-text-dim)">Cargando…</p>';
+      document.getElementById('pv-sync-tabs').innerHTML = '';
+      document.getElementById('pv-sync-list').innerHTML = '';
+    }
+
+    function renderSync() {
+      if (!syncData) return;
+      const s = syncData.summary;
+
+      // Summary badges
+      const summaryEl = document.getElementById('pv-sync-summary');
+      summaryEl.innerHTML = SYNC_TABS.map(t => `
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 16px;cursor:pointer;min-width:120px"
+             data-sync-tab="${t.key}" class="pv-sync-badge">
+          <div style="font-size:22px;font-weight:700;color:${t.color}">${s[t.key]}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:2px">${t.label}</div>
+        </div>
+      `).join('');
+      summaryEl.querySelectorAll('.pv-sync-badge').forEach(b => {
+        b.addEventListener('click', () => { activeTab = b.dataset.syncTab; renderTabContent(); renderTabButtons(); });
+      });
+
+      // Tabs
+      renderTabButtons();
+      renderTabContent();
+    }
+
+    function renderTabButtons() {
+      const tabsEl = document.getElementById('pv-sync-tabs');
+      tabsEl.innerHTML = SYNC_TABS.map(t => `
+        <button style="padding:5px 12px;border-radius:6px;border:1px solid;font-size:12px;cursor:pointer;
+                       background:${activeTab===t.key ? t.color : '#fff'};
+                       color:${activeTab===t.key ? '#fff' : '#374151'};
+                       border-color:${activeTab===t.key ? t.color : '#d1d5db'}"
+                data-sync-tab="${t.key}" class="pv-sync-tab-btn">
+          ${t.label} (${syncData.summary[t.key]})
+        </button>
+      `).join('');
+      tabsEl.querySelectorAll('.pv-sync-tab-btn').forEach(b => {
+        b.addEventListener('click', () => { activeTab = b.dataset.syncTab; renderTabContent(); renderTabButtons(); });
+      });
+    }
+
+    function renderTabContent() {
+      const listEl = document.getElementById('pv-sync-list');
+      const articles = (syncData.articles || {})[activeTab] || [];
+      if (!articles.length) {
+        listEl.innerHTML = '<p style="color:var(--pv-text-dim);padding:16px;text-align:center">No hay artículos en esta categoría.</p>';
+        return;
+      }
+      listEl.innerHTML = articles.map(a => `
+        <div style="padding:10px 4px;border-bottom:1px solid #f3f4f6;display:flex;align-items:flex-start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <p style="margin:0 0 2px;font-weight:600;font-size:13px">${escapeHtml(a.title || '')}</p>
+            <p style="margin:0;font-size:11px;color:#6b7280">
+              ${escapeHtml(typeof a.authors === 'string' ? a.authors.split(',').slice(0,2).join(', ') : (a.authors||[]).slice(0,2).join(', '))}
+              ${a.year ? ' · ' + a.year : ''}${a.journal ? ' · ' + escapeHtml(a.journal) : ''}
+              ${a.doi ? ' · <a href="https://doi.org/'+escapeHtml(a.doi)+'" target="_blank" style="color:var(--pv-accent)">DOI</a>' : ''}
+            </p>
+            ${a.student_count > 0 ? `<p style="margin:3px 0 0;font-size:11px;color:#059669">${a.student_count} estudiante${a.student_count!==1?'s':''} en PrionRead</p>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
+            ${(activeTab==='only_in_prionvault' || activeTab==='in_neither')
+              ? `<button class="pv-btn-soft pv-sync-assign-btn" data-aid="${a.id}" style="font-size:11px;padding:4px 8px">
+                   👥 Asignar a todos
+                 </button>`
+              : ''}
+            ${(activeTab==='only_in_prionread' || activeTab==='in_neither')
+              ? `<span style="font-size:11px;color:#b45309;padding:3px 8px;border:1px solid #fde68a;background:#fffbeb;border-radius:4px">
+                   📄 Sin PDF en PrionVault
+                 </span>`
+              : ''}
+          </div>
+        </div>
+      `).join('');
+
+      listEl.querySelectorAll('.pv-sync-assign-btn').forEach(b => {
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          b.textContent = '⏳ Asignando…';
+          try {
+            const r = await fetch(`/prionvault/api/articles/${b.dataset.aid}/send-to-prionread`,
+              { method: 'POST', credentials: 'same-origin' });
+            if (r.ok) {
+              b.textContent = '✓ Asignado';
+              b.style.color = '#059669';
+            } else {
+              b.textContent = '❌ Error';
+              b.disabled = false;
+            }
+          } catch { b.textContent = '❌ Error'; b.disabled = false; }
+        });
+      });
+    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

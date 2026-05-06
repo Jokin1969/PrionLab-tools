@@ -47,6 +47,9 @@
       <button class="pv-nav-btn pv-admin-only" id="btn-manage-queue">
         <i class="fas fa-list-check"></i> Ingest queue
       </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-sync-status">
+        <i class="fas fa-arrows-rotate"></i> Sync con PrionRead
+      </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-reindex-all" disabled title="Available in Phase 4">
         <i class="fas fa-sync"></i> Re-index all
       </button>
@@ -164,6 +167,21 @@
   </div>
 
 </div>
+
+  <!-- ── Sync status modal (admin) ──────────────────────────────────────── -->
+  <div id="pv-sync-modal" class="pv-modal" style="display:none">
+    <div class="pv-modal-backdrop"></div>
+    <div class="pv-modal-card pv-modal-card-wide">
+      <button class="pv-modal-close" id="pv-sync-close" aria-label="Close">×</button>
+      <h2 style="margin-top:0"><i class="fas fa-arrows-rotate"></i> Sync PrionVault ↔ PrionRead</h2>
+      <p style="color:var(--pv-text-dim);font-size:13px;margin-bottom:12px">
+        Compara qué publicaciones están en cada sistema para evitar duplicaciones y detectar artículos sin asignar.
+      </p>
+      <div id="pv-sync-summary" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px"></div>
+      <div id="pv-sync-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+      <div id="pv-sync-list" style="max-height:420px;overflow-y:auto"></div>
+    </div>
+  </div>
 
 <script src="{{ url_for('static', filename='js/prionvault.js') }}"></script>
 {% endblock %}
