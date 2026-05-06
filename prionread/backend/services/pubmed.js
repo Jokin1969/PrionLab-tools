@@ -14,9 +14,19 @@ const NCBI_PARAMS = {
 
 // ─── XML helpers (no external parser needed for simple extraction) ────────────
 
+const XML_NAMED_ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
+
+function decodeXmlEntities(str) {
+  if (!str) return str;
+  return str
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#([0-9]+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&(?:amp|lt|gt|quot|apos);/g, (m) => XML_NAMED_ENTITIES[m] || m);
+}
+
 function xmlText(xml, tag) {
   const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
-  return m ? m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : null;
+  return m ? decodeXmlEntities(m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()) : null;
 }
 
 function xmlAll(xml, tag) {
@@ -24,7 +34,7 @@ function xmlAll(xml, tag) {
   const results = [];
   let m;
   while ((m = re.exec(xml)) !== null) {
-    const text = m[1].replace(/<[^>]+>/g, '').trim();
+    const text = decodeXmlEntities(m[1].replace(/<[^>]+>/g, '').trim());
     if (text) results.push(text);
   }
   return results;

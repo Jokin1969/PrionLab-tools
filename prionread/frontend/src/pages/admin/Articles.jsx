@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { adminService } from '../../services/admin.service';
+import { VaultBadge } from '../../components/common/VaultBadge';
 
 function SortBtn({ label, col, sortBy, order, onSort }) {
   const active = sortBy === col;
@@ -582,7 +583,8 @@ const AdminArticles = () => {
                           </select>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 items-center">
+                            <VaultBadge articleId={article.id} inPrionvault={article.in_prionvault ?? false} size="sm" />
                             {article.dropbox_path ? (
                               <button title="Abrir PDF" disabled={loadingPdf === article.id} onClick={() => handleOpenPdf(article)}
                                 className="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50">

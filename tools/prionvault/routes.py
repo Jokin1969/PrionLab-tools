@@ -510,28 +510,44 @@ def api_delete_annotation(ann_id):
 @prionvault_bp.route("/api/articles/<uuid:aid>/send-to-prionread", methods=["POST"])
 @login_required
 def api_send_to_prionread(aid):
-    """Create a user_articles row so the article appears in PrionRead."""
+    """Assign article to all non-admin users in PrionRead (admin) or self (reader)."""
     user_id = _viewer_id()
     if not user_id:
         return jsonify({"error": "not authenticated"}), 401
     s = _session()
     try:
-        a = s.get(models.Article, aid)
-        if not a:
+        # Verify article exists
+        exists = s.execute(
+            sql_text("SELECT id FROM articles WHERE id = :aid"),
+            {"aid": str(aid)}
+        ).fetchone()
+        if not exists:
             return jsonify({"error": "not found"}), 404
-        existing = s.query(models.UserArticleLink).filter_by(
-            user_id=user_id, article_id=aid
-        ).first()
-        if existing:
-            return jsonify({"ok": True, "in_prionread": True})
-        import uuid as _uuid
-        link = models.UserArticleLink(
-            id=_uuid.uuid4(),
-            user_id=user_id,
-            article_id=aid,
-            status="pending",
-        )
-        s.add(link)
+
+        if _viewer_role() == "admin":
+            # Assign to all non-admin users that don't already have it
+            s.execute(sql_text(
+                """INSERT INTO user_articles (id, user_id, article_id, status, created_at, updated_at)
+                   SELECT gen_random_uuid(), u.id, :aid, 'pending', NOW(), NOW()
+                   FROM users u
+                   WHERE u.role != 'admin'
+                     AND NOT EXISTS (
+                       SELECT 1 FROM user_articles ua
+                       WHERE ua.user_id = u.id AND ua.article_id = :aid
+                     )"""
+            ), {"aid": str(aid)})
+        else:
+            # Assign only to self
+            already = s.execute(sql_text(
+                "SELECT id FROM user_articles WHERE user_id = :uid AND article_id = :aid"
+            ), {"uid": str(user_id), "aid": str(aid)}).fetchone()
+            if not already:
+                import uuid as _uuid
+                s.execute(sql_text(
+                    """INSERT INTO user_articles (id, user_id, article_id, status, created_at, updated_at)
+                       VALUES (:id, :uid, :aid, 'pending', NOW(), NOW())"""
+                ), {"id": str(_uuid.uuid4()), "uid": str(user_id), "aid": str(aid)})
+
         s.commit()
         return jsonify({"ok": True, "in_prionread": True})
     finally:

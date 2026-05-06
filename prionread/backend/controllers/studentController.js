@@ -1,5 +1,6 @@
 const { UserArticle, Article, ArticleRating, ArticleSummary, Evaluation } = require('../models');
 const { generateSummary: aiGenerateSummary, generateEvaluation: aiGenerateEvaluation } = require('../services/openai');
+const { _prionvaultMap } = require('./articleController');
 
 const ARTICLE_SORT_FIELDS = new Set(['priority', 'year', 'title', 'created_at']);
 const VALID_STATUSES = new Set(['pending', 'read', 'summarized', 'evaluated']);
@@ -96,7 +97,13 @@ async function getMyArticles(req, res) {
       order,
     });
 
-    return res.json({ articles: userArticles.map(formatUserArticle) });
+    const formatted = userArticles.map(formatUserArticle);
+    const pvMap = await _prionvaultMap(formatted.map((f) => f.article?.id).filter(Boolean));
+    const articles = formatted.map((f) => ({
+      ...f,
+      article: f.article ? { ...f.article, in_prionvault: pvMap[f.article.id] ?? false } : f.article,
+    }));
+    return res.json({ articles });
   } catch (err) {
     console.error('[getMyArticles]', err);
     res.status(500).json({ error: 'Internal server error' });

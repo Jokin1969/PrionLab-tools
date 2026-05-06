@@ -54,7 +54,7 @@ function ArticleRow({ article, tab, onAssignAll, assigningId }) {
           {article.journal ? ` · ${article.journal}` : ''}
         </p>
         <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
-          {article.doi && (
+          {article.doi ? (
             <a
               href={`https://doi.org/${article.doi}`}
               target="_blank"
@@ -63,7 +63,16 @@ function ArticleRow({ article, tab, onAssignAll, assigningId }) {
             >
               DOI: {article.doi}
             </a>
-          )}
+          ) : article.pubmed_id ? (
+            <a
+              href={`https://pubmed.ncbi.nlm.nih.gov/${article.pubmed_id}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-blue-600 hover:underline"
+            >
+              PMID: {article.pubmed_id}
+            </a>
+          ) : null}
           {article.is_milestone && (
             <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-600 rounded">
               ⭐ Milestone
@@ -113,6 +122,7 @@ export default function SyncStatus() {
   const [assigningId, setAssigningId] = useState(null);
   const [flash, setFlash] = useState('');
   const [migrating, setMigrating] = useState(false);
+  const [markingPending, setMarkingPending] = useState(false);
 
   useEffect(() => { loadSync(); }, []);
 
@@ -144,6 +154,25 @@ export default function SyncStatus() {
     }
   };
 
+  const handleMarkPending = async () => {
+    setMarkingPending(true);
+    try {
+      const r = await adminService.markPendingForPrionVault();
+      const parts = [`${r.updated ?? 0} artículo${r.updated !== 1 ? 's' : ''} enviado${r.updated !== 1 ? 's' : ''} al pipeline`];
+      if (r.pdfs_linked > 0) parts.push(`${r.pdfs_linked} PDF${r.pdfs_linked !== 1 ? 's' : ''} reasociado${r.pdfs_linked !== 1 ? 's' : ''} de Dropbox`);
+      if (r.needs_pdf > 0)   parts.push(`${r.needs_pdf} aún ${r.needs_pdf !== 1 ? 'necesitan' : 'necesita'} PDF`);
+      setFlash('✅ ' + parts.join(' · '));
+      setTimeout(() => setFlash(''), 6000);
+      await loadSync();
+    } catch (err) {
+      setFlash('❌ ' + (err?.response?.data?.error || 'Error marcando artículos'));
+      setTimeout(() => setFlash(''), 5000);
+    } finally {
+      setMarkingPending(false);
+    }
+  };
+
+
   const handleAssignAll = async (articleId) => {
     setAssigningId(articleId);
     try {
@@ -172,6 +201,8 @@ export default function SyncStatus() {
         .some((f) => norm(f).includes(q));
     });
   };
+
+  const onlyInPrionreadCount = data?.summary?.only_in_prionread ?? 0;
 
   return (
     <div>
@@ -240,7 +271,7 @@ export default function SyncStatus() {
           {/* Explanation banner */}
           <div className="mb-4 px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-600 space-y-1">
             {activeTab === 'only_in_prionread' && (
-              <p>📄 <strong>Solo en PrionRead:</strong> Artículos añadidos manualmente a PrionRead sin pasar por el pipeline de ingesta de PrionVault (sin PDF procesado ni metadatos enriquecidos). Considera importarlos en PrionVault para tener el texto completo y resumen IA.</p>
+              <p>📄 <strong>Solo en PrionRead:</strong> Artículos añadidos manualmente a PrionRead sin pasar por el pipeline de ingesta de PrionVault (sin PDF procesado ni metadatos enriquecidos). Usa el botón de abajo para marcarlos como pendientes en PrionVault y subirles el PDF.</p>
             )}
             {activeTab === 'only_in_prionvault' && (
               <p>🗄️ <strong>Solo en PrionVault:</strong> Artículos procesados en PrionVault (tienen PDF/metadatos) pero no asignados a ningún estudiante en PrionRead. Usa "Asignar a todos" para incorporarlos al plan lector.</p>
@@ -253,8 +284,8 @@ export default function SyncStatus() {
             )}
           </div>
 
-          {/* Search */}
-          <div className="mb-4">
+          {/* Search + bulk action */}
+          <div className="mb-4 flex flex-wrap items-center gap-3">
             <input
               type="text"
               placeholder="Buscar por título, autores, DOI…"
@@ -262,6 +293,15 @@ export default function SyncStatus() {
               onChange={(e) => setSearch(e.target.value)}
               className="input w-full max-w-md"
             />
+            {activeTab === 'only_in_prionread' && onlyInPrionreadCount > 0 && data.has_prionvault_columns && (
+              <button
+                onClick={handleMarkPending}
+                disabled={markingPending}
+                className="px-3 py-2 text-xs font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+              >
+                {markingPending ? <Spinner size="sm" /> : '🔄'} Enviar {onlyInPrionreadCount} a pipeline de PrionVault
+              </button>
+            )}
           </div>
 
           {/* Article list */}
