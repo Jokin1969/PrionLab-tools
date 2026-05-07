@@ -11,6 +11,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
+from . import members as members_module
+
 logger = logging.getLogger(__name__)
 
 _TEAL      = RGBColor(0x1a, 0x73, 0x73)
@@ -126,13 +128,24 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     sec.left_margin   = Cm(2.5)
     sec.right_margin  = Cm(2.5)
 
-    # ── Page header: PRP-### · date ──────────────────────────────────────────────────────────
+    # ── Resolve responsible (needed by header and subtitle) ─────────────────────────────────
+    resp_id = pkg.get('responsible') or ''
+    resp_name = ''
+    if resp_id:
+        m = members_module.get_member(resp_id)
+        if m:
+            resp_name = f"{m['name']} {m['surname']}"
+
+    # ── Page header: PRP-### · Responsable · date ───────────────────────────────────────────
     hdr = sec.header
     hp = hdr.paragraphs[0] if hdr.paragraphs else hdr.add_paragraph()
     hp.clear()
     hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     r_id = hp.add_run(pkg.get('id', 'PRP'))
     r_id.font.bold = True; r_id.font.size = Pt(8); r_id.font.color.rgb = _TEAL
+    if resp_name:
+        r_resp = hp.add_run(f'  ·  {resp_name}')
+        r_resp.font.size = Pt(8); r_resp.font.color.rgb = _DIM
     r_sep = hp.add_run('  ·  ' + send_date.strftime('%d/%m/%Y'))
     r_sep.font.size = Pt(8); r_sep.font.color.rgb = _DIM
 
@@ -151,10 +164,11 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
         add_runs(ap, at_clean, size=Pt(14), italic=True, color=_TEAL)
 
+    resp_part = f"  ·  Responsable: {resp_name}" if resp_name else ''
     sub = doc.add_paragraph()
     run2 = sub.add_run(
         f"PrionPack {pkg.get('id', '')}  ·  "
-        f"Versión {version}  ·  "
+        f"Versión {version}{resp_part}  ·  "
         f"Generado el {send_date.strftime('%d/%m/%Y %H:%M')}"
     )
     run2.font.size  = Pt(9)
