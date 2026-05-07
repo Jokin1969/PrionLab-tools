@@ -1285,26 +1285,19 @@ ${refsText}`;
     const genDois   = extract('#references-list .pp-reference-textarea');
     const introDois = extract('#intro-references-list .pp-intro-reference-textarea');
 
-    // DOI present in both lists (cross-reference) → purple
-    const genSet   = new Set(genDois);
-    const introSet = new Set(introDois);
-    const shared = new Set([...genSet].filter(d => introSet.has(d)));
+    // DOI appearing more than once within the same list → duplicate warning (orange)
+    const dupGen   = new Set(genDois.filter((d, i, a) => a.indexOf(d) !== i));
+    const dupIntro = new Set(introDois.filter((d, i, a) => a.indexOf(d) !== i));
 
-    // DOI appears more than once within the same list (accidental duplicate) → orange
-    const duped = doi => {
-      const inGen   = genDois.filter(d => d === doi).length;
-      const inIntro = introDois.filter(d => d === doi).length;
-      return inGen > 1 || inIntro > 1;
-    };
-
-    document.querySelectorAll(
-      '#references-list .pp-doi-chip, #intro-references-list .pp-doi-chip'
-    ).forEach(chip => {
+    document.querySelectorAll('#references-list .pp-doi-chip').forEach(chip => {
       const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
-      const isDup    = doi && duped(doi);
-      const isShared = doi && shared.has(doi) && !isDup;
-      chip.classList.toggle('pp-doi-chip--dup',    isDup);
-      chip.classList.toggle('pp-doi-chip--shared', isShared);
+      chip.classList.remove('pp-doi-chip--shared');
+      chip.classList.toggle('pp-doi-chip--dup', doi && dupGen.has(doi));
+    });
+    document.querySelectorAll('#intro-references-list .pp-doi-chip').forEach(chip => {
+      const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
+      chip.classList.remove('pp-doi-chip--shared');
+      chip.classList.toggle('pp-doi-chip--dup', doi && dupIntro.has(doi));
     });
   }
 
