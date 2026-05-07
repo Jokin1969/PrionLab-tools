@@ -2435,25 +2435,65 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 
 /* ── Notes badge on package cards ──────────────────────────────────────── */
 
-.pp-notes-badge {
+/* Right-side stack in card header (notes pill + responsible initials) */
+.pp-pkg-card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Empty state: subtle icon, only visible on card hover */
+.pp-notes-badge-empty {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 12px;
-  color: var(--pp-text-muted);
-  padding: 2px 6px;
-  border-radius: 10px;
-  transition: background 0.15s, color 0.15s;
-  font-family: inherit;
-  min-height: 24px;
+  font-size: 11px;
+  color: transparent; /* hidden until card hovered */
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  padding: 0;
 }
-.pp-notes-badge:hover { background: #fef9c3; color: #a16207; }
-.pp-notes-badge.has-notes { color: #a16207; }
-.pp-notes-badge.has-notes i { color: #f59e0b; }
-.pp-notes-badge i { font-size: 11px; }
+.pp-pkg-card:hover .pp-notes-badge-empty {
+  color: var(--pp-text-muted);
+}
+.pp-notes-badge-empty:hover {
+  color: #a16207 !important;
+  background: #fef9c3;
+}
+
+/* Amber pill when notes exist */
+.pp-notes-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 3px 8px;
+  border-radius: 12px;
+  transition: transform 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+.pp-notes-badge.has-notes {
+  background: #fef08a;
+  color: #713f12;
+  box-shadow: 0 1px 4px rgba(234,179,8,0.35);
+}
+.pp-notes-badge.has-notes:hover {
+  transform: scale(1.08);
+  box-shadow: 0 2px 8px rgba(234,179,8,0.5);
+}
+.pp-notes-badge i { font-size: 10px; }
 
 /* ── Notes panel ────────────────────────────────────────────────────────── */
 

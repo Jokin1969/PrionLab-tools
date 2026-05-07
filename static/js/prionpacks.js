@@ -263,7 +263,10 @@ const PrionPacks = (() => {
           <div class="pp-pkg-card-id">${p.id} ${inactiveBadge}</div>
           <div class="pp-pkg-card-title">${_supHtml(p.title)}</div>
         </div>
-        ${respBadge}
+        <div class="pp-pkg-card-right">
+          ${_notesBadgeHTML(p)}
+          ${respBadge}
+        </div>
       </div>
       <div class="pp-pkg-card-progress">
         <div class="pp-progress-header"><span>Completeness</span><span>${score}%</span></div>
@@ -273,7 +276,6 @@ const PrionPacks = (() => {
       </div>
       <div class="pp-pkg-card-footer">
         <span>${findings} finding${findings !== 1 ? 's' : ''}</span>
-        ${_notesBadgeHTML(p)}
         <span>${date}</span>
       </div>
     </div>`;
@@ -3691,10 +3693,12 @@ ${refsText}`;
 
   function _notesBadgeHTML(p) {
     const count = (p.notes || []).length;
-    const hasCls = count > 0 ? ' has-notes' : '';
-    const icon = count > 0 ? 'fas fa-sticky-note' : 'far fa-sticky-note';
-    const label = count > 0 ? ` ${count}` : '';
-    return `<button class="pp-notes-badge${hasCls}" data-notes-id="${_esc(p.id)}" title="${count > 0 ? count + ' nota' + (count !== 1 ? 's' : '') : 'Añadir nota'}"><i class="${icon}"></i>${label}</button>`;
+    if (count === 0) {
+      // Subtle hover-reveal icon — doesn't clutter, doesn't block card clicks
+      return `<button class="pp-notes-badge pp-notes-badge-empty" data-notes-id="${_esc(p.id)}" title="Añadir nota"><i class="far fa-sticky-note"></i></button>`;
+    }
+    const label = count === 1 ? '1 tarea pendiente' : `${count} tareas pendientes`;
+    return `<button class="pp-notes-badge has-notes" data-notes-id="${_esc(p.id)}" title="${label}"><i class="fas fa-sticky-note"></i> ${count}</button>`;
   }
 
   function _openNotes(pkgId) {
