@@ -2096,6 +2096,7 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   margin-bottom: 6px;
 }
 .pp-label-ai-row .pp-label { margin-bottom: 0; }
+.pp-label-collapse-group { display: flex; align-items: center; gap: 6px; }
 
 .pp-field-ai-actions {
   display: flex;
