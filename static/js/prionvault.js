@@ -290,10 +290,33 @@
            </div>`
         : '';
 
+      const prionreadBadge = a.in_prionread
+        ? `<span title="${a.prionread_count} estudiante${a.prionread_count !== 1 ? 's' : ''} asignado${a.prionread_count !== 1 ? 's' : ''}"
+                 style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;
+                        font-size:12px;font-weight:600;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;
+                        margin-bottom:12px;">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;">
+              <circle cx="8" cy="8" r="6.5" stroke="#065f46" stroke-width="1.5"/>
+              <path d="M5 8.5l2 2 4-4" stroke="#065f46" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            En PrionRead · ${a.prionread_count} estudiante${a.prionread_count !== 1 ? 's' : ''}
+           </span>`
+        : `<span title="Este artículo no está asignado en PrionRead"
+                 style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;
+                        font-size:12px;font-weight:600;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;
+                        margin-bottom:12px;">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;">
+              <circle cx="8" cy="8" r="6.5" stroke="#9ca3af" stroke-width="1.5"/>
+              <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#9ca3af" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            No asignado en PrionRead
+           </span>`;
+
       content.innerHTML = `
-        <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111827;line-height:1.35;padding-right:24px;">
+        <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;line-height:1.35;padding-right:24px;">
           ${supHtml(a.title)}
         </h2>
+        ${prionreadBadge}
         <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:14px;color:#6b7280;margin-bottom:16px;">
           ${a.authors ? esc(a.authors) : '—'}
           ${a.journal ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${esc(a.journal)}` : ''}
