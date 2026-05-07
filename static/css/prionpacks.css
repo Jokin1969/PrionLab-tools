@@ -3447,6 +3447,40 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   border-color: #38bdf8;
   text-decoration: none;
 }
+/* ── Reference search ────────────────────────────────────────────────────── */
+.pp-ref-search-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.pp-ref-search-icon {
+  position: absolute;
+  left: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+.pp-ref-search {
+  height: 28px;
+  padding: 0 8px 0 26px;
+  border: 1px solid #c8d5e0;
+  border-radius: 14px;
+  font-size: 12px;
+  width: 150px;
+  background: var(--pp-bg, #fff);
+  color: var(--pp-text, #1e2d3d);
+  outline: none;
+  transition: border-color .15s, width .2s;
+}
+.pp-ref-search:focus { border-color: #1a7373; width: 200px; }
+.pp-ref-search::-webkit-search-cancel-button { cursor: pointer; }
+
+.pp-reference-item.pp-ref-match {
+  box-shadow: 0 0 0 2px #1a7373;
+  border-radius: 6px;
+}
+.pp-reference-item.pp-ref-no-match { opacity: 0.3; }
+
 .pp-doi-copy-btn {
   display: inline-flex;
   align-items: center;

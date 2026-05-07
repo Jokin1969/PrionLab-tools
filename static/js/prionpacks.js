@@ -101,6 +101,7 @@ const PrionPacks = (() => {
 
   function showDashboard() {
     state.currentId = null;
+    _clearRefSearches();
     _renderDashboard();
     showView('dashboard');
   }
@@ -1034,6 +1035,24 @@ const PrionPacks = (() => {
     if (!k) return;
     if (collapsed) localStorage.setItem(k, '1');
     else           localStorage.removeItem(k);
+  }
+
+  function _applyRefSearch(listId, query) {
+    const items = document.querySelectorAll(`#${listId} .pp-reference-item`);
+    const terms = (query || '').trim().toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    items.forEach(item => {
+      item.classList.remove('pp-ref-match', 'pp-ref-no-match');
+      if (!terms.length) return;
+      const text = (item.querySelector('textarea')?.value || '').toLowerCase();
+      item.classList.add(terms.some(t => text.includes(t)) ? 'pp-ref-match' : 'pp-ref-no-match');
+    });
+  }
+
+  function _clearRefSearches() {
+    const ri = document.getElementById('refs-search');
+    const ii = document.getElementById('intro-refs-search');
+    if (ri) { ri.value = ''; _applyRefSearch('references-list', ''); }
+    if (ii) { ii.value = ''; _applyRefSearch('intro-references-list', ''); }
   }
 
   function _toggleCollapseAllRefs() {
@@ -3299,6 +3318,8 @@ ${refsText}`;
     });
     document.getElementById('btn-add-reference')?.addEventListener('click', () => _addReference(true));
     document.getElementById('btn-collapse-all-refs')?.addEventListener('click', () => _toggleCollapseAllRefs());
+    document.getElementById('refs-search')?.addEventListener('input', e => _applyRefSearch('references-list', e.target.value));
+    document.getElementById('intro-refs-search')?.addEventListener('input', e => _applyRefSearch('intro-references-list', e.target.value));
     document.getElementById('btn-discuss-claude')?.addEventListener('click', () => _askClaudeDiscussion());
     // Delegated AI toggle for dynamic reference rows
     document.getElementById('references-list')?.addEventListener('click', e => {
