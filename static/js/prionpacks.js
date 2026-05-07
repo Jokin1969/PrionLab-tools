@@ -55,6 +55,7 @@ const PrionPacks = (() => {
     _bindModalEvents();
     _bindMembersEvents();
     _bindNotesEvents();
+    _bindNoteDetailEvents();
     _bindMobileEvents();
     _loadApiKeyField();
     _bindKeyboardShortcuts();
@@ -3767,7 +3768,7 @@ ${refsText}`;
     grid.innerHTML = notes.map(n => {
       const textColor = colorMap[n.color] || '#374151';
       const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) : '';
-      return `<div class="pp-note-card" style="background:${n.color};color:${textColor};" data-note-id="${_esc(n.id)}">
+      return `<div class="pp-note-card" style="background:${n.color};color:${textColor};" data-note-id="${_esc(n.id)}" title="Clic para editar">
         <div class="pp-note-card-text">${_esc(n.text)}</div>
         <div class="pp-note-card-footer">
           <span class="pp-note-card-date">${date}</span>
@@ -3775,8 +3776,119 @@ ${refsText}`;
         </div>
       </div>`;
     }).join('');
+    grid.querySelectorAll('.pp-note-card').forEach(card => {
+      card.addEventListener('click', e => {
+        if (e.target.closest('.pp-note-card-delete')) return;
+        _openNoteDetail(card.dataset.noteId);
+      });
+    });
     grid.querySelectorAll('.pp-note-card-delete').forEach(btn => {
       btn.addEventListener('click', e => { e.stopPropagation(); _deleteNote(btn.dataset.noteId); });
+    });
+  }
+
+  /* ── Note detail modal ──────────────────────────────────────────────────── */
+
+  let _detailNoteId = null;
+
+  function _openNoteDetail(noteId) {
+    if (!_notesPkgId) return;
+    const pkg  = _packages.find(p => p.id === _notesPkgId);
+    const note = (pkg?.notes || []).find(n => n.id === noteId);
+    if (!note) return;
+    _detailNoteId = noteId;
+
+    const backdrop = document.getElementById('pp-note-detail-backdrop');
+    const modal    = document.getElementById('pp-note-detail-modal');
+    const ta       = document.getElementById('pp-note-detail-textarea');
+    const dateEl   = document.getElementById('pp-note-detail-date');
+
+    ta.value = note.text;
+    dateEl.textContent = note.createdAt
+      ? new Date(note.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '';
+
+    _renderNoteDetailColors(note.color);
+    _applyNoteDetailBg(note.color);
+
+    backdrop.style.display = 'block';
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => { backdrop.classList.add('active'); modal.classList.add('active'); });
+    setTimeout(() => ta.focus(), 220);
+  }
+
+  function _closeNoteDetail() {
+    const backdrop = document.getElementById('pp-note-detail-backdrop');
+    const modal    = document.getElementById('pp-note-detail-modal');
+    backdrop?.classList.remove('active');
+    modal?.classList.remove('active');
+    if (backdrop) setTimeout(() => { backdrop.style.display = ''; }, 220);
+    if (modal)    setTimeout(() => { modal.style.display = ''; }, 220);
+    _detailNoteId = null;
+  }
+
+  function _applyNoteDetailBg(color) {
+    const colorEntry = NOTE_COLORS.find(c => c.value === color) || NOTE_COLORS[0];
+    const header = document.getElementById('pp-note-detail-header');
+    const ta     = document.getElementById('pp-note-detail-textarea');
+    const modal  = document.getElementById('pp-note-detail-modal');
+    if (header) header.style.background = color;
+    if (ta)     { ta.style.background = color; ta.style.color = colorEntry.text; }
+    if (modal)  modal.style.background = color;
+  }
+
+  function _renderNoteDetailColors(activeColor) {
+    const container = document.getElementById('pp-note-detail-colors');
+    if (!container) return;
+    container.innerHTML = NOTE_COLORS.map(c =>
+      `<button class="pp-note-color-swatch${c.value === activeColor ? ' selected' : ''}"
+         style="background:${c.value}; border-color:${c.value === activeColor ? c.text : 'rgba(0,0,0,0.15)'};"
+         data-color="${c.value}" title="${c.name}"></button>`
+    ).join('');
+    container.querySelectorAll('.pp-note-color-swatch').forEach(sw => {
+      sw.addEventListener('click', () => {
+        _renderNoteDetailColors(sw.dataset.color);
+        _applyNoteDetailBg(sw.dataset.color);
+      });
+    });
+  }
+
+  function _getDetailActiveColor() {
+    const sel = document.querySelector('#pp-note-detail-colors .pp-note-color-swatch.selected');
+    return sel?.dataset.color || NOTE_COLORS[0].value;
+  }
+
+  async function _saveNoteDetail() {
+    if (!_notesPkgId || !_detailNoteId) return;
+    const text  = (document.getElementById('pp-note-detail-textarea')?.value || '').trim();
+    if (!text) { toast('La nota no puede estar vacía.', 'error'); return; }
+    const color = _getDetailActiveColor();
+    const pkg   = _packages.find(p => p.id === _notesPkgId);
+    if (!pkg) return;
+    const notes = (pkg.notes || []).map(n =>
+      n.id === _detailNoteId ? { ...n, text, color } : n
+    );
+    try {
+      const saved = await PPStorage.update(_notesPkgId, { notes });
+      const idx = _packages.findIndex(p => p.id === _notesPkgId);
+      if (idx >= 0) _packages[idx] = saved;
+      _renderNotesGrid(saved.notes || []);
+      _renderSidebarList();
+      if (state.currentId === _notesPkgId) _updateEditorNotesBtn(saved);
+      _closeNoteDetail();
+    } catch (e) { toast('Error guardando la nota: ' + e.message, 'error'); }
+  }
+
+  function _bindNoteDetailEvents() {
+    document.getElementById('pp-note-detail-backdrop')?.addEventListener('click', _closeNoteDetail);
+    document.getElementById('btn-note-detail-close')?.addEventListener('click', _closeNoteDetail);
+    document.getElementById('btn-note-detail-save')?.addEventListener('click', _saveNoteDetail);
+    document.getElementById('btn-note-detail-delete')?.addEventListener('click', () => {
+      if (_detailNoteId) { _closeNoteDetail(); setTimeout(() => _deleteNote(_detailNoteId), 230); }
+    });
+    document.getElementById('pp-note-detail-textarea')?.addEventListener('keydown', e => {
+      if (e.key === 'Escape') _closeNoteDetail();
+      if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); _saveNoteDetail(); }
     });
   }
 

@@ -1013,6 +1013,29 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
   </div>
 </div>
 
+<!-- ── Note detail / edit modal ─────────────────────────────────────────────────────────── -->
+<div class="pp-note-detail-backdrop" id="pp-note-detail-backdrop"></div>
+<div class="pp-note-detail-modal" id="pp-note-detail-modal" role="dialog" aria-modal="true">
+  <div class="pp-note-detail-header" id="pp-note-detail-header">
+    <div class="pp-note-detail-colors" id="pp-note-detail-colors"></div>
+    <div class="pp-note-detail-actions">
+      <button class="pp-btn pp-btn-sm pp-note-detail-delete" id="btn-note-detail-delete" title="Eliminar nota">
+        <i class="fas fa-trash-alt"></i> Borrar
+      </button>
+      <button class="pp-btn-icon" id="btn-note-detail-close" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+  </div>
+  <textarea id="pp-note-detail-textarea" class="pp-note-detail-textarea" placeholder="Escribe aquí tu nota…"></textarea>
+  <div class="pp-note-detail-footer">
+    <span class="pp-note-detail-date" id="pp-note-detail-date"></span>
+    <button class="pp-btn pp-btn-primary" id="btn-note-detail-save">
+      <i class="fas fa-save"></i> Guardar
+    </button>
+  </div>
+</div>
+
 <script src="{{ url_for('static', filename='js/prionpacks-storage.js') }}"></script>
 <script src="{{ url_for('static', filename='js/prionpacks-api.js') }}"></script>
 <script src="{{ url_for('static', filename='js/prionpacks.js') }}"></script>
