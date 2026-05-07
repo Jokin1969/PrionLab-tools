@@ -203,7 +203,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     # ── Abstract ──────────────────────────────────────────────────────────────────────────────
     abstract = (pkg.get('abstract') or '').strip()
     if abstract:
-        _section_heading(doc, 'ABSTRACT')
+        _section_heading(doc, 'ABSTRACT', collapsed=True)
         p = doc.add_paragraph()
         add_runs(p, abstract, size=Pt(10), color=_DARK)
         doc.add_paragraph()
@@ -211,7 +211,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     # ── Author Summary ─────────────────────────────────────────────────────────────────────────
     author_summary = (pkg.get('authorSummary') or '').strip()
     if author_summary:
-        _section_heading(doc, 'RESUMEN PARA AUTORES')
+        _section_heading(doc, 'RESUMEN PARA AUTORES', collapsed=True)
         p = doc.add_paragraph()
         add_runs(p, author_summary, size=Pt(10), color=_DARK)
         doc.add_paragraph()
@@ -515,11 +515,18 @@ def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
     return buf.getvalue()
 
 
-def _section_heading(doc: Document, text: str):
-    p = doc.add_paragraph()
+def _section_heading(doc: Document, text: str, collapsed: bool = False):
+    # Use Heading 2 so Word knows where each section boundary is.
+    # Font properties are overridden to preserve the teal/10 pt look.
+    p = doc.add_paragraph(style='Heading 2')
+    pPr = p._p.get_or_add_pPr()
+    if collapsed:
+        collapsed_el = OxmlElement('w:collapsed')
+        collapsed_el.set(qn('w:val'), '1')
+        pPr.append(collapsed_el)
     run = p.add_run(text)
-    run.font.bold  = True
-    run.font.size  = Pt(10)
+    run.font.bold      = True
+    run.font.size      = Pt(10)
     run.font.color.rgb = _TEAL
     _para_border_bottom(p)
 
