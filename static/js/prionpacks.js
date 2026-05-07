@@ -3768,8 +3768,11 @@ ${refsText}`;
     grid.innerHTML = notes.map(n => {
       const textColor = colorMap[n.color] || '#374151';
       const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) : '';
+      const hasImg = /<img/i.test(n.text || '');
+      const preview = _esc(_htmlToText(n.text).slice(0, 140));
+      const imgHint = hasImg ? ' <span style="opacity:.6;font-size:10px;">🖼</span>' : '';
       return `<div class="pp-note-card" style="background:${n.color};color:${textColor};" data-note-id="${_esc(n.id)}" title="Clic para editar">
-        <div class="pp-note-card-text">${_esc(n.text)}</div>
+        <div class="pp-note-card-text">${preview}${imgHint}</div>
         <div class="pp-note-card-footer">
           <span class="pp-note-card-date">${date}</span>
           <button class="pp-note-card-delete" data-note-id="${_esc(n.id)}" title="Eliminar nota"><i class="fas fa-trash-alt"></i></button>
@@ -3791,6 +3794,65 @@ ${refsText}`;
 
   let _detailNoteId = null;
 
+  // Compress a File/Blob image via Canvas → JPEG base64 (max 900px, q=0.65)
+  function _compressImage(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 900;
+          let w = img.width, h = img.height;
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.65));
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Sanitize HTML saved from contenteditable — allow only safe tags + base64 images
+  function _sanitizeNoteHtml(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const ALLOWED = new Set(['b','i','strong','em','br','p','div','span','ul','ol','li','img']);
+    function walk(node) {
+      Array.from(node.childNodes).forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE) return;
+        if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); return; }
+        const tag = child.tagName.toLowerCase();
+        if (!ALLOWED.has(tag)) {
+          const frag = document.createDocumentFragment();
+          Array.from(child.childNodes).forEach(c => frag.appendChild(c.cloneNode(true)));
+          child.replaceWith(frag);
+          return;
+        }
+        if (tag === 'img') {
+          const src = child.getAttribute('src') || '';
+          if (!src.startsWith('data:image/')) { child.remove(); return; }
+          while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          child.setAttribute('src', src);
+        } else {
+          // Strip all attributes (no style, class, event handlers)
+          while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          walk(child);
+        }
+      });
+    }
+    walk(doc.body);
+    return doc.body.innerHTML;
+  }
+
+  // Extract plain text from HTML (for mini card previews)
+  function _htmlToText(html) {
+    const d = document.createElement('div');
+    d.innerHTML = html || '';
+    return d.textContent || '';
+  }
+
   function _openNoteDetail(noteId) {
     if (!_notesPkgId) return;
     const pkg  = _packages.find(p => p.id === _notesPkgId);
@@ -3800,10 +3862,10 @@ ${refsText}`;
 
     const backdrop = document.getElementById('pp-note-detail-backdrop');
     const modal    = document.getElementById('pp-note-detail-modal');
-    const ta       = document.getElementById('pp-note-detail-textarea');
+    const content  = document.getElementById('pp-note-detail-content');
     const dateEl   = document.getElementById('pp-note-detail-date');
 
-    ta.value = note.text;
+    content.innerHTML = _sanitizeNoteHtml(note.text || '');
     dateEl.textContent = note.createdAt
       ? new Date(note.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : '';
@@ -3814,7 +3876,16 @@ ${refsText}`;
     backdrop.style.display = 'block';
     modal.style.display = 'flex';
     requestAnimationFrame(() => { backdrop.classList.add('active'); modal.classList.add('active'); });
-    setTimeout(() => ta.focus(), 220);
+    setTimeout(() => { content.focus(); _placeCursorAtEnd(content); }, 220);
+  }
+
+  function _placeCursorAtEnd(el) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
   function _closeNoteDetail() {
@@ -3829,12 +3900,12 @@ ${refsText}`;
 
   function _applyNoteDetailBg(color) {
     const colorEntry = NOTE_COLORS.find(c => c.value === color) || NOTE_COLORS[0];
-    const header = document.getElementById('pp-note-detail-header');
-    const ta     = document.getElementById('pp-note-detail-textarea');
-    const modal  = document.getElementById('pp-note-detail-modal');
-    if (header) header.style.background = color;
-    if (ta)     { ta.style.background = color; ta.style.color = colorEntry.text; }
-    if (modal)  modal.style.background = color;
+    const header  = document.getElementById('pp-note-detail-header');
+    const content = document.getElementById('pp-note-detail-content');
+    const modal   = document.getElementById('pp-note-detail-modal');
+    if (header)  header.style.background = color;
+    if (content) { content.style.background = color; content.style.color = colorEntry.text; }
+    if (modal)   modal.style.background = color;
   }
 
   function _renderNoteDetailColors(activeColor) {
@@ -3860,13 +3931,15 @@ ${refsText}`;
 
   async function _saveNoteDetail() {
     if (!_notesPkgId || !_detailNoteId) return;
-    const text  = (document.getElementById('pp-note-detail-textarea')?.value || '').trim();
-    if (!text) { toast('La nota no puede estar vacía.', 'error'); return; }
+    const content = document.getElementById('pp-note-detail-content');
+    const html    = _sanitizeNoteHtml(content?.innerHTML || '');
+    const plain   = _htmlToText(html).trim();
+    if (!plain) { toast('La nota no puede estar vacía.', 'error'); return; }
     const color = _getDetailActiveColor();
     const pkg   = _packages.find(p => p.id === _notesPkgId);
     if (!pkg) return;
     const notes = (pkg.notes || []).map(n =>
-      n.id === _detailNoteId ? { ...n, text, color } : n
+      n.id === _detailNoteId ? { ...n, text: html, color } : n
     );
     try {
       const saved = await PPStorage.update(_notesPkgId, { notes });
@@ -3879,6 +3952,30 @@ ${refsText}`;
     } catch (e) { toast('Error guardando la nota: ' + e.message, 'error'); }
   }
 
+  async function _handleNotePaste(e) {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imgItem = items.find(it => it.type.startsWith('image/'));
+    if (!imgItem) return; // let browser handle plain text paste
+    e.preventDefault();
+    const file = imgItem.getAsFile();
+    if (!file) return;
+    const b64 = await _compressImage(file);
+    const img = document.createElement('img');
+    img.src = b64;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) {
+      document.getElementById('pp-note-detail-content')?.appendChild(img);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(img);
+    range.setStartAfter(img);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   function _bindNoteDetailEvents() {
     document.getElementById('pp-note-detail-backdrop')?.addEventListener('click', _closeNoteDetail);
     document.getElementById('btn-note-detail-close')?.addEventListener('click', _closeNoteDetail);
@@ -3887,7 +3984,9 @@ ${refsText}`;
       const idToDelete = _detailNoteId;
       if (idToDelete) { _closeNoteDetail(); setTimeout(() => _deleteNote(idToDelete), 230); }
     });
-    document.getElementById('pp-note-detail-textarea')?.addEventListener('keydown', e => {
+    const content = document.getElementById('pp-note-detail-content');
+    content?.addEventListener('paste', _handleNotePaste);
+    content?.addEventListener('keydown', e => {
       if (e.key === 'Escape') _closeNoteDetail();
       if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); _saveNoteDetail(); }
     });

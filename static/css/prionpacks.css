@@ -2782,6 +2782,28 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   color: #1e2d3d;
   background: transparent;
   box-sizing: border-box;
+  overflow-y: auto;
+}
+
+/* contenteditable specific */
+.pp-note-detail-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+.pp-note-detail-content:empty::before {
+  content: 'Escribe aquí tu nota… puedes pegar imágenes con Ctrl+V 🖼';
+  color: rgba(0,0,0,0.35);
+  pointer-events: none;
+  font-style: italic;
+}
+.pp-note-detail-content img {
+  max-width: 100%;
+  border-radius: 8px;
+  display: block;
+  margin: 10px 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  cursor: default;
 }
 
 .pp-note-detail-footer {
