@@ -33,6 +33,13 @@ _REF_SUMMARY_HEADERS = re.compile(
 # DOI pattern: matches "DOI: 10.xxxx/..." (case-insensitive)
 _DOI_RE = re.compile(r'(DOI:\s*)(10\.\d{4,}[./][^\s,;]+)', re.IGNORECASE)
 
+# Inline DOI pattern: bare DOIs and doi.org URLs in prose text
+_INLINE_DOI_RE = re.compile(
+    r'(?:https?://(?:dx\.)?doi\.org/|doi\.org/)?'
+    r'\b(10\.\d{4,}/[^\s,;>\]\)]+)',
+    re.IGNORECASE,
+)
+
 
 def _apply_font(run, *, size=None, bold=None, italic=None, color=None):
     if size is not None:   run.font.size = size
@@ -92,6 +99,22 @@ def add_runs_with_doi(paragraph, text, *, size=None, bold=None, italic=None, col
         _apply_font(label_run, size=size, bold=bold, italic=italic, color=color)
         doi_val = m.group(2).rstrip('.,;)')
         _hyperlink_url(paragraph, doi_val, f'https://doi.org/{doi_val}', pt=pt)
+        last = m.end()
+    if last < len(text):
+        add_runs(paragraph, text[last:], size=size, bold=bold, italic=italic, color=color)
+
+
+def add_runs_with_inline_doi(paragraph, text, *, size=None, bold=None, italic=None, color=None):
+    """Like add_runs() but turns bare DOIs and doi.org URLs in prose into hyperlinks."""
+    if not text:
+        return
+    pt = int(size.pt) if size else 10
+    last = 0
+    for m in _INLINE_DOI_RE.finditer(text):
+        if m.start() > last:
+            add_runs(paragraph, text[last:m.start()], size=size, bold=bold, italic=italic, color=color)
+        doi_val = m.group(1).rstrip('.,;)')
+        _hyperlink_url(paragraph, m.group(0).rstrip('.,;)'), f'https://doi.org/{doi_val}', pt=pt)
         last = m.end()
     if last < len(text):
         add_runs(paragraph, text[last:], size=size, bold=bold, italic=italic, color=color)
@@ -221,7 +244,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if intro:
         _section_heading(doc, 'INTRODUCCIÓN')
         p = doc.add_paragraph()
-        add_runs(p, intro, size=Pt(10), color=_DARK)
+        add_runs_with_inline_doi(p, intro, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Introduction References (Ri-XX) ───────────────────────────────────────────────────────
@@ -411,7 +434,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if disc:
         _section_heading(doc, 'DISCUSIÓN')
         p = doc.add_paragraph()
-        add_runs(p, disc, size=Pt(10), color=_DARK)
+        add_runs_with_inline_doi(p, disc, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
     # ── Acknowledgments ───────────────────────────────────────────────────────────────────────
