@@ -1791,6 +1791,18 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 }
 
 /* ── Send for Review Modal ────────────────────────────────────────────────── */
+.pp-btn-notes-editor {
+  background: #fef9c3;
+  color: #713f12;
+  border: 1px solid #fde047;
+}
+.pp-btn-notes-editor:hover { background: #fef08a; border-color: #eab308; }
+.pp-btn-notes-editor.pp-btn-notes-has-notes {
+  background: #fef08a;
+  border-color: #eab308;
+  font-weight: 700;
+}
+
 .pp-btn-send {
   background: #1d4ed8;
   color: #fff;

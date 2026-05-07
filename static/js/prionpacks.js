@@ -672,6 +672,7 @@ const PrionPacks = (() => {
     _applyMemberColorToBadge(idBadge, !isNew ? pkg.responsible : null);
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
     document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
+    _updateEditorNotesBtn(isNew ? null : pkg);
     const vBadge = document.getElementById('editor-version-badge');
     if (!isNew && pkg.docxVersion) {
       vBadge.textContent = `v${pkg.docxVersion} enviada`;
@@ -2923,6 +2924,7 @@ ${refsText}`;
     document.getElementById('btn-new-package-main').addEventListener('click', () => showEditor(null));
     document.getElementById('btn-fab-new')?.addEventListener('click', () => showEditor(null));
     document.getElementById('btn-mobile-new')?.addEventListener('click', () => { _closeMobileSidebar(); showEditor(null); });
+    document.getElementById('btn-editor-notes')?.addEventListener('click', () => { if (state.currentId) _openNotes(state.currentId); });
     document.getElementById('btn-backup-dropbox')?.addEventListener('click', _runManualBackup);
     document.getElementById('btn-open-restore')?.addEventListener('click', _openRestoreModal);
     document.getElementById('pp-restore-modal-close')?.addEventListener('click', _closeRestoreModal);
@@ -3661,6 +3663,19 @@ ${refsText}`;
     });
   }
 
+  /* ── Editor notes button ───────────────────────────────────────────────── */
+
+  function _updateEditorNotesBtn(pkg) {
+    const btn   = document.getElementById('btn-editor-notes');
+    const label = document.getElementById('editor-notes-label');
+    if (!btn) return;
+    if (!pkg) { btn.style.display = 'none'; return; }
+    const count = (pkg.notes || []).length;
+    btn.style.display = '';
+    btn.classList.toggle('pp-btn-notes-has-notes', count > 0);
+    label.textContent = count > 0 ? `${count} nota${count !== 1 ? 's' : ''}` : 'Notas';
+  }
+
   /* ── Mobile sidebar ────────────────────────────────────────────────────── */
 
   function _openMobileSidebar() {
@@ -3780,6 +3795,7 @@ ${refsText}`;
       if (idx >= 0) _packages[idx] = saved;
       _renderNotesGrid(saved.notes || []);
       _renderSidebarList();
+      if (state.currentId === _notesPkgId) _updateEditorNotesBtn(saved);
       textarea.value = '';
     } catch (e) { toast('Error guardando la nota: ' + e.message, 'error'); }
   }
@@ -3795,6 +3811,7 @@ ${refsText}`;
       if (idx >= 0) _packages[idx] = saved;
       _renderNotesGrid(saved.notes || []);
       _renderSidebarList();
+      if (state.currentId === _notesPkgId) _updateEditorNotesBtn(saved);
     } catch (e) { toast('Error eliminando la nota: ' + e.message, 'error'); }
   }
 
