@@ -701,8 +701,10 @@ const PrionPacks = (() => {
     _renderAltTitlesEditor(altTitles);
     _updateAltTitlesDisplay(altTitles);
     _restoreAltTitlesState();
+    _restoreDescriptionState();
 
     document.getElementById('field-description').value = pkg?.description || '';
+    _updateDescriptionIndicator();
 
     _setPriority(pkg?.priority || 'none');
     const respSel = document.getElementById('field-responsible');
@@ -1849,6 +1851,31 @@ ${refsText}`;
     }
   }
 
+  function _updateDescriptionIndicator() {
+    const btn = document.getElementById('btn-toggle-description');
+    if (!btn) return;
+    const has = (document.getElementById('field-description')?.value || '').trim().length > 0;
+    btn.classList.toggle('pp-collapse-btn--filled', has);
+    btn.classList.toggle('pp-collapse-btn--empty',  !has);
+  }
+
+  function _toggleDescription() {
+    const grp = document.getElementById('description-group');
+    if (!grp) return;
+    const collapsed = grp.classList.toggle('pp-description-collapsed');
+    if (collapsed) localStorage.setItem('pp-collapse:description-group', '1');
+    else           localStorage.removeItem('pp-collapse:description-group');
+  }
+
+  function _restoreDescriptionState() {
+    const grp = document.getElementById('description-group');
+    if (!grp) return;
+    if (localStorage.getItem('pp-collapse:description-group') === '1')
+      grp.classList.add('pp-description-collapsed');
+    else
+      grp.classList.remove('pp-description-collapsed');
+  }
+
   /* ── Toggle helpers ────────────────────────────────────────────────────── */
   function _updateToggleBtn(btnId, active, icon, label) {
     const btn = document.getElementById(btnId);
@@ -2939,6 +2966,8 @@ ${refsText}`;
     // Alternative titles
     document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
     document.getElementById('btn-toggle-alt-titles')?.addEventListener('click', _toggleAltTitles);
+    document.getElementById('btn-toggle-description')?.addEventListener('click', _toggleDescription);
+    document.getElementById('field-description')?.addEventListener('input', _updateDescriptionIndicator);
 
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));

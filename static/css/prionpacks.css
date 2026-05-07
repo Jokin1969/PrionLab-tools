@@ -452,6 +452,8 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-alt-titles-editor.pp-alt-titles-collapsed .pp-alt-titles-list { display: none; }
 /* Add a small extra gap between the alt-titles group and the Description below */
 .pp-alt-titles-editor + .pp-form-group { margin-top: 12px; }
+
+.pp-description-editor.pp-description-collapsed #field-description { display: none; }
 /* Keep the "Alternative titles" label flush-left, right next to the collapse
    triangle. The Add button is pushed to the far right by margin-left:auto. */
 .pp-alt-titles-editor .pp-label-ai-row {
