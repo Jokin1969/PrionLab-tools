@@ -852,12 +852,11 @@ const PrionPacks = (() => {
     btn.addEventListener('click', async e => {
       e.preventDefault();
       e.stopPropagation();
-      const url = `https://doi.org/${doi}`;
       try {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(doi);
       } catch {
         const tmp = document.createElement('textarea');
-        tmp.value = url;
+        tmp.value = doi;
         document.body.appendChild(tmp);
         tmp.select();
         document.execCommand('copy');
