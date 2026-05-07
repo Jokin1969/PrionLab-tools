@@ -101,6 +101,7 @@ const PrionPacks = (() => {
 
   function showDashboard() {
     state.currentId = null;
+    _clearRefSearches();
     _renderDashboard();
     showView('dashboard');
   }
@@ -701,8 +702,10 @@ const PrionPacks = (() => {
     _renderAltTitlesEditor(altTitles);
     _updateAltTitlesDisplay(altTitles);
     _restoreAltTitlesState();
+    _restoreDescriptionState();
 
     document.getElementById('field-description').value = pkg?.description || '';
+    _updateDescriptionIndicator();
 
     _setPriority(pkg?.priority || 'none');
     const respSel = document.getElementById('field-responsible');
@@ -769,6 +772,9 @@ const PrionPacks = (() => {
     if (Array.isArray(rawIntroRefs)) introRefs = rawIntroRefs.filter(r => r && String(r).trim());
     else if (typeof rawIntroRefs === 'string' && rawIntroRefs.trim()) introRefs = [rawIntroRefs.trim()];
     _renderIntroReferencesList(introRefs);
+    _refreshMigrateBtns();
+    _refreshIntroMigrateBtns();
+    _refreshSharedDois();
 
     // Methods — multi-field. Each item has {title, body}. Legacy single-string
     // value (or list of strings) is wrapped into a list of body-only items.
@@ -837,6 +843,32 @@ const PrionPacks = (() => {
   // is never consumed, but 10.1016/s0896-6273(00)00046-5 is matched whole.
   const _DOI_RE = /\b10\.\d{4,}\/(?:[^\s,;>\]()]+|\([^)]*\))+/g;
 
+  function _makeCopyBtn(doi) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pp-doi-copy-btn';
+    btn.title = 'Copiar DOI al portapapeles';
+    btn.innerHTML = '<i class="fas fa-copy"></i>';
+    btn.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(doi);
+      } catch {
+        const tmp = document.createElement('textarea');
+        tmp.value = doi;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand('copy');
+        document.body.removeChild(tmp);
+      }
+      btn.innerHTML = '<i class="fas fa-check"></i>';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i>'; btn.classList.remove('copied'); }, 1500);
+    });
+    return btn;
+  }
+
   function _renderDoiChipsFor(textarea, container) {
     if (!container) return;
     const matches = (textarea.value || '').match(_DOI_RE) || [];
@@ -851,6 +883,7 @@ const PrionPacks = (() => {
       a.title = doi;
       a.textContent = doi;
       container.appendChild(a);
+      container.appendChild(_makeCopyBtn(doi));
     });
   }
 
@@ -880,6 +913,7 @@ const PrionPacks = (() => {
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
         <span class="pp-reference-number">R-${String(idx + 1).padStart(2, '0')}</span>
+        <button type="button" class="pp-btn-icon btn-migrate-to-intro" title="Clonar a Referencias de Introducción"><i class="fas fa-share"></i></button>
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Referencia ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
@@ -913,18 +947,43 @@ const PrionPacks = (() => {
         a.textContent = first;
         a.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(a);
+        const cb = _makeCopyBtn(first);
+        cb.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(cb);
       }
     };
     ta.addEventListener('input', () => {
       _renderDoiChipsFor(ta, chips);
       refreshPreview();
       refreshHeaderDoi();
+      _refreshSharedDois();
     });
     div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
       div.classList.toggle('pp-reference-collapsed');
       _saveItemCollapse('r', div, div.classList.contains('pp-reference-collapsed'));
+    });
+    div.querySelector('.btn-migrate-to-intro').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = ta.value.trim();
+      if (!text) { toast('La referencia está vacía.', 'error'); return; }
+      const existing = Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
+        .map(t => t.value.trim());
+      const btn = e.currentTarget;
+      if (existing.includes(text)) {
+        btn.classList.add('migrated');
+        toast('Ya incluida en Referencias de Introducción.', 'info');
+        return;
+      }
+      const introRefs = _collectIntroReferences();
+      introRefs.push(text);
+      _renderIntroReferencesList(introRefs);
+      _refreshSharedDois();
+      _scheduleAutosave();
+      btn.classList.add('migrated');
+      toast('Referencia copiada a Introducción ✓', 'success');
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -938,6 +997,18 @@ const PrionPacks = (() => {
     refreshPreview();
     refreshHeaderDoi();
     return div;
+  }
+
+  function _refreshMigrateBtns() {
+    const introTexts = new Set(
+      Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
+        .map(t => t.value.trim()).filter(Boolean)
+    );
+    document.querySelectorAll('#references-list .pp-reference-item').forEach(item => {
+      const text = (item.querySelector('.pp-reference-textarea')?.value || '').trim();
+      const btn  = item.querySelector('.btn-migrate-to-intro');
+      if (btn && text && introTexts.has(text)) btn.classList.add('migrated');
+    });
   }
 
   function _updateReferencesCount() {
@@ -966,6 +1037,24 @@ const PrionPacks = (() => {
     if (!k) return;
     if (collapsed) localStorage.setItem(k, '1');
     else           localStorage.removeItem(k);
+  }
+
+  function _applyRefSearch(listId, query) {
+    const items = document.querySelectorAll(`#${listId} .pp-reference-item`);
+    const terms = (query || '').trim().toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    items.forEach(item => {
+      item.classList.remove('pp-ref-match', 'pp-ref-no-match');
+      if (!terms.length) return;
+      const text = (item.querySelector('textarea')?.value || '').toLowerCase();
+      item.classList.add(terms.some(t => text.includes(t)) ? 'pp-ref-match' : 'pp-ref-no-match');
+    });
+  }
+
+  function _clearRefSearches() {
+    const ri = document.getElementById('refs-search');
+    const ii = document.getElementById('intro-refs-search');
+    if (ri) { ri.value = ''; _applyRefSearch('references-list', ''); }
+    if (ii) { ii.value = ''; _applyRefSearch('intro-references-list', ''); }
   }
 
   function _toggleCollapseAllRefs() {
@@ -1088,6 +1177,7 @@ ${refsText}`;
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
         <span class="pp-reference-number">Ri-${String(idx + 1).padStart(2, '0')}</span>
+        <button type="button" class="pp-btn-icon btn-migrate-to-refs" title="Clonar a Referencias generales"><i class="fas fa-share"></i></button>
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Ref. Intro ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
@@ -1121,12 +1211,16 @@ ${refsText}`;
         a.textContent = first;
         a.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(a);
+        const cb = _makeCopyBtn(first);
+        cb.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(cb);
       }
     };
     ta.addEventListener('input', () => {
       _renderDoiChipsFor(ta, chips);
       refreshPreview();
       refreshHeaderDoi();
+      _refreshSharedDois();
       _scheduleAutosave();
     });
     div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
@@ -1134,6 +1228,28 @@ ${refsText}`;
       e.stopPropagation();
       div.classList.toggle('pp-reference-collapsed');
       _saveItemCollapse('ir', div, div.classList.contains('pp-reference-collapsed'));
+    });
+    div.querySelector('.btn-migrate-to-refs').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = ta.value.trim();
+      if (!text) { toast('La referencia está vacía.', 'error'); return; }
+      const existing = Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+        .map(t => t.value.trim());
+      const btn = e.currentTarget;
+      if (existing.includes(text)) {
+        btn.classList.add('migrated');
+        toast('Ya incluida en Referencias generales.', 'info');
+        return;
+      }
+      const refs = _collectReferences();
+      refs.push(text);
+      _renderReferencesList(refs);
+      _refreshMigrateBtns();
+      _refreshSharedDois();
+      _scheduleAutosave();
+      btn.classList.add('migrated');
+      toast('Referencia copiada a Referencias generales ✓', 'success');
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -1147,6 +1263,49 @@ ${refsText}`;
     refreshPreview();
     refreshHeaderDoi();
     return div;
+  }
+
+  function _refreshIntroMigrateBtns() {
+    const refTexts = new Set(
+      Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+        .map(t => t.value.trim()).filter(Boolean)
+    );
+    document.querySelectorAll('#intro-references-list .pp-intro-reference-item').forEach(item => {
+      const text = (item.querySelector('.pp-intro-reference-textarea')?.value || '').trim();
+      const btn  = item.querySelector('.btn-migrate-to-refs');
+      if (btn && text && refTexts.has(text)) btn.classList.add('migrated');
+    });
+  }
+
+  function _refreshSharedDois() {
+    const extract = selector =>
+      Array.from(document.querySelectorAll(selector))
+        .flatMap(ta => (ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []));
+
+    const genDois   = extract('#references-list .pp-reference-textarea');
+    const introDois = extract('#intro-references-list .pp-intro-reference-textarea');
+
+    // Purple: DOI present in both lists (cross-list, intentional)
+    const genSet   = new Set(genDois);
+    const introSet = new Set(introDois);
+    const shared = new Set([...genSet].filter(d => introSet.has(d)));
+
+    // Orange: DOI appears more than once within the same list (intra-list duplicate)
+    const dupGen   = new Set(genDois.filter((d, i, a) => a.indexOf(d) !== i));
+    const dupIntro = new Set(introDois.filter((d, i, a) => a.indexOf(d) !== i));
+
+    document.querySelectorAll('#references-list .pp-doi-chip').forEach(chip => {
+      const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
+      const isDup = doi && dupGen.has(doi);
+      chip.classList.toggle('pp-doi-chip--dup',    isDup);
+      chip.classList.toggle('pp-doi-chip--shared', !isDup && doi && shared.has(doi));
+    });
+    document.querySelectorAll('#intro-references-list .pp-doi-chip').forEach(chip => {
+      const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
+      const isDup = doi && dupIntro.has(doi);
+      chip.classList.toggle('pp-doi-chip--dup',    isDup);
+      chip.classList.toggle('pp-doi-chip--shared', !isDup && doi && shared.has(doi));
+    });
   }
 
   function _updateIntroReferencesCount() {
@@ -1205,6 +1364,39 @@ ${refsText}`;
     return Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
       .map(t => (t.value || '').trim())
       .filter(Boolean);
+  }
+
+  function _syncIntroReferenceDois() {
+    const ta = document.getElementById('field-introduction');
+    if (!ta) return;
+    const dois = [...new Set((ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []))];
+    if (!dois.length) return;
+
+    const existingTexts = Array.from(
+      document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea')
+    ).map(t => t.value.trim());
+
+    let added = false;
+    dois.forEach(doi => {
+      if (existingTexts.some(t => t.includes(doi))) return;
+      const url  = `https://doi.org/${doi}`;
+      const list = document.getElementById('intro-references-list');
+      if (!list) return;
+      const item = _createIntroReferenceItem(url, list.children.length);
+      list.appendChild(item);
+      _setupAnchorButtons(item);
+      _setupSupPreviews(item);
+      existingTexts.push(url);
+      added = true;
+    });
+
+    if (added) {
+      _updateIntroReferencesCount();
+      _refreshAllJumpButtons();
+      _refreshIntroMigrateBtns();
+      _refreshSharedDois();
+      _scheduleAutosave();
+    }
   }
 
   /* ── Quick-jump buttons in section headers ────────────────────────────── */
@@ -1786,6 +1978,10 @@ ${refsText}`;
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
         _updateAltTitlesIndicator();
       });
+      input.addEventListener('blur', () => {
+        const sc = _sentenceCase(input.value);
+        if (sc !== input.value) input.value = sc;
+      });
       row.querySelector('.btn-remove').addEventListener('click', () => {
         row.remove();
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
@@ -1847,6 +2043,31 @@ ${refsText}`;
     } else {
       grp.classList.remove('pp-alt-titles-collapsed');
     }
+  }
+
+  function _updateDescriptionIndicator() {
+    const btn = document.getElementById('btn-toggle-description');
+    if (!btn) return;
+    const has = (document.getElementById('field-description')?.value || '').trim().length > 0;
+    btn.classList.toggle('pp-collapse-btn--filled', has);
+    btn.classList.toggle('pp-collapse-btn--empty',  !has);
+  }
+
+  function _toggleDescription() {
+    const grp = document.getElementById('description-group');
+    if (!grp) return;
+    const collapsed = grp.classList.toggle('pp-description-collapsed');
+    if (collapsed) localStorage.setItem('pp-collapse:description-group', '1');
+    else           localStorage.removeItem('pp-collapse:description-group');
+  }
+
+  function _restoreDescriptionState() {
+    const grp = document.getElementById('description-group');
+    if (!grp) return;
+    if (localStorage.getItem('pp-collapse:description-group') === '1')
+      grp.classList.add('pp-description-collapsed');
+    else
+      grp.classList.remove('pp-description-collapsed');
   }
 
   /* ── Toggle helpers ────────────────────────────────────────────────────── */
@@ -2939,6 +3160,15 @@ ${refsText}`;
     // Alternative titles
     document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
     document.getElementById('btn-toggle-alt-titles')?.addEventListener('click', _toggleAltTitles);
+    document.getElementById('btn-toggle-description')?.addEventListener('click', _toggleDescription);
+    document.getElementById('field-description')?.addEventListener('input', _updateDescriptionIndicator);
+
+    // Sentence-case main title on blur
+    document.getElementById('field-title')?.addEventListener('blur', e => {
+      const el = e.target;
+      const sc = _sentenceCase(el.value);
+      if (sc !== el.value) el.value = sc;
+    });
 
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));
@@ -3082,6 +3312,7 @@ ${refsText}`;
     document.getElementById('btn-toggle-authorsummary').addEventListener('click', () =>
       _toggleSection('section-authorsummary', 'btn-toggle-authorsummary', 'fa-user-edit', 'Author Summary'));
     document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
+    document.getElementById('field-introduction')?.addEventListener('input', _syncIntroReferenceDois);
     document.getElementById('btn-toggle-methods').addEventListener('click', () => {
       _toggleSection('section-methods', 'btn-toggle-methods', 'fa-flask-vial', 'Methods');
       const section = document.getElementById('section-methods');
@@ -3123,6 +3354,8 @@ ${refsText}`;
     });
     document.getElementById('btn-add-reference')?.addEventListener('click', () => _addReference(true));
     document.getElementById('btn-collapse-all-refs')?.addEventListener('click', () => _toggleCollapseAllRefs());
+    document.getElementById('refs-search')?.addEventListener('input', e => _applyRefSearch('references-list', e.target.value));
+    document.getElementById('intro-refs-search')?.addEventListener('input', e => _applyRefSearch('intro-references-list', e.target.value));
     document.getElementById('btn-discuss-claude')?.addEventListener('click', () => _askClaudeDiscussion());
     // Delegated AI toggle for dynamic reference rows
     document.getElementById('references-list')?.addEventListener('click', e => {
@@ -3443,6 +3676,12 @@ ${refsText}`;
 
   function _esc(str) {
     return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function _sentenceCase(str) {
+    const t = str.trim();
+    if (!t) return t;
+    return t[0].toUpperCase() + t.slice(1).toLowerCase();
   }
 
   // Render text with markdown-style superscript markers: PrP^Sc^ -> PrP<sup>Sc</sup>.
@@ -3768,8 +4007,11 @@ ${refsText}`;
     grid.innerHTML = notes.map(n => {
       const textColor = colorMap[n.color] || '#374151';
       const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) : '';
+      const hasImg = /<img/i.test(n.text || '');
+      const preview = _esc(_htmlToText(n.text).slice(0, 140));
+      const imgHint = hasImg ? ' <span style="opacity:.6;font-size:10px;">🖼</span>' : '';
       return `<div class="pp-note-card" style="background:${n.color};color:${textColor};" data-note-id="${_esc(n.id)}" title="Clic para editar">
-        <div class="pp-note-card-text">${_esc(n.text)}</div>
+        <div class="pp-note-card-text">${preview}${imgHint}</div>
         <div class="pp-note-card-footer">
           <span class="pp-note-card-date">${date}</span>
           <button class="pp-note-card-delete" data-note-id="${_esc(n.id)}" title="Eliminar nota"><i class="fas fa-trash-alt"></i></button>
@@ -3791,6 +4033,65 @@ ${refsText}`;
 
   let _detailNoteId = null;
 
+  // Compress a File/Blob image via Canvas → JPEG base64 (max 900px, q=0.65)
+  function _compressImage(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 900;
+          let w = img.width, h = img.height;
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.65));
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Sanitize HTML saved from contenteditable — allow only safe tags + base64 images
+  function _sanitizeNoteHtml(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const ALLOWED = new Set(['b','i','strong','em','br','p','div','span','ul','ol','li','img']);
+    function walk(node) {
+      Array.from(node.childNodes).forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE) return;
+        if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); return; }
+        const tag = child.tagName.toLowerCase();
+        if (!ALLOWED.has(tag)) {
+          const frag = document.createDocumentFragment();
+          Array.from(child.childNodes).forEach(c => frag.appendChild(c.cloneNode(true)));
+          child.replaceWith(frag);
+          return;
+        }
+        if (tag === 'img') {
+          const src = child.getAttribute('src') || '';
+          if (!src.startsWith('data:image/')) { child.remove(); return; }
+          while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          child.setAttribute('src', src);
+        } else {
+          // Strip all attributes (no style, class, event handlers)
+          while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          walk(child);
+        }
+      });
+    }
+    walk(doc.body);
+    return doc.body.innerHTML;
+  }
+
+  // Extract plain text from HTML (for mini card previews)
+  function _htmlToText(html) {
+    const d = document.createElement('div');
+    d.innerHTML = html || '';
+    return d.textContent || '';
+  }
+
   function _openNoteDetail(noteId) {
     if (!_notesPkgId) return;
     const pkg  = _packages.find(p => p.id === _notesPkgId);
@@ -3800,10 +4101,10 @@ ${refsText}`;
 
     const backdrop = document.getElementById('pp-note-detail-backdrop');
     const modal    = document.getElementById('pp-note-detail-modal');
-    const ta       = document.getElementById('pp-note-detail-textarea');
+    const content  = document.getElementById('pp-note-detail-content');
     const dateEl   = document.getElementById('pp-note-detail-date');
 
-    ta.value = note.text;
+    content.innerHTML = _sanitizeNoteHtml(note.text || '');
     dateEl.textContent = note.createdAt
       ? new Date(note.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : '';
@@ -3814,7 +4115,16 @@ ${refsText}`;
     backdrop.style.display = 'block';
     modal.style.display = 'flex';
     requestAnimationFrame(() => { backdrop.classList.add('active'); modal.classList.add('active'); });
-    setTimeout(() => ta.focus(), 220);
+    setTimeout(() => { content.focus(); _placeCursorAtEnd(content); }, 220);
+  }
+
+  function _placeCursorAtEnd(el) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
   function _closeNoteDetail() {
@@ -3829,12 +4139,12 @@ ${refsText}`;
 
   function _applyNoteDetailBg(color) {
     const colorEntry = NOTE_COLORS.find(c => c.value === color) || NOTE_COLORS[0];
-    const header = document.getElementById('pp-note-detail-header');
-    const ta     = document.getElementById('pp-note-detail-textarea');
-    const modal  = document.getElementById('pp-note-detail-modal');
-    if (header) header.style.background = color;
-    if (ta)     { ta.style.background = color; ta.style.color = colorEntry.text; }
-    if (modal)  modal.style.background = color;
+    const header  = document.getElementById('pp-note-detail-header');
+    const content = document.getElementById('pp-note-detail-content');
+    const modal   = document.getElementById('pp-note-detail-modal');
+    if (header)  header.style.background = color;
+    if (content) { content.style.background = color; content.style.color = colorEntry.text; }
+    if (modal)   modal.style.background = color;
   }
 
   function _renderNoteDetailColors(activeColor) {
@@ -3860,13 +4170,15 @@ ${refsText}`;
 
   async function _saveNoteDetail() {
     if (!_notesPkgId || !_detailNoteId) return;
-    const text  = (document.getElementById('pp-note-detail-textarea')?.value || '').trim();
-    if (!text) { toast('La nota no puede estar vacía.', 'error'); return; }
+    const content = document.getElementById('pp-note-detail-content');
+    const html    = _sanitizeNoteHtml(content?.innerHTML || '');
+    const plain   = _htmlToText(html).trim();
+    if (!plain) { toast('La nota no puede estar vacía.', 'error'); return; }
     const color = _getDetailActiveColor();
     const pkg   = _packages.find(p => p.id === _notesPkgId);
     if (!pkg) return;
     const notes = (pkg.notes || []).map(n =>
-      n.id === _detailNoteId ? { ...n, text, color } : n
+      n.id === _detailNoteId ? { ...n, text: html, color } : n
     );
     try {
       const saved = await PPStorage.update(_notesPkgId, { notes });
@@ -3879,6 +4191,30 @@ ${refsText}`;
     } catch (e) { toast('Error guardando la nota: ' + e.message, 'error'); }
   }
 
+  async function _handleNotePaste(e) {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imgItem = items.find(it => it.type.startsWith('image/'));
+    if (!imgItem) return; // let browser handle plain text paste
+    e.preventDefault();
+    const file = imgItem.getAsFile();
+    if (!file) return;
+    const b64 = await _compressImage(file);
+    const img = document.createElement('img');
+    img.src = b64;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) {
+      document.getElementById('pp-note-detail-content')?.appendChild(img);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(img);
+    range.setStartAfter(img);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   function _bindNoteDetailEvents() {
     document.getElementById('pp-note-detail-backdrop')?.addEventListener('click', _closeNoteDetail);
     document.getElementById('btn-note-detail-close')?.addEventListener('click', _closeNoteDetail);
@@ -3887,7 +4223,9 @@ ${refsText}`;
       const idToDelete = _detailNoteId;
       if (idToDelete) { _closeNoteDetail(); setTimeout(() => _deleteNote(idToDelete), 230); }
     });
-    document.getElementById('pp-note-detail-textarea')?.addEventListener('keydown', e => {
+    const content = document.getElementById('pp-note-detail-content');
+    content?.addEventListener('paste', _handleNotePaste);
+    content?.addEventListener('keydown', e => {
       if (e.key === 'Escape') _closeNoteDetail();
       if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); _saveNoteDetail(); }
     });
