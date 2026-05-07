@@ -83,9 +83,13 @@ async function getUserDetailedStats(req, res) {
     const counts = { pending: 0, read: 0, summarized: 0, evaluated: 0 };
     const allScores = [];
     let lastActivityDate = null;
+    let nSummarized = 0;
+    let nEvaluated  = 0;
 
     for (const ua of userArticles) {
       counts[ua.status] = (counts[ua.status] || 0) + 1;
+      if (ua.summary_date)    nSummarized++;
+      if (ua.evaluation_date) nEvaluated++;
 
       for (const f of ['read_date', 'summary_date', 'evaluation_date']) {
         if (ua[f]) {
@@ -100,7 +104,11 @@ async function getUserDetailedStats(req, res) {
     }
 
     const total = Object.values(counts).reduce((s, n) => s + n, 0);
-    const totalRead = counts.read + counts.summarized + counts.evaluated;
+    // Count articles where the student has done at least one phase
+    // (summary, evaluation, or fully completed) — mirrors the 'Leídos' filter.
+    const totalRead = userArticles.filter(
+      (ua) => ua.evaluation_date || ua.summary_date || ua.status === 'read'
+    ).length;
     const avg_score = allScores.length
       ? Math.round((allScores.reduce((s, n) => s + n, 0) / allScores.length) * 100) / 100
       : null;
@@ -108,8 +116,8 @@ async function getUserDetailedStats(req, res) {
     const stats = {
       total_assigned: total,
       total_read: totalRead,
-      total_summarized: counts.summarized + counts.evaluated,
-      total_evaluated: counts.evaluated,
+      total_summarized: nSummarized,
+      total_evaluated: nEvaluated,
       avg_score,
       completion_rate: total > 0 ? Math.round((totalRead / total) * 100) / 100 : 0,
       last_activity_date: lastActivityDate ? lastActivityDate.toISOString().substring(0, 10) : null,

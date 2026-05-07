@@ -89,13 +89,21 @@ async function getArticlesAnalytics(req, res) {
 async function getAssignmentsMatrix(req, res) {
   try {
     const [assignments, students] = await Promise.all([
-      UserArticle.findAll({ attributes: ['id', 'article_id', 'user_id', 'status'], raw: true }),
+      UserArticle.findAll({
+        attributes: ['id', 'article_id', 'user_id', 'status', 'summary_date', 'evaluation_date'],
+        raw: true,
+      }),
       User.findAll({ where: { role: 'student' }, attributes: ['id', 'name'], order: [['name', 'ASC']], raw: true }),
     ]);
     const matrix = {};
     for (const ua of assignments) {
       if (!matrix[ua.article_id]) matrix[ua.article_id] = {};
-      matrix[ua.article_id][ua.user_id] = { id: ua.id, status: ua.status };
+      // Derive the display status from the actual phase-completion dates so
+      // that dots reflect reality even when the status field lags behind.
+      const displayStatus = ua.evaluation_date ? 'evaluated'
+        : ua.summary_date                       ? 'summarized'
+        : ua.status;                              // 'read' | 'pending'
+      matrix[ua.article_id][ua.user_id] = { id: ua.id, status: displayStatus };
     }
     return res.json({ matrix, students });
   } catch (err) {
