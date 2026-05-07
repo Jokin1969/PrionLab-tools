@@ -3446,19 +3446,25 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   color: #0284c7;
   flex-shrink: 0;
 }
+.pp-doi-chip.pp-doi-chip--shared::before,
+.pp-reference-item .pp-doi-chip.pp-doi-chip--shared::before { color: #7c3aed; }
 .pp-doi-chip:hover {
   background: #bae6fd;
   border-color: #38bdf8;
   text-decoration: none;
 }
 .pp-doi-chip.pp-doi-chip--shared,
-.pp-doi-chip-sm.pp-doi-chip--shared {
+.pp-doi-chip-sm.pp-doi-chip--shared,
+.pp-reference-item .pp-doi-chip.pp-doi-chip--shared,
+.pp-reference-item .pp-doi-chip-sm.pp-doi-chip--shared {
   background: #ede9fe;
   border-color: #a78bfa;
   color: #5b21b6;
 }
 .pp-doi-chip.pp-doi-chip--shared:hover,
-.pp-doi-chip-sm.pp-doi-chip--shared:hover {
+.pp-doi-chip-sm.pp-doi-chip--shared:hover,
+.pp-reference-item .pp-doi-chip.pp-doi-chip--shared:hover,
+.pp-reference-item .pp-doi-chip-sm.pp-doi-chip--shared:hover {
   background: #ddd6fe;
   border-color: #7c3aed;
   text-decoration: none;
