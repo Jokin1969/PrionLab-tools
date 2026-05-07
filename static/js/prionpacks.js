@@ -3884,7 +3884,8 @@ ${refsText}`;
     document.getElementById('btn-note-detail-close')?.addEventListener('click', _closeNoteDetail);
     document.getElementById('btn-note-detail-save')?.addEventListener('click', _saveNoteDetail);
     document.getElementById('btn-note-detail-delete')?.addEventListener('click', () => {
-      if (_detailNoteId) { _closeNoteDetail(); setTimeout(() => _deleteNote(_detailNoteId), 230); }
+      const idToDelete = _detailNoteId;
+      if (idToDelete) { _closeNoteDetail(); setTimeout(() => _deleteNote(idToDelete), 230); }
     });
     document.getElementById('pp-note-detail-textarea')?.addEventListener('keydown', e => {
       if (e.key === 'Escape') _closeNoteDetail();
