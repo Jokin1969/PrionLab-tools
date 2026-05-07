@@ -224,6 +224,32 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         add_runs(p, intro, size=Pt(10), color=_DARK)
         doc.add_paragraph()
 
+    # ── Introduction References (Ri-XX) ───────────────────────────────────────────────────────
+    intro_refs_raw = pkg.get('introReferences')
+    if isinstance(intro_refs_raw, list):
+        intro_refs_list = [str(r).strip() for r in intro_refs_raw if isinstance(r, str) and r.strip()]
+    elif isinstance(intro_refs_raw, str) and intro_refs_raw.strip():
+        intro_refs_list = [intro_refs_raw.strip()]
+    else:
+        intro_refs_list = []
+    if intro_refs_list:
+        _section_heading(doc, 'REFERENCIAS DE INTRODUCCIÓN', collapsed=True)
+        for i, ref in enumerate(intro_refs_list, 1):
+            header, abstract = _split_reference(ref)
+            p = doc.add_paragraph(style='Heading 3')
+            pPr = p._p.get_or_add_pPr()
+            collapsed_el = OxmlElement('w:collapsed')
+            collapsed_el.set(qn('w:val'), '1')
+            pPr.append(collapsed_el)
+            r_num = p.add_run(f'[Ri-{i:02d}] ')
+            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = _TEAL
+            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
+            if abstract:
+                p_abs = doc.add_paragraph()
+                add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
+            sep = doc.add_paragraph()
+            sep.paragraph_format.space_after = Pt(8)
+
     # ── Methods (multi-field: list of {title, body}) ──────────────────────────────────────────
     methods_raw = pkg.get('methods')
     if isinstance(methods_raw, list):
@@ -421,7 +447,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     else:
         refs_list = []
     if refs_list:
-        _section_heading(doc, 'REFERENCIAS')
+        _section_heading(doc, 'REFERENCIAS', collapsed=True)
         for i, ref in enumerate(refs_list, 1):
             header, abstract = _split_reference(ref)
             # Heading 3 gives collapse triangle in Word 2013+; w:collapsed hides body by default
