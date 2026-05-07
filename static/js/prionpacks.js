@@ -1788,6 +1788,10 @@ ${refsText}`;
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
         _updateAltTitlesIndicator();
       });
+      input.addEventListener('blur', () => {
+        const sc = _sentenceCase(input.value);
+        if (sc !== input.value) input.value = sc;
+      });
       row.querySelector('.btn-remove').addEventListener('click', () => {
         row.remove();
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
@@ -2969,6 +2973,13 @@ ${refsText}`;
     document.getElementById('btn-toggle-description')?.addEventListener('click', _toggleDescription);
     document.getElementById('field-description')?.addEventListener('input', _updateDescriptionIndicator);
 
+    // Sentence-case main title on blur
+    document.getElementById('field-title')?.addEventListener('blur', e => {
+      const el = e.target;
+      const sc = _sentenceCase(el.value);
+      if (sc !== el.value) el.value = sc;
+    });
+
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));
     document.getElementById('btn-docs-back')?.addEventListener('click', showDashboard);
@@ -3472,6 +3483,12 @@ ${refsText}`;
 
   function _esc(str) {
     return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function _sentenceCase(str) {
+    const t = str.trim();
+    if (!t) return t;
+    return t[0].toUpperCase() + t.slice(1).toLowerCase();
   }
 
   // Render text with markdown-style superscript markers: PrP^Sc^ -> PrP<sup>Sc</sup>.
