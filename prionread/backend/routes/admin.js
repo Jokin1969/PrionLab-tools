@@ -230,6 +230,154 @@ router.post('/sync/backfill-pdf-pages', async (req, res) => {
   }
 });
 
+// ─── Word export: article selection checklist ─────────────────────────────────
+router.post('/articles/export-word', async (req, res) => {
+  const {
+    Document, Paragraph, TextRun, Table, TableRow, TableCell,
+    CheckBox, WidthType, BorderStyle, AlignmentType, VerticalAlign,
+    HeightRule, Packer, convertInchesToTwip,
+  } = require('docx');
+
+  const articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
+  if (!articles.length) return res.status(400).json({ error: 'No articles provided' });
+
+  // ── Colour palette (blue-friendly) ──────────────────────────────────────
+  const C_TITLE   = '0F3460';   // deep navy
+  const C_META    = '2563EB';   // medium blue
+  const C_JOURNAL = '64748B';   // slate
+  const C_ABST    = '374151';   // dark grey
+  const C_BORDER  = 'E2E8F0';   // very light grey for separators
+
+  // ── Helper: truncate abstract to ~4 lines ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  const truncate = (text, words = 60) => {
+    if (!text) return null;
+    const parts = text.trim().split(/\s+/);
+    return parts.length <= words ? text.trim() : parts.slice(0, words).join(' ') + '…';
+  };
+
+  // ── Build one table row per article ─────────────────────────────────────
+  const noBorder = {
+    top:    { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    left:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    right:  { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    insideVertical:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  };
+  const separatorBorder = {
+    ...noBorder,
+    bottom: { style: BorderStyle.SINGLE, size: 1, color: C_BORDER },
+  };
+
+  const rows = articles.map((a, idx) => {
+    const isLast = idx === articles.length - 1;
+    const authors = Array.isArray(a.authors) ? a.authors.join(', ') : (a.authors || '');
+    const journal = [a.journal, a.year].filter(Boolean).join(' · ');
+    const abst    = truncate(a.abstract);
+
+    const contentParas = [
+      // Title
+      new Paragraph({
+        children: [new TextRun({
+          text: a.title || '(Sin título)',
+          bold: true, size: 24, color: C_TITLE,
+        })],
+        spacing: { after: 40 },
+      }),
+    ];
+
+    if (authors) contentParas.push(new Paragraph({
+      children: [new TextRun({ text: authors, size: 19, color: C_META })],
+      spacing: { after: 30 },
+    }));
+
+    if (journal) contentParas.push(new Paragraph({
+      children: [new TextRun({ text: journal, size: 18, italics: true, color: C_JOURNAL })],
+      spacing: { after: abst ? 50 : 0 },
+    }));
+
+    if (abst) contentParas.push(new Paragraph({
+      children: [new TextRun({ text: abst, size: 17, color: C_ABST })],
+      spacing: { after: 0 },
+    }));
+
+    return new TableRow({
+      children: [
+        // Checkbox cell
+        new TableCell({
+          children: [new Paragraph({
+            children: [new CheckBox({ checked: false })],
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 40 },
+          })],
+          width:  { size: 420, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.TOP,
+          borders: isLast ? noBorder : separatorBorder,
+          margins: { top: convertInchesToTwip(0.05), bottom: convertInchesToTwip(0.1),
+                     left: convertInchesToTwip(0.05), right: convertInchesToTwip(0.05) },
+        }),
+        // Content cell
+        new TableCell({
+          children: contentParas,
+          width: { size: 9060, type: WidthType.DXA },
+          borders: isLast ? noBorder : separatorBorder,
+          margins: { top: convertInchesToTwip(0.08), bottom: convertInchesToTwip(0.12),
+                     left: convertInchesToTwip(0.1),  right: convertInchesToTwip(0.1) },
+        }),
+      ],
+    });
+  });
+
+  const doc = new Document({
+    numbering: { config: [] },
+    sections: [{
+      properties: {
+        page: {
+          margin: {
+            top:    convertInchesToTwip(1),
+            bottom: convertInchesToTwip(1),
+            left:   convertInchesToTwip(1.1),
+            right:  convertInchesToTwip(1.1),
+          },
+        },
+      },
+      children: [
+        // Document title
+        new Paragraph({
+          children: [new TextRun({
+            text: 'Selección de artículos',
+            bold: true, size: 36, color: C_TITLE,
+          })],
+          spacing: { after: 80 },
+          border: {
+            bottom: { style: BorderStyle.SINGLE, size: 4, color: C_META, space: 6 },
+          },
+        }),
+        // Subtitle / instructions
+        new Paragraph({
+          children: [new TextRun({
+            text: `${articles.length} artículo${articles.length !== 1 ? 's' : ''} — marca los que seleccionas y devuelve el documento`,
+            size: 18, color: C_JOURNAL, italics: true,
+          })],
+          spacing: { after: 240 },
+        }),
+        // Article table
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: noBorder,
+          rows,
+        }),
+      ],
+    }],
+  });
+
+  const buf = await Packer.toBuffer(doc);
+  const ts  = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="seleccion_articulos_${ts}.docx"`);
+  res.end(buf);
+});
+
 // ─── Notification Rules CRUD ──────────────────────────────────────────────────
 
 router.get('/notification-rules', async (_req, res) => {

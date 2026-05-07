@@ -330,6 +330,23 @@ const AdminArticles = () => {
     XLSX.writeFile(wb, `${safeName}.xlsx`);
   };
 
+  const downloadWordChecklist = async (articleList) => {
+    if (!articleList.length) return;
+    try {
+      const resp = await adminService.exportArticlesWord(articleList);
+      const url  = URL.createObjectURL(new Blob([resp.data], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `seleccion_articulos_${new Date().toISOString().slice(0, 10)}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      errorFlash('Error generando el Word: ' + (err?.message || 'desconocido'));
+    }
+  };
+
   const downloadAllXlsx = (articleList) => {
     if (!articleList.length) return;
     const ws = XLSX.utils.json_to_sheet(articleList.map(articleToRow));
@@ -411,6 +428,14 @@ const AdminArticles = () => {
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             📊 XLS ({filteredArticles.length})
+          </button>
+          <button
+            onClick={() => downloadWordChecklist(filteredArticles)}
+            disabled={filteredArticles.length === 0}
+            title={`Exportar ${filteredArticles.length} artículo${filteredArticles.length !== 1 ? 's' : ''} como Word con casillas de verificación`}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            📝 Word ({filteredArticles.length})
           </button>
           <Button variant="ghost" onClick={() => setShowDuplicatesModal(true)} title="Detectar artículos duplicados o muy similares">
             🔍 Buscar duplicados

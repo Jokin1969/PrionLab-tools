@@ -48,6 +48,9 @@ export const adminService = {
   getArticlePdfLink: async (articleId) =>
     (await api.post(`/articles/${articleId}/download-link`)).data,
 
+  exportArticlesWord: async (articles) =>
+    api.post('/admin/articles/export-word', { articles }, { responseType: 'blob' }),
+
   // PDF health
   verifyPdfs: async () => (await api.post('/admin/articles/verify-pdfs')).data,
   clearPdfLink: async (articleId) => (await api.delete(`/articles/${articleId}/pdf-link`)).data,
