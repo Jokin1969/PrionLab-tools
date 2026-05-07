@@ -1278,6 +1278,38 @@ ${refsText}`;
       .filter(Boolean);
   }
 
+  function _syncIntroReferenceDois() {
+    const ta = document.getElementById('field-introduction');
+    if (!ta) return;
+    const dois = [...new Set((ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []))];
+    if (!dois.length) return;
+
+    const existingTexts = Array.from(
+      document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea')
+    ).map(t => t.value.trim());
+
+    let added = false;
+    dois.forEach(doi => {
+      if (existingTexts.some(t => t.includes(doi))) return;
+      const url  = `https://doi.org/${doi}`;
+      const list = document.getElementById('intro-references-list');
+      if (!list) return;
+      const item = _createIntroReferenceItem(url, list.children.length);
+      list.appendChild(item);
+      _setupAnchorButtons(item);
+      _setupSupPreviews(item);
+      existingTexts.push(url);
+      added = true;
+    });
+
+    if (added) {
+      _updateIntroReferencesCount();
+      _refreshAllJumpButtons();
+      _refreshIntroMigrateBtns();
+      _scheduleAutosave();
+    }
+  }
+
   /* ── Quick-jump buttons in section headers ────────────────────────────── */
   function _refreshAllJumpButtons() {
     _refreshJumpButtonsFor({
@@ -3191,6 +3223,7 @@ ${refsText}`;
     document.getElementById('btn-toggle-authorsummary').addEventListener('click', () =>
       _toggleSection('section-authorsummary', 'btn-toggle-authorsummary', 'fa-user-edit', 'Author Summary'));
     document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
+    document.getElementById('field-introduction')?.addEventListener('input', _syncIntroReferenceDois);
     document.getElementById('btn-toggle-methods').addEventListener('click', () => {
       _toggleSection('section-methods', 'btn-toggle-methods', 'fa-flask-vial', 'Methods');
       const section = document.getElementById('section-methods');
