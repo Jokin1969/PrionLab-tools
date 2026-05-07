@@ -2925,7 +2925,16 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   /* Forms: single column */
   .pp-form-row { grid-template-columns: 1fr; }
 
-  /* Editor: full screen feel */
+  /* Editor: single-column layout — score sidebar moves below the form */
+  .pp-editor-layout {
+    grid-template-columns: 1fr;
+    padding: 8px 12px 100px;
+    gap: 16px;
+  }
+  .pp-editor-sidebar { position: static; }
+  .pp-editor-form .pp-card-section { scroll-margin-top: 110px; }
+
+  /* Toolbar: wrap action buttons below title on very narrow screens */
   .pp-editor-toolbar {
     padding: 8px 12px;
     flex-wrap: wrap;
@@ -2934,8 +2943,15 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   }
   .pp-editor-toolbar-left { flex: 1; min-width: 0; overflow: hidden; }
   .pp-editor-toolbar-actions { gap: 4px; flex-wrap: wrap; }
-  .pp-editor-layout { padding: 8px 12px 100px; gap: 16px; }
-  .pp-editor-form .pp-card-section { scroll-margin-top: 110px; }
+
+  /* Collapsible item headers: allow wrapping so buttons don't overflow */
+  .pp-finding-header { flex-wrap: wrap; }
+  .pp-method-header  { flex-wrap: wrap; }
+  .pp-reference-header { flex-wrap: wrap; }
+
+  /* Reference search: narrower on mobile */
+  .pp-ref-search { width: 110px; }
+  .pp-ref-search:focus { width: 140px; }
 
   /* Notes panel: full-width bottom sheet on mobile */
   .pp-notes-panel {
@@ -2954,6 +2970,13 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   /* Section header: stack on narrow screens */
   .pp-section-header { flex-wrap: wrap; gap: 6px; }
   .pp-select-responsible { max-width: 130px !important; width: 130px !important; }
+
+  /* Score card: readable in single column */
+  .pp-score-circle-wrap { margin: 0 auto; }
+
+  /* Prevent horizontal scroll on cards with long content */
+  .pp-card-section { overflow-x: hidden; }
+  .pp-doi-chips { overflow-x: auto; }
 }
 
 /* ── Standalone toggle row (extracted from Basic Info) ───────────────────── */
