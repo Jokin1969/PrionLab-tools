@@ -841,6 +841,33 @@ const PrionPacks = (() => {
   // is never consumed, but 10.1016/s0896-6273(00)00046-5 is matched whole.
   const _DOI_RE = /\b10\.\d{4,}\/(?:[^\s,;>\]()]+|\([^)]*\))+/g;
 
+  function _makeCopyBtn(doi) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pp-doi-copy-btn';
+    btn.title = 'Copiar DOI al portapapeles';
+    btn.innerHTML = '<i class="fas fa-copy"></i>';
+    btn.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = `https://doi.org/${doi}`;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        const tmp = document.createElement('textarea');
+        tmp.value = url;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand('copy');
+        document.body.removeChild(tmp);
+      }
+      btn.innerHTML = '<i class="fas fa-check"></i>';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i>'; btn.classList.remove('copied'); }, 1500);
+    });
+    return btn;
+  }
+
   function _renderDoiChipsFor(textarea, container) {
     if (!container) return;
     const matches = (textarea.value || '').match(_DOI_RE) || [];
@@ -855,6 +882,7 @@ const PrionPacks = (() => {
       a.title = doi;
       a.textContent = doi;
       container.appendChild(a);
+      container.appendChild(_makeCopyBtn(doi));
     });
   }
 
@@ -918,6 +946,9 @@ const PrionPacks = (() => {
         a.textContent = first;
         a.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(a);
+        const cb = _makeCopyBtn(first);
+        cb.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(cb);
       }
     };
     ta.addEventListener('input', () => {
@@ -1159,6 +1190,9 @@ ${refsText}`;
         a.textContent = first;
         a.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(a);
+        const cb = _makeCopyBtn(first);
+        cb.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(cb);
       }
     };
     ta.addEventListener('input', () => {

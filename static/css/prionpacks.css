@@ -3447,6 +3447,25 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   border-color: #38bdf8;
   text-decoration: none;
 }
+.pp-doi-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 10px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 2px;
+  transition: color .15s, background .15s;
+}
+.pp-doi-copy-btn:hover { color: #1a7373; background: #e6f3f3; }
+.pp-doi-copy-btn.copied { color: #16a34a; }
 
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
