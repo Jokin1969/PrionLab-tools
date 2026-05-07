@@ -774,6 +774,7 @@ const PrionPacks = (() => {
     _renderIntroReferencesList(introRefs);
     _refreshMigrateBtns();
     _refreshIntroMigrateBtns();
+    _refreshSharedDois();
 
     // Methods — multi-field. Each item has {title, body}. Legacy single-string
     // value (or list of strings) is wrapped into a list of body-only items.
@@ -956,6 +957,7 @@ const PrionPacks = (() => {
       _renderDoiChipsFor(ta, chips);
       refreshPreview();
       refreshHeaderDoi();
+      _refreshSharedDois();
     });
     div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
       e.preventDefault();
@@ -979,6 +981,7 @@ const PrionPacks = (() => {
       const introRefs = _collectIntroReferences();
       introRefs.push(text);
       _renderIntroReferencesList(introRefs);
+      _refreshSharedDois();
       _scheduleAutosave();
       btn.classList.add('migrated');
       toast('Referencia copiada a Introducción ✓', 'success');
@@ -1218,6 +1221,7 @@ ${refsText}`;
       _renderDoiChipsFor(ta, chips);
       refreshPreview();
       refreshHeaderDoi();
+      _refreshSharedDois();
       _scheduleAutosave();
     });
     div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
@@ -1243,6 +1247,7 @@ ${refsText}`;
       refs.push(text);
       _renderReferencesList(refs);
       _refreshMigrateBtns();
+      _refreshSharedDois();
       _scheduleAutosave();
       btn.classList.add('migrated');
       toast('Referencia copiada a Referencias generales ✓', 'success');
@@ -1270,6 +1275,23 @@ ${refsText}`;
       const text = (item.querySelector('.pp-intro-reference-textarea')?.value || '').trim();
       const btn  = item.querySelector('.btn-migrate-to-refs');
       if (btn && text && refTexts.has(text)) btn.classList.add('migrated');
+    });
+  }
+
+  function _refreshSharedDois() {
+    const doiSet = selector => new Set(
+      Array.from(document.querySelectorAll(selector))
+        .flatMap(ta => (ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []))
+    );
+    const shared = new Set(
+      [...doiSet('#references-list .pp-reference-textarea')]
+        .filter(d => doiSet('#intro-references-list .pp-intro-reference-textarea').has(d))
+    );
+    document.querySelectorAll(
+      '#references-list .pp-doi-chip, #intro-references-list .pp-doi-chip'
+    ).forEach(chip => {
+      const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
+      chip.classList.toggle('pp-doi-chip--shared', shared.has(doi));
     });
   }
 
@@ -1359,6 +1381,7 @@ ${refsText}`;
       _updateIntroReferencesCount();
       _refreshAllJumpButtons();
       _refreshIntroMigrateBtns();
+      _refreshSharedDois();
       _scheduleAutosave();
     }
   }

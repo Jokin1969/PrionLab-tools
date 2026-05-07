@@ -3451,6 +3451,18 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   border-color: #38bdf8;
   text-decoration: none;
 }
+.pp-doi-chip.pp-doi-chip--shared,
+.pp-doi-chip-sm.pp-doi-chip--shared {
+  background: #ede9fe;
+  border-color: #a78bfa;
+  color: #5b21b6;
+}
+.pp-doi-chip.pp-doi-chip--shared:hover,
+.pp-doi-chip-sm.pp-doi-chip--shared:hover {
+  background: #ddd6fe;
+  border-color: #7c3aed;
+  text-decoration: none;
+}
 /* ── Reference search ────────────────────────────────────────────────────── */
 .pp-ref-search-wrap {
   position: relative;
