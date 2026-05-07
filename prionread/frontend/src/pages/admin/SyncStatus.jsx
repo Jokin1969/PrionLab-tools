@@ -104,7 +104,8 @@ export default function SyncStatus() {
   const [flash, setFlash]                 = useState('');
   const [migrating, setMigrating]           = useState(false);
   const [markingPending, setMarkingPending] = useState(false);
-  const [backfillingPages, setBackfillingPages] = useState(false);
+  const [backfillingPages, setBackfillingPages]   = useState(false);
+  const [backfillingStatus, setBackfillingStatus] = useState(false);
 
   useEffect(() => { loadSync(); }, []);
 
@@ -154,6 +155,20 @@ export default function SyncStatus() {
     }
   };
 
+
+  const handleBackfillStatus = async () => {
+    setBackfillingStatus(true);
+    try {
+      const r = await adminService.backfillStatus();
+      setFlash(`✅ Estado corregido: ${r.fixed} de ${r.checked} asignaciones actualizadas`);
+      setTimeout(() => setFlash(''), 6000);
+    } catch (err) {
+      setFlash('❌ ' + (err?.response?.data?.error || 'Error corrigiendo estados'));
+      setTimeout(() => setFlash(''), 5000);
+    } finally {
+      setBackfillingStatus(false);
+    }
+  };
 
   const handleBackfillPages = async () => {
     setBackfillingPages(true);
@@ -296,6 +311,14 @@ export default function SyncStatus() {
                 className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
               >
                 {backfillingPages ? <Spinner size="sm" /> : '📄'} Contar páginas PDF
+              </button>
+              <button
+                onClick={handleBackfillStatus}
+                disabled={backfillingStatus}
+                title="Corrige artículos que tienen resumen/evaluación pero el estado sigue en 'leído'"
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+              >
+                {backfillingStatus ? <Spinner size="sm" /> : '🔧'} Reparar estados
               </button>
             </div>
           )}

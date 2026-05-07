@@ -207,17 +207,23 @@ async function createOrUpdateSummary(req, res) {
       await ua.update({ summary_date: new Date() });
     }
 
-    // Auto-mark as read if all three phases are now complete
+    // Advance status based on what phases are now complete
     const [freshUa, existingRating] = await Promise.all([
       ua.reload(),
       ArticleRating.findOne({ where: { user_id: req.user.id, article_id: req.params.articleId } }),
     ]);
-    if (freshUa.summary_date && freshUa.evaluation_date && existingRating && freshUa.status !== 'read') {
-      await freshUa.update({ status: 'read', read_date: new Date() });
-      const { awardBonusCredit } = require('./bonusController');
-      awardBonusCredit(req.user.id, req.params.articleId).catch((e) =>
-        console.error('[bonus] awardBonusCredit failed:', e)
-      );
+    if (freshUa.summary_date && freshUa.evaluation_date && existingRating) {
+      // All three phases done → evaluated
+      if (statusRank(freshUa.status) < statusRank('evaluated')) {
+        await freshUa.update({ status: 'evaluated', read_date: freshUa.read_date || new Date() });
+        const { awardBonusCredit } = require('./bonusController');
+        awardBonusCredit(req.user.id, req.params.articleId).catch((e) =>
+          console.error('[bonus] awardBonusCredit failed:', e)
+        );
+      }
+    } else if (freshUa.summary_date && statusRank(freshUa.status) < statusRank('summarized')) {
+      // Summary done but not yet fully complete → summarized
+      await freshUa.update({ status: 'summarized', read_date: freshUa.read_date || new Date() });
     }
 
     return res.status(201).json({ summary });
@@ -374,17 +380,20 @@ async function submitEvaluation(req, res) {
       await ua.update({ evaluation_date: new Date() });
     }
 
-    // Auto-mark as read if all three phases are now complete
+    // Advance status based on what phases are now complete
     const [freshUa, existingRating] = await Promise.all([
       ua.reload(),
       ArticleRating.findOne({ where: { user_id: req.user.id, article_id: req.params.articleId } }),
     ]);
-    if (freshUa.summary_date && freshUa.evaluation_date && existingRating && freshUa.status !== 'read') {
-      await freshUa.update({ status: 'read', read_date: new Date() });
-      const { awardBonusCredit } = require('./bonusController');
-      awardBonusCredit(req.user.id, req.params.articleId).catch((e) =>
-        console.error('[bonus] awardBonusCredit failed:', e)
-      );
+    if (freshUa.summary_date && freshUa.evaluation_date && existingRating) {
+      // All three phases done → evaluated
+      if (statusRank(freshUa.status) < statusRank('evaluated')) {
+        await freshUa.update({ status: 'evaluated', read_date: freshUa.read_date || new Date() });
+        const { awardBonusCredit } = require('./bonusController');
+        awardBonusCredit(req.user.id, req.params.articleId).catch((e) =>
+          console.error('[bonus] awardBonusCredit failed:', e)
+        );
+      }
     }
 
     return res.json({ score, passed, correct: correctCount, total: questions.length });

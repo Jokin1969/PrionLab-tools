@@ -37,17 +37,24 @@ async function createOrUpdateRating(req, res) {
       });
     }
 
-    // Auto-mark the article as read once the student has completed all steps:
-    // summary saved + evaluation done + this rating saved.
+    // Advance status once the student has completed all steps:
+    // summary saved + evaluation done + this rating saved → evaluated.
+    const STATUS_ORDER = ['pending', 'read', 'summarized', 'evaluated'];
+    const statusRank = (s) => STATUS_ORDER.indexOf(s);
     const ua = await UserArticle.findOne({
       where: { user_id: req.user.id, article_id: article.id },
     });
-    if (ua && ua.summary_date && ua.evaluation_date && ua.status !== 'read') {
-      await ua.update({ status: 'read', read_date: new Date() });
-      const { awardBonusCredit } = require('./bonusController');
-      awardBonusCredit(req.user.id, article.id).catch((e) =>
-        console.error('[bonus] awardBonusCredit failed:', e)
-      );
+    if (ua && ua.summary_date && ua.evaluation_date) {
+      if (statusRank(ua.status) < statusRank('evaluated')) {
+        await ua.update({ status: 'evaluated', read_date: ua.read_date || new Date() });
+        const { awardBonusCredit } = require('./bonusController');
+        awardBonusCredit(req.user.id, article.id).catch((e) =>
+          console.error('[bonus] awardBonusCredit failed:', e)
+        );
+      }
+    } else if (ua && ua.summary_date && statusRank(ua.status) < statusRank('summarized')) {
+      // Has summary but no evaluation yet → at least summarized
+      await ua.update({ status: 'summarized', read_date: ua.read_date || new Date() });
     }
 
     return res.status(created ? 201 : 200).json({ rating: ratingRecord });

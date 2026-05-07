@@ -285,6 +285,52 @@ router.post('/sync/backfill-pdf-pages', async (req, res) => {
   }
 });
 
+// ─── Status backfill: fix articles stuck at 'read' that are actually summarized/evaluated ───
+router.post('/sync/backfill-status', async (req, res) => {
+  try {
+    const { sequelize: sq, UserArticle, ArticleRating } = require('../models');
+    const STATUS_ORDER = ['pending', 'read', 'summarized', 'evaluated'];
+    const statusRank = (s) => STATUS_ORDER.indexOf(s);
+
+    // Find all UserArticles that have date fields set but wrong status
+    const candidates = await UserArticle.findAll({
+      where: {
+        [require('sequelize').Op.or]: [
+          { summary_date: { [require('sequelize').Op.ne]: null } },
+          { evaluation_date: { [require('sequelize').Op.ne]: null } },
+        ],
+      },
+    });
+
+    let fixed = 0;
+    for (const ua of candidates) {
+      const rating = await ArticleRating.findOne({
+        where: { user_id: ua.user_id, article_id: ua.article_id },
+      });
+
+      let targetStatus;
+      if (ua.summary_date && ua.evaluation_date && rating) {
+        targetStatus = 'evaluated';
+      } else if (ua.summary_date) {
+        targetStatus = 'summarized';
+      }
+
+      if (targetStatus && statusRank(ua.status) < statusRank(targetStatus)) {
+        await ua.update({
+          status: targetStatus,
+          read_date: ua.read_date || new Date(),
+        });
+        fixed++;
+      }
+    }
+
+    res.json({ ok: true, checked: candidates.length, fixed });
+  } catch (err) {
+    console.error('[POST /admin/sync/backfill-status]', err);
+    res.status(500).json({ error: 'Error during status backfill' });
+  }
+});
+
 // ─── Word export: article selection checklist ─────────────────────────────────
 router.post('/articles/export-word', async (req, res) => {
   const {
