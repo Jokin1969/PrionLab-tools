@@ -1707,10 +1707,14 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-btn-icon:hover { color: var(--pp-text); background: var(--pp-secondary); }
 .pp-btn-icon.btn-claude:hover { color: var(--pp-accent); }
 .pp-btn-icon.btn-remove:hover { color: #dc2626; background: #fef2f2; }
-.pp-btn-icon.btn-migrate-to-intro { color: #64748b; }
-.pp-btn-icon.btn-migrate-to-intro:hover { color: #1a7373; background: #e6f3f3; }
-.pp-btn-icon.btn-migrate-to-intro.migrated { color: #16a34a; }
-.pp-btn-icon.btn-migrate-to-intro.migrated:hover { color: #15803d; background: #f0fdf4; }
+.pp-btn-icon.btn-migrate-to-intro,
+.pp-btn-icon.btn-migrate-to-refs { color: #64748b; }
+.pp-btn-icon.btn-migrate-to-intro:hover,
+.pp-btn-icon.btn-migrate-to-refs:hover { color: #1a7373; background: #e6f3f3; }
+.pp-btn-icon.btn-migrate-to-intro.migrated,
+.pp-btn-icon.btn-migrate-to-refs.migrated { color: #16a34a; }
+.pp-btn-icon.btn-migrate-to-intro.migrated:hover,
+.pp-btn-icon.btn-migrate-to-refs.migrated:hover { color: #15803d; background: #f0fdf4; }
 
 /* Buttons inside the finding header — visible framed icons */
 .pp-finding-header .pp-btn-icon {

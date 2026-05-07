@@ -772,6 +772,7 @@ const PrionPacks = (() => {
     else if (typeof rawIntroRefs === 'string' && rawIntroRefs.trim()) introRefs = [rawIntroRefs.trim()];
     _renderIntroReferencesList(introRefs);
     _refreshMigrateBtns();
+    _refreshIntroMigrateBtns();
 
     // Methods — multi-field. Each item has {title, body}. Legacy single-string
     // value (or list of strings) is wrapped into a list of body-only items.
@@ -1124,6 +1125,7 @@ ${refsText}`;
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
         <span class="pp-reference-number">Ri-${String(idx + 1).padStart(2, '0')}</span>
+        <button type="button" class="pp-btn-icon btn-migrate-to-refs" title="Clonar a Referencias generales"><i class="fas fa-share"></i></button>
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Ref. Intro ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
@@ -1171,6 +1173,27 @@ ${refsText}`;
       div.classList.toggle('pp-reference-collapsed');
       _saveItemCollapse('ir', div, div.classList.contains('pp-reference-collapsed'));
     });
+    div.querySelector('.btn-migrate-to-refs').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = ta.value.trim();
+      if (!text) { toast('La referencia está vacía.', 'error'); return; }
+      const existing = Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+        .map(t => t.value.trim());
+      const btn = e.currentTarget;
+      if (existing.includes(text)) {
+        btn.classList.add('migrated');
+        toast('Ya incluida en Referencias generales.', 'info');
+        return;
+      }
+      const refs = _collectReferences();
+      refs.push(text);
+      _renderReferencesList(refs);
+      _refreshMigrateBtns();
+      _scheduleAutosave();
+      btn.classList.add('migrated');
+      toast('Referencia copiada a Referencias generales ✓', 'success');
+    });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
       _renumberIntroReferences();
@@ -1183,6 +1206,18 @@ ${refsText}`;
     refreshPreview();
     refreshHeaderDoi();
     return div;
+  }
+
+  function _refreshIntroMigrateBtns() {
+    const refTexts = new Set(
+      Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+        .map(t => t.value.trim()).filter(Boolean)
+    );
+    document.querySelectorAll('#intro-references-list .pp-intro-reference-item').forEach(item => {
+      const text = (item.querySelector('.pp-intro-reference-textarea')?.value || '').trim();
+      const btn  = item.querySelector('.btn-migrate-to-refs');
+      if (btn && text && refTexts.has(text)) btn.classList.add('migrated');
+    });
   }
 
   function _updateIntroReferencesCount() {
