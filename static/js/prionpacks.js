@@ -1278,19 +1278,33 @@ ${refsText}`;
   }
 
   function _refreshSharedDois() {
-    const doiSet = selector => new Set(
+    const extract = selector =>
       Array.from(document.querySelectorAll(selector))
-        .flatMap(ta => (ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []))
-    );
-    const shared = new Set(
-      [...doiSet('#references-list .pp-reference-textarea')]
-        .filter(d => doiSet('#intro-references-list .pp-intro-reference-textarea').has(d))
-    );
+        .flatMap(ta => (ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []));
+
+    const genDois   = extract('#references-list .pp-reference-textarea');
+    const introDois = extract('#intro-references-list .pp-intro-reference-textarea');
+
+    // DOI present in both lists (cross-reference) → purple
+    const genSet   = new Set(genDois);
+    const introSet = new Set(introDois);
+    const shared = new Set([...genSet].filter(d => introSet.has(d)));
+
+    // DOI appears more than once within the same list (accidental duplicate) → orange
+    const duped = doi => {
+      const inGen   = genDois.filter(d => d === doi).length;
+      const inIntro = introDois.filter(d => d === doi).length;
+      return inGen > 1 || inIntro > 1;
+    };
+
     document.querySelectorAll(
       '#references-list .pp-doi-chip, #intro-references-list .pp-doi-chip'
     ).forEach(chip => {
       const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
-      chip.classList.toggle('pp-doi-chip--shared', shared.has(doi));
+      const isDup    = doi && duped(doi);
+      const isShared = doi && shared.has(doi) && !isDup;
+      chip.classList.toggle('pp-doi-chip--dup',    isDup);
+      chip.classList.toggle('pp-doi-chip--shared', isShared);
     });
   }
 

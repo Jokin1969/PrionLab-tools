@@ -3469,6 +3469,24 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   border-color: #7c3aed;
   text-decoration: none;
 }
+/* Duplicate DOI within same list → orange warning */
+.pp-doi-chip.pp-doi-chip--dup,
+.pp-doi-chip-sm.pp-doi-chip--dup,
+.pp-reference-item .pp-doi-chip.pp-doi-chip--dup,
+.pp-reference-item .pp-doi-chip-sm.pp-doi-chip--dup {
+  background: #fff7ed;
+  border-color: #fb923c;
+  color: #c2410c;
+}
+.pp-doi-chip.pp-doi-chip--dup::before,
+.pp-reference-item .pp-doi-chip.pp-doi-chip--dup::before { color: #ea580c; }
+.pp-doi-chip.pp-doi-chip--dup:hover,
+.pp-reference-item .pp-doi-chip.pp-doi-chip--dup:hover {
+  background: #ffedd5;
+  border-color: #f97316;
+  text-decoration: none;
+}
+
 /* ── Reference search ────────────────────────────────────────────────────── */
 .pp-ref-search-wrap {
   position: relative;
