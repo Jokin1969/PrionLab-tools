@@ -92,20 +92,22 @@ router.post('/users/:userId/send-bonus-intro', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
     const bonusMinutes = parseInt(req.body.minutes || '200', 10);
 
-    // Award the gift credit — uses nil UUID as sentinel article_id (no real article)
-    const WELCOME_SENTINEL = '00000000-0000-0000-0000-000000000000';
+    // Award the gift credit — article_id is null (non-article credit)
     const { BonusCredit } = require('../models');
-    const [credit, created] = await BonusCredit.findOrCreate({
-      where: { user_id: user.id, article_id: WELCOME_SENTINEL },
-      defaults: {
-        pages: 0,
-        minutes_earned: bonusMinutes,
-        note: 'Bono de bienvenida PrionBonus',
-        notified_at: new Date(),
-      },
+    let credit = await BonusCredit.findOne({
+      where: { user_id: user.id, article_id: null, note: 'Bono de bienvenida PrionBonus' },
     });
-    if (!created) {
+    if (credit) {
       await credit.update({ minutes_earned: bonusMinutes, notified_at: new Date() });
+    } else {
+      credit = await BonusCredit.create({
+        user_id:        user.id,
+        article_id:     null,
+        pages:          0,
+        minutes_earned: bonusMinutes,
+        note:           'Bono de bienvenida PrionBonus',
+        notified_at:    new Date(),
+      });
     }
 
     let emailSent = false;

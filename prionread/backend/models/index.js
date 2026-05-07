@@ -42,7 +42,8 @@ NotificationRule.belongsTo(User, { foreignKey: 'target_user_id', as: 'targetUser
 // BonusCredit associations
 User.hasMany(BonusCredit, { foreignKey: 'user_id', as: 'bonusCredits' });
 BonusCredit.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-BonusCredit.belongsTo(Article, { foreignKey: 'article_id', as: 'article' });
+// constraints: false — article_id can be null for non-article credits (e.g. welcome gift)
+BonusCredit.belongsTo(Article, { foreignKey: 'article_id', as: 'article', constraints: false });
 
 // BonusAllocation associations
 User.hasMany(BonusAllocation, { foreignKey: 'user_id', as: 'bonusAllocations' });
