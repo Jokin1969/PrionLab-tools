@@ -214,6 +214,10 @@ async function createOrUpdateSummary(req, res) {
     ]);
     if (freshUa.summary_date && freshUa.evaluation_date && existingRating && freshUa.status !== 'read') {
       await freshUa.update({ status: 'read', read_date: new Date() });
+      const { awardBonusCredit } = require('./bonusController');
+      awardBonusCredit(req.user.id, req.params.articleId).catch((e) =>
+        console.error('[bonus] awardBonusCredit failed:', e)
+      );
     }
 
     return res.status(201).json({ summary });
@@ -377,6 +381,10 @@ async function submitEvaluation(req, res) {
     ]);
     if (freshUa.summary_date && freshUa.evaluation_date && existingRating && freshUa.status !== 'read') {
       await freshUa.update({ status: 'read', read_date: new Date() });
+      const { awardBonusCredit } = require('./bonusController');
+      awardBonusCredit(req.user.id, req.params.articleId).catch((e) =>
+        console.error('[bonus] awardBonusCredit failed:', e)
+      );
     }
 
     return res.json({ score, passed, correct: correctCount, total: questions.length });

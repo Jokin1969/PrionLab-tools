@@ -8,6 +8,8 @@ const Evaluation = require('./Evaluation');
 const ArticleRating = require('./ArticleRating');
 const NotificationRule = require('./NotificationRule');
 const NotificationLog = require('./NotificationLog');
+const BonusCredit = require('./BonusCredit');
+const BonusAllocation = require('./BonusAllocation');
 
 // User <-> Article through UserArticle
 User.hasMany(UserArticle, { foreignKey: 'user_id', as: 'userArticles' });
@@ -37,6 +39,15 @@ NotificationLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 // NotificationRule -> target user (optional)
 NotificationRule.belongsTo(User, { foreignKey: 'target_user_id', as: 'targetUser' });
 
+// BonusCredit associations
+User.hasMany(BonusCredit, { foreignKey: 'user_id', as: 'bonusCredits' });
+BonusCredit.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+BonusCredit.belongsTo(Article, { foreignKey: 'article_id', as: 'article' });
+
+// BonusAllocation associations
+User.hasMany(BonusAllocation, { foreignKey: 'user_id', as: 'bonusAllocations' });
+BonusAllocation.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 module.exports = {
   sequelize,
   User,
@@ -47,4 +58,6 @@ module.exports = {
   ArticleRating,
   NotificationRule,
   NotificationLog,
+  BonusCredit,
+  BonusAllocation,
 };

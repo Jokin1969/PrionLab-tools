@@ -14,6 +14,8 @@ import AdminArticles from './pages/admin/Articles';
 import AdminReports from './pages/admin/Reports';
 import AdminNotifications from './pages/admin/Notifications';
 import AdminSyncStatus from './pages/admin/SyncStatus';
+import BonusPanel from './pages/admin/BonusPanel';
+import BonusPage from './pages/student/BonusPage';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -52,6 +54,11 @@ function App() {
           <MainLayout><Profile /></MainLayout>
         </ProtectedRoute>
       } />
+      <Route path="/bonus" element={
+        <ProtectedRoute>
+          <MainLayout><BonusPage /></MainLayout>
+        </ProtectedRoute>
+      } />
 
       {/* Admin routes */}
       <Route path="/admin/dashboard" element={
@@ -82,6 +89,11 @@ function App() {
       <Route path="/admin/sync" element={
         <ProtectedRoute requireAdmin>
           <MainLayout><AdminSyncStatus /></MainLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/bonus" element={
+        <ProtectedRoute requireAdmin>
+          <MainLayout><BonusPanel /></MainLayout>
         </ProtectedRoute>
       } />
 

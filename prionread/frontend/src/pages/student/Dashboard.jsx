@@ -6,9 +6,20 @@ import { ProgressChart } from '../../components/charts/ProgressChart';
 import { Card, Button, Loader } from '../../components/common';
 import { useAuth } from '../../hooks/useAuth';
 
+const DEBT_THRESHOLD = -120;
+
+function fmtMinAbs(minutes) {
+  const abs = Math.abs(minutes);
+  const h   = Math.floor(abs / 60);
+  const m   = abs % 60;
+  if (h === 0) return `${m}min`;
+  return `${h}h${m > 0 ? ` ${m}min` : ''}`;
+}
+
 const StudentDashboard = () => {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState(null);
+  const [bonus, setBonus]         = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,8 +28,12 @@ const StudentDashboard = () => {
 
   const loadDashboard = async () => {
     try {
-      const data = await studentService.getDashboard();
-      setDashboard(data);
+      const [dashData, bonusData] = await Promise.allSettled([
+        studentService.getDashboard(),
+        studentService.getMyBonus(),
+      ]);
+      if (dashData.status === 'fulfilled')  setDashboard(dashData.value);
+      if (bonusData.status === 'fulfilled') setBonus(bonusData.value);
     } catch (error) {
       console.error('Error loading dashboard:', error);
     } finally {
@@ -83,6 +98,53 @@ const StudentDashboard = () => {
       <Card title="Progreso Mensual">
         <ProgressChart data={progress_by_month} />
       </Card>
+
+      {/* PrionBonus widget */}
+      {bonus && (() => {
+        const balance = bonus.balance ?? 0;
+        const isDebt  = balance < DEBT_THRESHOLD;
+        const colorText   = balance >= 0 ? 'text-emerald-600' : isDebt ? 'text-red-600' : 'text-amber-600';
+        const colorBg     = balance >= 0 ? 'bg-emerald-50 border-emerald-200' : isDebt ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200';
+        return (
+          <div className={`rounded-xl border p-5 ${colorBg}`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-700 mb-1">⚡ PrionBonus — Tiempo de Jokin</p>
+                <p className={`text-3xl font-black ${colorText}`}>
+                  {balance >= 0 ? '+' : '−'}{fmtMinAbs(balance)}
+                </p>
+                {isDebt && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    ⚠️ Más de 2h de deuda — ¡sigue leyendo!
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-1 text-right">
+                <p className="text-xs text-gray-500">
+                  Ganado: <span className="font-semibold text-emerald-600">{bonus.earned}min</span>
+                </p>
+                <p className="text-xs text-gray-500">
+                  Gastado: <span className="font-semibold text-indigo-600">{bonus.spent}min</span>
+                </p>
+                <Link to="/bonus" className="text-xs text-indigo-600 font-medium hover:underline mt-1">
+                  Ver historial →
+                </Link>
+              </div>
+            </div>
+            {bonus.credits?.length > 0 && (
+              <div className="mt-4 space-y-1">
+                <p className="text-xs font-medium text-gray-500 mb-2">Últimas ganancias</p>
+                {bonus.credits.slice(0, 3).map((c) => (
+                  <div key={c.id} className="flex items-center justify-between text-xs bg-white/70 rounded px-3 py-1.5 border border-white">
+                    <span className="text-gray-700 truncate mr-2">{c.article?.title ?? 'Artículo'}</span>
+                    <span className="font-semibold text-emerald-600 flex-shrink-0">+{c.minutes_earned}min</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Next Recommended */}

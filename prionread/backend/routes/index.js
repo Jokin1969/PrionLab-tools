@@ -8,6 +8,7 @@ router.use('/articles', require('./articles'));
 router.use('/assignments', require('./assignments'));
 router.use('/my-articles', require('./student'));
 router.use('/my-dashboard', require('./dashboard'));
+router.use('/my-bonus', require('./bonus'));
 
 router.get('/', (_req, res) => res.json({ message: 'PrionRead API v1' }));
 

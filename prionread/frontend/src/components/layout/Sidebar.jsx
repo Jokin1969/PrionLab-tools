@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 const studentLinks = [
   { to: '/dashboard',   icon: '📊', label: 'Dashboard' },
   { to: '/my-articles', icon: '📚', label: 'Mis Artículos' },
+  { to: '/bonus',       icon: '⚡', label: 'PrionBonus' },
   { to: '/profile',     icon: '⚙️', label: 'Configuración' },
 ];
 
@@ -14,6 +15,7 @@ const adminLinks = [
   { to: '/admin/reports',       icon: '📊', label: 'Reportes' },
   { to: '/admin/notifications', icon: '🔔', label: 'Notificaciones' },
   { to: '/admin/sync',          icon: '🔄', label: 'Sincronización' },
+  { to: '/admin/bonus',         icon: '⚡', label: 'PrionBonus' },
 ];
 
 const PRIONVAULT_URL  = 'https://web-production-5517e.up.railway.app/prionvault/';

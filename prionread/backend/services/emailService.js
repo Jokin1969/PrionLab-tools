@@ -271,6 +271,87 @@ const emailService = {
     console.log(`✉️  Email personalizado enviado a ${user.email}`);
   },
 
+  // ─── PrionBonus earned notification ──────────────────────────────────────
+  sendBonusEarnedEmail: async (user, { minutes, articleTitle, totalBalance }) => {
+    const first = firstName(user.name);
+    const hours = Math.floor(minutes / 60);
+    const mins  = minutes % 60;
+    const timeStr = hours > 0 ? `${hours}h ${mins}min` : `${mins} minutos`;
+
+    const balHours = Math.floor(Math.abs(totalBalance) / 60);
+    const balMins  = Math.abs(totalBalance) % 60;
+    const balStr   = balHours > 0 ? `${balHours}h ${balMins}min` : `${Math.abs(totalBalance)} min`;
+    const balColor = totalBalance >= 0 ? '#10B981' : '#EF4444';
+    const balSign  = totalBalance >= 0 ? '+' : '−';
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#111827;">
+
+        <!-- Header -->
+        <div style="background:#0F3460;padding:36px 24px;text-align:center;border-radius:12px 12px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">⚡</div>
+          <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:800;letter-spacing:-0.5px;">¡PrionBonus!</h1>
+          <p style="color:rgba(255,255,255,0.75);margin:8px 0 0;font-size:14px;letter-spacing:1px;text-transform:uppercase;">
+            Tiempo del supervisor desbloqueado
+          </p>
+        </div>
+
+        <!-- Reward badge -->
+        <div style="background:#f0fdf4;padding:32px 24px;text-align:center;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+          <p style="color:#374151;font-size:16px;margin:0 0 16px;">
+            Hola <strong>${first}</strong>, has ganado tiempo de Jokin por completar:
+          </p>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 24px;display:inline-block;margin-bottom:20px;max-width:440px;width:100%;">
+            <p style="margin:0;color:#0F3460;font-size:14px;font-weight:600;line-height:1.5;">
+              📄 ${articleTitle}
+            </p>
+          </div>
+
+          <div style="background:#0F3460;border-radius:16px;padding:24px 32px;display:inline-block;margin:0 auto;">
+            <p style="color:rgba(255,255,255,0.7);font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;">Has ganado</p>
+            <p style="color:#ffffff;font-size:52px;font-weight:900;margin:0;line-height:1;letter-spacing:-1px;">+${timeStr}</p>
+            <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:6px 0 0;">de tiempo de Jokin</p>
+          </div>
+        </div>
+
+        <!-- Balance -->
+        <div style="background:#ffffff;padding:24px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:#6b7280;font-size:14px;">Saldo acumulado total</span>
+            <span style="color:${balColor};font-size:20px;font-weight:800;">${balSign}${balStr}</span>
+          </div>
+          <p style="color:#6b7280;font-size:13px;text-align:center;margin:16px 0 0;line-height:1.6;">
+            Sigue leyendo para acumular más tiempo —<br>
+            <strong style="color:#0F3460;">cada artículo vale 5 min por página.</strong>
+          </p>
+        </div>
+
+        <!-- CTA -->
+        <div style="background:#ffffff;padding:16px 24px 32px;text-align:center;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+          <a href="${APP_URL}/bonus"
+             style="display:inline-block;background:#0F3460;color:#fff;padding:14px 36px;
+                    text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">
+            Ver mi saldo ⚡
+          </a>
+        </div>
+
+        <!-- Footer -->
+        <div style="background:#f9fafb;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;text-align:center;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">PrionRead · PrionBonus — Sistema de recompensa por lectura científica</p>
+        </div>
+
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"PrionRead · PrionBonus" <${process.env.SMTP_USER}>`,
+      to: user.email,
+      subject: `⚡ ¡Has ganado ${timeStr} del tiempo de Jokin!`,
+      html,
+    });
+    console.log(`✉️  PrionBonus enviado a ${user.email} (+${minutes} min)`);
+  },
+
   // ─── Threshold alert to admin ──────────────────────────────────────────────
   async sendThresholdAlertEmail(admin, student, rule, stats) {
     const { total, pending } = stats;

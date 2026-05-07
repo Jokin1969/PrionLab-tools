@@ -76,6 +76,8 @@ export const studentService = {
     return response.data;
   },
 
+  getMyBonus: async () => (await api.get('/my-bonus')).data,
+
   openPdf: async (articleId) => {
     const response = await api.get(`/articles/${articleId}/pdf/view`, { responseType: 'blob' });
     const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));

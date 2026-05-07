@@ -78,4 +78,10 @@ export const adminService = {
   updateNotificationRule: async (id, data) => (await api.patch(`/admin/notification-rules/${id}`, data)).data,
   deleteNotificationRule: async (id) => (await api.delete(`/admin/notification-rules/${id}`)).data,
   runNotificationRules: async () => (await api.post('/admin/notification-rules/run')).data,
+
+  // PrionBonus
+  getAdminBonus: async () => (await api.get('/admin/bonus')).data,
+  getStudentBonusDetail: async (userId) => (await api.get(`/admin/bonus/${userId}`)).data,
+  addBonusAllocation: async (data) => (await api.post('/admin/bonus/allocations', data)).data,
+  deleteBonusAllocation: async (id) => (await api.delete(`/admin/bonus/allocations/${id}`)).data,
 };

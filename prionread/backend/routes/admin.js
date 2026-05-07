@@ -494,4 +494,11 @@ router.post('/notifications/inactivity-reminders', async (_req, res) => {
 // Reports
 router.use('/reports', require('./reports'));
 
+// PrionBonus
+const { getAdminBonusOverview, getStudentBonusDetail, addAllocation, deleteAllocation } = require('../controllers/bonusController');
+router.get('/bonus',                    getAdminBonusOverview);
+router.get('/bonus/:userId',            getStudentBonusDetail);
+router.post('/bonus/allocations',       addAllocation);
+router.delete('/bonus/allocations/:id', deleteAllocation);
+
 module.exports = router;

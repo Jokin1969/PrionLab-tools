@@ -44,6 +44,10 @@ async function createOrUpdateRating(req, res) {
     });
     if (ua && ua.summary_date && ua.evaluation_date && ua.status !== 'read') {
       await ua.update({ status: 'read', read_date: new Date() });
+      const { awardBonusCredit } = require('./bonusController');
+      awardBonusCredit(req.user.id, article.id).catch((e) =>
+        console.error('[bonus] awardBonusCredit failed:', e)
+      );
     }
 
     return res.status(created ? 201 : 200).json({ rating: ratingRecord });
