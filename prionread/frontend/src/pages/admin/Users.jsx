@@ -102,6 +102,102 @@ function WelcomePreviewModal({ user, onClose, onSend, sending }) {
   );
 }
 
+// ── PrionBonus intro preview modal ────────────────────────────────────────────
+function BonusIntroPreviewModal({ user, onClose, onSend, sending }) {
+  const [html, setHtml]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+  const [minutes, setMinutes] = useState(200);
+
+  useEffect(() => {
+    setLoading(true);
+    adminService.getBonusIntroPreview(user.id, minutes)
+      .then((data) => { setHtml(data.html); setError(null); })
+      .catch(() => setError('No se pudo cargar la vista previa'))
+      .finally(() => setLoading(false));
+  }, [user.id, minutes]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">⚡ Vista previa del email PrionBonus</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Para: <strong>{user.name}</strong> ({user.email})
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none">×</button>
+        </div>
+
+        {/* Minutes picker */}
+        <div className="px-5 py-3 border-b border-gray-100 shrink-0 flex items-center gap-3">
+          <span className="text-sm text-gray-600 font-medium">Bono de bienvenida:</span>
+          {[60, 100, 150, 200].map((m) => (
+            <button
+              key={m}
+              onClick={() => setMinutes(m)}
+              className={`px-3 py-1 text-sm font-semibold rounded-full border transition-colors ${
+                minutes === m
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-300'
+              }`}
+            >
+              {m} min
+            </button>
+          ))}
+          <input
+            type="number"
+            min="1"
+            max="9999"
+            value={minutes}
+            onChange={(e) => setMinutes(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg text-center"
+            title="Minutos personalizados"
+          />
+        </div>
+
+        {/* Preview area */}
+        <div className="flex-1 overflow-auto p-4 bg-gray-100">
+          {loading && <p className="text-center text-gray-500 py-10">Cargando vista previa…</p>}
+          {error   && <p className="text-center text-red-500 py-10">{error}</p>}
+          {html && !loading && (
+            <iframe
+              title="bonus-intro-preview"
+              srcDoc={html}
+              className="w-full rounded-lg shadow bg-white"
+              style={{ minHeight: '600px', border: 'none' }}
+              sandbox="allow-same-origin"
+            />
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-4 border-t border-gray-200 shrink-0">
+          <p className="text-xs text-gray-400 mb-3">
+            Al enviar se acreditan <strong>{minutes} minutos</strong> en el saldo de {user.name} y se le envía este email explicativo.
+            Si ya se envió antes, se actualiza el saldo y se reenvía.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+              Cancelar
+            </button>
+            <button
+              onClick={() => onSend(minutes)}
+              disabled={sending}
+              className="px-5 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {sending ? 'Enviando…' : `⚡ Enviar bono de ${minutes} min`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 const AdminUsers = () => {
   const navigate = useNavigate();
@@ -110,14 +206,16 @@ const AdminUsers = () => {
   const [showModal, setShowModal]       = useState(false);
   const [editingUser, setEditingUser]   = useState(null);
   const [assignmentsUser, setAssignmentsUser] = useState(null);
-  const [previewUser, setPreviewUser]   = useState(null);
-  const [search, setSearch]             = useState('');
-  const [roleFilter, setRoleFilter]     = useState('');
-  const [userSort, setUserSort]         = useState({ by: 'name', dir: 'asc' });
-  const [msg, setMsg]                   = useState('');
-  const [errMsg, setErrMsg]             = useState('');
+  const [previewUser, setPreviewUser]       = useState(null);
+  const [bonusIntroUser, setBonusIntroUser] = useState(null);
+  const [search, setSearch]                 = useState('');
+  const [roleFilter, setRoleFilter]         = useState('');
+  const [userSort, setUserSort]             = useState({ by: 'name', dir: 'asc' });
+  const [msg, setMsg]                       = useState('');
+  const [errMsg, setErrMsg]                 = useState('');
   const [passwordBanner, setPasswordBanner] = useState(null);
   const [sendingWelcome, setSendingWelcome] = useState(false);
+  const [sendingBonusIntro, setSendingBonusIntro] = useState(false);
 
   useEffect(() => { loadUsers(); }, [roleFilter]);
 
@@ -191,6 +289,24 @@ const AdminUsers = () => {
       errorFlash(err?.response?.data?.error || 'Error enviando email de bienvenida');
     } finally {
       setSendingWelcome(false);
+    }
+  };
+
+  const handleSendBonusIntro = async (minutes) => {
+    if (!bonusIntroUser) return;
+    setSendingBonusIntro(true);
+    try {
+      const data = await adminService.sendBonusIntroEmail(bonusIntroUser.id, minutes);
+      setBonusIntroUser(null);
+      if (data.email_sent === false) {
+        errorFlash(`Bono acreditado, pero el email no se pudo enviar: ${data.email_error || 'error SMTP'}`);
+      } else {
+        flash(`⚡ PrionBonus enviado a ${bonusIntroUser.name} (${minutes} min)`);
+      }
+    } catch (err) {
+      errorFlash(err?.response?.data?.error || 'Error enviando PrionBonus intro');
+    } finally {
+      setSendingBonusIntro(false);
     }
   };
 
@@ -356,6 +472,15 @@ const AdminUsers = () => {
                             {user.welcome_email_sent_at ? '✉️ Reenviar' : '✉️ Dar bienvenida'}
                           </button>
                         )}
+                        {user.role === 'student' && (
+                          <button
+                            onClick={() => setBonusIntroUser(user)}
+                            title="Enviar email PrionBonus con bono de bienvenida"
+                            className="px-2 py-1 text-xs font-medium rounded border bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 transition-colors"
+                          >
+                            ⚡ PrionBonus
+                          </button>
+                        )}
                         {user.role !== 'admin' && (
                           <Button variant="danger" size="sm" onClick={() => handleDeleteUser(user.id, user.name)}>Eliminar</Button>
                         )}
@@ -378,6 +503,15 @@ const AdminUsers = () => {
           onClose={() => setPreviewUser(null)}
           onSend={handleSendWelcome}
           sending={sendingWelcome}
+        />
+      )}
+
+      {bonusIntroUser && (
+        <BonusIntroPreviewModal
+          user={bonusIntroUser}
+          onClose={() => setBonusIntroUser(null)}
+          onSend={handleSendBonusIntro}
+          sending={sendingBonusIntro}
         />
       )}
     </div>

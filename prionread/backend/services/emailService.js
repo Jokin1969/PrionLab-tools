@@ -271,6 +271,123 @@ const emailService = {
     console.log(`✉️  Email personalizado enviado a ${user.email}`);
   },
 
+  // ─── PrionBonus intro email (welcome gift) ───────────────────────────────
+
+  buildBonusIntroHtml: (user, bonusMinutes = 200) => {
+    const first = firstName(user.name);
+    const hours = Math.floor(bonusMinutes / 60);
+    const mins  = bonusMinutes % 60;
+    const timeStr = hours > 0 ? `${hours}h ${mins > 0 ? ` ${mins}min` : ''}`.trim() : `${mins} minutos`;
+
+    return `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#111827;">
+
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#0F3460 0%,#16213E 100%);padding:40px 24px;text-align:center;border-radius:12px 12px 0 0;">
+          <div style="font-size:52px;margin-bottom:10px;">⚡</div>
+          <h1 style="color:#ffffff;margin:0;font-size:30px;font-weight:900;letter-spacing:-0.5px;">PrionBonus</h1>
+          <p style="color:rgba(255,255,255,0.75);margin:8px 0 0;font-size:13px;letter-spacing:2px;text-transform:uppercase;">
+            Tu tiempo · Tu esfuerzo · Tu recompensa
+          </p>
+        </div>
+
+        <!-- Gift badge -->
+        <div style="background:#fffbeb;padding:32px 28px;text-align:center;border-left:1px solid #fde68a;border-right:1px solid #fde68a;border-top:none;">
+          <p style="color:#374151;font-size:17px;margin:0 0 6px;font-weight:600;">
+            ¡Hola <span style="color:#0F3460;">${first}</span>! 🎉
+          </p>
+          <p style="color:#6b7280;font-size:14px;margin:0 0 24px;line-height:1.6;">
+            Como parte del PrionLab, ahora formas parte del sistema <strong>PrionBonus</strong>.<br>
+            Jokin te regala un bono de bienvenida por registrarte en PrionRead:
+          </p>
+
+          <div style="background:#0F3460;border-radius:20px;padding:28px 40px;display:inline-block;margin:0 auto;">
+            <p style="color:rgba(255,255,255,0.65);font-size:11px;text-transform:uppercase;letter-spacing:3px;margin:0 0 6px;">Bono de bienvenida</p>
+            <p style="color:#FBBF24;font-size:60px;font-weight:900;margin:0;line-height:1;letter-spacing:-2px;">+${timeStr}</p>
+            <p style="color:rgba(255,255,255,0.65);font-size:12px;margin:8px 0 0;">del tiempo de Jokin</p>
+          </div>
+        </div>
+
+        <!-- Explanation -->
+        <div style="background:#ffffff;padding:28px 28px 8px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+          <h2 style="color:#0F3460;font-size:16px;font-weight:700;margin:0 0 16px;">¿Cómo funciona PrionBonus?</h2>
+
+          <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;">
+            <div style="width:36px;height:36px;min-width:36px;background:#EFF6FF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">📄</div>
+            <div>
+              <p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Lees un artículo completo</p>
+              <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">
+                Cuando completes un artículo (resumen + evaluación + valoración), ganas <strong>5 minutos por página</strong> de PDF.
+                Un artículo de 10 páginas = 50 minutos del tiempo de Jokin.
+              </p>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;">
+            <div style="width:36px;height:36px;min-width:36px;background:#F0FDF4;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">⚡</div>
+            <div>
+              <p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Acumulas tiempo de Jokin</p>
+              <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">
+                Cada minuto ganado es tiempo real que Jokin te debe: reuniones, corrección de tu TFD,
+                revisión de datos, feedback de manuscritos…
+              </p>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:24px;">
+            <div style="width:36px;height:36px;min-width:36px;background:#FFF7ED;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">⚖️</div>
+            <div>
+              <p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">El sistema lleva la cuenta</p>
+              <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">
+                Cuando Jokin te dedica tiempo a tareas de tesis, lo descuenta de tu saldo.
+                El balance neto te muestra si vas "al día" con la lectura científica.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notification note -->
+        <div style="background:#f8fafc;padding:16px 28px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;border-top:1px solid #f3f4f6;">
+          <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;text-align:center;">
+            📬 Cada vez que termines un artículo recibirás un email con los minutos ganados<br>
+            y tu saldo actualizado. ¡Empieza a leer y acumula tiempo!
+          </p>
+        </div>
+
+        <!-- CTA -->
+        <div style="background:#ffffff;padding:20px 28px 32px;text-align:center;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+          <a href="${APP_URL}/bonus"
+             style="display:inline-block;background:#0F3460;color:#fff;padding:14px 40px;
+                    text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:0.3px;">
+            Ver mi saldo PrionBonus ⚡
+          </a>
+        </div>
+
+        <!-- Footer -->
+        <div style="background:#f9fafb;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;text-align:center;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">PrionRead · PrionBonus — Sistema de recompensa por lectura científica</p>
+        </div>
+
+      </div>
+    `;
+  },
+
+  sendBonusIntroEmail: async (user, bonusMinutes = 200) => {
+    const first = firstName(user.name);
+    const hours = Math.floor(bonusMinutes / 60);
+    const mins  = bonusMinutes % 60;
+    const timeStr = hours > 0 ? `${hours}h ${mins > 0 ? ` ${mins}min` : ''}`.trim() : `${mins} minutos`;
+
+    const html = emailService.buildBonusIntroHtml(user, bonusMinutes);
+    await transporter.sendMail({
+      from: `"PrionRead · PrionBonus" <${process.env.SMTP_USER}>`,
+      to: user.email,
+      subject: `⚡ ¡${first}, tienes ${timeStr} de PrionBonus esperándote!`,
+      html,
+    });
+    console.log(`✉️  PrionBonus intro enviado a ${user.email} (${bonusMinutes} min)`);
+  },
+
   // ─── PrionBonus earned notification ──────────────────────────────────────
   sendBonusEarnedEmail: async (user, { minutes, articleTitle, totalBalance }) => {
     const first = firstName(user.name);

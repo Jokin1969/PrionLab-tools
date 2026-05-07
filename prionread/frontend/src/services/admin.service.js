@@ -24,6 +24,12 @@ export const adminService = {
   sendWelcomeEmail: async (userId) =>
     (await api.post(`/admin/users/${userId}/send-welcome`)).data,
 
+  getBonusIntroPreview: async (userId, minutes = 200) =>
+    (await api.get(`/admin/users/${userId}/bonus-intro-preview?minutes=${minutes}`)).data,
+
+  sendBonusIntroEmail: async (userId, minutes = 200) =>
+    (await api.post(`/admin/users/${userId}/send-bonus-intro`, { minutes })).data,
+
   // Assignments
   getUserAssignments: async (userId) => (await api.get(`/assignments/user/${userId}`)).data,
   assignArticles: async (userId, articleIds) =>

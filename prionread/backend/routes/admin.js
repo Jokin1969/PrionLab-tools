@@ -72,6 +72,59 @@ router.post('/users/:userId/send-welcome', async (req, res) => {
   }
 });
 
+// PrionBonus intro email preview + send
+router.get('/users/:userId/bonus-intro-preview', async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const bonusMinutes = parseInt(req.query.minutes || '200', 10);
+    const html = emailService.buildBonusIntroHtml(user, bonusMinutes);
+    res.json({ html });
+  } catch (err) {
+    console.error('[GET /admin/users/:userId/bonus-intro-preview]', err);
+    res.status(500).json({ error: 'Error generando vista previa' });
+  }
+});
+
+router.post('/users/:userId/send-bonus-intro', async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const bonusMinutes = parseInt(req.body.minutes || '200', 10);
+
+    // Award the gift credit — uses nil UUID as sentinel article_id (no real article)
+    const WELCOME_SENTINEL = '00000000-0000-0000-0000-000000000000';
+    const { BonusCredit } = require('../models');
+    const [credit, created] = await BonusCredit.findOrCreate({
+      where: { user_id: user.id, article_id: WELCOME_SENTINEL },
+      defaults: {
+        pages: 0,
+        minutes_earned: bonusMinutes,
+        note: 'Bono de bienvenida PrionBonus',
+        notified_at: new Date(),
+      },
+    });
+    if (!created) {
+      await credit.update({ minutes_earned: bonusMinutes, notified_at: new Date() });
+    }
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      await emailService.sendBonusIntroEmail(user, bonusMinutes);
+      emailSent = true;
+    } catch (emailErr) {
+      emailError = emailErr.message;
+      console.error('[POST /admin/users/:userId/send-bonus-intro] email failed:', emailErr);
+    }
+
+    res.json({ ok: true, minutes: bonusMinutes, email_sent: emailSent, ...(emailError ? { email_error: emailError } : {}) });
+  } catch (err) {
+    console.error('[POST /admin/users/:userId/send-bonus-intro]', err);
+    res.status(500).json({ error: 'Error enviando PrionBonus intro' });
+  }
+});
+
 // Article analytics — static routes BEFORE /:articleId
 router.get('/articles/analytics',           getArticlesAnalytics);
 router.get('/articles/assignments-matrix',  getAssignmentsMatrix);
