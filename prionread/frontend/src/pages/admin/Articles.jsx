@@ -681,7 +681,14 @@ const AdminArticles = () => {
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{article.year}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {article.year}
+                          {article.pdf_pages && (
+                            <span className="ml-2 text-xs text-gray-400" title={`${article.pdf_pages * 5} min PrionBonus`}>
+                              📄{article.pdf_pages}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-4">
                           <select value={article.priority ?? 3} disabled={saving}
                             onChange={(e) => handleInlineUpdate(article, { priority: parseInt(e.target.value) })}

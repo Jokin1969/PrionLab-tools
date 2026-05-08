@@ -150,6 +150,14 @@ const ArticleDetail = () => {
                   </a>
                 </>
               )}
+              {article.pdf_pages && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs font-medium">
+                    📄 {article.pdf_pages} páginas · ⚡ {article.pdf_pages * 5} min
+                  </span>
+                </>
+              )}
             </div>
           </div>
           {article.is_milestone && (

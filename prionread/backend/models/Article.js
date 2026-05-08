@@ -58,6 +58,10 @@ const Article = sequelize.define('Article', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  pdf_pages: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'articles',
   timestamps: true,

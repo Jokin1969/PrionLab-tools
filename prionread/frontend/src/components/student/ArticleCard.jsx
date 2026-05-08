@@ -67,6 +67,14 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
             <span>{article.journal || 'Journal N/A'}</span>
             <span>•</span>
             <span>{article.year}</span>
+            {article.pdf_pages && (
+              <>
+                <span>•</span>
+                <span title={`${article.pdf_pages * 5} minutos de PrionBonus`}>
+                  📄 {article.pdf_pages} pág
+                </span>
+              </>
+            )}
           </div>
         </div>
 
