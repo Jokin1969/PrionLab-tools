@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
 import { Card, Button, Modal, Loader } from '../../components/common';
 
@@ -34,6 +35,7 @@ function fmtMin(minutes) {
 }
 
 const BonusPanel = () => {
+  const navigate = useNavigate();
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
@@ -181,9 +183,12 @@ const BonusPanel = () => {
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${colors.badge}`}>
+                      <button
+                        onClick={() => navigate('/admin/articles', { state: { filterUser: { id: student.id, name: student.name } } })}
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${colors.badge} hover:opacity-80 transition-opacity cursor-pointer`}
+                      >
                         {student.credits_count} artículo{student.credits_count !== 1 ? 's' : ''}
-                      </span>
+                      </button>
                     </div>
                     <Button size="sm" onClick={() => openModal(student.id)}>
                       ➕ Asignar
