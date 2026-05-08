@@ -150,14 +150,14 @@ const ArticleDetail = () => {
                   </a>
                 </>
               )}
-              {article.pdf_pages && (
-                <>
-                  <span>•</span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs font-medium">
-                    📄 {article.pdf_pages} páginas · ⚡ {article.pdf_pages * 5} min
-                  </span>
-                </>
-              )}
+              <>
+                <span>•</span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                  article.pdf_pages ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-400'
+                }`} title={article.pdf_pages ? `⚡ ${article.pdf_pages * 5} min PrionBonus al completar` : 'Número de páginas no disponible'}>
+                  {article.pdf_pages ? `📄 ${article.pdf_pages} páginas · ⚡ ${article.pdf_pages * 5} min` : '📄 páginas desconocidas'}
+                </span>
+              </>
             </div>
           </div>
           {article.is_milestone && (

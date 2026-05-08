@@ -292,7 +292,7 @@ async function updateArticle(req, res) {
       const conflict = await Article.findOne({ where: { pubmed_id: String(fields.pubmed_id), id: { [Op.ne]: article.id } } });
       if (conflict) return res.status(409).json({ error: 'PubMed ID already used by another article' });
     }
-    const updatable = ['title', 'authors', 'year', 'journal', 'doi', 'pubmed_id', 'abstract', 'tags', 'is_milestone', 'priority'];
+    const updatable = ['title', 'authors', 'year', 'journal', 'doi', 'pubmed_id', 'abstract', 'tags', 'is_milestone', 'priority', 'pdf_pages'];
     for (const key of updatable) {
       if (fields[key] !== undefined) article[key] = fields[key];
     }

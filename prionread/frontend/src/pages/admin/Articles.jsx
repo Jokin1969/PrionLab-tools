@@ -83,6 +83,8 @@ const AdminArticles = () => {
   const [filterAssigned, setFilterAssigned]         = useState(false);
   const [filterUnassigned, setFilterUnassigned]     = useState(false);
   const [unassignedUserFilter, setUnassignedUserFilter] = useState(null);
+  const [pagesPopover, setPagesPopover]   = useState(null); // articleId
+  const [pagesInput, setPagesInput]       = useState('');
   const [filters, setFilters]           = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
   const [msg, setMsg]                   = useState('');
   const [errMsg, setErrMsg]             = useState('');
@@ -133,6 +135,13 @@ const AdminArticles = () => {
       highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [openId, articles]);
+
+  useEffect(() => {
+    if (!pagesPopover) return;
+    const close = (e) => { if (!e.target.closest('.pages-popover-root')) setPagesPopover(null); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [pagesPopover]);
 
   const flash      = (text) => { setMsg(text);    setTimeout(() => setMsg(''),    3000); };
   const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
@@ -682,12 +691,60 @@ const AdminArticles = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600">
-                          {article.year}
-                          {article.pdf_pages && (
-                            <span className="ml-2 text-xs text-gray-400" title={`${article.pdf_pages * 5} min PrionBonus`}>
-                              📄{article.pdf_pages}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <span>{article.year}</span>
+                            <div className="relative pages-popover-root">
+                              <button
+                                onClick={() => {
+                                  if (pagesPopover === article.id) { setPagesPopover(null); return; }
+                                  setPagesPopover(article.id);
+                                  setPagesInput(article.pdf_pages ? String(article.pdf_pages) : '');
+                                }}
+                                title={article.pdf_pages ? `${article.pdf_pages} páginas · ${article.pdf_pages * 5} min PrionBonus — clic para editar` : 'Sin páginas — clic para añadir'}
+                                className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                                  article.pdf_pages
+                                    ? 'text-gray-500 hover:bg-gray-100'
+                                    : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
+                                }`}
+                              >
+                                {article.pdf_pages ? `📄${article.pdf_pages}` : '📄'}
+                              </button>
+                              {pagesPopover === article.id && (
+                                <div className="absolute z-20 left-0 top-7 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-44">
+                                  <p className="text-xs text-gray-500 mb-2 font-medium">Número de páginas</p>
+                                  <div className="flex gap-1">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="999"
+                                      value={pagesInput}
+                                      onChange={(e) => setPagesInput(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          const n = parseInt(pagesInput);
+                                          if (n > 0) { handleInlineUpdate(article, { pdf_pages: n }); setPagesPopover(null); }
+                                        }
+                                        if (e.key === 'Escape') setPagesPopover(null);
+                                      }}
+                                      autoFocus
+                                      placeholder="ej. 12"
+                                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const n = parseInt(pagesInput);
+                                        if (n > 0) { handleInlineUpdate(article, { pdf_pages: n }); setPagesPopover(null); }
+                                      }}
+                                      className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
+                                    >✓</button>
+                                  </div>
+                                  {pagesInput && parseInt(pagesInput) > 0 && (
+                                    <p className="text-xs text-indigo-500 mt-1.5">⚡ {parseInt(pagesInput) * 5} min PrionBonus</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-4">
                           <select value={article.priority ?? 3} disabled={saving}
