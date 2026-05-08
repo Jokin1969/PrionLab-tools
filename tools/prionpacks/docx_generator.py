@@ -214,7 +214,8 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
 
     doc.add_paragraph()
 
-    sh = lambda text, **kw: _section_heading(doc, text, accent=ACCENT, accent_hex=acc_hex, **kw)
+    def sh(text, collapsed=True, **kw):
+        _section_heading(doc, text, collapsed=collapsed, accent=ACCENT, accent_hex=acc_hex, **kw)
 
     # ── Description ──────────────────────────────────────────────────────────────────────────
     desc = (pkg.get('description') or '').strip()
