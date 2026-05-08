@@ -16,6 +16,16 @@ const { buildArticleQuery } = require('../utils/articleFilters');
 
 const CURRENT_YEAR = new Date().getFullYear();
 
+// Count pages in a PDF buffer — returns null on any error (non-blocking)
+async function countPdfPages(buffer) {
+  try {
+    const { numpages } = await pdfParse(buffer, { max: 0 });
+    return numpages > 0 ? numpages : null;
+  } catch {
+    return null;
+  }
+}
+
 const HTTP_STATUS = {
   INVALID_INPUT: 400, INVALID_FILE_TYPE: 415, NOT_FOUND: 404,
   RATE_LIMITED: 429, UPSTREAM_ERROR: 503, PARSE_ERROR: 502,
@@ -149,8 +159,11 @@ async function createArticle(req, res) {
     });
     if (req.file) {
       try {
-        const dp = await uploadPDF(req.file.buffer, article);
-        await article.update({ dropbox_path: dp });
+        const [dp, pages] = await Promise.all([
+          uploadPDF(req.file.buffer, article),
+          countPdfPages(req.file.buffer),
+        ]);
+        await article.update({ dropbox_path: dp, ...(pages ? { pdf_pages: pages } : {}) });
       } catch (err) {
         console.error('[createArticle] PDF upload failed:', err.message);
       }
@@ -288,8 +301,13 @@ async function updateArticle(req, res) {
         try { await deletePDF(article.dropbox_path); } catch { /* gone */ }
       }
       try {
-        article.dropbox_path = await uploadPDF(req.file.buffer, article);
+        const [dp, pages] = await Promise.all([
+          uploadPDF(req.file.buffer, article),
+          countPdfPages(req.file.buffer),
+        ]);
+        article.dropbox_path = dp;
         article.dropbox_link = null;
+        if (pages) article.pdf_pages = pages;
       } catch (err) { return serviceError(res, err); }
     }
     await article.save();
@@ -351,11 +369,15 @@ async function uploadArticlePDF(req, res) {
     const article = await Article.findByPk(req.params.id);
     if (!article) return res.status(404).json({ error: 'Article not found' });
     if (!req.file) return res.status(400).json({ error: 'No PDF file received' });
-    let dp;
-    try { dp = await uploadPDF(req.file.buffer, article); }
-    catch (err) { return serviceError(res, err); }
-    await article.update({ dropbox_path: dp, dropbox_link: null });
-    return res.json({ dropbox_path: dp });
+    let dp, pages;
+    try {
+      [dp, pages] = await Promise.all([
+        uploadPDF(req.file.buffer, article),
+        countPdfPages(req.file.buffer),
+      ]);
+    } catch (err) { return serviceError(res, err); }
+    await article.update({ dropbox_path: dp, dropbox_link: null, ...(pages ? { pdf_pages: pages } : {}) });
+    return res.json({ dropbox_path: dp, pdf_pages: pages ?? null });
   } catch (err) {
     console.error('[uploadArticlePDF]', err);
     res.status(500).json({ error: 'Internal server error' });
