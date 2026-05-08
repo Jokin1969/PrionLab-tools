@@ -27,6 +27,23 @@ import { DuplicatesModal } from '../../components/admin/DuplicatesModal';
 import { PdfAnalyzeModal } from '../../components/admin/PdfAnalyzeModal';
 import { Card, Button, Input, Loader } from '../../components/common';
 
+const LABEL_COLORS = [
+  { value: 'red',    bg: 'bg-red-500',    ring: 'ring-red-300',    btnOff: 'bg-white text-red-600 border-red-300 hover:bg-red-50',    btnOn: 'bg-red-500 text-white border-red-500' },
+  { value: 'orange', bg: 'bg-orange-400', ring: 'ring-orange-300', btnOff: 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50', btnOn: 'bg-orange-400 text-white border-orange-400' },
+  { value: 'yellow', bg: 'bg-yellow-400', ring: 'ring-yellow-300', btnOff: 'bg-white text-yellow-600 border-yellow-300 hover:bg-yellow-50', btnOn: 'bg-yellow-400 text-white border-yellow-400' },
+  { value: 'green',  bg: 'bg-green-500',  ring: 'ring-green-300',  btnOff: 'bg-white text-green-600 border-green-300 hover:bg-green-50',  btnOn: 'bg-green-500 text-white border-green-500' },
+  { value: 'blue',   bg: 'bg-blue-500',   ring: 'ring-blue-300',   btnOff: 'bg-white text-blue-600 border-blue-300 hover:bg-blue-50',   btnOn: 'bg-blue-500 text-white border-blue-500' },
+  { value: 'purple', bg: 'bg-purple-500', ring: 'ring-purple-300', btnOff: 'bg-white text-purple-600 border-purple-300 hover:bg-purple-50', btnOn: 'bg-purple-500 text-white border-purple-500' },
+];
+
+const FlagIcon = ({ active }) => (
+  <svg viewBox="0 0 10 13" className="w-3.5 h-3.5" fill={active ? 'currentColor' : 'none'}
+    stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="1.5" y1="0.5" x2="1.5" y2="12.5" />
+    <path d="M1.5 1 L9 3.5 L1.5 7 Z" />
+  </svg>
+);
+
 const DOT_CLS = {
   none:       'bg-gray-200 hover:bg-gray-400 cursor-pointer',
   pending:    'bg-amber-400  cursor-default',
@@ -85,6 +102,10 @@ const AdminArticles = () => {
   const [filterUnassigned, setFilterUnassigned]     = useState(false);
   const [filterRead, setFilterRead]                 = useState(false);
   const [filterUnread, setFilterUnread]             = useState(false);
+  const [filterFlagged, setFilterFlagged]           = useState(false);
+  const [filterUnflagged, setFilterUnflagged]       = useState(false);
+  const [filterColor, setFilterColor]               = useState(null);
+  const [colorPopover, setColorPopover]             = useState(null);
   const [unassignedUserFilter, setUnassignedUserFilter] = useState(null);
   const [pagesPopover, setPagesPopover]   = useState(null); // articleId
   const [pagesInput, setPagesInput]       = useState('');
@@ -146,6 +167,13 @@ const AdminArticles = () => {
     return () => document.removeEventListener('mousedown', close);
   }, [pagesPopover]);
 
+  useEffect(() => {
+    if (!colorPopover) return;
+    const close = (e) => { if (!e.target.closest('.color-popover-root')) setColorPopover(null); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [colorPopover]);
+
   const flash      = (text) => { setMsg(text);    setTimeout(() => setMsg(''),    3000); };
   const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
 
@@ -190,6 +218,8 @@ const AdminArticles = () => {
       if (article.pubmed_id) fd.append('pubmed_id', article.pubmed_id);
       fd.append('abstract',     patch.abstract !== undefined ? patch.abstract : (article.abstract || ''));
       fd.append('is_milestone', String(patch.is_milestone ?? article.is_milestone));
+      fd.append('is_flagged',   String(patch.is_flagged   ?? article.is_flagged   ?? false));
+      fd.append('color_label',  patch.color_label !== undefined ? (patch.color_label ?? '') : (article.color_label ?? ''));
       fd.append('priority',     String(patch.priority     ?? article.priority));
       await adminService.updateArticle(article.id, fd);
       setArticles((prev) => prev.map((a) => a.id === article.id ? { ...a, ...patch } : a));
@@ -426,10 +456,13 @@ const AdminArticles = () => {
   if (filterAssigned)    filteredArticles = filteredArticles.filter((a) => Object.values(matrix[a.id] || {}).some(Boolean));
   if (filterUnassigned)  filteredArticles = filteredArticles.filter((a) => !Object.values(matrix[a.id] || {}).some(Boolean));
   const READ_STATUSES = ['read', 'summarized', 'evaluated'];
-  if (filterRead)    filteredArticles = filteredArticles.filter((a) =>
+  if (filterRead)      filteredArticles = filteredArticles.filter((a) =>
     Object.values(matrix[a.id] || {}).some((v) => v && READ_STATUSES.includes(v.status)));
-  if (filterUnread)  filteredArticles = filteredArticles.filter((a) =>
+  if (filterUnread)    filteredArticles = filteredArticles.filter((a) =>
     !Object.values(matrix[a.id] || {}).some((v) => v && READ_STATUSES.includes(v.status)));
+  if (filterFlagged)   filteredArticles = filteredArticles.filter((a) => a.is_flagged);
+  if (filterUnflagged) filteredArticles = filteredArticles.filter((a) => !a.is_flagged);
+  if (filterColor)     filteredArticles = filteredArticles.filter((a) => a.color_label === filterColor);
   if (unassignedUserFilter) filteredArticles = filteredArticles.filter((a) => !matrix[a.id]?.[unassignedUserFilter.id]);
 
   const filterLabel = statusFilter
@@ -438,7 +471,7 @@ const AdminArticles = () => {
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
 
-  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterNoPages || filterMilestone || filterRead || filterUnread ||
+  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterNoPages || filterMilestone || filterRead || filterUnread || filterFlagged || filterUnflagged || filterColor ||
     filterAssigned || filterUnassigned || userFilter || unassignedUserFilter ||
     filters.is_milestone || (filters.year && filters.year !== '');
 
@@ -597,9 +630,31 @@ const AdminArticles = () => {
                 filterUnread ? 'bg-slate-500 text-white border-slate-500' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
               }`}>📭 No leídos</button>
             <button
+              onClick={() => { setFilterFlagged((v) => !v); setFilterUnflagged(false); }}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors flex items-center gap-1 ${
+                filterFlagged ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-rose-600 border-rose-300 hover:bg-rose-50'
+              }`}><FlagIcon active={filterFlagged} /> Con bandera</button>
+            <button
+              onClick={() => { setFilterUnflagged((v) => !v); setFilterFlagged(false); }}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterUnflagged ? 'bg-gray-500 text-white border-gray-500' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
+              }`}>Sin bandera</button>
+            <span className="flex items-center gap-1 ml-1">
+              {LABEL_COLORS.map((c) => (
+                <button key={c.value}
+                  onClick={() => setFilterColor(filterColor === c.value ? null : c.value)}
+                  title={`Filtrar por color ${c.value}`}
+                  className={`w-5 h-5 rounded-full border-2 transition-all ${c.bg} ${
+                    filterColor === c.value ? 'border-gray-800 scale-125' : 'border-transparent hover:border-gray-400'
+                  }`}
+                />
+              ))}
+            </span>
+            <button
               onClick={() => {
                 setFilterNoPdf(false); setFilterNoAbstract(false); setFilterNoPages(false); setFilterMilestone(false);
                 setFilterAssigned(false); setFilterUnassigned(false); setFilterRead(false); setFilterUnread(false);
+                setFilterFlagged(false); setFilterUnflagged(false); setFilterColor(null);
                 setSearch(''); setAdvSearch(''); setSearchAbstract(false);
                 setFilters((p) => ({ ...p, is_milestone: '' }));
               }}
@@ -693,6 +748,48 @@ const AdminArticles = () => {
                       >
                         <td className="px-6 py-4 max-w-xs">
                           <div className="flex items-start gap-2">
+                            {/* Flag */}
+                            <button
+                              title={article.is_flagged ? 'Quitar bandera' : 'Marcar con bandera'}
+                              disabled={saving}
+                              onClick={() => handleInlineUpdate(article, { is_flagged: !article.is_flagged })}
+                              className={`shrink-0 mt-0.5 leading-none hover:scale-125 transition-transform disabled:opacity-40 ${
+                                article.is_flagged ? 'text-rose-600' : 'text-gray-200 hover:text-gray-400'
+                              }`}>
+                              <FlagIcon active={article.is_flagged} />
+                            </button>
+                            {/* Color label */}
+                            <div className="relative color-popover-root shrink-0 mt-0.5">
+                              <button
+                                title="Etiqueta de color"
+                                disabled={saving}
+                                onClick={() => setColorPopover(colorPopover === article.id ? null : article.id)}
+                                className={`w-4 h-4 rounded-full border-2 transition-all hover:scale-125 disabled:opacity-40 ${
+                                  article.color_label
+                                    ? `${LABEL_COLORS.find((c) => c.value === article.color_label)?.bg ?? 'bg-gray-300'} border-transparent`
+                                    : 'bg-gray-100 border-gray-300 hover:border-gray-400'
+                                }`}
+                              />
+                              {colorPopover === article.id && (
+                                <div className="absolute left-0 top-6 z-50 bg-white rounded-xl shadow-lg border border-gray-200 p-2 flex items-center gap-1.5">
+                                  <button
+                                    title="Sin color"
+                                    onClick={() => { handleInlineUpdate(article, { color_label: null }); setColorPopover(null); }}
+                                    className="w-5 h-5 rounded-full bg-gray-100 border-2 border-gray-300 hover:border-gray-500 transition-all flex items-center justify-center text-gray-400 text-xs font-bold"
+                                  >×</button>
+                                  {LABEL_COLORS.map((c) => (
+                                    <button key={c.value}
+                                      title={c.value}
+                                      onClick={() => { handleInlineUpdate(article, { color_label: c.value }); setColorPopover(null); }}
+                                      className={`w-5 h-5 rounded-full border-2 transition-all hover:scale-125 ${c.bg} ${
+                                        article.color_label === c.value ? `border-gray-700 ring-2 ${c.ring}` : 'border-transparent'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {/* Milestone star */}
                             <button title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
                               disabled={saving}
                               onClick={() => handleInlineUpdate(article, { is_milestone: !article.is_milestone, priority: !article.is_milestone ? 5 : article.priority })}

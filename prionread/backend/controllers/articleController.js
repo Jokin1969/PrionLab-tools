@@ -42,6 +42,12 @@ function coerceFields(body) {
   if (out.is_milestone !== undefined) {
     out.is_milestone = out.is_milestone === true || out.is_milestone === 'true';
   }
+  if (out.is_flagged !== undefined) {
+    out.is_flagged = out.is_flagged === true || out.is_flagged === 'true';
+  }
+  if (out.color_label === '' || out.color_label === 'null') {
+    out.color_label = null;
+  }
   if (typeof out.tags === 'string') {
     try { out.tags = JSON.parse(out.tags); }
     catch { out.tags = out.tags.split(',').map((t) => t.trim()).filter(Boolean); }
@@ -292,7 +298,7 @@ async function updateArticle(req, res) {
       const conflict = await Article.findOne({ where: { pubmed_id: String(fields.pubmed_id), id: { [Op.ne]: article.id } } });
       if (conflict) return res.status(409).json({ error: 'PubMed ID already used by another article' });
     }
-    const updatable = ['title', 'authors', 'year', 'journal', 'doi', 'pubmed_id', 'abstract', 'tags', 'is_milestone', 'priority', 'pdf_pages'];
+    const updatable = ['title', 'authors', 'year', 'journal', 'doi', 'pubmed_id', 'abstract', 'tags', 'is_milestone', 'is_flagged', 'color_label', 'priority', 'pdf_pages'];
     for (const key of updatable) {
       if (fields[key] !== undefined) article[key] = fields[key];
     }
@@ -590,7 +596,7 @@ async function analyzePdf(req, res) {
       : null;
     const dropbox_filename = dropbox_path
       ? dropbox_path.split('/').pop()
-      : `${doi.replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
+      : `${doi.replace(/[\/\\?%*:|"<>]/g, '_')}.pdf`;
 
     return res.json({ doi, candidates, metadata, source, dropbox_path, dropbox_filename });
   } catch (err) {

@@ -45,6 +45,14 @@ const Article = sequelize.define('Article', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  is_flagged: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  color_label: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   priority: {
     type: DataTypes.INTEGER,
     defaultValue: 3,
