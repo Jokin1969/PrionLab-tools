@@ -350,8 +350,23 @@ router.post('/articles/export-word', async (req, res) => {
     WidthType, BorderStyle, AlignmentType, VerticalAlign,
     Packer, convertInchesToTwip,
   } = require('docx');
+  const { Article } = require('../models');
 
-  const articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
+  // Accept either full articles (legacy) or just IDs (preferred — avoids body size limits)
+  let articles;
+  const articleIds = Array.isArray(req.body?.articleIds) ? req.body.articleIds : null;
+  if (articleIds) {
+    articles = await Article.findAll({
+      where: { id: { [Op.in]: articleIds } },
+      attributes: ['id', 'title', 'authors', 'journal', 'year', 'abstract'],
+      order: [['title', 'ASC']],
+    });
+    // Preserve the frontend ordering
+    const order = new Map(articleIds.map((id, i) => [id, i]));
+    articles.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  } else {
+    articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
+  }
   if (!articles.length) return res.status(400).json({ error: 'No articles provided' });
 
   // ── Colour palette (blue-friendly) ──────────────────────────────────────

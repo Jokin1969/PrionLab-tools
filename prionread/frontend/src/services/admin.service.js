@@ -55,7 +55,7 @@ export const adminService = {
     (await api.post(`/articles/${articleId}/download-link`)).data,
 
   exportArticlesWord: async (articles) =>
-    api.post('/admin/articles/export-word', { articles }, { responseType: 'blob' }),
+    api.post('/admin/articles/export-word', { articleIds: articles.map((a) => a.id) }, { responseType: 'blob' }),
 
   // PDF health
   verifyPdfs: async () => (await api.post('/admin/articles/verify-pdfs')).data,
