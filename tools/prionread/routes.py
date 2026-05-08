@@ -61,17 +61,15 @@ def assets(filename):
 
 
 # ── SPA entry point and client-side routes ────────────────────────────────────
-# Requires Flask session login to access PrionRead at all
+# No Flask login_required here — PrionRead has its own JWT auth in the React app
 
 @prionread_bp.route("", strict_slashes=False)
-@login_required
 def root():
     return redirect("/prionread/", 301)
 
 
 @prionread_bp.route("/")
 @prionread_bp.route("/<path:path>")
-@login_required
 def index(path=""):
     if not os.path.isdir(DIST_DIR):
         return (

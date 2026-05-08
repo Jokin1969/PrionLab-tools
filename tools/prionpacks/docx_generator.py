@@ -11,6 +11,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
+from . import members as members_module
+
 logger = logging.getLogger(__name__)
 
 _TEAL      = RGBColor(0x1a, 0x73, 0x73)
@@ -149,13 +151,24 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     sec.left_margin   = Cm(2.5)
     sec.right_margin  = Cm(2.5)
 
-    # ── Page header: PRP-### · date ──────────────────────────────────────────────────────────
+    # ── Resolve responsible (needed by header and subtitle) ─────────────────────────────────
+    resp_id = pkg.get('responsible') or ''
+    resp_name = ''
+    if resp_id:
+        m = members_module.get_member(resp_id)
+        if m:
+            resp_name = f"{m['name']} {m['surname']}"
+
+    # ── Page header: PRP-### · Responsable · date ───────────────────────────────────────────
     hdr = sec.header
     hp = hdr.paragraphs[0] if hdr.paragraphs else hdr.add_paragraph()
     hp.clear()
     hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     r_id = hp.add_run(pkg.get('id', 'PRP'))
     r_id.font.bold = True; r_id.font.size = Pt(8); r_id.font.color.rgb = _TEAL
+    if resp_name:
+        r_resp = hp.add_run(f'  ·  {resp_name}')
+        r_resp.font.size = Pt(8); r_resp.font.color.rgb = _DIM
     r_sep = hp.add_run('  ·  ' + send_date.strftime('%d/%m/%Y'))
     r_sep.font.size = Pt(8); r_sep.font.color.rgb = _DIM
 
@@ -174,10 +187,11 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
         add_runs(ap, at_clean, size=Pt(14), italic=True, color=_TEAL)
 
+    resp_part = f"  ·  Responsable: {resp_name}" if resp_name else ''
     sub = doc.add_paragraph()
     run2 = sub.add_run(
         f"PrionPack {pkg.get('id', '')}  ·  "
-        f"Versión {version}  ·  "
+        f"Versión {version}{resp_part}  ·  "
         f"Generado el {send_date.strftime('%d/%m/%Y %H:%M')}"
     )
     run2.font.size  = Pt(9)
@@ -212,7 +226,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     # ── Abstract ──────────────────────────────────────────────────────────────────────────────
     abstract = (pkg.get('abstract') or '').strip()
     if abstract:
-        _section_heading(doc, 'ABSTRACT')
+        _section_heading(doc, 'ABSTRACT', collapsed=True)
         p = doc.add_paragraph()
         add_runs(p, abstract, size=Pt(10), color=_DARK)
         doc.add_paragraph()
@@ -220,7 +234,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     # ── Author Summary ─────────────────────────────────────────────────────────────────────────
     author_summary = (pkg.get('authorSummary') or '').strip()
     if author_summary:
-        _section_heading(doc, 'RESUMEN PARA AUTORES')
+        _section_heading(doc, 'RESUMEN PARA AUTORES', collapsed=True)
         p = doc.add_paragraph()
         add_runs(p, author_summary, size=Pt(10), color=_DARK)
         doc.add_paragraph()
@@ -232,6 +246,32 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         p = doc.add_paragraph()
         add_runs_with_inline_doi(p, intro, size=Pt(10), color=_DARK)
         doc.add_paragraph()
+
+    # ── Introduction References (Ri-XX) ───────────────────────────────────────────────────────
+    intro_refs_raw = pkg.get('introReferences')
+    if isinstance(intro_refs_raw, list):
+        intro_refs_list = [str(r).strip() for r in intro_refs_raw if isinstance(r, str) and r.strip()]
+    elif isinstance(intro_refs_raw, str) and intro_refs_raw.strip():
+        intro_refs_list = [intro_refs_raw.strip()]
+    else:
+        intro_refs_list = []
+    if intro_refs_list:
+        _section_heading(doc, 'REFERENCIAS DE INTRODUCCIÓN', collapsed=True)
+        for i, ref in enumerate(intro_refs_list, 1):
+            header, abstract = _split_reference(ref)
+            p = doc.add_paragraph(style='Heading 3')
+            pPr = p._p.get_or_add_pPr()
+            collapsed_el = OxmlElement('w:collapsed')
+            collapsed_el.set(qn('w:val'), '1')
+            pPr.append(collapsed_el)
+            r_num = p.add_run(f'[Ri-{i:02d}] ')
+            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = _TEAL
+            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
+            if abstract:
+                p_abs = doc.add_paragraph()
+                add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
+            sep = doc.add_paragraph()
+            sep.paragraph_format.space_after = Pt(8)
 
     # ── Methods (multi-field: list of {title, body}) ──────────────────────────────────────────
     methods_raw = pkg.get('methods')
@@ -430,7 +470,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     else:
         refs_list = []
     if refs_list:
-        _section_heading(doc, 'REFERENCIAS')
+        _section_heading(doc, 'REFERENCIAS', collapsed=True)
         for i, ref in enumerate(refs_list, 1):
             header, abstract = _split_reference(ref)
             # Heading 3 gives collapse triangle in Word 2013+; w:collapsed hides body by default
@@ -524,11 +564,18 @@ def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
     return buf.getvalue()
 
 
-def _section_heading(doc: Document, text: str):
-    p = doc.add_paragraph()
+def _section_heading(doc: Document, text: str, collapsed: bool = False):
+    # Use Heading 2 so Word knows where each section boundary is.
+    # Font properties are overridden to preserve the teal/10 pt look.
+    p = doc.add_paragraph(style='Heading 2')
+    pPr = p._p.get_or_add_pPr()
+    if collapsed:
+        collapsed_el = OxmlElement('w:collapsed')
+        collapsed_el.set(qn('w:val'), '1')
+        pPr.append(collapsed_el)
     run = p.add_run(text)
-    run.font.bold  = True
-    run.font.size  = Pt(10)
+    run.font.bold      = True
+    run.font.size      = Pt(10)
     run.font.color.rgb = _TEAL
     _para_border_bottom(p)
 

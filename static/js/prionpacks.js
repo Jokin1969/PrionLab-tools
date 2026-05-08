@@ -3,6 +3,24 @@
 const PrionPacks = (() => {
   /* ── State ─────────────────────────────────────────────────────────────── */
   let _packages = [];
+  let _members  = [];
+
+  // Curated palette: value (stored in member), bg (card), hover, badge (initials circle + toolbar badge), text (dark)
+  const MEMBER_PALETTE = [
+    { value:'#3b82f6', bg:'#dbeafe', hover:'#bfdbfe', badge:'#93c5fd', text:'#1e40af' }, // blue
+    { value:'#22c55e', bg:'#dcfce7', hover:'#bbf7d0', badge:'#86efac', text:'#15803d' }, // green
+    { value:'#f97316', bg:'#ffedd5', hover:'#fed7aa', badge:'#fdba74', text:'#c2410c' }, // orange
+    { value:'#a855f7', bg:'#ede9fe', hover:'#ddd6fe', badge:'#c4b5fd', text:'#6d28d9' }, // purple
+    { value:'#ec4899', bg:'#fce7f3', hover:'#fbcfe8', badge:'#f9a8d4', text:'#be185d' }, // pink
+    { value:'#ef4444', bg:'#fee2e2', hover:'#fecaca', badge:'#fca5a5', text:'#b91c1c' }, // red
+    { value:'#14b8a6', bg:'#ccfbf1', hover:'#99f6e4', badge:'#5eead4', text:'#0f766e' }, // teal
+    { value:'#6366f1', bg:'#e0e7ff', hover:'#c7d2fe', badge:'#a5b4fc', text:'#4338ca' }, // indigo
+    { value:'#eab308', bg:'#fef9c3', hover:'#fef08a', badge:'#fde047', text:'#a16207' }, // yellow
+    { value:'#84cc16', bg:'#f7fee7', hover:'#ecfccb', badge:'#bef264', text:'#4d7c0f' }, // lime
+    { value:'#06b6d4', bg:'#cffafe', hover:'#a5f3fc', badge:'#67e8f9', text:'#0e7490' }, // cyan
+    { value:'#f43f5e', bg:'#ffe4e6', hover:'#fecdd3', badge:'#fda4af', text:'#be123c' }, // rose
+  ];
+
   let state = {
     currentId: null,
     view: 'dashboard',
@@ -13,6 +31,20 @@ const PrionPacks = (() => {
     filterResponsible: 'all',
   };
 
+  // Post-it note colors (bg, text-on-bg)
+  const NOTE_COLORS = [
+    { value: '#fef9c3', text: '#713f12', name: 'Amarillo' },
+    { value: '#fce7f3', text: '#831843', name: 'Rosa' },
+    { value: '#dbeafe', text: '#1e3a8a', name: 'Azul' },
+    { value: '#dcfce7', text: '#14532d', name: 'Verde' },
+    { value: '#ffedd5', text: '#7c2d12', name: 'Naranja' },
+    { value: '#f3e8ff', text: '#3b0764', name: 'Lavanda' },
+  ];
+
+  let _notesPkgId   = null;   // package currently shown in notes panel
+  let _notesColor   = NOTE_COLORS[0].value; // selected color for new note
+  let _micRecog     = null;   // SpeechRecognition instance
+
   let _imgUploadCallback = null; // set while image-upload modal is open
 
   const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low', none: 'No priority' };
@@ -21,6 +53,10 @@ const PrionPacks = (() => {
   async function init() {
     _bindGlobalEvents();
     _bindModalEvents();
+    _bindMembersEvents();
+    _bindNotesEvents();
+    _bindNoteDetailEvents();
+    _bindMobileEvents();
     _loadApiKeyField();
     _bindKeyboardShortcuts();
     await _fetchAndRender();
@@ -33,7 +69,20 @@ const PrionPacks = (() => {
       toast('Could not load packages from server: ' + e.message, 'error');
       _packages = [];
     }
+    try {
+      _members = await _fetchMembers();
+    } catch (e) {
+      _members = [];
+    }
+    _renderResponsibleChips();
+    _syncResponsibleChips();
     _renderDashboard();
+  }
+
+  async function _fetchMembers() {
+    const res = await fetch('/prionpacks/api/members');
+    if (!res.ok) throw new Error(res.statusText);
+    return res.json();
   }
 
   /* ── Navigation ────────────────────────────────────────────────────────── */
@@ -52,6 +101,7 @@ const PrionPacks = (() => {
 
   function showDashboard() {
     state.currentId = null;
+    _clearRefSearches();
     _renderDashboard();
     showView('dashboard');
   }
@@ -170,21 +220,25 @@ const PrionPacks = (() => {
     empty.style.display = 'none';
     grid.innerHTML = packages.map(_pkgCardHTML).join('');
     grid.querySelectorAll('.pp-pkg-card').forEach(card => {
-      card.addEventListener('click', () => showEditor(card.dataset.id));
+      card.addEventListener('click', () => { _closeMobileSidebar(); showEditor(card.dataset.id); });
     });
     grid.querySelectorAll('.pp-pkg-priority-dot').forEach(dot => {
       dot.addEventListener('click', e => { e.stopPropagation(); _cyclePriorityCard(dot); });
     });
+    grid.querySelectorAll('.pp-notes-badge').forEach(btn => {
+      btn.addEventListener('click', e => { e.stopPropagation(); _openNotes(btn.dataset.notesId); });
+    });
   }
 
-  function _responsibleConfig(r) {
-    const map = {
-      joaquin: { initials: 'JC', label: 'Joaquín Castilla' },
-      hasier:  { initials: 'HE', label: 'Hasier Eraña' },
-      jorge:   { initials: 'JM', label: 'Jorge Moreno' },
-      carlos:  { initials: 'CD', label: 'Carlos Díaz' },
-    };
-    return map[r] || null;
+  function _memberColors(hexColor) {
+    return MEMBER_PALETTE.find(p => p.value === hexColor) || MEMBER_PALETTE[0];
+  }
+
+  function _responsibleConfig(id) {
+    const m = _members.find(m => m.id === id);
+    if (!m) return null;
+    const c = _memberColors(m.color);
+    return { initials: m.initials, label: `${m.name} ${m.surname}`, ...c };
   }
 
   function _pkgCardHTML(p) {
@@ -196,11 +250,14 @@ const PrionPacks = (() => {
     const inactiveCls = inactive ? ' pp-pkg-card-inactive' : '';
     const inactiveBadge = inactive ? '<span class="pp-inactive-badge">Inactivo</span>' : '';
     const resp = _responsibleConfig(p.responsible);
+    const cardStyle = resp
+      ? `--m-bg:${resp.bg};--m-hover:${resp.hover};--m-badge:${resp.badge};--m-text:${resp.text};`
+      : '';
     const respBadge = resp
-      ? `<div class="pp-responsible-badge" data-responsible="${p.responsible}" title="${resp.label}">${resp.initials}</div>`
+      ? `<div class="pp-responsible-badge" style="background:${resp.badge};color:${resp.text};" title="${_esc(resp.label)}">${_esc(resp.initials)}</div>`
       : '';
     return `
-    <div class="pp-pkg-card${inactiveCls}" data-id="${p.id}" data-responsible="${p.responsible||''}">
+    <div class="pp-pkg-card${inactiveCls}" data-id="${p.id}" data-responsible="${_esc(p.responsible||'')}" style="${cardStyle}">
       <div class="pp-pkg-card-header">
         <div class="pp-pkg-priority-dot" data-id="${p.id}" data-priority="${p.priority}"
           style="background:${_priorityColor(p.priority)};" title="Click to change priority"></div>
@@ -208,7 +265,10 @@ const PrionPacks = (() => {
           <div class="pp-pkg-card-id">${p.id} ${inactiveBadge}</div>
           <div class="pp-pkg-card-title">${_supHtml(p.title)}</div>
         </div>
-        ${respBadge}
+        <div class="pp-pkg-card-right">
+          ${_notesBadgeHTML(p)}
+          ${respBadge}
+        </div>
       </div>
       <div class="pp-pkg-card-progress">
         <div class="pp-progress-header"><span>Completeness</span><span>${score}%</span></div>
@@ -609,9 +669,12 @@ const PrionPacks = (() => {
       if (imgAiBtn) imgAiBtn.classList.remove('active');
     });
 
-    document.getElementById('editor-id-badge').textContent = isNew ? 'PRP-NEW' : pkg.id;
+    const idBadge = document.getElementById('editor-id-badge');
+    idBadge.textContent = isNew ? 'PRP-NEW' : pkg.id;
+    _applyMemberColorToBadge(idBadge, !isNew ? pkg.responsible : null);
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
     document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
+    _updateEditorNotesBtn(isNew ? null : pkg);
     const vBadge = document.getElementById('editor-version-badge');
     if (!isNew && pkg.docxVersion) {
       vBadge.textContent = `v${pkg.docxVersion} enviada`;
@@ -639,11 +702,16 @@ const PrionPacks = (() => {
     _renderAltTitlesEditor(altTitles);
     _updateAltTitlesDisplay(altTitles);
     _restoreAltTitlesState();
+    _restoreDescriptionState();
 
     document.getElementById('field-description').value = pkg?.description || '';
+    _updateDescriptionIndicator();
 
     _setPriority(pkg?.priority || 'none');
-    document.getElementById('field-responsible').value = pkg?.responsible || '';
+    const respSel = document.getElementById('field-responsible');
+    respSel.innerHTML = '<option value="">— Sin asignar —</option>' +
+      _members.map(m => `<option value="${_esc(m.id)}">${_esc(m.name + ' ' + m.surname)}</option>`).join('');
+    respSel.value = pkg?.responsible || '';
     _renderFindings(pkg?.findings || []);
 
     const missingInfo = (pkg?.gaps?.missingInfo || []).map(g =>
@@ -704,6 +772,9 @@ const PrionPacks = (() => {
     if (Array.isArray(rawIntroRefs)) introRefs = rawIntroRefs.filter(r => r && String(r).trim());
     else if (typeof rawIntroRefs === 'string' && rawIntroRefs.trim()) introRefs = [rawIntroRefs.trim()];
     _renderIntroReferencesList(introRefs);
+    _refreshMigrateBtns();
+    _refreshIntroMigrateBtns();
+    _refreshSharedDois();
 
     // Methods — multi-field. Each item has {title, body}. Legacy single-string
     // value (or list of strings) is wrapped into a list of body-only items.
@@ -772,6 +843,32 @@ const PrionPacks = (() => {
   // is never consumed, but 10.1016/s0896-6273(00)00046-5 is matched whole.
   const _DOI_RE = /\b10\.\d{4,}\/(?:[^\s,;>\]()]+|\([^)]*\))+/g;
 
+  function _makeCopyBtn(doi) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pp-doi-copy-btn';
+    btn.title = 'Copiar DOI al portapapeles';
+    btn.innerHTML = '<i class="fas fa-copy"></i>';
+    btn.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(doi);
+      } catch {
+        const tmp = document.createElement('textarea');
+        tmp.value = doi;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand('copy');
+        document.body.removeChild(tmp);
+      }
+      btn.innerHTML = '<i class="fas fa-check"></i>';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i>'; btn.classList.remove('copied'); }, 1500);
+    });
+    return btn;
+  }
+
   function _renderDoiChipsFor(textarea, container) {
     if (!container) return;
     const matches = (textarea.value || '').match(_DOI_RE) || [];
@@ -786,6 +883,7 @@ const PrionPacks = (() => {
       a.title = doi;
       a.textContent = doi;
       container.appendChild(a);
+      container.appendChild(_makeCopyBtn(doi));
     });
   }
 
@@ -815,6 +913,7 @@ const PrionPacks = (() => {
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
         <span class="pp-reference-number">R-${String(idx + 1).padStart(2, '0')}</span>
+        <button type="button" class="pp-btn-icon btn-migrate-to-intro" title="Clonar a Referencias de Introducción"><i class="fas fa-share"></i></button>
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Referencia ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
@@ -848,18 +947,43 @@ const PrionPacks = (() => {
         a.textContent = first;
         a.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(a);
+        const cb = _makeCopyBtn(first);
+        cb.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(cb);
       }
     };
     ta.addEventListener('input', () => {
       _renderDoiChipsFor(ta, chips);
       refreshPreview();
       refreshHeaderDoi();
+      _refreshSharedDois();
     });
     div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
       div.classList.toggle('pp-reference-collapsed');
       _saveItemCollapse('r', div, div.classList.contains('pp-reference-collapsed'));
+    });
+    div.querySelector('.btn-migrate-to-intro').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = ta.value.trim();
+      if (!text) { toast('La referencia está vacía.', 'error'); return; }
+      const existing = Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
+        .map(t => t.value.trim());
+      const btn = e.currentTarget;
+      if (existing.includes(text)) {
+        btn.classList.add('migrated');
+        toast('Ya incluida en Referencias de Introducción.', 'info');
+        return;
+      }
+      const introRefs = _collectIntroReferences();
+      introRefs.push(text);
+      _renderIntroReferencesList(introRefs);
+      _refreshSharedDois();
+      _scheduleAutosave();
+      btn.classList.add('migrated');
+      toast('Referencia copiada a Introducción ✓', 'success');
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -873,6 +997,18 @@ const PrionPacks = (() => {
     refreshPreview();
     refreshHeaderDoi();
     return div;
+  }
+
+  function _refreshMigrateBtns() {
+    const introTexts = new Set(
+      Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
+        .map(t => t.value.trim()).filter(Boolean)
+    );
+    document.querySelectorAll('#references-list .pp-reference-item').forEach(item => {
+      const text = (item.querySelector('.pp-reference-textarea')?.value || '').trim();
+      const btn  = item.querySelector('.btn-migrate-to-intro');
+      if (btn && text && introTexts.has(text)) btn.classList.add('migrated');
+    });
   }
 
   function _updateReferencesCount() {
@@ -901,6 +1037,24 @@ const PrionPacks = (() => {
     if (!k) return;
     if (collapsed) localStorage.setItem(k, '1');
     else           localStorage.removeItem(k);
+  }
+
+  function _applyRefSearch(listId, query) {
+    const items = document.querySelectorAll(`#${listId} .pp-reference-item`);
+    const terms = (query || '').trim().toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    items.forEach(item => {
+      item.classList.remove('pp-ref-match', 'pp-ref-no-match');
+      if (!terms.length) return;
+      const text = (item.querySelector('textarea')?.value || '').toLowerCase();
+      item.classList.add(terms.some(t => text.includes(t)) ? 'pp-ref-match' : 'pp-ref-no-match');
+    });
+  }
+
+  function _clearRefSearches() {
+    const ri = document.getElementById('refs-search');
+    const ii = document.getElementById('intro-refs-search');
+    if (ri) { ri.value = ''; _applyRefSearch('references-list', ''); }
+    if (ii) { ii.value = ''; _applyRefSearch('intro-references-list', ''); }
   }
 
   function _toggleCollapseAllRefs() {
@@ -1023,6 +1177,7 @@ ${refsText}`;
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
         <span class="pp-reference-number">Ri-${String(idx + 1).padStart(2, '0')}</span>
+        <button type="button" class="pp-btn-icon btn-migrate-to-refs" title="Clonar a Referencias generales"><i class="fas fa-share"></i></button>
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Ref. Intro ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
@@ -1056,12 +1211,16 @@ ${refsText}`;
         a.textContent = first;
         a.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(a);
+        const cb = _makeCopyBtn(first);
+        cb.addEventListener('click', e => e.stopPropagation());
+        headerDoi.appendChild(cb);
       }
     };
     ta.addEventListener('input', () => {
       _renderDoiChipsFor(ta, chips);
       refreshPreview();
       refreshHeaderDoi();
+      _refreshSharedDois();
       _scheduleAutosave();
     });
     div.querySelector('.pp-collapse-btn').addEventListener('click', e => {
@@ -1069,6 +1228,28 @@ ${refsText}`;
       e.stopPropagation();
       div.classList.toggle('pp-reference-collapsed');
       _saveItemCollapse('ir', div, div.classList.contains('pp-reference-collapsed'));
+    });
+    div.querySelector('.btn-migrate-to-refs').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = ta.value.trim();
+      if (!text) { toast('La referencia está vacía.', 'error'); return; }
+      const existing = Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+        .map(t => t.value.trim());
+      const btn = e.currentTarget;
+      if (existing.includes(text)) {
+        btn.classList.add('migrated');
+        toast('Ya incluida en Referencias generales.', 'info');
+        return;
+      }
+      const refs = _collectReferences();
+      refs.push(text);
+      _renderReferencesList(refs);
+      _refreshMigrateBtns();
+      _refreshSharedDois();
+      _scheduleAutosave();
+      btn.classList.add('migrated');
+      toast('Referencia copiada a Referencias generales ✓', 'success');
     });
     div.querySelector('.btn-remove').addEventListener('click', () => {
       div.remove();
@@ -1082,6 +1263,49 @@ ${refsText}`;
     refreshPreview();
     refreshHeaderDoi();
     return div;
+  }
+
+  function _refreshIntroMigrateBtns() {
+    const refTexts = new Set(
+      Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
+        .map(t => t.value.trim()).filter(Boolean)
+    );
+    document.querySelectorAll('#intro-references-list .pp-intro-reference-item').forEach(item => {
+      const text = (item.querySelector('.pp-intro-reference-textarea')?.value || '').trim();
+      const btn  = item.querySelector('.btn-migrate-to-refs');
+      if (btn && text && refTexts.has(text)) btn.classList.add('migrated');
+    });
+  }
+
+  function _refreshSharedDois() {
+    const extract = selector =>
+      Array.from(document.querySelectorAll(selector))
+        .flatMap(ta => (ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []));
+
+    const genDois   = extract('#references-list .pp-reference-textarea');
+    const introDois = extract('#intro-references-list .pp-intro-reference-textarea');
+
+    // Purple: DOI present in both lists (cross-list, intentional)
+    const genSet   = new Set(genDois);
+    const introSet = new Set(introDois);
+    const shared = new Set([...genSet].filter(d => introSet.has(d)));
+
+    // Orange: DOI appears more than once within the same list (intra-list duplicate)
+    const dupGen   = new Set(genDois.filter((d, i, a) => a.indexOf(d) !== i));
+    const dupIntro = new Set(introDois.filter((d, i, a) => a.indexOf(d) !== i));
+
+    document.querySelectorAll('#references-list .pp-doi-chip').forEach(chip => {
+      const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
+      const isDup = doi && dupGen.has(doi);
+      chip.classList.toggle('pp-doi-chip--dup',    isDup);
+      chip.classList.toggle('pp-doi-chip--shared', !isDup && doi && shared.has(doi));
+    });
+    document.querySelectorAll('#intro-references-list .pp-doi-chip').forEach(chip => {
+      const doi = chip.title || chip.getAttribute('href')?.replace('https://doi.org/', '') || '';
+      const isDup = doi && dupIntro.has(doi);
+      chip.classList.toggle('pp-doi-chip--dup',    isDup);
+      chip.classList.toggle('pp-doi-chip--shared', !isDup && doi && shared.has(doi));
+    });
   }
 
   function _updateIntroReferencesCount() {
@@ -1140,6 +1364,39 @@ ${refsText}`;
     return Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
       .map(t => (t.value || '').trim())
       .filter(Boolean);
+  }
+
+  function _syncIntroReferenceDois() {
+    const ta = document.getElementById('field-introduction');
+    if (!ta) return;
+    const dois = [...new Set((ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []))];
+    if (!dois.length) return;
+
+    const existingTexts = Array.from(
+      document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea')
+    ).map(t => t.value.trim());
+
+    let added = false;
+    dois.forEach(doi => {
+      if (existingTexts.some(t => t.includes(doi))) return;
+      const url  = `https://doi.org/${doi}`;
+      const list = document.getElementById('intro-references-list');
+      if (!list) return;
+      const item = _createIntroReferenceItem(url, list.children.length);
+      list.appendChild(item);
+      _setupAnchorButtons(item);
+      _setupSupPreviews(item);
+      existingTexts.push(url);
+      added = true;
+    });
+
+    if (added) {
+      _updateIntroReferencesCount();
+      _refreshAllJumpButtons();
+      _refreshIntroMigrateBtns();
+      _refreshSharedDois();
+      _scheduleAutosave();
+    }
   }
 
   /* ── Quick-jump buttons in section headers ────────────────────────────── */
@@ -1721,6 +1978,10 @@ ${refsText}`;
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
         _updateAltTitlesIndicator();
       });
+      input.addEventListener('blur', () => {
+        const sc = _sentenceCase(input.value);
+        if (sc !== input.value) input.value = sc;
+      });
       row.querySelector('.btn-remove').addEventListener('click', () => {
         row.remove();
         _updateAltTitlesDisplay(_collectAltTitlesFromEditor());
@@ -1782,6 +2043,31 @@ ${refsText}`;
     } else {
       grp.classList.remove('pp-alt-titles-collapsed');
     }
+  }
+
+  function _updateDescriptionIndicator() {
+    const btn = document.getElementById('btn-toggle-description');
+    if (!btn) return;
+    const has = (document.getElementById('field-description')?.value || '').trim().length > 0;
+    btn.classList.toggle('pp-collapse-btn--filled', has);
+    btn.classList.toggle('pp-collapse-btn--empty',  !has);
+  }
+
+  function _toggleDescription() {
+    const grp = document.getElementById('description-group');
+    if (!grp) return;
+    const collapsed = grp.classList.toggle('pp-description-collapsed');
+    if (collapsed) localStorage.setItem('pp-collapse:description-group', '1');
+    else           localStorage.removeItem('pp-collapse:description-group');
+  }
+
+  function _restoreDescriptionState() {
+    const grp = document.getElementById('description-group');
+    if (!grp) return;
+    if (localStorage.getItem('pp-collapse:description-group') === '1')
+      grp.classList.add('pp-description-collapsed');
+    else
+      grp.classList.remove('pp-description-collapsed');
   }
 
   /* ── Toggle helpers ────────────────────────────────────────────────────── */
@@ -2627,7 +2913,9 @@ ${refsText}`;
         _packages.push(saved);
         state.currentId = saved.id;
       }
-      document.getElementById('editor-id-badge').textContent = saved.id;
+      const savedBadge = document.getElementById('editor-id-badge');
+      savedBadge.textContent = saved.id;
+      _applyMemberColorToBadge(savedBadge, saved.responsible);
       document.getElementById('btn-delete-package').style.display = '';
       document.getElementById('btn-send-review').style.display = '';
       const dlWord = document.getElementById('btn-download-word');
@@ -2856,6 +3144,9 @@ ${refsText}`;
   function _bindGlobalEvents() {
     document.getElementById('btn-new-package').addEventListener('click', () => showEditor(null));
     document.getElementById('btn-new-package-main').addEventListener('click', () => showEditor(null));
+    document.getElementById('btn-fab-new')?.addEventListener('click', () => showEditor(null));
+    document.getElementById('btn-mobile-new')?.addEventListener('click', () => { _closeMobileSidebar(); showEditor(null); });
+    document.getElementById('btn-editor-notes')?.addEventListener('click', () => { if (state.currentId) _openNotes(state.currentId); });
     document.getElementById('btn-backup-dropbox')?.addEventListener('click', _runManualBackup);
     document.getElementById('btn-open-restore')?.addEventListener('click', _openRestoreModal);
     document.getElementById('pp-restore-modal-close')?.addEventListener('click', _closeRestoreModal);
@@ -2869,6 +3160,15 @@ ${refsText}`;
     // Alternative titles
     document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
     document.getElementById('btn-toggle-alt-titles')?.addEventListener('click', _toggleAltTitles);
+    document.getElementById('btn-toggle-description')?.addEventListener('click', _toggleDescription);
+    document.getElementById('field-description')?.addEventListener('input', _updateDescriptionIndicator);
+
+    // Sentence-case main title on blur
+    document.getElementById('field-title')?.addEventListener('blur', e => {
+      const el = e.target;
+      const sc = _sentenceCase(el.value);
+      if (sc !== el.value) el.value = sc;
+    });
 
     // Documentation view
     document.getElementById('btn-show-docs')?.addEventListener('click', () => showView('docs'));
@@ -3012,6 +3312,7 @@ ${refsText}`;
     document.getElementById('btn-toggle-authorsummary').addEventListener('click', () =>
       _toggleSection('section-authorsummary', 'btn-toggle-authorsummary', 'fa-user-edit', 'Author Summary'));
     document.getElementById('btn-toggle-introduction').addEventListener('click', _toggleIntroduction);
+    document.getElementById('field-introduction')?.addEventListener('input', _syncIntroReferenceDois);
     document.getElementById('btn-toggle-methods').addEventListener('click', () => {
       _toggleSection('section-methods', 'btn-toggle-methods', 'fa-flask-vial', 'Methods');
       const section = document.getElementById('section-methods');
@@ -3053,6 +3354,8 @@ ${refsText}`;
     });
     document.getElementById('btn-add-reference')?.addEventListener('click', () => _addReference(true));
     document.getElementById('btn-collapse-all-refs')?.addEventListener('click', () => _toggleCollapseAllRefs());
+    document.getElementById('refs-search')?.addEventListener('input', e => _applyRefSearch('references-list', e.target.value));
+    document.getElementById('intro-refs-search')?.addEventListener('input', e => _applyRefSearch('intro-references-list', e.target.value));
     document.getElementById('btn-discuss-claude')?.addEventListener('click', () => _askClaudeDiscussion());
     // Delegated AI toggle for dynamic reference rows
     document.getElementById('references-list')?.addEventListener('click', e => {
@@ -3110,6 +3413,10 @@ ${refsText}`;
     // Active/Inactive toggle
     document.getElementById('btn-active-toggle').addEventListener('click', () => {
       _setActiveState(!_getCurrentActive());
+    });
+
+    document.getElementById('field-responsible').addEventListener('change', e => {
+      _applyMemberColorToBadge(document.getElementById('editor-id-badge'), e.target.value);
     });
 
     // Investigations file input
@@ -3304,10 +3611,37 @@ ${refsText}`;
     });
   }
 
+  function _renderResponsibleChips() {
+    const container = document.getElementById('filter-responsible-chips');
+    if (!container) return;
+    const cur = state.filterResponsible;
+    const memberChips = _members.map(m => {
+      const c = _memberColors(m.color);
+      return `<button class="pp-resp-chip${cur === m.id ? ' active' : ''}" data-responsible="${_esc(m.id)}"
+        title="${_esc(m.name + ' ' + m.surname)}"
+        style="--m-badge:${c.badge};--m-text:${c.text};--m-bg:${c.bg};">${_esc(m.initials)}</button>`;
+    }).join('');
+    container.innerHTML =
+      `<button class="pp-resp-chip pp-resp-chip-all${cur === 'all' ? ' active' : ''}" data-responsible="all" title="Todos">Todos</button>` +
+      memberChips +
+      `<button class="pp-resp-chip pp-resp-chip-none${cur === 'none' ? ' active' : ''}" data-responsible="none" title="Sin asignar">—</button>`;
+  }
+
   function _syncResponsibleChips() {
     document.querySelectorAll('#filter-responsible-chips .pp-resp-chip').forEach(chip => {
       chip.classList.toggle('active', chip.dataset.responsible === state.filterResponsible);
     });
+  }
+
+  function _applyMemberColorToBadge(el, responsibleId) {
+    const resp = responsibleId ? _responsibleConfig(responsibleId) : null;
+    if (resp) {
+      el.style.setProperty('--m-badge', resp.badge);
+      el.style.setProperty('--m-text',  resp.text);
+    } else {
+      el.style.removeProperty('--m-badge');
+      el.style.removeProperty('--m-text');
+    }
   }
 
   function _loadApiKeyField() {
@@ -3344,6 +3678,12 @@ ${refsText}`;
     return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  function _sentenceCase(str) {
+    const t = str.trim();
+    if (!t) return t;
+    return t[0].toUpperCase() + t.slice(1).toLowerCase();
+  }
+
   // Render text with markdown-style superscript markers: PrP^Sc^ -> PrP<sup>Sc</sup>.
   // The input is HTML-escaped first; only the <sup> tags we generate are kept.
   // The regex requires the segment to start with a non-whitespace char so it
@@ -3378,6 +3718,603 @@ ${refsText}`;
     el.innerHTML = `<i class="fas ${icon}"></i> ${_esc(msg)}`;
     c.appendChild(el);
     setTimeout(() => el.remove(), 3500);
+  }
+
+  /* ── Members view ──────────────────────────────────────────────────────── */
+
+  function showMembers() {
+    showView('members');
+    _renderMembersGrid();
+  }
+
+  function _renderMembersGrid() {
+    const grid = document.getElementById('pp-members-grid');
+    if (!grid) return;
+    if (!_members.length) {
+      grid.innerHTML = '<div class="pp-members-empty"><i class="fas fa-users"></i><p>No hay miembros aún. Crea el primero.</p></div>';
+      return;
+    }
+    grid.innerHTML = _members.map(m => {
+      const c = _memberColors(m.color);
+      return `
+      <div class="pp-member-card" data-id="${_esc(m.id)}">
+        <div class="pp-member-avatar" style="background:${c.badge};color:${c.text};">${_esc(m.initials)}</div>
+        <div class="pp-member-info">
+          <div class="pp-member-name">${_esc(m.name + ' ' + m.surname)}</div>
+          <div class="pp-member-email">${_esc(m.email || '—')}</div>
+        </div>
+        <div class="pp-member-swatch" style="background:${m.color};" title="${m.color}"></div>
+        <div class="pp-member-actions">
+          <button class="pp-btn-icon btn-edit-member" data-id="${_esc(m.id)}" title="Editar">
+            <i class="fas fa-pen"></i>
+          </button>
+          <button class="pp-btn-icon btn-delete-member pp-btn-icon-danger" data-id="${_esc(m.id)}" title="Eliminar">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.btn-edit-member').forEach(btn =>
+      btn.addEventListener('click', () => _openMemberModal(btn.dataset.id)));
+    grid.querySelectorAll('.btn-delete-member').forEach(btn =>
+      btn.addEventListener('click', () => _deleteMember(btn.dataset.id)));
+  }
+
+  let _editingMemberId = null;
+  let _selectedColor   = MEMBER_PALETTE[0].value;
+
+  function _openMemberModal(memberId) {
+    _editingMemberId = memberId || null;
+    const m = memberId ? _members.find(x => x.id === memberId) : null;
+
+    document.getElementById('pp-member-modal-title').innerHTML =
+      memberId ? '<i class="fas fa-user-edit"></i> Editar miembro'
+               : '<i class="fas fa-user-plus"></i> Añadir miembro';
+    document.getElementById('member-name').value     = m?.name     || '';
+    document.getElementById('member-surname').value  = m?.surname  || '';
+    document.getElementById('member-initials').value = m?.initials || '';
+    document.getElementById('member-email').value    = m?.email    || '';
+    document.getElementById('member-password').value = '';
+    document.getElementById('member-pwd-hint').style.display = memberId ? '' : 'none';
+    document.getElementById('pp-member-error').style.display = 'none';
+
+    _selectedColor = m?.color || MEMBER_PALETTE[0].value;
+    _renderColorPalette();
+    document.getElementById('pp-member-modal').style.display = 'flex';
+    document.getElementById('member-name').focus();
+  }
+
+  function _renderColorPalette() {
+    const el = document.getElementById('member-color-palette');
+    el.innerHTML = MEMBER_PALETTE.map(p =>
+      `<button type="button" class="pp-color-swatch${p.value === _selectedColor ? ' selected' : ''}"
+        data-color="${p.value}" style="background:${p.value};" title="${p.value}">
+        ${p.value === _selectedColor ? '<i class="fas fa-check"></i>' : ''}
+      </button>`
+    ).join('');
+    el.querySelectorAll('.pp-color-swatch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _selectedColor = btn.dataset.color;
+        _renderColorPalette();
+      });
+    });
+  }
+
+  function _closeMemberModal() {
+    document.getElementById('pp-member-modal').style.display = 'none';
+    _editingMemberId = null;
+  }
+
+  async function _saveMember() {
+    const name    = document.getElementById('member-name').value.trim();
+    const surname = document.getElementById('member-surname').value.trim();
+    if (!name || !surname) {
+      _showMemberError('Nombre y apellidos son obligatorios.');
+      return;
+    }
+    const payload = {
+      name, surname,
+      initials: document.getElementById('member-initials').value.trim() || undefined,
+      email:    document.getElementById('member-email').value.trim(),
+      color:    _selectedColor,
+    };
+    const pwd = document.getElementById('member-password').value;
+    if (pwd) payload.password = pwd;
+
+    const saveBtn = document.getElementById('pp-member-modal-save');
+    saveBtn.disabled = true;
+    try {
+      let res;
+      if (_editingMemberId) {
+        res = await fetch(`/prionpacks/api/members/${_editingMemberId}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch('/prionpacks/api/members', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) { _showMemberError(data.error || 'Error al guardar.'); return; }
+
+      _members = await _fetchMembers();
+      _renderResponsibleChips();
+      _syncResponsibleChips();
+      _closeMemberModal();
+      _renderMembersGrid();
+      toast(_editingMemberId ? 'Miembro actualizado.' : 'Miembro creado.', 'success');
+    } catch (e) {
+      _showMemberError('Error de red: ' + e.message);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  async function _deleteMember(memberId) {
+    const m = _members.find(x => x.id === memberId);
+    if (!m || !confirm(`¿Eliminar a ${m.name} ${m.surname}? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await fetch(`/prionpacks/api/members/${memberId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+      _members = await _fetchMembers();
+      _renderResponsibleChips();
+      _syncResponsibleChips();
+      _renderMembersGrid();
+      toast('Miembro eliminado.', 'success');
+    } catch (e) {
+      toast('Error al eliminar: ' + e.message, 'error');
+    }
+  }
+
+  function _showMemberError(msg) {
+    const el = document.getElementById('pp-member-error');
+    el.textContent = msg;
+    el.style.display = '';
+  }
+
+  function _bindMembersEvents() {
+    document.getElementById('btn-show-members')?.addEventListener('click', showMembers);
+    document.getElementById('btn-members-back')?.addEventListener('click', showDashboard);
+    document.getElementById('btn-add-member')?.addEventListener('click', () => _openMemberModal(null));
+    document.getElementById('pp-member-modal-close')?.addEventListener('click', _closeMemberModal);
+    document.getElementById('pp-member-modal-cancel')?.addEventListener('click', _closeMemberModal);
+    document.getElementById('pp-member-backdrop')?.addEventListener('click', _closeMemberModal);
+    document.getElementById('pp-member-modal-save')?.addEventListener('click', _saveMember);
+    document.getElementById('btn-member-pwd-toggle')?.addEventListener('click', () => {
+      const inp = document.getElementById('member-password');
+      const icon = document.querySelector('#btn-member-pwd-toggle i');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      icon.className = inp.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+    });
+    // Auto-derive initials from name+surname inputs
+    const autoInitials = () => {
+      const ini = document.getElementById('member-initials');
+      if (ini && !ini.dataset.userEdited) {
+        const n = document.getElementById('member-name').value.trim();
+        const s = document.getElementById('member-surname').value.trim();
+        ini.value = ((n[0] || '') + (s[0] || '')).toUpperCase();
+      }
+    };
+    document.getElementById('member-name')?.addEventListener('input', autoInitials);
+    document.getElementById('member-surname')?.addEventListener('input', autoInitials);
+    document.getElementById('member-initials')?.addEventListener('input', function() {
+      this.dataset.userEdited = this.value ? '1' : '';
+    });
+  }
+
+  /* ── Editor notes button ───────────────────────────────────────────────── */
+
+  function _updateEditorNotesBtn(pkg) {
+    const btn   = document.getElementById('btn-editor-notes');
+    const label = document.getElementById('editor-notes-label');
+    if (!btn) return;
+    if (!pkg) { btn.style.display = 'none'; return; }
+    const count = (pkg.notes || []).length;
+    btn.style.display = '';
+    btn.classList.toggle('pp-btn-notes-has-notes', count > 0);
+    label.textContent = count > 0 ? `${count} nota${count !== 1 ? 's' : ''}` : 'Notas';
+  }
+
+  /* ── Mobile sidebar ────────────────────────────────────────────────────── */
+
+  function _openMobileSidebar() {
+    const sidebar  = document.getElementById('pp-sidebar');
+    const overlay  = document.getElementById('pp-mobile-overlay');
+    sidebar?.classList.add('pp-sidebar-open');
+    if (overlay) { overlay.style.display = 'block'; requestAnimationFrame(() => overlay.classList.add('active')); }
+    document.body.style.overflow = 'hidden';
+  }
+
+  function _closeMobileSidebar() {
+    const sidebar = document.getElementById('pp-sidebar');
+    const overlay = document.getElementById('pp-mobile-overlay');
+    sidebar?.classList.remove('pp-sidebar-open');
+    overlay?.classList.remove('active');
+    document.body.style.overflow = '';
+    if (overlay) setTimeout(() => { if (!overlay.classList.contains('active')) overlay.style.display = ''; }, 260);
+  }
+
+  function _bindMobileEvents() {
+    document.getElementById('btn-mobile-hamburger')?.addEventListener('click', _openMobileSidebar);
+    document.getElementById('btn-sidebar-close')?.addEventListener('click', _closeMobileSidebar);
+    document.getElementById('pp-mobile-overlay')?.addEventListener('click', _closeMobileSidebar);
+    // Close sidebar when navigating to docs/members
+    document.getElementById('btn-show-docs')?.addEventListener('click', _closeMobileSidebar, true);
+    document.getElementById('btn-show-members')?.addEventListener('click', _closeMobileSidebar, true);
+  }
+
+  /* ── Notes helpers ──────────────────────────────────────────────────────── */
+
+  function _notesBadgeHTML(p) {
+    const count = (p.notes || []).length;
+    if (count === 0) {
+      // Subtle hover-reveal icon — doesn't clutter, doesn't block card clicks
+      return `<button class="pp-notes-badge pp-notes-badge-empty" data-notes-id="${_esc(p.id)}" title="Añadir nota"><i class="far fa-sticky-note"></i></button>`;
+    }
+    const label = count === 1 ? '1 tarea pendiente' : `${count} tareas pendientes`;
+    return `<button class="pp-notes-badge has-notes" data-notes-id="${_esc(p.id)}" title="${label}"><i class="fas fa-sticky-note"></i> ${count}</button>`;
+  }
+
+  function _openNotes(pkgId) {
+    _notesPkgId = pkgId;
+    const pkg   = _packages.find(p => p.id === pkgId);
+    const backdrop = document.getElementById('pp-notes-backdrop');
+    const panel    = document.getElementById('pp-notes-panel');
+    document.getElementById('notes-panel-pkg-id').textContent = pkgId || '';
+    _renderNotesGrid(pkg?.notes || []);
+    _renderNotesColors();
+    backdrop.style.display = 'block';
+    panel.style.display = 'flex';
+    requestAnimationFrame(() => { backdrop.classList.add('active'); panel.classList.add('active'); });
+    document.getElementById('pp-notes-textarea').value = '';
+    document.getElementById('pp-notes-textarea').focus();
+  }
+
+  function _closeNotes() {
+    const backdrop = document.getElementById('pp-notes-backdrop');
+    const panel    = document.getElementById('pp-notes-panel');
+    backdrop?.classList.remove('active');
+    panel?.classList.remove('active');
+    if (backdrop) setTimeout(() => { backdrop.style.display = ''; }, 300);
+    if (panel)    setTimeout(() => { panel.style.display = ''; }, 300);
+    _stopVoice();
+    _notesPkgId = null;
+  }
+
+  function _renderNotesColors() {
+    const container = document.getElementById('pp-notes-colors');
+    if (!container) return;
+    container.innerHTML = '<span class="pp-notes-colors-label">Color:</span>' +
+      NOTE_COLORS.map(c =>
+        `<button class="pp-note-color-swatch${c.value === _notesColor ? ' selected' : ''}"
+           style="background:${c.value}; border-color:${c.value === _notesColor ? c.text : 'transparent'};"
+           data-color="${c.value}" title="${c.name}"></button>`
+      ).join('');
+    container.querySelectorAll('.pp-note-color-swatch').forEach(sw => {
+      sw.addEventListener('click', () => {
+        _notesColor = sw.dataset.color;
+        _renderNotesColors();
+      });
+    });
+  }
+
+  function _renderNotesGrid(notes) {
+    const grid = document.getElementById('pp-notes-grid');
+    if (!grid) return;
+    if (!notes.length) { grid.innerHTML = ''; return; }
+    const colorMap = Object.fromEntries(NOTE_COLORS.map(c => [c.value, c.text]));
+    grid.innerHTML = notes.map(n => {
+      const textColor = colorMap[n.color] || '#374151';
+      const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) : '';
+      const hasImg = /<img/i.test(n.text || '');
+      const preview = _esc(_htmlToText(n.text).slice(0, 140));
+      const imgHint = hasImg ? ' <span style="opacity:.6;font-size:10px;">🖼</span>' : '';
+      return `<div class="pp-note-card" style="background:${n.color};color:${textColor};" data-note-id="${_esc(n.id)}" title="Clic para editar">
+        <div class="pp-note-card-text">${preview}${imgHint}</div>
+        <div class="pp-note-card-footer">
+          <span class="pp-note-card-date">${date}</span>
+          <button class="pp-note-card-delete" data-note-id="${_esc(n.id)}" title="Eliminar nota"><i class="fas fa-trash-alt"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+    grid.querySelectorAll('.pp-note-card').forEach(card => {
+      card.addEventListener('click', e => {
+        if (e.target.closest('.pp-note-card-delete')) return;
+        _openNoteDetail(card.dataset.noteId);
+      });
+    });
+    grid.querySelectorAll('.pp-note-card-delete').forEach(btn => {
+      btn.addEventListener('click', e => { e.stopPropagation(); _deleteNote(btn.dataset.noteId); });
+    });
+  }
+
+  /* ── Note detail modal ──────────────────────────────────────────────────── */
+
+  let _detailNoteId = null;
+
+  // Compress a File/Blob image via Canvas → JPEG base64 (max 900px, q=0.65)
+  function _compressImage(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 900;
+          let w = img.width, h = img.height;
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.65));
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Sanitize HTML saved from contenteditable — allow only safe tags + base64 images
+  function _sanitizeNoteHtml(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const ALLOWED = new Set(['b','i','strong','em','br','p','div','span','ul','ol','li','img']);
+    function walk(node) {
+      Array.from(node.childNodes).forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE) return;
+        if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); return; }
+        const tag = child.tagName.toLowerCase();
+        if (!ALLOWED.has(tag)) {
+          const frag = document.createDocumentFragment();
+          Array.from(child.childNodes).forEach(c => frag.appendChild(c.cloneNode(true)));
+          child.replaceWith(frag);
+          return;
+        }
+        if (tag === 'img') {
+          const src = child.getAttribute('src') || '';
+          if (!src.startsWith('data:image/')) { child.remove(); return; }
+          while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          child.setAttribute('src', src);
+        } else {
+          // Strip all attributes (no style, class, event handlers)
+          while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          walk(child);
+        }
+      });
+    }
+    walk(doc.body);
+    return doc.body.innerHTML;
+  }
+
+  // Extract plain text from HTML (for mini card previews)
+  function _htmlToText(html) {
+    const d = document.createElement('div');
+    d.innerHTML = html || '';
+    return d.textContent || '';
+  }
+
+  function _openNoteDetail(noteId) {
+    if (!_notesPkgId) return;
+    const pkg  = _packages.find(p => p.id === _notesPkgId);
+    const note = (pkg?.notes || []).find(n => n.id === noteId);
+    if (!note) return;
+    _detailNoteId = noteId;
+
+    const backdrop = document.getElementById('pp-note-detail-backdrop');
+    const modal    = document.getElementById('pp-note-detail-modal');
+    const content  = document.getElementById('pp-note-detail-content');
+    const dateEl   = document.getElementById('pp-note-detail-date');
+
+    content.innerHTML = _sanitizeNoteHtml(note.text || '');
+    dateEl.textContent = note.createdAt
+      ? new Date(note.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '';
+
+    _renderNoteDetailColors(note.color);
+    _applyNoteDetailBg(note.color);
+
+    backdrop.style.display = 'block';
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => { backdrop.classList.add('active'); modal.classList.add('active'); });
+    setTimeout(() => { content.focus(); _placeCursorAtEnd(content); }, 220);
+  }
+
+  function _placeCursorAtEnd(el) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function _closeNoteDetail() {
+    const backdrop = document.getElementById('pp-note-detail-backdrop');
+    const modal    = document.getElementById('pp-note-detail-modal');
+    backdrop?.classList.remove('active');
+    modal?.classList.remove('active');
+    if (backdrop) setTimeout(() => { backdrop.style.display = ''; }, 220);
+    if (modal)    setTimeout(() => { modal.style.display = ''; }, 220);
+    _detailNoteId = null;
+  }
+
+  function _applyNoteDetailBg(color) {
+    const colorEntry = NOTE_COLORS.find(c => c.value === color) || NOTE_COLORS[0];
+    const header  = document.getElementById('pp-note-detail-header');
+    const content = document.getElementById('pp-note-detail-content');
+    const modal   = document.getElementById('pp-note-detail-modal');
+    if (header)  header.style.background = color;
+    if (content) { content.style.background = color; content.style.color = colorEntry.text; }
+    if (modal)   modal.style.background = color;
+  }
+
+  function _renderNoteDetailColors(activeColor) {
+    const container = document.getElementById('pp-note-detail-colors');
+    if (!container) return;
+    container.innerHTML = NOTE_COLORS.map(c =>
+      `<button class="pp-note-color-swatch${c.value === activeColor ? ' selected' : ''}"
+         style="background:${c.value}; border-color:${c.value === activeColor ? c.text : 'rgba(0,0,0,0.15)'};"
+         data-color="${c.value}" title="${c.name}"></button>`
+    ).join('');
+    container.querySelectorAll('.pp-note-color-swatch').forEach(sw => {
+      sw.addEventListener('click', () => {
+        _renderNoteDetailColors(sw.dataset.color);
+        _applyNoteDetailBg(sw.dataset.color);
+      });
+    });
+  }
+
+  function _getDetailActiveColor() {
+    const sel = document.querySelector('#pp-note-detail-colors .pp-note-color-swatch.selected');
+    return sel?.dataset.color || NOTE_COLORS[0].value;
+  }
+
+  async function _saveNoteDetail() {
+    if (!_notesPkgId || !_detailNoteId) return;
+    const content = document.getElementById('pp-note-detail-content');
+    const html    = _sanitizeNoteHtml(content?.innerHTML || '');
+    const plain   = _htmlToText(html).trim();
+    if (!plain) { toast('La nota no puede estar vacía.', 'error'); return; }
+    const color = _getDetailActiveColor();
+    const pkg   = _packages.find(p => p.id === _notesPkgId);
+    if (!pkg) return;
+    const notes = (pkg.notes || []).map(n =>
+      n.id === _detailNoteId ? { ...n, text: html, color } : n
+    );
+    try {
+      const saved = await PPStorage.update(_notesPkgId, { notes });
+      const idx = _packages.findIndex(p => p.id === _notesPkgId);
+      if (idx >= 0) _packages[idx] = saved;
+      _renderNotesGrid(saved.notes || []);
+      _renderSidebarList();
+      if (state.currentId === _notesPkgId) _updateEditorNotesBtn(saved);
+      _closeNoteDetail();
+    } catch (e) { toast('Error guardando la nota: ' + e.message, 'error'); }
+  }
+
+  async function _handleNotePaste(e) {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imgItem = items.find(it => it.type.startsWith('image/'));
+    if (!imgItem) return; // let browser handle plain text paste
+    e.preventDefault();
+    const file = imgItem.getAsFile();
+    if (!file) return;
+    const b64 = await _compressImage(file);
+    const img = document.createElement('img');
+    img.src = b64;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) {
+      document.getElementById('pp-note-detail-content')?.appendChild(img);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(img);
+    range.setStartAfter(img);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function _bindNoteDetailEvents() {
+    document.getElementById('pp-note-detail-backdrop')?.addEventListener('click', _closeNoteDetail);
+    document.getElementById('btn-note-detail-close')?.addEventListener('click', _closeNoteDetail);
+    document.getElementById('btn-note-detail-save')?.addEventListener('click', _saveNoteDetail);
+    document.getElementById('btn-note-detail-delete')?.addEventListener('click', () => {
+      const idToDelete = _detailNoteId;
+      if (idToDelete) { _closeNoteDetail(); setTimeout(() => _deleteNote(idToDelete), 230); }
+    });
+    const content = document.getElementById('pp-note-detail-content');
+    content?.addEventListener('paste', _handleNotePaste);
+    content?.addEventListener('keydown', e => {
+      if (e.key === 'Escape') _closeNoteDetail();
+      if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); _saveNoteDetail(); }
+    });
+  }
+
+  async function _addNote() {
+    if (!_notesPkgId) return;
+    const textarea = document.getElementById('pp-notes-textarea');
+    const text = (textarea?.value || '').trim();
+    if (!text) { toast('Escribe algo antes de añadir la nota.', 'error'); return; }
+    const pkg = _packages.find(p => p.id === _notesPkgId);
+    if (!pkg) return;
+    const newNote = { id: `n${Date.now()}`, text, color: _notesColor, createdAt: new Date().toISOString() };
+    const notes = [...(pkg.notes || []), newNote];
+    try {
+      const saved = await PPStorage.update(_notesPkgId, { notes });
+      const idx = _packages.findIndex(p => p.id === _notesPkgId);
+      if (idx >= 0) _packages[idx] = saved;
+      _renderNotesGrid(saved.notes || []);
+      _renderSidebarList();
+      if (state.currentId === _notesPkgId) _updateEditorNotesBtn(saved);
+      textarea.value = '';
+    } catch (e) { toast('Error guardando la nota: ' + e.message, 'error'); }
+  }
+
+  async function _deleteNote(noteId) {
+    if (!_notesPkgId) return;
+    const pkg = _packages.find(p => p.id === _notesPkgId);
+    if (!pkg) return;
+    const notes = (pkg.notes || []).filter(n => n.id !== noteId);
+    try {
+      const saved = await PPStorage.update(_notesPkgId, { notes });
+      const idx = _packages.findIndex(p => p.id === _notesPkgId);
+      if (idx >= 0) _packages[idx] = saved;
+      _renderNotesGrid(saved.notes || []);
+      _renderSidebarList();
+      if (state.currentId === _notesPkgId) _updateEditorNotesBtn(saved);
+    } catch (e) { toast('Error eliminando la nota: ' + e.message, 'error'); }
+  }
+
+  /* ── Voice input (SpeechRecognition) ───────────────────────────────────── */
+
+  function _startVoice(textarea) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) { toast('Tu navegador no soporta entrada de voz.', 'error'); return; }
+    if (_micRecog) { _stopVoice(); return; }
+    const mic = document.getElementById('btn-notes-mic');
+    _micRecog = new SpeechRecognition();
+    _micRecog.lang = 'es-ES';
+    _micRecog.continuous = false;
+    _micRecog.interimResults = true;
+    mic?.classList.add('listening');
+    let interim = '';
+    _micRecog.onresult = e => {
+      interim = '';
+      let final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      if (final) {
+        textarea.value = (textarea.value + ' ' + final).trim();
+        interim = '';
+      }
+    };
+    _micRecog.onerror = () => _stopVoice();
+    _micRecog.onend   = () => _stopVoice();
+    _micRecog.start();
+  }
+
+  function _stopVoice() {
+    _micRecog?.stop();
+    _micRecog = null;
+    document.getElementById('btn-notes-mic')?.classList.remove('listening');
+  }
+
+  /* ── Notes event bindings ───────────────────────────────────────────────── */
+
+  function _bindNotesEvents() {
+    document.getElementById('btn-notes-close')?.addEventListener('click', _closeNotes);
+    document.getElementById('pp-notes-backdrop')?.addEventListener('click', _closeNotes);
+    document.getElementById('btn-notes-add')?.addEventListener('click', _addNote);
+    document.getElementById('btn-notes-mic')?.addEventListener('click', () => {
+      const ta = document.getElementById('pp-notes-textarea');
+      _startVoice(ta);
+    });
+    document.getElementById('pp-notes-textarea')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); _addNote(); }
+    });
   }
 
   return {

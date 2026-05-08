@@ -48,6 +48,9 @@ export const adminService = {
   getArticlePdfLink: async (articleId) =>
     (await api.post(`/articles/${articleId}/download-link`)).data,
 
+  exportArticlesWord: async (articles) =>
+    api.post('/admin/articles/export-word', { articles }, { responseType: 'blob' }),
+
   // PDF health
   verifyPdfs: async () => (await api.post('/admin/articles/verify-pdfs')).data,
   clearPdfLink: async (articleId) => (await api.delete(`/articles/${articleId}/pdf-link`)).data,
@@ -65,6 +68,9 @@ export const adminService = {
 
   // PrionVault ↔ PrionRead sync
   getSyncStatus: async () => (await api.get('/admin/sync/status')).data,
+  runPrionVaultMigration: async () => (await api.post('/admin/sync/run-migration')).data,
+  markPendingForPrionVault: async () => (await api.post('/admin/sync/mark-pending')).data,
+  backfillPdfPages: async (limit = 50) => (await api.post('/admin/sync/backfill-pdf-pages', { limit })).data,
 
   // Notification rules
   getNotificationRules: async () => (await api.get('/admin/notification-rules')).data,

@@ -86,8 +86,297 @@ router.get('/articles/find-duplicates', findDuplicateArticles);
 // PrionVault ↔ PrionRead sync status
 router.get('/sync/status', getSyncStatus);
 
+// Mark "only in PrionRead" articles as pending in PrionVault pipeline,
+// auto-linking Dropbox PDFs that already exist at the expected path.
+router.post('/sync/mark-pending', async (_req, res) => {
+  const { sequelize: sq } = require('../models');
+  const { dropboxPath, listFiles } = require('../services/dropbox');
+
+  // Verify PrionVault columns exist
+  try {
+    await sq.query("SELECT extraction_status, source FROM articles LIMIT 0");
+  } catch {
+    return res.status(409).json({ error: 'PrionVault columns not yet migrated. Run the migration first.' });
+  }
+
+  try {
+    // Find qualifying articles: assigned to students, no PDF processed yet
+    const rows = await sq.query(
+      `SELECT id, doi, pubmed_id, dropbox_path, source FROM articles
+       WHERE id IN (SELECT DISTINCT article_id FROM user_articles)
+         AND (pdf_md5 IS NULL)
+         AND (extraction_status IS NULL OR extraction_status = 'pending')`,
+      { type: sq.QueryTypes.SELECT }
+    );
+
+    if (!rows.length) return res.json({ ok: true, updated: 0, pdfs_linked: 0, needs_pdf: 0 });
+
+    // Scan Dropbox once — build a lowercase-path → real-path map
+    let fileMap = new Map();
+    try {
+      const files = await listFiles();
+      for (const f of files) fileMap.set(f.path.toLowerCase(), f.path);
+    } catch {
+      // Dropbox unavailable — continue without PDF auto-linking
+    }
+
+    let pdfsLinked = 0;
+    let needsPdf = 0;
+
+    for (const row of rows) {
+      let newDropboxPath = null;
+
+      if (!row.dropbox_path) {
+        const expected = dropboxPath(row);
+        if (fileMap.has(expected.toLowerCase())) {
+          newDropboxPath = expected;
+          pdfsLinked++;
+        } else {
+          needsPdf++;
+        }
+      }
+
+      await sq.query(
+        `UPDATE articles
+         SET extraction_status = 'pending',
+             source = COALESCE(NULLIF(source, ''), 'prionread')
+             ${newDropboxPath ? ", dropbox_path = :dp, dropbox_link = NULL" : ""}
+         WHERE id = :id`,
+        {
+          replacements: { id: row.id, ...(newDropboxPath ? { dp: newDropboxPath } : {}) },
+          type: sq.QueryTypes.UPDATE,
+        }
+      );
+    }
+
+    res.json({ ok: true, updated: rows.length, pdfs_linked: pdfsLinked, needs_pdf: needsPdf });
+  } catch (err) {
+    console.error('[POST /admin/sync/mark-pending]', err);
+    res.status(500).json({ error: 'Error marking articles as pending' });
+  }
+});
+
+// Apply PrionVault columns to the shared articles table (idempotent)
+router.post('/sync/run-migration', async (_req, res) => {
+  const { sequelize: sq } = require('../models');
+  const statements = [
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_md5           CHAR(32)",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_size_bytes    BIGINT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_pages         INTEGER",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_status VARCHAR(20) DEFAULT 'pending'",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_error  TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_ai        TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_human     TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS indexed_at        TIMESTAMPTZ",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS source            VARCHAR(40) DEFAULT 'manual'",
+  ];
+  const results = { ok: [], failed: [] };
+  for (const stmt of statements) {
+    try {
+      await sq.query(stmt);
+      results.ok.push(stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0]);
+    } catch (err) {
+      results.failed.push({ column: stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0], error: err.message });
+    }
+  }
+  res.json({ applied: results.ok.length, errors: results.failed.length, results });
+});
+
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);
+
+// ─── PDF page backfill ────────────────────────────────────────────────────────
+// Downloads each PDF from Dropbox and counts pages via pdf-parse.
+// Processes articles that have dropbox_path but no pdf_pages yet.
+router.post('/sync/backfill-pdf-pages', async (req, res) => {
+  const { sequelize: sq } = require('../models');
+  const dbx = require('../config/dropbox');
+  const pdfParse = require('pdf-parse');
+
+  const limit = Math.min(500, Math.max(1, parseInt(req.body?.limit ?? 50, 10) || 50));
+
+  try {
+    const rows = await sq.query(
+      `SELECT id::text, dropbox_path FROM articles
+       WHERE dropbox_path IS NOT NULL AND pdf_pages IS NULL
+       ORDER BY created_at DESC LIMIT :limit`,
+      { replacements: { limit }, type: sq.QueryTypes.SELECT }
+    );
+
+    if (!rows.length) return res.json({ processed: 0, updated: 0, failed: 0, errors: [] });
+
+    let updated = 0;
+    const errors = [];
+
+    for (const { id, dropbox_path } of rows) {
+      try {
+        const dl = await dbx.filesDownload({ path: dropbox_path });
+        const buf = Buffer.from(dl.result.fileBinary);
+        const { numpages } = await pdfParse(buf, { max: 0 });
+        await sq.query(
+          'UPDATE articles SET pdf_pages = :p WHERE id = :id',
+          { replacements: { p: numpages, id }, type: sq.QueryTypes.UPDATE }
+        );
+        updated++;
+      } catch (err) {
+        errors.push({ id, error: err.message?.slice(0, 200) ?? 'unknown' });
+      }
+    }
+
+    res.json({ processed: rows.length, updated, failed: errors.length, errors: errors.slice(0, 20) });
+  } catch (err) {
+    console.error('[POST /admin/sync/backfill-pdf-pages]', err);
+    res.status(500).json({ error: 'Error during PDF page backfill' });
+  }
+});
+
+// ─── Word export: article selection checklist ─────────────────────────────────
+router.post('/articles/export-word', async (req, res) => {
+  const {
+    Document, Paragraph, TextRun, Table, TableRow, TableCell,
+    CheckBox, WidthType, BorderStyle, AlignmentType, VerticalAlign,
+    HeightRule, Packer, convertInchesToTwip,
+  } = require('docx');
+
+  const articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
+  if (!articles.length) return res.status(400).json({ error: 'No articles provided' });
+
+  // ── Colour palette (blue-friendly) ──────────────────────────────────────
+  const C_TITLE   = '0F3460';   // deep navy
+  const C_META    = '2563EB';   // medium blue
+  const C_JOURNAL = '64748B';   // slate
+  const C_ABST    = '374151';   // dark grey
+  const C_BORDER  = 'E2E8F0';   // very light grey for separators
+
+  // ── Helper: truncate abstract to ~4 lines ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  const truncate = (text, words = 60) => {
+    if (!text) return null;
+    const parts = text.trim().split(/\s+/);
+    return parts.length <= words ? text.trim() : parts.slice(0, words).join(' ') + '…';
+  };
+
+  // ── Build one table row per article ─────────────────────────────────────
+  const noBorder = {
+    top:    { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    left:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    right:  { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    insideVertical:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  };
+  const separatorBorder = {
+    ...noBorder,
+    bottom: { style: BorderStyle.SINGLE, size: 1, color: C_BORDER },
+  };
+
+  const rows = articles.map((a, idx) => {
+    const isLast = idx === articles.length - 1;
+    const authors = Array.isArray(a.authors) ? a.authors.join(', ') : (a.authors || '');
+    const journal = [a.journal, a.year].filter(Boolean).join(' · ');
+    const abst    = truncate(a.abstract);
+
+    const contentParas = [
+      // Title
+      new Paragraph({
+        children: [new TextRun({
+          text: a.title || '(Sin título)',
+          bold: true, size: 24, color: C_TITLE,
+        })],
+        spacing: { after: 40 },
+      }),
+    ];
+
+    if (authors) contentParas.push(new Paragraph({
+      children: [new TextRun({ text: authors, size: 19, color: C_META })],
+      spacing: { after: 30 },
+    }));
+
+    if (journal) contentParas.push(new Paragraph({
+      children: [new TextRun({ text: journal, size: 18, italics: true, color: C_JOURNAL })],
+      spacing: { after: abst ? 50 : 0 },
+    }));
+
+    if (abst) contentParas.push(new Paragraph({
+      children: [new TextRun({ text: abst, size: 17, color: C_ABST })],
+      spacing: { after: 0 },
+    }));
+
+    return new TableRow({
+      children: [
+        // Checkbox cell
+        new TableCell({
+          children: [new Paragraph({
+            children: [new CheckBox({ checked: false })],
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 40 },
+          })],
+          width:  { size: 420, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.TOP,
+          borders: isLast ? noBorder : separatorBorder,
+          margins: { top: convertInchesToTwip(0.05), bottom: convertInchesToTwip(0.1),
+                     left: convertInchesToTwip(0.05), right: convertInchesToTwip(0.05) },
+        }),
+        // Content cell
+        new TableCell({
+          children: contentParas,
+          width: { size: 9060, type: WidthType.DXA },
+          borders: isLast ? noBorder : separatorBorder,
+          margins: { top: convertInchesToTwip(0.08), bottom: convertInchesToTwip(0.12),
+                     left: convertInchesToTwip(0.1),  right: convertInchesToTwip(0.1) },
+        }),
+      ],
+    });
+  });
+
+  const doc = new Document({
+    numbering: { config: [] },
+    sections: [{
+      properties: {
+        page: {
+          margin: {
+            top:    convertInchesToTwip(1),
+            bottom: convertInchesToTwip(1),
+            left:   convertInchesToTwip(1.1),
+            right:  convertInchesToTwip(1.1),
+          },
+        },
+      },
+      children: [
+        // Document title
+        new Paragraph({
+          children: [new TextRun({
+            text: 'Selección de artículos',
+            bold: true, size: 36, color: C_TITLE,
+          })],
+          spacing: { after: 80 },
+          border: {
+            bottom: { style: BorderStyle.SINGLE, size: 4, color: C_META, space: 6 },
+          },
+        }),
+        // Subtitle / instructions
+        new Paragraph({
+          children: [new TextRun({
+            text: `${articles.length} artículo${articles.length !== 1 ? 's' : ''} — marca los que seleccionas y devuelve el documento`,
+            size: 18, color: C_JOURNAL, italics: true,
+          })],
+          spacing: { after: 240 },
+        }),
+        // Article table
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: noBorder,
+          rows,
+        }),
+      ],
+    }],
+  });
+
+  const buf = await Packer.toBuffer(doc);
+  const ts  = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="seleccion_articulos_${ts}.docx"`);
+  res.end(buf);
+});
 
 // ─── Notification Rules CRUD ──────────────────────────────────────────────────
 

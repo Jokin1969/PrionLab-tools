@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { adminService } from '../../services/admin.service';
+import { VaultBadge } from '../../components/common/VaultBadge';
 
 function SortBtn({ label, col, sortBy, order, onSort }) {
   const active = sortBy === col;
@@ -58,6 +59,9 @@ const AdminArticles = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const openId = new URLSearchParams(location.search).get('open');
+  const highlightRef = useRef(null);
+
   const [userFilter, setUserFilter]     = useState(location.state?.filterUser ?? null);
   const [statusFilter, setStatusFilter] = useState(location.state?.filterStatuses ?? null);
   const [articles, setArticles]         = useState([]);
@@ -73,9 +77,12 @@ const AdminArticles = () => {
   const [search, setSearch]             = useState('');
   const [advSearch, setAdvSearch]       = useState('');
   const [searchAbstract, setSearchAbstract] = useState(false);
-  const [filterNoPdf, setFilterNoPdf]         = useState(false);
-  const [filterNoAbstract, setFilterNoAbstract] = useState(false);
-  const [filterMilestone, setFilterMilestone]   = useState(false);
+  const [filterNoPdf, setFilterNoPdf]               = useState(false);
+  const [filterNoAbstract, setFilterNoAbstract]     = useState(false);
+  const [filterMilestone, setFilterMilestone]       = useState(false);
+  const [filterAssigned, setFilterAssigned]         = useState(false);
+  const [filterUnassigned, setFilterUnassigned]     = useState(false);
+  const [unassignedUserFilter, setUnassignedUserFilter] = useState(null);
   const [filters, setFilters]           = useState({ is_milestone: '', year: '', sort_by: 'year', order: 'desc' });
   const [msg, setMsg]                   = useState('');
   const [errMsg, setErrMsg]             = useState('');
@@ -121,6 +128,11 @@ const AdminArticles = () => {
 
   useEffect(() => { loadArticles(); }, [loadArticles]);
   useEffect(() => { loadMatrix(); },  [loadMatrix]);
+  useEffect(() => {
+    if (openId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [openId, articles]);
 
   const flash      = (text) => { setMsg(text);    setTimeout(() => setMsg(''),    3000); };
   const errorFlash = (text) => { setErrMsg(text); setTimeout(() => setErrMsg(''), 4000); };
@@ -128,6 +140,7 @@ const AdminArticles = () => {
   const clearUserFilter = () => {
     setUserFilter(null);
     setStatusFilter(null);
+    setUnassignedUserFilter(null);
     navigate('/admin/articles', { replace: true, state: null });
   };
 
@@ -137,6 +150,18 @@ const AdminArticles = () => {
       clearUserFilter();
     } else {
       setUserFilter(student);
+      setStatusFilter(null);
+      setUnassignedUserFilter(null);
+    }
+  };
+
+  const handleStudentUnassignedClick = (student, count) => {
+    if (count === 0) return;
+    if (unassignedUserFilter?.id === student.id) {
+      setUnassignedUserFilter(null);
+    } else {
+      setUnassignedUserFilter(student);
+      setUserFilter(null);
       setStatusFilter(null);
     }
   };
@@ -305,6 +330,23 @@ const AdminArticles = () => {
     XLSX.writeFile(wb, `${safeName}.xlsx`);
   };
 
+  const downloadWordChecklist = async (articleList) => {
+    if (!articleList.length) return;
+    try {
+      const resp = await adminService.exportArticlesWord(articleList);
+      const url  = URL.createObjectURL(new Blob([resp.data], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `seleccion_articulos_${new Date().toISOString().slice(0, 10)}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      errorFlash('Error generando el Word: ' + (err?.message || 'desconocido'));
+    }
+  };
+
   const downloadAllXlsx = (articleList) => {
     if (!articleList.length) return;
     const ws = XLSX.utils.json_to_sheet(articleList.map(articleToRow));
@@ -354,9 +396,12 @@ const AdminArticles = () => {
     }
     return true;
   });
-  if (filterNoPdf)      filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
-  if (filterNoAbstract) filteredArticles = filteredArticles.filter((a) => !a.abstract);
-  if (filterMilestone)  filteredArticles = filteredArticles.filter((a) => a.is_milestone);
+  if (filterNoPdf)       filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
+  if (filterNoAbstract)  filteredArticles = filteredArticles.filter((a) => !a.abstract);
+  if (filterMilestone)   filteredArticles = filteredArticles.filter((a) => a.is_milestone);
+  if (filterAssigned)    filteredArticles = filteredArticles.filter((a) => Object.values(matrix[a.id] || {}).some(Boolean));
+  if (filterUnassigned)  filteredArticles = filteredArticles.filter((a) => !Object.values(matrix[a.id] || {}).some(Boolean));
+  if (unassignedUserFilter) filteredArticles = filteredArticles.filter((a) => !matrix[a.id]?.[unassignedUserFilter.id]);
 
   const filterLabel = statusFilter
     ? statusFilter.map((s) => STATUS_LABELS[s] ?? s).join(' / ')
@@ -364,7 +409,8 @@ const AdminArticles = () => {
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
 
-  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterMilestone || userFilter ||
+  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterMilestone ||
+    filterAssigned || filterUnassigned || userFilter || unassignedUserFilter ||
     filters.is_milestone || (filters.year && filters.year !== '');
 
   return (
@@ -382,6 +428,14 @@ const AdminArticles = () => {
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             📊 XLS ({filteredArticles.length})
+          </button>
+          <button
+            onClick={() => downloadWordChecklist(filteredArticles)}
+            disabled={filteredArticles.length === 0}
+            title={`Exportar ${filteredArticles.length} artículo${filteredArticles.length !== 1 ? 's' : ''} como Word con casillas de verificación`}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            📝 Word ({filteredArticles.length})
           </button>
           <Button variant="ghost" onClick={() => setShowDuplicatesModal(true)} title="Detectar artículos duplicados o muy similares">
             🔍 Buscar duplicados
@@ -404,6 +458,14 @@ const AdminArticles = () => {
             Mostrando <strong>{filterLabel}</strong> de <strong>{userFilter.name}</strong>
           </p>
           <button onClick={clearUserFilter} className="text-indigo-400 hover:text-indigo-700 text-xl font-bold leading-none ml-4">×</button>
+        </div>
+      )}
+      {unassignedUserFilter && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-emerald-800">
+            Mostrando artículos <strong>no asignados</strong> a <strong>{unassignedUserFilter.name}</strong>
+          </p>
+          <button onClick={clearUserFilter} className="text-emerald-400 hover:text-emerald-700 text-xl font-bold leading-none ml-4">×</button>
         </div>
       )}
 
@@ -449,11 +511,30 @@ const AdminArticles = () => {
             artículos
           </p>
           {students.length > 0 && (
-            <p className="text-xs text-gray-400">
-              • gris = no asignado (clic para asignar) • ● pendiente • leído • resumido • evaluado
-            </p>
+            <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-gray-300 flex-shrink-0" />
+                no asignado
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-amber-400 flex-shrink-0" />
+                pendiente
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-blue-400 flex-shrink-0" />
+                leído
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-purple-400 flex-shrink-0" />
+                resumido
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-3.5 h-3.5 rounded-full bg-green-400 flex-shrink-0" />
+                evaluado
+              </span>
+            </div>
           )}
-          <div className="flex gap-2 ml-auto">
+          <div className="flex gap-2 ml-auto flex-wrap">
             <button onClick={() => setFilterNoPdf((v) => !v)}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                 filterNoPdf ? 'bg-red-500 text-white border-red-500' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'
@@ -463,8 +544,19 @@ const AdminArticles = () => {
                 filterNoAbstract ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
               }`}>Sin Abstract</button>
             <button
+              onClick={() => { setFilterAssigned((v) => !v); setFilterUnassigned(false); }}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterAssigned ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50'
+              }`}>Con asignados</button>
+            <button
+              onClick={() => { setFilterUnassigned((v) => !v); setFilterAssigned(false); }}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterUnassigned ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-emerald-600 border-emerald-300 hover:bg-emerald-50'
+              }`}>Sin asignar</button>
+            <button
               onClick={() => {
                 setFilterNoPdf(false); setFilterNoAbstract(false); setFilterMilestone(false);
+                setFilterAssigned(false); setFilterUnassigned(false);
                 setSearch(''); setAdvSearch(''); setSearchAbstract(false);
                 setFilters((p) => ({ ...p, is_milestone: '' }));
               }}
@@ -508,18 +600,33 @@ const AdminArticles = () => {
                     </th>
                   )}
                   {students.map((s) => {
-                    const count    = articles.filter((a) => matrix[a.id]?.[s.id]).length;
-                    const isActive = userFilter?.id === s.id && statusFilter === null;
+                    const count           = articles.filter((a) =>  matrix[a.id]?.[s.id]).length;
+                    const unassignedCount = articles.filter((a) => !matrix[a.id]?.[s.id]).length;
+                    const isActive           = userFilter?.id === s.id && statusFilter === null;
+                    const isUnassignedActive = unassignedUserFilter?.id === s.id;
                     return (
                       <th key={s.id} className="px-2 py-3 text-center text-xs font-medium text-gray-500" title={s.name}>
-                        <div>{initials(s.name)}</div>
-                        <button onClick={() => handleStudentCountClick(s, count)} disabled={count === 0}
-                          title={count > 0 ? `Filtrar por ${s.name} (${count} asignados)` : 'Sin artículos asignados'}
-                          className={`text-xs font-normal leading-tight rounded px-1 transition-colors ${
-                            count === 0 ? 'text-gray-300 cursor-default'
-                              : isActive ? 'bg-indigo-600 text-white cursor-pointer'
-                              : 'text-indigo-500 hover:bg-indigo-100 cursor-pointer'
-                          }`}>{count}</button>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button
+                            onClick={() => handleStudentUnassignedClick(s, unassignedCount)}
+                            disabled={unassignedCount === 0}
+                            title={unassignedCount > 0 ? `No asignados a ${s.name} (${unassignedCount})` : `${s.name} tiene todos los artículos asignados`}
+                            className={`text-xs font-normal leading-tight rounded px-1 transition-colors ${
+                              unassignedCount === 0 ? 'text-gray-300 cursor-default'
+                                : isUnassignedActive ? 'bg-emerald-600 text-white cursor-pointer'
+                                : 'text-emerald-600 hover:bg-emerald-100 cursor-pointer'
+                            }`}>{unassignedCount}</button>
+                          <span className="font-semibold">{initials(s.name)}</span>
+                          <button
+                            onClick={() => handleStudentCountClick(s, count)}
+                            disabled={count === 0}
+                            title={count > 0 ? `Filtrar por ${s.name} (${count} asignados)` : 'Sin artículos asignados'}
+                            className={`text-xs font-normal leading-tight rounded px-1 transition-colors ${
+                              count === 0 ? 'text-gray-300 cursor-default'
+                                : isActive ? 'bg-indigo-600 text-white cursor-pointer'
+                                : 'text-indigo-500 hover:bg-indigo-100 cursor-pointer'
+                            }`}>{count}</button>
+                        </div>
                       </th>
                     );
                   })}
@@ -537,7 +644,10 @@ const AdminArticles = () => {
                   const showAbsPreview = abstractPreview?.id === article.id;
                   return (
                     <Fragment key={article.id}>
-                      <tr className={`hover:bg-gray-50 ${showAbsPreview ? 'bg-violet-50' : ''} ${saving ? 'opacity-60' : ''}`}>
+                      <tr
+                        ref={openId === article.id ? highlightRef : null}
+                        className={`hover:bg-gray-50 ${openId === article.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''} ${showAbsPreview ? 'bg-violet-50' : ''} ${saving ? 'opacity-60' : ''}`}
+                      >
                         <td className="px-6 py-4 max-w-xs">
                           <div className="flex items-start gap-2">
                             <button title={article.is_milestone ? 'Quitar milestone' : 'Marcar como milestone'}
@@ -582,7 +692,8 @@ const AdminArticles = () => {
                           </select>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 items-center">
+                            <VaultBadge articleId={article.id} inPrionvault={article.in_prionvault ?? false} size="sm" />
                             {article.dropbox_path ? (
                               <button title="Abrir PDF" disabled={loadingPdf === article.id} onClick={() => handleOpenPdf(article)}
                                 className="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50">

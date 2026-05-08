@@ -295,6 +295,12 @@ def create_app() -> Flask:
         app.logger.warning('PrionPacks demo seed failed: %s', e)
 
     try:
+        from tools.prionpacks.members import bootstrap_demo_data as bootstrap_members
+        bootstrap_members()
+    except Exception as e:
+        app.logger.warning('PrionPacks members seed failed: %s', e)
+
+    try:
         import database.help_system  # noqa: F401 — registers models with Base.metadata
         from database.config import db as _db
         if _db.is_configured():

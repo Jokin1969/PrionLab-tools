@@ -42,20 +42,22 @@ def index():
 @prionvault_bp.route("/api/articles", methods=["GET"])
 @login_required
 def api_list_articles():
-    q          = (request.args.get("q") or "").strip()
-    year_min   = request.args.get("year_min", type=int)
-    year_max   = request.args.get("year_max", type=int)
-    journal    = (request.args.get("journal") or "").strip()
-    tag_id     = request.args.get("tag", type=int)
+    q           = (request.args.get("q") or "").strip()
+    year_min    = request.args.get("year_min", type=int)
+    year_max    = request.args.get("year_max", type=int)
+    journal     = (request.args.get("journal") or "").strip()
+    tag_id      = request.args.get("tag", type=int)
     has_summary = request.args.get("has_summary")
-    sort       = request.args.get("sort", "added_desc")
-    page       = max(1, request.args.get("page", 1, type=int))
-    page_size  = min(100, max(1, request.args.get("size", 25, type=int)))
+    in_prionread_raw = request.args.get("in_prionread")
+    in_prionread = True if in_prionread_raw == "1" else (False if in_prionread_raw == "0" else None)
+    sort        = request.args.get("sort", "added_desc")
+    page        = max(1, request.args.get("page", 1, type=int))
+    page_size   = min(100, max(1, request.args.get("size", 25, type=int)))
 
     s = _session()
     try:
         return _list_articles_impl(s, q, year_min, year_max, journal,
-                                   tag_id, has_summary, sort, page, page_size)
+                                   tag_id, has_summary, in_prionread, sort, page, page_size)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -65,7 +67,7 @@ def api_list_articles():
 
 
 def _list_articles_impl(s, q, year_min, year_max, journal,
-                        tag_id, has_summary, sort, page, page_size):
+                        tag_id, has_summary, in_prionread, sort, page, page_size):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -101,6 +103,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("summary_human IS NOT NULL")
     elif has_summary == "none" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NULL AND summary_human IS NULL")
+
+    if in_prionread is True:
+        conditions.append(
+            "EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = articles.id)"
+        )
+    elif in_prionread is False:
+        conditions.append(
+            "NOT EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = articles.id)"
+        )
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -510,28 +521,44 @@ def api_delete_annotation(ann_id):
 @prionvault_bp.route("/api/articles/<uuid:aid>/send-to-prionread", methods=["POST"])
 @login_required
 def api_send_to_prionread(aid):
-    """Create a user_articles row so the article appears in PrionRead."""
+    """Assign article to all non-admin users in PrionRead (admin) or self (reader)."""
     user_id = _viewer_id()
     if not user_id:
         return jsonify({"error": "not authenticated"}), 401
     s = _session()
     try:
-        a = s.get(models.Article, aid)
-        if not a:
+        # Verify article exists
+        exists = s.execute(
+            sql_text("SELECT id FROM articles WHERE id = :aid"),
+            {"aid": str(aid)}
+        ).fetchone()
+        if not exists:
             return jsonify({"error": "not found"}), 404
-        existing = s.query(models.UserArticleLink).filter_by(
-            user_id=user_id, article_id=aid
-        ).first()
-        if existing:
-            return jsonify({"ok": True, "in_prionread": True})
-        import uuid as _uuid
-        link = models.UserArticleLink(
-            id=_uuid.uuid4(),
-            user_id=user_id,
-            article_id=aid,
-            status="pending",
-        )
-        s.add(link)
+
+        if _viewer_role() == "admin":
+            # Assign to all non-admin users that don't already have it
+            s.execute(sql_text(
+                """INSERT INTO user_articles (id, user_id, article_id, status, created_at, updated_at)
+                   SELECT gen_random_uuid(), u.id, :aid, 'pending', NOW(), NOW()
+                   FROM users u
+                   WHERE u.role != 'admin'
+                     AND NOT EXISTS (
+                       SELECT 1 FROM user_articles ua
+                       WHERE ua.user_id = u.id AND ua.article_id = :aid
+                     )"""
+            ), {"aid": str(aid)})
+        else:
+            # Assign only to self
+            already = s.execute(sql_text(
+                "SELECT id FROM user_articles WHERE user_id = :uid AND article_id = :aid"
+            ), {"uid": str(user_id), "aid": str(aid)}).fetchone()
+            if not already:
+                import uuid as _uuid
+                s.execute(sql_text(
+                    """INSERT INTO user_articles (id, user_id, article_id, status, created_at, updated_at)
+                       VALUES (:id, :uid, :aid, 'pending', NOW(), NOW())"""
+                ), {"id": str(_uuid.uuid4()), "uid": str(user_id), "aid": str(aid)})
+
         s.commit()
         return jsonify({"ok": True, "in_prionread": True})
     finally:
@@ -660,6 +687,124 @@ def api_ingest_retry(job_id):
     if ingest_queue.retry(job_id):
         return jsonify({"ok": True})
     return jsonify({"error": "job not found or not in failed/duplicate state"}), 400
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/count-pages", methods=["POST"])
+@admin_required
+def api_count_pdf_pages(aid):
+    """Download the article PDF from Dropbox and store its page count.
+
+    Fetches `dropbox_path` from the DB, downloads the file via the Dropbox
+    SDK, counts pages with pdfplumber, then writes `pdf_pages` back to the
+    articles row. Safe to call multiple times — will overwrite an existing value.
+    """
+    s = _session()
+    try:
+        row = s.execute(
+            sql_text("SELECT dropbox_path, pdf_pages FROM articles WHERE id = :aid"),
+            {"aid": str(aid)},
+        ).first()
+        if row is None:
+            return jsonify({"error": "not found"}), 404
+
+        dropbox_path = row[0]
+        if not dropbox_path:
+            return jsonify({"error": "no dropbox_path on this article"}), 422
+
+        pages = _count_pages_from_dropbox(dropbox_path)
+        if pages is None:
+            return jsonify({"error": "could not count pages — check Dropbox config or PDF path"}), 500
+
+        s.execute(
+            sql_text("UPDATE articles SET pdf_pages = :p WHERE id = :aid"),
+            {"p": pages, "aid": str(aid)},
+        )
+        s.commit()
+        return jsonify({"pdf_pages": pages})
+    except Exception as exc:
+        logger.exception("api_count_pdf_pages failed for %s", aid)
+        s.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        db.Session.remove()
+
+
+@prionvault_bp.route("/api/admin/backfill-pdf-pages", methods=["POST"])
+@admin_required
+def api_backfill_pdf_pages():
+    """Count pages for all articles that have a dropbox_path but no pdf_pages.
+
+    Body (JSON, optional): {"limit": 20}   — cap how many to process at once
+    (default 50). Returns counts of how many succeeded/failed.
+    """
+    data = request.get_json(silent=True) or {}
+    limit = max(1, min(500, int(data.get("limit", 50))))
+
+    s = _session()
+    try:
+        pv_cols = _get_pv_columns(s)
+        if "pdf_pages" not in pv_cols:
+            return jsonify({"error": "pdf_pages column not present — run migrations first"}), 422
+
+        rows = s.execute(sql_text(
+            "SELECT id::text, dropbox_path FROM articles "
+            "WHERE dropbox_path IS NOT NULL AND pdf_pages IS NULL "
+            "ORDER BY created_at DESC LIMIT :lim"
+        ), {"lim": limit}).all()
+
+        done, failed = 0, 0
+        errors = []
+        for art_id, dpath in rows:
+            try:
+                pages = _count_pages_from_dropbox(dpath)
+                if pages is not None:
+                    s.execute(
+                        sql_text("UPDATE articles SET pdf_pages = :p WHERE id = :aid"),
+                        {"p": pages, "aid": art_id},
+                    )
+                    done += 1
+                else:
+                    failed += 1
+                    errors.append({"id": art_id, "error": "count returned None"})
+            except Exception as exc:
+                failed += 1
+                errors.append({"id": art_id, "error": str(exc)[:200]})
+        s.commit()
+        return jsonify({
+            "processed": done + failed,
+            "updated":   done,
+            "failed":    failed,
+            "errors":    errors[:20],
+        })
+    except Exception as exc:
+        logger.exception("api_backfill_pdf_pages failed")
+        s.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        db.Session.remove()
+
+
+def _count_pages_from_dropbox(dropbox_path: str):
+    """Download PDF from Dropbox and return page count, or None on failure."""
+    try:
+        from core.dropbox_client import get_client
+        import pdfplumber
+        import io as _io
+    except Exception as exc:
+        logger.warning("_count_pages_from_dropbox: import failed: %s", exc)
+        return None
+
+    client = get_client()
+    if client is None:
+        return None
+    try:
+        _meta, response = client.files_download(dropbox_path)
+        content = response.content
+        with pdfplumber.open(_io.BytesIO(content)) as pdf:
+            return len(pdf.pages)
+    except Exception as exc:
+        logger.warning("_count_pages_from_dropbox(%s): %s", dropbox_path, exc)
+        return None
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/summary", methods=["POST"])
@@ -863,7 +1008,7 @@ def api_admin_sync_status():
         if "pdf_md5" in pv_cols:
             pv_parts.append("a.pdf_md5 IS NOT NULL")
         if "extraction_status" in pv_cols:
-            pv_parts.append("a.extraction_status IS NOT NULL AND a.extraction_status != 'pending'")
+            pv_parts.append("a.extraction_status IS NOT NULL")
         pv_expr = "(" + " OR ".join(pv_parts) + ")" if pv_parts else "FALSE"
 
         # Select base fields + computed flags

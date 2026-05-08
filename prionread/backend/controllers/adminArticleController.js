@@ -89,13 +89,21 @@ async function getArticlesAnalytics(req, res) {
 async function getAssignmentsMatrix(req, res) {
   try {
     const [assignments, students] = await Promise.all([
-      UserArticle.findAll({ attributes: ['id', 'article_id', 'user_id', 'status'], raw: true }),
+      UserArticle.findAll({
+        attributes: ['id', 'article_id', 'user_id', 'status', 'summary_date', 'evaluation_date'],
+        raw: true,
+      }),
       User.findAll({ where: { role: 'student' }, attributes: ['id', 'name'], order: [['name', 'ASC']], raw: true }),
     ]);
     const matrix = {};
     for (const ua of assignments) {
       if (!matrix[ua.article_id]) matrix[ua.article_id] = {};
-      matrix[ua.article_id][ua.user_id] = { id: ua.id, status: ua.status };
+      // Derive the display status from the actual phase-completion dates so
+      // that dots reflect reality even when the status field lags behind.
+      const displayStatus = ua.evaluation_date ? 'evaluated'
+        : ua.summary_date                       ? 'summarized'
+        : ua.status;                              // 'read' | 'pending'
+      matrix[ua.article_id][ua.user_id] = { id: ua.id, status: displayStatus };
     }
     return res.json({ matrix, students });
   } catch (err) {
@@ -253,20 +261,32 @@ module.exports = { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagem
 
 async function getSyncStatus(_req, res) {
   try {
-    // Check which PrionVault-specific columns exist (they may not if PV hasn't run migrations)
-    const colRows = await sequelize.query(
-      "SELECT column_name FROM information_schema.columns WHERE table_name = 'articles' AND column_name IN ('pdf_md5','extraction_status')",
-      { type: sequelize.QueryTypes.SELECT }
-    );
-    const pvCols = new Set(colRows.map((r) => r.column_name));
-    const hasPvCols = pvCols.has('pdf_md5') || pvCols.has('extraction_status');
+    // Probe PrionVault columns by attempting a real query (more reliable than
+    // information_schema which can return stale/schema-qualified results).
+    let hasPvCols = false;
+    let pvExpr = 'FALSE';
 
-    // Build the "in PrionVault" expression from whichever columns exist
-    const pvExpr = hasPvCols
-      ? [pvCols.has('pdf_md5') && 'pdf_md5 IS NOT NULL', pvCols.has('extraction_status') && "extraction_status IS NOT NULL AND extraction_status != 'pending'"]
-          .filter(Boolean)
-          .join(' OR ')
-      : 'FALSE';
+    try {
+      await sequelize.query(
+        "SELECT pdf_md5, extraction_status FROM articles LIMIT 0",
+        { type: sequelize.QueryTypes.SELECT }
+      );
+      hasPvCols = true;
+      pvExpr = "(pdf_md5 IS NOT NULL OR extraction_status IS NOT NULL)";
+    } catch {
+      try {
+        await sequelize.query("SELECT pdf_md5 FROM articles LIMIT 0", { type: sequelize.QueryTypes.SELECT });
+        hasPvCols = true;
+        pvExpr = 'pdf_md5 IS NOT NULL';
+      } catch { /* column missing */ }
+      try {
+        await sequelize.query("SELECT extraction_status FROM articles LIMIT 0", { type: sequelize.QueryTypes.SELECT });
+        hasPvCols = true;
+        pvExpr = hasPvCols && pvExpr !== 'FALSE'
+          ? `(${pvExpr} OR extraction_status IS NOT NULL)`
+          : "extraction_status IS NOT NULL";
+      } catch { /* column missing */ }
+    }
 
     const rows = await sequelize.query(
       `SELECT
