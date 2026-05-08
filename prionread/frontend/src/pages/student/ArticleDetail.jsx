@@ -7,8 +7,9 @@ const ArticleDetail = () => {
   const { articleId } = useParams();
   const navigate = useNavigate();
 
-  const [article, setArticle]       = useState(null);
-  const [summary, setSummary]       = useState(null);
+  const [article, setArticle]         = useState(null);
+  const [assignment, setAssignment]   = useState(null);
+  const [summary, setSummary]         = useState(null);
   const [evaluation, setEvaluation] = useState(null);
   const [ratings, setRatings]       = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -39,6 +40,7 @@ const ArticleDetail = () => {
         studentService.getArticleRatings(articleId),
       ]);
       setArticle(articleData.article ?? articleData);
+      setAssignment(articleData.assignment ?? null);
       setRatings(ratingsData.ratings || []);
       try {
         const summaryData = await studentService.getSummary(articleId);
@@ -188,6 +190,38 @@ const ArticleDetail = () => {
           </div>
         )}
       </Card>
+
+      {/* PrionBonus banner */}
+      {(() => {
+        const pages   = article.pdf_pages;
+        const minutes = pages ? pages * 5 : 50;
+        const label   = pages ? `${pages} págs × 5 min` : 'estimación por defecto';
+        const already = assignment?.status === 'evaluated';
+        if (already) return (
+          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <span className="text-2xl">⚡</span>
+            <div>
+              <p className="text-sm font-semibold text-emerald-700">¡Ya has ganado tu PrionBonus!</p>
+              <p className="text-xs text-emerald-600 mt-0.5">
+                <strong>{minutes} minutos</strong> del tiempo de Jokin acreditados por este artículo.
+              </p>
+            </div>
+          </div>
+        );
+        return (
+          <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+            <span className="text-2xl">⚡</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-indigo-700">
+                Completa este artículo y ganarás <strong>{minutes} minutos</strong> de PrionBonus
+              </p>
+              <p className="text-xs text-indigo-500 mt-0.5">
+                {label} · Resumen + autoevaluación + valoración
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Summary */}
       <Card title="📝 Tu Resumen">
