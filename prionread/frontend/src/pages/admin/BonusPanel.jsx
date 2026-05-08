@@ -183,13 +183,24 @@ const BonusPanel = () => {
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => navigate('/admin/articles', { state: { filterUser: { id: student.id, name: student.name } } })}
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${colors.badge} hover:opacity-80 transition-opacity cursor-pointer`}
-                        title="Artículos completados con bonus (resumen + autoevaluación + valoración)"
-                      >
-                        ⚡ {student.credits_count} art.
-                      </button>
+                      {student.credits_count > 0 ? (
+                        <button
+                          onClick={() => navigate('/admin/articles', {
+                            state: {
+                              filterUser: { id: student.id, name: student.name },
+                              filterStatuses: ['evaluated'],
+                            },
+                          })}
+                          className={`text-xs px-2 py-1 rounded-full font-medium ${colors.badge} hover:opacity-80 transition-opacity cursor-pointer`}
+                          title="Artículos completados con bonus — clic para ver"
+                        >
+                          ⚡ {student.credits_count} art.
+                        </button>
+                      ) : (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-400">
+                          Sin artículos aún
+                        </span>
+                      )}
                     </div>
                     <Button size="sm" onClick={() => openModal(student.id)}>
                       ➕ Asignar

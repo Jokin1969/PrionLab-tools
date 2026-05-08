@@ -27,17 +27,16 @@ const AdminDashboard = () => {
   if (!dashboard) return <div className="p-8 text-gray-500">Error cargando datos</div>;
 
   const {
-    summary,
+    global_stats,
     top_performers,
-    recent_activity,
-    article_stats,
+    recent_activity_global,
+    articles_most_read,
     monthly_progress,
   } = dashboard;
 
-  // Normalise — backend may return summary or global_stats at top level
-  const stats = summary ?? dashboard;
-  const mostRead = article_stats?.most_read ?? [];
-  const recentActivity = recent_activity ?? [];
+  const stats = global_stats ?? dashboard;
+  const mostRead = articles_most_read ?? [];
+  const recentActivity = recent_activity_global ?? [];
   const topPerformers = top_performers ?? [];
   const monthlyData = monthly_progress ?? [];
 
@@ -86,8 +85,8 @@ const AdminDashboard = () => {
         <Card>
           <div className="text-center">
             <p className="text-4xl font-bold text-amber-600 mb-2">
-              {stats.completion_rate != null
-                ? `${Number(stats.completion_rate).toFixed(0)}%`
+              {(stats.avg_completion_rate ?? stats.completion_rate) != null
+                ? `${(Number(stats.avg_completion_rate ?? stats.completion_rate) * 100).toFixed(0)}%`
                 : '—'}
             </p>
             <p className="text-sm text-gray-600">Tasa de Completitud</p>

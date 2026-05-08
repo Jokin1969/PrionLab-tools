@@ -207,20 +207,25 @@ async function computeMonthlyProgress() {
        )::date AS month
      ),
      reads AS (
-       SELECT DATE_TRUNC('month', read_date)::date AS month, COUNT(*)::int AS cnt
+       SELECT DATE_TRUNC('month',
+                COALESCE(read_date, evaluation_date, summary_date, updated_at)
+              )::date AS month,
+              COUNT(*)::int AS cnt
        FROM user_articles
-       WHERE read_date IS NOT NULL
+       WHERE status IN ('read','summarized','evaluated')
        GROUP BY 1
      ),
      evals AS (
        SELECT
-         DATE_TRUNC('month', ua.evaluation_date)::date AS month,
+         DATE_TRUNC('month',
+           COALESCE(ua.evaluation_date, ua.updated_at)
+         )::date AS month,
          COUNT(*)::int                                  AS cnt,
          ROUND(AVG(e.score)::numeric, 2)               AS avg_score
        FROM user_articles ua
        LEFT JOIN evaluations e
          ON e.user_article_id = ua.id AND e.score IS NOT NULL
-       WHERE ua.evaluation_date IS NOT NULL
+       WHERE ua.status = 'evaluated'
        GROUP BY 1
      )
      SELECT
