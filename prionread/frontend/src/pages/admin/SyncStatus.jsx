@@ -160,7 +160,9 @@ export default function SyncStatus() {
     setBackfillingStatus(true);
     try {
       const r = await adminService.backfillStatus();
-      setFlash(`✅ Estado corregido: ${r.fixed} de ${r.checked} asignaciones actualizadas`);
+      const parts = [`${r.fixed} de ${r.checked} estados corregidos`];
+      if (r.bonus_awarded > 0) parts.push(`⚡ ${r.bonus_awarded} bonus PrionBonus acreditados retroactivamente`);
+      setFlash('✅ ' + parts.join(' · '));
       setTimeout(() => setFlash(''), 6000);
     } catch (err) {
       setFlash('❌ ' + (err?.response?.data?.error || 'Error corrigiendo estados'));

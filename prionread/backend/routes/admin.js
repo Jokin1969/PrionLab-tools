@@ -303,6 +303,9 @@ router.post('/sync/backfill-status', async (req, res) => {
     });
 
     let fixed = 0;
+    let bonusAwarded = 0;
+    const { awardBonusCredit } = require('../controllers/bonusController');
+
     for (const ua of candidates) {
       const rating = await ArticleRating.findOne({
         where: { user_id: ua.user_id, article_id: ua.article_id },
@@ -322,9 +325,17 @@ router.post('/sync/backfill-status', async (req, res) => {
         });
         fixed++;
       }
+
+      // Award bonus retroactively for fully completed articles (idempotent)
+      if (ua.summary_date && ua.evaluation_date && rating) {
+        try {
+          const { created } = await awardBonusCredit(ua.user_id, ua.article_id);
+          if (created) bonusAwarded++;
+        } catch { /* ignore individual failures */ }
+      }
     }
 
-    res.json({ ok: true, checked: candidates.length, fixed });
+    res.json({ ok: true, checked: candidates.length, fixed, bonus_awarded: bonusAwarded });
   } catch (err) {
     console.error('[POST /admin/sync/backfill-status]', err);
     res.status(500).json({ error: 'Error during status backfill' });
