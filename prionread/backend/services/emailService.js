@@ -328,8 +328,8 @@ const emailService = {
             <div>
               <p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Acumulas tiempo de Jokin</p>
               <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">
-                Cada minuto ganado es tiempo real que Jokin te debe: reuniones, corrección de tu TFD,
-                revisión de datos, feedback de manuscritos…
+                Cada minuto ganado es tiempo real que Jokin te debe: reuniones, nuevas ideas para tu tesis,
+                revisión de datos, feedback de resultados, …
               </p>
             </div>
           </div>
@@ -339,8 +339,8 @@ const emailService = {
             <div>
               <p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">El sistema lleva la cuenta</p>
               <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">
-                Cuando Jokin te dedica tiempo a tareas de tesis, lo descuenta de tu saldo.
-                El balance neto te muestra si vas "al día" con la lectura científica.
+                Cuando Jokin te dedica tiempo a tareas relacionadas con tu tesis, lo descuenta de tu saldo.
+                El balance neto te muestra si vas 'al día' con la lectura científica.
               </p>
             </div>
           </div>
