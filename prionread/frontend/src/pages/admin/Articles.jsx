@@ -83,6 +83,8 @@ const AdminArticles = () => {
   const [filterMilestone, setFilterMilestone]       = useState(false);
   const [filterAssigned, setFilterAssigned]         = useState(false);
   const [filterUnassigned, setFilterUnassigned]     = useState(false);
+  const [filterRead, setFilterRead]                 = useState(false);
+  const [filterUnread, setFilterUnread]             = useState(false);
   const [unassignedUserFilter, setUnassignedUserFilter] = useState(null);
   const [pagesPopover, setPagesPopover]   = useState(null); // articleId
   const [pagesInput, setPagesInput]       = useState('');
@@ -423,6 +425,11 @@ const AdminArticles = () => {
   if (filterMilestone)   filteredArticles = filteredArticles.filter((a) => a.is_milestone);
   if (filterAssigned)    filteredArticles = filteredArticles.filter((a) => Object.values(matrix[a.id] || {}).some(Boolean));
   if (filterUnassigned)  filteredArticles = filteredArticles.filter((a) => !Object.values(matrix[a.id] || {}).some(Boolean));
+  const READ_STATUSES = ['read', 'summarized', 'evaluated'];
+  if (filterRead)    filteredArticles = filteredArticles.filter((a) =>
+    Object.values(matrix[a.id] || {}).some((v) => v && READ_STATUSES.includes(v.status)));
+  if (filterUnread)  filteredArticles = filteredArticles.filter((a) =>
+    !Object.values(matrix[a.id] || {}).some((v) => v && READ_STATUSES.includes(v.status)));
   if (unassignedUserFilter) filteredArticles = filteredArticles.filter((a) => !matrix[a.id]?.[unassignedUserFilter.id]);
 
   const filterLabel = statusFilter
@@ -431,7 +438,7 @@ const AdminArticles = () => {
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
 
-  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterNoPages || filterMilestone ||
+  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterNoPages || filterMilestone || filterRead || filterUnread ||
     filterAssigned || filterUnassigned || userFilter || unassignedUserFilter ||
     filters.is_milestone || (filters.year && filters.year !== '');
 
@@ -580,9 +587,19 @@ const AdminArticles = () => {
                 filterUnassigned ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-emerald-600 border-emerald-300 hover:bg-emerald-50'
               }`}>Sin asignar</button>
             <button
+              onClick={() => { setFilterRead((v) => !v); setFilterUnread(false); }}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterRead ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-blue-600 border-blue-300 hover:bg-blue-50'
+              }`}>📖 Leídos</button>
+            <button
+              onClick={() => { setFilterUnread((v) => !v); setFilterRead(false); }}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterUnread ? 'bg-slate-500 text-white border-slate-500' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}>📭 No leídos</button>
+            <button
               onClick={() => {
                 setFilterNoPdf(false); setFilterNoAbstract(false); setFilterNoPages(false); setFilterMilestone(false);
-                setFilterAssigned(false); setFilterUnassigned(false);
+                setFilterAssigned(false); setFilterUnassigned(false); setFilterRead(false); setFilterUnread(false);
                 setSearch(''); setAdvSearch(''); setSearchAbstract(false);
                 setFilters((p) => ({ ...p, is_milestone: '' }));
               }}
