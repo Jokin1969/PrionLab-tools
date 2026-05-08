@@ -93,7 +93,7 @@ async function getAdminBonusOverview(req, res) {
       const [earned, spent, creditsCount, lastCredit] = await Promise.all([
         BonusCredit.sum('minutes_earned', { where: { user_id: student.id } }),
         BonusAllocation.sum('minutes', { where: { user_id: student.id } }),
-        BonusCredit.count({ where: { user_id: student.id } }),
+        BonusCredit.count({ where: { user_id: student.id, article_id: { [Op.ne]: null } } }),
         BonusCredit.findOne({
           where:      { user_id: student.id },
           order:      [['created_at', 'DESC']],

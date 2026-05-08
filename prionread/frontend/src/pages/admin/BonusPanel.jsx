@@ -186,8 +186,9 @@ const BonusPanel = () => {
                       <button
                         onClick={() => navigate('/admin/articles', { state: { filterUser: { id: student.id, name: student.name } } })}
                         className={`text-xs px-2 py-1 rounded-full font-medium ${colors.badge} hover:opacity-80 transition-opacity cursor-pointer`}
+                        title="Artículos completados con bonus (resumen + autoevaluación + valoración)"
                       >
-                        {student.credits_count} artículo{student.credits_count !== 1 ? 's' : ''}
+                        ⚡ {student.credits_count} art.
                       </button>
                     </div>
                     <Button size="sm" onClick={() => openModal(student.id)}>

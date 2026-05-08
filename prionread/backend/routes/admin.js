@@ -347,8 +347,8 @@ router.post('/articles/export-word', async (req, res) => {
   try {
   const {
     Document, Paragraph, TextRun, Table, TableRow, TableCell,
-    CheckBox, WidthType, BorderStyle, AlignmentType, VerticalAlign,
-    HeightRule, Packer, convertInchesToTwip,
+    WidthType, BorderStyle, AlignmentType, VerticalAlign,
+    Packer, convertInchesToTwip,
   } = require('docx');
 
   const articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
@@ -419,7 +419,7 @@ router.post('/articles/export-word', async (req, res) => {
         // Checkbox cell
         new TableCell({
           children: [new Paragraph({
-            children: [new CheckBox({ checked: false })],
+            children: [new TextRun({ text: '☐', size: 28, color: '374151' })],
             alignment: AlignmentType.CENTER,
             spacing: { before: 40 },
           })],

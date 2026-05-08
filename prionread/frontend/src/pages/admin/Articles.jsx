@@ -353,7 +353,18 @@ const AdminArticles = () => {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      errorFlash('Error generando el Word: ' + (err?.message || 'desconocido'));
+      // responseType:'blob' means error body is also a Blob — decode it to get the real message
+      let detail = err?.message || 'desconocido';
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          if (parsed?.error) detail = parsed.error;
+        } catch { /* ignore parse errors */ }
+      } else if (err?.response?.data?.error) {
+        detail = err.response.data.error;
+      }
+      errorFlash('Error generando el Word: ' + detail);
     }
   };
 
