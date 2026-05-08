@@ -3956,6 +3956,42 @@ ${refsText}`;
     return `<button class="pp-notes-badge has-notes" data-notes-id="${_esc(p.id)}" title="${label}"><i class="fas fa-sticky-note"></i> ${count}</button>`;
   }
 
+  let _notesDragInited = false;
+  function _initNotesDrag() {
+    if (_notesDragInited) return;
+    _notesDragInited = true;
+    const panel  = document.getElementById('pp-notes-panel');
+    const handle = document.getElementById('pp-notes-drag-handle');
+    if (!panel || !handle) return;
+    let startX, startY, startLeft, startTop, dragging = false;
+
+    handle.addEventListener('mousedown', e => {
+      if (e.target.closest('#btn-notes-close')) return;
+      dragging = true;
+      const rect = panel.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY;
+      startLeft = rect.left; startTop = rect.top;
+      panel.style.right = 'auto';
+      panel.style.left  = startLeft + 'px';
+      panel.style.top   = startTop  + 'px';
+      panel.classList.add('pp-dragging');
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      const maxLeft = window.innerWidth  - panel.offsetWidth  - 4;
+      const maxTop  = window.innerHeight - panel.offsetHeight - 4;
+      panel.style.left = Math.max(4, Math.min(startLeft + dx, maxLeft)) + 'px';
+      panel.style.top  = Math.max(4, Math.min(startTop  + dy, maxTop))  + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      panel.classList.remove('pp-dragging');
+    });
+  }
+
   function _openNotes(pkgId) {
     _notesPkgId = pkgId;
     const pkg   = _packages.find(p => p.id === pkgId);
@@ -3969,6 +4005,7 @@ ${refsText}`;
     requestAnimationFrame(() => { backdrop.classList.add('active'); panel.classList.add('active'); });
     document.getElementById('pp-notes-textarea').value = '';
     document.getElementById('pp-notes-textarea').focus();
+    _initNotesDrag();
   }
 
   function _closeNotes() {
@@ -3976,6 +4013,7 @@ ${refsText}`;
     const panel    = document.getElementById('pp-notes-panel');
     backdrop?.classList.remove('active');
     panel?.classList.remove('active');
+    if (panel) { panel.style.left = ''; panel.style.top = ''; panel.style.right = ''; }
     if (backdrop) setTimeout(() => { backdrop.style.display = ''; }, 300);
     if (panel)    setTimeout(() => { panel.style.display = ''; }, 300);
     _stopVoice();

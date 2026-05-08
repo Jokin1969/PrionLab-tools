@@ -2535,13 +2535,12 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-notes-panel {
   position: fixed;
   right: 24px;
-  top: 68px;
+  top: 84px;
   width: 420px;
   max-height: 80vh;
   background: var(--pp-primary);
   border: 1px solid var(--pp-border);
-  border-top: none;
-  border-radius: 0 0 var(--pp-radius) var(--pp-radius);
+  border-radius: var(--pp-radius);
   box-shadow: 0 8px 32px rgba(0,0,0,0.15);
   z-index: 301;
   display: flex;
@@ -2549,8 +2548,10 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   transform: translateY(-110%);
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   overflow: hidden;
+  user-select: none;
 }
 .pp-notes-panel.active { transform: translateY(0); }
+.pp-notes-panel.pp-dragging { transition: none; box-shadow: 0 16px 48px rgba(0,0,0,0.22); }
 
 .pp-notes-panel-header {
   display: flex;
@@ -2560,6 +2561,14 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   border-bottom: 1px solid var(--pp-border);
   background: linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%);
   flex-shrink: 0;
+  cursor: grab;
+}
+.pp-notes-panel-header:active { cursor: grabbing; }
+.pp-notes-drag-icon {
+  color: #d1a800;
+  font-size: 12px;
+  margin-right: 6px;
+  opacity: 0.6;
 }
 .pp-notes-panel-header-left {
   display: flex;
