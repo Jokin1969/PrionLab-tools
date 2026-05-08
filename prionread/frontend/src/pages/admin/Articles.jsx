@@ -79,6 +79,7 @@ const AdminArticles = () => {
   const [searchAbstract, setSearchAbstract] = useState(false);
   const [filterNoPdf, setFilterNoPdf]               = useState(false);
   const [filterNoAbstract, setFilterNoAbstract]     = useState(false);
+  const [filterNoPages, setFilterNoPages]           = useState(false);
   const [filterMilestone, setFilterMilestone]       = useState(false);
   const [filterAssigned, setFilterAssigned]         = useState(false);
   const [filterUnassigned, setFilterUnassigned]     = useState(false);
@@ -407,6 +408,7 @@ const AdminArticles = () => {
   });
   if (filterNoPdf)       filteredArticles = filteredArticles.filter((a) => !a.dropbox_path);
   if (filterNoAbstract)  filteredArticles = filteredArticles.filter((a) => !a.abstract);
+  if (filterNoPages)     filteredArticles = filteredArticles.filter((a) => !a.pdf_pages);
   if (filterMilestone)   filteredArticles = filteredArticles.filter((a) => a.is_milestone);
   if (filterAssigned)    filteredArticles = filteredArticles.filter((a) => Object.values(matrix[a.id] || {}).some(Boolean));
   if (filterUnassigned)  filteredArticles = filteredArticles.filter((a) => !Object.values(matrix[a.id] || {}).some(Boolean));
@@ -418,7 +420,7 @@ const AdminArticles = () => {
 
   const totalCols = 6 + students.length + (students.length > 0 ? 1 : 0);
 
-  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterMilestone ||
+  const isFiltered = search || advSearch || filterNoPdf || filterNoAbstract || filterNoPages || filterMilestone ||
     filterAssigned || filterUnassigned || userFilter || unassignedUserFilter ||
     filters.is_milestone || (filters.year && filters.year !== '');
 
@@ -552,6 +554,10 @@ const AdminArticles = () => {
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                 filterNoAbstract ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'
               }`}>Sin Abstract</button>
+            <button onClick={() => setFilterNoPages((v) => !v)}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                filterNoPages ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
+              }`}>📄 Sin páginas</button>
             <button
               onClick={() => { setFilterAssigned((v) => !v); setFilterUnassigned(false); }}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
@@ -564,7 +570,7 @@ const AdminArticles = () => {
               }`}>Sin asignar</button>
             <button
               onClick={() => {
-                setFilterNoPdf(false); setFilterNoAbstract(false); setFilterMilestone(false);
+                setFilterNoPdf(false); setFilterNoAbstract(false); setFilterNoPages(false); setFilterMilestone(false);
                 setFilterAssigned(false); setFilterUnassigned(false);
                 setSearch(''); setAdvSearch(''); setSearchAbstract(false);
                 setFilters((p) => ({ ...p, is_milestone: '' }));
