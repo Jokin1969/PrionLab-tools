@@ -172,7 +172,7 @@ async function computeArticleReadStats() {
     `SELECT
        a.id                                                           AS article_id,
        a.title,
-       COUNT(ua.id) FILTER (WHERE ua.status IN ('read','summarized','evaluated'))::int
+       COUNT(DISTINCT ua.id) FILTER (WHERE ua.status IN ('read','summarized','evaluated'))::int
                                                                       AS times_read,
        ROUND(AVG(ar.rating)::numeric, 2)                             AS avg_rating
      FROM articles a
@@ -192,7 +192,7 @@ async function computeArticleReadStats() {
   // Sort twice: most-read and least-read from the same dataset
   const byReads = [...formatted].sort((a, b) => b.times_read - a.times_read);
   return {
-    most: byReads.slice(0, 10),
+    most: byReads.filter((a) => a.times_read > 0).slice(0, 10),
     least: byReads.slice(-10).reverse(),
   };
 }

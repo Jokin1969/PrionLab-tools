@@ -14,14 +14,14 @@ export const ProgressChart = ({ data }) => {
         <Legend />
         <Line
           type="monotone"
-          dataKey="read"
+          dataKey="total_reads"
           stroke="#4F46E5"
           strokeWidth={2}
           name="Leídos"
         />
         <Line
           type="monotone"
-          dataKey="evaluated"
+          dataKey="total_evaluations"
           stroke="#10B981"
           strokeWidth={2}
           name="Evaluados"

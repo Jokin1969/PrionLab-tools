@@ -2,7 +2,8 @@ import api from './api';
 
 export const adminService = {
   // Dashboard
-  getDashboard: async () => (await api.get('/admin/dashboard')).data,
+  getDashboard: async (forceRefresh = false) =>
+    (await api.get(`/admin/dashboard${forceRefresh ? '?refresh=true' : ''}`)).data,
 
   // Users
   getUsers: async (filters = {}) => (await api.get(`/users?${new URLSearchParams(filters)}`)).data,

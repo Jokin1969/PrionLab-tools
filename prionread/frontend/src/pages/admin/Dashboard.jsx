@@ -14,7 +14,7 @@ const AdminDashboard = () => {
 
   const loadDashboard = async () => {
     try {
-      const data = await adminService.getDashboard();
+      const data = await adminService.getDashboard(true);
       setDashboard(data);
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -101,14 +101,14 @@ const AdminDashboard = () => {
 
       {/* Monthly Chart */}
       {monthlyData.length > 0 && (
-        <Card title="📈 Progreso Mensual del Laboratorio">
+        <Card title="📈 Progreso mensual del laboratorio">
           <ProgressChart data={monthlyData} />
         </Card>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Performers */}
-        <Card title="🏆 Mejores Estudiantes">
+        <Card title="🏆 Mejores estudiantes">
           {topPerformers.length === 0 ? (
             <p className="text-sm text-gray-400">Sin datos disponibles</p>
           ) : (
@@ -154,7 +154,7 @@ const AdminDashboard = () => {
         </Card>
 
         {/* Most Read Articles */}
-        <Card title="📚 Artículos Más Leídos">
+        <Card title="📚 Artículos más leídos">
           {mostRead.length === 0 ? (
             <p className="text-sm text-gray-400">Sin datos disponibles</p>
           ) : (
@@ -184,7 +184,7 @@ const AdminDashboard = () => {
 
       {/* Recent Activity */}
       {recentActivity.length > 0 && (
-        <Card title="📝 Actividad Reciente">
+        <Card title="📝 Actividad reciente">
           <div className="space-y-3">
             {recentActivity.slice(0, 10).map((activity, idx) => (
               <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
