@@ -333,6 +333,7 @@ router.post('/sync/backfill-status', async (req, res) => {
 
 // ─── Word export: article selection checklist ─────────────────────────────────
 router.post('/articles/export-word', async (req, res) => {
+  try {
   const {
     Document, Paragraph, TextRun, Table, TableRow, TableCell,
     CheckBox, WidthType, BorderStyle, AlignmentType, VerticalAlign,
@@ -477,6 +478,10 @@ router.post('/articles/export-word', async (req, res) => {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="seleccion_articulos_${ts}.docx"`);
   res.end(buf);
+  } catch (err) {
+    console.error('[POST /admin/articles/export-word]', err);
+    res.status(500).json({ error: 'Error generando el Word: ' + err.message });
+  }
 });
 
 // ─── Notification Rules CRUD ──────────────────────────────────────────────────

@@ -547,7 +547,7 @@ const AdminArticles = () => {
               onClick={() => { setFilterAssigned((v) => !v); setFilterUnassigned(false); }}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                 filterAssigned ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50'
-              }`}>Con asignados</button>
+              }`}>Asignados</button>
             <button
               onClick={() => { setFilterUnassigned((v) => !v); setFilterAssigned(false); }}
               className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
