@@ -190,7 +190,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     # ── Title ────────────────────────────────────────────────────────────────────────────────
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    add_runs(t, pkg.get('title', 'Sin título'), size=Pt(20), bold=True, color=ACCENT)
+    add_runs(t, pkg.get('title', 'Sin título'), size=Pt(14), bold=True, color=ACCENT)
 
     # Alternative titles — collapsed section so they don't clutter the opening view
     alt_titles = [at.strip() for at in (pkg.get('altTitles') or []) if (at or '').strip()]
@@ -278,13 +278,13 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         for i, ref in enumerate(intro_refs_list, 1):
             header, abstract = _split_reference(ref)
             p = doc.add_paragraph(style='Heading 3')
+            r_num = p.add_run(f'[Ri-{i:02d}] ')
+            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
+            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             pPr = p._p.get_or_add_pPr()
             collapsed_el = OxmlElement('w:collapsed')
             collapsed_el.set(qn('w:val'), '1')
             pPr.append(collapsed_el)
-            r_num = p.add_run(f'[Ri-{i:02d}] ')
-            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
-            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             if abstract:
                 p_abs = doc.add_paragraph()
                 add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
@@ -486,13 +486,13 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         for i, ref in enumerate(refs_list, 1):
             header, abstract = _split_reference(ref)
             p = doc.add_paragraph(style='Heading 3')
+            r_num = p.add_run(f'[{i}] ')
+            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
+            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             pPr = p._p.get_or_add_pPr()
             collapsed_el = OxmlElement('w:collapsed')
             collapsed_el.set(qn('w:val'), '1')
             pPr.append(collapsed_el)
-            r_num = p.add_run(f'[{i}] ')
-            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
-            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             if abstract:
                 p_abs = doc.add_paragraph()
                 add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
@@ -575,16 +575,17 @@ def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
 def _section_heading(doc: Document, text: str, collapsed: bool = False,
                      accent: RGBColor = None, accent_hex: str = None):
     p = doc.add_paragraph(style='Heading 2')
-    pPr = p._p.get_or_add_pPr()
-    if collapsed:
-        collapsed_el = OxmlElement('w:collapsed')
-        collapsed_el.set(qn('w:val'), '1')
-        pPr.append(collapsed_el)
     run = p.add_run(text)
     run.font.bold      = True
     run.font.size      = Pt(10)
     run.font.color.rgb = accent if accent is not None else _TEAL
+    # w:pBdr must exist before w:collapsed in the schema order
     _para_border_bottom(p, accent_hex or _TEAL_HEX)
+    if collapsed:
+        pPr = p._p.get_or_add_pPr()
+        collapsed_el = OxmlElement('w:collapsed')
+        collapsed_el.set(qn('w:val'), '1')
+        pPr.append(collapsed_el)
 
 
 def _dim_para(doc: Document, text: str):
