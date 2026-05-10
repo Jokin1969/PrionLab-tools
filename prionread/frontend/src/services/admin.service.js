@@ -66,14 +66,14 @@ export const adminService = {
   // Duplicate detection
   findDuplicates: async () => (await api.get('/admin/articles/find-duplicates')).data,
 
-  // PDF → metadata analysis
+  // PDF -> metadata analysis
   analyzePdf: async (file) => {
     const fd = new FormData();
     fd.append('pdf', file);
     return (await api.post('/articles/analyze-pdf', fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
   },
 
-  // PrionVault ↔ PrionRead sync
+  // PrionVault <-> PrionRead sync
   getSyncStatus: async () => (await api.get('/admin/sync/status')).data,
   runPrionVaultMigration: async () => (await api.post('/admin/sync/run-migration')).data,
   markPendingForPrionVault: async () => (await api.post('/admin/sync/mark-pending')).data,
@@ -86,6 +86,10 @@ export const adminService = {
   updateNotificationRule: async (id, data) => (await api.patch(`/admin/notification-rules/${id}`, data)).data,
   deleteNotificationRule: async (id) => (await api.delete(`/admin/notification-rules/${id}`)).data,
   runNotificationRules: async () => (await api.post('/admin/notification-rules/run')).data,
+
+  // Monthly report
+  runMonthlyReport: async () => (await api.post('/admin/monthly-report/run')).data,
+  getMonthlyReportPreview: async (userId) => api.get(`/admin/monthly-report/preview/${userId}`, { responseType: 'text' }),
 
   // PrionBonus
   getAdminBonus: async () => (await api.get('/admin/bonus')).data,

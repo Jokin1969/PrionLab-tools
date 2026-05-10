@@ -1,7 +1,8 @@
 const cron = require('node-cron');
+const { Op } = require('sequelize');
 const emailService = require('./emailService');
 const recommendationEngine = require('../utils/recommendationEngine');
-const { User, UserArticle, Article, NotificationRule, NotificationLog } = require('../models');
+const { User, UserArticle, Article, NotificationRule, NotificationLog, BonusCredit, BonusAllocation, Evaluation } = require('../models');
 
 const INACTIVITY_DAYS = 14;
 
@@ -112,6 +113,140 @@ async function sendInactivityReminders() {
   return results;
 }
 
+// ─── Monthly report ──────────────────────────────────────────────────────────
+
+const MONTH_NAMES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+async function getMonthlyReportData(userId, forYear, forMonth) {
+  // Default: previous calendar month
+  const now = new Date();
+  const year  = forYear  ?? (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear());
+  const month = forMonth ?? (now.getMonth() === 0 ? 12 : now.getMonth()); // 1-indexed
+
+  const startOfMonth = new Date(year, month - 1, 1);
+  const endOfMonth   = new Date(year, month, 1);
+
+  const [
+    articlesRaw,
+    totalReadCumulative,
+    totalAssigned,
+    bonusCreditsThisMonth,
+    allCredits,
+    allocationsThisMonth,
+    allAllocations,
+    pendingRaw,
+  ] = await Promise.all([
+    // Articles updated to read/summarized/evaluated status this month
+    UserArticle.findAll({
+      where: {
+        user_id: userId,
+        status: { [Op.in]: ['read', 'summarized', 'evaluated'] },
+        updated_at: { [Op.gte]: startOfMonth, [Op.lt]: endOfMonth },
+      },
+      include: [
+        { model: Article, as: 'article', attributes: ['id','title','authors','year','journal','is_milestone','pdf_pages'] },
+        { model: Evaluation, as: 'evaluations', attributes: ['score','created_at'] },
+      ],
+    }),
+    // Total cumulative read
+    UserArticle.count({ where: { user_id: userId, status: { [Op.in]: ['read','summarized','evaluated'] } } }),
+    // Total assigned
+    UserArticle.count({ where: { user_id: userId } }),
+    // Bonus credits earned this month (from reading, not welcome gifts)
+    BonusCredit.findAll({
+      where: {
+        user_id: userId,
+        article_id: { [Op.ne]: null },
+        created_at: { [Op.gte]: startOfMonth, [Op.lt]: endOfMonth },
+      },
+      include: [{ model: Article, as: 'article', attributes: ['id','title'] }],
+    }),
+    // All credits for global balance
+    BonusCredit.findAll({ where: { user_id: userId }, attributes: ['minutes_earned'] }),
+    // Allocations this month
+    BonusAllocation.findAll({
+      where: { user_id: userId, created_at: { [Op.gte]: startOfMonth, [Op.lt]: endOfMonth } },
+    }),
+    // All allocations for global balance
+    BonusAllocation.findAll({ where: { user_id: userId }, attributes: ['minutes'] }),
+    // Pending articles for motivation
+    UserArticle.findAll({
+      where: { user_id: userId, status: 'pending' },
+      include: [{ model: Article, as: 'article', attributes: ['id','title','authors','year','is_milestone','priority'] }],
+      order: [
+        [{ model: Article, as: 'article' }, 'is_milestone', 'DESC'],
+        [{ model: Article, as: 'article' }, 'priority', 'DESC'],
+      ],
+      limit: 3,
+    }),
+  ]);
+
+  // Attach the latest evaluation score to each user article
+  const articlesThisMonth = articlesRaw.map((ua) => {
+    const sorted = (ua.evaluations || []).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return { ...ua.toJSON(), latestScore: sorted[0]?.score ?? null };
+  });
+
+  // Compute averages
+  const scores = articlesThisMonth.map((ua) => ua.latestScore).filter((s) => s != null);
+  const avgScoreThisMonth = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null;
+
+  const minutesEarnedThisMonth   = bonusCreditsThisMonth.reduce((s, c) => s + c.minutes_earned, 0);
+  const minutesConsumedThisMonth = allocationsThisMonth.reduce((s, a) => s + a.minutes, 0);
+  const totalBalanceMinutes =
+    allCredits.reduce((s, c) => s + c.minutes_earned, 0) -
+    allAllocations.reduce((s, a) => s + a.minutes, 0);
+
+  const completionPct = totalAssigned > 0
+    ? Math.round((totalReadCumulative / totalAssigned) * 100)
+    : 0;
+
+  return {
+    periodYear: year,
+    periodMonth: month,
+    monthName: MONTH_NAMES_ES[month - 1],
+    articlesThisMonth,
+    totalReadCumulative,
+    totalAssigned,
+    completionPct,
+    avgScoreThisMonth,
+    bonusCreditsThisMonth,
+    minutesEarnedThisMonth,
+    allocationsThisMonth,
+    minutesConsumedThisMonth,
+    totalBalanceMinutes,
+    pendingArticles: pendingRaw.map((r) => r.article).filter(Boolean),
+  };
+}
+
+async function sendMonthlyReport(user, adminEmails) {
+  const data = await getMonthlyReportData(user.id);
+  await emailService.sendMonthlyReportEmail(user, data, adminEmails);
+  return { sent: true };
+}
+
+async function sendMonthlyReportsToAll() {
+  const [students, admins] = await Promise.all([
+    User.findAll({ where: { role: 'student' } }),
+    User.findAll({ where: { role: 'admin' } }),
+  ]);
+  const adminEmails = admins.map((a) => a.email);
+  const results = { sent: 0, errors: 0 };
+
+  for (const student of students) {
+    try {
+      await sendMonthlyReport(student, adminEmails);
+      results.sent++;
+    } catch (err) {
+      console.error(`[notificationService] monthly report failed for user ${student.id}:`, err.message);
+      results.errors++;
+    }
+  }
+
+  console.log(`[notificationService] monthly reports: sent=${results.sent} errors=${results.errors}`);
+  return results;
+}
+
 // ─── Threshold alert check ────────────────────────────────────────────────────
 
 async function checkThresholdRules() {
@@ -201,6 +336,16 @@ function initializeScheduledTasks() {
     );
   }, { timezone: 'Europe/Madrid' });
 
+  // Monthly report — first Monday of each month at 09:00 Europe/Madrid
+  // Pattern "0 9 1-7 * 1": at 09:00, days 1-7 of any month, only on Mondays
+  // -> exactly the first Monday of the month
+  cron.schedule('0 9 1-7 * 1', () => {
+    console.log('[notificationService] running monthly reports');
+    sendMonthlyReportsToAll().catch((err) =>
+      console.error('[notificationService] monthly report cron error:', err)
+    );
+  }, { timezone: 'Europe/Madrid' });
+
   console.log('[notificationService] scheduled tasks initialized');
 }
 
@@ -209,5 +354,8 @@ module.exports = {
   sendWeeklyRemindersToAll,
   sendInactivityReminders,
   checkThresholdRules,
+  getMonthlyReportData,
+  sendMonthlyReport,
+  sendMonthlyReportsToAll,
   initializeScheduledTasks,
 };
