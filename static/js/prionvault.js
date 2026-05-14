@@ -33,9 +33,23 @@
     tagId: null,
     hasSummary: null,
     inPrionread: null,   // null = all, true = in PrionRead, false = not in PrionRead
+    isFlagged: null,     // null = all, true = flagged, false = not flagged
+    isMilestone: null,   // null = all, true = milestone, false = not
+    colorLabel: null,    // null = all, 'red'..'purple', or 'none' for no label
+    priorityMin: null,   // null = all, else integer 1-5
     page: 1,
     size: 25,
   };
+
+  const COLOR_LABELS = [
+    { value: 'red',    css: '#ef4444' },
+    { value: 'orange', css: '#fb923c' },
+    { value: 'yellow', css: '#facc15' },
+    { value: 'green',  css: '#22c55e' },
+    { value: 'blue',   css: '#3b82f6' },
+    { value: 'purple', css: '#a855f7' },
+  ];
+  const COLOR_CSS = Object.fromEntries(COLOR_LABELS.map(c => [c.value, c.css]));
 
   // ── helpers ────────────────────────────────────────────────────────────
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -126,6 +140,10 @@
     if (state.tagId)               params.set('tag', state.tagId);
     if (state.hasSummary)          params.set('has_summary', state.hasSummary);
     if (state.inPrionread !== null) params.set('in_prionread', state.inPrionread ? '1' : '0');
+    if (state.isFlagged    !== null) params.set('is_flagged',   state.isFlagged    ? '1' : '0');
+    if (state.isMilestone  !== null) params.set('is_milestone', state.isMilestone  ? '1' : '0');
+    if (state.colorLabel)          params.set('color_label', state.colorLabel);
+    if (state.priorityMin)         params.set('priority_min', state.priorityMin);
     params.set('page', state.page);
     params.set('size', state.size);
 
@@ -177,17 +195,65 @@
       a.indexed_at
         ? '<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
         : '',
+      a.pdf_pages
+        ? `<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:500;background:#f3f4f6;color:#6b7280;">${a.pdf_pages} p.</span>`
+        : '',
     ].filter(Boolean).join('');
 
     const authors = a.authors ? esc(a.authors).slice(0, 90) : '—';
     const journal = a.journal ? ` · ${esc(a.journal)}` : '';
     const hasMeta = badges || tags;
 
+    const colorCss   = a.color_label ? (COLOR_CSS[a.color_label] || '#9ca3af') : null;
+    const colorDot   = `<span class="pv-color-dot" data-aid="${esc(a.id)}"
+                              data-current="${esc(a.color_label || '')}"
+                              title="${a.color_label ? 'Etiqueta: ' + esc(a.color_label) : 'Sin etiqueta de color'}"
+                              style="width:11px;height:11px;border-radius:50%;flex-shrink:0;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                                     ${colorCss ? `background:${colorCss};` : 'background:transparent;border:1.5px dashed #d1d5db;'}"></span>`;
+
+    const milestoneBtn = `<button class="pv-milestone-btn" data-aid="${esc(a.id)}"
+                                  data-active="${a.is_milestone ? '1' : '0'}"
+                                  title="${a.is_milestone ? 'Hito ★ — clic para quitar' : 'Marcar como hito'}"
+                                  style="background:none;border:none;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                                         padding:0;font-size:14px;line-height:1;
+                                         color:${a.is_milestone ? '#f59e0b' : '#d1d5db'};">★</button>`;
+
+    const flagBtn = `<button class="pv-flag-btn" data-aid="${esc(a.id)}"
+                             data-active="${a.is_flagged ? '1' : '0'}"
+                             title="${a.is_flagged ? 'Marcada 🚩 — clic para quitar' : 'Marcar bandera'}"
+                             style="background:none;border:none;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                                    padding:0;font-size:13px;line-height:1;
+                                    color:${a.is_flagged ? '#dc2626' : '#d1d5db'};">${a.is_flagged ? '🚩' : '⚑'}</button>`;
+
+    const priorityChip = (a.priority && a.priority !== 3)
+      ? `<span class="pv-priority-chip" data-aid="${esc(a.id)}" data-priority="${a.priority}"
+              title="Prioridad ${a.priority}/5${IS_ADMIN ? ' — clic para cambiar' : ''}"
+              style="display:inline-flex;align-items:center;justify-content:center;
+                     min-width:18px;height:18px;padding:0 4px;border-radius:4px;
+                     font-size:10px;font-weight:700;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                     ${a.priority >= 5 ? 'background:#fee2e2;color:#b91c1c;' :
+                       a.priority === 4 ? 'background:#fef3c7;color:#92400e;' :
+                       a.priority <= 1 ? 'background:#e5e7eb;color:#6b7280;' :
+                                         'background:#e0f2fe;color:#075985;'}">P${a.priority}</span>`
+      : (IS_ADMIN ? `<span class="pv-priority-chip" data-aid="${esc(a.id)}" data-priority="3"
+                          title="Prioridad 3/5 — clic para cambiar"
+                          style="display:inline-flex;align-items:center;justify-content:center;
+                                 min-width:18px;height:18px;padding:0 4px;border-radius:4px;
+                                 font-size:10px;font-weight:600;cursor:pointer;
+                                 background:transparent;color:#9ca3af;border:1px dashed #d1d5db;">P3</span>`
+                  : '');
+
     row.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;padding-top:4px;">
+        ${colorDot}
+        ${milestoneBtn}
+        ${flagBtn}
+      </div>
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
           <span style="font-size:15px;font-weight:600;color:#111827;line-height:1.4;">${supHtml(a.title || '(no title)')}</span>
           ${a.year ? `<span style="font-size:12px;color:#9ca3af;flex-shrink:0;font-variant-numeric:tabular-nums;">${a.year}</span>` : ''}
+          ${priorityChip}
         </div>
         <p style="margin:0 0 ${hasMeta ? '5px' : '0'};font-size:13px;color:#6b7280;
                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -208,8 +274,127 @@
       e.stopPropagation();
       togglePrionRead(e.currentTarget, a.id);
     });
+
+    if (IS_ADMIN) {
+      row.querySelector('.pv-milestone-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        const next = btn.dataset.active !== '1';
+        patchArticleInline(a, { is_milestone: next }, () => {
+          a.is_milestone = next;
+          if (next) a.priority = 5;
+          replaceRow(row, a);
+        });
+      });
+
+      row.querySelector('.pv-flag-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        const next = btn.dataset.active !== '1';
+        patchArticleInline(a, { is_flagged: next }, () => {
+          a.is_flagged = next;
+          replaceRow(row, a);
+        });
+      });
+
+      row.querySelector('.pv-color-dot').addEventListener('click', e => {
+        e.stopPropagation();
+        openColorPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+
+      const prChip = row.querySelector('.pv-priority-chip');
+      if (prChip) prChip.addEventListener('click', e => {
+        e.stopPropagation();
+        openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+    }
+
     row.addEventListener('click', () => openDetail(a.id));
     return row;
+  }
+
+  function replaceRow(oldNode, article) {
+    const fresh = renderRow(article);
+    oldNode.replaceWith(fresh);
+  }
+
+  async function patchArticleInline(a, patch, onOk) {
+    try {
+      await api(`/articles/${a.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      onOk && onOk();
+    } catch (e) {
+      console.error('patchArticleInline failed', e);
+      alert('No se pudo guardar el cambio: ' + e.message);
+    }
+  }
+
+  let _popoverEl = null;
+  function closePopover() {
+    if (_popoverEl) { _popoverEl.remove(); _popoverEl = null; }
+    document.removeEventListener('click', closePopoverOnOutside, true);
+  }
+  function closePopoverOnOutside(e) {
+    if (_popoverEl && !_popoverEl.contains(e.target)) closePopover();
+  }
+  function openPopoverAt(anchor) {
+    closePopover();
+    const r = anchor.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.style.cssText =
+      'position:fixed;z-index:1000;background:white;border:1px solid #e5e7eb;border-radius:10px;' +
+      'box-shadow:0 4px 14px rgba(0,0,0,0.12);padding:8px;display:flex;gap:6px;align-items:center;';
+    pop.style.top  = (r.bottom + 6) + 'px';
+    pop.style.left = (r.left) + 'px';
+    document.body.appendChild(pop);
+    _popoverEl = pop;
+    setTimeout(() => document.addEventListener('click', closePopoverOnOutside, true), 0);
+    return pop;
+  }
+
+  function openColorPopover(anchor, a, onChange) {
+    const pop = openPopoverAt(anchor);
+    const mkSwatch = (value, css) => {
+      const b = document.createElement('button');
+      const selected = (a.color_label || null) === value;
+      b.style.cssText =
+        `width:22px;height:22px;border-radius:50%;border:2px solid ${selected ? '#111827' : 'transparent'};` +
+        `cursor:pointer;${css ? `background:${css};` : 'background:transparent;border-style:dashed;border-color:#9ca3af;'}`;
+      b.title = value || 'Sin etiqueta';
+      b.addEventListener('click', async () => {
+        await patchArticleInline(a, { color_label: value }, () => {
+          a.color_label = value;
+          onChange && onChange();
+        });
+        closePopover();
+      });
+      return b;
+    };
+    pop.appendChild(mkSwatch(null, null));
+    COLOR_LABELS.forEach(c => pop.appendChild(mkSwatch(c.value, c.css)));
+  }
+
+  function openPriorityPopover(anchor, a, onChange) {
+    const pop = openPopoverAt(anchor);
+    [1, 2, 3, 4, 5].forEach(p => {
+      const b = document.createElement('button');
+      const isCur = (a.priority || 3) === p;
+      b.textContent = 'P' + p;
+      b.style.cssText =
+        'min-width:30px;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;' +
+        (isCur ? 'background:#0F3460;color:white;border:1px solid #0F3460;'
+               : 'background:white;color:#374151;border:1px solid #e5e7eb;');
+      b.addEventListener('click', async () => {
+        await patchArticleInline(a, { priority: p }, () => {
+          a.priority = p;
+          onChange && onChange();
+        });
+        closePopover();
+      });
+      pop.appendChild(b);
+    });
   }
 
   async function togglePrionRead(btn, aid) {
@@ -396,6 +581,40 @@
       prBtn.style.background     = active ? '#0F3460' : 'white';
       prBtn.style.color          = active ? 'white' : '#374151';
       prBtn.style.borderColor    = active ? '#0F3460' : '#e5e7eb';
+      loadArticles();
+    });
+
+    function wireTriStateButton(id, stateKey, labels) {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        state[stateKey] = state[stateKey] === null ? true
+                       : state[stateKey] === true ? false : null;
+        state.page = 1;
+        btn.textContent = labels[state[stateKey]];
+        const active = state[stateKey] !== null;
+        btn.style.background  = active ? '#0F3460' : 'white';
+        btn.style.color       = active ? 'white' : '#374151';
+        btn.style.borderColor = active ? '#0F3460' : '#e5e7eb';
+        loadArticles();
+      });
+    }
+    wireTriStateButton('btn-filter-milestone', 'isMilestone', {
+      null: '★ Hito: todos', true: '★ Solo hitos', false: '★ No hitos',
+    });
+    wireTriStateButton('btn-filter-flagged', 'isFlagged', {
+      null: '🚩 Bandera: todos', true: '🚩 Solo marcados', false: '🚩 Sin bandera',
+    });
+
+    document.getElementById('filter-color').addEventListener('change', e => {
+      state.colorLabel = e.target.value || null;
+      state.page = 1;
+      loadArticles();
+    });
+    document.getElementById('filter-priority-min').addEventListener('change', e => {
+      const v = parseInt(e.target.value, 10);
+      state.priorityMin = Number.isFinite(v) ? v : null;
+      state.page = 1;
       loadArticles();
     });
 

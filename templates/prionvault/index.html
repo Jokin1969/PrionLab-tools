@@ -234,6 +234,49 @@
                 title="Filtrar por presencia en PrionRead">
           📚 PrionRead: todos
         </button>
+
+        <button id="btn-filter-milestone"
+                data-state="all"
+                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
+                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
+                       gap:5px;transition:all 0.15s;white-space:nowrap;"
+                title="Filtrar por hito (milestone)">
+          ★ Hito: todos
+        </button>
+
+        <button id="btn-filter-flagged"
+                data-state="all"
+                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
+                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
+                       gap:5px;transition:all 0.15s;white-space:nowrap;"
+                title="Filtrar por bandera">
+          🚩 Bandera: todos
+        </button>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+          Color
+          <select id="filter-color" class="pv-filter-input">
+            <option value="">todos</option>
+            <option value="red">Rojo</option>
+            <option value="orange">Naranja</option>
+            <option value="yellow">Amarillo</option>
+            <option value="green">Verde</option>
+            <option value="blue">Azul</option>
+            <option value="purple">Morado</option>
+            <option value="none">Sin color</option>
+          </select>
+        </label>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+          Prioridad ≥
+          <select id="filter-priority-min" class="pv-filter-input">
+            <option value="">todas</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5 (solo hitos)</option>
+          </select>
+        </label>
       </div>
     </div>
 

@@ -54,6 +54,8 @@ class PrionVaultArticle(Base):
     abstract      = Column(Text)
     tags          = Column(ARRAY(String), default=list)   # PrionRead-side tags
     is_milestone  = Column(Boolean, default=False)
+    is_flagged    = Column(Boolean, default=False)
+    color_label   = Column(String)                  # red|orange|yellow|green|blue|purple|null
     priority      = Column(Integer, default=3)
     dropbox_path  = Column(String)
     dropbox_link  = Column(Text)
@@ -115,6 +117,8 @@ class PrionVaultArticle(Base):
             "tags":          [t.to_dict() for t in (self.pv_tags or [])],
             "priority":      self.priority,
             "is_milestone":  self.is_milestone,
+            "is_flagged":    bool(self.is_flagged),
+            "color_label":   self.color_label,
             "pdf_pages":     self.pdf_pages,
             "extraction_status": self.extraction_status,
             "indexed_at":    self.indexed_at.isoformat() if self.indexed_at else None,

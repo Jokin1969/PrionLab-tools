@@ -50,6 +50,12 @@ def api_list_articles():
     has_summary = request.args.get("has_summary")
     in_prionread_raw = request.args.get("in_prionread")
     in_prionread = True if in_prionread_raw == "1" else (False if in_prionread_raw == "0" else None)
+    is_flagged_raw   = request.args.get("is_flagged")
+    is_flagged       = True if is_flagged_raw == "1" else (False if is_flagged_raw == "0" else None)
+    is_milestone_raw = request.args.get("is_milestone")
+    is_milestone     = True if is_milestone_raw == "1" else (False if is_milestone_raw == "0" else None)
+    color_label = (request.args.get("color_label") or "").strip().lower() or None
+    priority_min = request.args.get("priority_min", type=int)
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(100, max(1, request.args.get("size", 25, type=int)))
@@ -57,7 +63,9 @@ def api_list_articles():
     s = _session()
     try:
         return _list_articles_impl(s, q, year_min, year_max, journal,
-                                   tag_id, has_summary, in_prionread, sort, page, page_size)
+                                   tag_id, has_summary, in_prionread,
+                                   is_flagged, is_milestone, color_label,
+                                   priority_min, sort, page, page_size)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -66,8 +74,13 @@ def api_list_articles():
         db.Session.remove()
 
 
+_VALID_COLOR_LABELS = {"red", "orange", "yellow", "green", "blue", "purple"}
+
+
 def _list_articles_impl(s, q, year_min, year_max, journal,
-                        tag_id, has_summary, in_prionread, sort, page, page_size):
+                        tag_id, has_summary, in_prionread,
+                        is_flagged, is_milestone, color_label,
+                        priority_min, sort, page, page_size):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -113,6 +126,26 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "NOT EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = articles.id)"
         )
 
+    if is_flagged is True:
+        conditions.append("is_flagged IS TRUE")
+    elif is_flagged is False:
+        conditions.append("(is_flagged IS FALSE OR is_flagged IS NULL)")
+
+    if is_milestone is True:
+        conditions.append("is_milestone IS TRUE")
+    elif is_milestone is False:
+        conditions.append("(is_milestone IS FALSE OR is_milestone IS NULL)")
+
+    if color_label in _VALID_COLOR_LABELS:
+        conditions.append("color_label = :color_label")
+        params["color_label"] = color_label
+    elif color_label == "none":
+        conditions.append("color_label IS NULL")
+
+    if priority_min is not None:
+        conditions.append("priority >= :priority_min")
+        params["priority_min"] = priority_min
+
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     sort_map = {
@@ -125,7 +158,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     order = sort_map.get(sort, "created_at DESC NULLS LAST")
 
     # Build SELECT list: always include base columns; add pv cols if present.
-    base_cols = "id, title, authors, year, journal, doi, pubmed_id, abstract, tags, is_milestone, priority, dropbox_path, dropbox_link, created_at, updated_at"
+    base_cols = "id, title, authors, year, journal, doi, pubmed_id, abstract, tags, is_milestone, is_flagged, color_label, priority, dropbox_path, dropbox_link, created_at, updated_at"
     pv_select = ", ".join(
         c for c in
         ["pdf_md5", "pdf_pages", "extraction_status", "indexed_at",
@@ -192,7 +225,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "tags_legacy":   d.get("tags") or [],
             "tags":          [],   # tag objects loaded separately if needed
             "priority":      d.get("priority"),
-            "is_milestone":  d.get("is_milestone"),
+            "is_milestone":  bool(d.get("is_milestone")),
+            "is_flagged":    bool(d.get("is_flagged")),
+            "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
             "extraction_status": d.get("extraction_status") or "pending",
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
@@ -246,8 +281,8 @@ def api_article_detail(aid):
         # Build SELECT list dynamically so missing migration columns don't 500.
         base_cols = (
             "id, title, authors, year, journal, doi, pubmed_id, abstract, "
-            "tags, is_milestone, priority, dropbox_path, dropbox_link, "
-            "created_at, updated_at"
+            "tags, is_milestone, is_flagged, color_label, priority, "
+            "dropbox_path, dropbox_link, created_at, updated_at"
         )
         optional = [
             "pdf_md5", "pdf_size_bytes", "pdf_pages",
@@ -282,7 +317,9 @@ def api_article_detail(aid):
             "tags_legacy":   d.get("tags") or [],
             "tags":          [],
             "priority":      d.get("priority"),
-            "is_milestone":  d.get("is_milestone"),
+            "is_milestone":  bool(d.get("is_milestone")),
+            "is_flagged":    bool(d.get("is_flagged")),
+            "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
             "extraction_status": d.get("extraction_status") or "pending",
             "extraction_error":  d.get("extraction_error"),
@@ -583,7 +620,8 @@ def api_remove_from_prionread(aid):
 # ── Admin write endpoints (article metadata) ────────────────────────────────
 _EDITABLE_FIELDS = {
     "title", "authors", "year", "journal", "doi", "pubmed_id",
-    "abstract", "summary_ai", "summary_human", "is_milestone", "priority",
+    "abstract", "summary_ai", "summary_human", "is_milestone",
+    "is_flagged", "color_label", "priority",
 }
 
 
@@ -594,6 +632,30 @@ def api_article_update(aid):
     updates = {k: v for k, v in data.items() if k in _EDITABLE_FIELDS}
     if not updates:
         return jsonify({"error": "no editable fields in payload"}), 400
+
+    if "color_label" in updates:
+        v = updates["color_label"]
+        if v in ("", None):
+            updates["color_label"] = None
+        elif isinstance(v, str) and v.lower() in _VALID_COLOR_LABELS:
+            updates["color_label"] = v.lower()
+        else:
+            return jsonify({"error": "invalid color_label",
+                            "allowed": sorted(_VALID_COLOR_LABELS) + [None]}), 400
+
+    if "priority" in updates:
+        try:
+            p = int(updates["priority"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "priority must be int 1-5"}), 400
+        if not 1 <= p <= 5:
+            return jsonify({"error": "priority must be int 1-5"}), 400
+        updates["priority"] = p
+
+    for k in ("is_flagged", "is_milestone"):
+        if k in updates:
+            updates[k] = bool(updates[k])
+
     s = _session()
     try:
         a = s.get(models.Article, aid)

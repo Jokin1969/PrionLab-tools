@@ -64,11 +64,16 @@ def _process_job(job: ingest_queue.Job) -> None:
     # ── 2. Dedup BEFORE we hit Dropbox or CrossRef ─────────────────────
     dup_id, reason = find_duplicate(doi=doi, pdf_md5=md5)
     if dup_id is not None:
-        logger.info("Job %d duplicate of article %s (%s) — skipping ingest",
+        logger.info("Job %d duplicate of article %s (%s) — enriching missing PDF metadata",
                     job.id, dup_id, reason)
+        enriched = _enrich_duplicate(
+            article_id=dup_id, content=content, md5=md5,
+            extraction=extraction, doi=doi,
+        )
         doi_info = f" doi={doi}" if doi else ""
+        enr_info = f" | enriched: {','.join(enriched)}" if enriched else ""
         ingest_queue.mark_step(job.id, status="duplicate",
-                               step=f"duplicate | by {reason}{doi_info}",
+                               step=f"duplicate | by {reason}{doi_info}{enr_info}",
                                article_id=dup_id,
                                error=f"Already in library (matched by {reason}).")
         _cleanup_staged(staged)
@@ -121,6 +126,83 @@ def _process_job(job: ingest_queue.Job) -> None:
     ingest_queue.mark_step(job.id, status="done", step=summary,
                            article_id=article_id)
     _cleanup_staged(staged)
+
+
+def _enrich_duplicate(*, article_id, content: bytes, md5: str,
+                       extraction, doi: Optional[str]) -> list[str]:
+    """Fill missing PDF metadata on an existing duplicate article row.
+
+    Useful when PrionRead created the article first (metadata only, no PDF)
+    and the same paper is later ingested via PrionVault. The row gets
+    pdf_pages, pdf_md5, pdf_size_bytes, extracted_text and Dropbox path
+    populated for fields that are still NULL — never overwrites curated data.
+
+    Returns the list of fields that were actually updated.
+    """
+    eng = _get_engine()
+    updated: list[str] = []
+    try:
+        with eng.begin() as conn:
+            db_cols = _get_articles_columns(conn)
+            cols_to_read = [c for c in
+                ("pdf_pages", "pdf_md5", "pdf_size_bytes",
+                 "extracted_text", "extraction_status",
+                 "dropbox_path", "dropbox_link", "doi")
+                if c in db_cols]
+            if not cols_to_read:
+                return updated
+
+            select_sql = "SELECT " + ", ".join(cols_to_read) + \
+                         " FROM articles WHERE id = :aid"
+            row = conn.execute(text(select_sql), {"aid": str(article_id)}).first()
+            if row is None:
+                return updated
+            existing = dict(zip(cols_to_read, row))
+
+            # Compute what we can fill in. Only update where existing is NULL/empty.
+            candidate: dict = {}
+            if "pdf_pages" in db_cols and not existing.get("pdf_pages") and extraction.pages:
+                candidate["pdf_pages"] = extraction.pages
+            if "pdf_md5" in db_cols and not existing.get("pdf_md5"):
+                candidate["pdf_md5"] = md5
+            if "pdf_size_bytes" in db_cols and not existing.get("pdf_size_bytes"):
+                candidate["pdf_size_bytes"] = len(content)
+            if "extracted_text" in db_cols and not existing.get("extracted_text") and extraction.text:
+                candidate["extracted_text"] = extraction.text
+            if "extraction_status" in db_cols and existing.get("extraction_status") in (None, "pending"):
+                candidate["extraction_status"] = "extracted" if extraction.text else "failed"
+
+            # Upload PDF to Dropbox only if the existing row has no path yet.
+            if "dropbox_path" in db_cols and not existing.get("dropbox_path"):
+                year_for_path = None
+                try:
+                    year_row = conn.execute(text(
+                        "SELECT year FROM articles WHERE id = :aid"
+                    ), {"aid": str(article_id)}).first()
+                    year_for_path = year_row[0] if year_row else None
+                except Exception:
+                    pass
+                target_path = build_path(doi=existing.get("doi") or doi,
+                                         year=year_for_path,
+                                         md5=md5, filename_hint=f"{md5}.pdf")
+                upload = upload_pdf(content, target_path, overwrite=False)
+                if not upload.error or "conflict" in (upload.error or "").lower():
+                    candidate["dropbox_path"] = upload.dropbox_path
+                    if upload.dropbox_link and "dropbox_link" in db_cols \
+                            and not existing.get("dropbox_link"):
+                        candidate["dropbox_link"] = upload.dropbox_link
+                    if "pdf_size_bytes" in db_cols and not candidate.get("pdf_size_bytes"):
+                        candidate["pdf_size_bytes"] = upload.size_bytes
+
+            if candidate:
+                set_sql = ", ".join(f"{k} = :{k}" for k in candidate)
+                conn.execute(text(
+                    f"UPDATE articles SET {set_sql}, updated_at = NOW() WHERE id = :aid"
+                ), {**candidate, "aid": str(article_id)})
+                updated = sorted(candidate.keys())
+    except Exception as exc:
+        logger.warning("Duplicate enrichment failed for %s: %s", article_id, exc)
+    return updated
 
 
 _articles_col_cache: set | None = None
