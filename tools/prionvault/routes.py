@@ -7,6 +7,7 @@ the frontend can wire against it.
 """
 import logging
 import re
+from datetime import datetime
 from flask import jsonify, render_template, request, session
 from sqlalchemy import or_, func, text as sql_text
 
@@ -201,6 +202,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
 
     # ── PrionRead counts (separate session) ─────────────────────────────────
     prionread_counts = {}
+    rating_aggs = {}        # aid -> {"avg": float, "count": int}
+    my_ratings  = {}        # aid -> int (viewer's rating, if any)
     if rows:
         try:
             import uuid as _uuid
@@ -214,8 +217,32 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                     models.UserArticleLink.article_id.in_(item_ids)
                 ).group_by(models.UserArticleLink.article_id).all()
                 prionread_counts = {r[0]: r[1] for r in pr_rows}
+
+                # Aggregate ratings: avg + count per article id
+                rating_rows = _s2.query(
+                    models.ArticleRating.article_id,
+                    func.avg(models.ArticleRating.rating),
+                    func.count(models.ArticleRating.id),
+                ).filter(
+                    models.ArticleRating.article_id.in_(item_ids)
+                ).group_by(models.ArticleRating.article_id).all()
+                rating_aggs = {
+                    r[0]: {"avg": round(float(r[1]), 2), "count": int(r[2])}
+                    for r in rating_rows
+                }
+
+                viewer_id = _viewer_id()
+                if viewer_id:
+                    own_rows = _s2.query(
+                        models.ArticleRating.article_id,
+                        models.ArticleRating.rating,
+                    ).filter(
+                        models.ArticleRating.article_id.in_(item_ids),
+                        models.ArticleRating.user_id == viewer_id,
+                    ).all()
+                    my_ratings = {r[0]: int(r[1]) for r in own_rows}
         except Exception as exc:
-            logger.warning("Could not query user_articles: %s", exc)
+            logger.warning("Could not query user_articles / ratings: %s", exc)
 
     role = _viewer_role()
     is_admin = (role == "admin")
@@ -247,6 +274,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "has_summary_human": False,
             "in_prionread":  in_pr,
             "prionread_count": prionread_counts.get(aid, 0),
+            "avg_rating":     (rating_aggs.get(aid) or {}).get("avg"),
+            "rating_count":   (rating_aggs.get(aid) or {}).get("count", 0),
+            "my_rating":      my_ratings.get(aid),
         }
         if is_admin:
             out["pdf_md5"]          = d.get("pdf_md5")
@@ -391,6 +421,25 @@ def api_article_detail(aid):
         except Exception as exc:
             logger.warning("Could not load annotations for article %s: %s", aid, exc)
             out["annotations"] = []
+
+        # Ratings: list + aggregate + own rating shortcut
+        try:
+            r_items, r_avg, r_count = _load_ratings_for_article(s, aid)
+            out["ratings"]      = [_serialize_rating(it, viewer_id=viewer_id)
+                                    for it in r_items]
+            out["avg_rating"]   = r_avg
+            out["rating_count"] = r_count
+            out["my_rating"]    = next(
+                (int(it["rating"]) for it in r_items
+                 if str(it["user_id"]) == str(viewer_id)),
+                None,
+            )
+        except Exception as exc:
+            logger.warning("Could not load ratings for article %s: %s", aid, exc)
+            out["ratings"] = []
+            out["avg_rating"] = None
+            out["rating_count"] = 0
+            out["my_rating"] = None
 
         return jsonify(out)
     except Exception as exc:
@@ -562,6 +611,142 @@ def api_delete_annotation(ann_id):
         s.delete(ann)
         s.commit()
         return jsonify({"ok": True})
+    finally:
+        s.close()
+
+
+# ── Ratings ─────────────────────────────────────────────────────────────────
+def _serialize_rating(r, viewer_id=None):
+    return {
+        "id":         str(r["id"]),
+        "user_id":    str(r["user_id"]),
+        "user_name":  r.get("user_name") or "—",
+        "user_photo": r.get("user_photo"),
+        "is_own":     str(r["user_id"]) == str(viewer_id) if viewer_id else False,
+        "rating":     int(r["rating"]),
+        "comment":    r.get("comment"),
+        "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
+        "updated_at": r["updated_at"].isoformat() if r.get("updated_at") else None,
+    }
+
+
+def _load_ratings_for_article(s, aid):
+    """Return (ratings_list_dicts, avg, count) for a given article."""
+    rows = s.execute(sql_text(
+        """SELECT ar.id, ar.user_id, ar.rating, ar.comment,
+                  ar.created_at, ar.updated_at,
+                  u.name AS user_name, u.photo_url AS user_photo
+           FROM article_ratings ar
+           LEFT JOIN users u ON u.id = ar.user_id
+           WHERE ar.article_id = :aid
+           ORDER BY ar.updated_at DESC"""
+    ), {"aid": str(aid)}).all()
+    if not rows:
+        return [], None, 0
+    items = [dict(zip(r._fields, r)) for r in rows]
+    total = len(items)
+    avg = round(sum(it["rating"] for it in items) / total, 2)
+    return items, avg, total
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/ratings", methods=["GET"])
+@login_required
+def api_list_ratings(aid):
+    """Return all ratings for an article + avg + count + own rating flag."""
+    viewer_id = _viewer_id()
+    s = _session()
+    try:
+        items, avg, total = _load_ratings_for_article(s, aid)
+        return jsonify({
+            "ratings":    [_serialize_rating(it, viewer_id=viewer_id) for it in items],
+            "avg_rating": avg,
+            "total":      total,
+        })
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/ratings", methods=["POST"])
+@login_required
+def api_create_or_update_rating(aid):
+    """Upsert the viewer's rating on an article."""
+    viewer_id = _viewer_id()
+    if not viewer_id:
+        return jsonify({"error": "not authenticated"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        rating = int(data.get("rating"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "rating must be int 1-5"}), 400
+    if not 1 <= rating <= 5:
+        return jsonify({"error": "rating must be int 1-5"}), 400
+
+    comment = (data.get("comment") or "").strip() or None
+    if comment and len(comment) > 500:
+        return jsonify({"error": "comment must be ≤ 500 characters"}), 400
+
+    s = _session()
+    try:
+        # Verify article exists
+        exists = s.execute(sql_text(
+            "SELECT id FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).fetchone()
+        if not exists:
+            return jsonify({"error": "article not found"}), 404
+
+        existing = s.query(models.ArticleRating).filter_by(
+            user_id=viewer_id, article_id=aid).one_or_none()
+
+        if existing:
+            existing.rating = rating
+            existing.comment = comment
+            existing.updated_at = datetime.utcnow()
+            status = 200
+        else:
+            r = models.ArticleRating(
+                user_id=viewer_id, article_id=aid,
+                rating=rating, comment=comment,
+            )
+            s.add(r)
+            status = 201
+        s.commit()
+
+        items, avg, total = _load_ratings_for_article(s, aid)
+        return jsonify({
+            "ratings":    [_serialize_rating(it, viewer_id=viewer_id) for it in items],
+            "avg_rating": avg,
+            "total":      total,
+        }), status
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_create_or_update_rating failed")
+        return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/ratings", methods=["DELETE"])
+@login_required
+def api_delete_rating(aid):
+    """Delete the viewer's own rating on an article."""
+    viewer_id = _viewer_id()
+    if not viewer_id:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        existing = s.query(models.ArticleRating).filter_by(
+            user_id=viewer_id, article_id=aid).one_or_none()
+        if not existing:
+            return jsonify({"error": "rating not found"}), 404
+        s.delete(existing)
+        s.commit()
+        items, avg, total = _load_ratings_for_article(s, aid)
+        return jsonify({
+            "ratings":    [_serialize_rating(it, viewer_id=viewer_id) for it in items],
+            "avg_rating": avg,
+            "total":      total,
+        })
     finally:
         s.close()
 

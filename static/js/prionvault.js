@@ -209,6 +209,15 @@
             >${esc(t.name)}</span>`
     ).join('');
 
+    const ratingChip = (a.avg_rating != null && a.rating_count > 0)
+      ? `<span title="Rating medio ${a.avg_rating.toFixed(1)}/5 · ${a.rating_count} valoración${a.rating_count === 1 ? '' : 'es'}${a.my_rating ? ' · tu rating: ' + a.my_rating + '/5' : ''}"
+              style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:4px;
+                     font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">
+           <span style="color:#f59e0b;">★</span>${a.avg_rating.toFixed(1)}
+           <span style="color:#b45309;opacity:0.75;font-weight:500;">(${a.rating_count})</span>
+         </span>`
+      : '';
+
     const badges = [
       a.has_summary_ai
         ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
@@ -216,6 +225,7 @@
       a.indexed_at
         ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
         : '',
+      ratingChip,
     ].filter(Boolean).join('');
 
     const authors = a.authors ? esc(a.authors) : '—';
@@ -588,6 +598,7 @@
           <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_human)}</p>
         ` : ''}
         ${tagHtml}
+        <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f3f4f6;
                     font-size:12px;color:#9ca3af;font-family:ui-monospace,monospace;">
           Added: ${a.added_at ? esc(a.added_at.slice(0, 10)) : '—'}
@@ -595,8 +606,170 @@
           ${a.indexed_at ? ' · Indexed: ' + esc(a.indexed_at.slice(0, 10)) : ''}
         </div>
       `;
+      renderRatingsSection(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
+    }
+  }
+
+  // ── Ratings widget ────────────────────────────────────────────────────
+  function starHtml(n, filled, clickable) {
+    return Array.from({ length: 5 }, (_, i) => {
+      const isFilled = i < n;
+      return `<button type="button" class="${clickable ? 'pv-rate-star' : ''}" data-value="${i + 1}"
+              ${clickable ? '' : 'disabled'}
+              style="background:none;border:none;padding:0 1px;font-size:18px;line-height:1;
+                     cursor:${clickable ? 'pointer' : 'default'};
+                     color:${isFilled ? '#f59e0b' : '#d1d5db'};">★</button>`;
+    }).join('');
+  }
+
+  function staticStars(n) {
+    return Array.from({ length: 5 }, (_, i) =>
+      `<span style="color:${i < n ? '#f59e0b' : '#d1d5db'};font-size:13px;">★</span>`
+    ).join('');
+  }
+
+  function renderRatingsSection(a) {
+    const sec = document.getElementById('pv-ratings-section');
+    if (!sec) return;
+
+    const ratings = a.ratings || [];
+    const avg     = a.avg_rating;
+    const count   = a.rating_count || 0;
+    const myRating = a.my_rating || 0;
+    const myItem   = ratings.find(r => r.is_own) || null;
+    const others   = ratings.filter(r => !r.is_own);
+
+    const avgHtml = (avg != null)
+      ? `<div style="display:flex;align-items:center;gap:8px;">
+           <span style="font-size:18px;font-weight:700;color:#f59e0b;font-variant-numeric:tabular-nums;">${avg.toFixed(1)}</span>
+           <span>${staticStars(Math.round(avg))}</span>
+           <span style="font-size:12px;color:#6b7280;">${count} rating${count === 1 ? '' : 's'}</span>
+         </div>`
+      : '<div style="font-size:13px;color:#9ca3af;">Sin valoraciones aún.</div>';
+
+    sec.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.05em;">Ratings</h3>
+        ${avgHtml}
+      </div>
+
+      <div id="pv-rate-me" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="font-size:12.5px;font-weight:600;color:#374151;">Tu valoración:</span>
+          <span id="pv-rate-stars" style="display:inline-flex;">${starHtml(myRating, true, true)}</span>
+          <span id="pv-rate-current" style="font-size:12px;color:#6b7280;">${myRating ? myRating + '/5' : 'sin valorar'}</span>
+          ${myItem ? `<button id="pv-rate-delete" type="button"
+                              style="margin-left:auto;background:none;border:none;color:#b91c1c;font-size:12px;cursor:pointer;">Borrar mi rating</button>` : ''}
+        </div>
+        <textarea id="pv-rate-comment" rows="2" placeholder="Comentario opcional (máx 500 caracteres)…"
+                  maxlength="500"
+                  style="margin-top:8px;width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                         font-size:13px;font-family:inherit;resize:vertical;">${esc(myItem?.comment || '')}</textarea>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+          <button id="pv-rate-save" type="button" disabled
+                  style="padding:5px 12px;border-radius:6px;border:none;background:#0F3460;color:white;
+                         font-size:12.5px;font-weight:600;cursor:pointer;opacity:0.5;">Guardar</button>
+          <span id="pv-rate-status" style="font-size:11.5px;color:#9ca3af;"></span>
+        </div>
+      </div>
+
+      ${others.length ? `
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Otras valoraciones</div>
+          ${others.map(r => `
+            <div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid #f3f4f6;">
+              ${r.user_photo
+                ? `<img src="${esc(r.user_photo)}" alt="" style="width:28px;height:28px;border-radius:50%;flex-shrink:0;object-fit:cover;">`
+                : `<div style="width:28px;height:28px;border-radius:50%;background:#e5e7eb;color:#6b7280;
+                              display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">
+                     ${esc((r.user_name || '?').slice(0, 1).toUpperCase())}
+                   </div>`}
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span style="font-size:12.5px;font-weight:600;color:#111827;">${esc(r.user_name)}</span>
+                  <span>${staticStars(r.rating)}</span>
+                  <span style="font-size:11px;color:#9ca3af;font-variant-numeric:tabular-nums;">
+                    ${r.updated_at ? r.updated_at.slice(0, 10) : ''}
+                  </span>
+                </div>
+                ${r.comment
+                  ? `<p style="margin:3px 0 0;font-size:12.5px;color:#4b5563;line-height:1.5;">${esc(r.comment)}</p>`
+                  : ''}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+    `;
+
+    // ── Wiring ───────────────────────────────────────────────────────────
+    let selected = myRating;
+    let originalComment = myItem?.comment || '';
+    const starsEl  = sec.querySelector('#pv-rate-stars');
+    const currentEl = sec.querySelector('#pv-rate-current');
+    const commentEl = sec.querySelector('#pv-rate-comment');
+    const saveBtn   = sec.querySelector('#pv-rate-save');
+    const statusEl  = sec.querySelector('#pv-rate-status');
+
+    function paintStars(value) {
+      starsEl.innerHTML = starHtml(value, true, true);
+      starsEl.querySelectorAll('.pv-rate-star').forEach(b => b.addEventListener('click', () => {
+        selected = parseInt(b.dataset.value, 10);
+        paintStars(selected);
+        currentEl.textContent = selected + '/5';
+        updateSaveState();
+      }));
+    }
+    function updateSaveState() {
+      const changed = (selected !== myRating) ||
+                      ((commentEl.value || '') !== originalComment);
+      const valid   = selected >= 1 && selected <= 5;
+      saveBtn.disabled = !(changed && valid);
+      saveBtn.style.opacity = saveBtn.disabled ? '0.5' : '1';
+    }
+    paintStars(selected);
+    commentEl.addEventListener('input', updateSaveState);
+
+    saveBtn.addEventListener('click', async () => {
+      if (saveBtn.disabled) return;
+      saveBtn.disabled = true;
+      statusEl.textContent = 'Guardando…';
+      statusEl.style.color = '#6b7280';
+      try {
+        const r = await api(`/articles/${a.id}/ratings`, {
+          method: 'POST',
+          body: JSON.stringify({ rating: selected, comment: commentEl.value.trim() }),
+        });
+        // Refresh the section with new data without closing the modal.
+        a.ratings      = r.ratings;
+        a.avg_rating   = r.avg_rating;
+        a.rating_count = r.total;
+        a.my_rating    = selected;
+        renderRatingsSection(a);
+      } catch (e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.style.color = '#b91c1c';
+        saveBtn.disabled = false;
+      }
+    });
+
+    const delBtn = sec.querySelector('#pv-rate-delete');
+    if (delBtn) {
+      delBtn.addEventListener('click', async () => {
+        if (!confirm('¿Borrar tu valoración para este artículo?')) return;
+        delBtn.disabled = true;
+        try {
+          const r = await api(`/articles/${a.id}/ratings`, { method: 'DELETE' });
+          a.ratings      = r.ratings;
+          a.avg_rating   = r.avg_rating;
+          a.rating_count = r.total;
+          a.my_rating    = null;
+          renderRatingsSection(a);
+        } catch (e) {
+          alert('Error al borrar: ' + e.message);
+          delBtn.disabled = false;
+        }
+      });
     }
   }
 

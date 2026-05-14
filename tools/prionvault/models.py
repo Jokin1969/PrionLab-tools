@@ -284,6 +284,25 @@ class UsageEvent(Base):
     created_at  = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
+# ── ArticleRating (maps PrionRead's article_ratings table) ──────────────────
+class ArticleRating(Base):
+    __tablename__ = "article_ratings"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), nullable=False)
+    article_id = Column(UUID(as_uuid=True), nullable=False)
+    rating     = Column(SmallInteger, nullable=False)
+    comment    = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow,
+                        onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id",
+                         name="article_ratings_user_article_uniq"),
+    )
+
+
 # ── UserArticleLink (maps PrionRead's user_articles table) ──────────────────
 class UserArticleLink(Base):
     __tablename__ = "user_articles"
