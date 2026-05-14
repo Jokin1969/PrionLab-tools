@@ -147,8 +147,20 @@
     params.set('page', state.page);
     params.set('size', state.size);
 
-    const grid = document.getElementById('pv-results-grid');
-    grid.innerHTML = emptyState('Loading…');
+    const tbody = document.getElementById('pv-results-tbody');
+    const table = document.getElementById('pv-results-table');
+    const empty = document.getElementById('pv-results-empty');
+    const showEmpty = (msg) => {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      empty.innerHTML = `<div style="text-align:center;padding:52px 24px;color:#9ca3af;font-size:14px;">${esc(msg)}</div>`;
+    };
+    const showTable = () => {
+      table.style.display = '';
+      empty.style.display = 'none';
+    };
+
+    showEmpty('Loading…');
 
     try {
       const r = await api('/articles?' + params.toString());
@@ -158,118 +170,167 @@
         'page ' + r.page + ' / ' + Math.max(1, Math.ceil(r.total / r.size));
 
       if (r.items.length === 0) {
-        grid.innerHTML = emptyState('No articles match these filters.');
+        showEmpty('No articles match these filters.');
         renderPagination(r);
         return;
       }
-      grid.innerHTML = '';
-      r.items.forEach(a => grid.appendChild(renderRow(a)));
+      showTable();
+      tbody.innerHTML = '';
+      r.items.forEach(a => tbody.appendChild(renderRow(a)));
+      refreshSortHeaders();
       renderPagination(r);
     } catch (e) {
-      grid.innerHTML = emptyState('Error: ' + esc(e.message));
+      showEmpty('Error: ' + esc(e.message));
     }
   }
 
-  function emptyState(msg) {
-    return `<div style="text-align:center;padding:52px 24px;color:#9ca3af;font-size:14px;">${esc(msg)}</div>`;
-  }
+  // Inline SVG flag icon mirroring PrionRead's FlagIcon (small staff + triangle).
+  const FLAG_SVG = (active) => `
+    <svg viewBox="0 0 10 13" width="13" height="13" style="display:block;"
+         fill="${active ? 'currentColor' : 'none'}"
+         stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="1.5" y1="0.5" x2="1.5" y2="12.5"></line>
+      <path d="M1.5 1 L9 3.5 L1.5 7 Z"></path>
+    </svg>`;
 
   function renderRow(a) {
-    const row = document.createElement('article');
-    row.style.cssText =
-      'display:flex;align-items:flex-start;gap:12px;padding:12px 20px;border-bottom:1px solid #f3f4f6;' +
-      'cursor:pointer;transition:background 0.1s;';
+    const row = document.createElement('tr');
+    row.className = 'pv-article-row';
+    row.style.cssText = 'cursor:pointer;border-bottom:1px solid #f3f4f6;transition:background 0.1s;';
     row.addEventListener('mouseenter', () => { row.style.background = '#fafafa'; });
     row.addEventListener('mouseleave', () => { row.style.background = ''; });
 
+    // ── tags + badges (rendered inside the Article cell) ─────────────────
     const tags = (a.tags || []).slice(0, 4).map(t =>
-      `<span style="display:inline-flex;padding:1px 9px;border-radius:20px;font-size:12px;font-weight:500;
+      `<span style="display:inline-flex;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:500;
                     ${t.color ? `background:${esc(t.color)}18;color:${esc(t.color)};` : 'background:#eef2ff;color:#4f46e5;'}"
             >${esc(t.name)}</span>`
     ).join('');
 
     const badges = [
       a.has_summary_ai
-        ? '<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
+        ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
         : '',
       a.indexed_at
-        ? '<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
-        : '',
-      a.pdf_pages
-        ? `<span style="display:inline-flex;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:500;background:#f3f4f6;color:#6b7280;">${a.pdf_pages} p.</span>`
+        ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
         : '',
     ].filter(Boolean).join('');
 
-    const authors = a.authors ? esc(a.authors).slice(0, 90) : '—';
+    const authors = a.authors ? esc(a.authors) : '—';
     const journal = a.journal ? ` · ${esc(a.journal)}` : '';
-    const hasMeta = badges || tags;
 
-    const colorCss   = a.color_label ? (COLOR_CSS[a.color_label] || '#9ca3af') : null;
-    const colorDot   = `<span class="pv-color-dot" data-aid="${esc(a.id)}"
-                              data-current="${esc(a.color_label || '')}"
-                              title="${a.color_label ? 'Etiqueta: ' + esc(a.color_label) : 'Sin etiqueta de color'}"
-                              style="width:11px;height:11px;border-radius:50%;flex-shrink:0;cursor:${IS_ADMIN ? 'pointer' : 'default'};
-                                     ${colorCss ? `background:${colorCss};` : 'background:transparent;border:1.5px dashed #d1d5db;'}"></span>`;
+    // ── Marks cell: flag + color dot + milestone (vertical stack) ────────
+    const colorCss = a.color_label ? (COLOR_CSS[a.color_label] || '#9ca3af') : null;
+    const flagColor = a.is_flagged ? '#e11d48' : '#e5e7eb';
+    const flagTitle = a.is_flagged ? 'Marcada 🚩 — clic para quitar' : 'Marcar bandera';
+    const milestoneColor = a.is_milestone ? '#f59e0b' : '#d1d5db';
+    const colorTitle = a.color_label ? `Etiqueta: ${esc(a.color_label)}` : 'Sin etiqueta de color';
 
-    const milestoneBtn = `<button class="pv-milestone-btn" data-aid="${esc(a.id)}"
-                                  data-active="${a.is_milestone ? '1' : '0'}"
-                                  title="${a.is_milestone ? 'Hito ★ — clic para quitar' : 'Marcar como hito'}"
-                                  style="background:none;border:none;cursor:${IS_ADMIN ? 'pointer' : 'default'};
-                                         padding:0;font-size:14px;line-height:1;
-                                         color:${a.is_milestone ? '#f59e0b' : '#d1d5db'};">★</button>`;
-
-    const flagBtn = `<button class="pv-flag-btn" data-aid="${esc(a.id)}"
-                             data-active="${a.is_flagged ? '1' : '0'}"
-                             title="${a.is_flagged ? 'Marcada 🚩 — clic para quitar' : 'Marcar bandera'}"
-                             style="background:none;border:none;cursor:${IS_ADMIN ? 'pointer' : 'default'};
-                                    padding:0;font-size:13px;line-height:1;
-                                    color:${a.is_flagged ? '#dc2626' : '#d1d5db'};">${a.is_flagged ? '🚩' : '⚑'}</button>`;
-
-    const priorityChip = (a.priority && a.priority !== 3)
-      ? `<span class="pv-priority-chip" data-aid="${esc(a.id)}" data-priority="${a.priority}"
-              title="Prioridad ${a.priority}/5${IS_ADMIN ? ' — clic para cambiar' : ''}"
-              style="display:inline-flex;align-items:center;justify-content:center;
-                     min-width:18px;height:18px;padding:0 4px;border-radius:4px;
-                     font-size:10px;font-weight:700;cursor:${IS_ADMIN ? 'pointer' : 'default'};
-                     ${a.priority >= 5 ? 'background:#fee2e2;color:#b91c1c;' :
-                       a.priority === 4 ? 'background:#fef3c7;color:#92400e;' :
-                       a.priority <= 1 ? 'background:#e5e7eb;color:#6b7280;' :
-                                         'background:#e0f2fe;color:#075985;'}">P${a.priority}</span>`
-      : (IS_ADMIN ? `<span class="pv-priority-chip" data-aid="${esc(a.id)}" data-priority="3"
-                          title="Prioridad 3/5 — clic para cambiar"
-                          style="display:inline-flex;align-items:center;justify-content:center;
-                                 min-width:18px;height:18px;padding:0 4px;border-radius:4px;
-                                 font-size:10px;font-weight:600;cursor:pointer;
-                                 background:transparent;color:#9ca3af;border:1px dashed #d1d5db;">P3</span>`
-                  : '');
-
-    row.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;padding-top:4px;">
-        ${colorDot}
-        ${milestoneBtn}
-        ${flagBtn}
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
-          <span style="font-size:15px;font-weight:600;color:#111827;line-height:1.4;">${supHtml(a.title || '(no title)')}</span>
-          ${a.year ? `<span style="font-size:12px;color:#9ca3af;flex-shrink:0;font-variant-numeric:tabular-nums;">${a.year}</span>` : ''}
-          ${priorityChip}
+    const marksCell = `
+      <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+          <button class="pv-flag-btn"
+                  data-active="${a.is_flagged ? '1' : '0'}"
+                  title="${flagTitle}"
+                  style="background:none;border:none;padding:0;line-height:0;
+                         cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${flagColor};">${FLAG_SVG(a.is_flagged)}</button>
+          <span class="pv-color-dot"
+                title="${colorTitle}"
+                style="width:11px;height:11px;border-radius:50%;flex-shrink:0;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                       ${colorCss ? `background:${colorCss};` : 'background:transparent;border:1.5px dashed #d1d5db;'}"></span>
+          <button class="pv-milestone-btn"
+                  data-active="${a.is_milestone ? '1' : '0'}"
+                  title="${a.is_milestone ? 'Hito ★ — clic para quitar' : 'Marcar como hito'}"
+                  style="background:none;border:none;padding:0;font-size:15px;line-height:1;
+                         cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${milestoneColor};">${a.is_milestone ? '★' : '☆'}</button>
         </div>
-        <p style="margin:0 0 ${hasMeta ? '5px' : '0'};font-size:13px;color:#6b7280;
-                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          ${authors}${journal}
-        </p>
-        ${hasMeta ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;">${badges}${tags}</div>` : ''}
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:2px;">
+      </td>`;
+
+    // ── Article cell: title, authors+journal, tags+badges ────────────────
+    const titleTooltip = [
+      a.title,
+      a.authors,
+      a.journal && `${a.journal}${a.year ? ' · ' + a.year : ''}`,
+    ].filter(Boolean).join('\n');
+
+    const articleCell = `
+      <td style="padding:8px 12px;vertical-align:middle;max-width:520px;">
+        <div style="font-size:14px;font-weight:600;color:#111827;line-height:1.35;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+             title="${esc(titleTooltip)}">${supHtml(a.title || '(no title)')}</div>
+        <div style="margin-top:2px;font-size:12px;color:#6b7280;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${authors}${journal}</div>
+        ${(tags || badges) ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;">${badges}${tags}</div>` : ''}
+      </td>`;
+
+    // ── Year cell ────────────────────────────────────────────────────────
+    const yearCell = `
+      <td style="padding:8px 8px;vertical-align:middle;font-size:13px;color:#374151;
+                 font-variant-numeric:tabular-nums;">${a.year ? a.year : '—'}</td>`;
+
+    // ── Pages cell ───────────────────────────────────────────────────────
+    const pagesCell = a.pdf_pages
+      ? `<td style="padding:8px 8px;vertical-align:middle;text-align:center;font-size:12px;color:#374151;">
+           <span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:5px;
+                        background:#f3f4f6;font-variant-numeric:tabular-nums;">📄 ${a.pdf_pages}</span>
+         </td>`
+      : `<td style="padding:8px 8px;vertical-align:middle;text-align:center;color:#d1d5db;font-size:12px;">—</td>`;
+
+    // ── Priority cell ────────────────────────────────────────────────────
+    const prio = a.priority || 3;
+    const prioStyle = prio >= 5 ? 'background:#fee2e2;color:#b91c1c;'
+                    : prio === 4 ? 'background:#fef3c7;color:#92400e;'
+                    : prio === 3 ? 'background:#e0f2fe;color:#075985;'
+                    : prio === 2 ? 'background:#f3f4f6;color:#4b5563;'
+                                 : 'background:#e5e7eb;color:#6b7280;';
+    const priorityCell = `
+      <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
+        <span class="pv-priority-chip"
+              title="Prioridad ${prio}/5${IS_ADMIN ? ' — clic para cambiar' : ''}"
+              style="display:inline-flex;align-items:center;justify-content:center;
+                     min-width:24px;height:20px;padding:0 6px;border-radius:5px;
+                     font-size:11px;font-weight:700;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                     ${prioStyle}">P${prio}</span>
+      </td>`;
+
+    // ── Links cell: PDF (Dropbox), DOI, PMID ─────────────────────────────
+    const pillLink = (href, label, bg, fg, title) => href
+      ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer"
+             title="${esc(title)}" onclick="event.stopPropagation();"
+             style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;
+                    font-size:10.5px;font-weight:600;text-decoration:none;background:${bg};color:${fg};">${label}</a>`
+      : '';
+
+    const hasPdf = !!(a.has_pdf || a.pdf_dropbox_path);
+    const pdfLink = hasPdf
+      ? `<span title="PDF disponible — abrir detalle para descargar"
+               style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;
+                      font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;">PDF</span>`
+      : '<span title="Sin PDF" style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;font-size:10.5px;font-weight:600;background:#f3f4f6;color:#9ca3af;">PDF</span>';
+
+    const doiLink = pillLink(a.doi ? `https://doi.org/${a.doi}` : null, 'DOI', '#e0e7ff', '#3730a3', 'Abrir DOI');
+    const pmidLink = pillLink(a.pubmed_id ? `https://pubmed.ncbi.nlm.nih.gov/${a.pubmed_id}/` : null,
+                              'PMID', '#ccfbf1', '#0f766e', 'Abrir PubMed');
+
+    const linksCell = `
+      <td style="padding:8px 8px;vertical-align:middle;">
+        <div style="display:flex;flex-wrap:wrap;gap:3px;">${pdfLink}${doiLink}${pmidLink}</div>
+      </td>`;
+
+    // ── PrionRead presence cell ─────────────────────────────────────────
+    const prionreadCell = `
+      <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
         <button class="pv-prionread-btn ${a.in_prionread ? 'pv-prionread-active' : 'pv-prionread-inactive'}"
                 data-aid="${esc(a.id)}"
                 data-in="${a.in_prionread ? '1' : '0'}"
                 title="${a.in_prionread ? 'En PrionRead — abrir ↗' : 'Enviar a PrionRead'}"
-                style="font-size:13px;">📚</button>
-      </div>
-    `;
+                style="font-size:14px;">📚</button>
+      </td>`;
 
+    row.innerHTML = marksCell + articleCell + yearCell + pagesCell +
+                    priorityCell + linksCell + prionreadCell;
+
+    // ── Wiring ──────────────────────────────────────────────────────────
     row.querySelector('.pv-prionread-btn').addEventListener('click', e => {
       e.stopPropagation();
       togglePrionRead(e.currentTarget, a.id);
@@ -278,8 +339,7 @@
     if (IS_ADMIN) {
       row.querySelector('.pv-milestone-btn').addEventListener('click', e => {
         e.stopPropagation();
-        const btn = e.currentTarget;
-        const next = btn.dataset.active !== '1';
+        const next = e.currentTarget.dataset.active !== '1';
         patchArticleInline(a, { is_milestone: next }, () => {
           a.is_milestone = next;
           if (next) a.priority = 5;
@@ -289,8 +349,7 @@
 
       row.querySelector('.pv-flag-btn').addEventListener('click', e => {
         e.stopPropagation();
-        const btn = e.currentTarget;
-        const next = btn.dataset.active !== '1';
+        const next = e.currentTarget.dataset.active !== '1';
         patchArticleInline(a, { is_flagged: next }, () => {
           a.is_flagged = next;
           replaceRow(row, a);
@@ -316,6 +375,19 @@
   function replaceRow(oldNode, article) {
     const fresh = renderRow(article);
     oldNode.replaceWith(fresh);
+  }
+
+  function refreshSortHeaders() {
+    document.querySelectorAll('.pv-sort-th').forEach(th => {
+      const col = th.dataset.sortCol;
+      const label = col.charAt(0).toUpperCase() + col.slice(1);
+      let arrow = '';
+      if (col === 'title' && state.sort === 'title_asc') arrow = ' ▲';
+      else if (col === 'year' && state.sort === 'year_desc') arrow = ' ▼';
+      else if (col === 'year' && state.sort === 'year_asc')  arrow = ' ▲';
+      th.textContent = label + arrow;
+      th.style.color = arrow ? '#111827' : '#6b7280';
+    });
   }
 
   async function patchArticleInline(a, patch, onOk) {
@@ -617,6 +689,25 @@
       state.page = 1;
       loadArticles();
     });
+
+    document.querySelectorAll('.pv-sort-th').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.sortCol;
+        // Cycle desc → asc → default for each column
+        if (col === 'title') {
+          state.sort = state.sort === 'title_asc' ? 'added_desc' : 'title_asc';
+        } else if (col === 'year') {
+          state.sort = state.sort === 'year_desc' ? 'year_asc'
+                     : state.sort === 'year_asc'  ? 'added_desc'
+                                                  : 'year_desc';
+        }
+        const sortSelect = document.getElementById('filter-sort');
+        if (sortSelect) sortSelect.value = state.sort;
+        state.page = 1;
+        loadArticles();
+      });
+    });
+    refreshSortHeaders();
 
     document.querySelectorAll('.pv-sidebar-nav .pv-nav-btn[data-filter], aside .pv-nav-btn[data-filter]')
       .forEach(btn => {
