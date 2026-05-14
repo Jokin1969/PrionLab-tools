@@ -317,23 +317,38 @@
         <div style="display:flex;flex-wrap:wrap;gap:3px;">${pdfLink}${doiLink}${pmidLink}</div>
       </td>`;
 
-    // ── PrionRead presence cell ─────────────────────────────────────────
+    // ── Asignado cell: read-only count + open-in-PrionRead button ───────
+    const assignedCount = a.prionread_count || 0;
+    const assignedStatus = a.in_prionread
+      ? `<span title="${assignedCount} estudiante${assignedCount === 1 ? '' : 's'} con este artículo asignado"
+              style="display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:#0F3460;">
+           ✓ <span style="color:#6b7280;font-weight:500;">(${assignedCount})</span>
+         </span>`
+      : `<span title="Ningún estudiante tiene este artículo asignado"
+              style="display:inline-flex;align-items:center;font-size:13px;color:#d1d5db;">—</span>`;
+
     const prionreadCell = `
       <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
-        <button class="pv-prionread-btn ${a.in_prionread ? 'pv-prionread-active' : 'pv-prionread-inactive'}"
-                data-aid="${esc(a.id)}"
-                data-in="${a.in_prionread ? '1' : '0'}"
-                title="${a.in_prionread ? 'En PrionRead — abrir ↗' : 'Enviar a PrionRead'}"
-                style="font-size:14px;">📚</button>
+        <div style="display:inline-flex;align-items:center;gap:8px;">
+          ${assignedStatus}
+          <button class="pv-open-prionread-btn"
+                  data-aid="${esc(a.id)}"
+                  title="Abrir este artículo en PrionRead admin ↗"
+                  style="background:none;border:none;padding:2px 4px;cursor:pointer;
+                         font-size:13px;color:#6b7280;line-height:1;border-radius:4px;"
+                  onmouseover="this.style.background='#f3f4f6';this.style.color='#0F3460';"
+                  onmouseout="this.style.background='none';this.style.color='#6b7280';">↗</button>
+        </div>
       </td>`;
 
     row.innerHTML = marksCell + articleCell + yearCell + pagesCell +
                     priorityCell + linksCell + prionreadCell;
 
     // ── Wiring ──────────────────────────────────────────────────────────
-    row.querySelector('.pv-prionread-btn').addEventListener('click', e => {
+    row.querySelector('.pv-open-prionread-btn').addEventListener('click', e => {
       e.stopPropagation();
-      togglePrionRead(e.currentTarget, a.id);
+      window.open(`/prionread/admin/articles?open=${encodeURIComponent(a.id)}`,
+                  '_blank', 'noopener');
     });
 
     if (IS_ADMIN) {
@@ -467,30 +482,6 @@
       });
       pop.appendChild(b);
     });
-  }
-
-  async function togglePrionRead(btn, aid) {
-    const inPrionRead = btn.dataset.in === '1';
-    if (inPrionRead) {
-      window.open(`/prionread/admin/articles?open=${aid}`, '_blank', 'noopener');
-      return;
-    }
-    if (!confirm('¿Enviar este artículo a PrionRead y asignarlo a todos los estudiantes?')) return;
-    btn.disabled = true;
-    try {
-      const r = await fetch(`/prionvault/api/articles/${aid}/send-to-prionread`, { method: 'POST' });
-      const data = await r.json();
-      if (data.ok) {
-        btn.dataset.in = '1';
-        btn.classList.remove('pv-prionread-inactive');
-        btn.classList.add('pv-prionread-active');
-        btn.title = 'En PrionRead — clic para abrir PrionRead ↗';
-      }
-    } catch (e) {
-      console.error('togglePrionRead failed', e);
-    } finally {
-      btn.disabled = false;
-    }
   }
 
   function renderPagination({ total, page, size }) {
@@ -644,9 +635,9 @@
       state.inPrionread = state.inPrionread === null ? true : state.inPrionread === true ? false : null;
       state.page = 1;
       const labels = {
-        null:  '📚 PrionRead: todos',
-        true:  '📚 En PrionRead ✓',
-        false: '📚 No en PrionRead ✓',
+        null:  '👥 Asignado: todos',
+        true:  '👥 Asignados ✓',
+        false: '👥 Sin asignar',
       };
       prBtn.textContent = labels[state.inPrionread];
       const active = state.inPrionread !== null;
