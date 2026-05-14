@@ -6,6 +6,7 @@ Admin-only stubs for ingest, write operations and semantic search return
 the frontend can wire against it.
 """
 import logging
+import re
 from flask import jsonify, render_template, request, session
 from sqlalchemy import or_, func, text as sql_text
 
@@ -720,6 +721,245 @@ def api_article_delete(aid):
             "dropbox_deleted": dropbox_deleted,
             "dropbox_error": dropbox_error,
         })
+    finally:
+        s.close()
+
+
+# ── Metadata lookup (synchronous, no PDF) ──────────────────────────────────
+@prionvault_bp.route("/api/articles/lookup", methods=["POST"])
+@admin_required
+def api_article_lookup():
+    """Resolve bibliographic metadata for a DOI or PMID without ingesting.
+
+    Body: {"doi": "10.xxxx/yyy"} or {"pubmed_id": "12345678"}.
+    Returns the metadata fields the resolver could fill, plus a flag
+    telling the caller if an article with that DOI/PMID already exists
+    in the library (so the UI can warn before creating a duplicate).
+    """
+    from .ingestion.metadata_resolver import resolve_metadata
+    from .ingestion.pdf_extractor import normalise_doi
+
+    data = request.get_json(force=True, silent=True) or {}
+    doi  = (data.get("doi") or "").strip()
+    pmid = (data.get("pubmed_id") or data.get("pmid") or "").strip()
+    if not doi and not pmid:
+        return jsonify({"error": "provide doi or pubmed_id"}), 400
+    if doi:
+        doi = normalise_doi(doi)
+
+    meta = resolve_metadata(doi=doi or None, pmid_hint=pmid or None)
+    if not meta or not meta.title:
+        return jsonify({
+            "found": False,
+            "doi": doi or None,
+            "pubmed_id": pmid or None,
+        })
+
+    s = _session()
+    try:
+        dup_id = None
+        if meta.doi:
+            row = s.execute(sql_text(
+                "SELECT id FROM articles WHERE lower(doi) = :d LIMIT 1"
+            ), {"d": meta.doi.lower()}).first()
+            if row:
+                dup_id = str(row[0])
+        if not dup_id and meta.pubmed_id:
+            row = s.execute(sql_text(
+                "SELECT id FROM articles WHERE pubmed_id = :p LIMIT 1"
+            ), {"p": meta.pubmed_id}).first()
+            if row:
+                dup_id = str(row[0])
+
+        return jsonify({
+            "found":      True,
+            "duplicate_of": dup_id,
+            "metadata": {
+                "title":     meta.title,
+                "authors":   meta.authors,
+                "year":      meta.year,
+                "journal":   meta.journal,
+                "doi":       meta.doi,
+                "pubmed_id": meta.pubmed_id,
+                "abstract":  meta.abstract,
+                "volume":    meta.volume,
+                "issue":     meta.issue,
+                "pages":     meta.pages,
+                "source":    meta.source,
+            },
+        })
+    finally:
+        s.close()
+
+
+# ── Manual article create (no PDF) ─────────────────────────────────────────
+_CREATE_ALLOWED = {
+    "title", "authors", "year", "journal", "doi", "pubmed_id",
+    "abstract", "is_milestone", "is_flagged", "color_label", "priority",
+    "source",
+}
+
+
+@prionvault_bp.route("/api/articles", methods=["POST"])
+@admin_required
+def api_article_create():
+    """Create an article from supplied metadata. Returns 409 on duplicate."""
+    import uuid as _uuid_mod
+    from .ingestion.pdf_extractor import normalise_doi
+
+    data = request.get_json(force=True, silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    payload = {k: v for k, v in data.items() if k in _CREATE_ALLOWED}
+    payload["title"] = title
+
+    if "doi" in payload and payload["doi"]:
+        payload["doi"] = normalise_doi(payload["doi"])
+    if "color_label" in payload:
+        v = payload["color_label"]
+        if v in ("", None):
+            payload["color_label"] = None
+        elif isinstance(v, str) and v.lower() in _VALID_COLOR_LABELS:
+            payload["color_label"] = v.lower()
+        else:
+            return jsonify({"error": "invalid color_label"}), 400
+    if "priority" in payload and payload["priority"] is not None:
+        try:
+            p = int(payload["priority"])
+            if not 1 <= p <= 5:
+                raise ValueError
+            payload["priority"] = p
+        except (TypeError, ValueError):
+            return jsonify({"error": "priority must be int 1-5"}), 400
+    for k in ("is_flagged", "is_milestone"):
+        if k in payload:
+            payload[k] = bool(payload[k])
+
+    s = _session()
+    try:
+        # Duplicate check by DOI or PMID before INSERT.
+        dup_id = None
+        if payload.get("doi"):
+            row = s.execute(sql_text(
+                "SELECT id FROM articles WHERE lower(doi) = :d LIMIT 1"
+            ), {"d": payload["doi"].lower()}).first()
+            if row:
+                dup_id = str(row[0])
+        if not dup_id and payload.get("pubmed_id"):
+            row = s.execute(sql_text(
+                "SELECT id FROM articles WHERE pubmed_id = :p LIMIT 1"
+            ), {"p": payload["pubmed_id"]}).first()
+            if row:
+                dup_id = str(row[0])
+        if dup_id:
+            return jsonify({"error": "duplicate", "duplicate_of": dup_id}), 409
+
+        new_id = _uuid_mod.uuid4()
+        a = models.Article(
+            id=new_id,
+            added_by_id=_viewer_id(),
+            source=payload.pop("source", "manual"),
+            **payload,
+        )
+        s.add(a)
+        s.commit()
+        return jsonify(a.to_dict(include_text=True, viewer_role="admin")), 201
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_article_create failed")
+        return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
+# ── Duplicates detection ───────────────────────────────────────────────────
+_TOKEN_STRIP_RE = re.compile(r"[^a-z0-9\s]")
+_STOPWORDS = frozenset({
+    "the", "a", "an", "of", "and", "in", "for", "to", "on", "by", "with",
+    "as", "is", "are", "be", "from", "at", "or", "via", "into"
+})
+
+
+def _tokenize_title(s: str) -> set:
+    if not s:
+        return set()
+    text = _TOKEN_STRIP_RE.sub(" ", s.lower())
+    return {w for w in text.split() if w and w not in _STOPWORDS and len(w) >= 3}
+
+
+def _jaccard(a: set, b: set) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a) + len(b) - inter
+    return inter / union if union else 0.0
+
+
+def _norm_doi(doi):
+    if not doi:
+        return ""
+    return re.sub(r"^https?://(dx\.)?doi\.org/", "",
+                  doi.strip().lower(), flags=re.IGNORECASE)
+
+
+@prionvault_bp.route("/api/duplicates", methods=["GET"])
+@admin_required
+def api_duplicates():
+    """Return pairs of articles that look like duplicates of each other.
+
+    Reasons: identical DOI, identical PMID, or Jaccard similarity ≥ 0.75
+    on title tokens (lowercased, stopwords stripped).
+    """
+    threshold = max(0.0, min(1.0,
+                             request.args.get("threshold", default=0.75, type=float)))
+    s = _session()
+    try:
+        rows = s.execute(sql_text(
+            "SELECT id, title, authors, year, journal, doi, pubmed_id "
+            "FROM articles ORDER BY year DESC NULLS LAST, title"
+        )).all()
+        items = [dict(zip(r._fields, r)) for r in rows]
+        for it in items:
+            it["_tok"] = _tokenize_title(it.get("title") or "")
+            it["_doi"] = _norm_doi(it.get("doi"))
+            it["_pmid"] = (it.get("pubmed_id") or "").strip()
+
+        pairs = []
+        n = len(items)
+        for i in range(n):
+            a = items[i]
+            for j in range(i + 1, n):
+                b = items[j]
+                reasons = []
+                score = 0.0
+                if a["_doi"] and a["_doi"] == b["_doi"]:
+                    reasons.append("DOI idéntico")
+                    score = 1.0
+                if a["_pmid"] and a["_pmid"] == b["_pmid"]:
+                    reasons.append("PMID idéntico")
+                    score = max(score, 1.0)
+                title_score = _jaccard(a["_tok"], b["_tok"])
+                if title_score >= threshold:
+                    reasons.append(f"Título similar ({int(round(title_score * 100))}%)")
+                    score = max(score, title_score)
+                if reasons:
+                    pairs.append({
+                        "a": {k: a[k] for k in ("id", "title", "authors", "year",
+                                                 "journal", "doi", "pubmed_id")},
+                        "b": {k: b[k] for k in ("id", "title", "authors", "year",
+                                                 "journal", "doi", "pubmed_id")},
+                        "score": round(score, 2),
+                        "reasons": reasons,
+                    })
+
+        pairs.sort(key=lambda p: -p["score"])
+        # Stringify UUIDs for JSON
+        for p in pairs:
+            p["a"]["id"] = str(p["a"]["id"])
+            p["b"]["id"] = str(p["b"]["id"])
+        return jsonify({"total": len(pairs), "pairs": pairs})
     finally:
         s.close()
 

@@ -719,6 +719,9 @@
       wireImport();
       wireQueue();
       wireSync();
+      wireAddByDoi();
+      wireBatchImport();
+      wireDuplicates();
     }
 
     refreshStats();
@@ -1101,6 +1104,385 @@
         });
       });
     }
+  }
+
+  // ── Add by DOI / PMID ────────────────────────────────────────────────
+  function parseIdentifier(raw) {
+    const s = (raw || '').trim()
+      .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '');
+    if (/^10\./.test(s))   return { doi: s, pubmed_id: '' };
+    if (/^\d+$/.test(s))   return { doi: '', pubmed_id: s };
+    return { doi: s, pubmed_id: '' };
+  }
+
+  function wireAddByDoi() {
+    const btn   = document.getElementById('btn-add-by-doi');
+    const modal = document.getElementById('pv-add-modal');
+    if (!btn || !modal) return;
+
+    const ident    = document.getElementById('pv-add-identifier');
+    const lookup   = document.getElementById('pv-add-lookup');
+    const statusEl = document.getElementById('pv-add-status');
+    const form     = document.getElementById('pv-add-form');
+    const fTitle   = document.getElementById('pv-add-title');
+    const fAuthors = document.getElementById('pv-add-authors');
+    const fYear    = document.getElementById('pv-add-year');
+    const fJournal = document.getElementById('pv-add-journal');
+    const fDoi     = document.getElementById('pv-add-doi');
+    const fPmid    = document.getElementById('pv-add-pmid');
+    const fAbstr   = document.getElementById('pv-add-abstract');
+    const btnSave  = document.getElementById('pv-add-save');
+    const btnCancel = document.getElementById('pv-add-cancel');
+    const btnClose = document.getElementById('pv-add-close');
+
+    function reset() {
+      ident.value = '';
+      [fTitle, fAuthors, fYear, fJournal, fDoi, fPmid, fAbstr].forEach(el => el.value = '');
+      form.style.display = 'none';
+      statusEl.textContent = '';
+      statusEl.style.color = '#6b7280';
+    }
+    function open()  { reset(); modal.style.display = 'flex'; setTimeout(() => ident.focus(), 50); }
+    function close() { modal.style.display = 'none'; }
+
+    btn.addEventListener('click', open);
+    btnClose.addEventListener('click', close);
+    btnCancel.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    async function doLookup() {
+      const { doi, pubmed_id } = parseIdentifier(ident.value);
+      if (!doi && !pubmed_id) {
+        statusEl.textContent = 'Pega un DOI o un PMID válido.';
+        statusEl.style.color = '#b91c1c';
+        return;
+      }
+      statusEl.textContent = 'Consultando CrossRef / PubMed…';
+      statusEl.style.color = '#6b7280';
+      lookup.disabled = true;
+      try {
+        const r = await api('/articles/lookup', {
+          method: 'POST',
+          body: JSON.stringify({ doi, pubmed_id }),
+        });
+        if (!r.found) {
+          statusEl.textContent = 'No se encontraron metadatos. Puedes rellenar el formulario a mano.';
+          statusEl.style.color = '#b45309';
+          form.style.display = 'block';
+          fDoi.value  = doi || '';
+          fPmid.value = pubmed_id || '';
+          return;
+        }
+        const m = r.metadata || {};
+        fTitle.value   = m.title   || '';
+        fAuthors.value = m.authors || '';
+        fYear.value    = m.year    || '';
+        fJournal.value = m.journal || '';
+        fDoi.value     = m.doi     || doi || '';
+        fPmid.value    = m.pubmed_id || pubmed_id || '';
+        fAbstr.value   = m.abstract  || '';
+        form.style.display = 'block';
+        if (r.duplicate_of) {
+          statusEl.innerHTML = `⚠️ Ya existe un artículo con este DOI/PMID en la biblioteca · ` +
+                               `<a href="#" data-aid="${esc(r.duplicate_of)}" id="pv-add-dup-open" ` +
+                               `style="color:#0F3460;text-decoration:underline;">Ver existente</a>`;
+          statusEl.style.color = '#b45309';
+          const lnk = document.getElementById('pv-add-dup-open');
+          if (lnk) lnk.addEventListener('click', e => {
+            e.preventDefault();
+            openDetail(r.duplicate_of);
+          });
+          btnSave.disabled = true;
+          btnSave.style.opacity = '0.5';
+        } else {
+          statusEl.textContent = `✓ Metadatos cargados desde ${m.source || 'el resolver'}. ` +
+                                 `Edita si hace falta y guarda.`;
+          statusEl.style.color = '#15803d';
+          btnSave.disabled = false;
+          btnSave.style.opacity = '1';
+        }
+      } catch (e) {
+        statusEl.textContent = 'Error de lookup: ' + e.message;
+        statusEl.style.color = '#b91c1c';
+      } finally {
+        lookup.disabled = false;
+      }
+    }
+    lookup.addEventListener('click', doLookup);
+    ident.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); doLookup(); }
+    });
+
+    btnSave.addEventListener('click', async () => {
+      if (!fTitle.value.trim()) {
+        statusEl.textContent = 'El título es obligatorio.';
+        statusEl.style.color = '#b91c1c';
+        return;
+      }
+      btnSave.disabled = true;
+      const payload = {
+        title:     fTitle.value.trim(),
+        authors:   fAuthors.value.trim() || null,
+        year:      parseInt(fYear.value, 10) || null,
+        journal:   fJournal.value.trim() || null,
+        doi:       fDoi.value.trim() || null,
+        pubmed_id: fPmid.value.trim() || null,
+        abstract:  fAbstr.value.trim() || null,
+      };
+      try {
+        await api('/articles', { method: 'POST', body: JSON.stringify(payload) });
+        close();
+        loadArticles();
+        refreshStats();
+      } catch (e) {
+        if (e.status === 409) {
+          statusEl.textContent = '⚠️ Ya existe un artículo con ese DOI/PMID — no se ha creado.';
+          statusEl.style.color = '#b45309';
+        } else {
+          statusEl.textContent = 'Error al guardar: ' + e.message;
+          statusEl.style.color = '#b91c1c';
+        }
+        btnSave.disabled = false;
+      }
+    });
+  }
+
+  // ── Batch import by DOI/PMID list ────────────────────────────────────
+  function parseBatchEntries(text) {
+    return text.split(/[\n\r\t,;]+/).map(s => s.trim()).filter(Boolean).map(parseIdentifier);
+  }
+
+  function wireBatchImport() {
+    const btn   = document.getElementById('btn-batch-import');
+    const modal = document.getElementById('pv-batch-modal');
+    if (!btn || !modal) return;
+
+    const ta       = document.getElementById('pv-batch-text');
+    const counter  = document.getElementById('pv-batch-count');
+    const startBtn = document.getElementById('pv-batch-start');
+    const cancelBtn = document.getElementById('pv-batch-cancel');
+    const closeBtn = document.getElementById('pv-batch-close');
+    const inputWrap = document.getElementById('pv-batch-input-wrap');
+    const progWrap  = document.getElementById('pv-batch-progress-wrap');
+    const rowsEl   = document.getElementById('pv-batch-rows');
+    const summary  = document.getElementById('pv-batch-summary');
+    const restartBtn = document.getElementById('pv-batch-restart');
+    const doneBtn  = document.getElementById('pv-batch-done');
+
+    function reset() {
+      ta.value = '';
+      counter.textContent = 'Sin entradas detectadas';
+      startBtn.disabled = true;
+      startBtn.style.opacity = '0.6';
+      inputWrap.style.display = '';
+      progWrap.style.display = 'none';
+      rowsEl.innerHTML = '';
+      summary.style.display = 'none';
+      summary.innerHTML = '';
+      restartBtn.style.display = 'none';
+    }
+    function open()  { reset(); modal.style.display = 'flex'; setTimeout(() => ta.focus(), 50); }
+    function close() { modal.style.display = 'none'; loadArticles(); refreshStats(); }
+
+    btn.addEventListener('click', open);
+    cancelBtn.addEventListener('click', close);
+    closeBtn.addEventListener('click', close);
+    doneBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+    restartBtn.addEventListener('click', reset);
+
+    ta.addEventListener('input', () => {
+      const entries = parseBatchEntries(ta.value);
+      const doiN  = entries.filter(e => e.doi).length;
+      const pmidN = entries.filter(e => e.pubmed_id).length;
+      counter.textContent = entries.length
+        ? `${entries.length} entrada${entries.length === 1 ? '' : 's'} · ${doiN} DOI · ${pmidN} PMID`
+        : 'Sin entradas detectadas';
+      startBtn.disabled = entries.length === 0;
+      startBtn.style.opacity = entries.length === 0 ? '0.6' : '1';
+    });
+
+    startBtn.addEventListener('click', async () => {
+      const entries = parseBatchEntries(ta.value);
+      if (!entries.length) return;
+      inputWrap.style.display = 'none';
+      progWrap.style.display = '';
+      rowsEl.innerHTML = '';
+
+      const STATUS = {
+        loading:   { icon: '…', color: '#3b82f6' },
+        ok:        { icon: '✓', color: '#15803d' },
+        duplicate: { icon: '△', color: '#b45309' },
+        error:     { icon: '✗', color: '#b91c1c' },
+      };
+
+      const rowNodes = entries.map((e, i) => {
+        const div = document.createElement('div');
+        const label = e.doi || `PMID:${e.pubmed_id}`;
+        div.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border-radius:6px;font-size:12.5px;';
+        div.innerHTML = `
+          <span class="pv-batch-icon" style="width:14px;text-align:center;color:#9ca3af;font-weight:700;flex-shrink:0;">⏳</span>
+          <div style="flex:1;min-width:0;">
+            <div class="pv-batch-title" style="font-weight:500;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(label)}</div>
+            <div class="pv-batch-meta" style="font-size:11.5px;color:#9ca3af;"></div>
+          </div>`;
+        rowsEl.appendChild(div);
+        return div;
+      });
+
+      const counts = { ok: 0, duplicate: 0, error: 0 };
+
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const node = rowNodes[i];
+        const iconEl = node.querySelector('.pv-batch-icon');
+        const titleEl = node.querySelector('.pv-batch-title');
+        const metaEl = node.querySelector('.pv-batch-meta');
+        iconEl.textContent = STATUS.loading.icon;
+        iconEl.style.color = STATUS.loading.color;
+
+        try {
+          const r = await api('/articles/lookup', {
+            method: 'POST',
+            body: JSON.stringify(e),
+          });
+          if (!r.found) {
+            iconEl.textContent = STATUS.error.icon;
+            iconEl.style.color = STATUS.error.color;
+            metaEl.textContent = 'No se encontraron metadatos';
+            counts.error++;
+            continue;
+          }
+          if (r.duplicate_of) {
+            iconEl.textContent = STATUS.duplicate.icon;
+            iconEl.style.color = STATUS.duplicate.color;
+            titleEl.textContent = r.metadata.title || (e.doi || `PMID:${e.pubmed_id}`);
+            metaEl.textContent = 'Ya existe en la biblioteca';
+            counts.duplicate++;
+            continue;
+          }
+          const m = r.metadata;
+          await api('/articles', {
+            method: 'POST',
+            body: JSON.stringify({
+              title:     m.title,
+              authors:   m.authors,
+              year:      m.year,
+              journal:   m.journal,
+              doi:       m.doi || e.doi || null,
+              pubmed_id: m.pubmed_id || e.pubmed_id || null,
+              abstract:  m.abstract,
+            }),
+          });
+          iconEl.textContent = STATUS.ok.icon;
+          iconEl.style.color = STATUS.ok.color;
+          titleEl.textContent = m.title || (e.doi || `PMID:${e.pubmed_id}`);
+          metaEl.textContent = [m.authors, m.year].filter(Boolean).join(' · ');
+          counts.ok++;
+        } catch (err) {
+          if (err.status === 409) {
+            iconEl.textContent = STATUS.duplicate.icon;
+            iconEl.style.color = STATUS.duplicate.color;
+            metaEl.textContent = 'Duplicado (DOI/PMID ya en la biblioteca)';
+            counts.duplicate++;
+          } else {
+            iconEl.textContent = STATUS.error.icon;
+            iconEl.style.color = STATUS.error.color;
+            metaEl.textContent = err.message;
+            counts.error++;
+          }
+        }
+      }
+
+      summary.innerHTML = `
+        ${counts.ok        ? `<span style="color:#15803d;">✓ ${counts.ok} importado${counts.ok === 1 ? '' : 's'}</span>` : ''}
+        ${counts.duplicate ? `<span style="color:#b45309;">△ ${counts.duplicate} duplicado${counts.duplicate === 1 ? '' : 's'}</span>` : ''}
+        ${counts.error     ? `<span style="color:#b91c1c;">✗ ${counts.error} error${counts.error === 1 ? '' : 'es'}</span>` : ''}`;
+      summary.style.display = 'flex';
+      restartBtn.style.display = '';
+    });
+  }
+
+  // ── Find duplicates ──────────────────────────────────────────────────
+  function wireDuplicates() {
+    const btn   = document.getElementById('btn-find-duplicates');
+    const modal = document.getElementById('pv-dupes-modal');
+    if (!btn || !modal) return;
+    const closeBtn = document.getElementById('pv-dupes-close');
+    const meta = document.getElementById('pv-dupes-meta');
+    const list = document.getElementById('pv-dupes-list');
+
+    function close() { modal.style.display = 'none'; }
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    btn.addEventListener('click', async () => {
+      modal.style.display = 'flex';
+      list.innerHTML = '';
+      meta.textContent = 'Buscando duplicados…';
+      try {
+        const r = await api('/duplicates');
+        if (!r.pairs.length) {
+          meta.textContent = 'Sin duplicados detectados.';
+          return;
+        }
+        meta.textContent = `${r.total} par${r.total === 1 ? '' : 'es'} sospechoso${r.total === 1 ? '' : 's'} encontrado${r.total === 1 ? '' : 's'} (ordenados por score).`;
+        list.innerHTML = r.pairs.map(p => `
+          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafafa;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                ${p.reasons.map(r => `<span style="font-size:11px;padding:2px 7px;border-radius:5px;background:#fef3c7;color:#92400e;font-weight:600;">${esc(r)}</span>`).join('')}
+              </div>
+              <span style="font-size:11px;color:#6b7280;font-variant-numeric:tabular-nums;">score ${(p.score * 100).toFixed(0)}%</span>
+            </div>
+            ${[p.a, p.b].map(x => `
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid #f3f4f6;">
+                <div style="flex:1;min-width:0;cursor:pointer;" data-open-aid="${esc(x.id)}">
+                  <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${supHtml(x.title || '(no title)')}</div>
+                  <div style="font-size:11.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    ${esc(x.authors || '—')}${x.year ? ' · ' + x.year : ''}${x.journal ? ' · ' + esc(x.journal) : ''}
+                  </div>
+                  <div style="font-size:11px;color:#9ca3af;font-family:monospace;margin-top:2px;">
+                    ${x.doi ? 'DOI ' + esc(x.doi) : ''}${x.doi && x.pubmed_id ? ' · ' : ''}${x.pubmed_id ? 'PMID ' + esc(x.pubmed_id) : ''}
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                  <button class="pv-dup-open" data-aid="${esc(x.id)}"
+                          style="padding:3px 8px;border-radius:5px;border:1px solid #d1d5db;background:white;font-size:11px;cursor:pointer;">Ver</button>
+                  <button class="pv-dup-delete" data-aid="${esc(x.id)}"
+                          style="padding:3px 8px;border-radius:5px;border:1px solid #fca5a5;background:white;color:#b91c1c;font-size:11px;cursor:pointer;">Borrar</button>
+                </div>
+              </div>`).join('')}
+          </div>
+        `).join('');
+
+        list.querySelectorAll('.pv-dup-open').forEach(b => {
+          b.addEventListener('click', () => openDetail(b.dataset.aid));
+        });
+        list.querySelectorAll('[data-open-aid]').forEach(el => {
+          el.addEventListener('click', () => openDetail(el.dataset.openAid));
+        });
+        list.querySelectorAll('.pv-dup-delete').forEach(b => {
+          b.addEventListener('click', async () => {
+            if (!confirm('¿Borrar este artículo definitivamente? Se elimina también el PDF de Dropbox.')) return;
+            b.disabled = true;
+            b.textContent = '…';
+            try {
+              await api(`/articles/${b.dataset.aid}`, { method: 'DELETE' });
+              const card = b.closest('div[style*="border:1px solid #e5e7eb"]');
+              if (card) card.style.opacity = '0.5';
+              b.textContent = 'Borrado';
+            } catch (e) {
+              b.textContent = 'Error';
+              b.disabled = false;
+              alert('Error al borrar: ' + e.message);
+            }
+          });
+        });
+      } catch (e) {
+        meta.textContent = 'Error: ' + e.message;
+      }
+    });
   }
 
   document.addEventListener('DOMContentLoaded', init);
