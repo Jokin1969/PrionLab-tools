@@ -610,18 +610,52 @@ def api_article_update(aid):
 @prionvault_bp.route("/api/articles/<uuid:aid>", methods=["DELETE"])
 @admin_required
 def api_article_delete(aid):
-    """Delete the row only — does NOT remove the PDF from Dropbox.
-    A separate `?purge=1` flag will be added when the Dropbox cleanup
-    pipeline is wired up.
+    """Delete the article row AND its PDF from Dropbox.
+
+    The `articles` table is shared with PrionRead, so removing the row also
+    removes the article from PrionRead's listings. The PDF in Dropbox is the
+    same file both apps point to, so we delete it here to keep PrionRead's
+    `DELETE /api/articles/:id` behaviour symmetric.
+
+    A Dropbox failure does NOT block the row deletion — it is logged so the
+    orphan file can be cleaned up manually.
     """
     s = _session()
     try:
         a = s.get(models.Article, aid)
         if not a:
             return jsonify({"error": "not found"}), 404
+
+        dropbox_path = getattr(a, "dropbox_path", None)
+        dropbox_deleted = False
+        dropbox_error = None
+        if dropbox_path:
+            try:
+                from core.dropbox_client import get_client
+                client = get_client()
+                if client is None:
+                    dropbox_error = "dropbox client unavailable"
+                    logger.warning(
+                        "Dropbox client unavailable; PDF not deleted: %s",
+                        dropbox_path,
+                    )
+                else:
+                    client.files_delete_v2(dropbox_path)
+                    dropbox_deleted = True
+            except Exception as exc:
+                dropbox_error = str(exc)[:300]
+                logger.warning(
+                    "Dropbox delete failed for %s: %s", dropbox_path, exc
+                )
+
         s.delete(a)
         s.commit()
-        return jsonify({"ok": True})
+        return jsonify({
+            "ok": True,
+            "dropbox_path": dropbox_path,
+            "dropbox_deleted": dropbox_deleted,
+            "dropbox_error": dropbox_error,
+        })
     finally:
         s.close()
 
