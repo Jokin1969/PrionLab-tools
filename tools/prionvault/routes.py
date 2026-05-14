@@ -57,6 +57,7 @@ def api_list_articles():
     is_milestone     = True if is_milestone_raw == "1" else (False if is_milestone_raw == "0" else None)
     color_label = (request.args.get("color_label") or "").strip().lower() or None
     priority_min = request.args.get("priority_min", type=int)
+    extraction = (request.args.get("extraction_status") or "").strip().lower() or None
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(100, max(1, request.args.get("size", 25, type=int)))
@@ -66,7 +67,7 @@ def api_list_articles():
         return _list_articles_impl(s, q, year_min, year_max, journal,
                                    tag_id, has_summary, in_prionread,
                                    is_flagged, is_milestone, color_label,
-                                   priority_min, sort, page, page_size)
+                                   priority_min, extraction, sort, page, page_size)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -81,7 +82,7 @@ _VALID_COLOR_LABELS = {"red", "orange", "yellow", "green", "blue", "purple"}
 def _list_articles_impl(s, q, year_min, year_max, journal,
                         tag_id, has_summary, in_prionread,
                         is_flagged, is_milestone, color_label,
-                        priority_min, sort, page, page_size):
+                        priority_min, extraction, sort, page, page_size):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -146,6 +147,14 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     if priority_min is not None:
         conditions.append("priority >= :priority_min")
         params["priority_min"] = priority_min
+
+    if extraction and "extraction_status" in pv_cols:
+        if extraction == "extracted":
+            conditions.append("extraction_status = 'extracted'")
+        elif extraction == "pending":
+            conditions.append("(extraction_status IS NULL OR extraction_status = 'pending')")
+        elif extraction == "failed":
+            conditions.append("extraction_status = 'failed'")
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -1324,87 +1333,3 @@ def api_admin_debug_schema():
     finally:
         db.Session.remove()
 
-
-# ── Sync status: PrionVault ↔ PrionRead comparison ──────────────────────────
-@prionvault_bp.route("/api/admin/sync/status", methods=["GET"])
-@admin_required
-def api_admin_sync_status():
-    """Return articles categorised by presence in PrionVault and PrionRead.
-
-    Categories:
-    - in_both:            has PrionVault ingestion data AND user_articles rows
-    - only_in_prionvault: has PrionVault data but no user_articles
-    - only_in_prionread:  has user_articles but no PrionVault ingestion data
-    - in_neither:         exists in articles table but neither above
-    """
-    s = _session()
-    try:
-        pv_cols = _get_pv_columns(s)
-        has_pv = "pdf_md5" in pv_cols or "extraction_status" in pv_cols
-
-        pv_parts = []
-        if "pdf_md5" in pv_cols:
-            pv_parts.append("a.pdf_md5 IS NOT NULL")
-        if "extraction_status" in pv_cols:
-            pv_parts.append("a.extraction_status IS NOT NULL")
-        pv_expr = "(" + " OR ".join(pv_parts) + ")" if pv_parts else "FALSE"
-
-        # Select base fields + computed flags
-        sql = sql_text(f"""
-            SELECT
-                a.id::text,
-                a.title,
-                a.authors,
-                a.year,
-                a.journal,
-                a.doi,
-                a.pubmed_id,
-                a.tags,
-                a.is_milestone,
-                a.priority,
-                a.dropbox_path,
-                a.created_at,
-                ({pv_expr}) AS in_prionvault,
-                EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = a.id) AS in_prionread,
-                (SELECT COUNT(*)::int FROM user_articles ua WHERE ua.article_id = a.id) AS student_count
-            FROM articles a
-            ORDER BY a.created_at DESC
-        """)
-        rows = s.execute(sql).all()
-        fields = list(rows[0]._fields) if rows else []
-
-        def _to_dict(r):
-            d = dict(zip(fields, r))
-            d["created_at"] = d["created_at"].isoformat() if d.get("created_at") else None
-            d["tags"] = d.get("tags") or []
-            return d
-
-        all_rows = [_to_dict(r) for r in rows]
-
-        in_both            = [r for r in all_rows if r["in_prionvault"] and r["in_prionread"]]
-        only_in_prionvault = [r for r in all_rows if r["in_prionvault"] and not r["in_prionread"]]
-        only_in_prionread  = [r for r in all_rows if not r["in_prionvault"] and r["in_prionread"]]
-        in_neither         = [r for r in all_rows if not r["in_prionvault"] and not r["in_prionread"]]
-
-        return jsonify({
-            "has_prionvault_columns": has_pv,
-            "summary": {
-                "total":               len(all_rows),
-                "in_both":             len(in_both),
-                "only_in_prionvault":  len(only_in_prionvault),
-                "only_in_prionread":   len(only_in_prionread),
-                "in_neither":          len(in_neither),
-            },
-            "articles": {
-                "in_both":             in_both,
-                "only_in_prionvault":  only_in_prionvault,
-                "only_in_prionread":   only_in_prionread,
-                "in_neither":          in_neither,
-            },
-        })
-    except Exception as exc:
-        logger.exception("api_admin_sync_status failed")
-        s.rollback()
-        return jsonify({"error": "internal error", "detail": str(exc)}), 500
-    finally:
-        db.Session.remove()
