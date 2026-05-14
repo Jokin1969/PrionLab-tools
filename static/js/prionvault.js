@@ -315,9 +315,11 @@
 
     const hasPdf = !!(a.has_pdf || a.pdf_dropbox_path);
     const pdfLink = hasPdf
-      ? `<span title="PDF disponible — abrir detalle para descargar"
-               style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;
-                      font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;">PDF</span>`
+      ? `<button type="button" class="pv-pdf-pill"
+                 title="PDF disponible — clic para abrir el visor"
+                 style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;
+                        font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;
+                        border:none;cursor:pointer;">PDF</button>`
       : '<span title="Sin PDF" style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;font-size:10.5px;font-weight:600;background:#f3f4f6;color:#9ca3af;">PDF</span>';
 
     const doiLink = pillLink(a.doi ? `https://doi.org/${a.doi}` : null, 'DOI', '#e0e7ff', '#3730a3', 'Abrir DOI');
@@ -361,6 +363,12 @@
       e.stopPropagation();
       window.open(`/prionread/admin/articles?open=${encodeURIComponent(a.id)}`,
                   '_blank', 'noopener');
+    });
+
+    const pdfPill = row.querySelector('.pv-pdf-pill');
+    if (pdfPill) pdfPill.addEventListener('click', e => {
+      e.stopPropagation();
+      openDetail(a.id, { openPdf: true });
     });
 
     if (IS_ADMIN) {
@@ -532,9 +540,12 @@
   }
 
   // ── article detail modal ───────────────────────────────────────────────
-  async function openDetail(aid) {
+  async function openDetail(aid, options = {}) {
     const modal   = document.getElementById('pv-detail-modal');
     const content = document.getElementById('pv-detail-content');
+    _pdfViewerOpen = !!options.openPdf;
+    const inner = modal.querySelector('.pv-modal-inner');
+    if (inner) inner.style.maxWidth = '';
     modal.style.display = 'flex';
     content.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;">Loading…</div>';
     try {
@@ -597,6 +608,25 @@
           <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Human notes</h3>
           <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_human)}</p>
         ` : ''}
+        ${a.has_pdf ? `
+          <div id="pv-pdf-toolbar" style="margin:0 0 14px;display:flex;align-items:center;gap:8px;">
+            <button id="pv-pdf-toggle" type="button"
+                    style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:white;
+                           font-size:13px;font-weight:600;color:#374151;cursor:pointer;
+                           display:inline-flex;align-items:center;gap:6px;">
+              <i class="fas fa-file-pdf" style="color:#b91c1c;"></i>
+              <span id="pv-pdf-toggle-label">Ver PDF</span>
+            </button>
+            <a href="/prionvault/api/articles/${esc(a.id)}/pdf" target="_blank" rel="noopener noreferrer"
+               title="Abrir el PDF en pestaña nueva"
+               style="font-size:12px;color:#0F3460;text-decoration:none;">
+              <i class="fas fa-up-right-from-square" style="margin-right:3px;"></i>nueva pestaña
+            </a>
+          </div>
+          <div id="pv-pdf-viewer" style="display:none;margin:0 0 16px;
+                                          border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;
+                                          background:#1f2937;"></div>
+        ` : ''}
         ${tagHtml}
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f3f4f6;
@@ -607,6 +637,7 @@
         </div>
       `;
       renderRatingsSection(a);
+      wirePdfViewer(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
     }
@@ -773,7 +804,45 @@
     }
   }
 
+  // ── PDF viewer (inline) ──────────────────────────────────────────────
+  // Tracks whether the user explicitly opened the PDF for THIS modal
+  // session, so re-rendering the ratings section doesn't lose it.
+  let _pdfViewerOpen = false;
+  function wirePdfViewer(a) {
+    if (!a.has_pdf) return;
+    const toggle  = document.getElementById('pv-pdf-toggle');
+    const label   = document.getElementById('pv-pdf-toggle-label');
+    const viewer  = document.getElementById('pv-pdf-viewer');
+    const inner   = document.querySelector('#pv-detail-modal .pv-modal-inner');
+    if (!toggle || !viewer) return;
+
+    function setOpen(open) {
+      _pdfViewerOpen = open;
+      if (open) {
+        if (!viewer.querySelector('iframe')) {
+          viewer.innerHTML = `<iframe src="/prionvault/api/articles/${esc(a.id)}/pdf"
+                                       style="display:block;width:100%;height:78vh;border:0;background:#1f2937;"
+                                       title="PDF: ${esc(a.title || '')}"></iframe>`;
+        }
+        viewer.style.display = 'block';
+        label.textContent = 'Ocultar PDF';
+        if (inner) inner.style.maxWidth = '1100px';
+      } else {
+        viewer.style.display = 'none';
+        label.textContent = 'Ver PDF';
+        if (inner) inner.style.maxWidth = '';
+      }
+    }
+    toggle.addEventListener('click', () => setOpen(!_pdfViewerOpen));
+    // Honour the previously-open state when this is a re-render
+    // triggered by a rating save/delete.
+    if (_pdfViewerOpen) setOpen(true);
+  }
+
   function closeDetail() {
+    _pdfViewerOpen = false;
+    const inner = document.querySelector('#pv-detail-modal .pv-modal-inner');
+    if (inner) inner.style.maxWidth = '';
     document.getElementById('pv-detail-modal').style.display = 'none';
   }
 

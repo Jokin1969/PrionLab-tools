@@ -8,7 +8,7 @@ the frontend can wire against it.
 import logging
 import re
 from datetime import datetime
-from flask import jsonify, render_template, request, session
+from flask import jsonify, render_template, request, session, Response
 from sqlalchemy import or_, func, text as sql_text
 
 from core.decorators import login_required, admin_required
@@ -1219,6 +1219,59 @@ def api_ingest_retry(job_id):
     if ingest_queue.retry(job_id):
         return jsonify({"ok": True})
     return jsonify({"error": "job not found or not in failed/duplicate state"}), 400
+
+
+# ── PDF streaming (inline viewer) ───────────────────────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["GET"])
+@login_required
+def api_article_pdf(aid):
+    """Stream the article's PDF from Dropbox so the browser can render it.
+
+    Proxying through Flask avoids CORS / X-Frame-Options issues that
+    appear when embedding Dropbox URLs directly in an iframe, and keeps
+    the file gated behind the same login as the rest of the app.
+    """
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT dropbox_path, title FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row:
+            return jsonify({"error": "article not found"}), 404
+        dropbox_path = row[0]
+        if not dropbox_path:
+            return jsonify({"error": "no PDF for this article"}), 404
+    finally:
+        s.close()
+
+    try:
+        from core.dropbox_client import get_client
+    except Exception as exc:
+        logger.warning("api_article_pdf: dropbox import failed: %s", exc)
+        return jsonify({"error": "dropbox client unavailable"}), 503
+
+    client = get_client()
+    if client is None:
+        return jsonify({"error": "dropbox client unavailable"}), 503
+
+    try:
+        _meta, response = client.files_download(dropbox_path)
+        content = response.content
+    except Exception as exc:
+        logger.warning("api_article_pdf(%s): %s", dropbox_path, exc)
+        return jsonify({"error": "could not fetch PDF",
+                        "detail": str(exc)[:300]}), 502
+
+    filename = (dropbox_path.rsplit("/", 1)[-1] or "article.pdf").replace('"', "")
+    return Response(
+        content,
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=600",
+            "X-Frame-Options": "SAMEORIGIN",
+        },
+    )
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/count-pages", methods=["POST"])
