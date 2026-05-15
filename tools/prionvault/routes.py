@@ -25,7 +25,23 @@ def _viewer_role():
 
 
 def _viewer_id():
-    return session.get("user_id")
+    uid = session.get("user_id")
+    if uid:
+        return uid
+    # Backwards-compat: sessions opened before user_id was added at
+    # login still have a valid username. Resolve it lazily once and
+    # cache in the session so we don't re-query on every request.
+    uname = session.get("username")
+    if not uname:
+        return None
+    try:
+        from core.auth import _lookup_db_user_id
+        uid = _lookup_db_user_id(uname)
+    except Exception:
+        return None
+    if uid:
+        session["user_id"] = uid
+    return uid
 
 
 def _session():

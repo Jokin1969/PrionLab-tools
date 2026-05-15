@@ -51,6 +51,32 @@ def bootstrap_admin_user() -> None:
         logger.error("Bootstrap: failed to save users: %s", e)
 
 
+def _lookup_db_user_id(username: str) -> str | None:
+    """Return the UUID of the `users` row whose username matches, or
+    None if the DB is unavailable / the user only lives in the CSV
+    fallback. Result is a str (not a UUID) so it serialises into the
+    Flask session cookie without extra plumbing.
+    """
+    if not username:
+        return None
+    try:
+        from database.config import db
+        from sqlalchemy import text as _text
+        if not db.is_configured():
+            return None
+        with db.engine.connect() as conn:
+            row = conn.execute(
+                _text("SELECT id FROM users WHERE lower(username) = lower(:u) LIMIT 1"),
+                {"u": username},
+            ).first()
+            if row and row[0]:
+                return str(row[0])
+    except Exception as exc:
+        logger.warning("auth: could not resolve user_id for %s: %s",
+                       username, exc)
+    return None
+
+
 def _authenticate(username: str, password: str) -> dict | None:
     from core.users import load_users
 
@@ -96,6 +122,11 @@ def login():
             session["role"] = user.get("role", "reader")
             session["full_name"] = user.get("full_name", username)
             session["language"] = user.get("language", "es")
+            # Resolve the DB-side UUID so tools that key off users.id
+            # (PrionVault, PrionPacks, …) can authenticate the viewer.
+            uid = _lookup_db_user_id(session["username"])
+            if uid:
+                session["user_id"] = uid
             session.permanent = True
 
             # Update last_login (skip for emergency login to avoid writing corrupted CSV)
