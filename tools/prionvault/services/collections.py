@@ -214,6 +214,95 @@ def article_ids_in(cid) -> List[str]:
     return [str(r[0]) for r in rows]
 
 
+def resolve_article_ids(cid, limit: int = 10_000) -> List[str]:
+    """Return every article_id this collection currently contains —
+    works for both manual and smart collections.
+
+      manual → just SELECT from prionvault_collection_article.
+      smart  → evaluate the rules against `articles` live and return
+               the matching ids.
+    """
+    c = get(cid)
+    if not c:
+        raise LookupError("collection not found")
+    if c["kind"] != "smart":
+        return article_ids_in(cid)
+
+    rules = c.get("rules") or {}
+    eng = _get_engine()
+    with eng.connect() as conn:
+        where, params = _smart_where(rules)
+        sql = "SELECT id FROM articles"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += f" LIMIT {int(limit)}"
+        rows = conn.execute(sql_text(sql), params).all()
+    return [str(r[0]) for r in rows]
+
+
+def _count_smart(conn, rules: dict) -> int:
+    """Live count of articles that match this smart collection's rules.
+
+    Built on the same helper as resolve_article_ids so the count and
+    the resolved list never disagree."""
+    where, params = _smart_where(rules)
+    sql = "SELECT COUNT(*) FROM articles"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    return int(conn.execute(sql_text(sql), params).scalar() or 0)
+
+
+def _smart_where(rules: dict) -> tuple[list, dict]:
+    """Build a (where_clauses, params) tuple from a rule dict for the
+    `articles` table. Used by both the live count and the
+    resolve-ids path so they always match."""
+    where: list = []
+    params: dict = {}
+
+    if rules.get("q"):
+        where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
+                     "coalesce(authors,'') ILIKE :q)")
+        params["q"] = f"%{rules['q']}%"
+    if rules.get("authors"):
+        where.append("coalesce(authors,'') ILIKE :authors_q")
+        params["authors_q"] = f"%{rules['authors']}%"
+    if rules.get("journal"):
+        where.append("coalesce(journal,'') ILIKE :journal")
+        params["journal"] = f"%{rules['journal']}%"
+    if rules.get("year_min") not in (None, ""):
+        try:
+            params["year_min"] = int(rules["year_min"])
+            where.append("year >= :year_min")
+        except (TypeError, ValueError): pass
+    if rules.get("year_max") not in (None, ""):
+        try:
+            params["year_max"] = int(rules["year_max"])
+            where.append("year <= :year_max")
+        except (TypeError, ValueError): pass
+    if rules.get("priority_eq") not in (None, ""):
+        try:
+            params["priority_eq"] = int(rules["priority_eq"])
+            where.append("priority = :priority_eq")
+        except (TypeError, ValueError): pass
+    cl = (rules.get("color_label") or "").strip().lower() or None
+    if cl == "none":
+        where.append("color_label IS NULL")
+    elif cl:
+        where.append("lower(color_label) = :color_label")
+        params["color_label"] = cl
+    if rules.get("is_flagged") is True:    where.append("is_flagged IS TRUE")
+    if rules.get("is_flagged") is False:   where.append("(is_flagged IS FALSE OR is_flagged IS NULL)")
+    if rules.get("is_milestone") is True:  where.append("is_milestone IS TRUE")
+    if rules.get("is_milestone") is False: where.append("(is_milestone IS FALSE OR is_milestone IS NULL)")
+    if rules.get("has_summary") == "ai":      where.append("summary_ai IS NOT NULL")
+    elif rules.get("has_summary") == "human": where.append("summary_human IS NOT NULL")
+    elif rules.get("has_summary") == "none":  where.append("summary_ai IS NULL AND summary_human IS NULL")
+    if rules.get("extraction_status"):
+        where.append("lower(extraction_status) = :ex")
+        params["ex"] = str(rules["extraction_status"]).lower()
+    return where, params
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _shape(row) -> Optional[dict]:
@@ -283,61 +372,3 @@ def merge_rules_into_filters(rules: dict, current: dict) -> dict:
         _take_bool(k)
     return out
 
-
-def _count_smart(conn, rules: dict) -> int:
-    """Live count of articles that match this smart collection's rules.
-
-    Builds a minimal WHERE that mirrors the article-list endpoint;
-    intentionally narrower than the real query (no tag JOIN, no
-    in_prionread EXISTS) to keep the count cheap. Those extra
-    constraints are still applied at view-time when the user opens
-    the collection in the list."""
-    where = []
-    params: dict = {}
-
-    if rules.get("q"):
-        where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
-                     "coalesce(authors,'') ILIKE :q)")
-        params["q"] = f"%{rules['q']}%"
-    if rules.get("authors"):
-        where.append("coalesce(authors,'') ILIKE :authors_q")
-        params["authors_q"] = f"%{rules['authors']}%"
-    if rules.get("journal"):
-        where.append("coalesce(journal,'') ILIKE :journal")
-        params["journal"] = f"%{rules['journal']}%"
-    if rules.get("year_min") not in (None, ""):
-        try:
-            params["year_min"] = int(rules["year_min"])
-            where.append("year >= :year_min")
-        except (TypeError, ValueError): pass
-    if rules.get("year_max") not in (None, ""):
-        try:
-            params["year_max"] = int(rules["year_max"])
-            where.append("year <= :year_max")
-        except (TypeError, ValueError): pass
-    if rules.get("priority_eq") not in (None, ""):
-        try:
-            params["priority_eq"] = int(rules["priority_eq"])
-            where.append("priority = :priority_eq")
-        except (TypeError, ValueError): pass
-    cl = (rules.get("color_label") or "").strip().lower() or None
-    if cl == "none":
-        where.append("color_label IS NULL")
-    elif cl:
-        where.append("lower(color_label) = :color_label")
-        params["color_label"] = cl
-    if rules.get("is_flagged") is True:    where.append("is_flagged IS TRUE")
-    if rules.get("is_flagged") is False:   where.append("(is_flagged IS FALSE OR is_flagged IS NULL)")
-    if rules.get("is_milestone") is True:  where.append("is_milestone IS TRUE")
-    if rules.get("is_milestone") is False: where.append("(is_milestone IS FALSE OR is_milestone IS NULL)")
-    if rules.get("has_summary") == "ai":      where.append("summary_ai IS NOT NULL")
-    elif rules.get("has_summary") == "human": where.append("summary_human IS NOT NULL")
-    elif rules.get("has_summary") == "none":  where.append("summary_ai IS NULL AND summary_human IS NULL")
-    if rules.get("extraction_status"):
-        where.append("lower(extraction_status) = :ex")
-        params["ex"] = str(rules["extraction_status"]).lower()
-
-    sql = "SELECT COUNT(*) FROM articles"
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    return int(conn.execute(sql_text(sql), params).scalar() or 0)

@@ -148,15 +148,32 @@
         : '<i class="fas fa-folder" style="font-size:10px;opacity:0.5;"></i>';
       btn.title = (c.description ? c.description + '\n\n' : '') +
                   (IS_ADMIN
-                    ? '• Click: filtrar la lista\n• Shift+click: editar\n• Click derecho: eliminar'
+                    ? '• Click: filtrar la lista\n' +
+                      '• Shift+click: editar\n' +
+                      '• Click derecho: eliminar\n' +
+                      '• Botón 📦 a la derecha: mandar a un PrionPack'
                     : 'Click para filtrar la lista');
+      const packBtn = IS_ADMIN
+        ? `<span class="pv-coll-send-pack" data-collection-id="${esc(c.id)}"
+                 title="Enviar todos los artículos de esta colección a un PrionPack"
+                 style="display:inline-flex;align-items:center;justify-content:center;
+                        padding:2px 5px;border-radius:5px;cursor:pointer;
+                        background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
+                        margin-left:6px;flex-shrink:0;line-height:1;"
+                 onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
+                 onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
+            ><i class="fas fa-cubes-stacked" style="font-size:10px;"></i></span>`
+        : '';
       btn.innerHTML = `
-        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;">
+        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;flex:1;">
           <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${esc(c.color || '#9ca3af')}"></span>
           ${kindIcon}
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</span>
         </span>
-        <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${c.article_count}</span>
+        <span style="display:inline-flex;align-items:center;flex-shrink:0;">
+          <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;">${c.article_count}</span>
+          ${packBtn}
+        </span>
       `;
       btn.addEventListener('click', (ev) => {
         // Shift+click → edit the collection (admin only).
@@ -190,6 +207,24 @@
       const active = container.querySelector(`[data-collection-id="${state.collectionId}"]`);
       if (active) active.style.background = 'rgba(255,255,255,0.18)';
     }
+    // Wire the small "send to pack" badge attached to each row.
+    container.querySelectorAll('.pv-coll-send-pack').forEach(badge => {
+      badge.addEventListener('click', async (ev) => {
+        ev.stopPropagation();   // don't toggle the filter
+        const cid = badge.dataset.collectionId;
+        try {
+          const r = await api(`/collections/${cid}/article-ids`);
+          const ids = r.ids || [];
+          if (!ids.length) {
+            alert('Esta colección no tiene artículos.');
+            return;
+          }
+          openBulkPackPicker(ids);
+        } catch (e) {
+          alert('No se pudo cargar la colección: ' + e.message);
+        }
+      });
+    });
   }
 
   function wireNewCollectionButton() {

@@ -1748,6 +1748,24 @@ def api_collections_delete(cid):
     return jsonify({"ok": True})
 
 
+@prionvault_bp.route("/api/collections/<uuid:cid>/article-ids", methods=["GET"])
+@login_required
+def api_collections_article_ids(cid):
+    """Return every article id currently in the collection. For smart
+    collections this evaluates the rules live. Used by the sidebar
+    "send to PrionPack" shortcut."""
+    from .services import collections as _coll
+    try:
+        ids = _coll.resolve_article_ids(cid)
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        logger.exception("collections article-ids failed for %s", cid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    return jsonify({"ids": ids, "count": len(ids)})
+
+
 @prionvault_bp.route("/api/collections/<uuid:cid>/articles", methods=["POST"])
 @admin_required
 def api_collections_add_articles(cid):
