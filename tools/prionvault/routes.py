@@ -1637,6 +1637,48 @@ def api_delete_summary(aid):
         s.close()
 
 
+# ── Batch AI summary generation ─────────────────────────────────────────────
+@prionvault_bp.route("/api/admin/batch-summary/status", methods=["GET"])
+@admin_required
+def api_batch_summary_status():
+    from .services import batch_summary
+    return jsonify(batch_summary.get_status())
+
+
+@prionvault_bp.route("/api/admin/batch-summary/start", methods=["POST"])
+@admin_required
+def api_batch_summary_start():
+    """Kick off a background batch run.
+
+    Body (optional JSON): {"limit": int} — max articles to process this run.
+    Returns 409 if a run is already in progress.
+    """
+    from .services import batch_summary
+    data = request.get_json(force=True, silent=True) or {}
+    limit = data.get("limit")
+    if limit is not None:
+        try:
+            limit = int(limit)
+            if limit <= 0:
+                limit = None
+        except (TypeError, ValueError):
+            return jsonify({"error": "limit must be a positive integer"}), 400
+
+    snap = batch_summary.start_batch(viewer_user_id=_viewer_id(), limit=limit)
+    if snap is None:
+        return jsonify({"error": "already_running",
+                        "status": batch_summary.get_status()}), 409
+    return jsonify({"ok": True, "status": snap})
+
+
+@prionvault_bp.route("/api/admin/batch-summary/stop", methods=["POST"])
+@admin_required
+def api_batch_summary_stop():
+    """Signal the running batch to stop after the current article."""
+    from .services import batch_summary
+    return jsonify({"ok": True, "status": batch_summary.stop_batch()})
+
+
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():
