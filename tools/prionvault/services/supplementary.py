@@ -80,17 +80,24 @@ def _build_dropbox_path(*, year: Optional[int], doi: Optional[str],
 # ── Public CRUD ──────────────────────────────────────────────────────────────
 
 def list_for_article(article_id) -> List[dict]:
+    """Return all supplementary rows attached to an article.
+
+    The query deliberately does NOT join `users` to look up an "added
+    by" display name. On this deployment the `users` table predates
+    PrionVault and may not carry the columns the Python ORM thinks it
+    does (the symptom was a 500 with `column u.username does not
+    exist`). The added_by UUID is enough information for the frontend;
+    rendering a human-readable name is a future polish that can fetch
+    that lookup separately.
+    """
     eng = _get_engine()
     with eng.connect() as conn:
         rows = conn.execute(sql_text(
-            """SELECT s.id, s.kind, s.filename, s.dropbox_path,
-                      s.size_bytes, s.caption, s.created_at,
-                      s.added_by,
-                      u.username AS added_by_username
-               FROM article_supplementary s
-               LEFT JOIN users u ON u.id = s.added_by
-               WHERE s.article_id = :aid
-               ORDER BY s.created_at ASC"""
+            """SELECT id, kind, filename, dropbox_path,
+                      size_bytes, caption, created_at, added_by
+               FROM article_supplementary
+               WHERE article_id = :aid
+               ORDER BY created_at ASC"""
         ), {"aid": str(article_id)}).mappings().all()
     return [{
         "id":           str(r["id"]),
@@ -101,7 +108,7 @@ def list_for_article(article_id) -> List[dict]:
         "caption":      r["caption"] or "",
         "created_at":   r["created_at"].isoformat() if r["created_at"] else None,
         "added_by":     str(r["added_by"]) if r["added_by"] else None,
-        "added_by_username": r["added_by_username"],
+        "added_by_username": None,
     } for r in rows]
 
 

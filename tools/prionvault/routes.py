@@ -2046,6 +2046,60 @@ def api_supplementary_url(aid, sid):
     return jsonify({"url": url})
 
 
+# ── Diagnostics: who am I + users table introspection ──────────────────────
+@prionvault_bp.route("/api/admin/whoami", methods=["GET"])
+@admin_required
+def api_admin_whoami():
+    """Return everything we know about the current session and the
+    shape of the public.users table. Used to diagnose
+    'why is _viewer_id() returning None' / 'why does column X not
+    exist' classes of bug without needing psql access."""
+    from sqlalchemy import text as _text
+    info = {
+        "session": {
+            "logged_in": bool(session.get("logged_in")),
+            "username":  session.get("username"),
+            "user_id":   session.get("user_id"),
+            "role":      session.get("role"),
+            "full_name": session.get("full_name"),
+        },
+        "viewer_id_resolves_to": _viewer_id(),
+    }
+    s = _session()
+    try:
+        cols = s.execute(_text(
+            "SELECT column_name, data_type, is_nullable "
+            "FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'users' "
+            "ORDER BY ordinal_position"
+        )).all()
+        info["users_table_columns"] = [
+            {"name": c[0], "type": c[1], "nullable": c[2]} for c in cols
+        ]
+
+        # Probe a few likely identifier-style columns to see which one
+        # actually matches the current session.username.
+        uname = session.get("username") or ""
+        probes = {}
+        for cand in ("username", "user_name", "login", "handle", "email"):
+            if not any(c[0] == cand for c in cols):
+                probes[cand] = "(column missing)"
+                continue
+            try:
+                row = s.execute(_text(
+                    f"SELECT id FROM users WHERE lower({cand}) = lower(:u) LIMIT 1"
+                ), {"u": uname}).first()
+                probes[cand] = str(row[0]) if row else None
+            except Exception as exc:
+                probes[cand] = f"error: {str(exc)[:120]}"
+        info["lookups_for_session_username"] = probes
+    except Exception as exc:
+        info["introspection_error"] = str(exc)[:300]
+    finally:
+        s.close()
+    return jsonify(info)
+
+
 # ── Per-article reindex (Phase 4) ───────────────────────────────────────────
 @prionvault_bp.route("/api/articles/<uuid:aid>/reindex", methods=["POST"])
 @admin_required
