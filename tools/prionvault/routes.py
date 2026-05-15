@@ -1031,6 +1031,85 @@ def api_article_update(aid):
         s.close()
 
 
+_BULK_ALLOWED = {"priority", "color_label", "is_flagged", "is_milestone"}
+_BULK_MAX_IDS = 10_000
+
+
+@prionvault_bp.route("/api/articles/bulk", methods=["PATCH"])
+@admin_required
+def api_articles_bulk_update():
+    """Apply the same set of edits to many articles in a single UPDATE.
+
+    Body:
+      {
+        "ids":     ["<uuid>", ...],   // explicit selection
+        "updates": {"priority": 4}    // any subset of _BULK_ALLOWED
+      }
+    Returns: { ok, updated: <rowcount> }.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids",
+                        "detail": "Pasa una lista de UUIDs en `ids`."}), 400
+    if len(ids) > _BULK_MAX_IDS:
+        return jsonify({"error": "too_many",
+                        "detail": f"Máximo {_BULK_MAX_IDS} ids por llamada."}), 400
+    ids = [str(x) for x in ids if x]
+
+    updates = data.get("updates") or {}
+    if not isinstance(updates, dict):
+        return jsonify({"error": "invalid_updates"}), 400
+    safe = {k: v for k, v in updates.items() if k in _BULK_ALLOWED}
+    if not safe:
+        return jsonify({"error": "no_allowed_updates",
+                        "allowed": sorted(_BULK_ALLOWED)}), 400
+
+    if "priority" in safe:
+        try:
+            p = int(safe["priority"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "priority must be int 1-5"}), 400
+        if not 1 <= p <= 5:
+            return jsonify({"error": "priority must be int 1-5"}), 400
+        safe["priority"] = p
+
+    if "color_label" in safe:
+        v = safe["color_label"]
+        if v in ("", None):
+            safe["color_label"] = None
+        elif isinstance(v, str) and v.lower() in _VALID_COLOR_LABELS:
+            safe["color_label"] = v.lower()
+        else:
+            return jsonify({"error": "invalid color_label",
+                            "allowed": sorted(_VALID_COLOR_LABELS) + [None]}), 400
+
+    for k in ("is_flagged", "is_milestone"):
+        if k in safe:
+            safe[k] = bool(safe[k])
+
+    set_clauses = ", ".join(f"{k} = :{k}" for k in safe)
+    params = dict(safe)
+    params["ids"] = ids
+
+    s = _session()
+    try:
+        res = s.execute(sql_text(
+            f"UPDATE articles SET {set_clauses}, updated_at = NOW() "
+            f"WHERE id = ANY(:ids::uuid[])"
+        ), params)
+        s.commit()
+        return jsonify({"ok": True, "updated": res.rowcount or 0,
+                        "fields": sorted(safe.keys())})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("bulk update failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>", methods=["DELETE"])
 @admin_required
 def api_article_delete(aid):

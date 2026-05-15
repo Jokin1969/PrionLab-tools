@@ -42,6 +42,8 @@
     isRead: null,        // null = all, true = personally read, false = unread
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
+    selectedIds: new Set(),  // UUIDs selected for bulk operations
+    lastTotal:   0,          // last seen total count of the current filter
   };
 
   const COLOR_LABELS = [
@@ -136,24 +138,7 @@
 
   // ── render: article list ───────────────────────────────────────────────
   async function loadArticles() {
-    const params = new URLSearchParams();
-    if (state.q)                   params.set('q', state.q);
-    if (state.sort)                params.set('sort', state.sort);
-    if (state.yearMin)             params.set('year_min', state.yearMin);
-    if (state.yearMax)             params.set('year_max', state.yearMax);
-    if (state.journal)             params.set('journal', state.journal);
-    if (state.tagId)               params.set('tag', state.tagId);
-    if (state.hasSummary)          params.set('has_summary', state.hasSummary);
-    if (state.inPrionread !== null) params.set('in_prionread', state.inPrionread ? '1' : '0');
-    if (state.isFlagged    !== null) params.set('is_flagged',   state.isFlagged    ? '1' : '0');
-    if (state.isMilestone  !== null) params.set('is_milestone', state.isMilestone  ? '1' : '0');
-    if (state.colorLabel)          params.set('color_label', state.colorLabel);
-    if (state.priorityEq)          params.set('priority_eq', state.priorityEq);
-    if (state.extraction)          params.set('extraction_status', state.extraction);
-    if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
-    if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
-    params.set('page', state.page);
-    params.set('size', state.size);
+    const params = buildListParams();
 
     const tbody = document.getElementById('pv-results-tbody');
     const table = document.getElementById('pv-results-table');
@@ -185,11 +170,228 @@
       showTable();
       tbody.innerHTML = '';
       r.items.forEach(a => tbody.appendChild(renderRow(a)));
+      state.lastTotal = r.total || 0;
       refreshSortHeaders();
       renderPagination(r);
+      updateBulkBar();
+      syncSelectAllHeader();
     } catch (e) {
       showEmpty('Error: ' + esc(e.message));
     }
+  }
+
+  // ── Bulk selection / actions ──────────────────────────────────────────
+  function visibleRowIds() {
+    return Array.from(document.querySelectorAll('.pv-row-select'))
+      .map(cb => cb.dataset.aid);
+  }
+
+  function syncSelectAllHeader() {
+    const hdr = document.getElementById('pv-select-all');
+    if (!hdr) return;
+    const visible = visibleRowIds();
+    if (!visible.length) {
+      hdr.checked = false;
+      hdr.indeterminate = false;
+      return;
+    }
+    const selectedVisible = visible.filter(id => state.selectedIds.has(id));
+    hdr.checked = selectedVisible.length === visible.length;
+    hdr.indeterminate = selectedVisible.length > 0 &&
+                        selectedVisible.length < visible.length;
+  }
+
+  function updateBulkBar() {
+    const bar = document.getElementById('pv-bulk-bar');
+    if (!bar) return;
+    const count = state.selectedIds.size;
+    if (!count) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = 'flex';
+    document.getElementById('pv-bulk-count').textContent =
+      count === 1 ? '1 seleccionado' : `${count} seleccionados`;
+
+    const filteredBtn = document.getElementById('pv-bulk-select-filtered');
+    const filteredCnt = document.getElementById('pv-bulk-filtered-count');
+    if (filteredBtn && filteredCnt) {
+      // Offer "select all matching the filter" only when there are
+      // more results in the filter than are currently selected on
+      // this page.
+      const total = state.lastTotal || 0;
+      if (total > count) {
+        filteredBtn.style.display = 'inline-block';
+        filteredCnt.textContent = total;
+      } else {
+        filteredBtn.style.display = 'none';
+      }
+    }
+  }
+
+  async function fetchAllFilteredIds() {
+    // Reuse the existing filter params, then ask for size=lastTotal in
+    // one shot. Caps at the backend's 50_000 ceiling.
+    const params = buildListParams();
+    params.set('size', String(Math.min(50_000, state.lastTotal || 50_000)));
+    params.set('page', '1');
+    const r = await api('/articles?' + params.toString());
+    return (r.items || []).map(a => a.id);
+  }
+
+  async function bulkPatch(updates, opts = {}) {
+    const ids = Array.from(state.selectedIds);
+    if (!ids.length) return;
+    const r = await api('/articles/bulk', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids, updates }),
+    });
+    if (opts.keepSelection !== true) {
+      // After a successful bulk, keep the selection by default so the
+      // user can chain another action without re-checking everything.
+      // The data underneath has changed, so reload the list.
+    }
+    return r;
+  }
+
+  function wireBulkBar() {
+    if (!IS_ADMIN) return;
+
+    // Header select-all toggle
+    const hdr = document.getElementById('pv-select-all');
+    if (hdr) {
+      hdr.addEventListener('change', () => {
+        const visible = visibleRowIds();
+        if (hdr.checked) visible.forEach(id => state.selectedIds.add(id));
+        else             visible.forEach(id => state.selectedIds.delete(id));
+        document.querySelectorAll('.pv-row-select').forEach(cb => {
+          cb.checked = state.selectedIds.has(cb.dataset.aid);
+        });
+        hdr.indeterminate = false;
+        updateBulkBar();
+      });
+    }
+
+    // "Select all matching the filter" expansion
+    const filteredBtn = document.getElementById('pv-bulk-select-filtered');
+    if (filteredBtn) {
+      filteredBtn.addEventListener('click', async () => {
+        filteredBtn.disabled = true;
+        const original = filteredBtn.innerHTML;
+        filteredBtn.innerHTML = 'Cargando ids…';
+        try {
+          const ids = await fetchAllFilteredIds();
+          ids.forEach(id => state.selectedIds.add(id));
+          document.querySelectorAll('.pv-row-select').forEach(cb => {
+            cb.checked = state.selectedIds.has(cb.dataset.aid);
+          });
+          updateBulkBar();
+          syncSelectAllHeader();
+        } catch (e) {
+          alert('No se pudo expandir la selección: ' + e.message);
+        } finally {
+          filteredBtn.disabled = false;
+          filteredBtn.innerHTML = original;
+        }
+      });
+    }
+
+    // Clear-selection button
+    const clearBtn = document.getElementById('pv-bulk-clear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        state.selectedIds.clear();
+        document.querySelectorAll('.pv-row-select').forEach(cb => { cb.checked = false; });
+        updateBulkBar();
+        syncSelectAllHeader();
+      });
+    }
+
+    // Priority chips
+    const prioBox = document.getElementById('pv-bulk-priority');
+    if (prioBox) {
+      prioBox.innerHTML = [1, 2, 3, 4, 5].map(p => {
+        const style = p >= 5 ? 'background:#fee2e2;color:#b91c1c;'
+                    : p === 4 ? 'background:#fef3c7;color:#92400e;'
+                    : p === 3 ? 'background:#e0f2fe;color:#075985;'
+                    : p === 2 ? 'background:#f3f4f6;color:#4b5563;'
+                              : 'background:#e5e7eb;color:#6b7280;';
+        return `<button type="button" class="pv-bulk-prio" data-prio="${p}"
+                        style="${style}border:none;border-radius:5px;
+                               padding:3px 9px;font-size:11.5px;font-weight:700;
+                               cursor:pointer;font-variant-numeric:tabular-nums;">P${p}</button>`;
+      }).join('');
+      prioBox.querySelectorAll('.pv-bulk-prio').forEach(b =>
+        b.addEventListener('click', () => doBulk({priority: parseInt(b.dataset.prio, 10)},
+                                                 `prioridad P${b.dataset.prio}`)));
+    }
+
+    // Color dots
+    const colorBox = document.getElementById('pv-bulk-color');
+    if (colorBox) {
+      const dots = COLOR_LABELS.map(c =>
+        `<button type="button" class="pv-bulk-color" data-color="${c.value}"
+                 title="${c.value}"
+                 style="width:18px;height:18px;border-radius:50%;border:2px solid white;
+                        background:${c.css};cursor:pointer;padding:0;"></button>`
+      ).join('');
+      colorBox.innerHTML = dots +
+        `<button type="button" class="pv-bulk-color" data-color=""
+                 title="Sin color"
+                 style="width:18px;height:18px;border-radius:50%;border:2px dashed rgba(255,255,255,0.5);
+                        background:transparent;cursor:pointer;padding:0;"></button>`;
+      colorBox.querySelectorAll('.pv-bulk-color').forEach(b =>
+        b.addEventListener('click', () => {
+          const v = b.dataset.color || null;
+          doBulk({color_label: v}, v ? `color ${v}` : 'sin color');
+        }));
+    }
+
+    // Flag / milestone toggles
+    document.getElementById('pv-bulk-flag-on') ?.addEventListener('click',
+      () => doBulk({is_flagged: true},   'bandera'));
+    document.getElementById('pv-bulk-flag-off')?.addEventListener('click',
+      () => doBulk({is_flagged: false},  'sin bandera'));
+    document.getElementById('pv-bulk-star-on') ?.addEventListener('click',
+      () => doBulk({is_milestone: true}, 'hito'));
+    document.getElementById('pv-bulk-star-off')?.addEventListener('click',
+      () => doBulk({is_milestone: false},'sin hito'));
+  }
+
+  async function doBulk(updates, descr) {
+    const count = state.selectedIds.size;
+    if (!count) return;
+    if (count > 5 && !confirm(`Aplicar "${descr}" a ${count} artículos. ¿Continuar?`)) return;
+    try {
+      const r = await bulkPatch(updates);
+      // Reload the list so the visual state matches the DB.
+      loadArticles();
+    } catch (e) {
+      alert('Error en la operación masiva: ' + e.message);
+    }
+  }
+
+  // ── Build the list query params (shared by loadArticles + fetchAllFilteredIds) ──
+  function buildListParams() {
+    const params = new URLSearchParams();
+    if (state.q)                   params.set('q', state.q);
+    if (state.yearMin)             params.set('year_min', state.yearMin);
+    if (state.yearMax)             params.set('year_max', state.yearMax);
+    if (state.journal)             params.set('journal', state.journal);
+    if (state.tagId)               params.set('tag', state.tagId);
+    if (state.hasSummary)          params.set('has_summary', state.hasSummary);
+    if (state.inPrionread !== null) params.set('in_prionread', state.inPrionread ? '1' : '0');
+    if (state.isFlagged    !== null) params.set('is_flagged',   state.isFlagged    ? '1' : '0');
+    if (state.isMilestone  !== null) params.set('is_milestone', state.isMilestone  ? '1' : '0');
+    if (state.colorLabel)          params.set('color_label', state.colorLabel);
+    if (state.priorityEq)          params.set('priority_eq', state.priorityEq);
+    if (state.extraction)          params.set('extraction_status', state.extraction);
+    if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
+    if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
+    if (state.sort)                params.set('sort', state.sort);
+    params.set('page', state.page);
+    params.set('size', state.size);
+    return params;
   }
 
   // Inline SVG flag icon mirroring PrionRead's FlagIcon (small staff + triangle).
@@ -236,6 +438,16 @@
 
     const authors = a.authors ? esc(a.authors) : '—';
     const journal = a.journal ? ` · ${esc(a.journal)}` : '';
+
+    // ── Select cell: bulk-selection checkbox (admin only) ────────────────
+    const selectCell = IS_ADMIN
+      ? `<td style="padding:8px 6px 8px 12px;vertical-align:middle;text-align:center;width:32px;">
+           <input type="checkbox" class="pv-row-select" data-aid="${esc(a.id)}"
+                  ${state.selectedIds.has(a.id) ? 'checked' : ''}
+                  onclick="event.stopPropagation();"
+                  style="cursor:pointer;width:14px;height:14px;">
+         </td>`
+      : '';
 
     // ── Marks cell: flag + color dot + milestone (vertical stack) ────────
     const colorCss = a.color_label ? (COLOR_CSS[a.color_label] || '#9ca3af') : null;
@@ -375,8 +587,20 @@
         </div>
       </td>`;
 
-    row.innerHTML = marksCell + articleCell + yearCell + pagesCell +
+    row.innerHTML = selectCell + marksCell + articleCell + yearCell + pagesCell +
                     priorityCell + linksCell + prionreadCell;
+
+    // Wire the row-level checkbox
+    const cb = row.querySelector('.pv-row-select');
+    if (cb) {
+      cb.addEventListener('click', e => {
+        e.stopPropagation();
+        if (cb.checked) state.selectedIds.add(a.id);
+        else            state.selectedIds.delete(a.id);
+        updateBulkBar();
+        syncSelectAllHeader();
+      });
+    }
 
     // ── Wiring ──────────────────────────────────────────────────────────
     row.querySelector('.pv-open-prionread-btn').addEventListener('click', e => {
@@ -1896,6 +2120,7 @@
       wireBatchExtract();
       wireBatchOcr();
       wireBatchSearchable();
+      wireBulkBar();
     }
 
     refreshStats();
