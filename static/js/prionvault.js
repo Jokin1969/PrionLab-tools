@@ -1082,13 +1082,40 @@
     };
     const onSearch = debounce(() => { state.page = 1; loadArticles(); }, 200);
 
-    document.getElementById('pv-search-input').addEventListener('input', e => {
+    const searchInput = document.getElementById('pv-search-input');
+    const searchModeBtn = document.getElementById('btn-search-mode');
+
+    function setSearchMode(mode) {
+      searchModeBtn.dataset.mode = mode;
+      if (mode === 'ai') {
+        searchModeBtn.style.background = '#0F3460';
+        searchModeBtn.style.color = 'white';
+        searchModeBtn.style.borderColor = '#0F3460';
+        searchInput.placeholder = 'Pregunta a la biblioteca en lenguaje natural (Enter para enviar)…';
+      } else {
+        searchModeBtn.style.background = 'transparent';
+        searchModeBtn.style.color = '#6b7280';
+        searchModeBtn.style.borderColor = '#d1d5db';
+        searchInput.placeholder = 'Search title, abstract, authors, journal…';
+        closeRagPanel();
+      }
+    }
+
+    searchInput.addEventListener('input', e => {
+      if (searchModeBtn.dataset.mode === 'ai') return;  // text-only debounced search
       state.q = e.target.value.trim();
       onSearch();
     });
-    document.getElementById('btn-search-mode').addEventListener('click', () => {
-      alert('AI semantic search arrives in Phase 5 (vector embeddings).');
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && searchModeBtn.dataset.mode === 'ai') {
+        e.preventDefault();
+        runRagSearch(searchInput.value.trim());
+      }
     });
+    searchModeBtn.addEventListener('click', () => {
+      setSearchMode(searchModeBtn.dataset.mode === 'ai' ? 'text' : 'ai');
+    });
+    document.getElementById('pv-rag-close').addEventListener('click', closeRagPanel);
     document.getElementById('filter-year-min').addEventListener('change', e => {
       state.yearMin = parseInt(e.target.value, 10) || null; state.page = 1; loadArticles();
     });
@@ -1978,6 +2005,164 @@
         errorEl.textContent = 'No se pudo detener: ' + e.message;
       }
     });
+  }
+
+  // ── RAG (Ask the library) — Phase 5 ──────────────────────────────────
+  function annotateCitations(answer, citations) {
+    // Wrap inline [N] markers with a clickable span that scrolls to / opens
+    // the matching citation card below.
+    const byNum = new Map(citations.map(c => [c.n, c]));
+    return esc(answer).replace(/\[(\d{1,3})\]/g, (m, nStr) => {
+      const n = parseInt(nStr, 10);
+      const c = byNum.get(n);
+      if (!c) return m;
+      return `<a href="#" data-rag-cite="${n}" data-aid="${esc(c.article_id)}" ` +
+             `style="text-decoration:none;font-weight:700;color:#0F3460;">[${n}]</a>`;
+    });
+  }
+
+  function renderRagCitations(citations, citedNumbers) {
+    const container = document.getElementById('pv-rag-citations');
+    const title = document.getElementById('pv-rag-citations-title');
+    if (!citations.length) {
+      title.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+    title.style.display = 'block';
+    title.textContent = citedNumbers.length
+      ? `Referencias citadas (${citedNumbers.length}/${citations.length} recuperadas)`
+      : `Referencias recuperadas (${citations.length})`;
+
+    const citedSet = new Set(citedNumbers);
+    container.innerHTML = citations.map(c => {
+      const isUsed = citedSet.has(c.n);
+      const simPct = Math.round((c.similarity || 0) * 100);
+      const headerBits = [
+        c.authors ? esc(c.authors).slice(0, 110) : '',
+        c.year || '',
+        c.journal ? esc(c.journal) : '',
+      ].filter(Boolean).join(' · ');
+      return `
+        <div id="pv-rag-cite-${c.n}" data-rag-cite-card="${c.n}"
+             style="display:flex;gap:10px;align-items:flex-start;
+                    background:${isUsed ? '#fff' : '#fafafa'};
+                    border:1px solid ${isUsed ? '#cbd5e1' : '#e5e7eb'};
+                    border-left:3px solid ${isUsed ? '#0F3460' : '#cbd5e1'};
+                    border-radius:8px;padding:10px 12px;">
+          <div style="font-size:12px;font-weight:700;color:#0F3460;flex-shrink:0;
+                      min-width:24px;">[${c.n}]</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+              <a href="#" data-aid="${esc(c.article_id)}" class="pv-rag-open"
+                 style="font-size:13.5px;font-weight:600;color:#111827;text-decoration:none;">
+                ${supHtml(c.title || '(no title)')}
+              </a>
+              <span style="font-size:11px;color:#15803d;font-variant-numeric:tabular-nums;font-weight:600;">
+                ${simPct}% match
+              </span>
+            </div>
+            ${headerBits ? `<div style="font-size:11.5px;color:#6b7280;margin-top:1px;">${headerBits}</div>` : ''}
+            <div style="font-size:12px;color:#4b5563;background:#f9fafb;border-radius:6px;
+                        padding:6px 8px;margin-top:5px;line-height:1.55;
+                        max-height:120px;overflow-y:auto;">${esc(c.extract)}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    container.querySelectorAll('.pv-rag-open').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        openDetail(a.dataset.aid);
+      });
+    });
+  }
+
+  async function runRagSearch(query) {
+    const panel  = document.getElementById('pv-rag-panel');
+    const qEl    = document.getElementById('pv-rag-query');
+    const stEl   = document.getElementById('pv-rag-status');
+    const ansEl  = document.getElementById('pv-rag-answer');
+    const metaEl = document.getElementById('pv-rag-meta');
+    const citEl  = document.getElementById('pv-rag-citations');
+    const titEl  = document.getElementById('pv-rag-citations-title');
+    const resultsMeta = document.getElementById('pv-results-meta');
+    const resultsGrid = document.getElementById('pv-results-grid');
+    const pagination  = document.getElementById('pv-pagination');
+
+    if (!query) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = 'block';
+    if (resultsMeta) resultsMeta.style.display = 'none';
+    if (resultsGrid) resultsGrid.style.display = 'none';
+    if (pagination)  pagination.style.display  = 'none';
+
+    qEl.textContent = query;
+    stEl.style.color = '#6b7280';
+    stEl.textContent = 'Recuperando fragmentos relevantes y consultando a Claude…';
+    ansEl.style.color = '#9ca3af';
+    ansEl.textContent = '…';
+    metaEl.textContent = '';
+    citEl.innerHTML = '';
+    titEl.style.display = 'none';
+
+    try {
+      const r = await api('/search/semantic', {
+        method: 'POST',
+        body: JSON.stringify({ query }),
+      });
+      ansEl.style.color = '#1f2937';
+      // Render answer with inline citation hyperlinks
+      ansEl.innerHTML = annotateCitations(r.answer || '', r.citations || []);
+
+      const confLabel = r.confidence ? `Confianza: <strong>${esc(r.confidence)}</strong>` : '';
+      const timing = `${(r.elapsed_ms/1000).toFixed(1)} s (retrieval ${r.retrieval_ms} ms)`;
+      const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
+      const tok = (r.tokens_in != null && r.tokens_out != null)
+        ? ` · ${r.tokens_in} in / ${r.tokens_out} out tokens` : '';
+      stEl.style.color = r.no_results ? '#b45309' : '#15803d';
+      stEl.innerHTML = r.no_results
+        ? '⚠️ Retrieval no encontró fragmentos relevantes para esta pregunta.'
+        : `✓ Generado en ${timing}${cost}${tok}`;
+      metaEl.innerHTML = confLabel;
+
+      renderRagCitations(r.citations || [], r.cited_numbers || []);
+
+      // Wire inline [N] citation links to scroll to the corresponding card
+      ansEl.querySelectorAll('a[data-rag-cite]').forEach(a => {
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          const card = document.getElementById('pv-rag-cite-' + a.dataset.ragCite);
+          if (card) {
+            card.scrollIntoView({behavior: 'smooth', block: 'center'});
+            card.style.transition = 'background 0.3s ease';
+            card.style.background = '#fef3c7';
+            setTimeout(() => { card.style.background = ''; }, 1200);
+          }
+        });
+      });
+    } catch (e) {
+      ansEl.style.color = '#b91c1c';
+      if (e.status === 503) {
+        ansEl.textContent = 'Búsqueda IA no disponible — falta configurar API key (VOYAGE_API_KEY o ANTHROPIC_API_KEY) en el servidor.';
+      } else {
+        ansEl.textContent = 'Error: ' + e.message;
+      }
+      stEl.textContent = '';
+    }
+  }
+
+  function closeRagPanel() {
+    const panel       = document.getElementById('pv-rag-panel');
+    const resultsMeta = document.getElementById('pv-results-meta');
+    const resultsGrid = document.getElementById('pv-results-grid');
+    const pagination  = document.getElementById('pv-pagination');
+    if (panel) panel.style.display = 'none';
+    if (resultsMeta) resultsMeta.style.display = '';
+    if (resultsGrid) resultsGrid.style.display = '';
+    if (pagination)  pagination.style.display  = '';
   }
 
   // ── Batch indexing modal (Phase 4) ───────────────────────────────────

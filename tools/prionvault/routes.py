@@ -1755,8 +1755,88 @@ def api_batch_index_stop():
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():
-    """Stub. Wired up in Phase 5 with pgvector + Voyage + Claude."""
-    return jsonify({"error": "not_implemented_yet"}), 501
+    """RAG search: returns Claude's grounded answer + cited paper extracts."""
+    from .services.rag import ask, AnthropicNotConfigured
+    from .embeddings.embedder import NotConfigured as VoyageNotConfigured
+
+    data = request.get_json(force=True, silent=True) or {}
+    query = (data.get("query") or "").strip()
+    if not query:
+        return jsonify({"error": "empty query"}), 400
+    top_k = data.get("top_k", 20)
+    try:
+        top_k = max(1, min(50, int(top_k)))
+    except (TypeError, ValueError):
+        top_k = 20
+
+    try:
+        result = ask(query, top_k=top_k)
+    except AnthropicNotConfigured:
+        return jsonify({"error": "ai_unavailable",
+                        "detail": "ANTHROPIC_API_KEY not set"}), 503
+    except VoyageNotConfigured:
+        return jsonify({"error": "embed_unavailable",
+                        "detail": "VOYAGE_API_KEY not set"}), 503
+    except Exception as exc:
+        logger.exception("semantic search failed")
+        return jsonify({"error": "rag_failed",
+                        "detail": str(exc)[:300]}), 502
+
+    # Best-effort usage tracking
+    try:
+        s = _session()
+        try:
+            usage = models.UsageEvent(
+                user_id=_viewer_id(),
+                action="semantic_search",
+                cost_usd=result.cost_usd,
+                tokens_in=result.tokens_in,
+                tokens_out=result.tokens_out,
+                meta={
+                    "query":         result.query[:500],
+                    "citations":     len(result.citations),
+                    "cited_numbers": result.cited_numbers,
+                    "confidence":    result.confidence,
+                    "elapsed_ms":    result.elapsed_ms,
+                    "retrieval_ms":  result.retrieval_ms,
+                    "no_results":    result.no_results,
+                },
+            )
+            s.add(usage)
+            s.commit()
+        finally:
+            s.close()
+    except Exception as exc:
+        logger.warning("Could not record semantic_search usage: %s", exc)
+
+    return jsonify({
+        "ok":            True,
+        "query":         result.query,
+        "answer":        result.answer,
+        "confidence":    result.confidence,
+        "no_results":    result.no_results,
+        "citations": [
+            {
+                "n":          c.n,
+                "article_id": c.article_id,
+                "title":      c.title,
+                "authors":    c.authors,
+                "year":       c.year,
+                "journal":    c.journal,
+                "doi":        c.doi,
+                "pubmed_id":  c.pubmed_id,
+                "similarity": round(c.similarity, 4),
+                "extract":    c.extract,
+            }
+            for c in result.citations
+        ],
+        "cited_numbers": result.cited_numbers,
+        "tokens_in":     result.tokens_in,
+        "tokens_out":    result.tokens_out,
+        "cost_usd":      result.cost_usd,
+        "elapsed_ms":    result.elapsed_ms,
+        "retrieval_ms":  result.retrieval_ms,
+    })
 
 
 # ── Migration runner: admin-only manual trigger + status ────────────────────
