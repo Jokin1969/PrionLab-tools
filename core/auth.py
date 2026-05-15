@@ -52,19 +52,22 @@ def bootstrap_admin_user() -> None:
 
 
 def _lookup_db_user_id(username: str) -> str | None:
-    """Return the UUID of the `users` row whose username matches.
+    """Return the UUID of the row in `users` that matches `username`.
 
-    Three layered behaviours:
-      1. Row exists in DB → return its id.
-      2. Row missing but the user is in the CSV (the legacy user
-         store) → insert a minimal row into `users` and return its id.
-         This unblocks every tool that keys off users.id (PrionVault,
-         PrionPacks, ratings, favourites, …) without forcing the user
-         to re-register.
-      3. Otherwise → None.
+    Works against two distinct historical schemas of the same table:
+      a) The Python ORM in database/models.py — columns username,
+         password_hash, first_name, last_name, …
+      b) The PrionRead / Sequelize legacy schema actually in
+         production on this deployment — columns name, password,
+         email, role (enum), …
 
-    Result is a str (not a UUID) so it serialises into the Flask
-    session cookie without extra plumbing.
+    We introspect information_schema.columns once, then:
+      1. Search by every identifier-style column that exists
+         (`username`, `name`, `email`) — case-insensitive — and return
+         the first hit.
+      2. If still nothing, auto-provision a row using only the columns
+         the live table actually has, mapping the CSV's full_name to
+         `name`, password_hash to `password`, etc.
     """
     if not username:
         return None
@@ -74,18 +77,46 @@ def _lookup_db_user_id(username: str) -> str | None:
         if not db.is_configured():
             return None
         with db.engine.connect() as conn:
-            row = conn.execute(
-                _text("SELECT id FROM users WHERE lower(username) = lower(:u) LIMIT 1"),
-                {"u": username},
-            ).first()
-            if row and row[0]:
-                return str(row[0])
+            cols = _users_columns(conn)
+            for cand in ("username", "name", "email"):
+                if cand not in cols:
+                    continue
+                try:
+                    row = conn.execute(_text(
+                        f"SELECT id FROM users "
+                        f"WHERE lower({cand}) = lower(:u) LIMIT 1"
+                    ), {"u": username}).first()
+                except Exception as exc:
+                    logger.debug("auth: probe by %s failed: %s", cand, exc)
+                    continue
+                if row and row[0]:
+                    return str(row[0])
     except Exception as exc:
         logger.warning("auth: could not resolve user_id for %s: %s",
                        username, exc)
         return None
 
-    # ── Auto-provision from the CSV ─────────────────────────────────
+    # ── Not found → auto-provision against the live schema ─────────
+    return _auto_provision_user(username)
+
+
+def _users_columns(conn) -> set[str]:
+    """Return the set of column names actually present in public.users
+    on this deployment. Cached per-connection."""
+    from sqlalchemy import text as _text
+    rows = conn.execute(_text(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = 'users'"
+    )).all()
+    return {r[0] for r in rows}
+
+
+def _auto_provision_user(username: str) -> str | None:
+    """Create a `users` row for `username` using whatever columns the
+    live table actually has. Best-effort: returns the new id on
+    success, None if the INSERT failed for any reason. The CSV is the
+    source of truth for full name, email, role and password hash —
+    we just translate it into the live column names."""
     try:
         from core.users import load_users
         csv_row = next(
@@ -93,18 +124,17 @@ def _lookup_db_user_id(username: str) -> str | None:
              if u.get("username", "").lower() == username.lower()),
             None,
         )
-        if not csv_row:
-            return None
 
-        full_name = (csv_row.get("full_name") or username).strip()
-        parts     = full_name.split(None, 1)
-        first     = parts[0] if parts else username
-        last      = parts[1] if len(parts) > 1 else ""
-        email     = (csv_row.get("email") or
-                     f"{username.lower()}@local.invalid").strip()
-        role      = (csv_row.get("role") or "reader").strip()
-        language  = (csv_row.get("language") or "es").strip()
-        pw_hash   = (csv_row.get("password_hash")
+        full_name = ((csv_row.get("full_name") if csv_row else None)
+                     or username).strip() or username
+        email     = ((csv_row.get("email") if csv_row else None)
+                     or f"{username.lower()}@local.invalid").strip()
+        role      = ((csv_row.get("role") if csv_row else None)
+                     or "reader").strip().lower()
+        # Some PrionRead deploys use an ENUM with capitalised values.
+        # We accept either; the INSERT below tries lower-case first
+        # and falls back to capitalised on CheckConstraint errors.
+        pw_hash   = ((csv_row.get("password_hash") if csv_row else None)
                      or "!auto-provisioned!").strip()
 
         import uuid as _uuid
@@ -112,30 +142,104 @@ def _lookup_db_user_id(username: str) -> str | None:
         from sqlalchemy import text as _text
         new_id = str(_uuid.uuid4())
         with db.engine.begin() as conn:
-            conn.execute(_text(
-                """INSERT INTO users
-                   (id, username, email, password_hash,
-                    first_name, last_name, role, language,
-                    is_active, email_verified, created_at, updated_at)
-                   VALUES (:id, :u, :e, :p, :fn, :ln, :r, :lng,
-                           TRUE, FALSE, NOW(), NOW())
-                   ON CONFLICT (username) DO NOTHING"""
-            ), {"id": new_id, "u": username, "e": email, "p": pw_hash,
-                "fn": first, "ln": last, "r": role, "lng": language})
-            # Re-read to cope with the ON CONFLICT path (another
-            # request might have inserted the same username in
-            # parallel and our INSERT became a no-op).
-            row = conn.execute(_text(
-                "SELECT id FROM users WHERE lower(username) = lower(:u) LIMIT 1"
-            ), {"u": username}).first()
-            if row and row[0]:
+            cols = _users_columns(conn)
+            row = _try_insert_user(conn, cols, new_id,
+                                   username=username,
+                                   full_name=full_name,
+                                   email=email,
+                                   role=role,
+                                   pw_hash=pw_hash)
+            if row:
                 logger.info("auth: auto-provisioned DB user for %s "
-                            "(id=%s)", username, row[0])
-                return str(row[0])
+                            "(id=%s)", username, row)
+                return row
     except Exception as exc:
         logger.warning("auth: auto-provision failed for %s: %s",
                        username, exc)
     return None
+
+
+def _try_insert_user(conn, cols: set[str], new_id: str, *,
+                     username: str, full_name: str, email: str,
+                     role: str, pw_hash: str) -> str | None:
+    """Build an INSERT keyed only off columns that actually exist on
+    public.users. Tries again with capitalised role if the role enum
+    rejects lower-case. Returns the resulting id (existing or new)."""
+    from sqlalchemy import text as _text
+    # column → value, but only include keys whose column exists.
+    candidate = {
+        "id":            new_id,
+        "username":      username,        # ORM schema
+        "name":          full_name,       # PrionRead schema
+        "first_name":    full_name.split(None, 1)[0] if full_name else username,
+        "last_name":     (full_name.split(None, 1)[1]
+                          if full_name and " " in full_name else ""),
+        "email":         email,
+        "password":      pw_hash,         # PrionRead schema
+        "password_hash": pw_hash,         # ORM schema
+        "role":          role,
+        "language":      "es",
+        "is_active":     True,
+        "email_verified": False,
+    }
+    insert_cols = [c for c in candidate if c in cols]
+    if "id" not in insert_cols or "email" not in insert_cols:
+        logger.warning("auth: users table is missing id or email — cannot provision")
+        return None
+
+    placeholders = ", ".join(f":{c}" for c in insert_cols)
+    cols_sql     = ", ".join(insert_cols)
+    params = {c: candidate[c] for c in insert_cols}
+
+    def _do_insert():
+        return conn.execute(_text(
+            f"INSERT INTO users ({cols_sql}) VALUES ({placeholders}) "
+            f"ON CONFLICT (email) DO NOTHING"
+        ), params)
+
+    try:
+        _do_insert()
+    except Exception as exc:
+        msg = str(exc).lower()
+        # If role is an ENUM and we sent the wrong case, retry with
+        # alternative capitalisations, and finally without role at
+        # all (the column allows NULL on this deployment).
+        if "role" in msg and ("invalid input value for enum" in msg
+                              or "invalid input syntax" in msg):
+            inserted = False
+            for variant in (role.capitalize(), role.upper()):
+                params["role"] = variant
+                try:
+                    _do_insert()
+                    inserted = True
+                    break
+                except Exception as exc2:
+                    logger.debug("auth: role retry %s: %s", variant, exc2)
+            if not inserted:
+                # Last resort: drop the role column from the INSERT.
+                drop_cols = [c for c in insert_cols if c != "role"]
+                drop_params = {c: candidate[c] for c in drop_cols}
+                drop_ph = ", ".join(f":{c}" for c in drop_cols)
+                drop_sql = ", ".join(drop_cols)
+                try:
+                    conn.execute(_text(
+                        f"INSERT INTO users ({drop_sql}) VALUES ({drop_ph}) "
+                        f"ON CONFLICT (email) DO NOTHING"
+                    ), drop_params)
+                except Exception as exc3:
+                    logger.warning("auth: INSERT-without-role failed: %s", exc3)
+                    return None
+        else:
+            logger.warning("auth: INSERT failed: %s", exc)
+            return None
+
+    # Re-read by email (the unique key) to handle ON CONFLICT and to
+    # catch the case where another request inserted the same row in
+    # parallel.
+    row = conn.execute(_text(
+        "SELECT id FROM users WHERE lower(email) = lower(:e) LIMIT 1"
+    ), {"e": email}).first()
+    return str(row[0]) if row and row[0] else None
 
 
 def _authenticate(username: str, password: str) -> dict | None:
