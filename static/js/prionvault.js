@@ -2008,6 +2008,41 @@
     searchModeBtn.addEventListener('click', () => {
       setSearchMode(searchModeBtn.dataset.mode === 'ai' ? 'text' : 'ai');
     });
+
+    // Three coloured AI buttons in the search bar — each sends the
+    // current input text as a question to that provider, with the
+    // selection persisted in localStorage so Enter in AI mode picks
+    // the last-used model.
+    function syncAskBtnSelection() {
+      const cur = localStorage.getItem('pv-summary-provider') || 'anthropic';
+      document.querySelectorAll('.pv-ask-btn').forEach(b => {
+        b.style.borderColor = b.dataset.provider === cur ? '#0F3460' : 'transparent';
+        b.style.boxShadow = b.dataset.provider === cur
+          ? '0 0 0 1px white inset' : 'none';
+      });
+    }
+    document.querySelectorAll('.pv-ask-btn').forEach(btn => {
+      btn.addEventListener('mouseenter', () => { btn.style.transform = 'scale(1.15)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.transform = 'scale(1)'; });
+      btn.addEventListener('click', () => {
+        const provider = btn.dataset.provider;
+        localStorage.setItem('pv-summary-provider', provider);
+        syncAskBtnSelection();
+        // Reflect the choice in the answer panel's dropdown too.
+        const rp = document.getElementById('pv-rag-provider');
+        if (rp) rp.value = provider;
+        const text = searchInput.value.trim();
+        if (!text) {
+          searchInput.focus();
+          searchInput.placeholder = 'Escribe tu pregunta y vuelve a pulsar el botón…';
+          return;
+        }
+        setSearchMode('ai');
+        runRagSearch(text);
+      });
+    });
+    syncAskBtnSelection();
+
     document.getElementById('pv-rag-close').addEventListener('click', closeRagPanel);
 
     // Provider picker inside the RAG panel — shares the preference
@@ -2018,6 +2053,7 @@
       ragProv.value = localStorage.getItem('pv-summary-provider') || 'anthropic';
       ragProv.addEventListener('change', () => {
         localStorage.setItem('pv-summary-provider', ragProv.value);
+        syncAskBtnSelection();
       });
     }
     if (ragRerun) {
