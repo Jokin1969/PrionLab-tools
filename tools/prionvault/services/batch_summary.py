@@ -96,12 +96,20 @@ def _library_stats() -> dict:
 
 def start_batch(*, viewer_user_id=None,
                 limit: Optional[int] = None,
-                provider: str = "anthropic") -> Optional[dict]:
+                provider: str = "anthropic",
+                ids: Optional[list] = None) -> Optional[dict]:
     """Start a batch run. Returns None if one is already running.
-    `provider` is one of the keys of ai_summary.PROVIDERS."""
+
+    `provider` is one of the keys of ai_summary.PROVIDERS.
+    `ids` (optional): if given, ONLY these article ids are processed
+    (regenerating whatever summary they already had). When omitted,
+    the default eligibility filter applies (articles with extracted
+    text and no summary yet)."""
     from .ai_summary import PROVIDERS
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider: {provider!r}")
+
+    ids_clean = [str(x) for x in ids] if ids else None
 
     global _thread
     with _lock:
@@ -122,12 +130,14 @@ def start_batch(*, viewer_user_id=None,
             "total_tokens_out":  0,
             "provider":          provider,
             "model":             PROVIDERS[provider]["model"],
+            "selected_count":    len(ids_clean) if ids_clean else 0,
         })
 
     _thread = threading.Thread(
         target=_run_batch,
         kwargs={"viewer_user_id": viewer_user_id,
-                "limit": limit, "provider": provider},
+                "limit": limit, "provider": provider,
+                "ids": ids_clean},
         name="prionvault-batch-summary",
         daemon=True,
     )
@@ -144,16 +154,29 @@ def stop_batch() -> dict:
 
 def _run_batch(*, viewer_user_id=None,
                limit: Optional[int] = None,
-               provider: str = "anthropic") -> None:
+               provider: str = "anthropic",
+               ids: Optional[list] = None) -> None:
     eng = _get_engine()
+
+    # The eligibility filter depends on whether the caller pinned a
+    # specific selection or wants the default "missing-summary" set.
+    if ids:
+        base_where = ("WHERE extracted_text IS NOT NULL "
+                      "  AND length(extracted_text) > 100 "
+                      "  AND id = ANY(CAST(:ids AS uuid[]))")
+        base_params: dict = {"ids": ids}
+    else:
+        base_where = ("WHERE extracted_text IS NOT NULL "
+                      "  AND length(extracted_text) > 100 "
+                      "  AND summary_ai IS NULL")
+        base_params = {}
+
     try:
         with eng.connect() as conn:
-            row = conn.execute(sql_text(
-                """SELECT COUNT(*) FROM articles
-                   WHERE extracted_text IS NOT NULL
-                     AND length(extracted_text) > 100
-                     AND summary_ai IS NULL"""
-            )).first()
+            row = conn.execute(
+                sql_text(f"SELECT COUNT(*) FROM articles {base_where}"),
+                base_params,
+            ).first()
             with _lock:
                 _state["eligible_total"] = int(row[0] or 0)
                 if limit is not None:
@@ -176,16 +199,17 @@ def _run_batch(*, viewer_user_id=None,
 
         try:
             with eng.connect() as conn:
-                params = {"seen": list(seen_ids)} if seen_ids else {}
-                seen_clause = " AND id <> ALL(:seen)" if seen_ids else ""
+                params = dict(base_params)
+                seen_clause = ""
+                if seen_ids:
+                    params["seen"] = list(seen_ids)
+                    seen_clause = " AND id <> ALL(:seen)"
                 row = conn.execute(sql_text(
                     f"""SELECT id, title, authors, year, journal, abstract,
                               doi, pubmed_id, extracted_text
                        FROM articles
-                       WHERE extracted_text IS NOT NULL
-                         AND length(extracted_text) > 100
-                         AND summary_ai IS NULL
-                         {seen_clause}
+                       {base_where}
+                       {seen_clause}
                        ORDER BY year DESC NULLS LAST, created_at DESC NULLS LAST
                        LIMIT 1"""
                 ), params).first()

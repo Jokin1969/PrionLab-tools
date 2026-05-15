@@ -2024,8 +2024,22 @@ def api_batch_summary_start():
                         "detail": (f"{PROVIDERS[provider]['env']} no está "
                                    f"configurada en el entorno.")}), 400
 
+    # Optional selection: process only these article ids (regenerating
+    # any existing summary). When omitted, the default eligibility
+    # filter applies.
+    ids = data.get("ids")
+    if ids is not None:
+        if not isinstance(ids, list):
+            return jsonify({"error": "invalid_ids",
+                            "detail": "ids debe ser una lista."}), 400
+        ids = [str(x) for x in ids if x]
+        if len(ids) > 5000:
+            return jsonify({"error": "too_many_ids",
+                            "detail": "Máximo 5000 ids."}), 400
+
     snap = batch_summary.start_batch(
-        viewer_user_id=_viewer_id(), limit=limit, provider=provider)
+        viewer_user_id=_viewer_id(), limit=limit, provider=provider,
+        ids=ids or None)
     if snap is None:
         return jsonify({"error": "already_running",
                         "status": batch_summary.get_status()}), 409

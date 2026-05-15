@@ -377,6 +377,18 @@
     document.getElementById('pv-bulk-star-off')?.addEventListener('click',
       () => doBulk({is_milestone: false},'sin hito'));
 
+    // Bulk AI summary on the current selection — opens the existing
+    // modal in "selection" mode so the user picks a provider, then
+    // Start sends the chosen ids to the backend.
+    document.getElementById('pv-bulk-summarize')?.addEventListener('click',
+      () => {
+        const count = state.selectedIds.size;
+        if (!count) return;
+        window.PV_SUMMARY_SELECTION = Array.from(state.selectedIds);
+        const btn = document.getElementById('btn-batch-summary');
+        if (btn) btn.click();   // re-uses the modal's open() flow
+      });
+
     // Bulk DELETE — destructive, double-confirm.
     document.getElementById('pv-bulk-delete')?.addEventListener('click',
       async () => {
@@ -3244,6 +3256,9 @@
     function close() {
       modal.style.display = 'none';
       stopPolling();
+      // Drop any in-progress selection so a later open() defaults
+      // back to "all pending" behaviour.
+      window.PV_SUMMARY_SELECTION = null;
     }
     btn.addEventListener('click', open);
     closeBtn.addEventListener('click', close);
@@ -3272,6 +3287,23 @@
         statCard('Con resumen',    lib.with_summary ?? 0, '#15803d') +
         statCard('Pendientes',     lib.eligible ?? 0, '#b45309');
 
+      // Selection-mode banner: only visible when caller seeded ids
+      // and the batch isn't running yet.
+      const banner = document.getElementById('pv-bs-selection-banner');
+      const selN   = (window.PV_SUMMARY_SELECTION || []).length;
+      if (banner) {
+        if (selN > 0 && !s.running) {
+          banner.style.display = 'block';
+          banner.innerHTML =
+            `<strong>Selección activa:</strong> ${selN} artículo${selN === 1 ? '' : 's'} ` +
+            `elegido${selN === 1 ? '' : 's'} desde la lista. Start procesará SOLO esos ` +
+            `(regenerando si ya tenían resumen). Cierra el modal para volver al modo ` +
+            `"todos los pendientes".`;
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+
       if (s.running) {
         progWrap.style.display = 'block';
         const total = s.eligible_total || 0;
@@ -3299,13 +3331,17 @@
         startBtn.style.display = 'inline-flex';
         stopBtn.style.display = 'none';
         currentEl.style.display = 'none';
-        const eligible = lib.eligible || 0;
-        const provMeta = providerMeta[selectedProvider];
-        const provReady = !!(provMeta && provMeta.configured);
-        startBtn.disabled = eligible === 0 || !provReady;
+        const eligible    = lib.eligible || 0;
+        const selectionN  = (window.PV_SUMMARY_SELECTION || []).length;
+        const provMeta    = providerMeta[selectedProvider];
+        const provReady   = !!(provMeta && provMeta.configured);
+        const effective   = selectionN > 0 ? selectionN : eligible;
+        startBtn.disabled = effective === 0 || !provReady;
         startBtn.style.opacity = startBtn.disabled ? '0.5' : '1';
         if (!provReady) {
           startBtn.textContent = 'Elige un proveedor';
+        } else if (selectionN > 0) {
+          startBtn.textContent = `Resumir ${selectionN} seleccionado${selectionN === 1 ? '' : 's'} con ${provMeta.label}`;
         } else {
           startBtn.textContent = eligible > 0
             ? `Start con ${provMeta.label} (${eligible} pendiente${eligible === 1 ? '' : 's'})`
@@ -3344,11 +3380,17 @@
         return;
       }
       startBtn.disabled = true;
+      const selectionIds = window.PV_SUMMARY_SELECTION || null;
       try {
+        const body = { provider: selectedProvider };
+        if (selectionIds && selectionIds.length) body.ids = selectionIds;
         await api('/admin/batch-summary/start', {
           method: 'POST',
-          body: JSON.stringify({ provider: selectedProvider }),
+          body: JSON.stringify(body),
         });
+        // Selection is consumed by Start — clear it so closing/reopening
+        // the modal goes back to the default "all pending" behaviour.
+        window.PV_SUMMARY_SELECTION = null;
         refresh();
         startPolling();
       } catch (e) {
