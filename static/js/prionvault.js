@@ -72,9 +72,11 @@
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      const msg = err.error || ('HTTP ' + res.status);
+      const base = err.error || ('HTTP ' + res.status);
+      const msg  = err.detail ? `${base}: ${err.detail}` : base;
       const e = new Error(msg);
       e.status = res.status;
+      e.detail = err.detail;
       throw e;
     }
     return res.json();
@@ -852,9 +854,12 @@
     function paintStars(value) {
       starsEl.innerHTML = starHtml(value, true, true);
       starsEl.querySelectorAll('.pv-rate-star').forEach(b => b.addEventListener('click', () => {
-        selected = parseInt(b.dataset.value, 10);
+        const clicked = parseInt(b.dataset.value, 10);
+        // Click on the same value that is already selected → clear it,
+        // so the user can back out of a preview without saving.
+        selected = (selected === clicked) ? 0 : clicked;
         paintStars(selected);
-        currentEl.textContent = selected + '/5';
+        currentEl.textContent = selected > 0 ? selected + '/5' : 'sin valorar';
         updateSaveState();
       }));
     }
