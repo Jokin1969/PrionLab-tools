@@ -189,7 +189,7 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                           AND (extracted_text IS NULL
                                OR length(extracted_text) < 200)
                           {seen_clause}
-                        ORDER BY added_at DESC NULLS LAST
+                        ORDER BY created_at DESC NULLS LAST
                         LIMIT 1"""
                 ), params).first()
         except Exception as exc:

@@ -175,7 +175,7 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                          AND length(extracted_text) > 100
                          AND summary_ai IS NULL
                          {seen_clause}
-                       ORDER BY year DESC NULLS LAST, added_at DESC NULLS LAST
+                       ORDER BY year DESC NULLS LAST, created_at DESC NULLS LAST
                        LIMIT 1"""
                 ), params).first()
         except Exception as exc:
