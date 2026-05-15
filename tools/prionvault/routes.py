@@ -2289,8 +2289,11 @@ def api_batch_searchable_stop():
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():
-    """RAG search: returns Claude's grounded answer + cited paper extracts."""
-    from .services.rag import ask, AnthropicNotConfigured
+    """RAG search: returns a grounded answer + cited paper extracts.
+    Body: { query, top_k?, provider? }."""
+    from .services.rag import ask
+    from .services.ai_summary import (PROVIDERS, DEFAULT_PROVIDER,
+                                       NotConfigured as ProviderNotConfigured)
     from .embeddings.embedder import NotConfigured as VoyageNotConfigured
 
     data = request.get_json(force=True, silent=True) or {}
@@ -2303,18 +2306,23 @@ def api_semantic_search():
     except (TypeError, ValueError):
         top_k = 20
 
+    provider = (data.get("provider") or DEFAULT_PROVIDER).strip().lower()
+    if provider not in PROVIDERS:
+        return jsonify({"error": "unknown_provider",
+                        "detail": f"Valid: {sorted(PROVIDERS)}"}), 400
+
     try:
-        result = ask(query, top_k=top_k)
-    except AnthropicNotConfigured:
+        result = ask(query, top_k=top_k, provider=provider)
+    except ProviderNotConfigured as exc:
         return jsonify({"error": "ai_unavailable",
-                        "detail": "ANTHROPIC_API_KEY not set"}), 503
+                        "detail": str(exc)}), 503
     except VoyageNotConfigured:
         return jsonify({"error": "embed_unavailable",
                         "detail": "VOYAGE_API_KEY not set"}), 503
     except Exception as exc:
-        logger.exception("semantic search failed")
+        logger.exception("semantic search failed for provider=%s", provider)
         return jsonify({"error": "rag_failed",
-                        "detail": str(exc)[:300]}), 502
+                        "detail": f"[{provider}] {str(exc)[:280]}"}), 502
 
     # Best-effort usage tracking
     try:

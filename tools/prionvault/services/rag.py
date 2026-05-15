@@ -3,13 +3,14 @@
 Workflow:
   1. Run the vector retriever against the user's question.
   2. Build a numbered context block with the top chunks.
-  3. Ask Claude to answer using ONLY that context, citing the source
-     number for every claim and reporting a confidence level.
+  3. Ask the selected provider (Claude / GPT / Gemini) to answer using
+     ONLY that context, citing the source number for every claim and
+     reporting a confidence level.
   4. Return: synthesized markdown answer + list of cited papers (with
      metadata + the actual extracts) + token/cost usage.
 
 The system prompt is deliberately strict about hallucination: if the
-context doesn't support an answer, Claude has to say so explicitly.
+context doesn't support an answer, the model has to say so explicitly.
 """
 from __future__ import annotations
 
@@ -26,15 +27,13 @@ from ..embeddings.retriever import (
     RetrievalResult,
 )
 from ..embeddings.embedder import NotConfigured as VoyageNotConfigured
+from .ai_summary import PROVIDERS, DEFAULT_PROVIDER, NotConfigured
 
 logger = logging.getLogger(__name__)
 
 
-CHAT_MODEL = "claude-sonnet-4-6"
 MAX_OUTPUT_TOKENS = 1200
-
-# Approximate USD pricing per 1M tokens for the chat model.
-_CHAT_PRICE = {"in": 3.0, "out": 15.0}
+DEFAULT_CHAT_PROVIDER = DEFAULT_PROVIDER
 
 
 _SYSTEM_PROMPT = """Eres un asistente de investigación especializado en literatura \
@@ -94,8 +93,10 @@ class RagResult:
     hybrid_fused:       int = 0
 
 
-class AnthropicNotConfigured(RuntimeError):
-    """Raised when ANTHROPIC_API_KEY is missing."""
+# Backwards-compat alias — the route used to import this name.
+# Now ProviderNotConfigured / NotConfigured (from ai_summary) covers
+# the "no API key for this provider" case uniformly.
+AnthropicNotConfigured = NotConfigured
 
 
 def _build_context(chunks: List[RetrievedChunk],
@@ -148,22 +149,92 @@ def _parse_cited_numbers(text: str) -> List[int]:
     return sorted({int(m) for m in re.findall(r"\[(\d{1,3})\]", text)})
 
 
-def _estimate_cost(tokens_in: Optional[int],
+def _estimate_cost(provider: str, tokens_in: Optional[int],
                    tokens_out: Optional[int]) -> Optional[float]:
-    if tokens_in is None or tokens_out is None:
+    p = PROVIDERS.get(provider)
+    if not p or tokens_in is None or tokens_out is None:
         return None
     return round(
-        (tokens_in * _CHAT_PRICE["in"] + tokens_out * _CHAT_PRICE["out"]) / 1_000_000,
+        (tokens_in * p["price_in"] + tokens_out * p["price_out"]) / 1_000_000,
         5,
     )
 
 
-def ask(query: str, *, top_k: int = 20) -> RagResult:
-    """End-to-end RAG: retrieve, prompt Claude, parse, return."""
-    start = time.monotonic()
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int], Optional[int], str]:
+    """Dispatch to the selected provider. Returns (answer_text,
+    tokens_in, tokens_out, model). Raises NotConfigured if the key is
+    missing, or RuntimeError on empty responses, so the caller can
+    bubble that up as a 503 or 502."""
+    if provider not in PROVIDERS:
+        raise ValueError(f"unknown provider {provider!r}")
+    api_key = os.getenv(PROVIDERS[provider]["env"], "").strip()
     if not api_key:
-        raise AnthropicNotConfigured("ANTHROPIC_API_KEY is not set")
+        raise NotConfigured(f"{PROVIDERS[provider]['env']} is not set")
+    model = PROVIDERS[provider]["model"]
+
+    if provider == "anthropic":
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model, max_tokens=MAX_OUTPUT_TOKENS,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        text = "".join(b.text for b in msg.content
+                       if getattr(b, "type", None) == "text").strip()
+        usage = getattr(msg, "usage", None)
+        return (text,
+                getattr(usage, "input_tokens",  None) if usage else None,
+                getattr(usage, "output_tokens", None) if usage else None,
+                model)
+
+    if provider == "openai":
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        comp = client.chat.completions.create(
+            model=model, max_tokens=MAX_OUTPUT_TOKENS,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": user},
+            ],
+        )
+        choice = comp.choices[0] if comp.choices else None
+        text = ((choice.message.content if choice and choice.message else "")
+                or "").strip()
+        usage = getattr(comp, "usage", None)
+        return (text,
+                getattr(usage, "prompt_tokens",     None) if usage else None,
+                getattr(usage, "completion_tokens", None) if usage else None,
+                model)
+
+    # gemini
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=api_key)
+    resp = client.models.generate_content(
+        model=model, contents=user,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+            temperature=0.3,
+        ),
+    )
+    text = (getattr(resp, "text", "") or "").strip()
+    usage = getattr(resp, "usage_metadata", None)
+    return (text,
+            getattr(usage, "prompt_token_count",     None) if usage else None,
+            getattr(usage, "candidates_token_count", None) if usage else None,
+            model)
+
+
+def ask(query: str, *, top_k: int = 20,
+        provider: str = DEFAULT_CHAT_PROVIDER) -> RagResult:
+    """End-to-end RAG: retrieve, prompt the selected provider, parse,
+    return. Bubbles NotConfigured / VoyageNotConfigured so the caller
+    can map them to 503; other exceptions become 502."""
+    start = time.monotonic()
+    if provider not in PROVIDERS:
+        raise ValueError(f"unknown provider {provider!r}")
 
     retrieval_start = time.monotonic()
     try:
@@ -206,23 +277,14 @@ def ask(query: str, *, top_k: int = 20) -> RagResult:
         f"'Nivel de confianza: alto|medio|bajo'."
     )
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model=CHAT_MODEL,
-        max_tokens=MAX_OUTPUT_TOKENS,
+    answer, tokens_in, tokens_out, model_used = _chat(
+        provider=provider,
         system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
+        user=user_prompt,
     )
-    answer = "".join(
-        b.text for b in message.content if getattr(b, "type", None) == "text"
-    ).strip()
     if not answer:
-        raise RuntimeError("Claude returned an empty response")
-
-    usage = getattr(message, "usage", None)
-    tokens_in  = getattr(usage, "input_tokens",  None) if usage else None
-    tokens_out = getattr(usage, "output_tokens", None) if usage else None
+        raise RuntimeError(
+            f"{PROVIDERS[provider]['label']} returned an empty response")
 
     cited_nums = _parse_cited_numbers(answer)
     confidence = _parse_confidence(answer)
@@ -235,7 +297,7 @@ def ask(query: str, *, top_k: int = 20) -> RagResult:
         cited_numbers=cited_nums,
         tokens_in=tokens_in,
         tokens_out=tokens_out,
-        cost_usd=_estimate_cost(tokens_in, tokens_out),
+        cost_usd=_estimate_cost(provider, tokens_in, tokens_out),
         elapsed_ms=int((time.monotonic() - start) * 1000),
         retrieval_ms=retrieval_ms,
         no_results=False,

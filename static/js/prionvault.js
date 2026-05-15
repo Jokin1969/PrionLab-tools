@@ -1990,6 +1990,24 @@
       setSearchMode(searchModeBtn.dataset.mode === 'ai' ? 'text' : 'ai');
     });
     document.getElementById('pv-rag-close').addEventListener('click', closeRagPanel);
+
+    // Provider picker inside the RAG panel — shares the preference
+    // with the bulk-summary modal via pv-summary-provider.
+    const ragProv = document.getElementById('pv-rag-provider');
+    const ragRerun = document.getElementById('pv-rag-rerun');
+    if (ragProv) {
+      ragProv.value = localStorage.getItem('pv-summary-provider') || 'anthropic';
+      ragProv.addEventListener('change', () => {
+        localStorage.setItem('pv-summary-provider', ragProv.value);
+      });
+    }
+    if (ragRerun) {
+      ragRerun.addEventListener('click', () => {
+        const q = document.getElementById('pv-rag-query');
+        const query = q ? q.textContent.trim() : '';
+        if (query) runRagSearch(query);
+      });
+    }
     document.getElementById('filter-year-min').addEventListener('change', e => {
       state.yearMin = parseInt(e.target.value, 10) || null; state.page = 1; loadArticles();
     });
@@ -3121,8 +3139,17 @@
     if (pagination)  pagination.style.display  = 'none';
 
     qEl.textContent = query;
+    const provEl = document.getElementById('pv-rag-provider');
+    const provider = (provEl && provEl.value) ||
+                     localStorage.getItem('pv-summary-provider') ||
+                     'anthropic';
+    if (provEl && provEl.value !== provider) provEl.value = provider;
+    const provLabel = ({anthropic:'Claude Sonnet 4.6',
+                       openai:'GPT-4.1',
+                       gemini:'Gemini 2.5 Pro'})[provider] || provider;
     stEl.style.color = '#6b7280';
-    stEl.textContent = 'Recuperando fragmentos relevantes y consultando a Claude…';
+    stEl.textContent =
+      `Recuperando fragmentos y consultando a ${provLabel}…`;
     ansEl.style.color = '#9ca3af';
     ansEl.textContent = '…';
     metaEl.textContent = '';
@@ -3132,7 +3159,7 @@
     try {
       const r = await api('/search/semantic', {
         method: 'POST',
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, provider }),
       });
       ansEl.style.color = '#1f2937';
       // Render answer with inline citation hyperlinks
