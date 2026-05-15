@@ -29,3 +29,8 @@ pdfplumber>=0.11.0
 pgvector>=0.2.5
 voyageai>=0.2.0
 tiktoken>=0.7.0
+
+# PrionVault — OCR fallback for scanned PDFs (Phase 6)
+pymupdf>=1.24.0
+pytesseract>=0.3.10
+Pillow>=10.0

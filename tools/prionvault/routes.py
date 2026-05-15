@@ -1752,6 +1752,41 @@ def api_batch_index_stop():
     return jsonify({"ok": True, "status": batch_index.stop_batch()})
 
 
+# ── Batch OCR for scanned PDFs (Phase 6) ────────────────────────────────────
+@prionvault_bp.route("/api/admin/batch-ocr/status", methods=["GET"])
+@admin_required
+def api_batch_ocr_status():
+    from .services import batch_ocr
+    return jsonify(batch_ocr.get_status())
+
+
+@prionvault_bp.route("/api/admin/batch-ocr/start", methods=["POST"])
+@admin_required
+def api_batch_ocr_start():
+    from .services import batch_ocr
+    data = request.get_json(force=True, silent=True) or {}
+    limit = data.get("limit")
+    if limit is not None:
+        try:
+            limit = int(limit)
+            if limit <= 0:
+                limit = None
+        except (TypeError, ValueError):
+            return jsonify({"error": "limit must be a positive integer"}), 400
+    snap = batch_ocr.start_batch(viewer_user_id=_viewer_id(), limit=limit)
+    if snap is None:
+        return jsonify({"error": "already_running",
+                        "status": batch_ocr.get_status()}), 409
+    return jsonify({"ok": True, "status": snap})
+
+
+@prionvault_bp.route("/api/admin/batch-ocr/stop", methods=["POST"])
+@admin_required
+def api_batch_ocr_stop():
+    from .services import batch_ocr
+    return jsonify({"ok": True, "status": batch_ocr.stop_batch()})
+
+
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():

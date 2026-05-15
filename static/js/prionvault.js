@@ -1234,6 +1234,7 @@
       wireDuplicates();
       wireBatchSummary();
       wireBatchIndex();
+      wireBatchOcr();
     }
 
     refreshStats();
@@ -2321,6 +2322,141 @@
       stopBtn.disabled = true;
       try {
         await api('/admin/batch-index/stop', { method: 'POST' });
+        refresh();
+      } catch (e) {
+        stopBtn.disabled = false;
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'No se pudo detener: ' + e.message;
+      }
+    });
+  }
+
+  // ── Batch OCR modal (Phase 6) ────────────────────────────────────────
+  function wireBatchOcr() {
+    const btn   = document.getElementById('btn-batch-ocr');
+    const modal = document.getElementById('pv-batch-ocr-modal');
+    if (!btn || !modal) return;
+    const closeBtn   = document.getElementById('pv-batch-ocr-close');
+    const startBtn   = document.getElementById('pv-bo-start');
+    const stopBtn    = document.getElementById('pv-bo-stop');
+    const statsEl    = document.getElementById('pv-bo-stats');
+    const progWrap   = document.getElementById('pv-bo-progress-wrap');
+    const progLabel  = document.getElementById('pv-bo-progress-label');
+    const progBar    = document.getElementById('pv-bo-progress-bar');
+    const progPct    = document.getElementById('pv-bo-progress-percent');
+    const currentEl  = document.getElementById('pv-bo-current');
+    const errorEl    = document.getElementById('pv-bo-error');
+    const countersEl = document.getElementById('pv-bo-counters');
+
+    let pollHandle = null;
+    function stopPolling() { if (pollHandle) { clearInterval(pollHandle); pollHandle = null; } }
+    function startPolling() { stopPolling(); pollHandle = setInterval(refresh, 2500); }
+    function open()  { modal.style.display = 'flex'; refresh(); startPolling(); }
+    function close() { modal.style.display = 'none'; stopPolling(); }
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    function statCard(label, value, color) {
+      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+                <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
+                <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
+              </div>`;
+    }
+
+    async function refresh() {
+      let s;
+      try {
+        s = await api('/admin/batch-ocr/status');
+      } catch (e) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Error consultando estado: ' + e.message;
+        return;
+      }
+      const lib = s.library_stats || {};
+      statsEl.innerHTML =
+        statCard('Total',       lib.total ?? 0) +
+        statCard('Con PDF',     lib.with_pdf ?? 0) +
+        statCard('Con texto',   lib.with_text ?? 0, '#15803d') +
+        statCard('Pendientes',  lib.eligible ?? 0, '#b45309');
+
+      if (s.running) {
+        progWrap.style.display = 'block';
+        const total = s.eligible_total || 0;
+        const done  = (s.processed || 0) + (s.failed || 0) + (s.skipped || 0);
+        const pct   = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+        progBar.style.width = pct + '%';
+        progPct.textContent = pct + '%';
+        progLabel.textContent = `${done} / ${total} procesados ` +
+          (s.failed ? `(${s.failed} con error) ` : '') +
+          (s.skipped ? `(${s.skipped} sin texto recuperable) ` : '') +
+          (s.stop_requested ? '— deteniendo…' : '— corriendo (OCR lento)…');
+        if (s.current_article) {
+          currentEl.style.display = 'block';
+          currentEl.innerHTML = `<strong>Actual:</strong> ${esc(s.current_article.title)}`;
+        } else {
+          currentEl.style.display = 'none';
+        }
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-flex';
+        stopBtn.disabled = !!s.stop_requested;
+      } else {
+        startBtn.style.display = 'inline-flex';
+        stopBtn.style.display = 'none';
+        currentEl.style.display = 'none';
+        const eligible = lib.eligible || 0;
+        startBtn.disabled = eligible === 0;
+        startBtn.style.opacity = eligible === 0 ? '0.5' : '1';
+        startBtn.textContent = eligible > 0
+          ? `Start (${eligible} pendiente${eligible === 1 ? '' : 's'})`
+          : 'Start';
+        if (s.finished_at && (s.processed || s.failed || s.skipped)) {
+          progWrap.style.display = 'block';
+          const total = s.eligible_total || 0;
+          const done  = (s.processed || 0) + (s.failed || 0) + (s.skipped || 0);
+          const pct   = total > 0 ? Math.round((done / total) * 100) : 100;
+          progBar.style.width = pct + '%';
+          progPct.textContent = pct + '%';
+          progLabel.textContent = `Terminado: ${s.processed} OK, ${s.failed} con error, ${s.skipped} sin texto`;
+        }
+      }
+
+      if (s.last_error) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Último error: ' + s.last_error;
+      } else {
+        errorEl.style.display = 'none';
+      }
+
+      countersEl.textContent = (s.processed || 0) > 0
+        ? `Sesión: ${s.total_chars || 0} caracteres recuperados · ${s.total_pages || 0} páginas OCRd`
+        : '';
+    }
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      try {
+        await api('/admin/batch-ocr/start', {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        refresh();
+        startPolling();
+      } catch (e) {
+        startBtn.disabled = false;
+        if (e.status === 409) {
+          refresh();
+        } else {
+          errorEl.style.display = 'block';
+          errorEl.textContent = 'No se pudo iniciar: ' + e.message;
+        }
+      }
+    });
+
+    stopBtn.addEventListener('click', async () => {
+      stopBtn.disabled = true;
+      try {
+        await api('/admin/batch-ocr/stop', { method: 'POST' });
         refresh();
       } catch (e) {
         stopBtn.disabled = false;

@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python312", "python312Packages.pip"]
+nixPkgs = ["nodejs_20", "python312", "python312Packages.pip", "tesseract"]
 
 [phases.install]
 cmds = [
