@@ -85,6 +85,45 @@ def api_list_articles():
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
 
+    # When the caller filters by a SMART collection, the membership is
+    # not stored anywhere — it's computed by merging the saved rules
+    # into the active filter set. The URL-driven filter still wins
+    # whenever the user explicitly sets the same field (so the user can
+    # narrow a smart collection further from the toolbar).
+    if collection_id:
+        try:
+            from .services import collections as _coll
+            c = _coll.get(collection_id)
+        except Exception:
+            c = None
+        if c and c["kind"] == "smart":
+            merged = _coll.merge_rules_into_filters(c.get("rules") or {}, {
+                "q": q, "authors": authors_q, "journal": journal,
+                "year_min": year_min, "year_max": year_max,
+                "tag": tag_id, "priority_eq": priority_eq,
+                "color_label": color_label, "has_summary": has_summary,
+                "extraction_status": extraction,
+                "is_flagged": is_flagged, "is_milestone": is_milestone,
+                "in_prionread": in_prionread,
+                "is_favorite": is_favorite, "is_read": is_read,
+            })
+            q          = merged.get("q") or ""
+            authors_q  = merged.get("authors") or ""
+            journal    = merged.get("journal") or ""
+            year_min   = merged.get("year_min")
+            year_max   = merged.get("year_max")
+            tag_id     = merged.get("tag")
+            priority_eq = merged.get("priority_eq")
+            color_label = merged.get("color_label")
+            has_summary = merged.get("has_summary")
+            extraction  = merged.get("extraction_status")
+            is_flagged   = merged.get("is_flagged")
+            is_milestone = merged.get("is_milestone")
+            in_prionread = merged.get("in_prionread")
+            is_favorite  = merged.get("is_favorite")
+            is_read      = merged.get("is_read")
+            collection_id = None   # do NOT join the link table
+
     s = _session()
     try:
         return _list_articles_impl(s, q, year_min, year_max, journal,

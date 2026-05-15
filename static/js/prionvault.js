@@ -146,15 +146,25 @@
       const kindIcon = c.kind === 'smart'
         ? '<i class="fas fa-bolt" style="font-size:10px;opacity:0.5;"></i>'
         : '<i class="fas fa-folder" style="font-size:10px;opacity:0.5;"></i>';
+      btn.title = (c.description ? c.description + '\n\n' : '') +
+                  (IS_ADMIN
+                    ? '• Click: filtrar la lista\n• Shift+click: editar\n• Click derecho: eliminar'
+                    : 'Click para filtrar la lista');
       btn.innerHTML = `
         <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;">
           <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${esc(c.color || '#9ca3af')}"></span>
           ${kindIcon}
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.description || c.name)}">${esc(c.name)}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</span>
         </span>
         <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${c.article_count}</span>
       `;
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (ev) => {
+        // Shift+click → edit the collection (admin only).
+        if (ev.shiftKey && IS_ADMIN) {
+          ev.preventDefault();
+          openCollectionEditor(c);
+          return;
+        }
         state.collectionId = state.collectionId === c.id ? null : c.id;
         state.page = 1;
         document.querySelectorAll('#collection-list .pv-nav-btn').forEach(b => {
@@ -184,40 +194,133 @@
 
   function wireNewCollectionButton() {
     const btn = document.getElementById('btn-new-collection');
-    if (!btn) return;
-    btn.addEventListener('click', async () => {
-      const name = prompt('Nombre de la colección:');
-      if (!name || !name.trim()) return;
-      const description = prompt('Descripción (opcional):') || '';
-      const palette = {
-        rojo: '#ef4444', naranja: '#fb923c', amarillo: '#f59e0b',
-        verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
-        rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
-      };
-      const colorInput = prompt(
-        'Color (hex o nombre: rojo / naranja / amarillo / verde / ' +
-        'azul / morado / rosa / gris / cian). Vacío = sin color.'
-      );
-      let color = null;
-      if (colorInput && colorInput.trim()) {
-        const v = colorInput.trim().toLowerCase();
-        color = palette[v] || (v.startsWith('#') ? v : null);
+    if (btn) btn.addEventListener('click', () => openCollectionEditor(null));
+    wireCollectionEditor();
+  }
+
+  // ── Collection editor modal (create + edit, manual + smart) ────────
+  let _collectionEditing = null;   // existing collection id when editing
+
+  function wireCollectionEditor() {
+    const modal = document.getElementById('pv-collection-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+
+    const closeBtn  = document.getElementById('pv-coll-close');
+    const cancelBtn = document.getElementById('pv-coll-cancel');
+    const saveBtn   = document.getElementById('pv-coll-save');
+    const rulesBox  = document.getElementById('pv-coll-rules');
+    const errBox    = document.getElementById('pv-coll-error');
+
+    function close() { modal.style.display = 'none'; _collectionEditing = null; }
+    closeBtn.addEventListener('click', close);
+    cancelBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    // Toggle rules visibility when kind changes.
+    modal.querySelectorAll('input[name="pv-coll-kind"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        rulesBox.style.display = radio.value === 'smart' && radio.checked
+                                 ? 'block' : (rulesBox.style.display);
+        const isSmart = modal.querySelector('input[name="pv-coll-kind"]:checked').value === 'smart';
+        rulesBox.style.display = isSmart ? 'block' : 'none';
+      });
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      errBox.style.display = 'none';
+      const name = document.getElementById('pv-coll-name').value.trim();
+      if (!name) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'El nombre es obligatorio.';
+        return;
       }
+      const description = document.getElementById('pv-coll-description').value.trim() || null;
+      const color       = document.getElementById('pv-coll-color').value || null;
+      const kind = modal.querySelector('input[name="pv-coll-kind"]:checked').value;
+
+      let rules = {};
+      if (kind === 'smart') {
+        const g = id => document.getElementById(id);
+        const grab = (id, key, parser = v => v) => {
+          const v = (g(id)?.value || '').trim();
+          if (v !== '') rules[key] = parser(v);
+        };
+        grab('pv-r-q',            'q');
+        grab('pv-r-authors',      'authors');
+        grab('pv-r-journal',      'journal');
+        grab('pv-r-year-min',     'year_min',    v => parseInt(v, 10));
+        grab('pv-r-year-max',     'year_max',    v => parseInt(v, 10));
+        grab('pv-r-priority',     'priority_eq', v => parseInt(v, 10));
+        grab('pv-r-color',        'color_label');
+        grab('pv-r-has-summary',  'has_summary');
+        const fl = g('pv-r-is-flagged').value;
+        if (fl !== '')   rules.is_flagged   = fl === '1';
+        const mi = g('pv-r-is-milestone').value;
+        if (mi !== '')   rules.is_milestone = mi === '1';
+      }
+
+      saveBtn.disabled = true;
+      const original = saveBtn.textContent;
+      saveBtn.textContent = 'Guardando…';
       try {
-        await api('/collections', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: name.trim(),
-            description: description.trim() || null,
-            kind: 'manual',
-            color,
-          }),
-        });
+        const body = JSON.stringify({ name, description, color, kind, rules });
+        if (_collectionEditing) {
+          await api(`/collections/${_collectionEditing}`, { method: 'PATCH', body });
+        } else {
+          await api('/collections', { method: 'POST', body });
+        }
+        close();
         refreshCollections();
       } catch (e) {
-        alert('No se pudo crear la colección: ' + e.message);
+        errBox.style.display = 'block';
+        errBox.textContent = 'Error: ' + e.message;
+        saveBtn.disabled = false;
+        saveBtn.textContent = original;
       }
     });
+  }
+
+  function openCollectionEditor(existing) {
+    const modal = document.getElementById('pv-collection-modal');
+    if (!modal) return;
+    _collectionEditing = existing ? existing.id : null;
+
+    // Reset all fields.
+    document.getElementById('pv-coll-name').value = existing?.name || '';
+    document.getElementById('pv-coll-description').value = existing?.description || '';
+    document.getElementById('pv-coll-color').value = existing?.color || '';
+    const kindVal = existing?.kind || 'manual';
+    modal.querySelectorAll('input[name="pv-coll-kind"]').forEach(r => {
+      r.checked = r.value === kindVal;
+    });
+    document.getElementById('pv-coll-rules').style.display =
+      kindVal === 'smart' ? 'block' : 'none';
+
+    const rules = existing?.rules || {};
+    document.getElementById('pv-r-q').value = rules.q || '';
+    document.getElementById('pv-r-authors').value = rules.authors || '';
+    document.getElementById('pv-r-journal').value = rules.journal || '';
+    document.getElementById('pv-r-year-min').value = rules.year_min ?? '';
+    document.getElementById('pv-r-year-max').value = rules.year_max ?? '';
+    document.getElementById('pv-r-priority').value = rules.priority_eq ?? '';
+    document.getElementById('pv-r-color').value = rules.color_label || '';
+    document.getElementById('pv-r-has-summary').value = rules.has_summary || '';
+    document.getElementById('pv-r-is-flagged').value =
+      rules.is_flagged === true ? '1' : (rules.is_flagged === false ? '0' : '');
+    document.getElementById('pv-r-is-milestone').value =
+      rules.is_milestone === true ? '1' : (rules.is_milestone === false ? '0' : '');
+
+    document.getElementById('pv-coll-error').style.display = 'none';
+    document.getElementById('pv-coll-title').innerHTML =
+      `<i class="fas fa-folder-plus" style="color:#0F3460;margin-right:8px;"></i>` +
+      (existing ? `Editar “${esc(existing.name)}”` : 'Nueva colección');
+    const sb = document.getElementById('pv-coll-save');
+    sb.disabled = false;
+    sb.textContent = existing ? 'Guardar cambios' : 'Crear colección';
+
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('pv-coll-name').focus(), 30);
   }
 
   async function openAddToCollectionPicker(articleIds) {

@@ -34,7 +34,13 @@ _SMART_RULE_KEYS = {
 
 
 def list_all(viewer_id=None) -> List[dict]:
-    """Return all collections with their article count."""
+    """Return all collections with their article count.
+
+    For smart collections the count is computed live by running the
+    same WHERE expression the article-list endpoint would produce
+    against the rules JSON. Cheap as long as the rule set is small;
+    if smart collections grow into the hundreds we'd want to cache it.
+    """
     eng = _get_engine()
     with eng.connect() as conn:
         rows = conn.execute(sql_text(
@@ -45,7 +51,16 @@ def list_all(viewer_id=None) -> List[dict]:
                FROM prionvault_collection c
                ORDER BY lower(c.name) ASC"""
         )).mappings().all()
-    return [_shape(r) for r in rows]
+        items = [_shape(r) for r in rows]
+        for c in items:
+            if c["kind"] == "smart":
+                try:
+                    c["article_count"] = _count_smart(conn, c["rules"] or {})
+                except Exception as exc:
+                    logger.warning("collections: smart count failed for "
+                                   "%s: %s", c["id"], exc)
+                    c["article_count"] = 0
+    return items
 
 
 def get(cid) -> Optional[dict]:
@@ -230,3 +245,99 @@ def _filter_rules(rules: dict) -> dict:
 def _json_dumps(obj) -> str:
     import json
     return json.dumps(obj, default=str)
+
+
+def merge_rules_into_filters(rules: dict, current: dict) -> dict:
+    """Return a new dict of filter values where each rule fills in only
+    the keys that `current` has not already set. The URL-driven filter
+    therefore *narrows* the smart collection further when the user
+    combines them.
+    """
+    out = dict(current)
+    rules = _filter_rules(rules or {})
+
+    def _take_str(k):
+        if not out.get(k) and rules.get(k):
+            out[k] = str(rules[k]).strip() or None
+
+    def _take_int(k):
+        if out.get(k) is None and rules.get(k) not in (None, ""):
+            try: out[k] = int(rules[k])
+            except (TypeError, ValueError): pass
+
+    def _take_bool(k):
+        if out.get(k) is None and k in rules:
+            v = rules[k]
+            if v is True  or v == "1" or v == 1 or str(v).lower() == "true":
+                out[k] = True
+            elif v is False or v == "0" or v == 0 or str(v).lower() == "false":
+                out[k] = False
+
+    for k in ("q", "authors", "journal", "color_label",
+              "has_summary", "extraction_status"):
+        _take_str(k)
+    for k in ("year_min", "year_max", "tag", "priority_eq"):
+        _take_int(k)
+    for k in ("is_flagged", "is_milestone",
+              "in_prionread", "is_favorite", "is_read"):
+        _take_bool(k)
+    return out
+
+
+def _count_smart(conn, rules: dict) -> int:
+    """Live count of articles that match this smart collection's rules.
+
+    Builds a minimal WHERE that mirrors the article-list endpoint;
+    intentionally narrower than the real query (no tag JOIN, no
+    in_prionread EXISTS) to keep the count cheap. Those extra
+    constraints are still applied at view-time when the user opens
+    the collection in the list."""
+    where = []
+    params: dict = {}
+
+    if rules.get("q"):
+        where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
+                     "coalesce(authors,'') ILIKE :q)")
+        params["q"] = f"%{rules['q']}%"
+    if rules.get("authors"):
+        where.append("coalesce(authors,'') ILIKE :authors_q")
+        params["authors_q"] = f"%{rules['authors']}%"
+    if rules.get("journal"):
+        where.append("coalesce(journal,'') ILIKE :journal")
+        params["journal"] = f"%{rules['journal']}%"
+    if rules.get("year_min") not in (None, ""):
+        try:
+            params["year_min"] = int(rules["year_min"])
+            where.append("year >= :year_min")
+        except (TypeError, ValueError): pass
+    if rules.get("year_max") not in (None, ""):
+        try:
+            params["year_max"] = int(rules["year_max"])
+            where.append("year <= :year_max")
+        except (TypeError, ValueError): pass
+    if rules.get("priority_eq") not in (None, ""):
+        try:
+            params["priority_eq"] = int(rules["priority_eq"])
+            where.append("priority = :priority_eq")
+        except (TypeError, ValueError): pass
+    cl = (rules.get("color_label") or "").strip().lower() or None
+    if cl == "none":
+        where.append("color_label IS NULL")
+    elif cl:
+        where.append("lower(color_label) = :color_label")
+        params["color_label"] = cl
+    if rules.get("is_flagged") is True:    where.append("is_flagged IS TRUE")
+    if rules.get("is_flagged") is False:   where.append("(is_flagged IS FALSE OR is_flagged IS NULL)")
+    if rules.get("is_milestone") is True:  where.append("is_milestone IS TRUE")
+    if rules.get("is_milestone") is False: where.append("(is_milestone IS FALSE OR is_milestone IS NULL)")
+    if rules.get("has_summary") == "ai":      where.append("summary_ai IS NOT NULL")
+    elif rules.get("has_summary") == "human": where.append("summary_human IS NOT NULL")
+    elif rules.get("has_summary") == "none":  where.append("summary_ai IS NULL AND summary_human IS NULL")
+    if rules.get("extraction_status"):
+        where.append("lower(extraction_status) = :ex")
+        params["ex"] = str(rules["extraction_status"]).lower()
+
+    sql = "SELECT COUNT(*) FROM articles"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    return int(conn.execute(sql_text(sql), params).scalar() or 0)

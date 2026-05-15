@@ -1078,6 +1078,172 @@
   </div>
 </div>
 
+<!-- ── Collection editor modal (manual + smart) ───────────────────── -->
+<div id="pv-collection-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:680px;">
+    <button class="pv-modal-close" id="pv-coll-close" aria-label="Close">×</button>
+    <h2 id="pv-coll-title" style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-folder-plus" style="color:#0F3460;margin-right:8px;"></i>Nueva colección
+    </h2>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+      <strong>Manual</strong> = añades / quitas artículos a mano. <strong>Inteligente</strong> =
+      el contenido se filtra solo según las reglas que definas (se actualiza en vivo a medida
+      que cambian los artículos de la biblioteca).
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+      <label style="font-size:12px;color:#6b7280;">
+        Nombre
+        <input id="pv-coll-name" type="text" maxlength="200"
+               style="width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                      font-size:13px;margin-top:3px;outline:none;">
+      </label>
+      <label style="font-size:12px;color:#6b7280;">
+        Color
+        <select id="pv-coll-color"
+                style="width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                       font-size:13px;margin-top:3px;background:white;">
+          <option value="">(sin color)</option>
+          <option value="#ef4444">Rojo</option>
+          <option value="#fb923c">Naranja</option>
+          <option value="#f59e0b">Amarillo</option>
+          <option value="#22c55e">Verde</option>
+          <option value="#3b82f6">Azul</option>
+          <option value="#a855f7">Morado</option>
+          <option value="#ec4899">Rosa</option>
+          <option value="#06b6d4">Cian</option>
+          <option value="#6b7280">Gris</option>
+        </select>
+      </label>
+    </div>
+
+    <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:10px;">
+      Descripción (opcional)
+      <input id="pv-coll-description" type="text" maxlength="500"
+             style="width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                    font-size:13px;margin-top:3px;outline:none;">
+    </label>
+
+    <div style="display:flex;gap:14px;margin-bottom:10px;">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#111827;cursor:pointer;">
+        <input type="radio" name="pv-coll-kind" value="manual" checked>
+        Manual
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#111827;cursor:pointer;">
+        <input type="radio" name="pv-coll-kind" value="smart">
+        Inteligente
+      </label>
+    </div>
+
+    <fieldset id="pv-coll-rules"
+              style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;
+                     background:#fafafa;margin-bottom:14px;">
+      <legend style="font-size:11px;color:#6b7280;text-transform:uppercase;
+                     letter-spacing:0.05em;font-weight:600;padding:0 6px;">
+        Reglas (AND entre los campos)
+      </legend>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          Búsqueda libre (FTS)
+          <input id="pv-r-q" type="text"
+                 placeholder="prion OR PrPSc..."
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Autores contiene
+          <input id="pv-r-authors" type="text" placeholder="Castilla, Soto..."
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          Año ≥
+          <input id="pv-r-year-min" type="number" min="1900" max="2100"
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Año ≤
+          <input id="pv-r-year-max" type="number" min="1900" max="2100"
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Prioridad =
+          <select id="pv-r-priority" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option>
+            <option value="5">5 (hitos)</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Color
+          <select id="pv-r-color" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="red">Rojo</option><option value="orange">Naranja</option>
+            <option value="yellow">Amarillo</option><option value="green">Verde</option>
+            <option value="blue">Azul</option><option value="purple">Morado</option>
+            <option value="none">Sin color</option>
+          </select>
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          Resumen IA
+          <select id="pv-r-has-summary" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="ai">Con resumen</option>
+            <option value="none">Sin resumen</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Bandera 🚩
+          <select id="pv-r-is-flagged" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Con bandera</option>
+            <option value="0">Sin bandera</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Hito ★
+          <select id="pv-r-is-milestone" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Es hito</option>
+            <option value="0">No es hito</option>
+          </select>
+        </label>
+      </div>
+
+      <label style="display:block;font-size:11.5px;color:#6b7280;">
+        Revista contiene
+        <input id="pv-r-journal" type="text"
+               style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                      font-size:12.5px;margin-top:2px;outline:none;">
+      </label>
+    </fieldset>
+
+    <div id="pv-coll-error" style="display:none;font-size:12px;color:#b91c1c;
+                                    background:#fef2f2;border-radius:7px;padding:8px 10px;
+                                    margin-bottom:10px;border:1px solid #fecaca;"></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button id="pv-coll-cancel"
+              style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;
+                     font-size:13px;color:#374151;cursor:pointer;">Cancelar</button>
+      <button id="pv-coll-save"
+              style="padding:7px 18px;border-radius:8px;border:none;background:#0F3460;
+                     color:white;font-size:13px;font-weight:600;cursor:pointer;">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Bulk DOI / PMID lookup modal ──────────────────────────────── -->
 <div id="pv-bulk-lookup-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
