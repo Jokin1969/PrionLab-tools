@@ -62,6 +62,25 @@
                                   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const supHtml = s => esc(s).replace(/\^(\S[^\^\n]*?)\^/g, '<sup>$1</sup>');
 
+  // Lightweight Markdown rendering for AI summaries.
+  // Handles the three constructs the model actually produces:
+  //   ## Heading       → coloured uppercase block
+  //   ### Heading      → smaller subheading
+  //   **bold**         → <strong>bold</strong>
+  // Input is escaped first so we never inject untrusted HTML.
+  function markdownLite(text) {
+    let html = supHtml(text);
+    html = html.replace(/^##\s+(.+)$/gm,
+      '<div style="font-size:12.5px;font-weight:700;color:#0F3460;' +
+      'text-transform:uppercase;letter-spacing:0.04em;' +
+      'margin:14px 0 4px;">$1</div>');
+    html = html.replace(/^###\s+(.+)$/gm,
+      '<div style="font-size:12px;font-weight:700;color:#374151;' +
+      'margin:10px 0 3px;">$1</div>');
+    html = html.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+    return html;
+  }
+
   function escapeHtml(s) {
     return String(s ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1780,7 +1799,7 @@
     const body = a.summary_ai
       ? `<div style="font-size:14px;color:#4b5563;line-height:1.65;
                      background:#f9fafb;border-radius:8px;padding:10px 12px;
-                     white-space:pre-wrap;">${supHtml(a.summary_ai)}</div>`
+                     white-space:pre-wrap;">${markdownLite(a.summary_ai)}</div>`
       : `<div style="font-size:13px;color:#9ca3af;font-style:italic;
                      background:#f9fafb;border-radius:8px;padding:10px 12px;">
           Sin resumen IA todavía${IS_ADMIN ? ' — clic en ✨ Generate para crearlo.' : '.'}
@@ -3039,10 +3058,11 @@
 
   // ── RAG (Ask the library) — Phase 5 ──────────────────────────────────
   function annotateCitations(answer, citations) {
-    // Wrap inline [N] markers with a clickable span that scrolls to / opens
-    // the matching citation card below.
+    // Wrap inline [N] markers with a clickable span that scrolls to /
+    // opens the matching citation card below. Runs after markdownLite
+    // so headings / bold inside the answer are rendered too.
     const byNum = new Map(citations.map(c => [c.n, c]));
-    return esc(answer).replace(/\[(\d{1,3})\]/g, (m, nStr) => {
+    return markdownLite(answer).replace(/\[(\d{1,3})\]/g, (m, nStr) => {
       const n = parseInt(nStr, 10);
       const c = byNum.get(n);
       if (!c) return m;
