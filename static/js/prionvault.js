@@ -2128,6 +2128,26 @@
     });
     syncAskBtnSelection();
 
+    // Visual signal that an input has text — easy to miss otherwise
+    // when the placeholder/value contrast is low.
+    function paintInputState(wrap, hasText) {
+      if (!wrap) return;
+      wrap.style.background   = hasText ? '#eff6ff' : '#f3f4f6';
+      wrap.style.borderColor  = hasText ? '#bfdbfe' : 'transparent';
+    }
+    const searchWrap = document.getElementById('pv-search-wrap');
+    paintInputState(searchWrap, !!searchInput.value.trim());
+    searchInput.addEventListener('input',
+      () => paintInputState(searchWrap, !!searchInput.value.trim()));
+
+    const bulkLookupWrap = document.getElementById('pv-bulk-lookup-wrap');
+    const bulkLookupInputEl = document.getElementById('pv-bulk-lookup-input');
+    if (bulkLookupWrap && bulkLookupInputEl) {
+      paintInputState(bulkLookupWrap, !!bulkLookupInputEl.value.trim());
+      bulkLookupInputEl.addEventListener('input',
+        () => paintInputState(bulkLookupWrap, !!bulkLookupInputEl.value.trim()));
+    }
+
     document.getElementById('pv-rag-close').addEventListener('click', closeRagPanel);
 
     // Provider picker inside the RAG panel — shares the preference

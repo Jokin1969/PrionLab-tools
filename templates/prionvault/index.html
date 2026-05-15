@@ -209,8 +209,11 @@
     <div style="position:sticky;top:0;z-index:10;background:white;border-bottom:1px solid #e5e7eb;
                 padding:14px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <div style="display:flex;align-items:center;gap:8px;background:#f3f4f6;border-radius:10px;
-                    padding:8px 12px;flex:5;min-width:0;">
+        <div id="pv-search-wrap"
+             style="display:flex;align-items:center;gap:8px;background:#f3f4f6;border-radius:10px;
+                    padding:8px 12px;flex:5;min-width:0;
+                    border:1px solid transparent;
+                    transition:background 0.15s ease, border-color 0.15s ease;">
         <i class="fas fa-search" style="color:#9ca3af;font-size:13px;flex-shrink:0;"></i>
         <input type="text" id="pv-search-input"
                style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#111827;min-width:0;"
@@ -239,8 +242,11 @@
                          transition:transform 0.12s ease, border-color 0.15s;"></button>
         </div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:10px;
-                    padding:8px 10px;flex:1;min-width:170px;max-width:280px;">
+        <div id="pv-bulk-lookup-wrap"
+             style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:10px;
+                    padding:8px 10px;flex:1;min-width:170px;max-width:280px;
+                    border:1px solid transparent;
+                    transition:background 0.15s ease, border-color 0.15s ease;">
           <i class="fas fa-list-ol" style="color:#9ca3af;font-size:13px;flex-shrink:0;"></i>
           <input type="text" id="pv-bulk-lookup-input"
                  placeholder="DOIs / PMIDs en lote…"
