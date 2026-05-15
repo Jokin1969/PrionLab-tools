@@ -64,6 +64,7 @@ def api_list_articles():
     year_min    = request.args.get("year_min", type=int)
     year_max    = request.args.get("year_max", type=int)
     journal     = (request.args.get("journal") or "").strip()
+    authors_q   = (request.args.get("authors") or "").strip()
     tag_id      = request.args.get("tag", type=int)
     has_summary = request.args.get("has_summary")
     in_prionread_raw = request.args.get("in_prionread")
@@ -86,6 +87,7 @@ def api_list_articles():
     s = _session()
     try:
         return _list_articles_impl(s, q, year_min, year_max, journal,
+                                   authors_q,
                                    tag_id, has_summary, in_prionread,
                                    is_flagged, is_milestone, color_label,
                                    priority_eq, extraction,
@@ -103,6 +105,7 @@ _VALID_COLOR_LABELS = {"red", "orange", "yellow", "green", "blue", "purple"}
 
 
 def _list_articles_impl(s, q, year_min, year_max, journal,
+                        authors_q,
                         tag_id, has_summary, in_prionread,
                         is_flagged, is_milestone, color_label,
                         priority_eq, extraction,
@@ -119,8 +122,16 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     params: dict = {}
 
     if q:
+        # websearch_to_tsquery (Postgres >= 11) gives the user a
+        # Google-like syntax for free:
+        #   "prion protein"   — exact phrase
+        #   BSE -review       — BSE without "review"
+        #   Castilla OR Soto  — either author
+        #   Castilla BSE      — both (default AND between bare terms)
+        # plainto_tsquery is kept as a fallback for clusters where
+        # websearch is unavailable (very old Postgres).
         conditions.append(
-            "search_vector @@ plainto_tsquery('simple', :q)"
+            "search_vector @@ websearch_to_tsquery('simple', :q)"
             if "search_vector" in pv_cols
             else "(title ILIKE :q_like OR coalesce(abstract,'') ILIKE :q_like)"
         )
@@ -136,6 +147,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     if journal:
         conditions.append("journal ILIKE :journal")
         params["journal"] = f"%{journal}%"
+    if authors_q:
+        # Search only the authors column so "Castilla" never matches
+        # "Castilla-La Mancha" in the body / summary.
+        conditions.append("coalesce(authors,'') ILIKE :authors_q")
+        params["authors_q"] = f"%{authors_q}%"
 
     if has_summary == "ai" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NOT NULL")

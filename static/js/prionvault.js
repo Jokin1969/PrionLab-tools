@@ -30,6 +30,7 @@
     yearMin: null,
     yearMax: null,
     journal: '',
+    authors: '',
     tagId: null,
     hasSummary: null,
     inPrionread: null,   // null = all, true = in PrionRead, false = not in PrionRead
@@ -378,6 +379,7 @@
     if (state.yearMin)             params.set('year_min', state.yearMin);
     if (state.yearMax)             params.set('year_max', state.yearMax);
     if (state.journal)             params.set('journal', state.journal);
+    if (state.authors)             params.set('authors', state.authors);
     if (state.tagId)               params.set('tag', state.tagId);
     if (state.hasSummary)          params.set('has_summary', state.hasSummary);
     if (state.inPrionread !== null) params.set('in_prionread', state.inPrionread ? '1' : '0');
@@ -1994,6 +1996,9 @@
     document.getElementById('filter-year-max').addEventListener('change', e => {
       state.yearMax = parseInt(e.target.value, 10) || null; state.page = 1; loadArticles();
     });
+    document.getElementById('filter-authors').addEventListener('input', debounce(e => {
+      state.authors = e.target.value.trim(); state.page = 1; loadArticles();
+    }, 250));
     document.getElementById('filter-journal').addEventListener('input', debounce(e => {
       state.journal = e.target.value.trim(); state.page = 1; loadArticles();
     }, 250));

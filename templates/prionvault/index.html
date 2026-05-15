@@ -222,6 +222,14 @@
           <i class="fas fa-bolt"></i> AI
         </button>
       </div>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:8px;padding-left:4px;">
+        Operadores:
+        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">prion AND BSE</code>
+        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">Castilla OR Soto</code>
+        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">BSE -review</code>
+        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">"prion protein"</code>
+        · Para autor exacto usa el filtro <strong>Autores</strong>.
+      </div>
 
       <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
@@ -231,6 +239,12 @@
           <span style="color:#d1d5db;">—</span>
           <input type="number" id="filter-year-max" class="pv-filter-input"
                  placeholder="to" min="1900" max="2100" style="width:68px;">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+          Autores
+          <input type="text" id="filter-authors" class="pv-filter-input"
+                 placeholder="Castilla, Soto…" style="width:140px;"
+                 title="Coincidencia parcial sobre el campo 'authors' del artículo">
         </label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Journal
