@@ -75,25 +75,25 @@ def _library_stats() -> dict:
                        COUNT(*) AS total,
                        COUNT(*) FILTER (WHERE dropbox_path IS NOT NULL) AS with_pdf,
                        COUNT(*) FILTER (
-                         WHERE extracted_text IS NOT NULL
-                           AND length(extracted_text) >= 200
-                       ) AS with_text,
-                       COUNT(*) FILTER (
                          WHERE dropbox_path IS NOT NULL
                            AND (extracted_text IS NULL
                                 OR length(extracted_text) < 200)
-                       ) AS eligible
+                       ) AS eligible,
+                       (SELECT COUNT(DISTINCT (metadata->>'article_id')::uuid)
+                          FROM prionvault_usage
+                         WHERE action = 'ocr_extract')        AS ocrd
                    FROM articles"""
             )).first()
             return {
-                "total":     int(row[0] or 0),
-                "with_pdf":  int(row[1] or 0),
-                "with_text": int(row[2] or 0),
-                "eligible":  int(row[3] or 0),
+                "total":    int(row[0] or 0),
+                "with_pdf": int(row[1] or 0),
+                "eligible": int(row[2] or 0),
+                "ocrd":     int(row[3] or 0),
             }
     except Exception as exc:
         logger.warning("batch_ocr: library_stats failed: %s", exc)
-        return {"total": 0, "with_pdf": 0, "with_text": 0, "eligible": 0}
+        return {"total": 0, "with_pdf": 0, "eligible": 0, "ocrd": 0,
+                "error": str(exc)[:300]}
 
 
 def start_batch(*, viewer_user_id=None,

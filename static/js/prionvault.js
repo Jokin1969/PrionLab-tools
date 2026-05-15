@@ -3135,10 +3135,10 @@
       }
       const lib = s.library_stats || {};
       statsEl.innerHTML =
-        statCard('Total',       lib.total ?? 0) +
-        statCard('Con PDF',     lib.with_pdf ?? 0) +
-        statCard('Con texto',   lib.with_text ?? 0, '#15803d') +
-        statCard('Pendientes',  lib.eligible ?? 0, '#b45309');
+        statCard('Total',      lib.total ?? 0) +
+        statCard('Con PDF',    lib.with_pdf ?? 0) +
+        statCard('OCR’d',      lib.ocrd ?? 0, '#15803d') +
+        statCard('Pendientes', lib.eligible ?? 0, '#b45309');
 
       if (s.running) {
         progWrap.style.display = 'block';

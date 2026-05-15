@@ -43,6 +43,7 @@ _PRIONVAULT_MIGRATIONS = (
     "007_articles_columns_repair.sql",
     "008_article_supplementary.sql",
     "009_articles_pdf_searchable.sql",
+    "010_pdf_searchable_backfill_fix.sql",
 )
 
 _BOOTSTRAP_SQL = """
