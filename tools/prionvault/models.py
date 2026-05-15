@@ -288,9 +288,15 @@ class UsageEvent(Base):
     __tablename__ = "prionvault_usage"
 
     id          = Column(BigInteger, primary_key=True)
+    # Nullable on purpose: the row is a cost-tracking aid. A
+    # background worker whose session lacks a user_id (auto-provision
+    # could not run, anonymous admin emergency login, etc.) should
+    # still be allowed to write the usage record anonymously rather
+    # than failing its surrounding work with NotNullViolation. The
+    # 011 migration relaxes the underlying DB constraint to match.
     user_id     = Column(UUID(as_uuid=True),
                          ForeignKey("users.id", ondelete="CASCADE"),
-                         nullable=False)
+                         nullable=True)
     action      = Column(String(40), nullable=False)
     cost_usd    = Column(Numeric(10, 5))
     tokens_in   = Column(Integer)

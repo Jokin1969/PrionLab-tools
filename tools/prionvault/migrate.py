@@ -44,6 +44,7 @@ _PRIONVAULT_MIGRATIONS = (
     "008_article_supplementary.sql",
     "009_articles_pdf_searchable.sql",
     "010_pdf_searchable_backfill_fix.sql",
+    "011_prionvault_usage_user_id_nullable.sql",
 )
 
 _BOOTSTRAP_SQL = """
