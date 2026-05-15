@@ -156,6 +156,7 @@
       <div style="display:flex;align-items:center;gap:6px;padding:14px 10px 4px;">
         <button id="btn-toggle-collections" type="button"
                 aria-expanded="true"
+                aria-controls="collection-list"
                 title="Plegar / desplegar Colecciones"
                 style="background:transparent;border:none;color:rgba(255,255,255,0.32);
                        cursor:pointer;padding:0;font-size:9.5px;flex:1;text-align:left;
@@ -175,6 +176,7 @@
       <div style="display:flex;align-items:center;gap:6px;padding:14px 10px 4px;">
         <button id="btn-toggle-tags" type="button"
                 aria-expanded="true"
+                aria-controls="tag-list"
                 title="Plegar / desplegar Tags"
                 style="background:transparent;border:none;color:rgba(255,255,255,0.32);
                        cursor:pointer;padding:0;font-size:9.5px;flex:1;text-align:left;
@@ -260,16 +262,19 @@
         <div style="display:flex;gap:5px;flex-shrink:0;align-items:center;">
           <button class="pv-ask-btn" data-provider="anthropic" type="button"
                   title="Pregunta a Claude Sonnet 4.6 (Anthropic)"
+                  aria-label="Preguntar a Claude Sonnet 4.6 de Anthropic"
                   style="width:26px;height:26px;border-radius:50%;cursor:pointer;
                          background:#CC785C;border:2px solid transparent;padding:0;
                          transition:transform 0.12s ease, border-color 0.15s;"></button>
           <button class="pv-ask-btn" data-provider="openai" type="button"
                   title="Pregunta a GPT-4.1 (OpenAI)"
+                  aria-label="Preguntar a GPT-4.1 de OpenAI"
                   style="width:26px;height:26px;border-radius:50%;cursor:pointer;
                          background:#10A37F;border:2px solid transparent;padding:0;
                          transition:transform 0.12s ease, border-color 0.15s;"></button>
           <button class="pv-ask-btn" data-provider="gemini" type="button"
                   title="Pregunta a Gemini 2.5 Pro (Google)"
+                  aria-label="Preguntar a Gemini 2.5 Pro de Google"
                   style="width:26px;height:26px;border-radius:50%;cursor:pointer;
                          background:linear-gradient(135deg,#4285F4 0%,#9B72CB 55%,#D96570 100%);
                          border:2px solid transparent;padding:0;
@@ -450,8 +455,10 @@
                            cursor:pointer;line-height:1;padding:2px 6px;">×</button>
           </div>
         </div>
-        <div id="pv-rag-status" style="font-size:12.5px;color:#6b7280;margin-bottom:10px;"></div>
-        <div id="pv-rag-answer" style="font-size:14px;color:#1f2937;line-height:1.7;
+        <div id="pv-rag-status" role="status" aria-live="polite"
+             style="font-size:12.5px;color:#6b7280;margin-bottom:10px;"></div>
+        <div id="pv-rag-answer" aria-live="polite"
+             style="font-size:14px;color:#1f2937;line-height:1.7;
                                         background:#f9fafb;border-radius:8px;padding:12px 14px;
                                         margin-bottom:14px;white-space:pre-wrap;"></div>
         <div id="pv-rag-meta" style="font-size:11.5px;color:#9ca3af;margin-bottom:10px;"></div>
@@ -489,34 +496,35 @@
         <table id="pv-results-table" style="width:100%;border-collapse:separate;border-spacing:0;font-size:13px;">
           <thead style="background:#f9fafb;">
             <tr>
-              <th class="pv-admin-only"
+              <th class="pv-admin-only" scope="col"
                   style="width:32px;padding:8px 6px 8px 12px;text-align:center;
                          border-bottom:1px solid #e5e7eb;">
                 <input type="checkbox" id="pv-select-all"
                        title="Seleccionar / deseleccionar todos los visibles"
+                       aria-label="Seleccionar todos los artículos visibles"
                        style="cursor:pointer;width:14px;height:14px;">
               </th>
-              <th style="width:54px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
+              <th scope="col" style="width:54px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;">Marks</th>
-              <th data-sort-col="title" class="pv-sort-th"
+              <th data-sort-col="title" class="pv-sort-th" scope="col"
                   style="padding:8px 12px;text-align:left;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;cursor:pointer;">Article</th>
-              <th data-sort-col="year" class="pv-sort-th"
+              <th data-sort-col="year" class="pv-sort-th" scope="col"
                   style="width:62px;padding:8px 8px;text-align:left;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;cursor:pointer;">Year</th>
-              <th style="width:56px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
+              <th scope="col" style="width:56px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;">Pages</th>
-              <th style="width:54px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
+              <th scope="col" style="width:54px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;">Prio</th>
-              <th style="width:96px;padding:8px 8px;text-align:left;font-size:10.5px;font-weight:600;
+              <th scope="col" style="width:96px;padding:8px 8px;text-align:left;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;">Links</th>
-              <th style="width:96px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
+              <th scope="col" style="width:96px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;">Asignado</th>
             </tr>
@@ -648,8 +656,8 @@
     <input type="file" id="pv-file-input-plain" accept=".pdf,application/pdf"
            multiple style="display:none;">
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-      <button class="pv-btn-soft" id="pv-pick-files">📄 Pick individual files</button>
-      <button class="pv-btn-soft" id="pv-pick-folder">📁 Pick a folder</button>
+      <button class="pv-btn-soft" id="pv-pick-files">📄 Seleccionar archivos</button>
+      <button class="pv-btn-soft" id="pv-pick-folder">📁 Seleccionar carpeta</button>
     </div>
 
     <div id="pv-import-progress" class="pv-import-progress" style="display:none;"></div>
@@ -1299,7 +1307,7 @@
   <div class="pv-modal-inner" style="max-width:680px;">
     <button class="pv-modal-close" id="pv-pack-close" aria-label="Close">×</button>
     <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
-      <i class="fas fa-cubes-stacked" style="color:#0F3460;margin-right:8px;"></i>Add to PrionPack
+      <i class="fas fa-cubes-stacked" style="color:#0F3460;margin-right:8px;"></i>Añadir a PrionPack
     </h2>
     <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
       Selecciona uno o varios PrionPacks activos y elige en qué lista de referencias

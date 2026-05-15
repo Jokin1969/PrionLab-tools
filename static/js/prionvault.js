@@ -87,6 +87,59 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // ── Modal focus trap ─────────────────────────────────────────────────
+  // Trap Tab navigation inside the open modal and restore focus to the
+  // element that opened it on close. Call wireModalFocusTrap(modalEl)
+  // once per modal element; safe to call repeatedly (idempotent).
+  const _focusTrapMemo = new WeakMap();
+  function wireModalFocusTrap(modal) {
+    if (!modal || _focusTrapMemo.has(modal)) return;
+    _focusTrapMemo.set(modal, true);
+
+    const SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]),' +
+                     ' input:not([disabled]):not([type="hidden"]), select:not([disabled]),' +
+                     ' [tabindex]:not([tabindex="-1"])';
+
+    function focusables() {
+      return Array.from(modal.querySelectorAll(SELECTOR))
+        .filter(el => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    }
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const close = modal.querySelector('.pv-modal-close, [data-close]');
+        if (close) close.click();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+
+    // Observe display:flex toggling. When the modal becomes visible,
+    // remember the opener and move focus into the modal. On hide,
+    // restore focus to the opener.
+    const obs = new MutationObserver(() => {
+      const visible = modal.style.display && modal.style.display !== 'none';
+      if (visible && !modal._opener) {
+        modal._opener = document.activeElement;
+        const f = focusables();
+        if (f.length) setTimeout(() => f[0].focus(), 30);
+      } else if (!visible && modal._opener) {
+        try { modal._opener.focus(); } catch (_) { /* ignore */ }
+        modal._opener = null;
+      }
+    });
+    obs.observe(modal, { attributes: true, attributeFilter: ['style'] });
+  }
+
   async function api(path, opts = {}) {
     let res;
     try {
@@ -536,7 +589,7 @@
       empty.style.display = 'none';
     };
 
-    showEmpty('Loading…');
+    showEmpty('Cargando…');
 
     try {
       const r = await api('/articles?' + params.toString());
@@ -1273,7 +1326,7 @@
     const inner = modal.querySelector('.pv-modal-inner');
     if (inner) inner.style.maxWidth = '';
     modal.style.display = 'flex';
-    content.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;">Loading…</div>';
+    content.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;">Cargando…</div>';
     try {
       const a = await api('/articles/' + aid);
 
@@ -1399,7 +1452,7 @@
                          font-size:13px;font-weight:600;color:#0F3460;cursor:pointer;
                          display:inline-flex;align-items:center;gap:6px;">
             <i class="fas fa-cubes-stacked"></i>
-            <span>Add to PrionPack</span>
+            <span>Añadir a PrionPack</span>
           </button>
           ${IS_ADMIN ? `
             <button id="pv-delete-article-btn" type="button"
@@ -2959,6 +3012,9 @@
     wireNewCollectionButton();
     refreshCollections();
     wireSidebarToggles();
+
+    // Wire focus trapping for every modal in the page. Safe / idempotent.
+    document.querySelectorAll('.pv-modal').forEach(m => wireModalFocusTrap(m));
     loadArticles().then(() => {
       const openId = new URLSearchParams(window.location.search).get('open');
       if (openId) openDetail(openId);
