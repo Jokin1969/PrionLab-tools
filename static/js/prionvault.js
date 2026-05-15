@@ -38,6 +38,8 @@
     colorLabel: null,    // null = all, 'red'..'purple', or 'none' for no label
     priorityMin: null,   // null = all, else integer 1-5
     extraction: null,    // null = all, 'extracted' | 'pending' | 'failed'
+    isFavorite: null,    // null = all, true = only favorites, false = non-favorites
+    isRead: null,        // null = all, true = personally read, false = unread
     page: 1,
     size: 25,
   };
@@ -146,6 +148,8 @@
     if (state.colorLabel)          params.set('color_label', state.colorLabel);
     if (state.priorityMin)         params.set('priority_min', state.priorityMin);
     if (state.extraction)          params.set('extraction_status', state.extraction);
+    if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
+    if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
     params.set('page', state.page);
     params.set('size', state.size);
 
@@ -238,9 +242,12 @@
     const milestoneColor = a.is_milestone ? '#f59e0b' : '#d1d5db';
     const colorTitle = a.color_label ? `Etiqueta: ${esc(a.color_label)}` : 'Sin etiqueta de color';
 
+    const favColor  = a.is_favorite ? '#e11d48' : '#d1d5db';
+    const readColor = a.is_read     ? '#15803d' : '#d1d5db';
+
     const marksCell = `
       <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
-        <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
           <button class="pv-flag-btn"
                   data-active="${a.is_flagged ? '1' : '0'}"
                   title="${flagTitle}"
@@ -255,6 +262,17 @@
                   title="${a.is_milestone ? 'Hito ★ — clic para quitar' : 'Marcar como hito'}"
                   style="background:none;border:none;padding:0;font-size:15px;line-height:1;
                          cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${milestoneColor};">${a.is_milestone ? '★' : '☆'}</button>
+          <span style="width:1px;height:14px;background:#e5e7eb;"></span>
+          <button class="pv-favorite-btn"
+                  data-active="${a.is_favorite ? '1' : '0'}"
+                  title="${a.is_favorite ? 'Quitar de mis favoritos' : 'Añadir a mis favoritos'}"
+                  style="background:none;border:none;padding:0;font-size:14px;line-height:1;cursor:pointer;
+                         color:${favColor};">${a.is_favorite ? '♥' : '♡'}</button>
+          <button class="pv-read-btn"
+                  data-active="${a.is_read ? '1' : '0'}"
+                  title="${a.is_read ? 'Marcar como no leído' : 'Marcar como leído por mí'}"
+                  style="background:none;border:none;padding:0;font-size:13px;line-height:1;cursor:pointer;
+                         color:${readColor};font-weight:700;">✓</button>
         </div>
       </td>`;
 
@@ -369,6 +387,43 @@
     if (pdfPill) pdfPill.addEventListener('click', e => {
       e.stopPropagation();
       openDetail(a.id, { openPdf: true });
+    });
+
+    row.querySelector('.pv-favorite-btn').addEventListener('click', async e => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      const next = btn.dataset.active !== '1';
+      btn.disabled = true;
+      try {
+        const r = await api(`/articles/${a.id}/favorite`, {
+          method: 'POST',
+          body: JSON.stringify({ value: next }),
+        });
+        a.is_favorite = !!r.is_favorite;
+        replaceRow(row, a);
+      } catch (err) {
+        btn.disabled = false;
+        alert('Error: ' + err.message);
+      }
+    });
+
+    row.querySelector('.pv-read-btn').addEventListener('click', async e => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      const next = btn.dataset.active !== '1';
+      btn.disabled = true;
+      try {
+        const r = await api(`/articles/${a.id}/read`, {
+          method: 'POST',
+          body: JSON.stringify({ value: next }),
+        });
+        a.is_read = !!r.is_read;
+        a.read_at = r.read_at || null;
+        replaceRow(row, a);
+      } catch (err) {
+        btn.disabled = false;
+        alert('Error: ' + err.message);
+      }
     });
 
     if (IS_ADMIN) {
@@ -583,11 +638,36 @@
             No asignado en PrionRead
            </span>`;
 
+      const personalChips = `
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px;align-items:center;">
+          <button id="pv-detail-fav" type="button"
+                  data-active="${a.is_favorite ? '1' : '0'}"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;
+                         ${a.is_favorite
+                           ? 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'
+                           : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
+            <span style="font-size:14px;line-height:1;color:${a.is_favorite ? '#e11d48' : '#9ca3af'};">${a.is_favorite ? '♥' : '♡'}</span>
+            ${a.is_favorite ? 'En favoritos' : 'Añadir a favoritos'}
+          </button>
+          <button id="pv-detail-read" type="button"
+                  data-active="${a.is_read ? '1' : '0'}"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;
+                         ${a.is_read
+                           ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;'
+                           : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
+            <span style="font-size:13px;font-weight:800;line-height:1;color:${a.is_read ? '#15803d' : '#9ca3af'};">✓</span>
+            ${a.is_read ? 'Leído por mí' : 'Marcar como leído'}
+          </button>
+        </div>`;
+
       content.innerHTML = `
         <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;line-height:1.35;padding-right:24px;">
           ${supHtml(a.title)}
         </h2>
         ${prionreadBadge}
+        ${personalChips}
         <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:14px;color:#6b7280;margin-bottom:16px;">
           ${a.authors ? esc(a.authors) : '—'}
           ${a.journal ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${esc(a.journal)}` : ''}
@@ -638,6 +718,7 @@
       `;
       renderRatingsSection(a);
       wirePdfViewer(a);
+      wirePersonalState(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
     }
@@ -839,6 +920,68 @@
     if (_pdfViewerOpen) setOpen(true);
   }
 
+  // ── Personal state chips (favorite + read) in the detail modal ───────
+  function wirePersonalState(a) {
+    const favBtn  = document.getElementById('pv-detail-fav');
+    const readBtn = document.getElementById('pv-detail-read');
+
+    async function toggle(btn, endpoint, key, refresh) {
+      if (!btn) return;
+      const next = btn.dataset.active !== '1';
+      btn.disabled = true;
+      try {
+        const r = await api(`/articles/${a.id}/${endpoint}`, {
+          method: 'POST',
+          body: JSON.stringify({ value: next }),
+        });
+        refresh(r);
+      } catch (e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+      }
+    }
+
+    if (favBtn) favBtn.addEventListener('click', () => toggle(favBtn, 'favorite', 'is_favorite', r => {
+      a.is_favorite = !!r.is_favorite;
+      // Re-render chips inline without reopening the modal.
+      const fresh = renderPersonalChip(a, 'fav');
+      favBtn.outerHTML = fresh;
+      wirePersonalState(a);
+    }));
+    if (readBtn) readBtn.addEventListener('click', () => toggle(readBtn, 'read', 'is_read', r => {
+      a.is_read = !!r.is_read;
+      a.read_at = r.read_at || null;
+      const fresh = renderPersonalChip(a, 'read');
+      readBtn.outerHTML = fresh;
+      wirePersonalState(a);
+    }));
+  }
+
+  function renderPersonalChip(a, kind) {
+    if (kind === 'fav') {
+      return `<button id="pv-detail-fav" type="button"
+                  data-active="${a.is_favorite ? '1' : '0'}"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;
+                         ${a.is_favorite
+                           ? 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'
+                           : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
+                <span style="font-size:14px;line-height:1;color:${a.is_favorite ? '#e11d48' : '#9ca3af'};">${a.is_favorite ? '♥' : '♡'}</span>
+                ${a.is_favorite ? 'En favoritos' : 'Añadir a favoritos'}
+              </button>`;
+    }
+    return `<button id="pv-detail-read" type="button"
+                data-active="${a.is_read ? '1' : '0'}"
+                style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                       font-size:12px;font-weight:600;cursor:pointer;
+                       ${a.is_read
+                         ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;'
+                         : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
+              <span style="font-size:13px;font-weight:800;line-height:1;color:${a.is_read ? '#15803d' : '#9ca3af'};">✓</span>
+              ${a.is_read ? 'Leído por mí' : 'Marcar como leído'}
+            </button>`;
+  }
+
   function closeDetail() {
     _pdfViewerOpen = false;
     const inner = document.querySelector('#pv-detail-modal .pv-modal-inner');
@@ -911,6 +1054,12 @@
     });
     wireTriStateButton('btn-filter-flagged', 'isFlagged', {
       null: '🚩 Bandera: todos', true: '🚩 Solo marcados', false: '🚩 Sin bandera',
+    });
+    wireTriStateButton('btn-filter-favorite', 'isFavorite', {
+      null: '❤ Favoritos: todos', true: '❤ Mis favoritos', false: '❤ No favoritos',
+    });
+    wireTriStateButton('btn-filter-read', 'isRead', {
+      null: '✓ Leídos: todos', true: '✓ Leídos por mí', false: '✓ No leídos',
     });
 
     document.getElementById('filter-color').addEventListener('change', e => {

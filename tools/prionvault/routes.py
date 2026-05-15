@@ -59,6 +59,10 @@ def api_list_articles():
     color_label = (request.args.get("color_label") or "").strip().lower() or None
     priority_min = request.args.get("priority_min", type=int)
     extraction = (request.args.get("extraction_status") or "").strip().lower() or None
+    is_favorite_raw = request.args.get("is_favorite")
+    is_favorite = True if is_favorite_raw == "1" else (False if is_favorite_raw == "0" else None)
+    is_read_raw = request.args.get("is_read")
+    is_read = True if is_read_raw == "1" else (False if is_read_raw == "0" else None)
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(100, max(1, request.args.get("size", 25, type=int)))
@@ -68,7 +72,9 @@ def api_list_articles():
         return _list_articles_impl(s, q, year_min, year_max, journal,
                                    tag_id, has_summary, in_prionread,
                                    is_flagged, is_milestone, color_label,
-                                   priority_min, extraction, sort, page, page_size)
+                                   priority_min, extraction,
+                                   is_favorite, is_read,
+                                   sort, page, page_size)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -83,7 +89,9 @@ _VALID_COLOR_LABELS = {"red", "orange", "yellow", "green", "blue", "purple"}
 def _list_articles_impl(s, q, year_min, year_max, journal,
                         tag_id, has_summary, in_prionread,
                         is_flagged, is_milestone, color_label,
-                        priority_min, extraction, sort, page, page_size):
+                        priority_min, extraction,
+                        is_favorite, is_read,
+                        sort, page, page_size):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -157,6 +165,34 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         elif extraction == "failed":
             conditions.append("extraction_status = 'failed'")
 
+    _viewer_uid = _viewer_id()
+    if _viewer_uid and (is_favorite is not None or is_read is not None):
+        params["_viewer_uid"] = str(_viewer_uid)
+        if is_favorite is True:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM prionvault_user_state s "
+                "WHERE s.article_id = articles.id "
+                "AND s.user_id = :_viewer_uid AND s.is_favorite IS TRUE)"
+            )
+        elif is_favorite is False:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM prionvault_user_state s "
+                "WHERE s.article_id = articles.id "
+                "AND s.user_id = :_viewer_uid AND s.is_favorite IS TRUE)"
+            )
+        if is_read is True:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM prionvault_user_state s "
+                "WHERE s.article_id = articles.id "
+                "AND s.user_id = :_viewer_uid AND s.read_at IS NOT NULL)"
+            )
+        elif is_read is False:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM prionvault_user_state s "
+                "WHERE s.article_id = articles.id "
+                "AND s.user_id = :_viewer_uid AND s.read_at IS NOT NULL)"
+            )
+
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     sort_map = {
@@ -204,6 +240,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     prionread_counts = {}
     rating_aggs = {}        # aid -> {"avg": float, "count": int}
     my_ratings  = {}        # aid -> int (viewer's rating, if any)
+    user_states = {}        # aid -> {"is_favorite": bool, "is_read": bool, "read_at": iso}
     if rows:
         try:
             import uuid as _uuid
@@ -241,8 +278,22 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         models.ArticleRating.user_id == viewer_id,
                     ).all()
                     my_ratings = {r[0]: int(r[1]) for r in own_rows}
+                    state_rows = _s2.query(
+                        models.PrionVaultUserState.article_id,
+                        models.PrionVaultUserState.is_favorite,
+                        models.PrionVaultUserState.read_at,
+                    ).filter(
+                        models.PrionVaultUserState.article_id.in_(item_ids),
+                        models.PrionVaultUserState.user_id == viewer_id,
+                    ).all()
+                    user_states = {
+                        r[0]: {"is_favorite": bool(r[1]),
+                               "is_read": r[2] is not None,
+                               "read_at": r[2].isoformat() if r[2] else None}
+                        for r in state_rows
+                    }
         except Exception as exc:
-            logger.warning("Could not query user_articles / ratings: %s", exc)
+            logger.warning("Could not query user_articles / ratings / state: %s", exc)
 
     role = _viewer_role()
     is_admin = (role == "admin")
@@ -277,6 +328,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "avg_rating":     (rating_aggs.get(aid) or {}).get("avg"),
             "rating_count":   (rating_aggs.get(aid) or {}).get("count", 0),
             "my_rating":      my_ratings.get(aid),
+            "is_favorite":    (user_states.get(aid) or {}).get("is_favorite", False),
+            "is_read":        (user_states.get(aid) or {}).get("is_read", False),
+            "read_at":        (user_states.get(aid) or {}).get("read_at"),
         }
         if is_admin:
             out["pdf_md5"]          = d.get("pdf_md5")
@@ -440,6 +494,20 @@ def api_article_detail(aid):
             out["avg_rating"] = None
             out["rating_count"] = 0
             out["my_rating"] = None
+
+        # Personal state (favorite / read) for the viewer
+        out["is_favorite"] = False
+        out["is_read"]     = False
+        out["read_at"]     = None
+        if viewer_id:
+            try:
+                st = s.get(models.PrionVaultUserState, (viewer_id, aid))
+                if st:
+                    out["is_favorite"] = bool(st.is_favorite)
+                    out["is_read"]     = st.read_at is not None
+                    out["read_at"]     = st.read_at.isoformat() if st.read_at else None
+            except Exception as exc:
+                logger.warning("Could not load user state for %s: %s", aid, exc)
 
         return jsonify(out)
     except Exception as exc:
@@ -747,6 +815,87 @@ def api_delete_rating(aid):
             "avg_rating": avg,
             "total":      total,
         })
+    finally:
+        s.close()
+
+
+# ── Personal user state (favorite / read) ───────────────────────────────────
+def _get_or_create_state(s, user_id, article_id):
+    state = s.get(models.PrionVaultUserState, (user_id, article_id))
+    if state is None:
+        # Verify the article exists before creating the row.
+        exists = s.execute(sql_text(
+            "SELECT id FROM articles WHERE id = :aid"
+        ), {"aid": str(article_id)}).fetchone()
+        if not exists:
+            return None
+        state = models.PrionVaultUserState(
+            user_id=user_id, article_id=article_id,
+            is_favorite=False, read_at=None,
+        )
+        s.add(state)
+        s.flush()
+    return state
+
+
+def _state_to_dict(state):
+    return {
+        "is_favorite": bool(state.is_favorite),
+        "read_at":     state.read_at.isoformat() if state.read_at else None,
+        "is_read":     state.read_at is not None,
+    }
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/favorite", methods=["POST"])
+@login_required
+def api_set_favorite(aid):
+    """Set is_favorite for the viewer on this article. Body: {value: bool}."""
+    user_id = _viewer_id()
+    if not user_id:
+        return jsonify({"error": "not authenticated"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    value = bool(data.get("value", True))
+    s = _session()
+    try:
+        state = _get_or_create_state(s, user_id, aid)
+        if state is None:
+            return jsonify({"error": "article not found"}), 404
+        state.is_favorite = value
+        state.updated_at = datetime.utcnow()
+        s.commit()
+        return jsonify(_state_to_dict(state))
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_set_favorite failed")
+        return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/read", methods=["POST"])
+@login_required
+def api_set_read(aid):
+    """Mark or unmark the article as personally read.
+    Body: {value: bool}. If true, sets read_at = now(); if false, clears it.
+    """
+    user_id = _viewer_id()
+    if not user_id:
+        return jsonify({"error": "not authenticated"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    value = bool(data.get("value", True))
+    s = _session()
+    try:
+        state = _get_or_create_state(s, user_id, aid)
+        if state is None:
+            return jsonify({"error": "article not found"}), 404
+        state.read_at = datetime.utcnow() if value else None
+        state.updated_at = datetime.utcnow()
+        s.commit()
+        return jsonify(_state_to_dict(state))
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_set_read failed")
+        return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
     finally:
         s.close()
 

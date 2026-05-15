@@ -303,6 +303,23 @@ class ArticleRating(Base):
     )
 
 
+# ── PrionVaultUserState (per-user personal state on an article) ─────────────
+class PrionVaultUserState(Base):
+    __tablename__ = "prionvault_user_state"
+
+    user_id     = Column(UUID(as_uuid=True),
+                         ForeignKey("users.id", ondelete="CASCADE"),
+                         primary_key=True)
+    article_id  = Column(UUID(as_uuid=True),
+                         ForeignKey("articles.id", ondelete="CASCADE"),
+                         primary_key=True)
+    is_favorite = Column(Boolean, default=False, nullable=False)
+    read_at     = Column(DateTime(timezone=True))
+    created_at  = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at  = Column(DateTime(timezone=True), default=datetime.utcnow,
+                         onupdate=datetime.utcnow, nullable=False)
+
+
 # ── UserArticleLink (maps PrionRead's user_articles table) ──────────────────
 class UserArticleLink(Base):
     __tablename__ = "user_articles"
