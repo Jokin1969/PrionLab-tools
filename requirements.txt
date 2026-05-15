@@ -34,3 +34,8 @@ tiktoken>=0.7.0
 pymupdf>=1.24.0
 pytesseract>=0.3.10
 Pillow>=10.0
+
+# PrionVault — embed an invisible text layer into scanned PDFs so
+# Ctrl+F and external tools (Spotlight, Zotero, screen readers) work.
+# Needs ghostscript + qpdf at the system level (see nixpacks.toml).
+ocrmypdf>=15.4.0

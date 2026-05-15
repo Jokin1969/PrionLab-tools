@@ -2108,6 +2108,42 @@ def api_batch_extract_stop():
     return jsonify({"ok": True, "status": batch_extract.stop_batch()})
 
 
+# ── Batch "make PDFs searchable" (ocrmypdf — embed text layer) ──────────────
+@prionvault_bp.route("/api/admin/batch-searchable/status", methods=["GET"])
+@admin_required
+def api_batch_searchable_status():
+    from .services import batch_searchable_pdf
+    return jsonify(batch_searchable_pdf.get_status())
+
+
+@prionvault_bp.route("/api/admin/batch-searchable/start", methods=["POST"])
+@admin_required
+def api_batch_searchable_start():
+    from .services import batch_searchable_pdf
+    data = request.get_json(force=True, silent=True) or {}
+    limit = data.get("limit")
+    if limit is not None:
+        try:
+            limit = int(limit)
+            if limit <= 0:
+                limit = None
+        except (TypeError, ValueError):
+            return jsonify({"error": "limit must be a positive integer"}), 400
+    snap = batch_searchable_pdf.start_batch(viewer_user_id=_viewer_id(),
+                                            limit=limit)
+    if snap is None:
+        return jsonify({"error": "already_running",
+                        "status": batch_searchable_pdf.get_status()}), 409
+    return jsonify({"ok": True, "status": snap})
+
+
+@prionvault_bp.route("/api/admin/batch-searchable/stop", methods=["POST"])
+@admin_required
+def api_batch_searchable_stop():
+    from .services import batch_searchable_pdf
+    return jsonify({"ok": True, "status": batch_searchable_pdf.stop_batch()})
+
+
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():

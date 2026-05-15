@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python312", "python312Packages.pip", "tesseract"]
+nixPkgs = ["nodejs_20", "python312", "python312Packages.pip", "tesseract", "ghostscript", "qpdf"]
 
 [phases.install]
 cmds = [
