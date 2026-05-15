@@ -208,11 +208,12 @@
     <!-- Search bar -->
     <div style="position:sticky;top:0;z-index:10;background:white;border-bottom:1px solid #e5e7eb;
                 padding:14px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="display:flex;align-items:center;gap:8px;background:#f3f4f6;border-radius:10px;
-                  padding:8px 12px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;background:#f3f4f6;border-radius:10px;
+                    padding:8px 12px;flex:5;min-width:0;">
         <i class="fas fa-search" style="color:#9ca3af;font-size:13px;flex-shrink:0;"></i>
         <input type="text" id="pv-search-input"
-               style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#111827;"
+               style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#111827;min-width:0;"
                placeholder="Search title, abstract, authors, journal…"
                autocomplete="off" />
         <button id="btn-search-mode"
@@ -236,6 +237,23 @@
                          background:linear-gradient(135deg,#4285F4 0%,#9B72CB 55%,#D96570 100%);
                          border:2px solid transparent;padding:0;
                          transition:transform 0.12s ease, border-color 0.15s;"></button>
+        </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:10px;
+                    padding:8px 10px;flex:1;min-width:170px;max-width:280px;">
+          <i class="fas fa-list-ol" style="color:#9ca3af;font-size:13px;flex-shrink:0;"></i>
+          <input type="text" id="pv-bulk-lookup-input"
+                 placeholder="DOIs / PMIDs en lote…"
+                 title="Pega varios DOIs o PMIDs separados por coma, punto y coma, espacios o líneas, y pulsa Enter."
+                 style="flex:1;border:none;background:transparent;outline:none;
+                        font-size:12.5px;color:#111827;min-width:0;"
+                 autocomplete="off" />
+          <button id="pv-bulk-lookup-btn" type="button"
+                  title="Buscar coincidencias en la biblioteca"
+                  style="padding:2px 8px;border-radius:6px;background:#0F3460;color:white;border:none;
+                         font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">
+            Buscar
+          </button>
         </div>
       </div>
       <div style="font-size:11px;color:#9ca3af;margin-bottom:8px;padding-left:4px;">
@@ -1005,6 +1023,39 @@
         Start
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ── Bulk DOI / PMID lookup modal ──────────────────────────────── -->
+<div id="pv-bulk-lookup-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:880px;">
+    <button class="pv-modal-close" id="pv-bulk-lookup-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-list-ol" style="color:#0F3460;margin-right:8px;"></i>Búsqueda en lote de DOIs / PMIDs
+    </h2>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:10px;">
+      Pega tus identificadores en cualquier formato: separados por coma, punto y coma, espacios
+      o líneas. Acepta DOIs (<code>10.1234/abcd</code> o URLs <code>https://doi.org/…</code>)
+      y PMIDs (5-9 dígitos). Te dirá cuáles están ya en la biblioteca.
+    </p>
+
+    <textarea id="pv-bulk-lookup-text" rows="5"
+              placeholder="10.1038/nature12345, 10.1126/science…&#10;12345678&#10;https://doi.org/10.1016/…"
+              style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;
+                     font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.5;
+                     resize:vertical;outline:none;margin-bottom:10px;"></textarea>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <button id="pv-bulk-lookup-run" type="button"
+              style="padding:7px 14px;border-radius:8px;border:none;background:#0F3460;color:white;
+                     font-size:13px;font-weight:600;cursor:pointer;">
+        Buscar coincidencias
+      </button>
+      <span id="pv-bulk-lookup-status" style="font-size:12px;color:#6b7280;"></span>
+    </div>
+
+    <div id="pv-bulk-lookup-results"></div>
   </div>
 </div>
 

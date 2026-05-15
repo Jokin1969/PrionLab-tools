@@ -2284,6 +2284,7 @@
       wireBatchOcr();
       wireBatchSearchable();
       wireBulkBar();
+      wireBulkLookup();
     }
 
     refreshStats();
@@ -2947,6 +2948,184 @@
   }
 
   // ── Batch AI summary modal ───────────────────────────────────────────
+  // ── Bulk DOI / PMID lookup ──────────────────────────────────────────
+  function wireBulkLookup() {
+    const inlineInput = document.getElementById('pv-bulk-lookup-input');
+    const inlineBtn   = document.getElementById('pv-bulk-lookup-btn');
+    const modal       = document.getElementById('pv-bulk-lookup-modal');
+    const closeBtn    = document.getElementById('pv-bulk-lookup-close');
+    const textarea    = document.getElementById('pv-bulk-lookup-text');
+    const runBtn      = document.getElementById('pv-bulk-lookup-run');
+    const statusEl    = document.getElementById('pv-bulk-lookup-status');
+    const resultsEl   = document.getElementById('pv-bulk-lookup-results');
+    if (!modal || !inlineInput) return;
+
+    function openModal(seed) {
+      modal.style.display = 'flex';
+      if (seed !== undefined && seed !== null) textarea.value = seed;
+      textarea.focus();
+      statusEl.textContent = '';
+      resultsEl.innerHTML  = '';
+      if (textarea.value.trim()) runLookup();
+    }
+    function closeModal() { modal.style.display = 'none'; }
+    closeBtn.addEventListener('click', closeModal);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', closeModal);
+
+    inlineBtn.addEventListener('click', () => openModal(inlineInput.value.trim()));
+    inlineInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        openModal(inlineInput.value.trim());
+      }
+    });
+    runBtn.addEventListener('click', runLookup);
+
+    async function runLookup() {
+      const raw = (textarea.value || '').trim();
+      if (!raw) {
+        statusEl.style.color = '#b91c1c';
+        statusEl.textContent = 'Pega al menos un identificador.';
+        return;
+      }
+      runBtn.disabled = true;
+      const orig = runBtn.textContent;
+      runBtn.textContent = 'Buscando…';
+      statusEl.style.color = '#6b7280';
+      statusEl.textContent = '';
+      resultsEl.innerHTML  = '';
+      let r;
+      try {
+        r = await api('/articles/lookup-bulk', {
+          method: 'POST',
+          body: JSON.stringify({ identifiers: raw }),
+        });
+      } catch (e) {
+        statusEl.style.color = '#b91c1c';
+        statusEl.textContent = 'Error: ' + e.message;
+        runBtn.disabled = false;
+        runBtn.textContent = orig;
+        return;
+      }
+      runBtn.disabled = false;
+      runBtn.textContent = orig;
+      renderLookupResults(r);
+    }
+
+    function renderLookupResults(r) {
+      const total = r.total || 0;
+      const found = r.found || 0;
+      const notFound = r.not_found || 0;
+      const bad = r.unparseable || 0;
+
+      const summary = `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;font-size:12.5px;">
+          <span style="padding:4px 10px;border-radius:20px;background:#f3f4f6;color:#374151;font-weight:600;">
+            Total: ${total}
+          </span>
+          <span style="padding:4px 10px;border-radius:20px;background:#dcfce7;color:#15803d;font-weight:600;">
+            ✓ En biblioteca: ${found}
+          </span>
+          <span style="padding:4px 10px;border-radius:20px;background:#fef3c7;color:#92400e;font-weight:600;">
+            ✗ No están: ${notFound}
+          </span>
+          ${bad ? `<span style="padding:4px 10px;border-radius:20px;background:#fee2e2;color:#b91c1c;font-weight:600;">
+            ? Formato no reconocido: ${bad}
+          </span>` : ''}
+        </div>`;
+
+      const rows = (r.items || []).map((it, i) => {
+        const inp = esc(it.input);
+        if (it.match) {
+          const m = it.match;
+          const meta = [m.authors ? esc((m.authors || '').slice(0, 80)) : '',
+                        m.year || '', m.journal ? esc(m.journal) : '']
+                       .filter(Boolean).join(' · ');
+          const badges = [
+            m.has_summary ? '<span style="padding:1px 5px;border-radius:4px;font-size:10px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI</span>' : '',
+            m.has_pdf     ? '<span style="padding:1px 5px;border-radius:4px;font-size:10px;font-weight:600;background:#fee2e2;color:#b91c1c;">PDF</span>' : '',
+            m.priority    ? `<span style="padding:1px 5px;border-radius:4px;font-size:10px;font-weight:600;background:#f3f4f6;color:#4b5563;">P${m.priority}</span>` : '',
+          ].filter(Boolean).join(' ');
+          return `
+            <tr style="border-bottom:1px solid #f3f4f6;cursor:pointer;"
+                onmouseover="this.style.background='#f9fafb'"
+                onmouseout="this.style.background=''"
+                data-aid="${esc(m.id)}">
+              <td style="padding:6px 8px;font-size:11.5px;color:#9ca3af;font-variant-numeric:tabular-nums;">${i+1}</td>
+              <td style="padding:6px 8px;font-size:11px;color:#15803d;font-weight:700;">✓</td>
+              <td style="padding:6px 8px;font-size:11.5px;font-family:ui-monospace,monospace;color:#374151;
+                         word-break:break-all;max-width:220px;">${inp}</td>
+              <td style="padding:6px 8px;">
+                <div style="font-size:13px;font-weight:600;color:#111827;">${supHtml(m.title || '(sin título)')}</div>
+                <div style="font-size:11.5px;color:#6b7280;margin-top:1px;">${meta} ${badges}</div>
+              </td>
+            </tr>`;
+        }
+        const reason = it.kind === 'unknown'
+          ? '<span style="color:#b91c1c;">Formato no reconocido</span>'
+          : '<span style="color:#92400e;">No está en la biblioteca</span>';
+        return `
+          <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:6px 8px;font-size:11.5px;color:#9ca3af;font-variant-numeric:tabular-nums;">${i+1}</td>
+            <td style="padding:6px 8px;font-size:11px;color:#b91c1c;font-weight:700;">✗</td>
+            <td style="padding:6px 8px;font-size:11.5px;font-family:ui-monospace,monospace;color:#374151;
+                       word-break:break-all;max-width:220px;">${inp}</td>
+            <td style="padding:6px 8px;font-size:12px;">${reason}</td>
+          </tr>`;
+      }).join('');
+
+      const notFoundList = (r.items || [])
+        .filter(it => !it.match)
+        .map(it => it.input)
+        .join('\n');
+
+      const copyBtn = notFoundList
+        ? `<button id="pv-bulk-lookup-copy" type="button"
+                   style="padding:5px 11px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                          font-size:11.5px;color:#374151;cursor:pointer;">
+            <i class="fas fa-clipboard"></i> Copiar los que no están (${notFound + bad})
+          </button>`
+        : '';
+
+      resultsEl.innerHTML = summary +
+        `<div style="max-height:420px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;">
+           <table style="width:100%;border-collapse:collapse;font-size:13px;">
+             <thead style="background:#f9fafb;position:sticky;top:0;">
+               <tr style="text-align:left;color:#6b7280;font-size:10.5px;
+                          text-transform:uppercase;letter-spacing:0.04em;">
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:40px;">#</th>
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:30px;"></th>
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:220px;">Input</th>
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;">Artículo</th>
+               </tr>
+             </thead>
+             <tbody>${rows}</tbody>
+           </table>
+         </div>
+         <div style="display:flex;justify-content:flex-end;margin-top:10px;">${copyBtn}</div>`;
+
+      // Click row → open detail for the matched article.
+      resultsEl.querySelectorAll('tr[data-aid]').forEach(tr => {
+        tr.addEventListener('click', () => {
+          modal.style.display = 'none';
+          openDetail(tr.dataset.aid);
+        });
+      });
+      // Copy not-found list.
+      const cb = document.getElementById('pv-bulk-lookup-copy');
+      if (cb) cb.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(notFoundList);
+          cb.innerHTML = '<i class="fas fa-check"></i> Copiado';
+          setTimeout(() => {
+            cb.innerHTML = '<i class="fas fa-clipboard"></i> Copiar los que no están (' +
+                           (notFound + bad) + ')';
+          }, 1800);
+        } catch (e) { alert('No se pudo copiar: ' + e.message); }
+      });
+    }
+  }
+
   function wireBatchSummary() {
     const btn   = document.getElementById('btn-batch-summary');
     const modal = document.getElementById('pv-batch-summary-modal');

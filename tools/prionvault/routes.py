@@ -1131,6 +1131,138 @@ def api_articles_bulk_update():
         s.close()
 
 
+_LOOKUP_BULK_MAX = 500
+
+
+@prionvault_bp.route("/api/articles/lookup-bulk", methods=["POST"])
+@login_required
+def api_articles_lookup_bulk():
+    """Given a paste of DOIs / PMIDs in any common format, report which
+    ones already live in the library.
+
+    Body: { identifiers: "<paste>"  OR  [ "<id1>", "<id2>", … ] }
+    Accepts whitespace, commas, semicolons, tabs, newlines as
+    separators. Token-level normalisation strips DOI URL prefixes
+    ("https://doi.org/", "doi:") and PMID prefixes ("PMID: ").
+
+    Returns the input list in the same order, each entry tagged with
+    its match (or null) and the column it matched on. Caps at 500
+    identifiers per call to keep the SQL small.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    raw = data.get("identifiers", "")
+    if isinstance(raw, str):
+        tokens = re.split(r"[\s,;\t\r\n]+", raw.strip())
+    elif isinstance(raw, list):
+        tokens = []
+        for x in raw:
+            tokens += re.split(r"[\s,;\t\r\n]+", str(x).strip())
+    else:
+        return jsonify({"error": "invalid_input",
+                        "detail": "identifiers debe ser string o lista"}), 400
+
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return jsonify({"error": "empty",
+                        "detail": "No se han pegado identificadores."}), 400
+    if len(tokens) > _LOOKUP_BULK_MAX:
+        return jsonify({"error": "too_many",
+                        "detail": f"Máximo {_LOOKUP_BULK_MAX} ids por llamada."}), 400
+
+    # Per-token normalisation: figure out if it looks like a DOI or PMID.
+    classified = []   # list of (original, kind, normalised)
+    dois  = []
+    pmids = []
+    for t in tokens:
+        s = t.strip().rstrip(".,;:)")
+        s = re.sub(r"^(?:https?://)?(?:dx\.)?doi\.org/", "", s,
+                   flags=re.IGNORECASE)
+        s = re.sub(r"^doi[:\s]+", "", s, flags=re.IGNORECASE)
+        pmid_s = re.sub(r"^(?:pubmed(?:\s+id)?|pmid)[:\s]+", "", s,
+                        flags=re.IGNORECASE)
+        if re.match(r"^10\.\d{4,}/\S+$", s):
+            classified.append((t, "doi", s.lower()))
+            dois.append(s.lower())
+        elif re.match(r"^\d{5,9}$", pmid_s):
+            classified.append((t, "pmid", pmid_s))
+            pmids.append(pmid_s)
+        else:
+            classified.append((t, "unknown", None))
+
+    s = _session()
+    try:
+        doi_rows  = {}
+        pmid_rows = {}
+        cols = ("SELECT id, title, doi, pubmed_id, year, authors, journal, "
+                "       (dropbox_path IS NOT NULL) AS has_pdf, "
+                "       (summary_ai IS NOT NULL)   AS has_summary, "
+                "       priority, is_flagged, is_milestone, color_label "
+                "FROM articles ")
+        if dois:
+            rows = s.execute(sql_text(
+                cols + "WHERE lower(doi) = ANY(:vals)"
+            ), {"vals": list(set(dois))}).mappings().all()
+            for r in rows:
+                if r["doi"]:
+                    doi_rows[r["doi"].lower()] = r
+        if pmids:
+            rows = s.execute(sql_text(
+                cols + "WHERE pubmed_id = ANY(:vals)"
+            ), {"vals": list(set(pmids))}).mappings().all()
+            for r in rows:
+                if r["pubmed_id"]:
+                    pmid_rows[str(r["pubmed_id"])] = r
+
+        def _shape(r, found_by):
+            return {
+                "id":           str(r["id"]),
+                "title":        r["title"],
+                "doi":          r["doi"],
+                "pubmed_id":    r["pubmed_id"],
+                "year":         r["year"],
+                "authors":      r["authors"],
+                "journal":      r["journal"],
+                "has_pdf":      bool(r["has_pdf"]),
+                "has_summary":  bool(r["has_summary"]),
+                "priority":     r["priority"],
+                "is_flagged":   bool(r["is_flagged"]),
+                "is_milestone": bool(r["is_milestone"]),
+                "color_label":  r["color_label"],
+                "found_by":     found_by,
+            }
+
+        items = []
+        for original, kind, norm in classified:
+            match = None
+            if kind == "doi" and norm in doi_rows:
+                match = _shape(doi_rows[norm], "doi")
+            elif kind == "pmid" and norm in pmid_rows:
+                match = _shape(pmid_rows[norm], "pmid")
+            items.append({
+                "input":       original,
+                "kind":        kind,
+                "normalised":  norm,
+                "match":       match,
+            })
+
+        total = len(items)
+        found = sum(1 for it in items if it["match"])
+        unparseable = sum(1 for it in items if it["kind"] == "unknown")
+        return jsonify({
+            "items":       items,
+            "total":       total,
+            "found":       found,
+            "not_found":   total - found - unparseable,
+            "unparseable": unparseable,
+        })
+    except Exception as exc:
+        logger.exception("lookup-bulk failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/articles/bulk-delete", methods=["POST"])
 @admin_required
 def api_articles_bulk_delete():
