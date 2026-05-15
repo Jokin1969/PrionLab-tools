@@ -56,10 +56,13 @@ MAX_OUTPUT_TOKENS = 2400
 EXTRACTED_TEXT_CHAR_LIMIT = 50_000
 
 # Retry an empty / transient-error response this many times before
-# giving up on a paper. Most "empty response" failures clear after
-# one retry with a tiny backoff.
-_MAX_ATTEMPTS = 3
-_BASE_BACKOFF_S = 1.6
+# giving up on a paper. Backoff is exponential (2 s, 4 s, 8 s)
+# so a transient provider-side 503 / capacity event has ~14 s to
+# clear before we bubble the failure up to the caller. That keeps
+# sync per-article calls responsive while still covering most
+# real-world rate-limit / overload blips.
+_MAX_ATTEMPTS = 4
+_BASE_BACKOFF_S = 2.0
 
 
 _SYSTEM_PROMPT = """Eres un asistente científico especializado en biología \
