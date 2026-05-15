@@ -16,7 +16,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Integer, BigInteger, Numeric,
-    SmallInteger, String, Text, UniqueConstraint, CHAR,
+    SmallInteger, String, Table, Text, UniqueConstraint, CHAR,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, TSVECTOR
 from sqlalchemy.orm import relationship
@@ -36,6 +36,24 @@ class PVBase(DeclarativeBase):
 
 # Public alias for clarity inside this module.
 Base = PVBase
+
+
+# Stub the `users` table inside PVBase.metadata so every
+# ForeignKey("users.id") declared below can resolve at ORM
+# configuration time. The real users table is owned by the project-
+# wide database.config.Base; we never instantiate or query through
+# this stub — it is purely a metadata anchor for the FK lookups.
+# Without it SQLAlchemy raises:
+#   Foreign key associated with column '<x>.<id>' could not find
+#   table 'users' with which to generate a foreign key to target
+#   column 'id'
+# the first time the ORM tries to configure relationships on the
+# affected mappers (e.g. session.get(Article, …) in api_generate_summary).
+_users_stub = Table(
+    "users", Base.metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    extend_existing=True,
+)
 
 
 # ── PrionVaultArticle (maps the shared `articles` table) ────────────────────
