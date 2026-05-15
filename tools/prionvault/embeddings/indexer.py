@@ -102,6 +102,23 @@ def index_article(*, article_id, title, extracted_text=None,
             error=f"embedding count mismatch: got {len(embed_result.embeddings)} for {len(chunks)} chunks",
         )
 
+    # Dimension guard: the article_chunk.embedding column is declared as
+    # vector(EMBEDDING_DIM). If MODEL is ever swapped for one with a
+    # different dimensionality the INSERT below would fail late with a
+    # cryptic Postgres error. Fail loud at this layer instead.
+    if embed_result.embeddings and len(embed_result.embeddings[0]) != EMBEDDING_DIM:
+        return IndexResult(
+            article_id=str(article_id), chunks_total=len(chunks),
+            chunks_written=0, tokens=embed_result.tokens,
+            cost_usd=embed_result.cost_usd or 0.0,
+            elapsed_ms=int((time.monotonic() - start) * 1000),
+            used_source=source_field,
+            error=(f"embedding dim mismatch: model returned "
+                   f"{len(embed_result.embeddings[0])}-d vectors, "
+                   f"DB column is vector({EMBEDDING_DIM}). "
+                   f"Reset MODEL or migrate the column."),
+        )
+
     eng = _get_engine()
     with eng.begin() as conn:
         # Replace existing chunks for this article+source_field.

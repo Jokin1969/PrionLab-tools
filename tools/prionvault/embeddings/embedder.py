@@ -24,6 +24,11 @@ EMBEDDING_DIM = 1024
 # Keeping batches at 64 texts × ~800 tokens ≈ 50k tokens is comfortably
 # under the limit and keeps individual requests fast.
 MAX_BATCH_SIZE = 64
+# Hard cap per-document so a freak 30k-token review can't silently
+# get truncated by Voyage at the 32k single-document limit. The
+# embed_texts loop logs a warning and trims to this many chars so
+# the call still goes through with a stable embedding.
+_MAX_CHARS_PER_TEXT = 30_000
 
 # Voyage pricing (USD per 1M tokens) — voyage-3-large at the time of
 # writing. Adjust if Voyage changes pricing.
@@ -62,6 +67,20 @@ def embed_texts(texts: List[str], *,
                            elapsed_ms=0, cost_usd=0.0)
     if input_type not in ("document", "query"):
         raise ValueError(f"input_type must be 'document' or 'query', got {input_type!r}")
+
+    # Guard against any single text overshooting Voyage's per-document
+    # token cap. We trim by char count (cheap, conservative — ~3 chars
+    # per token in scientific English) and log so the caller knows the
+    # chunker should be tightened upstream.
+    trimmed = []
+    for t in texts:
+        if t and len(t) > _MAX_CHARS_PER_TEXT:
+            logger.warning("embedder: trimming oversized text from %d to %d chars "
+                           "(input_type=%s)", len(t), _MAX_CHARS_PER_TEXT, input_type)
+            trimmed.append(t[:_MAX_CHARS_PER_TEXT])
+        else:
+            trimmed.append(t or "")
+    texts = trimmed
 
     client = _get_client()
     all_vecs: List[List[float]] = []

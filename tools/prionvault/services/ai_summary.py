@@ -270,7 +270,7 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
 def _call_anthropic(api_key: str, user_prompt: str,
                     extracted_text) -> SummaryResult:
     import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
     model = PROVIDERS["anthropic"]["model"]
 
     start = time.monotonic()
@@ -308,7 +308,7 @@ def _call_anthropic(api_key: str, user_prompt: str,
 def _call_openai(api_key: str, user_prompt: str,
                  extracted_text) -> SummaryResult:
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=60.0)
     model = PROVIDERS["openai"]["model"]
 
     start = time.monotonic()

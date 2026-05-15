@@ -138,10 +138,22 @@ def _build_context(chunks: List[RetrievedChunk],
 
 
 def _parse_confidence(text: str) -> Optional[str]:
+    """Pull the confidence label out of the model's answer. The prompt
+    asks for "Nivel de confianza: alto|medio|bajo", but real models
+    drift to "Confianza: medio", "Confidence: medium", etc. — the
+    regex is lenient enough to catch all of these and normalises
+    English → Spanish so the rest of the pipeline only sees one set.
+    """
     import re
-    m = re.search(r"nivel\s+de\s+confianza[:\s]+(alto|medio|bajo)",
-                  text, flags=re.IGNORECASE)
-    return m.group(1).lower() if m else None
+    m = re.search(
+        r"(?:nivel\s+de\s+)?(?:confianza|confidence)[:\s]+(alto|medio|bajo|high|medium|low)",
+        text or "", flags=re.IGNORECASE,
+    )
+    if not m:
+        return None
+    v = m.group(1).lower()
+    mapping = {"high": "alto", "medium": "medio", "low": "bajo"}
+    return mapping.get(v, v)
 
 
 def _parse_cited_numbers(text: str) -> List[int]:
@@ -174,7 +186,7 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
 
     if provider == "anthropic":
         import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
         msg = client.messages.create(
             model=model, max_tokens=MAX_OUTPUT_TOKENS,
             system=system,
@@ -190,7 +202,7 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
 
     if provider == "openai":
         from openai import OpenAI
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, timeout=60.0)
         comp = client.chat.completions.create(
             model=model, max_tokens=MAX_OUTPUT_TOKENS,
             messages=[
@@ -269,6 +281,31 @@ def ask(query: str, *, top_k: int = 20,
 
     context_text, citations = _build_context(retrieval.raw_chunks,
                                              retrieval.articles)
+    # Defensive context-window guard. Modern frontier models (Claude
+    # Sonnet 4.6, GPT-4.1, Gemini 2.5 Pro) all have ≥ 200 k token
+    # windows so this almost never triggers — but if a future call
+    # routes to a smaller model (Haiku, GPT-mini) the prompt would
+    # silently get truncated mid-citation and the grounding breaks.
+    # ~4 chars per token in scientific English → 150 k chars ≈ 38 k
+    # tokens of context, well within every supported model's input
+    # limit.
+    _CTX_CHAR_CAP = 150_000
+    if len(context_text) > _CTX_CHAR_CAP:
+        keep = []
+        running = 0
+        # Walk the numbered chunks from the start (highest-ranked
+        # appears first) and stop once we'd overflow.
+        for block in context_text.split("\n\n"):
+            if running + len(block) + 2 > _CTX_CHAR_CAP:
+                break
+            keep.append(block)
+            running += len(block) + 2
+        logger.warning("rag: context truncated from %d to %d chars "
+                       "(%d / %d chunks kept)",
+                       len(context_text), running, len(keep),
+                       context_text.count("\n\n") + 1)
+        context_text = "\n\n".join(keep)
+
     user_prompt = (
         f"Pregunta del usuario:\n{query}\n\n"
         f"Fragmentos de la biblioteca:\n{context_text}\n\n"

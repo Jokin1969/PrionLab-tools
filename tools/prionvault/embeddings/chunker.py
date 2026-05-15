@@ -103,6 +103,27 @@ def chunk_text(
         end = min(n, pos + chunk_tokens)
         piece_tokens = token_ids[pos:end]
         piece_text = enc.decode(piece_tokens)
+        # Seek back to the nearest sentence terminator when the chunk
+        # is full so we don't strand half a sentence at the boundary.
+        # Only applied to non-final chunks — the last chunk keeps
+        # whatever tail is there. The trim window is small enough
+        # (~5% of the chunk) to keep an even token count overall.
+        if end < n:
+            stripped = piece_text.rstrip()
+            window = max(80, int(len(stripped) * 0.10))
+            tail   = stripped[-window:]
+            best   = max(tail.rfind(". "),
+                         tail.rfind("? "),
+                         tail.rfind("! "),
+                         tail.rfind("\n"))
+            if best > 0:
+                # Recompute the absolute char index of the cut and
+                # re-encode so we know the actual token count for
+                # cost accounting.
+                cut = len(stripped) - window + best + 1
+                piece_text = stripped[:cut].rstrip()
+                # Re-tokenise the trimmed text to match its real length.
+                piece_tokens = enc.encode(piece_text)
         chunks.append(Chunk(
             index=idx,
             text=piece_text.strip(),
@@ -113,7 +134,10 @@ def chunk_text(
         idx += 1
         if end >= n:
             break
-        pos += step
+        # `step` is in token space; advance by the number of tokens
+        # we actually emitted (may be < chunk_tokens after the trim)
+        # so overlap stays roughly constant.
+        pos += max(1, len(piece_tokens) - overlap_tokens)
     return chunks
 
 
