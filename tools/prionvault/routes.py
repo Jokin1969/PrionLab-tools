@@ -1386,6 +1386,17 @@ def api_ingest_retry(job_id):
     return jsonify({"error": "job not found or not in failed/duplicate state"}), 400
 
 
+@prionvault_bp.route("/api/ingest/clear-failed", methods=["POST"])
+@admin_required
+def api_ingest_clear_failed():
+    """Remove every failed/duplicate row from the ingest queue.
+    Convenient when /tmp has been wiped and the staged PDFs are gone
+    — the rows are useless and a Retry would just fail again."""
+    from .ingestion import queue as ingest_queue
+    deleted = ingest_queue.clear_failed()
+    return jsonify({"ok": True, "deleted": deleted})
+
+
 # ── PDF streaming (inline viewer) ───────────────────────────────────────────
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["GET"])
 @login_required

@@ -40,10 +40,26 @@ from sqlalchemy import create_engine, text
 logger = logging.getLogger(__name__)
 
 _MAX_ATTEMPTS = 3
-# Where the worker stages PDFs on disk before processing.
-_STAGING_DIR = Path(os.environ.get("PRIONVAULT_STAGING_DIR",
-                                   tempfile.gettempdir())) / "prionvault_staging"
+# Where the worker stages PDFs on disk before processing. Resolution
+# order, first existing/writable wins:
+#   1. PRIONVAULT_STAGING_DIR if set explicitly.
+#   2. /data/prionvault_staging  ← Railway persistent volume mount.
+#                                  Survives container restarts / deploys.
+#   3. /tmp/prionvault_staging   ← ephemeral fallback for dev / no volume.
+# Anything staged in (3) is at risk of disappearing on the next
+# Railway redeploy, which is exactly the "staged_missing" failure mode.
+def _resolve_staging_dir() -> Path:
+    explicit = os.environ.get("PRIONVAULT_STAGING_DIR")
+    if explicit:
+        return Path(explicit)
+    persistent = Path("/data")
+    if persistent.exists() and os.access(persistent, os.W_OK):
+        return persistent / "prionvault_staging"
+    return Path(tempfile.gettempdir()) / "prionvault_staging"
+
+_STAGING_DIR = _resolve_staging_dir()
 _STAGING_DIR.mkdir(parents=True, exist_ok=True)
+logger.info("PrionVault staging dir: %s", _STAGING_DIR)
 
 
 # ── Engine bootstrap (resilient) ───────────────────────────────────────────
@@ -370,6 +386,23 @@ def retry(job_id: int) -> bool:
             """
         ), {"id": job_id})
         return res.rowcount > 0
+
+
+def clear_failed() -> int:
+    """Delete every failed/duplicate job from the queue table. Returns
+    the number of rows removed. Used by the "Limpiar fallidos" admin
+    button when a Railway restart has wiped /tmp and the staged PDFs
+    are no longer recoverable."""
+    try:
+        eng = _get_engine()
+    except Exception:
+        return 0
+    with eng.begin() as conn:
+        res = conn.execute(text(
+            """DELETE FROM prionvault_ingest_job
+               WHERE status IN ('failed', 'duplicate')"""
+        ))
+        return res.rowcount or 0
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

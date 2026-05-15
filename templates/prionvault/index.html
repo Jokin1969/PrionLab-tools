@@ -473,9 +473,16 @@
   <div class="pv-modal-backdrop"></div>
   <div class="pv-modal-inner" style="max-width:820px;">
     <button class="pv-modal-close" id="pv-queue-close" aria-label="Close">×</button>
-    <h2 style="margin:0 0 14px;font-size:17px;font-weight:700;color:#111827;">
-      <i class="fas fa-list-check" style="color:#0F3460;margin-right:8px;"></i>Ingest queue
-    </h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px;">
+      <h2 style="margin:0;font-size:17px;font-weight:700;color:#111827;">
+        <i class="fas fa-list-check" style="color:#0F3460;margin-right:8px;"></i>Ingest queue
+      </h2>
+      <button id="pv-queue-clear-failed" type="button"
+              style="padding:5px 11px;font-size:12px;border-radius:6px;border:1px solid #fecaca;
+                     background:#fff;color:#b91c1c;font-weight:600;cursor:pointer;">
+        <i class="fas fa-broom" style="margin-right:4px;"></i>Limpiar fallidos
+      </button>
+    </div>
     <div id="pv-queue-counts"></div>
     <table class="pv-queue-table">
       <thead><tr>

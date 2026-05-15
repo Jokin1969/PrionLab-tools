@@ -2033,6 +2033,26 @@
     };
     closeBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    const clearBtn = document.getElementById('pv-queue-clear-failed');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', async () => {
+        if (!confirm('¿Borrar todas las filas con status failed o duplicate? Esta acción no se puede deshacer.')) return;
+        clearBtn.disabled = true;
+        try {
+          const r = await fetch('/prionvault/api/ingest/clear-failed', {
+            method: 'POST', credentials: 'same-origin',
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+          refreshQueue();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          clearBtn.disabled = false;
+        }
+      });
+    }
   }
 
   async function refreshQueue() {
