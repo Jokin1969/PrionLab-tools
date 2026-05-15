@@ -1544,8 +1544,97 @@ def _count_pages_from_dropbox(dropbox_path: str):
 @prionvault_bp.route("/api/articles/<uuid:aid>/summary", methods=["POST"])
 @admin_required
 def api_generate_summary(aid):
-    """Stub. Wired up in Phase 3-4 once the summary pipeline lands."""
-    return jsonify({"error": "not_implemented_yet"}), 501
+    """Generate (or regenerate) an AI summary for the article.
+
+    Synchronous: blocks until Claude responds (~5-15 s typically). The
+    caller's UI should show a spinner during the wait. The new summary is
+    stored in `articles.summary_ai`; the existing Postgres trigger updates
+    `search_vector` automatically so the text becomes searchable at once.
+    Usage cost is recorded in `prionvault_usage` for budget tracking.
+    """
+    from .services.ai_summary import generate_summary, NotConfigured
+
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not found"}), 404
+
+        try:
+            result = generate_summary(
+                title=a.title,
+                authors=a.authors,
+                year=a.year,
+                journal=a.journal,
+                abstract=a.abstract,
+                doi=a.doi,
+                pubmed_id=a.pubmed_id,
+                extracted_text=a.extracted_text,
+            )
+        except NotConfigured:
+            return jsonify({"error": "ai_unavailable",
+                            "detail": "ANTHROPIC_API_KEY not set"}), 503
+        except Exception as exc:
+            logger.exception("AI summary generation failed for %s", aid)
+            return jsonify({"error": "generation_failed",
+                            "detail": str(exc)[:300]}), 502
+
+        a.summary_ai = result.text
+        a.updated_at = datetime.utcnow()
+
+        try:
+            usage = models.UsageEvent(
+                user_id=_viewer_id(),
+                action="summary_generate",
+                cost_usd=result.cost_usd,
+                tokens_in=result.tokens_in,
+                tokens_out=result.tokens_out,
+                meta={
+                    "article_id":     str(aid),
+                    "model":          result.model,
+                    "used_full_text": result.used_full_text,
+                    "input_chars":    result.input_chars,
+                    "elapsed_ms":     result.elapsed_ms,
+                },
+            )
+            s.add(usage)
+        except Exception as exc:
+            logger.warning("Could not record summary usage: %s", exc)
+
+        s.commit()
+        return jsonify({
+            "ok":          True,
+            "summary_ai":  result.text,
+            "model":       result.model,
+            "tokens_in":   result.tokens_in,
+            "tokens_out":  result.tokens_out,
+            "cost_usd":    result.cost_usd,
+            "elapsed_ms":  result.elapsed_ms,
+            "used_full_text": result.used_full_text,
+        })
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_generate_summary failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/summary", methods=["DELETE"])
+@admin_required
+def api_delete_summary(aid):
+    """Clear the AI-generated summary so it can be regenerated cleanly."""
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not found"}), 404
+        a.summary_ai = None
+        a.updated_at = datetime.utcnow()
+        s.commit()
+        return jsonify({"ok": True})
+    finally:
+        s.close()
 
 
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])

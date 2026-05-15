@@ -680,10 +680,7 @@
           <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Abstract</h3>
           <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.abstract)}</p>
         ` : ''}
-        ${a.summary_ai ? `
-          <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">AI summary</h3>
-          <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_ai)}</p>
-        ` : ''}
+        <div id="pv-ai-summary-block" style="margin:0 0 16px;"></div>
         ${a.summary_human ? `
           <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Human notes</h3>
           <p style="font-size:14px;color:#4b5563;line-height:1.65;margin:0 0 16px;">${supHtml(a.summary_human)}</p>
@@ -719,6 +716,7 @@
       renderRatingsSection(a);
       wirePdfViewer(a);
       wirePersonalState(a);
+      renderAiSummary(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
     }
@@ -921,6 +919,94 @@
   }
 
   // ── Personal state chips (favorite + read) in the detail modal ───────
+  // ── AI summary section (Capa 3) ──────────────────────────────────────
+  function renderAiSummary(a) {
+    const block = document.getElementById('pv-ai-summary-block');
+    if (!block) return;
+
+    const header = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 6px;">
+        <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">AI summary</h3>
+        ${IS_ADMIN ? `
+          <div style="display:flex;gap:6px;">
+            <button id="pv-ai-generate"
+                    style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                           font-size:11.5px;font-weight:600;color:#0F3460;cursor:pointer;">
+              ${a.summary_ai ? '↻ Regenerate' : '✨ Generate'}
+            </button>
+            ${a.summary_ai ? `
+              <button id="pv-ai-clear"
+                      title="Borrar el resumen IA"
+                      style="padding:4px 8px;border-radius:6px;border:1px solid #fecaca;background:white;
+                             font-size:11.5px;color:#b91c1c;cursor:pointer;">🗑</button>` : ''}
+          </div>` : ''}
+      </div>`;
+
+    const body = a.summary_ai
+      ? `<div style="font-size:14px;color:#4b5563;line-height:1.65;
+                     background:#f9fafb;border-radius:8px;padding:10px 12px;
+                     white-space:pre-wrap;">${supHtml(a.summary_ai)}</div>`
+      : `<div style="font-size:13px;color:#9ca3af;font-style:italic;
+                     background:#f9fafb;border-radius:8px;padding:10px 12px;">
+          Sin resumen IA todavía${IS_ADMIN ? ' — clic en ✨ Generate para crearlo.' : '.'}
+         </div>`;
+
+    block.innerHTML = header + body +
+      `<div id="pv-ai-status" style="margin-top:6px;font-size:11.5px;color:#9ca3af;"></div>`;
+
+    if (!IS_ADMIN) return;
+
+    const genBtn = document.getElementById('pv-ai-generate');
+    const clearBtn = document.getElementById('pv-ai-clear');
+    const statusEl = document.getElementById('pv-ai-status');
+
+    if (genBtn) genBtn.addEventListener('click', async () => {
+      genBtn.disabled = true;
+      const original = genBtn.textContent;
+      genBtn.textContent = '⏳ Generando…';
+      statusEl.style.color = '#6b7280';
+      statusEl.textContent = 'Llamando a Claude — esto puede tardar 5-15 s…';
+      try {
+        const r = await api(`/articles/${a.id}/summary`, { method: 'POST' });
+        a.summary_ai = r.summary_ai;
+        renderAiSummary(a);
+        const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
+        const tin  = r.tokens_in  != null ? ` · ${r.tokens_in} in` : '';
+        const tout = r.tokens_out != null ? ` / ${r.tokens_out} out` : '';
+        const src  = r.used_full_text ? ' (texto completo)' : ' (solo abstract)';
+        const newStatus = document.getElementById('pv-ai-status');
+        if (newStatus) {
+          newStatus.style.color = '#15803d';
+          newStatus.textContent = `✓ Generado en ${(r.elapsed_ms/1000).toFixed(1)} s${src}${tin}${tout}${cost}`;
+        }
+      } catch (e) {
+        statusEl.style.color = '#b91c1c';
+        if (e.status === 503) {
+          statusEl.textContent = 'IA no disponible: ANTHROPIC_API_KEY no configurada en el servidor.';
+        } else {
+          statusEl.textContent = 'Error: ' + e.message;
+        }
+        genBtn.disabled = false;
+        genBtn.textContent = original;
+      }
+    });
+
+    if (clearBtn) clearBtn.addEventListener('click', async () => {
+      if (!confirm('¿Borrar el resumen IA de este artículo? Se podrá regenerar.')) return;
+      clearBtn.disabled = true;
+      try {
+        await api(`/articles/${a.id}/summary`, { method: 'DELETE' });
+        a.summary_ai = null;
+        renderAiSummary(a);
+      } catch (e) {
+        statusEl.style.color = '#b91c1c';
+        statusEl.textContent = 'Error al borrar: ' + e.message;
+        clearBtn.disabled = false;
+      }
+    });
+  }
+
   function wirePersonalState(a) {
     const favBtn  = document.getElementById('pv-detail-fav');
     const readBtn = document.getElementById('pv-detail-read');
