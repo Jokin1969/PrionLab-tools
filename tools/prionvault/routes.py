@@ -1792,6 +1792,104 @@ def api_article_similar(aid):
                         "detail": str(exc)[:300]}), 500
 
 
+# ── Supplementary material ─────────────────────────────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/supplementary", methods=["GET"])
+@login_required
+def api_supplementary_list(aid):
+    from .services import supplementary
+    try:
+        return jsonify({"items": supplementary.list_for_article(aid)})
+    except Exception as exc:
+        logger.exception("supplementary list failed for %s", aid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/supplementary", methods=["POST"])
+@admin_required
+def api_supplementary_upload(aid):
+    """Upload one supplementary file. multipart/form-data:
+       file=<binary>, caption=<optional string>.
+    Returns the created row metadata."""
+    from .services import supplementary
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "no file"}), 400
+    caption = (request.form.get("caption") or "").strip() or None
+    try:
+        content = f.read()
+        row = supplementary.create(
+            article_id=aid,
+            content=content,
+            filename=f.filename,
+            caption=caption,
+            added_by=_viewer_id(),
+        )
+        return jsonify(row), 201
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except RuntimeError as exc:
+        logger.warning("supplementary upload failed for %s: %s", aid, exc)
+        return jsonify({"error": "upload_failed", "detail": str(exc)}), 502
+    except Exception as exc:
+        logger.exception("supplementary upload crashed for %s", aid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+
+@prionvault_bp.route(
+    "/api/articles/<uuid:aid>/supplementary/<uuid:sid>",
+    methods=["PATCH"])
+@admin_required
+def api_supplementary_update(aid, sid):
+    from .services import supplementary
+    data = request.get_json(force=True, silent=True) or {}
+    if "caption" not in data:
+        return jsonify({"error": "no editable fields"}), 400
+    caption = data.get("caption")
+    if caption is not None:
+        caption = str(caption)[:2000]
+    try:
+        ok = supplementary.update_caption(sid, caption)
+    except Exception as exc:
+        logger.exception("supplementary patch failed for %s", sid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True, "caption": caption or ""})
+
+
+@prionvault_bp.route(
+    "/api/articles/<uuid:aid>/supplementary/<uuid:sid>",
+    methods=["DELETE"])
+@admin_required
+def api_supplementary_delete(aid, sid):
+    from .services import supplementary
+    try:
+        ok = supplementary.delete(sid)
+    except Exception as exc:
+        logger.exception("supplementary delete failed for %s", sid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route(
+    "/api/articles/<uuid:aid>/supplementary/<uuid:sid>/url",
+    methods=["GET"])
+@login_required
+def api_supplementary_url(aid, sid):
+    """Return a short-lived Dropbox download URL for the file."""
+    from .services import supplementary
+    url = supplementary.temporary_link(sid)
+    if not url:
+        return jsonify({"error": "unavailable"}), 502
+    return jsonify({"url": url})
+
+
 # ── Per-article reindex (Phase 4) ───────────────────────────────────────────
 @prionvault_bp.route("/api/articles/<uuid:aid>/reindex", methods=["POST"])
 @admin_required

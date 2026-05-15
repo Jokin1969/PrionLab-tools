@@ -718,6 +718,7 @@
         ${tagHtml}
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-similar-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
+        <div id="pv-supplementary-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-used-in-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;">
           <button id="pv-add-to-pack-btn" type="button"
@@ -742,6 +743,7 @@
       wireUnpaywallButton(a);
       wireAddToPackButton(a);
       renderSimilarSection(a);
+      renderSupplementarySection(a);
       renderUsedInSection(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
@@ -1069,6 +1071,214 @@
 
     sec.querySelectorAll('.pv-similar-row').forEach(row => {
       row.addEventListener('click', () => openDetail(row.dataset.aid));
+    });
+  }
+
+  // ── Supplementary material ────────────────────────────────────────────
+  const SUPP_ICONS = {
+    pdf:     'fa-file-pdf',     xlsx:    'fa-file-excel',
+    csv:     'fa-file-csv',     txt:     'fa-file-lines',
+    doc:     'fa-file-word',    ppt:     'fa-file-powerpoint',
+    video:   'fa-file-video',   image:   'fa-file-image',
+    archive: 'fa-file-zipper',  data:    'fa-file-code',
+    other:   'fa-file',
+  };
+  const SUPP_COLORS = {
+    pdf:     '#b91c1c', xlsx:    '#15803d', csv:     '#15803d',
+    txt:     '#6b7280', doc:     '#1d4ed8', ppt:     '#c2410c',
+    video:   '#7c3aed', image:   '#0e7490', archive: '#92400e',
+    data:    '#374151', other:   '#6b7280',
+  };
+  function fmtBytes(n) {
+    if (!n || n < 0) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  async function renderSupplementarySection(a) {
+    const sec = document.getElementById('pv-supplementary-section');
+    if (!sec) return;
+    const admin = IS_ADMIN;
+
+    const heading = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
+        <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">Material suplementario</h3>
+        ${admin ? `<button id="pv-supp-add-btn" type="button"
+                      style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #d1d5db;
+                             background:white;color:#0F3460;font-weight:600;cursor:pointer;">
+                      <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir
+                    </button>` : ''}
+      </div>`;
+    sec.innerHTML = heading +
+      `<div id="pv-supp-list" style="font-size:12.5px;color:#9ca3af;">Cargando…</div>`;
+
+    if (admin) wireSupplementaryUpload(a);
+
+    let data;
+    try {
+      data = await api(`/articles/${a.id}/supplementary`);
+    } catch (e) {
+      document.getElementById('pv-supp-list').innerHTML =
+        `<div style="color:#b91c1c;">Error: ${esc(e.message)}</div>`;
+      return;
+    }
+    renderSupplementaryList(a, data.items || [], admin);
+  }
+
+  function renderSupplementaryList(a, items, admin) {
+    const list = document.getElementById('pv-supp-list');
+    if (!list) return;
+    if (!items.length) {
+      list.innerHTML = `
+        <div style="font-size:12.5px;color:#9ca3af;font-style:italic;
+                    background:#f9fafb;border-radius:8px;padding:10px 12px;">
+          Sin material suplementario.${admin ? ' Pulsa "Añadir" para subir un archivo.' : ''}
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = items.map(it => {
+      const icon  = SUPP_ICONS[it.kind] || SUPP_ICONS.other;
+      const color = SUPP_COLORS[it.kind] || SUPP_COLORS.other;
+      const meta  = [it.kind.toUpperCase(), fmtBytes(it.size_bytes)]
+        .filter(Boolean).join(' · ');
+      return `
+        <div class="pv-supp-row" data-sid="${esc(it.id)}"
+             style="display:flex;align-items:flex-start;gap:10px;padding:9px 11px;
+                    background:#fafafa;border:1px solid #e5e7eb;border-radius:7px;margin-bottom:6px;">
+          <i class="fas ${icon}" style="color:${color};font-size:18px;flex-shrink:0;
+                                          padding-top:1px;width:18px;text-align:center;"></i>
+          <div style="flex:1;min-width:0;">
+            <a href="#" data-action="open" data-sid="${esc(it.id)}"
+               style="font-size:13px;font-weight:600;color:#0F3460;text-decoration:none;
+                      display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${esc(it.filename)}
+            </a>
+            <div style="font-size:11px;color:#9ca3af;margin-top:1px;">${esc(meta)}</div>
+            ${it.caption
+              ? `<div class="pv-supp-caption" data-sid="${esc(it.id)}"
+                       style="font-size:12px;color:#374151;margin-top:4px;
+                              white-space:pre-wrap;word-break:break-word;">${esc(it.caption)}</div>`
+              : admin
+                ? `<div class="pv-supp-caption pv-supp-caption-empty" data-sid="${esc(it.id)}"
+                         style="font-size:11.5px;color:#9ca3af;font-style:italic;margin-top:4px;cursor:pointer;">
+                       Añadir descripción…
+                     </div>`
+                : ''}
+          </div>
+          ${admin ? `
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+              <button type="button" data-action="edit" data-sid="${esc(it.id)}"
+                      title="Editar descripción"
+                      style="padding:3px 6px;background:transparent;border:1px solid transparent;
+                             border-radius:5px;color:#6b7280;cursor:pointer;font-size:12px;">
+                <i class="fas fa-pen"></i>
+              </button>
+              <button type="button" data-action="delete" data-sid="${esc(it.id)}"
+                      title="Eliminar"
+                      style="padding:3px 6px;background:transparent;border:1px solid transparent;
+                             border-radius:5px;color:#b91c1c;cursor:pointer;font-size:12px;">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>` : ''}
+        </div>`;
+    }).join('');
+
+    list.querySelectorAll('[data-action="open"]').forEach(el =>
+      el.addEventListener('click', async ev => {
+        ev.preventDefault();
+        const sid = ev.currentTarget.dataset.sid;
+        try {
+          const r = await api(`/articles/${a.id}/supplementary/${sid}/url`);
+          if (r.url) window.open(r.url, '_blank', 'noopener');
+        } catch (e) {
+          alert('No se pudo abrir el archivo: ' + e.message);
+        }
+      }));
+
+    if (admin) {
+      list.querySelectorAll('[data-action="edit"], .pv-supp-caption').forEach(el =>
+        el.addEventListener('click', ev => {
+          const sid = ev.currentTarget.dataset.sid;
+          const item = items.find(x => x.id === sid);
+          if (!item) return;
+          const next = prompt('Descripción del archivo:', item.caption || '');
+          if (next === null) return;
+          patchSupplementaryCaption(a, sid, next.trim(), items);
+        }));
+      list.querySelectorAll('[data-action="delete"]').forEach(el =>
+        el.addEventListener('click', async ev => {
+          const sid  = ev.currentTarget.dataset.sid;
+          const item = items.find(x => x.id === sid);
+          if (!item) return;
+          if (!confirm(`¿Eliminar "${item.filename}"?`)) return;
+          try {
+            await api(`/articles/${a.id}/supplementary/${sid}`, { method: 'DELETE' });
+            renderSupplementarySection(a);
+          } catch (e) {
+            alert('Error al eliminar: ' + e.message);
+          }
+        }));
+    }
+  }
+
+  async function patchSupplementaryCaption(a, sid, caption, items) {
+    try {
+      await api(`/articles/${a.id}/supplementary/${sid}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ caption }),
+      });
+      const item = items.find(x => x.id === sid);
+      if (item) item.caption = caption;
+      renderSupplementaryList(a, items, IS_ADMIN);
+    } catch (e) {
+      alert('Error guardando descripción: ' + e.message);
+    }
+  }
+
+  function wireSupplementaryUpload(a) {
+    const btn = document.getElementById('pv-supp-add-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.style.display = 'none';
+      input.addEventListener('change', async () => {
+        const f = input.files && input.files[0];
+        if (!f) return;
+        const caption = prompt(
+          `Descripción para "${f.name}" (opcional):`, '');
+        if (caption === null) return;            // cancelled
+        const fd = new FormData();
+        fd.append('file', f, f.name);
+        if (caption.trim()) fd.append('caption', caption.trim());
+        btn.disabled = true;
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subiendo…';
+        try {
+          const r = await fetch(API + `/articles/${a.id}/supplementary`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: fd,
+          });
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || err.error || ('HTTP ' + r.status));
+          }
+          renderSupplementarySection(a);
+        } catch (e) {
+          alert('Error subiendo el archivo: ' + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = original;
+        }
+      });
+      document.body.appendChild(input);
+      input.click();
+      setTimeout(() => input.remove(), 5000);
     });
   }
 
