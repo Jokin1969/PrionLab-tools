@@ -1510,16 +1510,34 @@
 
   // ── Personal state chips (favorite + read) in the detail modal ───────
   // ── AI summary section (Capa 3) ──────────────────────────────────────
+  // Cache the AI providers catalogue across the page so the detail
+  // modal and the bulk modal share one round-trip instead of refetching.
+  let _aiProvidersPromise = null;
+  function getAiProviders() {
+    if (!_aiProvidersPromise) {
+      _aiProvidersPromise = api('/admin/ai-providers')
+        .then(r => r.providers || {})
+        .catch(() => ({}));
+    }
+    return _aiProvidersPromise;
+  }
+
   function renderAiSummary(a) {
     const block = document.getElementById('pv-ai-summary-block');
     if (!block) return;
 
     const header = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 6px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 6px;gap:8px;flex-wrap:wrap;">
         <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
                    text-transform:uppercase;letter-spacing:0.05em;">AI summary</h3>
         ${IS_ADMIN ? `
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="pv-ai-provider" title="Modelo de IA a usar"
+                    style="font-size:11.5px;padding:3px 6px;border-radius:6px;
+                           border:1px solid #d1d5db;background:white;color:#374151;
+                           max-width:170px;">
+              <option value="">Cargando…</option>
+            </select>
             <button id="pv-ai-generate"
                     style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;background:white;
                            font-size:11.5px;font-weight:600;color:#0F3460;cursor:pointer;">
@@ -1547,33 +1565,73 @@
 
     if (!IS_ADMIN) return;
 
-    const genBtn = document.getElementById('pv-ai-generate');
+    const genBtn   = document.getElementById('pv-ai-generate');
     const clearBtn = document.getElementById('pv-ai-clear');
     const statusEl = document.getElementById('pv-ai-status');
+    const provEl   = document.getElementById('pv-ai-provider');
+
+    // Populate the provider dropdown. Default to the value persisted
+    // by the bulk-summary modal so the detail picker stays in sync.
+    getAiProviders().then(providers => {
+      if (!provEl) return;
+      const stored = localStorage.getItem('pv-summary-provider') || 'anthropic';
+      const keys = Object.keys(providers);
+      if (!keys.length) {
+        provEl.innerHTML = '<option value="">(sin proveedores)</option>';
+        provEl.disabled = true;
+        if (genBtn) {
+          genBtn.disabled = true;
+          genBtn.style.opacity = '0.5';
+        }
+        return;
+      }
+      provEl.innerHTML = keys.map(k => {
+        const p = providers[k];
+        const off = !p.configured;
+        return `<option value="${esc(k)}" ${off ? 'disabled' : ''}>
+                  ${esc(p.label)}${off ? ' (sin API key)' : ''}
+                </option>`;
+      }).join('');
+      // Pick stored if valid+configured, else the first configured one.
+      const ok = providers[stored] && providers[stored].configured;
+      provEl.value = ok
+        ? stored
+        : (keys.find(k => providers[k].configured) || stored);
+      provEl.addEventListener('change', () => {
+        if (provEl.value) localStorage.setItem('pv-summary-provider', provEl.value);
+      });
+    });
 
     if (genBtn) genBtn.addEventListener('click', async () => {
+      const provider = (provEl && provEl.value) ||
+                       localStorage.getItem('pv-summary-provider') ||
+                       'anthropic';
       genBtn.disabled = true;
       const original = genBtn.textContent;
       genBtn.textContent = '⏳ Generando…';
       statusEl.style.color = '#6b7280';
-      statusEl.textContent = 'Llamando a Claude — esto puede tardar 5-15 s…';
+      statusEl.textContent = 'Llamando a la IA — puede tardar 5-15 s…';
       try {
-        const r = await api(`/articles/${a.id}/summary`, { method: 'POST' });
+        const r = await api(`/articles/${a.id}/summary`, {
+          method: 'POST',
+          body: JSON.stringify({ provider }),
+        });
         a.summary_ai = r.summary_ai;
         renderAiSummary(a);
         const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
         const tin  = r.tokens_in  != null ? ` · ${r.tokens_in} in` : '';
         const tout = r.tokens_out != null ? ` / ${r.tokens_out} out` : '';
         const src  = r.used_full_text ? ' (texto completo)' : ' (solo abstract)';
+        const modelTag = r.model ? ` [${r.model}]` : '';
         const newStatus = document.getElementById('pv-ai-status');
         if (newStatus) {
           newStatus.style.color = '#15803d';
-          newStatus.textContent = `✓ Generado en ${(r.elapsed_ms/1000).toFixed(1)} s${src}${tin}${tout}${cost}`;
+          newStatus.textContent = `✓ Generado en ${(r.elapsed_ms/1000).toFixed(1)} s${modelTag}${src}${tin}${tout}${cost}`;
         }
       } catch (e) {
         statusEl.style.color = '#b91c1c';
         if (e.status === 503) {
-          statusEl.textContent = 'IA no disponible: ANTHROPIC_API_KEY no configurada en el servidor.';
+          statusEl.textContent = 'IA no disponible: API key no configurada en el servidor.';
         } else {
           statusEl.textContent = 'Error: ' + e.message;
         }

@@ -1606,9 +1606,9 @@ def api_generate_summary(aid):
                 extracted_text=a.extracted_text,
                 provider=provider,
             )
-        except NotConfigured:
+        except NotConfigured as exc:
             return jsonify({"error": "ai_unavailable",
-                            "detail": "ANTHROPIC_API_KEY not set"}), 503
+                            "detail": str(exc)}), 503
         except Exception as exc:
             logger.exception("AI summary generation failed for %s", aid)
             return jsonify({"error": "generation_failed",
