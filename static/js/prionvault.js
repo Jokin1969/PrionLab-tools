@@ -36,12 +36,12 @@
     isFlagged: null,     // null = all, true = flagged, false = not flagged
     isMilestone: null,   // null = all, true = milestone, false = not
     colorLabel: null,    // null = all, 'red'..'purple', or 'none' for no label
-    priorityMin: null,   // null = all, else integer 1-5
+    priorityEq: null,    // null = all, else integer 1-5 (exact match)
     extraction: null,    // null = all, 'extracted' | 'pending' | 'failed'
     isFavorite: null,    // null = all, true = only favorites, false = non-favorites
     isRead: null,        // null = all, true = personally read, false = unread
     page: 1,
-    size: 25,
+    size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
   };
 
   const COLOR_LABELS = [
@@ -146,7 +146,7 @@
     if (state.isFlagged    !== null) params.set('is_flagged',   state.isFlagged    ? '1' : '0');
     if (state.isMilestone  !== null) params.set('is_milestone', state.isMilestone  ? '1' : '0');
     if (state.colorLabel)          params.set('color_label', state.colorLabel);
-    if (state.priorityMin)         params.set('priority_min', state.priorityMin);
+    if (state.priorityEq)          params.set('priority_eq', state.priorityEq);
     if (state.extraction)          params.set('extraction_status', state.extraction);
     if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
     if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
@@ -1555,12 +1555,23 @@
       state.page = 1;
       loadArticles();
     });
-    document.getElementById('filter-priority-min').addEventListener('change', e => {
+    document.getElementById('filter-priority-eq').addEventListener('change', e => {
       const v = parseInt(e.target.value, 10);
-      state.priorityMin = Number.isFinite(v) ? v : null;
+      state.priorityEq = Number.isFinite(v) ? v : null;
       state.page = 1;
       loadArticles();
     });
+    const psSel = document.getElementById('page-size-select');
+    if (psSel) {
+      psSel.value = String(state.size);
+      psSel.addEventListener('change', e => {
+        const v = parseInt(e.target.value, 10);
+        state.size = Number.isFinite(v) && v > 0 ? v : 100;
+        localStorage.setItem('pv-page-size', String(state.size));
+        state.page = 1;
+        loadArticles();
+      });
+    }
     document.getElementById('filter-extraction').addEventListener('change', e => {
       state.extraction = e.target.value || null;
       state.page = 1;

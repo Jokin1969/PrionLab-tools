@@ -57,7 +57,7 @@ def api_list_articles():
     is_milestone_raw = request.args.get("is_milestone")
     is_milestone     = True if is_milestone_raw == "1" else (False if is_milestone_raw == "0" else None)
     color_label = (request.args.get("color_label") or "").strip().lower() or None
-    priority_min = request.args.get("priority_min", type=int)
+    priority_eq = request.args.get("priority_eq", type=int)
     extraction = (request.args.get("extraction_status") or "").strip().lower() or None
     is_favorite_raw = request.args.get("is_favorite")
     is_favorite = True if is_favorite_raw == "1" else (False if is_favorite_raw == "0" else None)
@@ -65,14 +65,14 @@ def api_list_articles():
     is_read = True if is_read_raw == "1" else (False if is_read_raw == "0" else None)
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
-    page_size   = min(100, max(1, request.args.get("size", 25, type=int)))
+    page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
 
     s = _session()
     try:
         return _list_articles_impl(s, q, year_min, year_max, journal,
                                    tag_id, has_summary, in_prionread,
                                    is_flagged, is_milestone, color_label,
-                                   priority_min, extraction,
+                                   priority_eq, extraction,
                                    is_favorite, is_read,
                                    sort, page, page_size)
     except Exception as exc:
@@ -89,7 +89,7 @@ _VALID_COLOR_LABELS = {"red", "orange", "yellow", "green", "blue", "purple"}
 def _list_articles_impl(s, q, year_min, year_max, journal,
                         tag_id, has_summary, in_prionread,
                         is_flagged, is_milestone, color_label,
-                        priority_min, extraction,
+                        priority_eq, extraction,
                         is_favorite, is_read,
                         sort, page, page_size):
     """Core of api_list_articles. Separated so the caller can cleanly catch
@@ -153,9 +153,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     elif color_label == "none":
         conditions.append("color_label IS NULL")
 
-    if priority_min is not None:
-        conditions.append("priority >= :priority_min")
-        params["priority_min"] = priority_min
+    if priority_eq is not None:
+        conditions.append("priority = :priority_eq")
+        params["priority_eq"] = priority_eq
 
     if extraction and "extraction_status" in pv_cols:
         if extraction == "extracted":

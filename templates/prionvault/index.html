@@ -302,9 +302,10 @@
         </label>
 
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Prioridad ≥
-          <select id="filter-priority-min" class="pv-filter-input">
+          Prioridad =
+          <select id="filter-priority-eq" class="pv-filter-input">
             <option value="">todas</option>
+            <option value="1">1</option>
             <option value="2">2</option>
             <option value="3">3</option>
             <option value="4">4</option>
@@ -352,11 +353,23 @@
     </div>
 
     <!-- Results meta -->
-    <div id="pv-results-meta" style="padding:10px 24px 8px;display:flex;align-items:center;gap:5px;
+    <div id="pv-results-meta" style="padding:10px 24px 8px;display:flex;align-items:center;gap:8px;
                 font-size:12px;color:#9ca3af;">
       <span id="pv-result-count">—</span>
       <span>·</span>
       <span id="pv-result-page">page 1</span>
+      <span style="flex:1;"></span>
+      <label style="display:flex;align-items:center;gap:6px;color:#6b7280;">
+        Por página
+        <select id="page-size-select" class="pv-filter-input"
+                style="padding:3px 6px;font-size:12px;">
+          <option value="100">100</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="2000">2000</option>
+          <option value="50000">todos</option>
+        </select>
+      </label>
     </div>
 
     <!-- Article list + pagination -->
