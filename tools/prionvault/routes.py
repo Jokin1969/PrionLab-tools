@@ -1959,6 +1959,41 @@ def api_batch_ocr_stop():
     return jsonify({"ok": True, "status": batch_ocr.stop_batch()})
 
 
+# ── Batch text extraction (pdfplumber, fast counterpart to OCR) ─────────────
+@prionvault_bp.route("/api/admin/batch-extract/status", methods=["GET"])
+@admin_required
+def api_batch_extract_status():
+    from .services import batch_extract
+    return jsonify(batch_extract.get_status())
+
+
+@prionvault_bp.route("/api/admin/batch-extract/start", methods=["POST"])
+@admin_required
+def api_batch_extract_start():
+    from .services import batch_extract
+    data = request.get_json(force=True, silent=True) or {}
+    limit = data.get("limit")
+    if limit is not None:
+        try:
+            limit = int(limit)
+            if limit <= 0:
+                limit = None
+        except (TypeError, ValueError):
+            return jsonify({"error": "limit must be a positive integer"}), 400
+    snap = batch_extract.start_batch(viewer_user_id=_viewer_id(), limit=limit)
+    if snap is None:
+        return jsonify({"error": "already_running",
+                        "status": batch_extract.get_status()}), 409
+    return jsonify({"ok": True, "status": snap})
+
+
+@prionvault_bp.route("/api/admin/batch-extract/stop", methods=["POST"])
+@admin_required
+def api_batch_extract_stop():
+    from .services import batch_extract
+    return jsonify({"ok": True, "status": batch_extract.stop_batch()})
+
+
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():

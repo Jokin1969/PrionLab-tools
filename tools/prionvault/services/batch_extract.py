@@ -1,0 +1,314 @@
+"""Background batch text-extraction service (pdfplumber).
+
+Fast counterpart to batch_ocr: walks every article that has a PDF in
+Dropbox but little or no extracted_text, downloads the PDF, and runs
+pdfplumber to recover the text layer. Born-digital PDFs (the vast
+majority of a science library) finish in ~1-2 seconds each, vs the
+30 s - several minutes that Tesseract takes per paper.
+
+PDFs that pdfplumber cannot extract (pure scans without a text layer)
+remain untouched, so the user can later run batch_ocr only on the
+remainder.
+
+Same single-runner pattern as batch_ocr / batch_summary / batch_index:
+one background thread guarded by a module-level lock, stop flag
+honoured between articles, status polled by the UI every couple of
+seconds.
+
+Eligibility filter (same as batch_ocr):
+    dropbox_path IS NOT NULL
+    AND (extracted_text IS NULL OR length(extracted_text) < 200)
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import text as sql_text
+
+from ..ingestion.queue import _get_engine
+from ..ingestion.pdf_extractor import extract_pdf
+
+logger = logging.getLogger(__name__)
+
+# pdfplumber is much faster than OCR, so a smaller inter-paper pause
+# still keeps the worker thread interruptible. 0.1 s is enough.
+_BETWEEN_PAPERS_SLEEP_S = 0.1
+
+# Same threshold as batch_ocr — below this we treat the extraction as
+# "no usable text layer", so the article stays eligible for OCR later.
+_MIN_USEFUL_CHARS = 200
+
+_state = {
+    "running":           False,
+    "started_at":        None,
+    "finished_at":       None,
+    "stop_requested":    False,
+    "eligible_total":    0,
+    "processed":         0,
+    "failed":            0,
+    "skipped":           0,
+    "current_article":   None,
+    "last_error":        None,
+    "total_chars":       0,
+    "total_pages":       0,
+}
+_lock = threading.Lock()
+_thread: Optional[threading.Thread] = None
+
+
+def get_status() -> dict:
+    with _lock:
+        snap = dict(_state)
+    snap["library_stats"] = _library_stats()
+    return snap
+
+
+def _library_stats() -> dict:
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(sql_text(
+                """SELECT
+                       COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE dropbox_path IS NOT NULL) AS with_pdf,
+                       COUNT(*) FILTER (
+                         WHERE extracted_text IS NOT NULL
+                           AND length(extracted_text) >= 200
+                       ) AS with_text,
+                       COUNT(*) FILTER (
+                         WHERE dropbox_path IS NOT NULL
+                           AND (extracted_text IS NULL
+                                OR length(extracted_text) < 200)
+                       ) AS eligible
+                   FROM articles"""
+            )).first()
+            return {
+                "total":     int(row[0] or 0),
+                "with_pdf":  int(row[1] or 0),
+                "with_text": int(row[2] or 0),
+                "eligible":  int(row[3] or 0),
+            }
+    except Exception as exc:
+        logger.warning("batch_extract: library_stats failed: %s", exc)
+        return {"total": 0, "with_pdf": 0, "with_text": 0,
+                "eligible": 0, "error": str(exc)[:300]}
+
+
+def start_batch(*, viewer_user_id=None,
+                limit: Optional[int] = None) -> Optional[dict]:
+    global _thread
+    with _lock:
+        if _state["running"]:
+            return None
+        _state.update({
+            "running":         True,
+            "started_at":      datetime.utcnow().isoformat(),
+            "finished_at":     None,
+            "stop_requested":  False,
+            "eligible_total":  0,
+            "processed":       0,
+            "failed":          0,
+            "skipped":         0,
+            "current_article": None,
+            "last_error":      None,
+            "total_chars":     0,
+            "total_pages":     0,
+        })
+
+    _thread = threading.Thread(
+        target=_run_batch,
+        kwargs={"viewer_user_id": viewer_user_id, "limit": limit},
+        name="prionvault-batch-extract",
+        daemon=True,
+    )
+    _thread.start()
+    return get_status()
+
+
+def stop_batch() -> dict:
+    with _lock:
+        if _state["running"]:
+            _state["stop_requested"] = True
+    return get_status()
+
+
+def _download_pdf(dropbox_path: str) -> bytes:
+    from core.dropbox_client import get_client
+    client = get_client()
+    if client is None:
+        raise RuntimeError("Dropbox client unavailable")
+    _meta, response = client.files_download(dropbox_path)
+    return response.content
+
+
+def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
+    eng = _get_engine()
+    try:
+        with eng.connect() as conn:
+            row = conn.execute(sql_text(
+                """SELECT COUNT(*) FROM articles
+                   WHERE dropbox_path IS NOT NULL
+                     AND (extracted_text IS NULL
+                          OR length(extracted_text) < 200)"""
+            )).first()
+            with _lock:
+                _state["eligible_total"] = int(row[0] or 0)
+                if limit is not None:
+                    _state["eligible_total"] = min(
+                        _state["eligible_total"], limit)
+    except Exception as exc:
+        logger.exception("batch_extract: count failed")
+        with _lock:
+            _state["running"] = False
+            _state["finished_at"] = datetime.utcnow().isoformat()
+            _state["last_error"] = f"count failed: {exc}"
+        return
+
+    seen_ids: set = set()
+    while True:
+        with _lock:
+            if _state["stop_requested"]:
+                break
+            if limit is not None and \
+               _state["processed"] + _state["failed"] + _state["skipped"] >= limit:
+                break
+
+        try:
+            with eng.connect() as conn:
+                params: dict = {}
+                seen_clause = ""
+                if seen_ids:
+                    params["seen"] = list(seen_ids)
+                    seen_clause = " AND id <> ALL(:seen)"
+                row = conn.execute(sql_text(
+                    f"""SELECT id, title, dropbox_path, pdf_pages
+                        FROM articles
+                        WHERE dropbox_path IS NOT NULL
+                          AND (extracted_text IS NULL
+                               OR length(extracted_text) < 200)
+                          {seen_clause}
+                        ORDER BY created_at DESC NULLS LAST
+                        LIMIT 1"""
+                ), params).first()
+        except Exception as exc:
+            logger.exception("batch_extract: query failed")
+            with _lock:
+                _state["last_error"] = f"query failed: {exc}"
+            time.sleep(5.0)
+            continue
+
+        if row is None:
+            break
+
+        article_id   = row[0]
+        title        = row[1] or "(sin título)"
+        dropbox_path = row[2]
+        old_pages    = row[3]
+        seen_ids.add(article_id)
+
+        with _lock:
+            _state["current_article"] = {
+                "id":    str(article_id),
+                "title": title[:160],
+            }
+
+        try:
+            content = _download_pdf(dropbox_path)
+        except Exception as exc:
+            logger.warning("batch_extract: download failed for %s: %s",
+                           article_id, exc)
+            with _lock:
+                _state["failed"] += 1
+                _state["last_error"] = (
+                    f"{title[:80]} — download: {str(exc)[:160]}")
+            time.sleep(_BETWEEN_PAPERS_SLEEP_S)
+            continue
+
+        try:
+            result = extract_pdf(content)
+        except Exception as exc:
+            logger.exception("batch_extract: pdfplumber failed for %s",
+                             article_id)
+            with _lock:
+                _state["failed"] += 1
+                _state["last_error"] = (
+                    f"{title[:80]} — pdfplumber: {str(exc)[:160]}")
+            time.sleep(_BETWEEN_PAPERS_SLEEP_S)
+            continue
+
+        if not result.text or len(result.text) < _MIN_USEFUL_CHARS:
+            # No text layer (pure scan, encrypted, image-only). Leave
+            # extracted_text alone so batch_ocr can pick this up later.
+            with _lock:
+                _state["skipped"] += 1
+                detail = result.error or "no text layer (probably scanned)"
+                _state["last_error"] = f"{title[:80]} — {detail[:160]}"
+            time.sleep(_BETWEEN_PAPERS_SLEEP_S)
+            continue
+
+        try:
+            with eng.begin() as conn:
+                params = {
+                    "aid":   str(article_id),
+                    "text":  result.text,
+                    "pages": result.pages or old_pages,
+                }
+                conn.execute(sql_text(
+                    """UPDATE articles
+                       SET extracted_text    = :text,
+                           extraction_status = 'extracted',
+                           extraction_error  = NULL,
+                           pdf_pages         = COALESCE(:pages, pdf_pages),
+                           updated_at        = NOW()
+                       WHERE id = :aid"""
+                ), params)
+                try:
+                    conn.execute(sql_text(
+                        """INSERT INTO prionvault_usage
+                           (user_id, action, cost_usd, tokens_in, tokens_out,
+                            metadata, created_at)
+                           VALUES (:uid, 'text_extract', 0, 0, 0,
+                                   :meta::jsonb, NOW())"""
+                    ), {
+                        "uid":  str(viewer_user_id) if viewer_user_id else None,
+                        "meta": _json_dumps({
+                            "article_id": str(article_id),
+                            "pages":      result.pages,
+                            "chars":      len(result.text),
+                            "via":        "batch",
+                            "engine":     "pdfplumber",
+                        }),
+                    })
+                except Exception as exc:
+                    logger.warning("batch_extract: usage insert failed: %s",
+                                   exc)
+        except Exception as exc:
+            logger.exception("batch_extract: persist failed for %s",
+                             article_id)
+            with _lock:
+                _state["failed"] += 1
+                _state["last_error"] = f"persist: {exc}"
+            time.sleep(_BETWEEN_PAPERS_SLEEP_S)
+            continue
+
+        with _lock:
+            _state["processed"]   += 1
+            _state["total_chars"] += len(result.text)
+            _state["total_pages"] += result.pages or 0
+
+        time.sleep(_BETWEEN_PAPERS_SLEEP_S)
+
+    with _lock:
+        _state["running"]         = False
+        _state["stop_requested"]  = False
+        _state["current_article"] = None
+        _state["finished_at"]     = datetime.utcnow().isoformat()
+
+
+def _json_dumps(obj) -> str:
+    import json
+    return json.dumps(obj, default=str)
