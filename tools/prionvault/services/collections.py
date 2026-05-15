@@ -99,7 +99,7 @@ def create(*, name: str, description: Optional[str] = None,
                (id, name, description, kind, rules, color, created_by,
                 created_at, updated_at)
                VALUES (:id, :name, :description, :kind,
-                       :rules::jsonb, :color, :created_by, NOW(), NOW())"""
+                       CAST(:rules AS jsonb), :color, :created_by, NOW(), NOW())"""
         ), {
             "id":          cid,
             "name":        name,
@@ -129,7 +129,7 @@ def update(cid, *, name=None, description=None,
         sets.append("description = :description")
         params["description"] = description
     if rules is not None:
-        sets.append("rules = :rules::jsonb")
+        sets.append("rules = CAST(:rules AS jsonb)")
         params["rules"] = _json_dumps(_filter_rules(rules))
     if color is not None:
         sets.append("color = :color")

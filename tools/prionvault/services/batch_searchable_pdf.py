@@ -374,7 +374,7 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                        (user_id, action, cost_usd, tokens_in, tokens_out,
                         metadata, created_at)
                        VALUES (:uid, 'pdf_make_searchable', 0, 0, 0,
-                               :meta::jsonb, NOW())"""
+                               CAST(:meta AS jsonb), NOW())"""
                 ), {
                     "uid":  str(viewer_user_id) if viewer_user_id else None,
                     "meta": _json_dumps({
