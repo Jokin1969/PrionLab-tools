@@ -1717,9 +1717,18 @@ def api_generate_summary(aid):
         a.summary_ai = result.text
         a.updated_at = datetime.utcnow()
 
+        # Usage row is best-effort. Skip the INSERT entirely if we
+        # can't pin it to a user (the prionvault_usage.user_id
+        # constraint is being relaxed via migration 011, but on
+        # deployments where that migration has not yet landed we
+        # would otherwise lose the actually-saved summary to a
+        # rollback at commit time).
+        _uid = _viewer_id()
         try:
+            if _uid is None:
+                raise RuntimeError("no viewer id — skipping usage row")
             usage = models.UsageEvent(
-                user_id=_viewer_id(),
+                user_id=_uid,
                 action="summary_generate",
                 cost_usd=result.cost_usd,
                 tokens_in=result.tokens_in,
@@ -2329,12 +2338,18 @@ def api_semantic_search():
         return jsonify({"error": "rag_failed",
                         "detail": f"[{provider}] {str(exc)[:280]}"}), 502
 
-    # Best-effort usage tracking
+    # Best-effort usage tracking; skip when there is no viewer id so
+    # a stale NOT NULL constraint cannot bubble up as 500.
+    _uid = _viewer_id()
+    if _uid is None:
+        logger.info("semantic_search: skipping usage row (no viewer id)")
     try:
+        if _uid is None:
+            raise RuntimeError("skip")
         s = _session()
         try:
             usage = models.UsageEvent(
-                user_id=_viewer_id(),
+                user_id=_uid,
                 action="semantic_search",
                 cost_usd=result.cost_usd,
                 tokens_in=result.tokens_in,
