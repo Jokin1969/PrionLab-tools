@@ -183,12 +183,13 @@
       <button class="pv-nav-btn pv-admin-only" id="btn-manage-queue">
         <span><i class="fas fa-list-check" style="width:13px;margin-right:6px;opacity:0.7;"></i>Ingest queue</span>
       </button>
-      <button class="pv-nav-btn pv-admin-only" id="btn-batch-summary">
-        <span><i class="fas fa-wand-magic-sparkles" style="width:13px;margin-right:6px;opacity:0.7;"></i>AI summaries (bulk)</span>
-      </button>
-      <button class="pv-nav-btn pv-admin-only" id="btn-batch-index">
-        <span><i class="fas fa-vector-square" style="width:13px;margin-right:6px;opacity:0.7;"></i>Index for AI search</span>
-      </button>
+      <!-- Pipeline order: cheapest / earliest at the top so the menu
+           reads like a workflow.
+           1. Extract text          (pdfplumber, seconds)
+           2. OCR scanned PDFs      (Tesseract, slow but local)
+           3. Make PDFs searchable  (ocrmypdf, embeds text layer)
+           4. Index for AI search   (Voyage embeddings, cheap)
+           5. AI summaries (bulk)   (LLM, ~$0.05 / paper, last) -->
       <button class="pv-nav-btn pv-admin-only" id="btn-batch-extract">
         <span><i class="fas fa-file-lines" style="width:13px;margin-right:6px;opacity:0.7;"></i>Extract text (fast)</span>
       </button>
@@ -197,6 +198,12 @@
       </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-batch-searchable">
         <span><i class="fas fa-magnifying-glass" style="width:13px;margin-right:6px;opacity:0.7;"></i>Make PDFs searchable</span>
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-batch-index">
+        <span><i class="fas fa-vector-square" style="width:13px;margin-right:6px;opacity:0.7;"></i>Index for AI search</span>
+      </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-batch-summary">
+        <span><i class="fas fa-wand-magic-sparkles" style="width:13px;margin-right:6px;opacity:0.7;"></i>AI summaries (bulk)</span>
       </button>
 
     </nav>
