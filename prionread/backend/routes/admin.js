@@ -155,56 +155,72 @@ router.post('/sync/mark-pending', async (_req, res) => {
   }
 
   try {
-    // Find qualifying articles: assigned to students, no PDF processed yet
-    const rows = await sq.query(
-      `SELECT id, doi, pubmed_id, dropbox_path, source FROM articles
-       WHERE id IN (SELECT DISTINCT article_id FROM user_articles)
-         AND (pdf_md5 IS NULL)
-         AND (extraction_status IS NULL OR extraction_status = 'pending')`,
-      { type: sq.QueryTypes.SELECT }
-    );
+    // Single transaction: locks the candidate rows so a second admin
+    // request running this sync at the same time doesn't double-set
+    // the same row (the old loop did SELECT then N×UPDATE without any
+    // isolation, so two concurrent admins could both mark + auto-link
+    // the same article).
+    const result = await sq.transaction(async (t) => {
+      // FOR UPDATE OF articles: lock the rows we're about to mutate
+      // for the duration of the transaction. user_articles is the
+      // sub-query and stays unlocked.
+      const rows = await sq.query(
+        `SELECT id, doi, pubmed_id, dropbox_path, source FROM articles
+         WHERE id IN (SELECT DISTINCT article_id FROM user_articles)
+           AND (pdf_md5 IS NULL)
+           AND (extraction_status IS NULL OR extraction_status = 'pending')
+         FOR UPDATE OF articles`,
+        { type: sq.QueryTypes.SELECT, transaction: t }
+      );
 
-    if (!rows.length) return res.json({ ok: true, updated: 0, pdfs_linked: 0, needs_pdf: 0 });
-
-    // Scan Dropbox once — build a lowercase-path → real-path map
-    let fileMap = new Map();
-    try {
-      const files = await listFiles();
-      for (const f of files) fileMap.set(f.path.toLowerCase(), f.path);
-    } catch {
-      // Dropbox unavailable — continue without PDF auto-linking
-    }
-
-    let pdfsLinked = 0;
-    let needsPdf = 0;
-
-    for (const row of rows) {
-      let newDropboxPath = null;
-
-      if (!row.dropbox_path) {
-        const expected = dropboxPath(row);
-        if (fileMap.has(expected.toLowerCase())) {
-          newDropboxPath = expected;
-          pdfsLinked++;
-        } else {
-          needsPdf++;
-        }
+      if (!rows.length) {
+        return { updated: 0, pdfs_linked: 0, needs_pdf: 0 };
       }
 
-      await sq.query(
-        `UPDATE articles
-         SET extraction_status = 'pending',
-             source = COALESCE(NULLIF(source, ''), 'prionread')
-             ${newDropboxPath ? ", dropbox_path = :dp, dropbox_link = NULL" : ""}
-         WHERE id = :id`,
-        {
-          replacements: { id: row.id, ...(newDropboxPath ? { dp: newDropboxPath } : {}) },
-          type: sq.QueryTypes.UPDATE,
-        }
-      );
-    }
+      // Scan Dropbox once — build a lowercase-path → real-path map.
+      let fileMap = new Map();
+      try {
+        const files = await listFiles();
+        for (const f of files) fileMap.set(f.path.toLowerCase(), f.path);
+      } catch {
+        // Dropbox unavailable — continue without PDF auto-linking.
+      }
 
-    res.json({ ok: true, updated: rows.length, pdfs_linked: pdfsLinked, needs_pdf: needsPdf });
+      let pdfsLinked = 0;
+      let needsPdf = 0;
+
+      for (const row of rows) {
+        let newDropboxPath = null;
+        if (!row.dropbox_path) {
+          const expected = dropboxPath(row);
+          if (fileMap.has(expected.toLowerCase())) {
+            newDropboxPath = expected;
+            pdfsLinked++;
+          } else {
+            needsPdf++;
+          }
+        }
+        await sq.query(
+          `UPDATE articles
+           SET extraction_status = 'pending',
+               source = COALESCE(NULLIF(source, ''), 'prionread')
+               ${newDropboxPath ? ", dropbox_path = :dp, dropbox_link = NULL" : ""}
+           WHERE id = :id`,
+          {
+            replacements: { id: row.id,
+                            ...(newDropboxPath ? { dp: newDropboxPath } : {}) },
+            type: sq.QueryTypes.UPDATE,
+            transaction: t,
+          }
+        );
+      }
+
+      return { updated: rows.length,
+               pdfs_linked: pdfsLinked,
+               needs_pdf:   needsPdf };
+    });
+
+    res.json({ ok: true, ...result });
   } catch (err) {
     console.error('[POST /admin/sync/mark-pending]', err);
     res.status(500).json({ error: 'Error marking articles as pending' });

@@ -195,10 +195,18 @@ async function createArticle(req, res) {
 async function _prionvaultMap(ids) {
   if (!ids.length) return {};
   try {
-    const idList = ids.map((id) => `'${id}'`).join(',');
+    // Use Sequelize replacements so the values are bound, not
+    // string-interpolated into the SQL. The ids come from the ORM
+    // today and are guaranteed UUIDs, but template-string concat is
+    // a footgun that will bite the first time a caller passes
+    // anything else.
     const rows = await sequelize.query(
-      `SELECT id, (pdf_md5 IS NOT NULL OR extraction_status IS NOT NULL) AS in_pv FROM articles WHERE id IN (${idList})`,
-      { type: sequelize.QueryTypes.SELECT }
+      'SELECT id, (pdf_md5 IS NOT NULL OR extraction_status IS NOT NULL) AS in_pv ' +
+      'FROM articles WHERE id IN (:ids)',
+      {
+        type: sequelize.QueryTypes.SELECT,
+        replacements: { ids },
+      }
     );
     return Object.fromEntries(rows.map((r) => [r.id, !!r.in_pv]));
   } catch {

@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { BonusCredit, BonusAllocation, User, Article } = require('../models');
+const { BonusCredit, BonusAllocation, User, Article, sequelize } = require('../models');
 const emailService = require('../services/emailService');
 
 const MINUTES_PER_PAGE = 5;
@@ -31,11 +31,17 @@ async function awardBonusCredit(userId, articleId) {
 
       await BonusCredit.update({ notified_at: new Date() }, { where: { id: credit.id } });
 
-      emailService.sendBonusEarnedEmail(user, {
-        minutes,
-        articleTitle: article.title,
-        totalBalance,
-      }).catch((e) => console.error('[bonus] sendBonusEarnedEmail failed:', e));
+      // Fire-and-forget the email so a slow SMTP server / sync throw
+      // can never block or crash the HTTP handler. Promise.resolve()
+      // converts a synchronous throw inside sendBonusEarnedEmail
+      // into a rejected promise that .catch() actually catches.
+      Promise.resolve()
+        .then(() => emailService.sendBonusEarnedEmail(user, {
+          minutes,
+          articleTitle: article.title,
+          totalBalance,
+        }))
+        .catch((e) => console.error('[bonus] sendBonusEarnedEmail failed:', e));
     }
   }
 
@@ -88,36 +94,66 @@ async function getAdminBonusOverview(req, res) {
       where:      { role: 'student' },
       attributes: ['id', 'name', 'email'],
     });
+    if (!students.length) return res.json({ students: [] });
 
-    const rows = await Promise.all(students.map(async (student) => {
-      const [earned, spent, creditsCount, lastCredit] = await Promise.all([
-        BonusCredit.sum('minutes_earned', { where: { user_id: student.id } }),
-        BonusAllocation.sum('minutes', { where: { user_id: student.id } }),
-        BonusCredit.count({ where: { user_id: student.id, article_id: { [Op.ne]: null } } }),
-        BonusCredit.findOne({
-          where:      { user_id: student.id },
-          order:      [['created_at', 'DESC']],
-          attributes: ['created_at'],
-        }),
-      ]);
+    // Previously: 4 queries × N students. Now: 4 GROUP BY queries
+    // total. Aggregates by user_id so even hundreds of students
+    // resolve in a few round-trips.
+    const userIds = students.map((s) => s.id);
+    const [earnedRows, spentRows, countsRows, lastRows] = await Promise.all([
+      BonusCredit.findAll({
+        attributes: ['user_id',
+                     [sequelize.fn('SUM', sequelize.col('minutes_earned')), 'total']],
+        where:      { user_id: { [Op.in]: userIds } },
+        group:      ['user_id'],
+        raw:        true,
+      }),
+      BonusAllocation.findAll({
+        attributes: ['user_id',
+                     [sequelize.fn('SUM', sequelize.col('minutes')), 'total']],
+        where:      { user_id: { [Op.in]: userIds } },
+        group:      ['user_id'],
+        raw:        true,
+      }),
+      BonusCredit.findAll({
+        attributes: ['user_id',
+                     [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+        where:      { user_id: { [Op.in]: userIds },
+                      article_id: { [Op.ne]: null } },
+        group:      ['user_id'],
+        raw:        true,
+      }),
+      BonusCredit.findAll({
+        attributes: ['user_id',
+                     [sequelize.fn('MAX', sequelize.col('created_at')), 'last_at']],
+        where:      { user_id: { [Op.in]: userIds } },
+        group:      ['user_id'],
+        raw:        true,
+      }),
+    ]);
 
-      const earnedTotal = earned || 0;
-      const spentTotal  = spent  || 0;
+    const toInt = (v) => (v == null ? 0 : parseInt(v, 10) || 0);
+    const earnedBy = Object.fromEntries(earnedRows.map((r) => [r.user_id, toInt(r.total)]));
+    const spentBy  = Object.fromEntries(spentRows.map((r)  => [r.user_id, toInt(r.total)]));
+    const countBy  = Object.fromEntries(countsRows.map((r) => [r.user_id, toInt(r.count)]));
+    const lastBy   = Object.fromEntries(lastRows.map((r)   => [r.user_id, r.last_at]));
 
+    const rows = students.map((s) => {
+      const earned = earnedBy[s.id] || 0;
+      const spent  = spentBy[s.id]  || 0;
       return {
-        id:             student.id,
-        name:           student.name,
-        email:          student.email,
-        earned:         earnedTotal,
-        spent:          spentTotal,
-        balance:        earnedTotal - spentTotal,
-        credits_count:  creditsCount,
-        last_credit_at: lastCredit?.created_at ?? null,
+        id:             s.id,
+        name:           s.name,
+        email:          s.email,
+        earned,
+        spent,
+        balance:        earned - spent,
+        credits_count:  countBy[s.id] || 0,
+        last_credit_at: lastBy[s.id] || null,
       };
-    }));
+    });
 
     rows.sort((a, b) => a.balance - b.balance);
-
     return res.json({ students: rows });
   } catch (err) {
     console.error('[getAdminBonusOverview]', err);
