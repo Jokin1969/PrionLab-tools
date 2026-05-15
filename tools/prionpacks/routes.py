@@ -170,6 +170,97 @@ def api_import_article(pkg_id):
     })
 
 
+@prionpacks_bp.route('/api/packages/<pkg_id>/import-articles', methods=['POST'])
+@login_required
+def api_import_articles(pkg_id):
+    """Bulk version of import-article: append many references to one
+    pack in a single update.
+
+    Body: {"article_ids": ["<uuid>", …], "targets": ["intro" | "general"]}
+
+    Duplicate guard runs per target by scanning existing reference
+    strings for the article DOI before each append, then dedups the
+    new ones too. Returns per-target counts of additions / skips and
+    a not_found count for articles that couldn't be resolved.
+    """
+    import re as _re
+    data = request.get_json(force=True, silent=True) or {}
+    article_ids = data.get('article_ids') or []
+    raw_targets = data.get('targets') or []
+    if not isinstance(article_ids, list) or not article_ids:
+        return jsonify({'error': 'article_ids required'}), 400
+    if len(article_ids) > 500:
+        return jsonify({'error': 'too many article_ids (max 500)'}), 400
+    valid = {'intro', 'general'}
+    targets = [t for t in raw_targets if t in valid]
+    if not targets:
+        return jsonify({'error': f'targets must include at least one of {sorted(valid)}'}), 400
+
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'package not found'}), 404
+
+    intro_list = list(pkg.get('introReferences') or [])
+    gen_list   = list(pkg.get('references') or [])
+
+    _doi_re = _re.compile(r'10\.\d{4,}/\S+', _re.IGNORECASE)
+    def _dois_in_list(lst):
+        out = set()
+        for ref in lst:
+            for m in _doi_re.findall(ref or ''):
+                out.add(m.strip().lower().rstrip('.,;:)'))
+        return out
+    intro_dois = _dois_in_list(intro_list) if 'intro' in targets else set()
+    gen_dois   = _dois_in_list(gen_list)   if 'general' in targets else set()
+
+    added   = {'intro': 0, 'general': 0}
+    skipped = {'intro': 0, 'general': 0}
+    not_found = 0
+
+    for aid in article_ids:
+        article = _fetch_prionvault_article(str(aid))
+        if not article:
+            not_found += 1
+            continue
+        ref_text = _format_article_reference(article)
+        doi = (article.get('doi') or '').strip().lower()
+        for tgt in targets:
+            if tgt == 'intro':
+                if doi and doi in intro_dois:
+                    skipped['intro'] += 1
+                    continue
+                intro_list.append(ref_text)
+                if doi:
+                    intro_dois.add(doi)
+                added['intro'] += 1
+            else:
+                if doi and doi in gen_dois:
+                    skipped['general'] += 1
+                    continue
+                gen_list.append(ref_text)
+                if doi:
+                    gen_dois.add(doi)
+                added['general'] += 1
+
+    update_data = {}
+    if 'intro' in targets and added['intro']:
+        update_data['introReferences'] = intro_list
+    if 'general' in targets and added['general']:
+        update_data['references'] = gen_list
+
+    if update_data:
+        pkg = models.update_package(pkg_id, update_data)
+
+    return jsonify({
+        'ok':        True,
+        'requested': len(article_ids),
+        'not_found': not_found,
+        'added':     added,
+        'skipped':   skipped,
+        'package':   pkg,
+    })
+
+
 @prionpacks_bp.route('/api/packages/<pkg_id>/import-section', methods=['POST'])
 @login_required
 def api_import_section(pkg_id):

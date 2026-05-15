@@ -119,6 +119,40 @@
   }
 
   // ── render: tags ───────────────────────────────────────────────────────
+  // ── New tag button ────────────────────────────────────────────────────
+  function wireNewTagButton() {
+    const btn = document.getElementById('btn-new-tag');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const name = prompt('Nombre del tag:');
+      if (!name || !name.trim()) return;
+      // Quick colour palette — typing the colour name is allowed too.
+      const palette = {
+        rojo: '#ef4444', naranja: '#fb923c', amarillo: '#f59e0b',
+        verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
+        rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
+      };
+      const colorInput = prompt(
+        'Color (hex #rrggbb o nombre: rojo / naranja / amarillo / ' +
+        'verde / azul / morado / rosa / gris / cian). Vacío = sin color.'
+      );
+      let color = null;
+      if (colorInput && colorInput.trim()) {
+        const v = colorInput.trim().toLowerCase();
+        color = palette[v] || (v.startsWith('#') ? v : null);
+      }
+      try {
+        await api('/tags', {
+          method: 'POST',
+          body: JSON.stringify({ name: name.trim(), color }),
+        });
+        refreshTags();
+      } catch (e) {
+        alert('No se pudo crear el tag: ' + e.message);
+      }
+    });
+  }
+
   async function refreshTags() {
     try {
       const tags = await api('/tags');
@@ -388,6 +422,12 @@
         const btn = document.getElementById('btn-batch-summary');
         if (btn) btn.click();   // re-uses the modal's open() flow
       });
+
+    // Bulk add to PrionPack — opens the same pack picker modal as the
+    // single-article flow, but POSTs to /import-articles with the
+    // whole selection.
+    document.getElementById('pv-bulk-addpack')?.addEventListener('click',
+      () => openBulkPackPicker(Array.from(state.selectedIds)));
 
     // Bulk DELETE — destructive, double-confirm.
     document.getElementById('pv-bulk-delete')?.addEventListener('click',
@@ -1741,6 +1781,172 @@
     });
   }
 
+  // Open the pack-picker modal for a list of article ids. Re-uses the
+  // same HTML as wireAddToPackButton but POSTs to /import-articles
+  // (singular endpoint sees a race per call, the new bulk endpoint
+  // applies all references in one update_package).
+  async function openBulkPackPicker(articleIds) {
+    const modal     = document.getElementById('pv-pack-modal');
+    if (!modal) return;
+    if (!articleIds || !articleIds.length) {
+      alert('Selecciona al menos un artículo primero.');
+      return;
+    }
+    const listEl    = document.getElementById('pv-pack-list');
+    const statusEl  = document.getElementById('pv-pack-status');
+    const saveBtn   = document.getElementById('pv-pack-save');
+    const closeBtn  = document.getElementById('pv-pack-close');
+    const cancelBtn = document.getElementById('pv-pack-cancel');
+    const titleEl   = modal.querySelector('h2');
+    const bodyP     = modal.querySelector('h2 + p');
+
+    // Per-open scope: tweak the title + intro so the user knows this
+    // is the bulk path. Reverted on close so the single-article flow
+    // still reads cleanly.
+    const origTitle = titleEl ? titleEl.innerHTML : '';
+    const origBody  = bodyP ? bodyP.innerHTML  : '';
+    if (titleEl) titleEl.innerHTML =
+      `<i class="fas fa-cubes-stacked" style="color:#0F3460;margin-right:8px;"></i>` +
+      `Añadir ${articleIds.length} artículos a un PrionPack`;
+    if (bodyP) bodyP.innerHTML =
+      `Vas a añadir <strong>${articleIds.length} artículos</strong> a uno o varios PrionPacks ` +
+      `activos. Marca en qué lista de referencias entran: ` +
+      `<strong>Introducción</strong>, <strong>Generales</strong> o ambas. ` +
+      `Las referencias ya presentes (por DOI) se saltan automáticamente.`;
+    if (saveBtn) saveBtn.textContent = `Añadir los ${articleIds.length}`;
+
+    function restore() {
+      if (titleEl) titleEl.innerHTML = origTitle;
+      if (bodyP) bodyP.innerHTML = origBody;
+      if (saveBtn) saveBtn.textContent = 'Añadir a los seleccionados';
+    }
+    function close() { modal.style.display = 'none'; restore(); }
+
+    // Wire the close paths — replace any previous listeners by cloning.
+    [closeBtn, cancelBtn].forEach(b => {
+      if (!b) return;
+      const fresh = b.cloneNode(true);
+      b.parentNode.replaceChild(fresh, b);
+      fresh.addEventListener('click', close);
+    });
+    const bd = modal.querySelector('.pv-modal-backdrop');
+    if (bd) {
+      const freshBd = bd.cloneNode(true);
+      bd.parentNode.replaceChild(freshBd, bd);
+      freshBd.addEventListener('click', close);
+    }
+
+    const selections = new Map();   // pack_id -> Set<"intro"|"general">
+
+    const freshSave = saveBtn.cloneNode(true);
+    freshSave.disabled = true;
+    freshSave.style.opacity = '0.5';
+    saveBtn.parentNode.replaceChild(freshSave, saveBtn);
+    const finalSave = freshSave;
+    finalSave.textContent = `Añadir los ${articleIds.length}`;
+
+    function refreshSaveState() {
+      const any = Array.from(selections.values()).some(s => s.size > 0);
+      finalSave.disabled = !any;
+      finalSave.style.opacity = finalSave.disabled ? '0.5' : '1';
+    }
+
+    modal.style.display = 'flex';
+    listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px;">Cargando PrionPacks activos…</div>';
+    statusEl.textContent = '';
+
+    let packs = [];
+    try {
+      const r = await fetch('/prionpacks/api/packages?active=1',
+                            { credentials: 'same-origin' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      packs = await r.json();
+    } catch (e) {
+      listEl.innerHTML =
+        `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      return;
+    }
+    if (!packs.length) {
+      listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px;">No hay PrionPacks activos.</div>';
+      return;
+    }
+
+    listEl.innerHTML = packs.map(p => `
+      <div style="background:white;border:1px solid #e5e7eb;border-radius:7px;padding:9px 11px;margin-bottom:6px;
+                  display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:#111827;
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${esc(p.id)} · ${esc(p.title || '(sin título)')}
+          </div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:1px;">
+            ${esc(p.responsible || '—')}${p.type ? ' · ' + esc(p.type) : ''}
+          </div>
+        </div>
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#374151;cursor:pointer;">
+          <input type="checkbox" class="pv-pack-target" data-pack="${esc(p.id)}" data-target="intro">
+          Intro
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#374151;cursor:pointer;">
+          <input type="checkbox" class="pv-pack-target" data-pack="${esc(p.id)}" data-target="general">
+          Generales
+        </label>
+      </div>`).join('');
+
+    listEl.querySelectorAll('.pv-pack-target').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const pkgId = cb.dataset.pack;
+        const tgt   = cb.dataset.target;
+        const set   = selections.get(pkgId) || new Set();
+        if (cb.checked) set.add(tgt); else set.delete(tgt);
+        if (set.size === 0) selections.delete(pkgId);
+        else selections.set(pkgId, set);
+        refreshSaveState();
+      });
+    });
+
+    finalSave.addEventListener('click', async () => {
+      if (finalSave.disabled) return;
+      finalSave.disabled = true;
+      statusEl.style.color = '#6b7280';
+      statusEl.textContent = `Añadiendo a ${selections.size} PrionPack(s)…`;
+      const results = [];
+      for (const [pkgId, targets] of selections.entries()) {
+        try {
+          const r = await fetch(
+            `/prionpacks/api/packages/${encodeURIComponent(pkgId)}/import-articles`,
+            {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                article_ids: articleIds,
+                targets: Array.from(targets),
+              }),
+            }
+          );
+          const data = await r.json().catch(() => ({}));
+          results.push({ pkgId, status: r.status, data });
+        } catch (e) {
+          results.push({ pkgId, status: 0, data: { error: e.message } });
+        }
+      }
+      const okCount = results.filter(x => x.status === 200).length;
+      const totals = results.reduce((acc, x) => {
+        if (x.data && x.data.added) {
+          acc.intro   += (x.data.added.intro   || 0);
+          acc.general += (x.data.added.general || 0);
+        }
+        return acc;
+      }, { intro: 0, general: 0 });
+      statusEl.style.color = '#15803d';
+      statusEl.textContent =
+        `Hecho: ${okCount}/${results.length} packs · ` +
+        `${totals.intro} en Intro · ${totals.general} en Generales.`;
+      finalSave.style.opacity = '0.5';
+    });
+  }
+
   function wireAddToPackButton(a) {
     const btn   = document.getElementById('pv-add-to-pack-btn');
     const modal = document.getElementById('pv-pack-modal');
@@ -2320,6 +2526,7 @@
     }
 
     refreshStats();
+    wireNewTagButton();
     refreshTags();
     loadArticles().then(() => {
       const openId = new URLSearchParams(window.location.search).get('open');
