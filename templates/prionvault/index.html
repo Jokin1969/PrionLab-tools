@@ -770,5 +770,35 @@
   </div>
 </div>
 
+<!-- ── Add to PrionPack modal ──────────────────────────────────────── -->
+<div id="pv-pack-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:680px;">
+    <button class="pv-modal-close" id="pv-pack-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-cubes-stacked" style="color:#0F3460;margin-right:8px;"></i>Add to PrionPack
+    </h2>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+      Selecciona uno o varios PrionPacks activos y elige en qué lista de referencias
+      añadir el artículo: <strong>Introducción</strong>, <strong>Generales</strong> o ambas.
+      El bloque incluye título, autores, año, revista, DOI y el resumen IA si está disponible.
+    </p>
+    <div id="pv-pack-list" style="max-height:400px;overflow-y:auto;border:1px solid #e5e7eb;
+                                   border-radius:8px;background:#fafafa;padding:6px;"></div>
+    <div id="pv-pack-status" style="font-size:12.5px;color:#9ca3af;margin-top:10px;min-height:18px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+      <button id="pv-pack-cancel"
+              style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;font-size:13px;cursor:pointer;">
+        Cerrar
+      </button>
+      <button id="pv-pack-save" disabled
+              style="padding:8px 16px;border-radius:8px;border:none;background:#0F3460;
+                     color:white;font-size:13px;font-weight:600;cursor:pointer;opacity:0.5;">
+        Añadir a los seleccionados
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="{{ url_for('static', filename='js/prionvault.js') }}"></script>
 {% endblock %}

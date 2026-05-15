@@ -39,6 +39,137 @@ def api_list():
     return jsonify(pkgs)
 
 
+def _fetch_prionvault_article(article_id: str):
+    """Pull one row from the shared `articles` table.
+
+    Uses raw SQL so PrionPacks doesn't depend on PrionVault's SQLAlchemy
+    models. Returns a dict or None if not found / DB unavailable.
+    """
+    try:
+        from database.config import db
+        from sqlalchemy import text as sql_text
+        with db.engine.connect() as conn:
+            row = conn.execute(sql_text(
+                """SELECT id, title, authors, year, journal, doi, pubmed_id,
+                          abstract, summary_ai
+                   FROM articles WHERE id = :aid"""
+            ), {"aid": article_id}).first()
+        if not row:
+            return None
+        return dict(zip(row._fields, row))
+    except Exception as exc:
+        logger.warning("import_article: cannot fetch article %s (%s)", article_id, exc)
+        return None
+
+
+def _format_article_reference(article: dict) -> str:
+    """Build the reference text inserted into a pack's reference list.
+
+    Citation line (title · authors · year · journal · DOI/PMID), then a
+    blank line, then the AI summary if present.
+    """
+    title   = (article.get('title') or '').strip() or '(sin título)'
+    authors = (article.get('authors') or '').strip()
+    year    = article.get('year')
+    journal = (article.get('journal') or '').strip()
+    doi     = (article.get('doi') or '').strip()
+    pmid    = (article.get('pubmed_id') or '').strip()
+    summary = (article.get('summary_ai') or '').strip()
+
+    bits = [title]
+    if authors: bits.append(authors)
+    if year:    bits.append(str(year))
+    if journal: bits.append(journal)
+    cite = '. '.join(bits)
+    if not cite.endswith('.'):
+        cite += '.'
+
+    ids = []
+    if doi:  ids.append(f"DOI: {doi}")
+    if pmid: ids.append(f"PMID: {pmid}")
+    if ids:
+        cite += ' ' + ' · '.join(ids)
+
+    block = cite
+    if summary:
+        block += "\n\n[Resumen IA]\n" + summary
+    return block
+
+
+@prionpacks_bp.route('/api/packages/<pkg_id>/import-article', methods=['POST'])
+@login_required
+def api_import_article(pkg_id):
+    """Append a PrionVault article as a formatted reference to one or
+    both reference lists of a pack.
+
+    Body: {"article_id": "<uuid>", "targets": ["intro" | "general"]}.
+
+    Duplicate guard: if the target list already contains an entry whose
+    text mentions the article's DOI, that target is silently skipped.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    article_id = (data.get('article_id') or '').strip()
+    raw_targets = data.get('targets') or []
+    if not article_id:
+        return jsonify({'error': 'article_id required'}), 400
+    if not isinstance(raw_targets, list) or not raw_targets:
+        return jsonify({'error': 'targets must be a non-empty list'}), 400
+    valid = {'intro', 'general'}
+    targets = [t for t in raw_targets if t in valid]
+    if not targets:
+        return jsonify({'error': f'targets must include at least one of {sorted(valid)}'}), 400
+
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'package not found'}), 404
+
+    article = _fetch_prionvault_article(article_id)
+    if not article:
+        return jsonify({'error': 'article not found'}), 404
+
+    reference_text = _format_article_reference(article)
+    doi = (article.get('doi') or '').strip().lower()
+
+    update_data = {}
+    added_to = []
+    skipped = []
+
+    for tgt in targets:
+        field = 'introReferences' if tgt == 'intro' else 'references'
+        existing_list = list(pkg.get(field) or [])
+        is_dup = False
+        if doi:
+            for existing in existing_list:
+                if doi in (existing or '').lower():
+                    is_dup = True
+                    break
+        else:
+            is_dup = reference_text in existing_list
+        if is_dup:
+            skipped.append(tgt)
+            continue
+        existing_list.append(reference_text)
+        update_data[field] = existing_list
+        added_to.append(tgt)
+
+    if not update_data:
+        return jsonify({
+            'ok': False,
+            'reason': 'already_in_pack',
+            'added_to': [],
+            'skipped': skipped,
+        })
+
+    updated_pkg = models.update_package(pkg_id, update_data)
+    return jsonify({
+        'ok': True,
+        'added_to': added_to,
+        'skipped': skipped,
+        'reference': reference_text,
+        'package': updated_pkg,
+    })
+
+
 @prionpacks_bp.route('/api/packages/<pkg_id>/import-section', methods=['POST'])
 @login_required
 def api_import_section(pkg_id):

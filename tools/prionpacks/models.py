@@ -222,6 +222,8 @@ def update_package(pkg_id: str, data: dict) -> dict | None:
     existing = packages[idx]
     if 'references' in data:
         data = {**data, 'references': _normalise_references(data.get('references'))}
+    if 'introReferences' in data:
+        data = {**data, 'introReferences': _normalise_references(data.get('introReferences'))}
     if 'methods' in data:
         data = {**data, 'methods': _normalise_methods(data.get('methods'))}
     updated = {**existing, **data, 'id': pkg_id, 'createdAt': existing['createdAt'], 'lastModified': _now()}

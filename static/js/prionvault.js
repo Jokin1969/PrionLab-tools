@@ -717,6 +717,15 @@
         ` : '')}
         ${tagHtml}
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;">
+          <button id="pv-add-to-pack-btn" type="button"
+                  style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;
+                         font-size:13px;font-weight:600;color:#0F3460;cursor:pointer;
+                         display:inline-flex;align-items:center;gap:6px;">
+            <i class="fas fa-cubes-stacked"></i>
+            <span>Add to PrionPack</span>
+          </button>
+        </div>
         <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f3f4f6;
                     font-size:12px;color:#9ca3af;font-family:ui-monospace,monospace;">
           Added: ${a.added_at ? esc(a.added_at.slice(0, 10)) : '—'}
@@ -729,6 +738,7 @@
       wirePersonalState(a);
       renderAiSummary(a);
       wireUnpaywallButton(a);
+      wireAddToPackButton(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
     }
@@ -972,6 +982,116 @@
         labelEl.textContent = original;
         btn.disabled = false;
       }
+    });
+  }
+
+  // ── Add to PrionPack (per-article) ───────────────────────────────────
+  function wireAddToPackButton(a) {
+    const btn   = document.getElementById('pv-add-to-pack-btn');
+    const modal = document.getElementById('pv-pack-modal');
+    if (!btn || !modal) return;
+
+    const listEl   = document.getElementById('pv-pack-list');
+    const statusEl = document.getElementById('pv-pack-status');
+    const saveBtn  = document.getElementById('pv-pack-save');
+    const closeBtn = document.getElementById('pv-pack-close');
+    const cancelBtn = document.getElementById('pv-pack-cancel');
+
+    let packs = [];
+    const selections = new Map();  // pack_id -> Set of "intro"|"general"
+
+    function refreshSaveState() {
+      const anyChecked = Array.from(selections.values()).some(s => s.size > 0);
+      saveBtn.disabled = !anyChecked;
+      saveBtn.style.opacity = saveBtn.disabled ? '0.5' : '1';
+    }
+
+    function close() { modal.style.display = 'none'; }
+
+    closeBtn.addEventListener('click', close);
+    cancelBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    btn.addEventListener('click', async () => {
+      selections.clear();
+      modal.style.display = 'flex';
+      listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px;">Cargando PrionPacks activos…</div>';
+      statusEl.textContent = '';
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = '0.5';
+      try {
+        const r = await fetch('/prionpacks/api/packages?active=1', {credentials: 'same-origin'});
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        packs = await r.json();
+      } catch (e) {
+        listEl.innerHTML = `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+        return;
+      }
+      if (!packs.length) {
+        listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px;">No hay PrionPacks activos.</div>';
+        return;
+      }
+      listEl.innerHTML = packs.map(p => `
+        <div style="background:white;border:1px solid #e5e7eb;border-radius:7px;padding:9px 11px;margin-bottom:6px;
+                    display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#111827;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${esc(p.id)} · ${esc(p.title || '(sin título)')}
+            </div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:1px;">
+              ${esc(p.responsible || '—')}${p.type ? ' · ' + esc(p.type) : ''}
+            </div>
+          </div>
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#374151;cursor:pointer;">
+            <input type="checkbox" class="pv-pack-target" data-pack="${esc(p.id)}" data-target="intro">
+            Intro
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#374151;cursor:pointer;">
+            <input type="checkbox" class="pv-pack-target" data-pack="${esc(p.id)}" data-target="general">
+            Generales
+          </label>
+        </div>
+      `).join('');
+
+      listEl.querySelectorAll('.pv-pack-target').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const pkgId = cb.dataset.pack;
+          const tgt = cb.dataset.target;
+          const set = selections.get(pkgId) || new Set();
+          if (cb.checked) set.add(tgt);
+          else set.delete(tgt);
+          if (set.size === 0) selections.delete(pkgId);
+          else selections.set(pkgId, set);
+          refreshSaveState();
+        });
+      });
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      if (saveBtn.disabled) return;
+      saveBtn.disabled = true;
+      statusEl.style.color = '#6b7280';
+      statusEl.textContent = 'Añadiendo…';
+      const ops = [];
+      for (const [pkgId, targets] of selections.entries()) {
+        ops.push(fetch(`/prionpacks/api/packages/${encodeURIComponent(pkgId)}/import-article`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ article_id: a.id, targets: Array.from(targets) }),
+        }).then(async r => ({ pkgId, status: r.status, json: await r.json().catch(() => ({})) })));
+      }
+      const results = await Promise.all(ops);
+      const ok    = results.filter(r => r.status === 200 && r.json.ok);
+      const dup   = results.filter(r => r.status === 200 && !r.json.ok && r.json.reason === 'already_in_pack');
+      const fail  = results.filter(r => r.status !== 200);
+      const parts = [];
+      if (ok.length)   parts.push(`<span style="color:#15803d;">✓ ${ok.length} pack${ok.length === 1 ? '' : 's'} actualizado${ok.length === 1 ? '' : 's'}</span>`);
+      if (dup.length)  parts.push(`<span style="color:#b45309;">△ ${dup.length} ya tenía${dup.length === 1 ? '' : 'n'} el artículo</span>`);
+      if (fail.length) parts.push(`<span style="color:#b91c1c;">✗ ${fail.length} fallo${fail.length === 1 ? '' : 's'}</span>`);
+      statusEl.innerHTML = parts.join(' · ');
+      saveBtn.disabled = false;
     });
   }
 

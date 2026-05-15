@@ -1366,6 +1366,199 @@ ${refsText}`;
       .filter(Boolean);
   }
 
+  // ── PrionVault picker (bring an article in as a reference) ───────────────
+  let _pvPickerTarget = null;          // 'intro' | 'general'
+  let _pvPickerDebounce = null;
+
+  function _ppEsc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function _wirePrionVaultPicker() {
+    const modal     = document.getElementById('pp-pv-picker-modal');
+    if (!modal) return;
+    const closeBtn  = document.getElementById('pp-pv-picker-close');
+    const backdrop  = modal.querySelector('.pp-pv-picker-backdrop');
+    const search    = document.getElementById('pp-pv-picker-search');
+    const results   = document.getElementById('pp-pv-picker-results');
+    const statusEl  = document.getElementById('pp-pv-picker-status');
+
+    function close() {
+      modal.style.display = 'none';
+      statusEl.textContent = '';
+      results.innerHTML = '';
+      search.value = '';
+      _pvPickerTarget = null;
+    }
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+
+    search.addEventListener('input', () => {
+      clearTimeout(_pvPickerDebounce);
+      _pvPickerDebounce = setTimeout(() => _runPrionVaultSearch(search.value.trim()), 250);
+    });
+
+    // Stash the close function so other helpers can call it
+    modal._close = close;
+  }
+
+  function _openPrionVaultPicker(target) {
+    if (!state.currentId) {
+      alert('Selecciona o crea un PrionPack antes de importar referencias.');
+      return;
+    }
+    const modal = document.getElementById('pp-pv-picker-modal');
+    if (!modal) return;
+    _pvPickerTarget = target;
+    document.getElementById('pp-pv-picker-target').textContent =
+      target === 'intro'
+        ? 'Se añadirá a la lista de referencias de la introducción.'
+        : 'Se añadirá a la lista de referencias generales.';
+    document.getElementById('pp-pv-picker-results').innerHTML = '';
+    document.getElementById('pp-pv-picker-status').textContent =
+      'Escribe en el buscador para listar artículos.';
+    document.getElementById('pp-pv-picker-search').value = '';
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('pp-pv-picker-search').focus(), 50);
+  }
+
+  async function _runPrionVaultSearch(q) {
+    const results  = document.getElementById('pp-pv-picker-results');
+    const statusEl = document.getElementById('pp-pv-picker-status');
+    if (!q) {
+      results.innerHTML = '';
+      statusEl.textContent = 'Escribe en el buscador para listar artículos.';
+      return;
+    }
+    statusEl.textContent = 'Buscando…';
+    try {
+      const params = new URLSearchParams({ q, size: '20', sort: 'added_desc' });
+      const r = await fetch('/prionvault/api/articles?' + params.toString(),
+                            { credentials: 'same-origin' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const items = data.items || [];
+      if (!items.length) {
+        results.innerHTML = '<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;">Sin resultados.</div>';
+        statusEl.textContent = '0 resultados.';
+        return;
+      }
+      results.innerHTML = items.map(a => {
+        const headerBits = [
+          a.authors ? _ppEsc((a.authors || '').slice(0, 110)) : '',
+          a.year || '',
+          a.journal ? _ppEsc(a.journal) : '',
+        ].filter(Boolean).join(' · ');
+        const summaryFlag = a.has_summary_ai
+          ? `<span style="display:inline-block;font-size:10.5px;color:#1d4ed8;background:#dbeafe;padding:1px 6px;border-radius:5px;font-weight:600;margin-left:6px;">AI ✓</span>`
+          : '';
+        return `
+          <div class="pp-pv-picker-row" data-aid="${_ppEsc(a.id)}"
+               data-title="${_ppEsc(a.title || '')}"
+               style="display:flex;justify-content:space-between;gap:10px;align-items:center;
+                      padding:9px 10px;border:1px solid #e5e7eb;border-radius:7px;background:white;
+                      margin-bottom:6px;cursor:pointer;transition:background 0.1s;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;color:#111827;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${_ppEsc(a.title || '(no title)')}${summaryFlag}
+              </div>
+              <div style="font-size:11.5px;color:#6b7280;margin-top:1px;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${headerBits || '—'}
+              </div>
+              <div style="font-size:10.5px;color:#9ca3af;margin-top:2px;font-family:ui-monospace,monospace;">
+                ${a.doi ? 'DOI ' + _ppEsc(a.doi) : ''}${a.doi && a.pubmed_id ? ' · ' : ''}${a.pubmed_id ? 'PMID ' + _ppEsc(a.pubmed_id) : ''}
+              </div>
+            </div>
+            <button class="pp-btn pp-btn-sm pp-btn-secondary pp-pv-pick-btn" type="button"
+                    style="flex-shrink:0;">
+              <i class="fas fa-plus"></i> Importar
+            </button>
+          </div>`;
+      }).join('');
+      statusEl.textContent = `${items.length} resultado${items.length === 1 ? '' : 's'}` +
+        (data.total > items.length ? ` (de ${data.total} totales)` : '');
+      results.querySelectorAll('.pp-pv-pick-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const row = btn.closest('.pp-pv-picker-row');
+          if (!row) return;
+          await _importPrionVaultArticle(row.dataset.aid, row.dataset.title);
+        });
+      });
+      results.querySelectorAll('.pp-pv-picker-row').forEach(row => {
+        row.addEventListener('click', async () => {
+          await _importPrionVaultArticle(row.dataset.aid, row.dataset.title);
+        });
+      });
+    } catch (e) {
+      statusEl.style.color = '#b91c1c';
+      statusEl.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  async function _importPrionVaultArticle(articleId, articleTitle) {
+    const statusEl = document.getElementById('pp-pv-picker-status');
+    const pkgId = state.currentId;
+    if (!pkgId) {
+      statusEl.style.color = '#b91c1c';
+      statusEl.textContent = 'No hay PrionPack seleccionado.';
+      return;
+    }
+    statusEl.style.color = '#6b7280';
+    statusEl.textContent = `Importando "${articleTitle}" → ${_pvPickerTarget === 'intro' ? 'intro' : 'generales'}…`;
+    try {
+      const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(pkgId)}/import-article`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article_id: articleId, targets: [_pvPickerTarget] }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        statusEl.style.color = '#b91c1c';
+        statusEl.textContent = 'Error: ' + (data.error || ('HTTP ' + r.status));
+        return;
+      }
+      if (!data.ok) {
+        statusEl.style.color = '#b45309';
+        statusEl.textContent = data.reason === 'already_in_pack'
+          ? '⚠️ Este artículo ya está en esta lista.'
+          : 'No se añadió: ' + (data.reason || 'unknown');
+        return;
+      }
+      // Append the reference to the live DOM and to local storage so
+      // autosave doesn't undo the server-side write.
+      _appendImportedReferenceToUI(_pvPickerTarget, data.reference || '');
+      statusEl.style.color = '#15803d';
+      statusEl.textContent = '✓ Añadida. Puedes seguir importando más o cerrar este diálogo.';
+    } catch (e) {
+      statusEl.style.color = '#b91c1c';
+      statusEl.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  function _appendImportedReferenceToUI(target, referenceText) {
+    if (target === 'intro') {
+      _addIntroReference(false);
+      const items = document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea');
+      const last = items[items.length - 1];
+      if (last) { last.value = referenceText; last.dispatchEvent(new Event('input', {bubbles: true})); }
+      _updateIntroReferencesCount?.();
+    } else {
+      _addReference(false);
+      const items = document.querySelectorAll('#references-list .pp-reference-textarea');
+      const last = items[items.length - 1];
+      if (last) { last.value = referenceText; last.dispatchEvent(new Event('input', {bubbles: true})); }
+      _updateReferencesCount?.();
+    }
+    _refreshAllJumpButtons?.();
+    _scheduleAutosave?.();
+  }
+
   function _syncIntroReferenceDois() {
     const ta = document.getElementById('field-introduction');
     if (!ta) return;
@@ -3367,6 +3560,11 @@ ${refsText}`;
     // Introduction References
     document.getElementById('btn-add-intro-reference')?.addEventListener('click', () => _addIntroReference(true));
     document.getElementById('btn-collapse-all-intro-refs')?.addEventListener('click', () => _toggleCollapseAllIntroRefs());
+
+    // PrionVault import pickers (intro + general)
+    document.getElementById('btn-pv-import-intro')?.addEventListener('click', () => _openPrionVaultPicker('intro'));
+    document.getElementById('btn-pv-import-general')?.addEventListener('click', () => _openPrionVaultPicker('general'));
+    _wirePrionVaultPicker();
 
     // Intro References sub-section collapse triangle (left of the label)
     const introRefsSub = document.getElementById('intro-refs-sub');
