@@ -1817,25 +1817,30 @@ def api_semantic_search():
         "no_results":    result.no_results,
         "citations": [
             {
-                "n":          c.n,
-                "article_id": c.article_id,
-                "title":      c.title,
-                "authors":    c.authors,
-                "year":       c.year,
-                "journal":    c.journal,
-                "doi":        c.doi,
-                "pubmed_id":  c.pubmed_id,
-                "similarity": round(c.similarity, 4),
-                "extract":    c.extract,
+                "n":            c.n,
+                "article_id":   c.article_id,
+                "title":        c.title,
+                "authors":      c.authors,
+                "year":         c.year,
+                "journal":      c.journal,
+                "doi":          c.doi,
+                "pubmed_id":    c.pubmed_id,
+                "similarity":   round(c.similarity, 4),
+                "rerank_score": (round(c.rerank_score, 4)
+                                 if c.rerank_score is not None else None),
+                "extract":      c.extract,
             }
             for c in result.citations
         ],
-        "cited_numbers": result.cited_numbers,
-        "tokens_in":     result.tokens_in,
-        "tokens_out":    result.tokens_out,
-        "cost_usd":      result.cost_usd,
-        "elapsed_ms":    result.elapsed_ms,
-        "retrieval_ms":  result.retrieval_ms,
+        "cited_numbers":     result.cited_numbers,
+        "tokens_in":         result.tokens_in,
+        "tokens_out":        result.tokens_out,
+        "cost_usd":          result.cost_usd,
+        "elapsed_ms":        result.elapsed_ms,
+        "retrieval_ms":      result.retrieval_ms,
+        "rerank_used":       result.rerank_used,
+        "rerank_candidates": result.rerank_candidates,
+        "rerank_cost_usd":   result.rerank_cost_usd,
     })
 
 

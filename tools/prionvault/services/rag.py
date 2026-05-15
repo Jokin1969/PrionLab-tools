@@ -59,16 +59,17 @@ Reglas estrictas:
 
 @dataclass
 class RagCitation:
-    n:           int        # 1-based index in the context block
-    article_id:  str
-    title:       str
-    authors:     Optional[str]
-    year:        Optional[int]
-    journal:     Optional[str]
-    doi:         Optional[str]
-    pubmed_id:   Optional[str]
-    similarity:  float
-    extract:     str        # the actual chunk text shown to the model
+    n:            int        # 1-based index in the context block
+    article_id:   str
+    title:        str
+    authors:      Optional[str]
+    year:         Optional[int]
+    journal:      Optional[str]
+    doi:          Optional[str]
+    pubmed_id:    Optional[str]
+    similarity:   float
+    rerank_score: Optional[float]
+    extract:      str        # the actual chunk text shown to the model
 
 
 @dataclass
@@ -80,10 +81,13 @@ class RagResult:
     cited_numbers:   List[int]       # numbers actually referenced in answer
     tokens_in:       Optional[int]
     tokens_out:      Optional[int]
-    cost_usd:        Optional[float]
+    cost_usd:        Optional[float]   # Claude cost only (rerank tracked separately)
     elapsed_ms:      int
     retrieval_ms:    int
     no_results:      bool            # True if retrieval found nothing
+    rerank_used:     bool = False
+    rerank_candidates: int = 0
+    rerank_cost_usd: Optional[float] = None
 
 
 class AnthropicNotConfigured(RuntimeError):
@@ -110,6 +114,7 @@ def _build_context(chunks: List[RetrievedChunk],
             doi=meta.doi,
             pubmed_id=meta.pubmed_id,
             similarity=c.similarity,
+            rerank_score=c.rerank_score,
             extract=c.chunk_text,
         )
         citations.append(cite)
@@ -178,6 +183,9 @@ def ask(query: str, *, top_k: int = 20) -> RagResult:
             elapsed_ms=int((time.monotonic() - start) * 1000),
             retrieval_ms=retrieval_ms,
             no_results=True,
+            rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
+            rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
+            rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
         )
 
     context_text, citations = _build_context(retrieval.raw_chunks,
@@ -223,4 +231,7 @@ def ask(query: str, *, top_k: int = 20) -> RagResult:
         elapsed_ms=int((time.monotonic() - start) * 1000),
         retrieval_ms=retrieval_ms,
         no_results=False,
+        rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
+        rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
+        rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
     )

@@ -2030,14 +2030,22 @@
       return;
     }
     title.style.display = 'block';
-    title.textContent = citedNumbers.length
+    const baseLabel = citedNumbers.length
       ? `Referencias citadas (${citedNumbers.length}/${citations.length} recuperadas)`
       : `Referencias recuperadas (${citations.length})`;
+    title.textContent = baseLabel;
 
     const citedSet = new Set(citedNumbers);
     container.innerHTML = citations.map(c => {
       const isUsed = citedSet.has(c.n);
       const simPct = Math.round((c.similarity || 0) * 100);
+      const rrChip = (c.rerank_score != null)
+        ? `<span title="Voyage rerank-2 relevance score (0–1)"
+                 style="font-size:10.5px;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;
+                        padding:1px 6px;border-radius:5px;font-variant-numeric:tabular-nums;font-weight:600;">
+             RR ${c.rerank_score.toFixed(2)}
+           </span>`
+        : '';
       const headerBits = [
         c.authors ? esc(c.authors).slice(0, 110) : '',
         c.year || '',
@@ -2061,6 +2069,7 @@
               <span style="font-size:11px;color:#15803d;font-variant-numeric:tabular-nums;font-weight:600;">
                 ${simPct}% match
               </span>
+              ${rrChip}
             </div>
             ${headerBits ? `<div style="font-size:11.5px;color:#6b7280;margin-top:1px;">${headerBits}</div>` : ''}
             <div style="font-size:12px;color:#4b5563;background:#f9fafb;border-radius:6px;
@@ -2118,15 +2127,23 @@
       ansEl.innerHTML = annotateCitations(r.answer || '', r.citations || []);
 
       const confLabel = r.confidence ? `Confianza: <strong>${esc(r.confidence)}</strong>` : '';
+      const rrBadge = r.rerank_used
+        ? `<span style="display:inline-block;margin-left:6px;font-size:10.5px;color:#7c3aed;
+                        background:#f5f3ff;border:1px solid #ddd6fe;padding:1px 6px;
+                        border-radius:5px;font-weight:600;letter-spacing:0.02em;">
+            ⚡ reranked${r.rerank_candidates ? ' · ' + r.rerank_candidates + ' cand.' : ''}
+           </span>`
+        : '';
       const timing = `${(r.elapsed_ms/1000).toFixed(1)} s (retrieval ${r.retrieval_ms} ms)`;
-      const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
+      const totalCost = (r.cost_usd || 0) + (r.rerank_cost_usd || 0);
+      const cost = totalCost > 0 ? ` · $${totalCost.toFixed(4)}` : '';
       const tok = (r.tokens_in != null && r.tokens_out != null)
         ? ` · ${r.tokens_in} in / ${r.tokens_out} out tokens` : '';
       stEl.style.color = r.no_results ? '#b45309' : '#15803d';
       stEl.innerHTML = r.no_results
         ? '⚠️ Retrieval no encontró fragmentos relevantes para esta pregunta.'
         : `✓ Generado en ${timing}${cost}${tok}`;
-      metaEl.innerHTML = confLabel;
+      metaEl.innerHTML = confLabel + rrBadge;
 
       renderRagCitations(r.citations || [], r.cited_numbers || []);
 
