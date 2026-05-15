@@ -2,7 +2,10 @@ const { Op } = require('sequelize');
 
 const ALLOWED_SORT = new Set(['year', 'title', 'priority', 'created_at', 'updated_at']);
 const DEFAULT_LIMIT = 500;
-const MAX_LIMIT = 500;
+// Bumped from 500 → 5000 so the admin assignments modal (which needs
+// the whole catalogue to compute "unassigned" client-side) can fetch
+// every article in one shot. Matches the PrionVault listing cap.
+const MAX_LIMIT = 5000;
 
 /**
  * Builds a Sequelize-compatible { where, order, limit, offset } object

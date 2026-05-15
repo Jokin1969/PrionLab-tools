@@ -36,7 +36,11 @@ export const UserAssignmentsModal = ({ isOpen, onClose, user, statusFilter = nul
     try {
       const [asgn, arts] = await Promise.all([
         adminService.getUserAssignments(user.id),
-        adminService.getArticles({ limit: 100, sort_by: 'title', order: 'asc' }),
+        // The previous limit of 100 silently truncated the catalogue,
+        // so "unassigned" was computed against the first 100 alphabetical
+        // articles only — leaving 126-79 = 47 papers invisible here. Use
+        // a comfortable ceiling (matches the per-page max on the backend).
+        adminService.getArticles({ limit: 5000, sort_by: 'title', order: 'asc' }),
       ]);
       setAssignments(asgn.assignments || []);
       setAllArticles(arts.articles || []);
