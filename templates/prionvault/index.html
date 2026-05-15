@@ -565,7 +565,19 @@
       <textarea id="pv-batch-text" rows="10"
                 placeholder="10.1016/j.cell.2023.01.001&#10;38234567&#10;10.1038/s41586-023-06900-0"
                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;"></textarea>
-      <p id="pv-batch-count" style="font-size:11.5px;color:#9ca3af;margin:6px 0 12px;">Sin entradas detectadas</p>
+      <p id="pv-batch-count" style="font-size:11.5px;color:#9ca3af;margin:6px 0 10px;">Sin entradas detectadas</p>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:#374151;
+                    background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-bottom:12px;
+                    cursor:pointer;">
+        <input type="checkbox" id="pv-batch-unpaywall" style="margin-top:2px;flex-shrink:0;">
+        <span>
+          <strong>Intentar descargar PDFs en open access (Unpaywall)</strong>
+          <span style="display:block;font-size:11.5px;color:#6b7280;line-height:1.4;margin-top:2px;">
+            Para cada DOI, tras crear el artículo consulta Unpaywall y descarga el PDF si está disponible.
+            Requiere <code>UNPAYWALL_EMAIL</code> configurada en el servidor.
+          </span>
+        </span>
+      </label>
       <div style="display:flex;justify-content:flex-end;gap:8px;">
         <button id="pv-batch-cancel"
                 style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;font-size:13px;cursor:pointer;">

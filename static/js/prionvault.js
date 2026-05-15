@@ -703,7 +703,18 @@
           <div id="pv-pdf-viewer" style="display:none;margin:0 0 16px;
                                           border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;
                                           background:#1f2937;"></div>
-        ` : ''}
+        ` : (IS_ADMIN && a.doi ? `
+          <div id="pv-unpaywall-toolbar" style="margin:0 0 14px;display:flex;align-items:center;gap:8px;">
+            <button id="pv-unpaywall-btn" type="button"
+                    style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:white;
+                           font-size:13px;font-weight:600;color:#374151;cursor:pointer;
+                           display:inline-flex;align-items:center;gap:6px;">
+              <i class="fas fa-cloud-arrow-down" style="color:#0F3460;"></i>
+              <span>Try Unpaywall</span>
+            </button>
+            <span id="pv-unpaywall-status" style="font-size:12px;color:#6b7280;"></span>
+          </div>
+        ` : '')}
         ${tagHtml}
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f3f4f6;
@@ -717,6 +728,7 @@
       wirePdfViewer(a);
       wirePersonalState(a);
       renderAiSummary(a);
+      wireUnpaywallButton(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
     }
@@ -916,6 +928,51 @@
     // Honour the previously-open state when this is a re-render
     // triggered by a rating save/delete.
     if (_pdfViewerOpen) setOpen(true);
+  }
+
+  // ── Try Unpaywall (per-article) ──────────────────────────────────────
+  function wireUnpaywallButton(a) {
+    const btn = document.getElementById('pv-unpaywall-btn');
+    const stEl = document.getElementById('pv-unpaywall-status');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const labelEl = btn.querySelector('span');
+      const original = labelEl.textContent;
+      labelEl.textContent = 'Consultando…';
+      stEl.style.color = '#6b7280';
+      stEl.textContent = '';
+      try {
+        const r = await api(`/articles/${a.id}/fetch-pdf`, { method: 'POST' });
+        if (r.ok) {
+          stEl.style.color = '#15803d';
+          const sizeKb = Math.round((r.size_bytes || 0) / 1024);
+          stEl.textContent = `✓ Encolado (${esc(r.host_type || 'OA')}, ${sizeKb} KB). El worker lo procesa en background.`;
+          labelEl.textContent = 'Encolado';
+        } else {
+          stEl.style.color = '#b45309';
+          if (r.is_oa && r.landing_url) {
+            stEl.innerHTML = `⚠️ ${esc(r.reason || 'sin PDF directo')} · ` +
+              `<a href="${esc(r.landing_url)}" target="_blank" rel="noopener noreferrer" style="color:#0F3460;">ver landing</a>`;
+          } else {
+            stEl.textContent = `⚠️ ${r.reason === 'not_open_access' ? 'No disponible en open access' : (r.reason || 'sin PDF')}`;
+          }
+          labelEl.textContent = original;
+          btn.disabled = false;
+        }
+      } catch (e) {
+        stEl.style.color = '#b91c1c';
+        if (e.status === 503) {
+          stEl.textContent = 'Unpaywall no disponible — falta UNPAYWALL_EMAIL en el servidor.';
+        } else if (e.status === 409) {
+          stEl.textContent = 'Este artículo ya tiene PDF.';
+        } else {
+          stEl.textContent = 'Error: ' + e.message;
+        }
+        labelEl.textContent = original;
+        btn.disabled = false;
+      }
+    });
   }
 
   // ── Personal state chips (favorite + read) in the detail modal ───────
@@ -1677,6 +1734,7 @@
     startBtn.addEventListener('click', async () => {
       const entries = parseBatchEntries(ta.value);
       if (!entries.length) return;
+      const useUnpaywall = !!document.getElementById('pv-batch-unpaywall')?.checked;
       inputWrap.style.display = 'none';
       progWrap.style.display = '';
       rowsEl.innerHTML = '';
@@ -1734,7 +1792,7 @@
             continue;
           }
           const m = r.metadata;
-          await api('/articles', {
+          const created = await api('/articles', {
             method: 'POST',
             body: JSON.stringify({
               title:     m.title,
@@ -1749,8 +1807,27 @@
           iconEl.textContent = STATUS.ok.icon;
           iconEl.style.color = STATUS.ok.color;
           titleEl.textContent = m.title || (e.doi || `PMID:${e.pubmed_id}`);
-          metaEl.textContent = [m.authors, m.year].filter(Boolean).join(' · ');
+          const metaBits = [m.authors, m.year].filter(Boolean).join(' · ');
+          metaEl.textContent = metaBits;
           counts.ok++;
+
+          if (useUnpaywall && created && created.id && (m.doi || e.doi)) {
+            try {
+              const fp = await api(`/articles/${created.id}/fetch-pdf`, {
+                method: 'POST',
+              });
+              if (fp.ok) {
+                metaEl.textContent = (metaBits ? metaBits + ' · ' : '') +
+                  `📄 PDF encolado (Unpaywall: ${esc(fp.host_type || 'OA')})`;
+              } else {
+                metaEl.textContent = (metaBits ? metaBits + ' · ' : '') +
+                  `📄 sin PDF en open access (${esc(fp.reason || 'unknown')})`;
+              }
+            } catch (fpErr) {
+              metaEl.textContent = (metaBits ? metaBits + ' · ' : '') +
+                `📄 Unpaywall falló (${esc(fpErr.message)})`;
+            }
+          }
         } catch (err) {
           if (err.status === 409) {
             iconEl.textContent = STATUS.duplicate.icon;

@@ -1716,6 +1716,81 @@ def api_article_reindex(aid):
     return jsonify({"ok": True, "result": result.__dict__})
 
 
+# ── Fetch open-access PDF via Unpaywall (Phase 6) ───────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/fetch-pdf", methods=["POST"])
+@admin_required
+def api_article_fetch_pdf(aid):
+    """Try to find an open-access PDF for this article via Unpaywall and
+    enqueue it for ingestion. Requires the article to have a DOI and no
+    PDF attached yet (returns 409 otherwise).
+    """
+    from .services.unpaywall import find_open_pdf, download_pdf, NotConfigured as UnpaywallNotConfigured
+    from .ingestion import queue as ingest_queue
+
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not found"}), 404
+        if getattr(a, "dropbox_path", None):
+            return jsonify({"error": "already_has_pdf",
+                            "dropbox_path": a.dropbox_path}), 409
+        doi = (a.doi or "").strip()
+        if not doi:
+            return jsonify({"error": "no_doi"}), 400
+        title = a.title or "article"
+    finally:
+        s.close()
+
+    try:
+        lookup = find_open_pdf(doi)
+    except UnpaywallNotConfigured:
+        return jsonify({"error": "unpaywall_unavailable",
+                        "detail": "UNPAYWALL_EMAIL not set"}), 503
+    except Exception as exc:
+        logger.exception("Unpaywall lookup failed for %s", doi)
+        return jsonify({"error": "lookup_failed",
+                        "detail": str(exc)[:300]}), 502
+
+    if not lookup.is_oa or not lookup.pdf_url:
+        return jsonify({
+            "ok": False,
+            "is_oa": lookup.is_oa,
+            "landing_url": lookup.landing_url,
+            "reason": lookup.error or
+                      ("oa_but_no_pdf_url" if lookup.is_oa else "not_open_access"),
+        }), 200
+
+    try:
+        content = download_pdf(lookup.pdf_url)
+    except Exception as exc:
+        return jsonify({
+            "ok": False,
+            "is_oa": True,
+            "pdf_url": lookup.pdf_url,
+            "reason": "download_failed",
+            "detail": str(exc)[:300],
+        }), 200
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in doi)[:80] or "article"
+    job_id = ingest_queue.enqueue_pdf(
+        content=content,
+        filename=f"{safe_name}.pdf",
+        user_id=_viewer_id(),
+    )
+    return jsonify({
+        "ok": True,
+        "is_oa": True,
+        "pdf_url": lookup.pdf_url,
+        "host_type": lookup.host_type,
+        "license": lookup.license,
+        "version": lookup.version,
+        "size_bytes": len(content),
+        "job_id": job_id,
+        "title": title,
+    })
+
+
 # ── Batch embedding indexing (Phase 4) ──────────────────────────────────────
 @prionvault_bp.route("/api/admin/batch-index/status", methods=["GET"])
 @admin_required
