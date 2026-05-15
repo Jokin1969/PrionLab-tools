@@ -182,14 +182,23 @@ def _try_insert_user(conn, cols: set[str], new_id: str, *,
         "is_active":     True,
         "email_verified": False,
     }
-    insert_cols = [c for c in candidate if c in cols]
-    if "id" not in insert_cols or "email" not in insert_cols:
+    data_cols = [c for c in candidate if c in cols]
+    if "id" not in data_cols or "email" not in data_cols:
         logger.warning("auth: users table is missing id or email — cannot provision")
         return None
 
-    placeholders = ", ".join(f":{c}" for c in insert_cols)
-    cols_sql     = ", ".join(insert_cols)
-    params = {c: candidate[c] for c in insert_cols}
+    # The Sequelize-managed users table on this deployment has
+    # created_at / updated_at as NOT NULL with no DB-level default
+    # (Sequelize adds the value at the ORM layer). We can't bind a
+    # SQL function via parameters, so when those columns exist we
+    # inline NOW() in the VALUES clause for them.
+    ts_cols = [c for c in ("created_at", "updated_at") if c in cols]
+
+    all_cols   = data_cols + ts_cols
+    placeholders = ", ".join([f":{c}" for c in data_cols] +
+                             ["NOW()"] * len(ts_cols))
+    cols_sql   = ", ".join(all_cols)
+    params     = {c: candidate[c] for c in data_cols}
 
     def _do_insert():
         return conn.execute(_text(
@@ -216,11 +225,14 @@ def _try_insert_user(conn, cols: set[str], new_id: str, *,
                 except Exception as exc2:
                     logger.debug("auth: role retry %s: %s", variant, exc2)
             if not inserted:
-                # Last resort: drop the role column from the INSERT.
-                drop_cols = [c for c in insert_cols if c != "role"]
-                drop_params = {c: candidate[c] for c in drop_cols}
-                drop_ph = ", ".join(f":{c}" for c in drop_cols)
-                drop_sql = ", ".join(drop_cols)
+                # Last resort: drop the role column from the INSERT
+                # (keeps the NOW() timestamp inlining).
+                drop_data = [c for c in data_cols if c != "role"]
+                drop_all  = drop_data + ts_cols
+                drop_ph   = ", ".join([f":{c}" for c in drop_data] +
+                                      ["NOW()"] * len(ts_cols))
+                drop_sql  = ", ".join(drop_all)
+                drop_params = {c: candidate[c] for c in drop_data}
                 try:
                     conn.execute(_text(
                         f"INSERT INTO users ({drop_sql}) VALUES ({drop_ph}) "
