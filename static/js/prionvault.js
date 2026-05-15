@@ -88,11 +88,26 @@
   }
 
   async function api(path, opts = {}) {
-    const res = await fetch(API + path, {
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      ...opts,
-    });
+    let res;
+    try {
+      res = await fetch(API + path, {
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+      });
+    } catch (netErr) {
+      // Browser-level fetch failure (no response received). Safari /
+      // iOS surface this as "Load failed", Chrome / FF as
+      // "Failed to fetch" — translate to something the user can act on.
+      const raw = (netErr && netErr.message) || 'red sin respuesta';
+      const e = new Error(
+        `Red caída o servidor reiniciándose (${raw}). ` +
+        `Espera unos segundos y reintenta.`
+      );
+      e.status = 0;
+      e.network = true;
+      throw e;
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const base = err.error || ('HTTP ' + res.status);
@@ -399,6 +414,38 @@
     } catch (e) {
       alert('Error: ' + e.message);
     }
+  }
+
+  // ── Collapsible sidebar sections ──────────────────────────────────────
+  function wireSidebarToggles() {
+    const pairs = [
+      { btn: 'btn-toggle-collections', list: 'collection-list',
+        key: 'pv-side-collections' },
+      { btn: 'btn-toggle-tags',        list: 'tag-list',
+        key: 'pv-side-tags' },
+    ];
+    pairs.forEach(p => {
+      const btn  = document.getElementById(p.btn);
+      const list = document.getElementById(p.list);
+      if (!btn || !list) return;
+      const caret = btn.querySelector('.pv-toggle-caret');
+      // Default = expanded; localStorage stores '0' when collapsed.
+      const collapsed = localStorage.getItem(p.key) === '0';
+      apply(collapsed);
+
+      btn.addEventListener('click', () => {
+        const next = !(localStorage.getItem(p.key) === '0');
+        localStorage.setItem(p.key, next ? '0' : '1');
+        apply(next);
+      });
+
+      function apply(isCollapsed) {
+        list.style.display = isCollapsed ? 'none' : '';
+        btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+        if (caret) caret.style.transform =
+          isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+      }
+    });
   }
 
   // ── New tag button ────────────────────────────────────────────────────
@@ -1340,6 +1387,7 @@
           </div>
         ` : '')}
         ${tagHtml}
+        <div id="pv-tag-picker-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-similar-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-supplementary-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
@@ -1377,6 +1425,7 @@
       wireUnpaywallButton(a);
       wireAddToPackButton(a);
       wireDeleteArticleButton(a);
+      renderTagPickerSection(a);
       renderSimilarSection(a);
       renderSupplementarySection(a);
       renderUsedInSection(a);
@@ -1710,6 +1759,98 @@
     sec.querySelectorAll('.pv-similar-row').forEach(row => {
       row.addEventListener('click', () => openDetail(row.dataset.aid));
     });
+  }
+
+  // ── Tag picker section in the detail modal ────────────────────────────
+  async function renderTagPickerSection(a) {
+    const sec = document.getElementById('pv-tag-picker-section');
+    if (!sec) return;
+    const articleTagIds = new Set((a.tags || []).map(t => t.id));
+
+    sec.innerHTML = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
+        <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">Tags</h3>
+        ${IS_ADMIN ? `<span style="font-size:11px;color:#9ca3af;">Click para asignar / quitar</span>` : ''}
+      </div>
+      <div id="pv-tag-picker-list" style="display:flex;flex-wrap:wrap;gap:6px;
+                                          font-size:12px;color:#9ca3af;">Cargando…</div>`;
+    if (!IS_ADMIN) {
+      // Read-only render: just the assigned tags as chips.
+      const list = document.getElementById('pv-tag-picker-list');
+      if (!a.tags || !a.tags.length) {
+        list.innerHTML = '<span style="font-style:italic;">Sin tags.</span>';
+      } else {
+        list.innerHTML = a.tags.map(t =>
+          `<span style="padding:3px 9px;border-radius:14px;font-size:12px;font-weight:500;
+                        background:${esc(t.color || '#9ca3af')}22;color:${esc(t.color || '#4f46e5')};">
+             ${esc(t.name)}
+           </span>`).join('');
+      }
+      return;
+    }
+
+    let allTags = [];
+    try {
+      allTags = await api('/tags');
+    } catch (e) {
+      document.getElementById('pv-tag-picker-list').innerHTML =
+        `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
+      return;
+    }
+    if (!allTags.length) {
+      document.getElementById('pv-tag-picker-list').innerHTML =
+        `<span style="font-style:italic;">No hay tags todavía. ` +
+        `Crea uno con el botón <strong>+</strong> al lado de Tags en el menú.</span>`;
+      return;
+    }
+
+    renderChips();
+
+    function renderChips() {
+      const list = document.getElementById('pv-tag-picker-list');
+      list.innerHTML = allTags.map(t => {
+        const on = articleTagIds.has(t.id);
+        const color = t.color || '#6b7280';
+        return `
+          <button type="button" class="pv-tag-pick" data-tag-id="${t.id}"
+                  style="padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;
+                         cursor:pointer;transition:transform 0.1s ease, opacity 0.1s ease;
+                         border:1.5px solid ${esc(color)};
+                         background:${on ? esc(color) : 'white'};
+                         color:${on ? 'white' : esc(color)};
+                         opacity:${on ? '1' : '0.7'};
+                         display:inline-flex;align-items:center;gap:5px;">
+            ${on ? '<i class="fas fa-check" style="font-size:9px;"></i>' : ''}
+            ${esc(t.name)}
+          </button>`;
+      }).join('');
+
+      list.querySelectorAll('.pv-tag-pick').forEach(b => {
+        b.addEventListener('click', async () => {
+          const tid = parseInt(b.dataset.tagId, 10);
+          const wasOn = articleTagIds.has(tid);
+          b.disabled = true;
+          try {
+            if (wasOn) {
+              await api(`/articles/${a.id}/tags/${tid}`, { method: 'DELETE' });
+              articleTagIds.delete(tid);
+              a.tags = (a.tags || []).filter(x => x.id !== tid);
+            } else {
+              await api(`/articles/${a.id}/tags/${tid}`, { method: 'PUT' });
+              articleTagIds.add(tid);
+              const t = allTags.find(x => x.id === tid);
+              if (t) a.tags = [...(a.tags || []), t];
+            }
+            renderChips();
+            refreshTags();   // update sidebar counts
+          } catch (e) {
+            alert('Error: ' + e.message);
+            b.disabled = false;
+          }
+        });
+      });
+    }
   }
 
   // ── Supplementary material ────────────────────────────────────────────
@@ -2817,6 +2958,7 @@
     refreshTags();
     wireNewCollectionButton();
     refreshCollections();
+    wireSidebarToggles();
     loadArticles().then(() => {
       const openId = new URLSearchParams(window.location.search).get('open');
       if (openId) openDetail(openId);
