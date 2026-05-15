@@ -717,6 +717,7 @@
         ` : '')}
         ${tagHtml}
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
+        <div id="pv-used-in-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;">
           <button id="pv-add-to-pack-btn" type="button"
                   style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;
@@ -739,6 +740,7 @@
       renderAiSummary(a);
       wireUnpaywallButton(a);
       wireAddToPackButton(a);
+      renderUsedInSection(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
     }
@@ -983,6 +985,117 @@
         btn.disabled = false;
       }
     });
+  }
+
+  // ── Used in: PrionPacks + student assignments ────────────────────────
+  const USED_IN_STATUS_COLOR = {
+    pending:    { bg: '#fef3c7', fg: '#92400e' },
+    read:       { bg: '#dbeafe', fg: '#1d4ed8' },
+    summarized: { bg: '#ede9fe', fg: '#6d28d9' },
+    evaluated:  { bg: '#dcfce7', fg: '#15803d' },
+  };
+
+  async function renderUsedInSection(a) {
+    const sec = document.getElementById('pv-used-in-section');
+    if (!sec) return;
+    sec.innerHTML = `
+      <h3 style="margin:0 0 6px;font-size:14px;font-weight:600;color:#374151;
+                 text-transform:uppercase;letter-spacing:0.05em;">Used in</h3>
+      <div style="font-size:12.5px;color:#9ca3af;">Cargando…</div>`;
+
+    let data;
+    try {
+      data = await api(`/articles/${a.id}/used-in`);
+    } catch (e) {
+      sec.innerHTML = `
+        <h3 style="margin:0 0 6px;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">Used in</h3>
+        <div style="font-size:12.5px;color:#b91c1c;">Error: ${esc(e.message)}</div>`;
+      return;
+    }
+
+    const packs = data.packs || [];
+    const students = data.students || [];
+
+    const targetChip = (t) => {
+      const label = t === 'intro' ? 'Intro' : 'Generales';
+      const bg = t === 'intro' ? '#e0e7ff' : '#dcfce7';
+      const fg = t === 'intro' ? '#3730a3' : '#15803d';
+      return `<span style="display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;
+                           padding:1px 7px;border-radius:5px;background:${bg};color:${fg};">${label}</span>`;
+    };
+
+    const packsHtml = packs.length
+      ? packs.map(p => `
+          <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;
+                      background:#fafafa;border:1px solid #e5e7eb;border-radius:7px;margin-bottom:5px;">
+            <i class="fas fa-cubes-stacked" style="color:#0F3460;font-size:12px;flex-shrink:0;"></i>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12.5px;font-weight:600;color:#111827;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${esc(p.id)} · ${esc(p.title || '(sin título)')}
+              </div>
+              ${p.responsible ? `<div style="font-size:11px;color:#6b7280;">${esc(p.responsible)}${p.type ? ' · ' + esc(p.type) : ''}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0;">${(p.lists || []).map(targetChip).join('')}</div>
+          </div>`).join('')
+      : '';
+
+    const studentsHtml = students.length
+      ? students.map(st => {
+          const c = USED_IN_STATUS_COLOR[st.status] || { bg: '#f3f4f6', fg: '#6b7280' };
+          const initial = (st.name || '?').slice(0, 1).toUpperCase();
+          const avatar = st.photo_url
+            ? `<img src="${esc(st.photo_url)}" alt="" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;object-fit:cover;">`
+            : `<div style="width:24px;height:24px;border-radius:50%;background:#e5e7eb;color:#6b7280;
+                          display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${esc(initial)}</div>`;
+          const dateStr = st.updated_at ? st.updated_at.slice(0, 10) : '';
+          return `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
+                        background:#fafafa;border:1px solid #e5e7eb;border-radius:7px;margin-bottom:5px;">
+              ${avatar}
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:12.5px;font-weight:600;color:#111827;
+                            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(st.name)}</div>
+                ${st.email ? `<div style="font-size:11px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(st.email)}</div>` : ''}
+              </div>
+              <span style="display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;
+                           padding:1px 7px;border-radius:5px;background:${c.bg};color:${c.fg};">${esc(st.status || '—')}</span>
+              ${dateStr ? `<span style="font-size:10.5px;color:#9ca3af;font-variant-numeric:tabular-nums;">${dateStr}</span>` : ''}
+            </div>`;
+        }).join('')
+      : '';
+
+    const hasAny = packs.length || students.length;
+
+    sec.innerHTML = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
+        <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">Used in</h3>
+        <span style="font-size:11px;color:#9ca3af;">
+          ${packs.length} pack${packs.length === 1 ? '' : 's'} · ${students.length} estudiante${students.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      ${!hasAny ? `
+        <div style="font-size:12.5px;color:#9ca3af;font-style:italic;
+                    background:#f9fafb;border-radius:8px;padding:10px 12px;">
+          Este artículo todavía no aparece en ningún PrionPack activo ni está asignado a estudiantes.
+        </div>` : ''}
+      ${packs.length ? `
+        <div style="margin-bottom:10px;">
+          <div style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">
+            PrionPacks (${packs.length})
+          </div>
+          ${packsHtml}
+        </div>` : ''}
+      ${students.length ? `
+        <div>
+          <div style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">
+            Asignado a estudiantes (${students.length})
+          </div>
+          ${studentsHtml}
+        </div>` : ''}
+    `;
   }
 
   // ── Add to PrionPack (per-article) ───────────────────────────────────

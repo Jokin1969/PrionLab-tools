@@ -1679,6 +1679,82 @@ def api_batch_summary_stop():
     return jsonify({"ok": True, "status": batch_summary.stop_batch()})
 
 
+# ── Used in: PrionPacks + student assignments for an article ────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/used-in", methods=["GET"])
+@login_required
+def api_article_used_in(aid):
+    """Return which PrionPacks reference this article and which users
+    have it assigned.
+
+    Match against PrionPacks is done by DOI substring (case-insensitive)
+    on the references and introReferences lists. Inactive packs are
+    skipped.
+    """
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT id, doi, title FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        doi = ((row.doi or "")).strip().lower()
+
+        packs = []
+        try:
+            from tools.prionpacks import models as pp_models
+            for pkg in pp_models.list_packages():
+                if not pkg.get("active", True):
+                    continue
+                lists = []
+                if doi:
+                    for ref in (pkg.get("introReferences") or []):
+                        if doi in (ref or "").lower():
+                            lists.append("intro")
+                            break
+                    for ref in (pkg.get("references") or []):
+                        if doi in (ref or "").lower():
+                            lists.append("general")
+                            break
+                if lists:
+                    packs.append({
+                        "id":           pkg.get("id"),
+                        "title":        pkg.get("title"),
+                        "type":         pkg.get("type"),
+                        "responsible":  pkg.get("responsible"),
+                        "lists":        lists,
+                    })
+        except Exception as exc:
+            logger.warning("used-in: prionpacks scan failed: %s", exc)
+
+        students = []
+        try:
+            rows = s.execute(sql_text(
+                """SELECT ua.user_id, ua.status,
+                          ua.created_at, ua.updated_at,
+                          u.name, u.email, u.photo_url
+                   FROM user_articles ua
+                   LEFT JOIN users u ON u.id = ua.user_id
+                   WHERE ua.article_id = :aid
+                   ORDER BY ua.updated_at DESC"""
+            ), {"aid": str(aid)}).all()
+            for r in rows:
+                students.append({
+                    "user_id":    str(r.user_id) if r.user_id else None,
+                    "name":       r.name or "—",
+                    "email":      r.email,
+                    "photo_url":  r.photo_url,
+                    "status":     r.status,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                })
+        except Exception as exc:
+            logger.warning("used-in: students lookup failed: %s", exc)
+
+        return jsonify({"packs": packs, "students": students})
+    finally:
+        s.close()
+
+
 # ── Per-article reindex (Phase 4) ───────────────────────────────────────────
 @prionvault_bp.route("/api/articles/<uuid:aid>/reindex", methods=["POST"])
 @admin_required
