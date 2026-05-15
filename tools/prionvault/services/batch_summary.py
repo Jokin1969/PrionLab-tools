@@ -219,6 +219,10 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
             time.sleep(_BETWEEN_CALLS_SLEEP_S)
             continue
 
+        # UPDATE and usage-tracking INSERT in SEPARATE transactions: a
+        # failure on the usage INSERT cannot be allowed to poison the
+        # main UPDATE (psycopg2: "current transaction aborted, commit
+        # converts to rollback" — silently loses the summary).
         try:
             with eng.begin() as conn:
                 conn.execute(sql_text(
@@ -227,37 +231,38 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                            updated_at = NOW()
                        WHERE id = :aid"""
                 ), {"summary": result.text, "aid": article_id})
-                # Best-effort usage tracking — don't abort the batch if it fails.
-                try:
-                    conn.execute(sql_text(
-                        """INSERT INTO prionvault_usage
-                           (user_id, action, cost_usd, tokens_in, tokens_out,
-                            metadata, created_at)
-                           VALUES (:uid, 'summary_generate', :cost, :tin, :tout,
-                                   :meta::jsonb, NOW())"""
-                    ), {
-                        "uid":  str(viewer_user_id) if viewer_user_id else None,
-                        "cost": result.cost_usd,
-                        "tin":  result.tokens_in,
-                        "tout": result.tokens_out,
-                        "meta": _json_dumps({
-                            "article_id":     str(article_id),
-                            "model":          result.model,
-                            "used_full_text": result.used_full_text,
-                            "input_chars":    result.input_chars,
-                            "elapsed_ms":     result.elapsed_ms,
-                            "via":            "batch",
-                        }),
-                    })
-                except Exception as exc:
-                    logger.warning("batch_summary: usage insert failed: %s", exc)
         except Exception as exc:
             logger.exception("batch_summary: persisting summary for %s failed", article_id)
             with _lock:
                 _state["failed"] += 1
-                _state["last_error"] = f"persist failed: {exc}"
+                _state["last_error"] = f"persist failed: {str(exc)[:160]}"
             time.sleep(_BETWEEN_CALLS_SLEEP_S)
             continue
+
+        try:
+            with eng.begin() as conn:
+                conn.execute(sql_text(
+                    """INSERT INTO prionvault_usage
+                       (user_id, action, cost_usd, tokens_in, tokens_out,
+                        metadata, created_at)
+                       VALUES (:uid, 'summary_generate', :cost, :tin, :tout,
+                               :meta::jsonb, NOW())"""
+                ), {
+                    "uid":  str(viewer_user_id) if viewer_user_id else None,
+                    "cost": result.cost_usd,
+                    "tin":  result.tokens_in,
+                    "tout": result.tokens_out,
+                    "meta": _json_dumps({
+                        "article_id":     str(article_id),
+                        "model":          result.model,
+                        "used_full_text": result.used_full_text,
+                        "input_chars":    result.input_chars,
+                        "elapsed_ms":     result.elapsed_ms,
+                        "via":            "batch",
+                    }),
+                })
+        except Exception as exc:
+            logger.warning("batch_summary: usage insert failed: %s", exc)
 
         with _lock:
             _state["processed"]        += 1

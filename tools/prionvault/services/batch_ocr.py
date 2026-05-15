@@ -244,14 +244,13 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
 
-        # 3. Persist
+        # 3. Persist — UPDATE and usage-tracking INSERT run in SEPARATE
+        # transactions so a failure on the usage INSERT cannot poison
+        # the surrounding transaction and silently roll back the main
+        # UPDATE (psycopg2: "current transaction aborted, commit
+        # converts to rollback").
         try:
             with eng.begin() as conn:
-                params = {
-                    "aid":   str(article_id),
-                    "text":  result.text,
-                    "pages": result.pages or old_pages,
-                }
                 conn.execute(sql_text(
                     """UPDATE articles
                        SET extracted_text    = :text,
@@ -260,35 +259,41 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                            pdf_pages         = COALESCE(:pages, pdf_pages),
                            updated_at        = NOW()
                        WHERE id = :aid"""
-                ), params)
-                try:
-                    conn.execute(sql_text(
-                        """INSERT INTO prionvault_usage
-                           (user_id, action, cost_usd, tokens_in, tokens_out,
-                            metadata, created_at)
-                           VALUES (:uid, 'ocr_extract', 0, 0, 0,
-                                   :meta::jsonb, NOW())"""
-                    ), {
-                        "uid":  str(viewer_user_id) if viewer_user_id else None,
-                        "meta": _json_dumps({
-                            "article_id":  str(article_id),
-                            "pages":       result.pages,
-                            "pages_ocrd":  result.pages_ocrd,
-                            "chars":       len(result.text),
-                            "truncated":   result.truncated,
-                            "elapsed_ms":  result.elapsed_ms,
-                            "via":         "batch",
-                        }),
-                    })
-                except Exception as exc:
-                    logger.warning("batch_ocr: usage insert failed: %s", exc)
+                ), {
+                    "aid":   str(article_id),
+                    "text":  result.text,
+                    "pages": result.pages or old_pages,
+                })
         except Exception as exc:
             logger.exception("batch_ocr: persist failed for %s", article_id)
             with _lock:
                 _state["failed"] += 1
-                _state["last_error"] = f"persist: {exc}"
+                _state["last_error"] = f"persist: {str(exc)[:160]}"
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
+
+        try:
+            with eng.begin() as conn:
+                conn.execute(sql_text(
+                    """INSERT INTO prionvault_usage
+                       (user_id, action, cost_usd, tokens_in, tokens_out,
+                        metadata, created_at)
+                       VALUES (:uid, 'ocr_extract', 0, 0, 0,
+                               :meta::jsonb, NOW())"""
+                ), {
+                    "uid":  str(viewer_user_id) if viewer_user_id else None,
+                    "meta": _json_dumps({
+                        "article_id":  str(article_id),
+                        "pages":       result.pages,
+                        "pages_ocrd":  result.pages_ocrd,
+                        "chars":       len(result.text),
+                        "truncated":   result.truncated,
+                        "elapsed_ms":  result.elapsed_ms,
+                        "via":         "batch",
+                    }),
+                })
+        except Exception as exc:
+            logger.warning("batch_ocr: usage insert failed: %s", exc)
 
         with _lock:
             _state["processed"]    += 1
