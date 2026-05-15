@@ -90,7 +90,8 @@ def _library_stats() -> dict:
             }
     except Exception as exc:
         logger.warning("batch_summary: library_stats failed: %s", exc)
-        return {"total": 0, "with_text": 0, "with_summary": 0, "eligible": 0}
+        return {"total": 0, "with_text": 0, "with_summary": 0,
+                "eligible": 0, "error": str(exc)[:300]}
 
 
 def start_batch(*, viewer_user_id=None,
