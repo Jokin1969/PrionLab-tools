@@ -52,10 +52,19 @@ def bootstrap_admin_user() -> None:
 
 
 def _lookup_db_user_id(username: str) -> str | None:
-    """Return the UUID of the `users` row whose username matches, or
-    None if the DB is unavailable / the user only lives in the CSV
-    fallback. Result is a str (not a UUID) so it serialises into the
-    Flask session cookie without extra plumbing.
+    """Return the UUID of the `users` row whose username matches.
+
+    Three layered behaviours:
+      1. Row exists in DB → return its id.
+      2. Row missing but the user is in the CSV (the legacy user
+         store) → insert a minimal row into `users` and return its id.
+         This unblocks every tool that keys off users.id (PrionVault,
+         PrionPacks, ratings, favourites, …) without forcing the user
+         to re-register.
+      3. Otherwise → None.
+
+    Result is a str (not a UUID) so it serialises into the Flask
+    session cookie without extra plumbing.
     """
     if not username:
         return None
@@ -73,6 +82,58 @@ def _lookup_db_user_id(username: str) -> str | None:
                 return str(row[0])
     except Exception as exc:
         logger.warning("auth: could not resolve user_id for %s: %s",
+                       username, exc)
+        return None
+
+    # ── Auto-provision from the CSV ─────────────────────────────────
+    try:
+        from core.users import load_users
+        csv_row = next(
+            (u for u in load_users()
+             if u.get("username", "").lower() == username.lower()),
+            None,
+        )
+        if not csv_row:
+            return None
+
+        full_name = (csv_row.get("full_name") or username).strip()
+        parts     = full_name.split(None, 1)
+        first     = parts[0] if parts else username
+        last      = parts[1] if len(parts) > 1 else ""
+        email     = (csv_row.get("email") or
+                     f"{username.lower()}@local.invalid").strip()
+        role      = (csv_row.get("role") or "reader").strip()
+        language  = (csv_row.get("language") or "es").strip()
+        pw_hash   = (csv_row.get("password_hash")
+                     or "!auto-provisioned!").strip()
+
+        import uuid as _uuid
+        from database.config import db
+        from sqlalchemy import text as _text
+        new_id = str(_uuid.uuid4())
+        with db.engine.begin() as conn:
+            conn.execute(_text(
+                """INSERT INTO users
+                   (id, username, email, password_hash,
+                    first_name, last_name, role, language,
+                    is_active, email_verified, created_at, updated_at)
+                   VALUES (:id, :u, :e, :p, :fn, :ln, :r, :lng,
+                           TRUE, FALSE, NOW(), NOW())
+                   ON CONFLICT (username) DO NOTHING"""
+            ), {"id": new_id, "u": username, "e": email, "p": pw_hash,
+                "fn": first, "ln": last, "r": role, "lng": language})
+            # Re-read to cope with the ON CONFLICT path (another
+            # request might have inserted the same username in
+            # parallel and our INSERT became a no-op).
+            row = conn.execute(_text(
+                "SELECT id FROM users WHERE lower(username) = lower(:u) LIMIT 1"
+            ), {"u": username}).first()
+            if row and row[0]:
+                logger.info("auth: auto-provisioned DB user for %s "
+                            "(id=%s)", username, row[0])
+                return str(row[0])
+    except Exception as exc:
+        logger.warning("auth: auto-provision failed for %s: %s",
                        username, exc)
     return None
 
