@@ -56,29 +56,49 @@ class RerankInfo:
 
 
 @dataclass
+class HybridInfo:
+    used:        bool
+    vector_hits: int = 0   # chunks returned by pgvector
+    bm25_hits:   int = 0   # chunks returned by BM25 (chunk-level tsvector)
+    fused:       int = 0   # unique chunks in the fused pool
+
+
+@dataclass
 class RetrievalResult:
     query:      str
     articles:   List[RetrievedArticle]   # de-duplicated, ranked by best chunk
     raw_chunks: List[RetrievedChunk]     # full top-K, useful for the RAG prompt
     fetched_at_distance: float            # worst (largest) distance returned
     rerank:     Optional[RerankInfo] = None
+    hybrid:     Optional[HybridInfo] = None
+
+
+# Reciprocal Rank Fusion constant. 60 is the canonical default from the
+# Cormack et al. paper; behaviour is robust to small perturbations.
+_RRF_K = 60
 
 
 def search(query: str, *, top_k: int = 20,
            per_article_cap: int = 3,
            rerank: bool = True,
+           hybrid: bool = True,
            candidate_k: Optional[int] = None) -> RetrievalResult:
     """Run a semantic search. Returns chunks + grouped articles.
 
     `per_article_cap` limits how many chunks of the same article appear in
     raw_chunks, so the RAG prompt isn't dominated by a single paper.
 
-    When `rerank` is True (default), pgvector over-fetches `candidate_k`
-    chunks (default 5×top_k, capped at 100), then Voyage rerank-2
-    re-scores them against the query and the final top_k is taken from
+    When `hybrid` is True (default), the retriever runs both a pgvector
+    cosine search and a chunk-level BM25 full-text search, then fuses
+    the two rankings with Reciprocal Rank Fusion before the rerank step.
+    This is the recommended setting because it preserves recall on exact
+    technical tokens (PrPSc, GFAP, 14-3-3, …) that the dense embedder
+    sometimes blurs together with semantically adjacent concepts.
+
+    When `rerank` is True (default), Voyage rerank-2 re-scores the fused
+    candidate pool against the query and the final top_k is taken from
     the re-ranked order. If VOYAGE_API_KEY is not set the rerank step is
-    skipped gracefully and the function falls back to pure vector
-    similarity.
+    skipped gracefully and the function falls back to the fused order.
     """
     query = (query or "").strip()
     if not query:
@@ -97,8 +117,9 @@ def search(query: str, *, top_k: int = 20,
 
     eng = _get_engine()
     with eng.connect() as conn:
-        rows = conn.execute(sql_text(
+        vec_rows = conn.execute(sql_text(
             """SELECT
+                   c.id AS chunk_pk,
                    c.article_id,
                    c.chunk_index,
                    c.source_field,
@@ -112,33 +133,128 @@ def search(query: str, *, top_k: int = 20,
                LIMIT :k"""
         ), {"qvec": vec_literal, "k": candidate_k}).all()
 
-    # Build the candidate pool first (no per-article cap yet — rerank
-    # needs the full set so a strong second chunk of paper A can still
-    # surface above a weak first chunk of paper B).
-    candidate_chunks: List[RetrievedChunk] = []
+        # ── Lexical (BM25-style) leg of the hybrid retrieval ────────────
+        bm25_rows = []
+        hybrid_active = False
+        if hybrid:
+            try:
+                bm25_rows = conn.execute(sql_text(
+                    """SELECT
+                           c.id AS chunk_pk,
+                           c.article_id,
+                           c.chunk_index,
+                           c.source_field,
+                           c.chunk_text,
+                           c.tokens,
+                           ts_rank_cd(c.chunk_search_vector,
+                                      plainto_tsquery('simple', :q)) AS rank,
+                           a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id
+                       FROM article_chunk c
+                       JOIN articles a ON a.id = c.article_id
+                       WHERE c.chunk_search_vector @@ plainto_tsquery('simple', :q)
+                       ORDER BY rank DESC
+                       LIMIT :k"""
+                ), {"q": query, "k": candidate_k}).all()
+                hybrid_active = True
+            except Exception as exc:
+                # Column or index missing (migration 006 not applied yet?).
+                # Fall back to pure vector quietly.
+                logger.warning("BM25 leg failed, hybrid disabled: %s", exc)
+                bm25_rows = []
+                hybrid_active = False
+
+    # ── Build a chunk pool indexed by chunk_pk, collecting both legs ────
+    chunk_by_pk: dict = {}
     article_meta: dict = {}
-    for r in rows:
+
+    def _ingest_row(r, is_vec: bool):
+        pk = int(r.chunk_pk)
         aid = str(r.article_id)
         if aid not in article_meta:
             article_meta[aid] = {
-                "title": r.title or "",
-                "authors": r.authors,
-                "year": r.year,
-                "journal": r.journal,
-                "doi": r.doi,
+                "title":     r.title or "",
+                "authors":   r.authors,
+                "year":      r.year,
+                "journal":   r.journal,
+                "doi":       r.doi,
                 "pubmed_id": r.pubmed_id,
             }
-        dist = float(r.distance) if r.distance is not None else 1.0
-        candidate_chunks.append(RetrievedChunk(
+        if pk in chunk_by_pk:
+            return chunk_by_pk[pk]
+        if is_vec:
+            dist = float(r.distance) if r.distance is not None else 1.0
+            similarity = max(0.0, 1.0 - dist)
+        else:
+            # No vector distance yet for this chunk — leave a conservative
+            # default; reranking will rescue or demote it.
+            dist = 1.0
+            similarity = 0.0
+        c = RetrievedChunk(
             article_id=aid,
             chunk_index=int(r.chunk_index),
             source_field=r.source_field,
             chunk_text=r.chunk_text,
             tokens=int(r.tokens) if r.tokens is not None else None,
             distance=dist,
-            similarity=max(0.0, 1.0 - dist),
-        ))
+            similarity=similarity,
+        )
+        chunk_by_pk[pk] = c
+        return c
 
+    # ── Reciprocal Rank Fusion ─────────────────────────────────────────
+    rrf_scores: dict = {}
+    for rank, r in enumerate(vec_rows):
+        _ingest_row(r, is_vec=True)
+        pk = int(r.chunk_pk)
+        rrf_scores[pk] = rrf_scores.get(pk, 0.0) + 1.0 / (_RRF_K + rank + 1)
+    for rank, r in enumerate(bm25_rows):
+        _ingest_row(r, is_vec=False)
+        pk = int(r.chunk_pk)
+        rrf_scores[pk] = rrf_scores.get(pk, 0.0) + 1.0 / (_RRF_K + rank + 1)
+
+    # When BM25 finds a chunk that wasn't in the vector top-K, we don't
+    # know its true vector similarity. Backfill the distance for those
+    # chunks with a single quick lookup so the per-article cap and the
+    # final ordering have something useful to fall back on.
+    pks_needing_dist = [
+        pk for pk, c in chunk_by_pk.items() if c.similarity == 0.0
+    ]
+    if pks_needing_dist:
+        try:
+            with eng.connect() as conn:
+                d_rows = conn.execute(sql_text(
+                    """SELECT id, embedding <=> (:qvec)::vector AS distance
+                       FROM article_chunk
+                       WHERE id = ANY(:pks)"""
+                ), {"qvec": vec_literal, "pks": pks_needing_dist}).all()
+                for dr in d_rows:
+                    c = chunk_by_pk.get(int(dr.id))
+                    if c is None:
+                        continue
+                    dist = float(dr.distance) if dr.distance is not None else 1.0
+                    c.distance = dist
+                    c.similarity = max(0.0, 1.0 - dist)
+        except Exception as exc:
+            logger.warning("backfill distances failed: %s", exc)
+
+    # Order candidates by fused RRF score when hybrid is active, otherwise
+    # by pure vector order (preserves earlier behaviour).
+    if hybrid_active:
+        candidate_chunks: List[RetrievedChunk] = [
+            chunk_by_pk[pk] for pk, _ in
+            sorted(rrf_scores.items(), key=lambda kv: -kv[1])
+        ]
+    else:
+        candidate_chunks = [
+            chunk_by_pk[int(r.chunk_pk)] for r in vec_rows
+        ]
+
+    hybrid_info = HybridInfo(
+        used=hybrid_active,
+        vector_hits=len(vec_rows),
+        bm25_hits=len(bm25_rows),
+        fused=len(candidate_chunks),
+    )
     rerank_info = RerankInfo(used=False, candidates=len(candidate_chunks))
 
     # ── Optional reranking step ─────────────────────────────────────────
@@ -231,4 +347,5 @@ def search(query: str, *, top_k: int = 20,
         raw_chunks=chunks,
         fetched_at_distance=chunks[-1].distance if chunks else 0.0,
         rerank=rerank_info,
+        hybrid=hybrid_info,
     )

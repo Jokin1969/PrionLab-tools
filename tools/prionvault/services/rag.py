@@ -88,6 +88,10 @@ class RagResult:
     rerank_used:     bool = False
     rerank_candidates: int = 0
     rerank_cost_usd: Optional[float] = None
+    hybrid_used:     bool = False
+    hybrid_vector_hits: int = 0
+    hybrid_bm25_hits:   int = 0
+    hybrid_fused:       int = 0
 
 
 class AnthropicNotConfigured(RuntimeError):
@@ -186,6 +190,10 @@ def ask(query: str, *, top_k: int = 20) -> RagResult:
             rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
             rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
             rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
+            hybrid_used=bool(retrieval.hybrid and retrieval.hybrid.used),
+            hybrid_vector_hits=retrieval.hybrid.vector_hits if retrieval.hybrid else 0,
+            hybrid_bm25_hits=retrieval.hybrid.bm25_hits if retrieval.hybrid else 0,
+            hybrid_fused=retrieval.hybrid.fused if retrieval.hybrid else 0,
         )
 
     context_text, citations = _build_context(retrieval.raw_chunks,
@@ -234,4 +242,8 @@ def ask(query: str, *, top_k: int = 20) -> RagResult:
         rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
         rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
         rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
+        hybrid_used=bool(retrieval.hybrid and retrieval.hybrid.used),
+        hybrid_vector_hits=retrieval.hybrid.vector_hits if retrieval.hybrid else 0,
+        hybrid_bm25_hits=retrieval.hybrid.bm25_hits if retrieval.hybrid else 0,
+        hybrid_fused=retrieval.hybrid.fused if retrieval.hybrid else 0,
     )

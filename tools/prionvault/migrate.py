@@ -39,6 +39,7 @@ _PRIONVAULT_MIGRATIONS = (
     "001_prionvault_tables.sql",
     "003_fix_step_column.sql",
     "005_prionvault_user_state.sql",
+    "006_prionvault_chunk_fts.sql",
 )
 
 _BOOTSTRAP_SQL = """

@@ -1841,6 +1841,10 @@ def api_semantic_search():
         "rerank_used":       result.rerank_used,
         "rerank_candidates": result.rerank_candidates,
         "rerank_cost_usd":   result.rerank_cost_usd,
+        "hybrid_used":       result.hybrid_used,
+        "hybrid_vector_hits": result.hybrid_vector_hits,
+        "hybrid_bm25_hits":  result.hybrid_bm25_hits,
+        "hybrid_fused":      result.hybrid_fused,
     })
 
 

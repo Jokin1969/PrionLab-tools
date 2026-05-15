@@ -2127,6 +2127,14 @@
       ansEl.innerHTML = annotateCitations(r.answer || '', r.citations || []);
 
       const confLabel = r.confidence ? `Confianza: <strong>${esc(r.confidence)}</strong>` : '';
+      const hybridBadge = r.hybrid_used
+        ? `<span title="Vector ${r.hybrid_vector_hits} + BM25 ${r.hybrid_bm25_hits} → ${r.hybrid_fused} fusionados"
+                 style="display:inline-block;margin-left:6px;font-size:10.5px;color:#0369a1;
+                        background:#f0f9ff;border:1px solid #bae6fd;padding:1px 6px;
+                        border-radius:5px;font-weight:600;letter-spacing:0.02em;">
+            🔀 hybrid · ${r.hybrid_vector_hits}v + ${r.hybrid_bm25_hits}b → ${r.hybrid_fused}
+           </span>`
+        : '';
       const rrBadge = r.rerank_used
         ? `<span style="display:inline-block;margin-left:6px;font-size:10.5px;color:#7c3aed;
                         background:#f5f3ff;border:1px solid #ddd6fe;padding:1px 6px;
@@ -2143,7 +2151,7 @@
       stEl.innerHTML = r.no_results
         ? '⚠️ Retrieval no encontró fragmentos relevantes para esta pregunta.'
         : `✓ Generado en ${timing}${cost}${tok}`;
-      metaEl.innerHTML = confLabel + rrBadge;
+      metaEl.innerHTML = confLabel + hybridBadge + rrBadge;
 
       renderRagCitations(r.citations || [], r.cited_numbers || []);
 
