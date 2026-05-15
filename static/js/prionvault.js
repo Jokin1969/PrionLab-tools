@@ -376,6 +376,44 @@
       () => doBulk({is_milestone: true}, 'hito'));
     document.getElementById('pv-bulk-star-off')?.addEventListener('click',
       () => doBulk({is_milestone: false},'sin hito'));
+
+    // Bulk DELETE — destructive, double-confirm.
+    document.getElementById('pv-bulk-delete')?.addEventListener('click',
+      async () => {
+        const count = state.selectedIds.size;
+        if (!count) return;
+        const phrase = String(count);
+        const typed = prompt(
+          `Vas a eliminar ${count} artículo${count === 1 ? '' : 's'} y ` +
+          `su${count === 1 ? '' : 's'} PDF${count === 1 ? '' : 's'} de Dropbox.\n\n` +
+          `Esta acción NO se puede deshacer desde la app (Dropbox guarda 30 días ` +
+          `de historial de versiones de los PDFs).\n\n` +
+          `Para confirmar, escribe el número de artículos a borrar (${count}):`
+        );
+        if (typed === null) return;
+        if (typed.trim() !== phrase) {
+          alert('Cancelado: el número no coincide.');
+          return;
+        }
+        try {
+          const ids = Array.from(state.selectedIds);
+          const r = await api('/articles/bulk-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids }),
+          });
+          state.selectedIds.clear();
+          updateBulkBar();
+          loadArticles();
+          refreshStats();
+          const lostPdf = r.dropbox_failed
+            ? ` (${r.dropbox_failed} PDFs no se pudieron borrar de Dropbox; revisa los logs)`
+            : '';
+          alert(`Borrados ${r.deleted} artículos. ` +
+                `${r.dropbox_deleted} PDFs eliminados de Dropbox${lostPdf}.`);
+        } catch (e) {
+          alert('Error en el borrado masivo: ' + e.message);
+        }
+      });
   }
 
   async function doBulk(updates, descr) {
@@ -967,7 +1005,8 @@
         <div id="pv-similar-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-supplementary-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-used-in-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
-        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;">
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;
+                    display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
           <button id="pv-add-to-pack-btn" type="button"
                   style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;
                          font-size:13px;font-weight:600;color:#0F3460;cursor:pointer;
@@ -975,6 +1014,15 @@
             <i class="fas fa-cubes-stacked"></i>
             <span>Add to PrionPack</span>
           </button>
+          ${IS_ADMIN ? `
+            <button id="pv-delete-article-btn" type="button"
+                    title="Eliminar este artículo y su PDF de Dropbox"
+                    style="padding:7px 14px;border-radius:8px;border:1px solid #fecaca;background:white;
+                           font-size:13px;font-weight:600;color:#b91c1c;cursor:pointer;
+                           display:inline-flex;align-items:center;gap:6px;margin-left:auto;">
+              <i class="fas fa-trash"></i>
+              <span>Eliminar artículo</span>
+            </button>` : ''}
         </div>
         <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f3f4f6;
                     font-size:12px;color:#9ca3af;font-family:ui-monospace,monospace;">
@@ -989,6 +1037,7 @@
       renderAiSummary(a);
       wireUnpaywallButton(a);
       wireAddToPackButton(a);
+      wireDeleteArticleButton(a);
       renderSimilarSection(a);
       renderSupplementarySection(a);
       renderUsedInSection(a);
@@ -1644,6 +1693,42 @@
   }
 
   // ── Add to PrionPack (per-article) ───────────────────────────────────
+  function wireDeleteArticleButton(a) {
+    const btn = document.getElementById('pv-delete-article-btn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const titleStub = (a.title || '').slice(0, 80);
+      const confirmMsg =
+        'Vas a eliminar este artículo de la biblioteca:\n\n' +
+        `“${titleStub}${(a.title || '').length > 80 ? '…' : ''}”\n\n` +
+        '• La fila se borra de la base de datos.\n' +
+        '• El PDF se borra de Dropbox (queda en el historial de versiones ~30 días).\n' +
+        '• Desaparece de PrionRead, PrionPacks, asignaciones y ratings.\n\n' +
+        'Esta acción no se puede deshacer desde la app. ¿Continuar?';
+      if (!confirm(confirmMsg)) return;
+      btn.disabled = true;
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando…';
+      try {
+        const r = await api(`/articles/${a.id}`, { method: 'DELETE' });
+        // Close the detail modal and reload the list.
+        const modal = document.getElementById('pv-detail-modal');
+        if (modal) modal.style.display = 'none';
+        // If we have a stale selection, drop the deleted id.
+        if (state.selectedIds && state.selectedIds.has(a.id)) {
+          state.selectedIds.delete(a.id);
+          if (typeof updateBulkBar === 'function') updateBulkBar();
+        }
+        loadArticles();
+        refreshStats();
+      } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    });
+  }
+
   function wireAddToPackButton(a) {
     const btn   = document.getElementById('pv-add-to-pack-btn');
     const modal = document.getElementById('pv-pack-modal');

@@ -1131,6 +1131,73 @@ def api_articles_bulk_update():
         s.close()
 
 
+@prionvault_bp.route("/api/articles/bulk-delete", methods=["POST"])
+@admin_required
+def api_articles_bulk_delete():
+    """Bulk-delete every article in `ids` and best-effort remove its
+    Dropbox PDF. Body: { ids: ["<uuid>", ...] }. Returns counts of
+    rows actually removed and Dropbox files cleaned up."""
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids"}), 400
+    if len(ids) > _BULK_MAX_IDS:
+        return jsonify({"error": "too_many",
+                        "detail": f"Máximo {_BULK_MAX_IDS} ids por llamada."}), 400
+    ids = [str(x) for x in ids if x]
+
+    s = _session()
+    dropbox_deleted = 0
+    dropbox_failed  = 0
+    try:
+        # First collect the Dropbox paths so we can clean up after
+        # the DB rows are gone. Doing it in this order is fine —
+        # losing a Dropbox file orphans nothing because the row is
+        # the only thing that pointed at it.
+        rows = s.execute(sql_text(
+            "SELECT dropbox_path FROM articles "
+            "WHERE id = ANY(CAST(:ids AS uuid[])) "
+            "  AND dropbox_path IS NOT NULL"
+        ), {"ids": ids}).all()
+        paths = [r[0] for r in rows if r[0]]
+
+        res = s.execute(sql_text(
+            "DELETE FROM articles WHERE id = ANY(CAST(:ids AS uuid[]))"
+        ), {"ids": ids})
+        deleted = res.rowcount or 0
+        s.commit()
+
+        if paths:
+            try:
+                from core.dropbox_client import get_client
+                client = get_client()
+                if client is not None:
+                    for p in paths:
+                        try:
+                            client.files_delete_v2(p)
+                            dropbox_deleted += 1
+                        except Exception as exc:
+                            dropbox_failed += 1
+                            logger.warning("bulk-delete: Dropbox delete "
+                                           "failed for %s: %s", p, exc)
+            except Exception as exc:
+                logger.warning("bulk-delete: Dropbox client unavailable: %s", exc)
+
+        return jsonify({
+            "ok":              True,
+            "deleted":         deleted,
+            "dropbox_deleted": dropbox_deleted,
+            "dropbox_failed":  dropbox_failed,
+        })
+    except Exception as exc:
+        s.rollback()
+        logger.exception("bulk-delete failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>", methods=["DELETE"])
 @admin_required
 def api_article_delete(aid):
