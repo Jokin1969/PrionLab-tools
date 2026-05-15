@@ -41,6 +41,7 @@
     extraction: null,    // null = all, 'extracted' | 'pending' | 'failed'
     isFavorite: null,    // null = all, true = only favorites, false = non-favorites
     isRead: null,        // null = all, true = personally read, false = unread
+    collectionId: null,  // null = no collection filter, else UUID string
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
     selectedIds: new Set(),  // UUIDs selected for bulk operations
@@ -119,6 +120,149 @@
   }
 
   // ── render: tags ───────────────────────────────────────────────────────
+  // ── Collections (manual groupings) ────────────────────────────────────
+  async function refreshCollections() {
+    const container = document.getElementById('collection-list');
+    if (!container) return;
+    let items = [];
+    try {
+      const r = await api('/collections');
+      items = r.items || [];
+    } catch (e) {
+      container.innerHTML = `<div style="padding:6px 10px;font-size:11px;color:#fca5a5;">
+        Error: ${esc(e.message)}</div>`;
+      return;
+    }
+    if (!items.length) {
+      container.innerHTML = `<div style="padding:6px 10px;font-size:11px;color:rgba(255,255,255,0.35);">
+        Crea una con el botón +</div>`;
+      return;
+    }
+    container.innerHTML = '';
+    items.forEach(c => {
+      const btn = document.createElement('button');
+      btn.className = 'pv-nav-btn';
+      btn.dataset.collectionId = c.id;
+      const kindIcon = c.kind === 'smart'
+        ? '<i class="fas fa-bolt" style="font-size:10px;opacity:0.5;"></i>'
+        : '<i class="fas fa-folder" style="font-size:10px;opacity:0.5;"></i>';
+      btn.innerHTML = `
+        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;">
+          <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${esc(c.color || '#9ca3af')}"></span>
+          ${kindIcon}
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.description || c.name)}">${esc(c.name)}</span>
+        </span>
+        <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${c.article_count}</span>
+      `;
+      btn.addEventListener('click', () => {
+        state.collectionId = state.collectionId === c.id ? null : c.id;
+        state.page = 1;
+        document.querySelectorAll('#collection-list .pv-nav-btn').forEach(b => {
+          b.style.background = (b.dataset.collectionId === state.collectionId)
+            ? 'rgba(255,255,255,0.18)' : '';
+        });
+        loadArticles();
+      });
+      // Right-click → quick admin menu (delete).
+      btn.addEventListener('contextmenu', ev => {
+        if (!IS_ADMIN) return;
+        ev.preventDefault();
+        if (!confirm(`Borrar la colección "${c.name}"? (los artículos NO se borran)`)) return;
+        api(`/collections/${c.id}`, { method: 'DELETE' })
+          .then(() => { if (state.collectionId === c.id) state.collectionId = null;
+                        refreshCollections(); loadArticles(); })
+          .catch(e => alert('Error: ' + e.message));
+      });
+      container.appendChild(btn);
+    });
+    // Re-paint active state in case state.collectionId points to an existing one.
+    if (state.collectionId) {
+      const active = container.querySelector(`[data-collection-id="${state.collectionId}"]`);
+      if (active) active.style.background = 'rgba(255,255,255,0.18)';
+    }
+  }
+
+  function wireNewCollectionButton() {
+    const btn = document.getElementById('btn-new-collection');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const name = prompt('Nombre de la colección:');
+      if (!name || !name.trim()) return;
+      const description = prompt('Descripción (opcional):') || '';
+      const palette = {
+        rojo: '#ef4444', naranja: '#fb923c', amarillo: '#f59e0b',
+        verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
+        rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
+      };
+      const colorInput = prompt(
+        'Color (hex o nombre: rojo / naranja / amarillo / verde / ' +
+        'azul / morado / rosa / gris / cian). Vacío = sin color.'
+      );
+      let color = null;
+      if (colorInput && colorInput.trim()) {
+        const v = colorInput.trim().toLowerCase();
+        color = palette[v] || (v.startsWith('#') ? v : null);
+      }
+      try {
+        await api('/collections', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description.trim() || null,
+            kind: 'manual',
+            color,
+          }),
+        });
+        refreshCollections();
+      } catch (e) {
+        alert('No se pudo crear la colección: ' + e.message);
+      }
+    });
+  }
+
+  async function openAddToCollectionPicker(articleIds) {
+    if (!articleIds || !articleIds.length) {
+      alert('Selecciona al menos un artículo primero.');
+      return;
+    }
+    let items = [];
+    try {
+      const r = await api('/collections');
+      items = (r.items || []).filter(c => c.kind === 'manual');
+    } catch (e) {
+      alert('No se pudieron cargar las colecciones: ' + e.message);
+      return;
+    }
+    if (!items.length) {
+      if (!confirm('No tienes ninguna colección manual. ¿Crear una nueva ahora?')) return;
+      document.getElementById('btn-new-collection')?.click();
+      return;
+    }
+    const lines = items.map((c, i) => `  ${i+1}. ${c.name} (${c.article_count})`);
+    const pick = prompt(
+      `Elige una colección para añadir ${articleIds.length} artículo(s):\n\n` +
+      lines.join('\n') + '\n\nEscribe el número:'
+    );
+    if (pick === null) return;
+    const idx = parseInt(pick.trim(), 10) - 1;
+    if (!Number.isFinite(idx) || idx < 0 || idx >= items.length) {
+      alert('Selección inválida.');
+      return;
+    }
+    const target = items[idx];
+    try {
+      const r = await api(`/collections/${target.id}/articles`, {
+        method: 'POST',
+        body: JSON.stringify({ ids: articleIds }),
+      });
+      refreshCollections();
+      alert(`Añadidos ${r.added} a "${target.name}". ` +
+            `${r.skipped} ya estaban dentro.`);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  }
+
   // ── New tag button ────────────────────────────────────────────────────
   function wireNewTagButton() {
     const btn = document.getElementById('btn-new-tag');
@@ -429,6 +573,10 @@
     document.getElementById('pv-bulk-addpack')?.addEventListener('click',
       () => openBulkPackPicker(Array.from(state.selectedIds)));
 
+    // Bulk add to a manual Collection.
+    document.getElementById('pv-bulk-addcollection')?.addEventListener('click',
+      () => openAddToCollectionPicker(Array.from(state.selectedIds)));
+
     // Bulk DELETE — destructive, double-confirm.
     document.getElementById('pv-bulk-delete')?.addEventListener('click',
       async () => {
@@ -499,6 +647,7 @@
     if (state.extraction)          params.set('extraction_status', state.extraction);
     if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
     if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
+    if (state.collectionId)        params.set('collection', state.collectionId);
     if (state.sort)                params.set('sort', state.sort);
     params.set('page', state.page);
     params.set('size', state.size);
@@ -2528,6 +2677,8 @@
     refreshStats();
     wireNewTagButton();
     refreshTags();
+    wireNewCollectionButton();
+    refreshCollections();
     loadArticles().then(() => {
       const openId = new URLSearchParams(window.location.search).get('open');
       if (openId) openDetail(openId);

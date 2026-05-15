@@ -66,6 +66,7 @@ def api_list_articles():
     journal     = (request.args.get("journal") or "").strip()
     authors_q   = (request.args.get("authors") or "").strip()
     tag_id      = request.args.get("tag", type=int)
+    collection_id = (request.args.get("collection") or "").strip() or None
     has_summary = request.args.get("has_summary")
     in_prionread_raw = request.args.get("in_prionread")
     in_prionread = True if in_prionread_raw == "1" else (False if in_prionread_raw == "0" else None)
@@ -92,7 +93,8 @@ def api_list_articles():
                                    is_flagged, is_milestone, color_label,
                                    priority_eq, extraction,
                                    is_favorite, is_read,
-                                   sort, page, page_size)
+                                   sort, page, page_size,
+                                   collection_id=collection_id)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -110,7 +112,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         is_flagged, is_milestone, color_label,
                         priority_eq, extraction,
                         is_favorite, is_read,
-                        sort, page, page_size):
+                        sort, page, page_size,
+                        *, collection_id=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -246,15 +249,24 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     )
     select_cols = base_cols + (f", {pv_select}" if pv_select else "")
 
+    join_parts = ["FROM articles"]
     if tag_id:
-        from_clause = (
-            "FROM articles "
+        join_parts.append(
             "JOIN article_tag_link ON article_tag_link.article_id = articles.id "
             "AND article_tag_link.tag_id = :tag_id"
         )
         params["tag_id"] = tag_id
-    else:
-        from_clause = "FROM articles"
+    # Manual collection membership join — smart collections are
+    # resolved by injecting their rules into the filter set in the
+    # endpoint layer, not here.
+    if collection_id:
+        join_parts.append(
+            "JOIN prionvault_collection_article pca "
+            "  ON pca.article_id = articles.id "
+            " AND pca.collection_id = CAST(:collection_id AS uuid)"
+        )
+        params["collection_id"] = collection_id
+    from_clause = " ".join(join_parts)
 
     count_sql = sql_text(f"SELECT COUNT(*) {from_clause} {where}")
     total = s.execute(count_sql, params).scalar() or 0
@@ -1620,6 +1632,119 @@ def api_duplicates():
         return jsonify({"total": len(pairs), "pairs": pairs})
     finally:
         s.close()
+
+
+# ── Collections (manual groupings + future smart filters) ──────────────────
+@prionvault_bp.route("/api/collections", methods=["GET"])
+@login_required
+def api_collections_list():
+    from .services import collections as _coll
+    try:
+        return jsonify({"items": _coll.list_all(viewer_id=_viewer_id())})
+    except Exception as exc:
+        logger.exception("collections list failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+
+@prionvault_bp.route("/api/collections", methods=["POST"])
+@admin_required
+def api_collections_create():
+    from .services import collections as _coll
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        c = _coll.create(
+            name=data.get("name") or "",
+            description=data.get("description"),
+            kind=(data.get("kind") or "manual").strip().lower(),
+            rules=data.get("rules") or None,
+            color=(data.get("color") or "").strip() or None,
+            created_by=_viewer_id(),
+        )
+        return jsonify(c), 201
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("collections create failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+
+@prionvault_bp.route("/api/collections/<uuid:cid>", methods=["GET"])
+@login_required
+def api_collections_get(cid):
+    from .services import collections as _coll
+    c = _coll.get(cid)
+    if not c:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(c)
+
+
+@prionvault_bp.route("/api/collections/<uuid:cid>", methods=["PATCH"])
+@admin_required
+def api_collections_update(cid):
+    from .services import collections as _coll
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        c = _coll.update(
+            cid,
+            name=data.get("name"),
+            description=data.get("description"),
+            rules=data.get("rules"),
+            color=data.get("color"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    if not c:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(c)
+
+
+@prionvault_bp.route("/api/collections/<uuid:cid>", methods=["DELETE"])
+@admin_required
+def api_collections_delete(cid):
+    from .services import collections as _coll
+    if not _coll.delete(cid):
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/collections/<uuid:cid>/articles", methods=["POST"])
+@admin_required
+def api_collections_add_articles(cid):
+    """Body: { ids: ["<uuid>", …] }. Manual collections only."""
+    from .services import collections as _coll
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids"}), 400
+    if len(ids) > 10_000:
+        return jsonify({"error": "too_many"}), 400
+    try:
+        result = _coll.add_articles(cid, ids, added_by=_viewer_id())
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("collections add failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    return jsonify({"ok": True, **result})
+
+
+@prionvault_bp.route("/api/collections/<uuid:cid>/articles", methods=["DELETE"])
+@admin_required
+def api_collections_remove_articles(cid):
+    """Body: { ids: ["<uuid>", …] }. Removes those rows from the link
+    table; the articles themselves are untouched."""
+    from .services import collections as _coll
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids"}), 400
+    removed = _coll.remove_articles(cid, ids)
+    return jsonify({"ok": True, "removed": removed})
 
 
 # ── Bulk ingestion (Phase 2) ────────────────────────────────────────────────

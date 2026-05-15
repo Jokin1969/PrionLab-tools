@@ -155,6 +155,17 @@
 
       <div style="display:flex;align-items:center;gap:6px;padding:14px 10px 4px;">
         <p style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,0.32);
+                  letter-spacing:0.1em;text-transform:uppercase;margin:0;flex:1;">Colecciones</p>
+        <button class="pv-admin-only" id="btn-new-collection"
+                style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.18);
+                       color:white;border:none;cursor:pointer;font-size:12px;line-height:1;
+                       display:flex;align-items:center;justify-content:center;"
+                title="Crear colección">+</button>
+      </div>
+      <div id="collection-list"></div>
+
+      <div style="display:flex;align-items:center;gap:6px;padding:14px 10px 4px;">
+        <p style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,0.32);
                   letter-spacing:0.1em;text-transform:uppercase;margin:0;flex:1;">Tags</p>
         <button class="pv-admin-only" id="btn-new-tag"
                 style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.18);
@@ -553,6 +564,14 @@
                      border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
                      font-weight:600;display:inline-flex;align-items:center;gap:4px;">
         <i class="fas fa-cubes-stacked"></i> A PrionPack
+      </button>
+
+      <button id="pv-bulk-addcollection" type="button"
+              title="Añadir los artículos seleccionados a una colección"
+              style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
+                     border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
+                     font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        <i class="fas fa-folder-plus"></i> A colección
       </button>
 
       <button id="pv-bulk-delete" type="button"
