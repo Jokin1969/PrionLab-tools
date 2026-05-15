@@ -1110,9 +1110,14 @@ def api_articles_bulk_update():
 
     s = _session()
     try:
+        # SQLAlchemy's parameter binding parses `:name`, so the
+        # Postgres `:: ` cast syntax confuses it ("LINE 1: …WHERE
+        # id = ANY(:ids::uuid…"). Use CAST(:ids AS uuid[]) instead so
+        # the parameter ends cleanly at `:ids` and the cast lives
+        # inside a normal function call.
         res = s.execute(sql_text(
             f"UPDATE articles SET {set_clauses}, updated_at = NOW() "
-            f"WHERE id = ANY(:ids::uuid[])"
+            f"WHERE id = ANY(CAST(:ids AS uuid[]))"
         ), params)
         s.commit()
         return jsonify({"ok": True, "updated": res.rowcount or 0,
