@@ -1,0 +1,36 @@
+# PrionLab Tools — scheduled Postgres backup.
+#
+# Install:
+#   sudo cp deploy/systemd/prionlab-backup.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now prionlab-backup.timer
+#
+# Check status / next run:
+#   systemctl status prionlab-backup.timer
+#   systemctl list-timers prionlab-backup.timer
+#   journalctl -u prionlab-backup.service -n 100 --no-pager
+#
+# Adjust WorkingDirectory, EnvironmentFile and ExecStart to match
+# your deployment paths (the defaults below assume /opt/PrionLab-tools
+# with a virtualenv at .venv).
+
+[Unit]
+Description=PrionLab Tools — Postgres backup to Dropbox
+Documentation=https://github.com/Jokin1969/PrionLab-tools
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/PrionLab-tools
+EnvironmentFile=/opt/PrionLab-tools/.env
+ExecStart=/opt/PrionLab-tools/.venv/bin/python -m scripts.backup_postgres
+User=prionlab
+Group=prionlab
+# Safety: don't pile up if previous run is still going
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=5
+StandardOutput=journal
+StandardError=journal
