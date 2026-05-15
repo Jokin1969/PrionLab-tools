@@ -49,7 +49,8 @@
   .pv-modal {
     position: fixed; inset: 0; z-index: 50;
     display: flex; align-items: flex-start; justify-content: center;
-    padding: 6vh 0 4vh;   /* breathing room so the X never hugs the viewport */
+    /* Extra ~0.5 cm above the modal so the X is always comfortable */
+    padding: calc(6vh + 18px) 0 4vh;
   }
   .pv-modal-inner {
     position: relative; background: white; border-radius: 14px;
