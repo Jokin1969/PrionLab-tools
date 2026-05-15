@@ -16,6 +16,8 @@ psycopg2-binary==2.9.9
 SQLAlchemy==2.0.23
 alembic==1.12.1
 anthropic>=0.40.0
+openai>=1.40.0
+google-genai>=0.5.0
 
 # External API dependencies
 aiohttp>=3.8.0

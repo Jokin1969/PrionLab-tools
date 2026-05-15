@@ -2526,8 +2526,73 @@
       pollHandle = setInterval(refresh, 1800);
     }
 
+    const providersEl = document.getElementById('pv-bs-providers');
+    let selectedProvider =
+        localStorage.getItem('pv-summary-provider') || 'anthropic';
+    let providerMeta = {};  // populated by refreshProviders()
+
+    function renderProviderPicker() {
+      if (!providersEl) return;
+      const cards = Object.entries(providerMeta).map(([key, p]) => {
+        const active = key === selectedProvider;
+        const off    = !p.configured;
+        const border = active && !off ? '#0F3460'
+                                       : (off ? '#e5e7eb' : '#d1d5db');
+        const bg     = active && !off ? '#eef2ff' : 'white';
+        const colorLabel = off ? '#9ca3af' : '#111827';
+        return `
+          <button type="button" class="pv-bs-provider-btn" data-provider="${esc(key)}"
+                  ${off ? 'disabled' : ''}
+                  style="background:${bg};border:2px solid ${border};border-radius:8px;
+                         padding:8px 10px;text-align:left;cursor:${off ? 'not-allowed' : 'pointer'};
+                         transition:border-color 0.15s, background 0.15s;
+                         opacity:${off ? '0.5' : '1'};">
+            <div style="font-size:12.5px;font-weight:600;color:${colorLabel};">
+              ${esc(p.label)}
+            </div>
+            <div style="font-size:10.5px;color:#9ca3af;margin-top:2px;font-variant-numeric:tabular-nums;">
+              ${esc(p.model)}<br>
+              $${p.price_in.toFixed(2)}/M in · $${p.price_out.toFixed(2)}/M out
+              ${off ? `<br><span style="color:#b91c1c;">${esc(p.env)} no configurada</span>` : ''}
+            </div>
+          </button>`;
+      }).join('');
+      providersEl.innerHTML = cards;
+      providersEl.querySelectorAll('.pv-bs-provider-btn').forEach(b =>
+        b.addEventListener('click', () => {
+          if (b.disabled) return;
+          selectedProvider = b.dataset.provider;
+          localStorage.setItem('pv-summary-provider', selectedProvider);
+          renderProviderPicker();
+          refresh();         // recompute Start button label / state
+        }));
+    }
+
+    async function refreshProviders() {
+      try {
+        const r = await api('/admin/ai-providers');
+        providerMeta = r.providers || {};
+        // If the persisted provider is no longer configured, fall back
+        // to the first configured one (or just keep the bad value so
+        // the user sees the disabled state and picks another).
+        if (providerMeta[selectedProvider] &&
+            !providerMeta[selectedProvider].configured) {
+          const firstOk = Object.keys(providerMeta)
+            .find(k => providerMeta[k].configured);
+          if (firstOk) selectedProvider = firstOk;
+        }
+        renderProviderPicker();
+      } catch (e) {
+        if (providersEl) providersEl.innerHTML =
+          `<div style="grid-column:1/-1;color:#b91c1c;font-size:12px;">
+             No se pudo cargar la lista de proveedores: ${esc(e.message)}
+           </div>`;
+      }
+    }
+
     function open() {
       modal.style.display = 'flex';
+      refreshProviders();
       refresh();
       startPolling();
     }
@@ -2569,7 +2634,11 @@
         const pct   = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
         progBar.style.width = pct + '%';
         progPct.textContent = pct + '%';
-        progLabel.textContent = `${done} / ${total} procesados ` +
+        const runMeta = providerMeta[s.provider];
+        const runLabel = runMeta ? runMeta.label : (s.provider || '');
+        progLabel.textContent =
+          (runLabel ? `[${runLabel}] ` : '') +
+          `${done} / ${total} procesados ` +
           (s.failed ? `(${s.failed} con error) ` : '') +
           (s.stop_requested ? '— deteniendo…' : '— corriendo…');
         if (s.current_article) {
@@ -2586,11 +2655,17 @@
         stopBtn.style.display = 'none';
         currentEl.style.display = 'none';
         const eligible = lib.eligible || 0;
-        startBtn.disabled = eligible === 0;
-        startBtn.style.opacity = eligible === 0 ? '0.5' : '1';
-        startBtn.textContent = eligible > 0
-          ? `Start (${eligible} pendiente${eligible === 1 ? '' : 's'})`
-          : 'Start';
+        const provMeta = providerMeta[selectedProvider];
+        const provReady = !!(provMeta && provMeta.configured);
+        startBtn.disabled = eligible === 0 || !provReady;
+        startBtn.style.opacity = startBtn.disabled ? '0.5' : '1';
+        if (!provReady) {
+          startBtn.textContent = 'Elige un proveedor';
+        } else {
+          startBtn.textContent = eligible > 0
+            ? `Start con ${provMeta.label} (${eligible} pendiente${eligible === 1 ? '' : 's'})`
+            : 'Start';
+        }
         if (s.finished_at && (s.processed || s.failed)) {
           progWrap.style.display = 'block';
           const total = s.eligible_total || 0;
@@ -2618,11 +2693,16 @@
     }
 
     startBtn.addEventListener('click', async () => {
+      if (!selectedProvider) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Elige un proveedor de IA antes de empezar.';
+        return;
+      }
       startBtn.disabled = true;
       try {
         await api('/admin/batch-summary/start', {
           method: 'POST',
-          body: JSON.stringify({}),
+          body: JSON.stringify({ provider: selectedProvider }),
         });
         refresh();
         startPolling();

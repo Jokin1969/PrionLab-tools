@@ -95,8 +95,14 @@ def _library_stats() -> dict:
 
 
 def start_batch(*, viewer_user_id=None,
-                limit: Optional[int] = None) -> Optional[dict]:
-    """Start a batch run. Returns None if one is already running."""
+                limit: Optional[int] = None,
+                provider: str = "anthropic") -> Optional[dict]:
+    """Start a batch run. Returns None if one is already running.
+    `provider` is one of the keys of ai_summary.PROVIDERS."""
+    from .ai_summary import PROVIDERS
+    if provider not in PROVIDERS:
+        raise ValueError(f"unknown provider: {provider!r}")
+
     global _thread
     with _lock:
         if _state["running"]:
@@ -114,11 +120,14 @@ def start_batch(*, viewer_user_id=None,
             "total_cost_usd":    0.0,
             "total_tokens_in":   0,
             "total_tokens_out":  0,
+            "provider":          provider,
+            "model":             PROVIDERS[provider]["model"],
         })
 
     _thread = threading.Thread(
         target=_run_batch,
-        kwargs={"viewer_user_id": viewer_user_id, "limit": limit},
+        kwargs={"viewer_user_id": viewer_user_id,
+                "limit": limit, "provider": provider},
         name="prionvault-batch-summary",
         daemon=True,
     )
@@ -133,7 +142,9 @@ def stop_batch() -> dict:
     return get_status()
 
 
-def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
+def _run_batch(*, viewer_user_id=None,
+               limit: Optional[int] = None,
+               provider: str = "anthropic") -> None:
     eng = _get_engine()
     try:
         with eng.connect() as conn:
@@ -204,9 +215,11 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                 authors=row[2], year=row[3], journal=row[4],
                 abstract=row[5], doi=row[6], pubmed_id=row[7],
                 extracted_text=row[8],
+                provider=provider,
             )
         except NotConfigured:
-            logger.error("batch_summary: ANTHROPIC_API_KEY missing — aborting batch")
+            logger.error("batch_summary: API key missing for provider=%s "
+                         "— aborting batch", provider)
             with _lock:
                 _state["last_error"] = "ANTHROPIC_API_KEY not set"
                 _state["stop_requested"] = True

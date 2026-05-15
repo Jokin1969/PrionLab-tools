@@ -1579,7 +1579,14 @@ def api_generate_summary(aid):
     `search_vector` automatically so the text becomes searchable at once.
     Usage cost is recorded in `prionvault_usage` for budget tracking.
     """
-    from .services.ai_summary import generate_summary, NotConfigured
+    from .services.ai_summary import (generate_summary, NotConfigured,
+                                       PROVIDERS, DEFAULT_PROVIDER)
+
+    data = request.get_json(force=True, silent=True) or {}
+    provider = (data.get("provider") or DEFAULT_PROVIDER).strip().lower()
+    if provider not in PROVIDERS:
+        return jsonify({"error": "unknown_provider",
+                        "detail": f"Valid: {sorted(PROVIDERS)}"}), 400
 
     s = _session()
     try:
@@ -1597,6 +1604,7 @@ def api_generate_summary(aid):
                 doi=a.doi,
                 pubmed_id=a.pubmed_id,
                 extracted_text=a.extracted_text,
+                provider=provider,
             )
         except NotConfigured:
             return jsonify({"error": "ai_unavailable",
@@ -1691,7 +1699,25 @@ def api_batch_summary_start():
         except (TypeError, ValueError):
             return jsonify({"error": "limit must be a positive integer"}), 400
 
-    snap = batch_summary.start_batch(viewer_user_id=_viewer_id(), limit=limit)
+    from .services.ai_summary import PROVIDERS
+    provider = (data.get("provider") or "").strip().lower()
+    if not provider:
+        return jsonify({"error": "missing_provider",
+                        "detail": "Elige un proveedor de IA "
+                                  "(anthropic / openai / gemini)."}), 400
+    if provider not in PROVIDERS:
+        return jsonify({"error": "unknown_provider",
+                        "detail": f"Valid: {sorted(PROVIDERS)}"}), 400
+    # Reject providers whose API key is not configured so the batch
+    # doesn't start just to crash on the first article.
+    import os as _os
+    if not _os.getenv(PROVIDERS[provider]["env"], "").strip():
+        return jsonify({"error": "provider_not_configured",
+                        "detail": (f"{PROVIDERS[provider]['env']} no está "
+                                   f"configurada en el entorno.")}), 400
+
+    snap = batch_summary.start_batch(
+        viewer_user_id=_viewer_id(), limit=limit, provider=provider)
     if snap is None:
         return jsonify({"error": "already_running",
                         "status": batch_summary.get_status()}), 409
@@ -1704,6 +1730,16 @@ def api_batch_summary_stop():
     """Signal the running batch to stop after the current article."""
     from .services import batch_summary
     return jsonify({"ok": True, "status": batch_summary.stop_batch()})
+
+
+@prionvault_bp.route("/api/admin/ai-providers", methods=["GET"])
+@admin_required
+def api_ai_providers():
+    """List the AI providers wired into ai_summary, with availability info
+    (whether their API key is set) so the bulk-summary modal can render
+    the picker and disable misconfigured options."""
+    from .services.ai_summary import provider_status
+    return jsonify({"providers": provider_status()})
 
 
 # ── Used in: PrionPacks + student assignments for an article ────────────────
