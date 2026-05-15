@@ -1,9 +1,8 @@
-"""PrionVault embeddings pipeline (Phase 4-5).
+"""PrionVault embeddings pipeline (Phase 4).
 
-    embeddings.chunker        — token-aware splitter with overlap
-    embeddings.embedder       — Voyage `voyage-3-large` client
-    embeddings.indexer        — article -> chunks -> vectors workflow
-    embeddings.retriever      — top-K + optional reranking
+    embeddings.chunker  — token-aware splitter with overlap
+    embeddings.embedder — Voyage `voyage-3-large` client
+    embeddings.indexer  — article -> chunks -> vectors workflow
 
-Stubbed for now; populated when Phase 4 starts.
+Retrieval lives in `prionvault.embeddings.retriever` (Phase 5).
 """

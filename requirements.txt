@@ -24,3 +24,8 @@ lxml>=4.9.0
 
 # PrionVault — PDF text extraction for the bulk-ingest pipeline
 pdfplumber>=0.11.0
+
+# PrionVault — vector search (Phase 4)
+pgvector>=0.2.5
+voyageai>=0.2.0
+tiktoken>=0.7.0

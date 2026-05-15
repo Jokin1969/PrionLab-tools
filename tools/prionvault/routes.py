@@ -1679,6 +1679,79 @@ def api_batch_summary_stop():
     return jsonify({"ok": True, "status": batch_summary.stop_batch()})
 
 
+# ── Per-article reindex (Phase 4) ───────────────────────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/reindex", methods=["POST"])
+@admin_required
+def api_article_reindex(aid):
+    """Chunk + embed + index a single article via Voyage. Synchronous."""
+    from .embeddings.indexer import index_article
+    from .embeddings.embedder import NotConfigured as VoyageNotConfigured
+
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not found"}), 404
+        try:
+            result = index_article(
+                article_id=a.id,
+                title=a.title,
+                extracted_text=a.extracted_text,
+                summary_ai=a.summary_ai,
+                abstract=a.abstract,
+            )
+        except VoyageNotConfigured:
+            return jsonify({"error": "embed_unavailable",
+                            "detail": "VOYAGE_API_KEY not set"}), 503
+        except Exception as exc:
+            logger.exception("reindex failed for %s", aid)
+            return jsonify({"error": "index_failed",
+                            "detail": str(exc)[:300]}), 502
+    finally:
+        s.close()
+
+    if result.error:
+        return jsonify({"ok": False, "error": result.error,
+                        "result": result.__dict__}), 422
+    return jsonify({"ok": True, "result": result.__dict__})
+
+
+# ── Batch embedding indexing (Phase 4) ──────────────────────────────────────
+@prionvault_bp.route("/api/admin/batch-index/status", methods=["GET"])
+@admin_required
+def api_batch_index_status():
+    from .services import batch_index
+    return jsonify(batch_index.get_status())
+
+
+@prionvault_bp.route("/api/admin/batch-index/start", methods=["POST"])
+@admin_required
+def api_batch_index_start():
+    from .services import batch_index
+    data = request.get_json(force=True, silent=True) or {}
+    limit = data.get("limit")
+    if limit is not None:
+        try:
+            limit = int(limit)
+            if limit <= 0:
+                limit = None
+        except (TypeError, ValueError):
+            return jsonify({"error": "limit must be a positive integer"}), 400
+
+    snap = batch_index.start_batch(viewer_user_id=_viewer_id(), limit=limit)
+    if snap is None:
+        return jsonify({"error": "already_running",
+                        "status": batch_index.get_status()}), 409
+    return jsonify({"ok": True, "status": snap})
+
+
+@prionvault_bp.route("/api/admin/batch-index/stop", methods=["POST"])
+@admin_required
+def api_batch_index_stop():
+    from .services import batch_index
+    return jsonify({"ok": True, "status": batch_index.stop_batch()})
+
+
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():
