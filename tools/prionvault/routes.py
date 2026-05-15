@@ -1755,6 +1755,27 @@ def api_article_used_in(aid):
         s.close()
 
 
+# ── Similar articles (vector neighbours of an article) ─────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/similar", methods=["GET"])
+@login_required
+def api_article_similar(aid):
+    """Return the N articles whose chunks are closest in vector space to
+    this one. Empty list if the source article has no embeddings yet.
+    """
+    from .embeddings.retriever import find_similar_articles
+    try:
+        limit = max(1, min(30, int(request.args.get("limit", 10))))
+    except (TypeError, ValueError):
+        limit = 10
+    try:
+        items = find_similar_articles(aid, limit=limit)
+        return jsonify({"items": items})
+    except Exception as exc:
+        logger.exception("similar lookup failed for %s", aid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+
 # ── Per-article reindex (Phase 4) ───────────────────────────────────────────
 @prionvault_bp.route("/api/articles/<uuid:aid>/reindex", methods=["POST"])
 @admin_required

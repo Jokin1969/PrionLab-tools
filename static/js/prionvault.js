@@ -717,6 +717,7 @@
         ` : '')}
         ${tagHtml}
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
+        <div id="pv-similar-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-used-in-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;">
           <button id="pv-add-to-pack-btn" type="button"
@@ -740,6 +741,7 @@
       renderAiSummary(a);
       wireUnpaywallButton(a);
       wireAddToPackButton(a);
+      renderSimilarSection(a);
       renderUsedInSection(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
@@ -984,6 +986,89 @@
         labelEl.textContent = original;
         btn.disabled = false;
       }
+    });
+  }
+
+  // ── Papers parecidos a este (vector neighbours) ──────────────────────
+  async function renderSimilarSection(a) {
+    const sec = document.getElementById('pv-similar-section');
+    if (!sec) return;
+    sec.innerHTML = `
+      <h3 style="margin:0 0 8px;font-size:14px;font-weight:600;color:#374151;
+                 text-transform:uppercase;letter-spacing:0.05em;">Papers parecidos</h3>
+      <div style="font-size:12.5px;color:#9ca3af;">Buscando vecinos vectoriales…</div>`;
+
+    let data;
+    try {
+      data = await api(`/articles/${a.id}/similar?limit=8`);
+    } catch (e) {
+      sec.innerHTML = `
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">Papers parecidos</h3>
+        <div style="font-size:12.5px;color:#b91c1c;">Error: ${esc(e.message)}</div>`;
+      return;
+    }
+
+    const items = data.items || [];
+    if (!items.length) {
+      sec.innerHTML = `
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">Papers parecidos</h3>
+        <div style="font-size:12.5px;color:#9ca3af;font-style:italic;
+                    background:#f9fafb;border-radius:8px;padding:10px 12px;">
+          Aún no hay vecinos disponibles. Asegúrate de que este artículo y otros
+          de la biblioteca están indexados (Tools → Index for AI search).
+        </div>`;
+      return;
+    }
+
+    sec.innerHTML = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
+        <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">Papers parecidos</h3>
+        <span style="font-size:11px;color:#9ca3af;">${items.length} resultado${items.length === 1 ? '' : 's'}</span>
+      </div>
+      ${items.map(it => {
+        const simPct = Math.round((it.similarity || 0) * 100);
+        const headerBits = [
+          it.authors ? esc((it.authors || '').slice(0, 110)) : '',
+          it.year || '',
+          it.journal ? esc(it.journal) : '',
+        ].filter(Boolean).join(' · ');
+        const flags = [
+          it.has_summary_ai
+            ? `<span title="Tiene resumen IA" style="font-size:10.5px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;font-weight:600;">AI ✓</span>`
+            : '',
+          it.has_pdf
+            ? `<span title="Tiene PDF" style="font-size:10.5px;color:#b91c1c;background:#fee2e2;padding:1px 5px;border-radius:4px;font-weight:600;">PDF</span>`
+            : '',
+        ].filter(Boolean).join(' ');
+        return `
+          <div class="pv-similar-row" data-aid="${esc(it.id)}"
+               style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+                      background:#fafafa;border:1px solid #e5e7eb;border-radius:7px;margin-bottom:5px;
+                      cursor:pointer;transition:background 0.1s;"
+               onmouseover="this.style.background='#fff'" onmouseout="this.style.background='#fafafa'">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;color:#111827;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${supHtml(it.title || '(sin título)')}
+              </div>
+              <div style="font-size:11.5px;color:#6b7280;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${headerBits || '—'}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              ${flags}
+              <span title="Distancia coseno: ${it.distance != null ? it.distance.toFixed(3) : '—'}"
+                    style="font-size:11px;color:#15803d;background:#dcfce7;padding:1px 6px;border-radius:5px;
+                           font-weight:600;font-variant-numeric:tabular-nums;">${simPct}%</span>
+            </div>
+          </div>`;
+      }).join('')}
+    `;
+
+    sec.querySelectorAll('.pv-similar-row').forEach(row => {
+      row.addEventListener('click', () => openDetail(row.dataset.aid));
     });
   }
 

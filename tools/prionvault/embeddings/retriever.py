@@ -73,6 +73,67 @@ class RetrievalResult:
     hybrid:     Optional[HybridInfo] = None
 
 
+def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
+    """Return up to `limit` articles whose chunks are closest to a
+    representative chunk of `article_id`.
+
+    Uses the article's first extracted_text chunk (richest source) as the
+    query vector and runs a normal pgvector ORDER BY so the HNSW index
+    does the heavy lifting. Excludes the source article and groups
+    candidate chunks by article, keeping the min distance per paper.
+    """
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text(
+            """SELECT embedding::text FROM article_chunk
+               WHERE article_id = :aid
+               ORDER BY (source_field = 'extracted_text') DESC,
+                        chunk_index ASC
+               LIMIT 1"""
+        ), {"aid": str(article_id)}).first()
+        if not row or not row[0]:
+            return []
+        vec_literal = row[0]
+
+        # Over-fetch chunks so the per-article dedup leaves us with
+        # enough distinct papers to return `limit` rows.
+        candidate_k = max(limit * 8, 60)
+        rows = conn.execute(sql_text(
+            """SELECT c.article_id,
+                      c.embedding <=> (:vec)::vector AS distance,
+                      a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+                      (a.summary_ai IS NOT NULL) AS has_summary_ai,
+                      (a.dropbox_path IS NOT NULL) AS has_pdf
+               FROM article_chunk c
+               JOIN articles a ON a.id = c.article_id
+               WHERE c.article_id != :aid
+               ORDER BY c.embedding <=> (:vec)::vector ASC
+               LIMIT :k"""
+        ), {"vec": vec_literal, "aid": str(article_id),
+            "k": candidate_k}).all()
+
+    best: dict = {}
+    for r in rows:
+        aid = str(r.article_id)
+        d = float(r.distance) if r.distance is not None else 1.0
+        if aid in best and best[aid]["distance"] <= d:
+            continue
+        best[aid] = {
+            "id":             aid,
+            "title":          r.title or "",
+            "authors":        r.authors,
+            "year":           r.year,
+            "journal":        r.journal,
+            "doi":            r.doi,
+            "pubmed_id":      r.pubmed_id,
+            "has_summary_ai": bool(r.has_summary_ai),
+            "has_pdf":        bool(r.has_pdf),
+            "distance":       d,
+            "similarity":     max(0.0, 1.0 - d),
+        }
+    return sorted(best.values(), key=lambda x: x["distance"])[:limit]
+
+
 # Reciprocal Rank Fusion constant. 60 is the canonical default from the
 # Cormack et al. paper; behaviour is robust to small perturbations.
 _RRF_K = 60
