@@ -83,6 +83,7 @@ def api_list_articles():
     has_pp_raw       = request.args.get("has_pp")
     has_pp           = True if has_pp_raw == "1" else (False if has_pp_raw == "0" else None)
     pp_id            = (request.args.get("pp_id") or "").strip() or None
+    abstract_status  = (request.args.get("abstract_status") or "").strip().lower() or None
     color_label = (request.args.get("color_label") or "").strip().lower() or None
     priority_eq = request.args.get("priority_eq", type=int)
     extraction = (request.args.get("extraction_status") or "").strip().lower() or None
@@ -149,7 +150,8 @@ def api_list_articles():
                                    jc_presenter=jc_presenter,
                                    jc_year=jc_year,
                                    has_pp=has_pp,
-                                   pp_id=pp_id)
+                                   pp_id=pp_id,
+                                   abstract_status=abstract_status)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -220,7 +222,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         *, collection_id=None,
                         collection_group=None, collection_subgroup=None,
                         has_jc=None, jc_presenter=None, jc_year=None,
-                        has_pp=None, pp_id=None):
+                        has_pp=None, pp_id=None,
+                        abstract_status=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -269,6 +272,19 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("summary_human IS NOT NULL")
     elif has_summary == "none" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NULL AND summary_human IS NULL")
+
+    # Abstract filter — `pending` is the one the admin actually wants
+    # to chase (no abstract yet, never asked PubMed). `unavailable`
+    # surfaces papers whose lookup confirmed there's no abstract to
+    # find. `has` is the "everything OK" subset.
+    if abstract_status == "has":
+        conditions.append("coalesce(abstract, '') <> ''")
+    elif abstract_status == "pending" and "abstract_unavailable" in pv_cols:
+        conditions.append(
+            "coalesce(abstract, '') = '' AND abstract_unavailable = FALSE"
+        )
+    elif abstract_status == "unavailable" and "abstract_unavailable" in pv_cols:
+        conditions.append("abstract_unavailable = TRUE")
 
     if in_prionread is True:
         conditions.append(
@@ -403,7 +419,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         c for c in
         ["pdf_md5", "pdf_pages", "pdf_is_scan",
          "extraction_status", "indexed_at",
-         "summary_ai", "summary_human", "source"]
+         "summary_ai", "summary_human", "source",
+         "abstract_unavailable"]
         if c in pv_cols
     )
     select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -546,6 +563,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
             "pdf_is_scan":   bool(d.get("pdf_is_scan")),
+            "has_abstract":  bool((d.get("abstract") or "").strip()),
+            "abstract_unavailable": bool(d.get("abstract_unavailable")),
             "has_pdf":       bool(d.get("dropbox_path")),
             "jc_count":      int(d.get("jc_count") or 0),
             "has_jc":        bool(d.get("jc_count") or 0),
@@ -651,6 +670,8 @@ def api_article_detail(aid):
             "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
             "pdf_is_scan":   bool(d.get("pdf_is_scan")),
+            "has_abstract":  bool((d.get("abstract") or "").strip()),
+            "abstract_unavailable": bool(d.get("abstract_unavailable")),
             "has_pdf":       bool(d.get("dropbox_path")),
             "jc_count":      int(d.get("jc_count") or 0),
             "has_jc":        bool(d.get("jc_count") or 0),
@@ -3261,6 +3282,100 @@ def api_article_reindex(aid):
 
 
 # ── Fetch open-access PDF via Unpaywall (Phase 6) ───────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/fetch-abstract", methods=["POST"])
+@admin_required
+def api_article_fetch_abstract(aid):
+    """Try to recover a missing abstract from CrossRef / PubMed.
+
+    Strategy mirrors PrionRead's admin button but adds two improvements:
+
+    1. When we have a DOI but no PMID, do a PubMed lookup-by-DOI first.
+       If it succeeds we record the PMID on the article — that PMID is
+       reusable for every subsequent feature (manual look-up, RAG, etc.)
+       and is a cheap byproduct of the search.
+    2. If neither source returns text, flip `abstract_unavailable` so
+       the UI can colour the article differently and stop suggesting a
+       refetch.
+
+    Returns:
+        200 + {ok: true,  source, abstract}            on hit
+        200 + {ok: false, status: 'unavailable'}       on confirmed miss
+        400 + {error: 'no_identifier'}                 if no DOI / PMID
+        404 / 502                                       infra errors
+    """
+    from .ingestion.metadata_resolver import (
+        resolve_metadata, pubmed_by_doi, pubmed_by_pmid,
+    )
+
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not_found"}), 404
+        doi  = (a.doi or "").strip() or None
+        pmid = (a.pubmed_id or "").strip() if a.pubmed_id else None
+        if not doi and not pmid:
+            return jsonify({"error": "no_identifier",
+                            "detail": "El artículo necesita un DOI o un PMID."}), 400
+
+        # Step 1: opportunistically resolve a missing PMID via PubMed
+        # using the DOI. Cheap, often successful, and the PMID stays
+        # useful even if the abstract path below ends up empty.
+        if doi and not pmid:
+            try:
+                meta = pubmed_by_doi(doi)
+                if meta and meta.pubmed_id:
+                    pmid = meta.pubmed_id
+                    a.pubmed_id = pmid
+                    s.flush()
+            except Exception as exc:
+                logger.warning("fetch-abstract: pubmed_by_doi failed for %s: %s",
+                               doi, exc)
+
+        # Step 2: full metadata resolve (CrossRef → PubMed) and pick
+        # whichever source returned an abstract.
+        abstract = None
+        source   = None
+        try:
+            meta = resolve_metadata(doi=doi, pmid_hint=pmid)
+            if meta and meta.abstract:
+                abstract = meta.abstract.strip()
+                source   = meta.source or "resolver"
+        except Exception as exc:
+            logger.warning("fetch-abstract: resolve_metadata failed: %s", exc)
+
+        # Step 3: PubMed direct retry — sometimes resolve_metadata
+        # short-circuits on CrossRef even when PubMed has the abstract.
+        if not abstract and pmid:
+            try:
+                pm = pubmed_by_pmid(pmid)
+                if pm and pm.abstract:
+                    abstract = pm.abstract.strip()
+                    source   = "pubmed"
+            except Exception as exc:
+                logger.warning("fetch-abstract: pubmed_by_pmid failed for %s: %s",
+                               pmid, exc)
+
+        if abstract:
+            a.abstract = abstract
+            a.abstract_unavailable = False
+            s.commit()
+            return jsonify({"ok": True, "source": source,
+                            "abstract": abstract,
+                            "pubmed_id": pmid})
+        # Confirmed miss — both sources came back empty.
+        a.abstract_unavailable = True
+        s.commit()
+        return jsonify({"ok": False, "status": "unavailable",
+                        "pubmed_id": pmid})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_article_fetch_abstract failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/fetch-pdf", methods=["POST"])
 @admin_required
 def api_article_fetch_pdf(aid):

@@ -450,6 +450,17 @@
           </select>
         </label>
 
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
+               title="Estado del abstract: 'pendiente' = sin abstract y no buscado todavía; 'no disponible' = consultado y CrossRef/PubMed lo confirman como inexistente.">
+          Abstract
+          <select id="filter-abstract-status" class="pv-filter-input">
+            <option value="">cualquiera</option>
+            <option value="has">sí — con abstract</option>
+            <option value="pending">pendiente — por buscar</option>
+            <option value="unavailable">no disponible (confirmado)</option>
+          </select>
+        </label>
+
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Estado PDF
           <select id="filter-extraction" class="pv-filter-input">

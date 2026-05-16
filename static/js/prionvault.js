@@ -49,6 +49,7 @@
     jcYear: null,        // year of JC presentation
     hasPp: null,         // null = all, true = en algún PrionPack, false = sin pack
     ppId: '',            // specific PrionPack id (e.g. "PRP-001") or ''
+    abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
     selectedIds: new Set(),  // UUIDs selected for bulk operations
@@ -1479,6 +1480,7 @@
     if (state.jcYear)              params.set('jc_year', state.jcYear);
     if (state.hasPp !== null)      params.set('has_pp', state.hasPp ? '1' : '0');
     if (state.ppId)                params.set('pp_id', state.ppId);
+    if (state.abstractStatus)      params.set('abstract_status', state.abstractStatus);
     if (state.sort)                params.set('sort', state.sort);
     params.set('page', state.page);
     params.set('size', state.size);
@@ -1527,6 +1529,13 @@
       a.pdf_is_scan
         ? '<span title="El PDF era una imagen escaneada; el texto se ha recuperado con OCR." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">📸 OCR</span>'
         : '',
+      (!a.has_abstract && a.abstract_unavailable)
+        ? '<span title="Buscado en CrossRef / PubMed: no hay abstract disponible para este artículo." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#e5e7eb;color:#6b7280;">📕 sin abstract (confirmado)</span>'
+        : (!a.has_abstract && (a.doi || a.pubmed_id))
+          ? `<button type="button" class="pv-fetch-abstract-btn" data-aid="${esc(a.id)}"
+                     title="Buscar abstract en CrossRef / PubMed"
+                     style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;border:none;cursor:pointer;">⬇ Abstract</button>`
+          : '',
       a.has_jc
         ? `<span title="${a.jc_count > 1
               ? esc(a.jc_count + ' presentaciones en Journal Club')
@@ -1782,6 +1791,34 @@
       row.querySelector('.pv-color-dot').addEventListener('click', e => {
         e.stopPropagation();
         openColorPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+
+      const fetchAbsBtn = row.querySelector('.pv-fetch-abstract-btn');
+      if (fetchAbsBtn) fetchAbsBtn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        fetchAbsBtn.disabled = true;
+        const original = fetchAbsBtn.innerHTML;
+        fetchAbsBtn.innerHTML = '⏳ Buscando…';
+        try {
+          const r = await api(`/articles/${a.id}/fetch-abstract`,
+                              { method: 'POST' });
+          if (r.ok && r.abstract) {
+            a.abstract = r.abstract;
+            a.has_abstract = true;
+            a.abstract_unavailable = false;
+            if (r.pubmed_id && !a.pubmed_id) a.pubmed_id = r.pubmed_id;
+            replaceRow(row, a);
+          } else if (r.status === 'unavailable') {
+            a.has_abstract = false;
+            a.abstract_unavailable = true;
+            if (r.pubmed_id && !a.pubmed_id) a.pubmed_id = r.pubmed_id;
+            replaceRow(row, a);
+          }
+        } catch (err) {
+          alert('No se pudo buscar el abstract: ' + err.message);
+          fetchAbsBtn.disabled = false;
+          fetchAbsBtn.innerHTML = original;
+        }
       });
 
       const prChip = row.querySelector('.pv-priority-chip');
@@ -3835,6 +3872,11 @@
 
     document.getElementById('filter-pp-id')?.addEventListener('change', e => {
       state.ppId = e.target.value || '';
+      state.page = 1;
+      loadArticles();
+    });
+    document.getElementById('filter-abstract-status')?.addEventListener('change', e => {
+      state.abstractStatus = e.target.value || '';
       state.page = 1;
       loadArticles();
     });

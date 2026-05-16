@@ -54,6 +54,7 @@ _PRIONVAULT_MIGRATIONS = (
     "018_articles_pdf_is_scan.sql",
     "019_articles_relax_nullable.sql",
     "020_ingest_job_source_path.sql",
+    "021_articles_abstract_unavailable.sql",
 )
 
 _BOOTSTRAP_SQL = """
