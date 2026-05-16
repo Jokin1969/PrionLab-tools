@@ -86,4 +86,18 @@ export const studentService = {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
     return win;
   },
+
+  // ── Journal Club (read-only) ──────────────────────────────────────
+  // Returns the slides + handouts the lab presented for this paper, so
+  // the student can browse them before / during the read. Empty list
+  // is a valid response (most articles have not been presented).
+  getJcPresentations: async (articleId) => {
+    const response = await api.get(`/articles/${articleId}/jc`);
+    return response.data.items || [];
+  },
+
+  getJcFileUrl: async (fileId) => {
+    const response = await api.get(`/jc/files/${fileId}/url`);
+    return response.data.url;
+  },
 };

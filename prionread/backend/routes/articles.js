@@ -83,4 +83,9 @@ router.delete('/:id/pdf', authenticate, requireAdmin, deleteArticlePDF);
 router.delete('/:id/pdf-link', authenticate, requireAdmin, clearPdfLink);
 router.post('/:id/send-to-prionvault', authenticate, sendToProtonVault);
 
+// ── Journal Club (read-only from PrionRead) ──────────────────────────────────
+// Mounts GET /api/articles/:articleId/jc — file-URL route lives at
+// /api/jc/files/:fileId/url and is wired in routes/index.js.
+router.use('/:articleId/jc', require('./jc').articleScoped);
+
 module.exports = router;

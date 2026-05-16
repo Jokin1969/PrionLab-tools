@@ -28,6 +28,9 @@ const ArticleDetail = () => {
   const [comment, setComment]       = useState('');
   const [fetchingPdf, setFetchingPdf] = useState(false);
 
+  const [jcPresentations, setJcPresentations] = useState([]);
+  const [openingJcFile, setOpeningJcFile]     = useState(null);
+
   // Scroll to top whenever the article changes
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [articleId]);
   useEffect(() => { loadArticleData(); }, [articleId]);
@@ -51,10 +54,30 @@ const ArticleDetail = () => {
         const evalData = await studentService.getEvaluation(articleId);
         setEvaluation(evalData.evaluation);
       } catch { /* no evaluation yet */ }
+      // Journal Club presentations — empty is a perfectly normal
+      // response (most papers aren't presented), so we never surface
+      // an error to the student here.
+      try {
+        const jc = await studentService.getJcPresentations(articleId);
+        setJcPresentations(jc);
+      } catch { setJcPresentations([]); }
     } catch (error) {
       console.error('Error loading article:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenJcFile = async (fileId) => {
+    setOpeningJcFile(fileId);
+    try {
+      const url = await studentService.getJcFileUrl(fileId);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      console.error('JC file open failed:', e);
+      alert('No se pudo abrir el fichero. Avisa al admin del laboratorio.');
+    } finally {
+      setOpeningJcFile(null);
     }
   };
 
@@ -222,6 +245,71 @@ const ArticleDetail = () => {
           </div>
         );
       })()}
+
+      {/* Journal Club — only rendered when there is at least one
+          presentation for this article. Lets the student open the
+          slides the lab discussed, before or during reading. */}
+      {jcPresentations.length > 0 && (
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold"
+                    style={{ background: '#fce7f3', color: '#be185d' }}>
+                JC
+              </span>
+              Journal Club del laboratorio
+            </span>
+          }
+        >
+          <p className="text-sm text-gray-500 mb-3">
+            Este artículo se ha discutido en sesiones internas del laboratorio.
+            Pulsa cualquier fichero para abrir las diapositivas en una pestaña nueva.
+          </p>
+          <div className="space-y-2">
+            {jcPresentations.map((p) => {
+              const dateText = p.presented_at
+                ? new Date(p.presented_at).toLocaleDateString('es-ES',
+                    { day: '2-digit', month: 'short', year: 'numeric' })
+                : '(sin fecha)';
+              return (
+                <div key={p.id}
+                     className="rounded-lg border p-3"
+                     style={{ background: '#fdf2f8', borderColor: '#fce7f3' }}>
+                  <div className="text-sm font-semibold"
+                       style={{ color: '#831843' }}>
+                    📅 {dateText} · 🎤 {p.presenter_name || '—'}
+                  </div>
+                  {p.files && p.files.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {p.files.map((f) => {
+                        const isLoading = openingJcFile === f.id;
+                        const icon = f.kind === 'pdf' ? '📄'
+                                   : f.kind === 'pptx' ? '📊'
+                                   : f.kind === 'keynote' ? '🎞️'
+                                   : '📎';
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            disabled={isLoading}
+                            onClick={() => handleOpenJcFile(f.id)}
+                            className="inline-flex items-center gap-1 px-3 py-1 rounded border text-sm font-semibold bg-white hover:bg-pink-50 disabled:opacity-50"
+                            style={{ borderColor: '#fce7f3', color: '#be185d' }}
+                            title={`Abrir ${f.filename}`}
+                          >
+                            {isLoading ? '⏳' : icon}
+                            <span>{f.filename}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Summary */}
       <Card title="📝 Tu Resumen">
