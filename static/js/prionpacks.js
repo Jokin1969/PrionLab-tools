@@ -2410,6 +2410,7 @@ ${refsText}`;
       if (idx >= 0) _packages[idx] = saved;
       document.getElementById('meta-modified').textContent = _fmtDate(saved.lastModified);
       _renderSidebarList();
+      _refreshVaultMap(saved);
       if (indicator) {
         indicator.textContent = '✓ Guardado';
         setTimeout(() => { if (indicator) indicator.textContent = ''; }, 2000);
@@ -3207,6 +3208,7 @@ ${refsText}`;
       document.getElementById('meta-modified').textContent = _fmtDate(saved.lastModified);
       _renderSidebarList();
       _highlightSidebarItem(saved.id);
+      _refreshVaultMap(saved);
       toast('Package saved!', 'success');
     } catch (e) {
       toast('Save failed: ' + e.message, 'error');
