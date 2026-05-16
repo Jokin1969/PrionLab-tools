@@ -13,11 +13,17 @@ const Article = sequelize.define('Article', {
   },
   authors: {
     type: DataTypes.TEXT,
-    allowNull: false,
+    // PrionVault's ingest worker creates rows for PDFs whose metadata
+    // pipeline returned nothing (typically scans, source='no_metadata');
+    // those rows arrive with authors / year unknown. Migration 019
+    // drops NOT NULL at the DB level; we mirror it here so that
+    // sequelize.sync({ alter: true }) doesn't re-add the constraint
+    // on every PrionRead backend boot.
+    allowNull: true,
   },
   year: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
   },
   journal: {
     type: DataTypes.STRING,
