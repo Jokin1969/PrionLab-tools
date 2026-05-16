@@ -3164,6 +3164,15 @@
     const status = document.getElementById('pv-edit-status');
     status.textContent = '';
     status.style.color = '#6b7280';
+    // Reset the Save button — on a successful PATCH the previous open
+    // left it disabled with "Guardando…" because close() runs before
+    // we restore the label. Re-opening would otherwise show the stale
+    // state.
+    const saveBtn = document.getElementById('pv-edit-save');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Guardar cambios';
+    }
     modal.style.display = 'flex';
     setTimeout(() => document.getElementById('pv-edit-doi').focus(), 50);
   }
