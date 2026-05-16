@@ -60,6 +60,16 @@ const PrionPacks = (() => {
     _loadApiKeyField();
     _bindKeyboardShortcuts();
     await _fetchAndRender();
+
+    // Deep-link support: `?open=PRP-001` jumps straight to that pack.
+    // Used by PrionVault's article-list badge so the user lands on the
+    // exact pack rather than the dashboard.
+    try {
+      const openId = new URLSearchParams(window.location.search).get('open');
+      if (openId && _packages.some(p => p.id === openId)) {
+        showEditor(openId);
+      }
+    } catch { /* malformed URL — silently fall through to dashboard */ }
   }
 
   async function _fetchAndRender() {
@@ -112,6 +122,11 @@ const PrionPacks = (() => {
     _populateEditor(pkg);
     showView('editor');
     _highlightSidebarItem(id);
+    // Ask PrionVault which of this pack's reference DOIs are in the
+    // library so we can decorate each reference with a "🗄 PrionVault"
+    // chip linking to the article. Fire-and-forget — the chips appear
+    // a moment after the editor renders.
+    _refreshVaultMap(pkg);
     // Reset scroll so the first card is fully visible below the sticky toolbar
     const main = document.querySelector('.pp-main');
     if (main) main.scrollTop = 0;
@@ -843,6 +858,75 @@ const PrionPacks = (() => {
   // is never consumed, but 10.1016/s0896-6273(00)00046-5 is matched whole.
   const _DOI_RE = /\b10\.\d{4,}\/(?:[^\s,;>\]()]+|\([^)]*\))+/g;
 
+  // ── PrionVault cross-link cache ─────────────────────────────────────
+  // Populated whenever a pack is opened (see _refreshVaultMap). Maps a
+  // lower-case DOI to { id, title } of the matching PrionVault article
+  // so the per-reference renderer can drop a "🗄 PrionVault" chip.
+  let _vaultByDoi = {};
+
+  async function _refreshVaultMap(pkg) {
+    _vaultByDoi = {};
+    if (!pkg) return;
+    const collect = (arr) => Array.isArray(arr)
+      ? arr.flatMap(s => (typeof s === 'string' ? (s.match(_DOI_RE) || []) : []))
+      : [];
+    const dois = [
+      ...collect(pkg.references),
+      ...collect(pkg.introReferences),
+    ].map(d => d.toLowerCase());
+    if (!dois.length) return;
+    const unique = [...new Set(dois)];
+    try {
+      const res = await fetch('/prionvault/api/articles/lookup-bulk', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifiers: unique }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      (data.items || []).forEach(it => {
+        if (it.match && it.normalised) {
+          _vaultByDoi[it.normalised] = { id: it.match.id, title: it.match.title };
+        }
+      });
+    } catch { /* offline or not logged in — silently skip */ }
+    _decorateAllRefHeaders();
+  }
+
+  function _makeVaultChip(article) {
+    const a = document.createElement('a');
+    a.className = 'pp-doi-chip pp-doi-chip-sm pp-vault-chip';
+    a.href = `/prionvault/?open=${encodeURIComponent(article.id)}`;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = `Está en PrionVault: ${article.title || article.id}`;
+    a.textContent = '🗄 PrionVault';
+    a.style.background = '#0F3460';
+    a.style.color = 'white';
+    a.style.textDecoration = 'none';
+    a.addEventListener('click', e => e.stopPropagation());
+    return a;
+  }
+
+  // Walk every rendered reference header and (re)add the PrionVault
+  // chip whenever its first DOI is in the cache. Idempotent — removes
+  // any stale chip before adding.
+  function _decorateAllRefHeaders() {
+    document.querySelectorAll(
+      '#references-list .pp-reference-item, #intro-references-list .pp-intro-reference-item'
+    ).forEach(item => {
+      const headerDoi = item.querySelector('.pp-reference-header-doi');
+      const ta        = item.querySelector('textarea');
+      if (!headerDoi || !ta) return;
+      headerDoi.querySelectorAll('.pp-vault-chip').forEach(n => n.remove());
+      const m = (ta.value || '').match(_DOI_RE);
+      if (!m || !m[0]) return;
+      const hit = _vaultByDoi[m[0].toLowerCase()];
+      if (hit) headerDoi.appendChild(_makeVaultChip(hit));
+    });
+  }
+
   function _makeCopyBtn(doi) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -950,6 +1034,8 @@ const PrionPacks = (() => {
         const cb = _makeCopyBtn(first);
         cb.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(cb);
+        const vaultHit = _vaultByDoi[first.toLowerCase()];
+        if (vaultHit) headerDoi.appendChild(_makeVaultChip(vaultHit));
       }
     };
     ta.addEventListener('input', () => {
@@ -1214,6 +1300,8 @@ ${refsText}`;
         const cb = _makeCopyBtn(first);
         cb.addEventListener('click', e => e.stopPropagation());
         headerDoi.appendChild(cb);
+        const vaultHit = _vaultByDoi[first.toLowerCase()];
+        if (vaultHit) headerDoi.appendChild(_makeVaultChip(vaultHit));
       }
     };
     ta.addEventListener('input', () => {

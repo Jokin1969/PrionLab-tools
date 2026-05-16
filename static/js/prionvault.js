@@ -1534,8 +1534,11 @@
                 style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fce7f3;color:#be185d;">JC${a.jc_count > 1 ? ' ' + a.jc_count : ''}</span>`
         : '',
       (a.prionpacks && a.prionpacks.length)
-        ? `<span title="${esc('En PrionPack:\n' + a.prionpacks.map(p => `${p.id} — ${p.title}`).join('\n'))}"
-                style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;">📦 ${esc(a.prionpacks[0].id)}${a.prionpacks.length > 1 ? ' +' + (a.prionpacks.length - 1) : ''}</span>`
+        ? `<a href="/prionpacks/index?open=${esc(a.prionpacks[0].id)}"
+              target="_blank" rel="noopener"
+              onclick="event.stopPropagation();"
+              title="${esc('En PrionPack:\n' + a.prionpacks.map(p => `${p.id} — ${p.title}`).join('\n') + (a.prionpacks.length > 1 ? '\n\n(Abre el primero; pulsa cada uno en el tooltip si quieres otro)' : ''))}"
+              style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;text-decoration:none;">📦 ${esc(a.prionpacks[0].id)}${a.prionpacks.length > 1 ? ' +' + (a.prionpacks.length - 1) : ''}</a>`
         : '',
       ratingChip,
     ].filter(Boolean).join('');
