@@ -1,4 +1,20 @@
 require('dotenv').config();
+
+// ── Sentry: init before express() so the SDK's automatic
+// instrumentation patches express / http at require-time. No-op when
+// SENTRY_DSN is unset, so local dev stays untouched.
+const Sentry = require('@sentry/node');
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.SENTRY_ENVIRONMENT || 'production',
+    release: process.env.RAILWAY_GIT_COMMIT_SHA,
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+    initialScope: { tags: { service: 'prionread-backend' } },
+  });
+}
+
 const express = require('express');
 const cors = require('cors');
 const routes = require('./routes');
@@ -70,6 +86,13 @@ app.post('/setup', async (req, res) => {
 
 // 404
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
+
+// Sentry's express error capture — must come BEFORE the user-facing
+// error handler so unhandled rejections are reported. No-op when the
+// SDK wasn't initialised (DSN missing).
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 // Global error handler
 app.use((err, _req, res, _next) => {

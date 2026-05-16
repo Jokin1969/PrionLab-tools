@@ -3,6 +3,20 @@ import logging
 import logging.handlers
 from urllib.parse import urlencode
 
+# ── Sentry: init as early as possible so unhandled errors during
+# blueprint registration / DB bootstrap also get captured. No-op when
+# SENTRY_DSN is unset, so local dev stays untouched.
+if os.environ.get("SENTRY_DSN"):
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+        release=os.environ.get("RAILWAY_GIT_COMMIT_SHA"),
+        send_default_pii=False,
+        traces_sample_rate=0.0,
+    )
+    sentry_sdk.set_tag("service", "prionvault")
+
 from flask import Flask, jsonify, redirect, render_template, request, session
 from flask_babel import Babel
 

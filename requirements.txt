@@ -41,3 +41,8 @@ Pillow>=10.0
 # Ctrl+F and external tools (Spotlight, Zotero, screen readers) work.
 # Needs ghostscript + qpdf at the system level (see nixpacks.toml).
 ocrmypdf>=15.4.0
+
+# Error tracking. The Flask integration is auto-detected by sentry-sdk
+# v2 when Flask is importable. No-op when SENTRY_DSN is unset, so local
+# dev stays untouched.
+sentry-sdk>=2.0
