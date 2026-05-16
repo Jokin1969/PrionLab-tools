@@ -199,11 +199,17 @@ def enqueue_pdf(*, content: bytes, filename: str,
     return int(row[0])
 
 
-def cleanup_source_pdf(job_id: int) -> None:
-    """Best-effort: delete the source PDF from Dropbox for jobs that
-    came in via the watch-folder scanner. Called by the worker right
-    after a `done` or `duplicate` transition so the source folder ends
-    up with only the PDFs that failed to import.
+def cleanup_source_pdf(job_id: int, *, status: str = "done") -> None:
+    """Best-effort: tidy up the scanner's source PDF in Dropbox.
+
+    - status='done':       delete the source (the article is now in
+                           the library at its canonical path).
+    - status='duplicate':  move the source to a `_duplicates/`
+                           sibling folder so the admin can see what
+                           was skipped and decide whether to discard.
+
+    Called by the worker right after a successful / duplicate
+    transition. Any Dropbox failure is logged but never propagated.
     """
     eng = _get_engine()
     with eng.connect() as conn:
@@ -215,12 +221,27 @@ def cleanup_source_pdf(job_id: int) -> None:
         return
     try:
         from core.dropbox_client import get_client
+        import dropbox
         client = get_client()
         if client is None:
             logger.warning("cleanup_source_pdf: no Dropbox client, skipping %s", src)
             return
-        client.files_delete_v2(src)
-        logger.info("cleanup_source_pdf: removed %s after job %d", src, job_id)
+        if status == "duplicate":
+            parent  = src.rsplit("/", 1)[0]
+            base    = src.rsplit("/", 1)[1]
+            dup_dir = f"{parent}/_duplicates"
+            dest    = f"{dup_dir}/{base}"
+            try:
+                client.files_create_folder_v2(dup_dir)
+            except dropbox.exceptions.ApiError as exc:
+                # CONFLICT = folder already exists; that's fine.
+                if "conflict" not in str(exc).lower():
+                    raise
+            client.files_move_v2(src, dest, autorename=True)
+            logger.info("cleanup_source_pdf: moved duplicate %s → %s", src, dest)
+        else:
+            client.files_delete_v2(src)
+            logger.info("cleanup_source_pdf: removed %s after job %d", src, job_id)
     except Exception as exc:
         logger.warning("cleanup_source_pdf: %s — %s", src, exc)
 
