@@ -469,6 +469,16 @@
           </select>
         </label>
 
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
+               title="Marca 'indexed' del listado: indica si el artículo está en el índice vectorial de búsqueda semántica.">
+          Indexado
+          <select id="filter-indexed-status" class="pv-filter-input">
+            <option value="">cualquiera</option>
+            <option value="yes">sí — indexado</option>
+            <option value="no">no — sin indexar</option>
+          </select>
+        </label>
+
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Estado PDF
           <select id="filter-extraction" class="pv-filter-input">
@@ -675,9 +685,10 @@
         <i class="fas fa-list-check" style="color:#0F3460;margin-right:8px;"></i>Ingest queue
       </h2>
       <button id="pv-queue-clear-failed" type="button"
+              title="Borra las filas terminadas (failed, duplicate, done). Las que están en curso (queued, processing) no se tocan."
               style="padding:5px 11px;font-size:12px;border-radius:6px;border:1px solid #fecaca;
                      background:#fff;color:#b91c1c;font-weight:600;cursor:pointer;">
-        <i class="fas fa-broom" style="margin-right:4px;"></i>Limpiar fallidos
+        <i class="fas fa-broom" style="margin-right:4px;"></i>Limpiar terminados
       </button>
     </div>
     <div id="pv-queue-counts"></div>

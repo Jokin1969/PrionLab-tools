@@ -84,6 +84,7 @@ def api_list_articles():
     has_pp           = True if has_pp_raw == "1" else (False if has_pp_raw == "0" else None)
     pp_id            = (request.args.get("pp_id") or "").strip() or None
     abstract_status  = (request.args.get("abstract_status") or "").strip().lower() or None
+    indexed_status   = (request.args.get("indexed_status") or "").strip().lower() or None
     color_label = (request.args.get("color_label") or "").strip().lower() or None
     priority_eq = request.args.get("priority_eq", type=int)
     extraction = (request.args.get("extraction_status") or "").strip().lower() or None
@@ -151,7 +152,8 @@ def api_list_articles():
                                    jc_year=jc_year,
                                    has_pp=has_pp,
                                    pp_id=pp_id,
-                                   abstract_status=abstract_status)
+                                   abstract_status=abstract_status,
+                                   indexed_status=indexed_status)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -223,7 +225,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         collection_group=None, collection_subgroup=None,
                         has_jc=None, jc_presenter=None, jc_year=None,
                         has_pp=None, pp_id=None,
-                        abstract_status=None):
+                        abstract_status=None,
+                        indexed_status=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -292,6 +295,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append(
             "abstract_unavailable = TRUE AND coalesce(abstract, '') = ''"
         )
+
+    if indexed_status == "yes" and "indexed_at" in pv_cols:
+        conditions.append("indexed_at IS NOT NULL")
+    elif indexed_status == "no" and "indexed_at" in pv_cols:
+        conditions.append("indexed_at IS NULL")
 
     if in_prionread is True:
         conditions.append(

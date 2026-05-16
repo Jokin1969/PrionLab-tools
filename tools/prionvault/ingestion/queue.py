@@ -443,11 +443,14 @@ def retry(job_id: int) -> bool:
         return res.rowcount > 0
 
 
-def clear_failed() -> int:
-    """Delete every failed/duplicate job from the queue table. Returns
-    the number of rows removed. Used by the "Limpiar fallidos" admin
-    button when a Railway restart has wiped /tmp and the staged PDFs
-    are no longer recoverable."""
+def clear_finished() -> int:
+    """Delete every terminal job (failed, duplicate, done) from the
+    queue table. Returns the number of rows removed.
+
+    Active rows (queued / uploading / extracting / resolving / indexing)
+    are intentionally left alone — wiping them would orphan whatever
+    the worker is currently doing.
+    """
     try:
         eng = _get_engine()
     except Exception:
@@ -455,9 +458,14 @@ def clear_failed() -> int:
     with eng.begin() as conn:
         res = conn.execute(text(
             """DELETE FROM prionvault_ingest_job
-               WHERE status IN ('failed', 'duplicate')"""
+               WHERE status IN ('failed', 'duplicate', 'done')"""
         ))
         return res.rowcount or 0
+
+
+# Backward-compatible alias — callers that import clear_failed keep
+# working but get the new behaviour.
+clear_failed = clear_finished
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

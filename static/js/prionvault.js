@@ -50,6 +50,7 @@
     hasPp: null,         // null = all, true = en algún PrionPack, false = sin pack
     ppId: '',            // specific PrionPack id (e.g. "PRP-001") or ''
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
+    indexedStatus:  '',  // '' | 'yes' | 'no'
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
     selectedIds: new Set(),  // UUIDs selected for bulk operations
@@ -1481,6 +1482,7 @@
     if (state.hasPp !== null)      params.set('has_pp', state.hasPp ? '1' : '0');
     if (state.ppId)                params.set('pp_id', state.ppId);
     if (state.abstractStatus)      params.set('abstract_status', state.abstractStatus);
+    if (state.indexedStatus)       params.set('indexed_status', state.indexedStatus);
     if (state.sort)                params.set('sort', state.sort);
     params.set('page', state.page);
     params.set('size', state.size);
@@ -4037,6 +4039,11 @@
       state.page = 1;
       loadArticles();
     });
+    document.getElementById('filter-indexed-status')?.addEventListener('change', e => {
+      state.indexedStatus = e.target.value || '';
+      state.page = 1;
+      loadArticles();
+    });
     const psSel = document.getElementById('page-size-select');
     if (psSel) {
       psSel.value = String(state.size);
@@ -4313,7 +4320,7 @@
     const clearBtn = document.getElementById('pv-queue-clear-failed');
     if (clearBtn) {
       clearBtn.addEventListener('click', async () => {
-        if (!confirm('¿Borrar todas las filas con status failed o duplicate? Esta acción no se puede deshacer.')) return;
+        if (!confirm('¿Borrar todas las filas terminadas (failed, duplicate y done)? Las que estén en curso (queued / processing) se mantienen. La acción no se puede deshacer.')) return;
         clearBtn.disabled = true;
         try {
           const r = await fetch('/prionvault/api/ingest/clear-failed', {
