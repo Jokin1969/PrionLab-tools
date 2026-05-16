@@ -177,6 +177,7 @@
       const e = new Error(msg);
       e.status = res.status;
       e.detail = err.detail;
+      e.body   = err;
       throw e;
     }
     return res.json();
@@ -3281,7 +3282,26 @@
         // Reopen the detail modal so the user sees the new values.
         openDetail(aid);
       } catch (e) {
-        _editStatus('Error al guardar: ' + e.message, '#b91c1c');
+        if (e.status === 409) {
+          const dup = (e.body && e.body.duplicate_of) || '';
+          const where = (e.body && e.body.matched_on === 'pubmed_id') ? 'PMID' : 'DOI';
+          const linkHtml = dup
+            ? ` — <a href="#" id="pv-edit-dup-open" style="color:#0F3460;text-decoration:underline;">Ver existente</a>`
+            : '';
+          const el = document.getElementById('pv-edit-status');
+          el.innerHTML = `⚠️ Ya existe otro artículo con ese ${where}.` +
+                         ` Corrige el campo antes de guardar.${linkHtml}`;
+          el.style.color = '#b45309';
+          if (dup) {
+            const lnk = document.getElementById('pv-edit-dup-open');
+            if (lnk) lnk.addEventListener('click', (ev) => {
+              ev.preventDefault();
+              openDetail(dup);
+            });
+          }
+        } else {
+          _editStatus('Error al guardar: ' + e.message, '#b91c1c');
+        }
         saveBtn.disabled = false;
         saveBtn.textContent = original;
       }

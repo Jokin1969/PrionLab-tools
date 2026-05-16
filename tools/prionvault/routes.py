@@ -10,6 +10,7 @@ import re
 from datetime import datetime
 from flask import jsonify, render_template, request, session, Response
 from sqlalchemy import or_, func, text as sql_text
+from sqlalchemy.exc import IntegrityError
 
 from core.decorators import login_required, admin_required
 from database.config import db
@@ -1309,9 +1310,44 @@ def api_article_update(aid):
         a = s.get(models.Article, aid)
         if not a:
             return jsonify({"error": "not found"}), 404
+
+        # Pre-check uniqueness for the two columns whose constraint
+        # violation we want to translate into a clean 409. The edit
+        # modal's "Buscar de nuevo" already warns when the looked-up
+        # DOI/PMID match another article, but the user can still
+        # press Save — catching it here turns a 500 + Sentry alert
+        # into a usable response with `duplicate_of`.
+        for col, src in (("doi", "doi"), ("pubmed_id", "pubmed_id")):
+            new_val = updates.get(col)
+            if not new_val or not isinstance(new_val, str):
+                continue
+            new_val = new_val.strip()
+            if not new_val:
+                continue
+            pred = f"lower({col}) = lower(:v)" if col == "doi" else f"{col} = :v"
+            row = s.execute(sql_text(
+                f"SELECT id FROM articles WHERE {pred} AND id <> :self LIMIT 1"
+            ), {"v": new_val, "self": str(aid)}).first()
+            if row:
+                return jsonify({
+                    "error":        "duplicate",
+                    "duplicate_of": str(row[0]),
+                    "matched_on":   col,
+                }), 409
+
         for k, v in updates.items():
             setattr(a, k, v)
-        s.commit()
+        try:
+            s.commit()
+        except IntegrityError as exc:
+            # Race against a concurrent INSERT that flipped a DOI/PMID
+            # between the SELECT above and this commit. Roll back so
+            # the session is reusable and surface the same 409 shape.
+            s.rollback()
+            return jsonify({
+                "error":  "duplicate",
+                "detail": str(exc.orig)[:200] if exc.orig else str(exc)[:200],
+            }), 409
         return jsonify(a.to_dict(include_text=True, viewer_role="admin"))
     finally:
         s.close()
