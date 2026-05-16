@@ -34,6 +34,23 @@ function fmtMin(minutes) {
   return `${sign}${h}h${m > 0 ? ` ${m}min` : ''}`;
 }
 
+function fmtDate(value) {
+  if (!value) return '';
+  try {
+    return new Date(value).toLocaleDateString('es-ES', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    });
+  } catch { return ''; }
+}
+
+const TASK_TYPE_MAP = {
+  meeting:  { icon: '🤝', label: 'Reunión' },
+  review:   { icon: '📝', label: 'Revisión' },
+  guidance: { icon: '💡', label: 'Orientación' },
+  reply:    { icon: '📧', label: 'Respuesta' },
+  other:    { icon: '✨', label: 'Otro' },
+};
+
 const BonusPanel = () => {
   const navigate = useNavigate();
   const [data, setData]           = useState(null);
@@ -48,6 +65,26 @@ const BonusPanel = () => {
   const [description, setDescription]         = useState('');
   const [minutes, setMinutes]                 = useState('');
   const [formError, setFormError]             = useState('');
+
+  // Per-student breakdown (lazy-loaded on first expand, cached afterwards).
+  const [expandedId, setExpandedId]         = useState(null);
+  const [details, setDetails]               = useState({});
+  const [detailsLoading, setDetailsLoading] = useState({});
+
+  const toggleExpand = useCallback(async (studentId) => {
+    if (expandedId === studentId) { setExpandedId(null); return; }
+    setExpandedId(studentId);
+    if (details[studentId]) return;
+    setDetailsLoading((prev) => ({ ...prev, [studentId]: true }));
+    try {
+      const d = await adminService.getStudentBonusDetail(studentId);
+      setDetails((prev) => ({ ...prev, [studentId]: d }));
+    } catch (e) {
+      setDetails((prev) => ({ ...prev, [studentId]: { error: e?.response?.data?.error || 'Error cargando detalle' } }));
+    } finally {
+      setDetailsLoading((prev) => ({ ...prev, [studentId]: false }));
+    }
+  }, [expandedId, details]);
 
   const load = useCallback(async () => {
     try {
@@ -92,6 +129,13 @@ const BonusPanel = () => {
         minutes: mins,
       });
       setModalOpen(false);
+      // The cached breakdown for this student is now stale — drop it
+      // so the next expand re-fetches from the server.
+      setDetails((prev) => {
+        const next = { ...prev };
+        delete next[selectedStudent];
+        return next;
+      });
       await load();
     } catch (err) {
       setFormError(err?.response?.data?.error || 'Error guardando la asignación');
@@ -148,12 +192,17 @@ const BonusPanel = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {students.map((student) => {
             const colors = balanceColor(student.balance);
+            const isOpen = expandedId === student.id;
             return (
-              <div key={student.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div key={student.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-shadow ${isOpen ? 'border-indigo-300 shadow-md' : 'border-gray-200'}`}>
                 {/* Card top bar */}
                 <div className={`h-1.5 w-full ${colors.bg}`} />
 
-                <div className="p-5">
+                <div
+                  onClick={() => toggleExpand(student.id)}
+                  className="p-5 cursor-pointer"
+                  title={isOpen ? 'Plegar detalle' : 'Ver detalle de bonus ganados / gastados'}
+                >
                   <div className="flex items-center gap-3 mb-4">
                     {/* Initials circle */}
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${colors.bg}`}>
@@ -163,6 +212,9 @@ const BonusPanel = () => {
                       <p className="font-semibold text-gray-900 truncate">{student.name}</p>
                       <p className="text-xs text-gray-500 truncate">{student.email}</p>
                     </div>
+                    <span className="text-gray-400 text-xs flex-shrink-0" aria-hidden="true">
+                      {isOpen ? '▾' : '▸'}
+                    </span>
                   </div>
 
                   {/* Stats row */}
@@ -185,12 +237,12 @@ const BonusPanel = () => {
                     <div className="flex items-center gap-2">
                       {student.credits_count > 0 ? (
                         <button
-                          onClick={() => navigate('/admin/articles', {
+                          onClick={(e) => { e.stopPropagation(); navigate('/admin/articles', {
                             state: {
                               filterUser: { id: student.id, name: student.name },
                               filterStatuses: ['evaluated'],
                             },
-                          })}
+                          }); }}
                           className={`text-xs px-2 py-1 rounded-full font-medium ${colors.badge} hover:opacity-80 transition-opacity cursor-pointer`}
                           title="Artículos completados con bonus — clic para ver"
                         >
@@ -202,11 +254,21 @@ const BonusPanel = () => {
                         </span>
                       )}
                     </div>
-                    <Button size="sm" onClick={() => openModal(student.id)}>
+                    <Button
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); openModal(student.id); }}
+                    >
                       ➕ Asignar
                     </Button>
                   </div>
                 </div>
+
+                {isOpen && (
+                  <BonusBreakdown
+                    detail={details[student.id]}
+                    loading={!!detailsLoading[student.id]}
+                  />
+                )}
               </div>
             );
           })}
@@ -327,5 +389,118 @@ const BonusPanel = () => {
     </div>
   );
 };
+
+/**
+ * Per-student bonus breakdown shown below an expanded student card.
+ * Receives the raw `getStudentBonusDetail` response and renders two
+ * columns:
+ *   • Ganados   = BonusCredit rows (article reads + admin-gifted notes)
+ *   • Gastados  = BonusAllocation rows (admin-assigned tasks)
+ */
+function BonusBreakdown({ detail, loading }) {
+  if (loading) {
+    return (
+      <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-500 text-center">
+        Cargando detalle…
+      </div>
+    );
+  }
+  if (!detail) {
+    return (
+      <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-400 text-center">
+        Sin datos.
+      </div>
+    );
+  }
+  if (detail.error) {
+    return (
+      <div className="border-t border-gray-100 px-5 py-4 text-sm text-red-600">
+        {detail.error}
+      </div>
+    );
+  }
+
+  const credits     = (detail.transactions || []).filter((t) => t.type === 'credit');
+  const allocations = (detail.transactions || []).filter((t) => t.type === 'allocation');
+  const earned      = detail.earned ?? 0;
+  const spent       = detail.spent  ?? 0;
+
+  return (
+    <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 space-y-4 text-sm">
+      {/* ── Ganados ────────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="font-semibold text-emerald-700">⚡ Bonus ganados</h4>
+          <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+            {credits.length} mov. · {fmtMin(earned).replace('+', '')}
+          </span>
+        </div>
+        {credits.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">Aún no ha ganado bonus.</p>
+        ) : (
+          <ul className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {credits.map((c) => {
+              const isGift = !c.article;
+              const label  = isGift ? (c.note || 'Bonus otorgado') : c.article.title;
+              const meta   = isGift
+                ? null
+                : `${c.pages ?? '—'} pág.`;
+              return (
+                <li key={c.id} className="flex items-start gap-2 text-xs bg-white border border-gray-100 rounded-md px-2.5 py-1.5">
+                  <span className="text-base leading-none flex-shrink-0">
+                    {isGift ? '🎁' : '📄'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-gray-800 truncate" title={label}>{label}</p>
+                    <p className="text-[11px] text-gray-500">
+                      {fmtDate(c.created_at)}{meta ? ` · ${meta}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-emerald-700 font-semibold whitespace-nowrap">
+                    {fmtMin(c.minutes)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* ── Gastados ───────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="font-semibold text-indigo-700">⏱ Bonus gastados</h4>
+          <span className="text-xs font-medium text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+            {allocations.length} mov. · {fmtMin(-spent).replace('−', '')}
+          </span>
+        </div>
+        {allocations.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">Sin gastos asignados.</p>
+        ) : (
+          <ul className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {allocations.map((a) => {
+              const tt = TASK_TYPE_MAP[a.task_type] || TASK_TYPE_MAP.other;
+              return (
+                <li key={a.id} className="flex items-start gap-2 text-xs bg-white border border-gray-100 rounded-md px-2.5 py-1.5">
+                  <span className="text-base leading-none flex-shrink-0">{tt.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-gray-800 truncate" title={a.description}>
+                      <span className="text-gray-500">{tt.label}</span>
+                      {a.description ? ` · ${a.description}` : ''}
+                    </p>
+                    <p className="text-[11px] text-gray-500">{fmtDate(a.created_at)}</p>
+                  </div>
+                  <span className="text-indigo-700 font-semibold whitespace-nowrap">
+                    {fmtMin(a.minutes)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
 
 export default BonusPanel;
