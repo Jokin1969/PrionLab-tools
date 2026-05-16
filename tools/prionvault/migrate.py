@@ -47,6 +47,7 @@ _PRIONVAULT_MIGRATIONS = (
     "011_prionvault_usage_user_id_nullable.sql",
     "012_prionvault_collections.sql",
     "013_hnsw_index_tuning.sql",
+    "014_prionvault_journal_club.sql",
 )
 
 _BOOTSTRAP_SQL = """

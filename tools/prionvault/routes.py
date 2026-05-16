@@ -74,6 +74,10 @@ def api_list_articles():
     is_flagged       = True if is_flagged_raw == "1" else (False if is_flagged_raw == "0" else None)
     is_milestone_raw = request.args.get("is_milestone")
     is_milestone     = True if is_milestone_raw == "1" else (False if is_milestone_raw == "0" else None)
+    has_jc_raw       = request.args.get("has_jc")
+    has_jc           = True if has_jc_raw == "1" else (False if has_jc_raw == "0" else None)
+    jc_presenter     = (request.args.get("jc_presenter") or "").strip() or None
+    jc_year          = request.args.get("jc_year", type=int)
     color_label = (request.args.get("color_label") or "").strip().lower() or None
     priority_eq = request.args.get("priority_eq", type=int)
     extraction = (request.args.get("extraction_status") or "").strip().lower() or None
@@ -133,7 +137,10 @@ def api_list_articles():
                                    priority_eq, extraction,
                                    is_favorite, is_read,
                                    sort, page, page_size,
-                                   collection_id=collection_id)
+                                   collection_id=collection_id,
+                                   has_jc=has_jc,
+                                   jc_presenter=jc_presenter,
+                                   jc_year=jc_year)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -152,7 +159,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         priority_eq, extraction,
                         is_favorite, is_read,
                         sort, page, page_size,
-                        *, collection_id=None):
+                        *, collection_id=None,
+                        has_jc=None, jc_presenter=None, jc_year=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -221,6 +229,34 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     elif is_milestone is False:
         conditions.append("(is_milestone IS FALSE OR is_milestone IS NULL)")
 
+    # Journal-Club filters — single semi-join against
+    # prionvault_jc_presentation rather than a JOIN to avoid row
+    # duplication when an article has more than one presentation.
+    if has_jc is True:
+        conditions.append(
+            "EXISTS (SELECT 1 FROM prionvault_jc_presentation jp "
+            "WHERE jp.article_id = articles.id)"
+        )
+    elif has_jc is False:
+        conditions.append(
+            "NOT EXISTS (SELECT 1 FROM prionvault_jc_presentation jp "
+            "WHERE jp.article_id = articles.id)"
+        )
+    if jc_presenter:
+        conditions.append(
+            "EXISTS (SELECT 1 FROM prionvault_jc_presentation jp "
+            "WHERE jp.article_id = articles.id "
+            "AND lower(jp.presenter_name) LIKE :jc_presenter)"
+        )
+        params["jc_presenter"] = f"%{jc_presenter.lower()}%"
+    if jc_year is not None:
+        conditions.append(
+            "EXISTS (SELECT 1 FROM prionvault_jc_presentation jp "
+            "WHERE jp.article_id = articles.id "
+            "AND EXTRACT(YEAR FROM jp.presented_at) = :jc_year)"
+        )
+        params["jc_year"] = jc_year
+
     if color_label in _VALID_COLOR_LABELS:
         conditions.append("color_label = :color_label")
         params["color_label"] = color_label
@@ -279,7 +315,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     order = sort_map.get(sort, "created_at DESC NULLS LAST")
 
     # Build SELECT list: always include base columns; add pv cols if present.
-    base_cols = "id, title, authors, year, journal, doi, pubmed_id, abstract, tags, is_milestone, is_flagged, color_label, priority, dropbox_path, dropbox_link, created_at, updated_at"
+    base_cols = ("id, title, authors, year, journal, doi, pubmed_id, abstract, "
+                 "tags, is_milestone, is_flagged, color_label, priority, "
+                 "dropbox_path, dropbox_link, created_at, updated_at, "
+                 "(SELECT COUNT(*) FROM prionvault_jc_presentation jp "
+                 " WHERE jp.article_id = articles.id) AS jc_count")
     pv_select = ", ".join(
         c for c in
         ["pdf_md5", "pdf_pages", "extraction_status", "indexed_at",
@@ -401,6 +441,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
             "has_pdf":       bool(d.get("dropbox_path")),
+            "jc_count":      int(d.get("jc_count") or 0),
+            "has_jc":        bool(d.get("jc_count") or 0),
             "extraction_status": d.get("extraction_status") or "pending",
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
@@ -460,7 +502,9 @@ def api_article_detail(aid):
         base_cols = (
             "id, title, authors, year, journal, doi, pubmed_id, abstract, "
             "tags, is_milestone, is_flagged, color_label, priority, "
-            "dropbox_path, dropbox_link, created_at, updated_at"
+            "dropbox_path, dropbox_link, created_at, updated_at, "
+            "(SELECT COUNT(*) FROM prionvault_jc_presentation jp "
+            " WHERE jp.article_id = articles.id) AS jc_count"
         )
         optional = [
             "pdf_md5", "pdf_size_bytes", "pdf_pages",
@@ -500,6 +544,8 @@ def api_article_detail(aid):
             "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
             "has_pdf":       bool(d.get("dropbox_path")),
+            "jc_count":      int(d.get("jc_count") or 0),
+            "has_jc":        bool(d.get("jc_count") or 0),
             "extraction_status": d.get("extraction_status") or "pending",
             "extraction_error":  d.get("extraction_error"),
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
@@ -2493,6 +2539,170 @@ def api_admin_whoami():
     finally:
         s.close()
     return jsonify(info)
+
+
+# ── Journal Club presentations ──────────────────────────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/jc", methods=["GET"])
+@login_required
+def api_jc_list(aid):
+    """Return every JC presentation attached to one article."""
+    from .services import jc as _jc
+    try:
+        return jsonify({"items": _jc.list_for_article(aid)})
+    except Exception as exc:
+        logger.exception("jc list failed for %s", aid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+
+def _parse_iso_date(s):
+    from datetime import date as _d
+    try:
+        y, m, d = s.split("-")
+        return _d(int(y), int(m), int(d))
+    except Exception:
+        raise ValueError("date must be YYYY-MM-DD")
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/jc", methods=["POST"])
+@admin_required
+def api_jc_create(aid):
+    """Create a JC presentation row + optionally attach files in the
+    same multipart request. Body fields:
+       presented_at (YYYY-MM-DD), presenter_name, presenter_id?,
+       file (one or many, optional).
+    """
+    from .services import jc as _jc
+    data = request.form if request.form else (request.get_json(silent=True) or {})
+    presented_at = (data.get("presented_at") or "").strip()
+    presenter_name = (data.get("presenter_name") or "").strip()
+    presenter_id   = (data.get("presenter_id") or "").strip() or None
+    if not presented_at or not presenter_name:
+        return jsonify({"error": "missing_fields",
+                        "detail": "presented_at and presenter_name are required."}), 400
+    try:
+        date_obj = _parse_iso_date(presented_at)
+    except ValueError as exc:
+        return jsonify({"error": "invalid_date", "detail": str(exc)}), 400
+
+    try:
+        pres = _jc.create(
+            article_id=aid,
+            presented_at=date_obj,
+            presenter_name=presenter_name,
+            presenter_id=presenter_id,
+            created_by=_viewer_id(),
+        )
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("jc create failed for %s", aid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+    # Optional initial files (one form field "file" can repeat).
+    files = (request.files.getlist("file") +
+             request.files.getlist("files"))
+    files = [f for f in files if f and f.filename]
+    file_results = []
+    for f in files:
+        try:
+            row = _jc.add_file(pres["id"], content=f.read(), filename=f.filename)
+            file_results.append(row)
+        except (ValueError, RuntimeError) as exc:
+            logger.warning("jc create: file %s rejected: %s", f.filename, exc)
+            file_results.append({"filename": f.filename, "error": str(exc)})
+    pres["files"] = [x for x in file_results if "error" not in x]
+    pres["file_errors"] = [x for x in file_results if "error" in x]
+    return jsonify(pres), 201
+
+
+@prionvault_bp.route("/api/jc/<uuid:pid>", methods=["PATCH"])
+@admin_required
+def api_jc_update(pid):
+    from .services import jc as _jc
+    data = request.get_json(force=True, silent=True) or {}
+    kwargs = {}
+    if "presented_at" in data:
+        try:
+            kwargs["presented_at"] = _parse_iso_date(data["presented_at"])
+        except ValueError as exc:
+            return jsonify({"error": "invalid_date", "detail": str(exc)}), 400
+    if "presenter_name" in data:
+        kwargs["presenter_name"] = (data["presenter_name"] or "").strip()
+    if "presenter_id" in data:
+        kwargs["presenter_id"] = data["presenter_id"] or None
+    if not kwargs:
+        return jsonify({"error": "no_fields"}), 400
+    try:
+        ok = _jc.update(pid, **kwargs)
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("jc update failed for %s", pid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/jc/<uuid:pid>", methods=["DELETE"])
+@admin_required
+def api_jc_delete(pid):
+    from .services import jc as _jc
+    try:
+        ok = _jc.delete(pid)
+    except Exception as exc:
+        logger.exception("jc delete failed for %s", pid)
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/jc/<uuid:pid>/files", methods=["POST"])
+@admin_required
+def api_jc_add_files(pid):
+    """Attach extra files to an existing presentation."""
+    from .services import jc as _jc
+    files = (request.files.getlist("file") +
+             request.files.getlist("files"))
+    files = [f for f in files if f and f.filename]
+    if not files:
+        return jsonify({"error": "no_files"}), 400
+    results = []
+    for f in files:
+        try:
+            row = _jc.add_file(pid, content=f.read(), filename=f.filename)
+            results.append(row)
+        except LookupError:
+            return jsonify({"error": "not_found"}), 404
+        except ValueError as exc:
+            results.append({"filename": f.filename, "error": str(exc)})
+        except RuntimeError as exc:
+            results.append({"filename": f.filename, "error": str(exc)})
+    return jsonify({"ok": True, "files": results})
+
+
+@prionvault_bp.route("/api/jc/files/<uuid:fid>", methods=["DELETE"])
+@admin_required
+def api_jc_delete_file(fid):
+    from .services import jc as _jc
+    if not _jc.delete_file(fid):
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/jc/files/<uuid:fid>/url", methods=["GET"])
+@login_required
+def api_jc_file_url(fid):
+    from .services import jc as _jc
+    url = _jc.temporary_link(fid)
+    if not url:
+        return jsonify({"error": "unavailable"}), 502
+    return jsonify({"url": url})
 
 
 # ── Per-article reindex (Phase 4) ───────────────────────────────────────────
