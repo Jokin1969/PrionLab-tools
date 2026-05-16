@@ -97,6 +97,15 @@ class PrionVaultArticle(Base):
     added_by_id        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     search_vector      = Column(TSVECTOR)           # populated by trigger; read-only from app
 
+    # Migration 018: TRUE when the PDF was originally a scan and we
+    # had to OCR it to recover the text. Written by the OCR worker
+    # (raw SQL) but declared here so ORM-based callers can read it.
+    pdf_is_scan          = Column(Boolean, default=False, nullable=False)
+    # Migration 021: set TRUE once CrossRef + PubMed have both
+    # confirmed they have no abstract for this paper, so the UI can
+    # stop suggesting a refetch.
+    abstract_unavailable = Column(Boolean, default=False, nullable=False)
+
     # Relationships
     chunks             = relationship("ArticleChunk", backref="article",
                                       cascade="all, delete-orphan",

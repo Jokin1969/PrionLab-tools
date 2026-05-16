@@ -3798,6 +3798,17 @@ def api_migrations_run():
     """Force-run any pending PrionVault migrations now."""
     from .migrate import run_pending_migrations
     summary = run_pending_migrations()
+    # Bust the per-process column cache so filters and SELECT lists
+    # pick up any column that the migration just added (the cache is
+    # only filled once per worker and a freshly-applied column would
+    # otherwise stay invisible until the next restart).
+    global _pv_columns_cache
+    _pv_columns_cache = None
+    try:
+        from .ingestion import worker as _worker
+        _worker._articles_col_cache = None
+    except Exception:
+        pass
     return jsonify(summary)
 
 
