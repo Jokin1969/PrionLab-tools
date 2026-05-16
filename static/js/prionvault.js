@@ -442,6 +442,50 @@
 
   // ── Collection editor modal (create + edit, manual + smart) ────────
   let _collectionEditing = null;   // existing collection id when editing
+  let _activePrionPacks = null;    // cached: [{id, title}] of active packs
+
+  async function _ensureActivePrionPacks() {
+    if (_activePrionPacks) return _activePrionPacks;
+    try {
+      const r = await api('/prionpacks');
+      _activePrionPacks = (r.items || []);
+    } catch {
+      _activePrionPacks = [];
+    }
+    return _activePrionPacks;
+  }
+
+  function _isPrionPacksGroup(value) {
+    return (value || '').trim().toLowerCase() === 'prionpacks';
+  }
+
+  // Repopulate the subgroup datalist. When the group field equals
+  // "PrionPacks" we suggest each active PrionPack (so the user can pick
+  // a pack as the subgroup); otherwise we fall back to existing
+  // subgroups from the user's other collections.
+  async function _refreshSubgroupSuggestions() {
+    const dl = document.getElementById('pv-coll-subgroup-list');
+    if (!dl) return;
+    const groupVal = document.getElementById('pv-coll-group')?.value || '';
+    if (_isPrionPacksGroup(groupVal)) {
+      const packs = await _ensureActivePrionPacks();
+      dl.innerHTML = packs
+        .map(p => {
+          const label = `${p.id} — ${(p.title || '').slice(0, 80)}`;
+          return `<option value="${esc(label)}"></option>`;
+        })
+        .join('');
+      return;
+    }
+    const subgroupSet = new Set();
+    _allCollections.forEach(c => {
+      if (c.subgroup_name) subgroupSet.add(c.subgroup_name);
+    });
+    dl.innerHTML = Array.from(subgroupSet)
+      .sort((a, b) => a.localeCompare(b, 'es'))
+      .map(v => `<option value="${esc(v)}"></option>`)
+      .join('');
+  }
 
   function wireCollectionEditor() {
     const modal = document.getElementById('pv-collection-modal');
@@ -458,6 +502,12 @@
     closeBtn.addEventListener('click', close);
     cancelBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    // When the Group field is set to "PrionPacks", swap the Subgroup
+    // datalist for the list of active packs so the user can pick one
+    // (e.g. "PRP-001 — …") as the subgroup.
+    document.getElementById('pv-coll-group')?.addEventListener('input',
+      _refreshSubgroupSuggestions);
 
     // Toggle rules visibility when kind changes.
     modal.querySelectorAll('input[name="pv-coll-kind"]').forEach(radio => {
@@ -545,24 +595,20 @@
     document.getElementById('pv-coll-color').value = existing?.color || '';
     document.getElementById('pv-coll-group').value    = existing?.group_name    || '';
     document.getElementById('pv-coll-subgroup').value = existing?.subgroup_name || '';
-    // Populate datalists from the existing collections so the user
-    // gets autocomplete suggestions without typos.
-    const groupSet    = new Set();
-    const subgroupSet = new Set();
-    _allCollections.forEach(c => {
-      if (c.group_name)    groupSet.add(c.group_name);
-      if (c.subgroup_name) subgroupSet.add(c.subgroup_name);
-    });
-    const fillList = (id, set) => {
-      const dl = document.getElementById(id);
-      if (!dl) return;
-      dl.innerHTML = Array.from(set)
+    // Populate the Group datalist from existing collections so the user
+    // gets autocomplete without typos. The Subgroup datalist is computed
+    // dynamically by _refreshSubgroupSuggestions (it swaps in the list
+    // of active PrionPacks when Group is "PrionPacks").
+    const groupSet = new Set();
+    _allCollections.forEach(c => { if (c.group_name) groupSet.add(c.group_name); });
+    const groupList = document.getElementById('pv-coll-group-list');
+    if (groupList) {
+      groupList.innerHTML = Array.from(groupSet)
         .sort((a, b) => a.localeCompare(b, 'es'))
         .map(v => `<option value="${esc(v)}"></option>`)
         .join('');
-    };
-    fillList('pv-coll-group-list',    groupSet);
-    fillList('pv-coll-subgroup-list', subgroupSet);
+    }
+    _refreshSubgroupSuggestions();
 
     const kindVal = existing?.kind || 'manual';
     modal.querySelectorAll('input[name="pv-coll-kind"]').forEach(r => {
