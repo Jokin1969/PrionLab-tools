@@ -1845,6 +1845,141 @@ _CREATE_ALLOWED = {
 }
 
 
+@prionvault_bp.route("/api/articles/with-pdf", methods=["POST"])
+@admin_required
+def api_article_create_with_pdf():
+    """Create an article from caller-supplied metadata AND attach a local PDF.
+
+    Skips the metadata-extraction step of the ingest pipeline because
+    the caller (typically the Add-by-DOI modal) has already resolved
+    metadata against CrossRef / PubMed. The PDF still goes through MD5
+    dedup, Dropbox upload, and best-effort text extraction so search and
+    AI features keep working — they just don't try to re-derive the DOI.
+
+    Accepts multipart/form-data:
+      - `pdf`       (required, file): the local PDF.
+      - `metadata`  (required, JSON string): {title, authors, year,
+                    journal, doi, pubmed_id, abstract, …}
+    """
+    import hashlib as _hashlib
+    import json as _json
+    import uuid as _uuid_mod
+    from .ingestion.pdf_extractor import extract_pdf, normalise_doi
+    from .ingestion.dropbox_uploader import build_path, upload_pdf
+
+    f = request.files.get("pdf")
+    if not f or not f.filename:
+        return jsonify({"error": "pdf is required"}), 400
+
+    try:
+        meta = _json.loads(request.form.get("metadata") or "{}")
+    except _json.JSONDecodeError:
+        return jsonify({"error": "metadata must be valid JSON"}), 400
+    if not isinstance(meta, dict):
+        return jsonify({"error": "metadata must be a JSON object"}), 400
+
+    title = (meta.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    doi  = normalise_doi(meta.get("doi") or "") if meta.get("doi") else None
+    pmid = (meta.get("pubmed_id") or "").strip() or None
+    try:
+        year = int(meta.get("year")) if meta.get("year") not in (None, "") else None
+    except (TypeError, ValueError):
+        year = None
+
+    content = f.read()
+    if not content:
+        return jsonify({"error": "empty pdf"}), 400
+    pdf_md5  = _hashlib.md5(content).hexdigest()
+    pdf_size = len(content)
+
+    s = _session()
+    try:
+        # Dedup: by md5 first (cheapest, identifies the exact same PDF
+        # already in the library), then by DOI / PMID.
+        for col, val in (("pdf_md5", pdf_md5), ("doi", doi), ("pubmed_id", pmid)):
+            if not val:
+                continue
+            sql = (f"SELECT id FROM articles "
+                   f"WHERE {('lower(doi)' if col == 'doi' else col)} = :v "
+                   f"LIMIT 1")
+            params = {"v": val.lower() if col == "doi" else val}
+            row = s.execute(sql_text(sql), params).first()
+            if row:
+                return jsonify({"error": "duplicate",
+                                "duplicate_of": str(row[0]),
+                                "matched_on": col}), 409
+
+        # Upload to Dropbox at the canonical path. Conflicts (file already
+        # at the same path on the remote) are surfaced as info, not fatal —
+        # the DB row is what makes the article visible to the rest of the
+        # app.
+        target = build_path(doi=doi, year=year, md5=pdf_md5,
+                            filename_hint=f.filename)
+        upload = upload_pdf(content, target, overwrite=False)
+        if upload.error and "conflict" not in upload.error.lower():
+            return jsonify({"error": "dropbox_upload_failed",
+                            "detail": upload.error}), 502
+        dropbox_path = upload.dropbox_path or target
+
+        # Best-effort text extraction. A scan with no embedded text layer
+        # will produce empty text and the OCR worker will pick the row up
+        # later (extraction_status='pending').
+        extraction = extract_pdf(content)
+        has_text   = bool(extraction and extraction.text)
+        new_id     = _uuid_mod.uuid4()
+
+        s.execute(sql_text("""
+            INSERT INTO articles
+              (id, title, authors, year, journal, doi, pubmed_id, abstract,
+               pdf_md5, pdf_size_bytes, pdf_pages, extracted_text,
+               dropbox_path, source, added_by_id, extraction_status,
+               created_at, updated_at)
+            VALUES
+              (:id, :title, :authors, :year, :journal, :doi, :pmid, :abstract,
+               :md5, :size, :pages, :text,
+               :path, 'add_by_doi', :added_by, :status,
+               NOW(), NOW())
+        """), {
+            "id":       str(new_id),
+            "title":    title,
+            "authors":  (meta.get("authors")  or "").strip() or None,
+            "year":     year,
+            "journal":  (meta.get("journal")  or "").strip() or None,
+            "doi":      doi,
+            "pmid":     pmid,
+            "abstract": (meta.get("abstract") or "").strip() or None,
+            "md5":      pdf_md5,
+            "size":     pdf_size,
+            "pages":    extraction.pages if has_text else None,
+            "text":     extraction.text  if has_text else None,
+            "path":     dropbox_path,
+            "added_by": _viewer_id(),
+            "status":   "extracted" if has_text else "pending",
+        })
+        s.commit()
+
+        return jsonify({
+            "id":            str(new_id),
+            "title":         title,
+            "doi":           doi,
+            "pubmed_id":     pmid,
+            "dropbox_path":  dropbox_path,
+            "pdf_md5":       pdf_md5,
+            "pdf_size_bytes": pdf_size,
+            "pdf_pages":     extraction.pages if has_text else None,
+            "extraction_status": "extracted" if has_text else "pending",
+        }), 201
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_article_create_with_pdf failed")
+        return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/articles", methods=["POST"])
 @admin_required
 def api_article_create():

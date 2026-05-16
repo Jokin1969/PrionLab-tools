@@ -4196,6 +4196,8 @@
     const fDoi     = document.getElementById('pv-add-doi');
     const fPmid    = document.getElementById('pv-add-pmid');
     const fAbstr   = document.getElementById('pv-add-abstract');
+    const fPdf     = document.getElementById('pv-add-pdf');
+    const fPdfInfo = document.getElementById('pv-add-pdf-info');
     const btnSave  = document.getElementById('pv-add-save');
     const btnCancel = document.getElementById('pv-add-cancel');
     const btnClose = document.getElementById('pv-add-close');
@@ -4203,10 +4205,29 @@
     function reset() {
       ident.value = '';
       [fTitle, fAuthors, fYear, fJournal, fDoi, fPmid, fAbstr].forEach(el => el.value = '');
+      if (fPdf) fPdf.value = '';
       form.style.display = 'none';
       statusEl.textContent = '';
       statusEl.style.color = '#6b7280';
     }
+
+    // Reflect the chosen PDF (name + size) so the user can confirm
+    // they picked the right file before clicking Save.
+    fPdf?.addEventListener('change', () => {
+      const file = fPdf.files && fPdf.files[0];
+      if (!fPdfInfo) return;
+      if (!file) {
+        fPdfInfo.textContent = 'Si adjuntas un PDF aquí, se sube y queda ' +
+          'asociado al artículo sin pasar por la detección automática de ' +
+          'metadatos (útil para escaneos o copias de baja calidad).';
+        fPdfInfo.style.color = '#9ca3af';
+        return;
+      }
+      fPdfInfo.textContent =
+        `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB) — ` +
+        `se subirá a Dropbox al guardar.`;
+      fPdfInfo.style.color = '#15803d';
+    });
     function open()  { reset(); modal.style.display = 'flex'; setTimeout(() => ident.focus(), 50); }
     function close() { modal.style.display = 'none'; }
 
@@ -4294,15 +4315,48 @@
         pubmed_id: fPmid.value.trim() || null,
         abstract:  fAbstr.value.trim() || null,
       };
+      const pdfFile = fPdf && fPdf.files && fPdf.files[0];
       try {
-        await api('/articles', { method: 'POST', body: JSON.stringify(payload) });
+        if (pdfFile) {
+          // Send metadata + binary together; the new endpoint skips
+          // the automatic DOI extraction from the PDF text.
+          statusEl.textContent = 'Subiendo PDF y guardando…';
+          statusEl.style.color = '#6b7280';
+          const fd = new FormData();
+          fd.append('pdf', pdfFile);
+          fd.append('metadata', JSON.stringify(payload));
+          const res = await fetch(API + '/articles/with-pdf', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: fd,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const e = new Error(data.error || 'Error al guardar con PDF');
+            e.status = res.status;
+            e.body = data;
+            throw e;
+          }
+        } else {
+          await api('/articles', { method: 'POST', body: JSON.stringify(payload) });
+        }
         close();
         loadArticles();
         refreshStats();
       } catch (e) {
         if (e.status === 409) {
-          statusEl.textContent = '⚠️ Ya existe un artículo con ese DOI/PMID — no se ha creado.';
+          const dup = (e.body && e.body.duplicate_of) || '';
+          statusEl.innerHTML = '⚠️ Ya existe un artículo con ese ' +
+            (e.body && e.body.matched_on === 'pdf_md5' ? 'mismo PDF' : 'DOI/PMID') +
+            (dup
+              ? ` — <a href="#" id="pv-add-dup-open" style="color:#0F3460;text-decoration:underline;">Ver existente</a>`
+              : ' — no se ha creado.');
           statusEl.style.color = '#b45309';
+          const lnk = document.getElementById('pv-add-dup-open');
+          if (lnk) lnk.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            openDetail(dup);
+          });
         } else {
           statusEl.textContent = 'Error al guardar: ' + e.message;
           statusEl.style.color = '#b91c1c';

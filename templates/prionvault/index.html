@@ -735,6 +735,21 @@
         </label>
       </div>
 
+      <!-- Optional local PDF — useful when the file is a scan that the
+           auto-ingest worker would not recognise from its DOI text. -->
+      <div style="margin-bottom:14px;padding:10px 12px;background:#f9fafb;border:1px dashed #d1d5db;border-radius:8px;">
+        <div style="font-size:11.5px;color:#6b7280;font-weight:600;margin-bottom:6px;">
+          PDF local <span style="color:#9ca3af;font-weight:400;">(opcional)</span>
+        </div>
+        <input type="file" id="pv-add-pdf" accept="application/pdf,.pdf"
+               style="font-size:12.5px;color:#374151;">
+        <div id="pv-add-pdf-info" style="font-size:11.5px;color:#9ca3af;margin-top:5px;line-height:1.4;">
+          Si adjuntas un PDF aquí, se sube y queda asociado al artículo
+          sin pasar por la detección automática de metadatos
+          (útil para escaneos o copias de baja calidad).
+        </div>
+      </div>
+
       <div style="display:flex;justify-content:flex-end;gap:8px;">
         <button id="pv-add-cancel"
                 style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;font-size:13px;cursor:pointer;">
