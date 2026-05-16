@@ -51,6 +51,7 @@ _PRIONVAULT_MIGRATIONS = (
     "015_collection_hierarchy.sql",
     "016_collection_name_scoped_uniq.sql",
     "017_articles_priority_default.sql",
+    "018_articles_pdf_is_scan.sql",
 )
 
 _BOOTSTRAP_SQL = """

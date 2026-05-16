@@ -268,6 +268,7 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                            extraction_status = 'extracted',
                            extraction_error  = NULL,
                            pdf_pages         = COALESCE(:pages, pdf_pages),
+                           pdf_is_scan       = TRUE,
                            updated_at        = NOW()
                        WHERE id = :aid"""
                 ), {

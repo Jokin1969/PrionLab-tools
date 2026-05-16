@@ -401,7 +401,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                  " WHERE jp.article_id = articles.id) AS jc_count")
     pv_select = ", ".join(
         c for c in
-        ["pdf_md5", "pdf_pages", "extraction_status", "indexed_at",
+        ["pdf_md5", "pdf_pages", "pdf_is_scan",
+         "extraction_status", "indexed_at",
          "summary_ai", "summary_human", "source"]
         if c in pv_cols
     )
@@ -544,6 +545,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "is_flagged":    bool(d.get("is_flagged")),
             "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
+            "pdf_is_scan":   bool(d.get("pdf_is_scan")),
             "has_pdf":       bool(d.get("dropbox_path")),
             "jc_count":      int(d.get("jc_count") or 0),
             "has_jc":        bool(d.get("jc_count") or 0),
@@ -612,7 +614,7 @@ def api_article_detail(aid):
             " WHERE jp.article_id = articles.id) AS jc_count"
         )
         optional = [
-            "pdf_md5", "pdf_size_bytes", "pdf_pages",
+            "pdf_md5", "pdf_size_bytes", "pdf_pages", "pdf_is_scan",
             "extraction_status", "extraction_error",
             "summary_ai", "summary_human",
             "indexed_at", "index_version",
@@ -648,6 +650,7 @@ def api_article_detail(aid):
             "is_flagged":    bool(d.get("is_flagged")),
             "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
+            "pdf_is_scan":   bool(d.get("pdf_is_scan")),
             "has_pdf":       bool(d.get("dropbox_path")),
             "jc_count":      int(d.get("jc_count") or 0),
             "has_jc":        bool(d.get("jc_count") or 0),

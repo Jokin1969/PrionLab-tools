@@ -1524,6 +1524,9 @@
       a.indexed_at
         ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
         : '',
+      a.pdf_is_scan
+        ? '<span title="El PDF era una imagen escaneada; el texto se ha recuperado con OCR." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">📸 OCR</span>'
+        : '',
       a.has_jc
         ? `<span title="${a.jc_count > 1
               ? esc(a.jc_count + ' presentaciones en Journal Club')
