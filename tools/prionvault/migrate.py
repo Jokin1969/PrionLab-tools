@@ -87,6 +87,18 @@ def _split_sql(text_blob: str) -> list[str]:
     i = 0
     while i < len(body):
         ch = body[i]
+        # Skip -- line comments so a ; inside a comment doesn't break the
+        # statement split. The comment is kept in `current` and stripped
+        # later by the line-level cleanup pass.
+        if not in_dollar and ch == "-" and i + 1 < len(body) and body[i + 1] == "-":
+            nl = body.find("\n", i)
+            if nl < 0:
+                current.append(body[i:])
+                i = len(body)
+            else:
+                current.append(body[i:nl])
+                i = nl
+            continue
         # Detect $tag$ ... $tag$ blocks (PL/pgSQL functions)
         if not in_dollar and ch == "$":
             m = re.match(r"\$([A-Za-z_]*)\$", body[i:])

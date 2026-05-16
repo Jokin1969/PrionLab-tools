@@ -12,9 +12,9 @@
 -- single UPDATE statement and the user has zero secondary behaviour
 -- attached to the group label (no permissions, no separate metadata).
 --
--- Both columns are nullable so existing rows stay valid; case-folded
--- indexes back the new "filter by group" queries the article list
--- endpoint will run.
+-- Both columns are nullable so existing rows stay valid. The
+-- case-folded indexes back the new "filter by group" queries that
+-- the article list endpoint runs.
 -- ──────────────────────────────────────────────────────────────────────────────
 
 BEGIN;
