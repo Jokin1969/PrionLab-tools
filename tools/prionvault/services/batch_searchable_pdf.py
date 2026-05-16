@@ -179,9 +179,14 @@ def _make_searchable(input_bytes: bytes) -> tuple[Optional[bytes], str]:
 
     try:
         try:
+            # ocrmypdf >= 16.x renamed the first parameter from
+            # `input_file` to `input_file_or_options`, so passing
+            # `input_file=...` raises "missing 1 required positional
+            # argument" on production. Use positional args — they
+            # work on every version we might pin to.
             ocrmypdf.ocr(
-                input_file=in_path,
-                output_file=out_path,
+                in_path,
+                out_path,
                 # Skip pages that already contain text — what we want
                 # by default, but the filter at the SQL level should
                 # already exclude searchable files. Belt and braces.
