@@ -42,6 +42,9 @@
     isFavorite: null,    // null = all, true = only favorites, false = non-favorites
     isRead: null,        // null = all, true = personally read, false = unread
     collectionId: null,  // null = no collection filter, else UUID string
+    hasJc: null,         // null = all, true = JC sí, false = sin JC
+    jcPresenter: '',     // substring filter on JC presenter name
+    jcYear: null,        // year of JC presentation
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
     selectedIds: new Set(),  // UUIDs selected for bulk operations
@@ -886,6 +889,9 @@
     if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
     if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
     if (state.collectionId)        params.set('collection', state.collectionId);
+    if (state.hasJc !== null)      params.set('has_jc', state.hasJc ? '1' : '0');
+    if (state.jcPresenter)         params.set('jc_presenter', state.jcPresenter);
+    if (state.jcYear)              params.set('jc_year', state.jcYear);
     if (state.sort)                params.set('sort', state.sort);
     params.set('page', state.page);
     params.set('size', state.size);
@@ -930,6 +936,12 @@
         : '',
       a.indexed_at
         ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
+        : '',
+      a.has_jc
+        ? `<span title="${a.jc_count > 1
+              ? esc(a.jc_count + ' presentaciones en Journal Club')
+              : 'Presentado en Journal Club'}"
+                style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fce7f3;color:#be185d;">JC${a.jc_count > 1 ? ' ' + a.jc_count : ''}</span>`
         : '',
       ratingChip,
     ].filter(Boolean).join('');
@@ -1444,6 +1456,7 @@
         <div id="pv-ratings-section" style="margin-top:22px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-similar-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-supplementary-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
+        <div id="pv-jc-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div id="pv-used-in-section" style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;"></div>
         <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;
                     display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
@@ -1481,6 +1494,7 @@
       renderTagPickerSection(a);
       renderSimilarSection(a);
       renderSupplementarySection(a);
+      renderJcSection(a);
       renderUsedInSection(a);
     } catch (e) {
       content.innerHTML = `<div style="color:#b91c1c;padding:20px;">Error: ${esc(e.message)}</div>`;
@@ -2121,6 +2135,262 @@
     summarized: { bg: '#ede9fe', fg: '#6d28d9' },
     evaluated:  { bg: '#dcfce7', fg: '#15803d' },
   };
+
+  // ── Journal Club section in the detail modal ─────────────────────────
+  const JC_FILE_ICONS = {
+    pptx:    'fa-file-powerpoint',
+    pdf:     'fa-file-pdf',
+    keynote: 'fa-file-image',
+    other:   'fa-file',
+  };
+  const JC_FILE_COLORS = {
+    pptx: '#c2410c', pdf: '#b91c1c',
+    keynote: '#0e7490', other: '#6b7280',
+  };
+
+  async function renderJcSection(a) {
+    const sec = document.getElementById('pv-jc-section');
+    if (!sec) return;
+    const heading = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
+        <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
+                   text-transform:uppercase;letter-spacing:0.05em;">
+          <span style="display:inline-block;padding:1px 6px;border-radius:4px;
+                       font-size:11px;font-weight:600;background:#fce7f3;color:#be185d;
+                       vertical-align:middle;margin-right:6px;">JC</span>
+          Journal Club
+        </h3>
+        ${IS_ADMIN ? `<button id="pv-jc-add-btn" type="button"
+                      style="padding:4px 10px;font-size:12px;border-radius:6px;
+                             border:1px solid #fce7f3;background:white;color:#be185d;
+                             font-weight:600;cursor:pointer;">
+                      <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir presentación
+                    </button>` : ''}
+      </div>`;
+    sec.innerHTML = heading +
+      `<div id="pv-jc-list" style="font-size:12.5px;color:#9ca3af;">Cargando…</div>`;
+
+    if (IS_ADMIN) wireJcAddButton(a);
+
+    let data;
+    try {
+      data = await api(`/articles/${a.id}/jc`);
+    } catch (e) {
+      document.getElementById('pv-jc-list').innerHTML =
+        `<div style="color:#b91c1c;">Error: ${esc(e.message)}</div>`;
+      return;
+    }
+    renderJcList(a, data.items || []);
+  }
+
+  function renderJcList(a, items) {
+    const list = document.getElementById('pv-jc-list');
+    if (!list) return;
+    if (!items.length) {
+      list.innerHTML = `
+        <div style="font-size:12.5px;color:#9ca3af;font-style:italic;
+                    background:#fdf2f8;border:1px dashed #fce7f3;
+                    border-radius:8px;padding:10px 12px;">
+          Sin presentaciones registradas.${IS_ADMIN ? ' Pulsa "Añadir presentación" cuando alguien lo discuta en el JC.' : ''}
+        </div>`;
+      return;
+    }
+    list.innerHTML = items.map(p => {
+      const dateText = p.presented_at
+        ? new Date(p.presented_at).toLocaleDateString('es-ES',
+            { day: '2-digit', month: 'short', year: 'numeric' })
+        : '(sin fecha)';
+      const fileChips = (p.files || []).map(f => {
+        const icon  = JC_FILE_ICONS[f.kind] || JC_FILE_ICONS.other;
+        const color = JC_FILE_COLORS[f.kind] || JC_FILE_COLORS.other;
+        return `
+          <button type="button" class="pv-jc-file" data-fid="${esc(f.id)}"
+                  title="Abrir ${esc(f.filename)} en una pestaña nueva"
+                  style="display:inline-flex;align-items:center;gap:5px;
+                         padding:3px 9px;border-radius:6px;border:1px solid #e5e7eb;
+                         background:white;color:${color};font-size:11.5px;font-weight:600;
+                         cursor:pointer;margin-right:5px;margin-top:4px;">
+            <i class="fas ${icon}"></i>
+            ${esc(f.filename)}
+          </button>`;
+      }).join('');
+      const adminActions = IS_ADMIN ? `
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button type="button" class="pv-jc-add-file" data-pid="${esc(p.id)}"
+                  title="Añadir otro fichero a esta presentación"
+                  style="padding:3px 6px;background:transparent;border:1px solid transparent;
+                         border-radius:5px;color:#6b7280;cursor:pointer;font-size:11px;">
+            <i class="fas fa-paperclip"></i>
+          </button>
+          <button type="button" class="pv-jc-edit" data-pid="${esc(p.id)}"
+                  data-date="${esc(p.presented_at || '')}"
+                  data-presenter="${esc(p.presenter_name || '')}"
+                  title="Editar fecha o presentador"
+                  style="padding:3px 6px;background:transparent;border:1px solid transparent;
+                         border-radius:5px;color:#6b7280;cursor:pointer;font-size:11px;">
+            <i class="fas fa-pen"></i>
+          </button>
+          <button type="button" class="pv-jc-delete" data-pid="${esc(p.id)}"
+                  title="Eliminar esta presentación"
+                  style="padding:3px 6px;background:transparent;border:1px solid transparent;
+                         border-radius:5px;color:#b91c1c;cursor:pointer;font-size:11px;">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>` : '';
+      return `
+        <div data-pid="${esc(p.id)}"
+             style="background:#fdf2f8;border:1px solid #fce7f3;border-radius:7px;
+                    padding:10px 12px;margin-bottom:7px;">
+          <div style="display:flex;align-items:center;gap:10px;justify-content:space-between;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;color:#831843;">
+                <i class="fas fa-calendar-day" style="margin-right:5px;opacity:0.7;"></i>${esc(dateText)} ·
+                <i class="fas fa-user-tie" style="margin-left:4px;margin-right:5px;opacity:0.7;"></i>${esc(p.presenter_name || '—')}
+              </div>
+            </div>
+            ${adminActions}
+          </div>
+          ${fileChips ? `<div style="margin-top:2px;">${fileChips}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    // Open file in new tab.
+    list.querySelectorAll('.pv-jc-file').forEach(b =>
+      b.addEventListener('click', async () => {
+        const fid = b.dataset.fid;
+        try {
+          const r = await api(`/jc/files/${fid}/url`);
+          if (r.url) window.open(r.url, '_blank', 'noopener');
+        } catch (e) {
+          alert('No se pudo abrir el fichero: ' + e.message);
+        }
+      }));
+
+    if (!IS_ADMIN) return;
+
+    list.querySelectorAll('.pv-jc-delete').forEach(b =>
+      b.addEventListener('click', async () => {
+        if (!confirm('¿Eliminar esta presentación y sus ficheros? Esta acción no se puede deshacer desde la app.')) return;
+        try {
+          await api(`/jc/${b.dataset.pid}`, { method: 'DELETE' });
+          renderJcSection(a);
+          loadArticles();    // refresh the JC badge in the list
+        } catch (e) { alert('Error: ' + e.message); }
+      }));
+
+    list.querySelectorAll('.pv-jc-edit').forEach(b =>
+      b.addEventListener('click', async () => {
+        const newDate = prompt('Nueva fecha de presentación (YYYY-MM-DD):',
+                               b.dataset.date);
+        if (newDate === null) return;
+        const newPresenter = prompt('Nombre del presentador:',
+                                    b.dataset.presenter);
+        if (newPresenter === null) return;
+        try {
+          await api(`/jc/${b.dataset.pid}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              presented_at:   newDate.trim(),
+              presenter_name: newPresenter.trim(),
+            }),
+          });
+          renderJcSection(a);
+        } catch (e) { alert('Error: ' + e.message); }
+      }));
+
+    list.querySelectorAll('.pv-jc-add-file').forEach(b =>
+      b.addEventListener('click', () => addJcFilesViaPicker(a, b.dataset.pid)));
+  }
+
+  function wireJcAddButton(a) {
+    const btn = document.getElementById('pv-jc-add-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const dateStr = prompt('Fecha de la presentación (YYYY-MM-DD):', today);
+      if (!dateStr) return;
+      const presenter = prompt('Nombre del presentador:');
+      if (!presenter || !presenter.trim()) return;
+
+      // Optional file picker — same multipart endpoint as "create".
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.accept = '.pptx,.ppt,.pdf,.key,.odp';
+      input.style.display = 'none';
+      input.addEventListener('change', async () => {
+        const fd = new FormData();
+        fd.append('presented_at', dateStr.trim());
+        fd.append('presenter_name', presenter.trim());
+        for (const f of input.files || []) fd.append('file', f, f.name);
+
+        btn.disabled = true;
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subiendo…';
+        try {
+          const r = await fetch(API + `/articles/${a.id}/jc`, {
+            method: 'POST', credentials: 'same-origin', body: fd,
+          });
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || err.error || ('HTTP ' + r.status));
+          }
+          renderJcSection(a);
+          loadArticles();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = original;
+        }
+      });
+      // If the user clicks Cancel on the file picker, fall back to a
+      // file-less POST so the metadata-only presentation still lands.
+      document.body.appendChild(input);
+      input.addEventListener('cancel', async () => {
+        try {
+          await api(`/articles/${a.id}/jc`, {
+            method: 'POST',
+            body: JSON.stringify({
+              presented_at:   dateStr.trim(),
+              presenter_name: presenter.trim(),
+            }),
+            headers: { 'Content-Type': 'application/json' },
+          });
+          renderJcSection(a);
+          loadArticles();
+        } catch (e) { alert('Error: ' + e.message); }
+      });
+      input.click();
+      setTimeout(() => input.remove(), 60000);
+    });
+  }
+
+  function addJcFilesViaPicker(a, presentationId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.pptx,.ppt,.pdf,.key,.odp';
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      if (!input.files || !input.files.length) return;
+      const fd = new FormData();
+      for (const f of input.files) fd.append('file', f, f.name);
+      try {
+        const r = await fetch(API + `/jc/${presentationId}/files`, {
+          method: 'POST', credentials: 'same-origin', body: fd,
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || err.error || ('HTTP ' + r.status));
+        }
+        renderJcSection(a);
+      } catch (e) { alert('Error: ' + e.message); }
+    });
+    document.body.appendChild(input);
+    input.click();
+    setTimeout(() => input.remove(), 60000);
+  }
 
   async function renderUsedInSection(a) {
     const sec = document.getElementById('pv-used-in-section');
@@ -2937,6 +3207,24 @@
     document.getElementById('filter-priority-eq').addEventListener('change', e => {
       const v = parseInt(e.target.value, 10);
       state.priorityEq = Number.isFinite(v) ? v : null;
+      state.page = 1;
+      loadArticles();
+    });
+    document.getElementById('filter-has-jc')?.addEventListener('change', e => {
+      const v = e.target.value;
+      state.hasJc = v === '1' ? true : (v === '0' ? false : null);
+      state.page = 1;
+      loadArticles();
+    });
+    document.getElementById('filter-jc-presenter')?.addEventListener('input',
+      debounce(e => {
+        state.jcPresenter = e.target.value.trim();
+        state.page = 1;
+        loadArticles();
+      }, 250));
+    document.getElementById('filter-jc-year')?.addEventListener('change', e => {
+      const v = parseInt(e.target.value, 10);
+      state.jcYear = Number.isFinite(v) ? v : null;
       state.page = 1;
       loadArticles();
     });
