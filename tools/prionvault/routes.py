@@ -284,7 +284,14 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "coalesce(abstract, '') = '' AND abstract_unavailable = FALSE"
         )
     elif abstract_status == "unavailable" and "abstract_unavailable" in pv_cols:
-        conditions.append("abstract_unavailable = TRUE")
+        # Defensive: a row may carry abstract_unavailable=TRUE from
+        # before a manual edit pasted the abstract in. Treat "confirmed
+        # missing" as "the flag AND the abstract is empty" so the
+        # filter only ever surfaces rows the admin actually has to
+        # rescue by hand.
+        conditions.append(
+            "abstract_unavailable = TRUE AND coalesce(abstract, '') = ''"
+        )
 
     if in_prionread is True:
         conditions.append(
@@ -1281,6 +1288,13 @@ def api_article_update(aid):
     for k in ("is_flagged", "is_milestone"):
         if k in updates:
             updates[k] = bool(updates[k])
+
+    # If the admin is filling in an abstract by hand, clear the
+    # "confirmed unavailable" flag so the row stops showing under
+    # that filter and the "📕 sin abstract" chip disappears.
+    if updates.get("abstract") and isinstance(updates["abstract"], str) \
+            and updates["abstract"].strip():
+        updates["abstract_unavailable"] = False
 
     s = _session()
     try:
