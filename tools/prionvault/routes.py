@@ -2454,6 +2454,16 @@ def api_ingest_scan_folder():
     if not folder.startswith("/"):
         folder = "/" + folder
     folder = folder.rstrip("/") or "/"
+    # Cap the per-call work so we never run past gunicorn's request
+    # timeout (default 120 s on Railway). Downloading a PDF from
+    # Dropbox + a couple of DB writes takes ~1-3 s per file; 30 keeps
+    # a comfortable margin even on slow links. The user re-clicks the
+    # button to drain the rest — see the `remaining` field below.
+    try:
+        per_call_limit = int(data.get("limit", 30))
+    except (TypeError, ValueError):
+        per_call_limit = 30
+    per_call_limit = max(1, min(100, per_call_limit))
 
     try:
         from core.dropbox_client import get_client
@@ -2482,14 +2492,17 @@ def api_ingest_scan_folder():
         logger.exception("scan-folder: list failed for %s", folder)
         return jsonify({"error": "list_failed", "detail": str(exc)[:200]}), 502
 
-    user_id    = _viewer_id()
-    queued_ids = []
-    skipped    = []
-    for entry in entries:
-        if not isinstance(entry, dropbox.files.FileMetadata):
-            continue
-        if not entry.name.lower().endswith(".pdf"):
-            continue
+    user_id      = _viewer_id()
+    queued_ids   = []
+    skipped      = []
+    pdf_entries  = [e for e in entries
+                    if isinstance(e, dropbox.files.FileMetadata)
+                    and e.name.lower().endswith(".pdf")]
+    total_pdfs   = len(pdf_entries)
+    to_process   = pdf_entries[:per_call_limit]
+    remaining    = total_pdfs - len(to_process)
+
+    for entry in to_process:
         try:
             _meta, response = client.files_download(entry.path_lower)
             content = response.content
@@ -2513,11 +2526,12 @@ def api_ingest_scan_folder():
         "ok":             True,
         "folder":         folder,
         "scanned":        len(entries),
-        "pdfs_found":     len(queued_ids) + len(skipped),
+        "pdfs_found":     total_pdfs,
         "queued":         len(queued_ids),
         "skipped":        len(skipped),
         "skipped_detail": skipped[:20],
         "job_ids":        queued_ids,
+        "remaining":      remaining,
     }), 202
 
 

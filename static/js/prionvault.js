@@ -4645,14 +4645,19 @@
             (data.detail ? `\n${data.detail}` : '')
           );
         } else {
-          const skipped = data.skipped
+          const skippedMsg = data.skipped
             ? `\n${data.skipped} omitidos (revisa la consola para el detalle).`
             : '';
+          const moreMsg = data.remaining > 0
+            ? `\n\nQuedan ${data.remaining} PDFs sin procesar en la carpeta. ` +
+              `Vuelve a pulsar "Scan Dropbox folder" cuando termine la cola actual ` +
+              `(o tras unos minutos para que el worker descargue espacio en disco).`
+            : '';
           alert(
-            `Carpeta ${data.folder}: ${data.scanned} entradas vistas, ` +
-            `${data.queued} PDFs encolados.${skipped}\n\n` +
+            `Carpeta ${data.folder}: ${data.pdfs_found} PDFs encontrados, ` +
+            `${data.queued} encolados en esta tanda.${skippedMsg}\n\n` +
             `Sigue el progreso en el panel de "Ingest queue". Los que terminen ` +
-            `bien o sean duplicados se borrarán solos de la carpeta.`
+            `bien o sean duplicados se borrarán solos de la carpeta.${moreMsg}`
           );
           if (data.skipped) console.warn('scan-folder skipped:', data.skipped_detail);
           refreshQueue?.();
