@@ -45,7 +45,8 @@ def list_all(viewer_id=None) -> List[dict]:
     with eng.connect() as conn:
         rows = conn.execute(sql_text(
             """SELECT c.id, c.name, c.description, c.kind, c.rules,
-                      c.color, c.created_at, c.updated_at, c.created_by,
+                      c.color, c.group_name, c.subgroup_name,
+                      c.created_at, c.updated_at, c.created_by,
                       (SELECT COUNT(*) FROM prionvault_collection_article
                        WHERE collection_id = c.id) AS article_count
                FROM prionvault_collection c
@@ -68,7 +69,8 @@ def get(cid) -> Optional[dict]:
     with eng.connect() as conn:
         row = conn.execute(sql_text(
             """SELECT c.id, c.name, c.description, c.kind, c.rules,
-                      c.color, c.created_at, c.updated_at, c.created_by,
+                      c.color, c.group_name, c.subgroup_name,
+                      c.created_at, c.updated_at, c.created_by,
                       (SELECT COUNT(*) FROM prionvault_collection_article
                        WHERE collection_id = c.id) AS article_count
                FROM prionvault_collection c
@@ -80,6 +82,8 @@ def get(cid) -> Optional[dict]:
 def create(*, name: str, description: Optional[str] = None,
            kind: str = "manual", rules: Optional[dict] = None,
            color: Optional[str] = None,
+           group_name: Optional[str] = None,
+           subgroup_name: Optional[str] = None,
            created_by=None) -> dict:
     name = (name or "").strip()
     if not name:
@@ -91,15 +95,22 @@ def create(*, name: str, description: Optional[str] = None,
     else:
         rules = {}
 
+    group_name    = (group_name or "").strip() or None
+    subgroup_name = (subgroup_name or "").strip() or None
+    if subgroup_name and not group_name:
+        raise ValueError("subgroup_name requires a group_name")
+
     cid = str(uuid.uuid4())
     eng = _get_engine()
     with eng.begin() as conn:
         conn.execute(sql_text(
             """INSERT INTO prionvault_collection
-               (id, name, description, kind, rules, color, created_by,
+               (id, name, description, kind, rules, color,
+                group_name, subgroup_name, created_by,
                 created_at, updated_at)
                VALUES (:id, :name, :description, :kind,
-                       CAST(:rules AS jsonb), :color, :created_by, NOW(), NOW())"""
+                       CAST(:rules AS jsonb), :color,
+                       :gname, :sgname, :created_by, NOW(), NOW())"""
         ), {
             "id":          cid,
             "name":        name,
@@ -107,6 +118,8 @@ def create(*, name: str, description: Optional[str] = None,
             "kind":        kind,
             "rules":       _json_dumps(rules),
             "color":       color,
+            "gname":       group_name,
+            "sgname":      subgroup_name,
             "created_by":  str(created_by) if created_by else None,
         })
     out = get(cid)
@@ -116,10 +129,20 @@ def create(*, name: str, description: Optional[str] = None,
 
 
 def update(cid, *, name=None, description=None,
-           rules=None, color=None) -> Optional[dict]:
-    """Patch a collection. None means "leave unchanged"."""
+           rules=None, color=None,
+           group_name=None, subgroup_name=None) -> Optional[dict]:
+    """Patch a collection. None means "leave unchanged".
+    Pass an empty string to clear group_name / subgroup_name."""
     sets = []
     params: dict = {"id": str(cid)}
+    if group_name is not None:
+        v = group_name.strip() if group_name else ""
+        sets.append("group_name = :gname")
+        params["gname"] = v or None
+    if subgroup_name is not None:
+        v = subgroup_name.strip() if subgroup_name else ""
+        sets.append("subgroup_name = :sgname")
+        params["sgname"] = v or None
     if name is not None:
         sets.append("name = :name")
         params["name"] = name.strip()
@@ -201,6 +224,42 @@ def remove_articles(cid, article_ids: List) -> int:
                  AND article_id = ANY(CAST(:ids AS uuid[]))"""
         ), {"cid": str(cid), "ids": ids})
     return res.rowcount or 0
+
+
+def find_in_group(group_name: str,
+                  subgroup_name: Optional[str] = None) -> List[str]:
+    """Return collection ids whose group (and optionally subgroup)
+    matches. Case-insensitive."""
+    if not group_name:
+        return []
+    eng = _get_engine()
+    with eng.connect() as conn:
+        if subgroup_name:
+            rows = conn.execute(sql_text(
+                "SELECT id FROM prionvault_collection "
+                "WHERE lower(group_name) = lower(:g) "
+                "  AND lower(coalesce(subgroup_name,'')) = lower(:sg)"
+            ), {"g": group_name, "sg": subgroup_name}).all()
+        else:
+            rows = conn.execute(sql_text(
+                "SELECT id FROM prionvault_collection "
+                "WHERE lower(group_name) = lower(:g)"
+            ), {"g": group_name}).all()
+    return [str(r[0]) for r in rows]
+
+
+def aggregate_article_ids(collection_ids: List[str]) -> List[str]:
+    """Union the article-id sets of many collections (manual or smart).
+    Returns a deduplicated list. Cap is per-collection inside
+    resolve_article_ids."""
+    out: set = set()
+    for cid in collection_ids:
+        try:
+            for aid in resolve_article_ids(cid):
+                out.add(aid)
+        except Exception as exc:
+            logger.warning("aggregate: collection %s failed: %s", cid, exc)
+    return list(out)
 
 
 def article_ids_in(cid) -> List[str]:
@@ -316,6 +375,8 @@ def _shape(row) -> Optional[dict]:
         "rules":         dict(row["rules"]) if isinstance(row["rules"], dict)
                          else (row["rules"] or {}),
         "color":         row["color"],
+        "group_name":    row["group_name"]    if "group_name"    in row.keys() else None,
+        "subgroup_name": row["subgroup_name"] if "subgroup_name" in row.keys() else None,
         "article_count": int(row["article_count"] or 0),
         "created_at":    row["created_at"].isoformat() if row["created_at"] else None,
         "updated_at":    row["updated_at"].isoformat() if row["updated_at"] else None,

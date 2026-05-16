@@ -164,6 +164,8 @@
                        letter-spacing:0.1em;text-transform:uppercase;">
           <span class="pv-toggle-caret" style="display:inline-block;transition:transform 0.15s;">▾</span>
           <span>Colecciones</span>
+          <span id="collection-count"
+                style="font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:normal;text-transform:none;font-size:10px;"></span>
         </button>
         <button class="pv-admin-only" id="btn-new-collection"
                 style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.18);
@@ -184,6 +186,8 @@
                        letter-spacing:0.1em;text-transform:uppercase;">
           <span class="pv-toggle-caret" style="display:inline-block;transition:transform 0.15s;">▾</span>
           <span>Tags</span>
+          <span id="tag-count"
+                style="font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:normal;text-transform:none;font-size:10px;"></span>
         </button>
         <button class="pv-admin-only" id="btn-new-tag"
                 style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.18);
@@ -1137,6 +1141,27 @@
       el contenido se filtra solo según las reglas que definas (se actualiza en vivo a medida
       que cambian los artículos de la biblioteca).
     </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+      <label style="font-size:12px;color:#6b7280;">
+        Grupo <span style="color:#9ca3af;font-weight:400;">(opcional)</span>
+        <input id="pv-coll-group" type="text" maxlength="100"
+               placeholder="p. ej. PrionPacks"
+               list="pv-coll-group-list"
+               style="width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                      font-size:13px;margin-top:3px;outline:none;">
+        <datalist id="pv-coll-group-list"></datalist>
+      </label>
+      <label style="font-size:12px;color:#6b7280;">
+        Subgrupo <span style="color:#9ca3af;font-weight:400;">(opcional, requiere grupo)</span>
+        <input id="pv-coll-subgroup" type="text" maxlength="100"
+               placeholder="p. ej. Introducción"
+               list="pv-coll-subgroup-list"
+               style="width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                      font-size:13px;margin-top:3px;outline:none;">
+        <datalist id="pv-coll-subgroup-list"></datalist>
+      </label>
+    </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
       <label style="font-size:12px;color:#6b7280;">

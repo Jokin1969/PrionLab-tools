@@ -41,7 +41,9 @@
     extraction: null,    // null = all, 'extracted' | 'pending' | 'failed'
     isFavorite: null,    // null = all, true = only favorites, false = non-favorites
     isRead: null,        // null = all, true = personally read, false = unread
-    collectionId: null,  // null = no collection filter, else UUID string
+    collectionId: null,        // null = no collection filter, else UUID
+    collectionGroup: null,     // string when filtering by group
+    collectionSubgroup: null,  // string when also restricted to subgroup
     hasJc: null,         // null = all, true = JC sí, false = sin JC
     jcPresenter: '',     // substring filter on JC presenter name
     jcYear: null,        // year of JC presentation
@@ -192,6 +194,10 @@
 
   // ── render: tags ───────────────────────────────────────────────────────
   // ── Collections (manual groupings) ────────────────────────────────────
+  // Cache the full set of collections so the editor's "group"/"subgroup"
+  // datalists can suggest existing labels without a second fetch.
+  let _allCollections = [];
+
   async function refreshCollections() {
     const container = document.getElementById('collection-list');
     if (!container) return;
@@ -204,97 +210,207 @@
         Error: ${esc(e.message)}</div>`;
       return;
     }
+    _allCollections = items;
+    refreshCollectionsCount();
+    refreshFilterIndicators();
     if (!items.length) {
       container.innerHTML = `<div style="padding:6px 10px;font-size:11px;color:rgba(255,255,255,0.35);">
         Crea una con el botón +</div>`;
       return;
     }
-    container.innerHTML = '';
+
+    // ── Build the (group → subgroup → [collection]) tree.
+    const tree = {};
     items.forEach(c => {
-      const btn = document.createElement('button');
-      btn.className = 'pv-nav-btn';
-      btn.dataset.collectionId = c.id;
-      const kindIcon = c.kind === 'smart'
-        ? '<i class="fas fa-bolt" style="font-size:10px;opacity:0.5;"></i>'
-        : '<i class="fas fa-folder" style="font-size:10px;opacity:0.5;"></i>';
-      btn.title = (c.description ? c.description + '\n\n' : '') +
-                  (IS_ADMIN
-                    ? '• Click: filtrar la lista\n' +
-                      '• Shift+click: editar\n' +
-                      '• Click derecho: eliminar\n' +
-                      '• Botón 📦 a la derecha: mandar a un PrionPack'
-                    : 'Click para filtrar la lista');
-      const packBtn = IS_ADMIN
-        ? `<span class="pv-coll-send-pack" data-collection-id="${esc(c.id)}"
-                 title="Enviar todos los artículos de esta colección a un PrionPack"
-                 style="display:inline-flex;align-items:center;justify-content:center;
-                        padding:2px 5px;border-radius:5px;cursor:pointer;
-                        background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
-                        margin-left:6px;flex-shrink:0;line-height:1;"
-                 onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
-                 onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
-            ><i class="fas fa-cubes-stacked" style="font-size:10px;"></i></span>`
-        : '';
-      btn.innerHTML = `
-        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;flex:1;">
-          <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${esc(c.color || '#9ca3af')}"></span>
-          ${kindIcon}
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</span>
-        </span>
-        <span style="display:inline-flex;align-items:center;flex-shrink:0;">
-          <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;">${c.article_count}</span>
-          ${packBtn}
-        </span>
-      `;
-      btn.addEventListener('click', (ev) => {
-        // Shift+click → edit the collection (admin only).
-        if (ev.shiftKey && IS_ADMIN) {
-          ev.preventDefault();
-          openCollectionEditor(c);
-          return;
-        }
-        state.collectionId = state.collectionId === c.id ? null : c.id;
-        state.page = 1;
-        document.querySelectorAll('#collection-list .pv-nav-btn').forEach(b => {
-          b.style.background = (b.dataset.collectionId === state.collectionId)
-            ? 'rgba(255,255,255,0.18)' : '';
-        });
-        loadArticles();
-      });
-      // Right-click → quick admin menu (delete).
-      btn.addEventListener('contextmenu', ev => {
-        if (!IS_ADMIN) return;
-        ev.preventDefault();
-        if (!confirm(`Borrar la colección "${c.name}"? (los artículos NO se borran)`)) return;
-        api(`/collections/${c.id}`, { method: 'DELETE' })
-          .then(() => { if (state.collectionId === c.id) state.collectionId = null;
-                        refreshCollections(); loadArticles(); })
-          .catch(e => alert('Error: ' + e.message));
-      });
-      container.appendChild(btn);
+      const g  = (c.group_name    || '').trim();
+      const sg = (c.subgroup_name || '').trim();
+      if (!tree[g]) tree[g] = {};
+      if (!tree[g][sg]) tree[g][sg] = [];
+      tree[g][sg].push(c);
     });
-    // Re-paint active state in case state.collectionId points to an existing one.
-    if (state.collectionId) {
-      const active = container.querySelector(`[data-collection-id="${state.collectionId}"]`);
-      if (active) active.style.background = 'rgba(255,255,255,0.18)';
-    }
-    // Wire the small "send to pack" badge attached to each row.
-    container.querySelectorAll('.pv-coll-send-pack').forEach(badge => {
-      badge.addEventListener('click', async (ev) => {
-        ev.stopPropagation();   // don't toggle the filter
-        const cid = badge.dataset.collectionId;
-        try {
-          const r = await api(`/collections/${cid}/article-ids`);
-          const ids = r.ids || [];
-          if (!ids.length) {
-            alert('Esta colección no tiene artículos.');
-            return;
-          }
-          openBulkPackPicker(ids);
-        } catch (e) {
-          alert('No se pudo cargar la colección: ' + e.message);
-        }
+
+    container.innerHTML = '';
+
+    // Render groups in alphabetical order, then "no group" last
+    // ("Sin grupo" sentinel = empty key).
+    const groupKeys = Object.keys(tree)
+      .filter(k => k !== '')
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    if ('' in tree) groupKeys.push('');
+
+    groupKeys.forEach(g => {
+      const subBranch = tree[g];
+      if (g) container.appendChild(buildGroupHeader(g, subBranch));
+      const subKeys = Object.keys(subBranch)
+        .filter(k => k !== '')
+        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+      if ('' in subBranch) subKeys.push('');
+      subKeys.forEach(sg => {
+        const colls = subBranch[sg];
+        if (sg) container.appendChild(buildSubgroupHeader(g, sg, colls));
+        colls
+          .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
+          .forEach(c => container.appendChild(buildCollectionRow(c, !!g)));
       });
+    });
+    repaintCollectionSelection();
+  }
+
+  function refreshCollectionsCount() {
+    const span = document.getElementById('collection-count');
+    if (!span) return;
+    span.textContent = _allCollections.length > 0
+      ? `(${_allCollections.length})` : '';
+  }
+
+  function buildGroupHeader(group, subBranch) {
+    const collCount = Object.values(subBranch)
+      .reduce((acc, list) => acc + list.length, 0);
+    const btn = document.createElement('button');
+    btn.className = 'pv-nav-btn';
+    btn.dataset.collectionGroup = group;
+    btn.title = `Filtrar por grupo "${group}" (${collCount} colección${collCount === 1 ? '' : 'es'})`;
+    btn.style.padding = '5px 10px';
+    btn.innerHTML = `
+      <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
+        <i class="fas fa-folder-open" style="font-size:11px;opacity:0.7;"></i>
+        <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:11px;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
+      </span>
+      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${collCount}</span>
+    `;
+    btn.addEventListener('click', () => {
+      const sameGroup = state.collectionGroup === group && !state.collectionSubgroup;
+      state.collectionGroup    = sameGroup ? null : group;
+      state.collectionSubgroup = null;
+      state.collectionId       = null;
+      state.page = 1;
+      repaintCollectionSelection();
+      refreshFilterIndicators();
+      loadArticles();
+    });
+    return btn;
+  }
+
+  function buildSubgroupHeader(group, subgroup, colls) {
+    const btn = document.createElement('button');
+    btn.className = 'pv-nav-btn';
+    btn.dataset.collectionGroup    = group;
+    btn.dataset.collectionSubgroup = subgroup;
+    btn.title = `Filtrar por "${group} · ${subgroup}"`;
+    btn.style.padding = '4px 10px 4px 22px';
+    btn.innerHTML = `
+      <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
+        <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
+        <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
+      </span>
+      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${colls.length}</span>
+    `;
+    btn.addEventListener('click', () => {
+      const same = state.collectionGroup === group
+                && state.collectionSubgroup === subgroup;
+      state.collectionGroup    = same ? null : group;
+      state.collectionSubgroup = same ? null : subgroup;
+      state.collectionId       = null;
+      state.page = 1;
+      repaintCollectionSelection();
+      refreshFilterIndicators();
+      loadArticles();
+    });
+    return btn;
+  }
+
+  function buildCollectionRow(c, indented) {
+    const btn = document.createElement('button');
+    btn.className = 'pv-nav-btn';
+    btn.dataset.collectionId = c.id;
+    if (indented) btn.style.paddingLeft = '34px';
+    const kindIcon = c.kind === 'smart'
+      ? '<i class="fas fa-bolt" style="font-size:10px;opacity:0.5;"></i>'
+      : '<i class="fas fa-folder" style="font-size:10px;opacity:0.5;"></i>';
+    btn.title = (c.description ? c.description + '\n\n' : '') +
+                (IS_ADMIN
+                  ? '• Click: filtrar la lista\n' +
+                    '• Shift+click: editar\n' +
+                    '• Click derecho: eliminar\n' +
+                    '• Botón 📦 a la derecha: mandar a un PrionPack'
+                  : 'Click para filtrar la lista');
+    const packBtn = IS_ADMIN
+      ? `<span class="pv-coll-send-pack" data-collection-id="${esc(c.id)}"
+               title="Enviar todos los artículos de esta colección a un PrionPack"
+               style="display:inline-flex;align-items:center;justify-content:center;
+                      padding:2px 5px;border-radius:5px;cursor:pointer;
+                      background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
+                      margin-left:6px;flex-shrink:0;line-height:1;"
+               onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
+               onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
+          ><i class="fas fa-cubes-stacked" style="font-size:10px;"></i></span>`
+      : '';
+    btn.innerHTML = `
+      <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;flex:1;">
+        <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${esc(c.color || '#9ca3af')}"></span>
+        ${kindIcon}
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</span>
+      </span>
+      <span style="display:inline-flex;align-items:center;flex-shrink:0;">
+        <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;">${c.article_count}</span>
+        ${packBtn}
+      </span>
+    `;
+    btn.addEventListener('click', (ev) => {
+      if (ev.shiftKey && IS_ADMIN) {
+        ev.preventDefault();
+        openCollectionEditor(c);
+        return;
+      }
+      const same = state.collectionId === c.id;
+      state.collectionId       = same ? null : c.id;
+      state.collectionGroup    = null;
+      state.collectionSubgroup = null;
+      state.page = 1;
+      repaintCollectionSelection();
+      refreshFilterIndicators();
+      loadArticles();
+    });
+    btn.addEventListener('contextmenu', ev => {
+      if (!IS_ADMIN) return;
+      ev.preventDefault();
+      if (!confirm(`Borrar la colección "${c.name}"? (los artículos NO se borran)`)) return;
+      api(`/collections/${c.id}`, { method: 'DELETE' })
+        .then(() => { if (state.collectionId === c.id) state.collectionId = null;
+                      refreshCollections(); loadArticles(); })
+        .catch(e => alert('Error: ' + e.message));
+    });
+    // "Send to pack" badge.
+    setTimeout(() => {
+      const badge = btn.querySelector('.pv-coll-send-pack');
+      if (!badge) return;
+      badge.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        try {
+          const r = await api(`/collections/${c.id}/article-ids`);
+          const ids = r.ids || [];
+          if (!ids.length) { alert('Esta colección no tiene artículos.'); return; }
+          openBulkPackPicker(ids);
+        } catch (e) { alert('No se pudo cargar la colección: ' + e.message); }
+      });
+    }, 0);
+    return btn;
+  }
+
+  function repaintCollectionSelection() {
+    document.querySelectorAll('#collection-list .pv-nav-btn').forEach(b => {
+      let active = false;
+      if (b.dataset.collectionId && b.dataset.collectionId === state.collectionId) active = true;
+      if (b.dataset.collectionGroup    && !b.dataset.collectionSubgroup
+          && b.dataset.collectionGroup === state.collectionGroup
+          && !state.collectionSubgroup
+          && !state.collectionId) active = true;
+      if (b.dataset.collectionGroup    && b.dataset.collectionSubgroup
+          && b.dataset.collectionGroup    === state.collectionGroup
+          && b.dataset.collectionSubgroup === state.collectionSubgroup
+          && !state.collectionId) active = true;
+      b.style.background = active ? 'rgba(255,255,255,0.18)' : '';
     });
   }
 
@@ -366,11 +482,22 @@
         if (mi !== '')   rules.is_milestone = mi === '1';
       }
 
+      const group_name    = document.getElementById('pv-coll-group').value.trim() || null;
+      const subgroup_name = document.getElementById('pv-coll-subgroup').value.trim() || null;
+      if (subgroup_name && !group_name) {
+        errBox.style.display = 'block';
+        errBox.textContent   = 'Si pones subgrupo, también necesitas un grupo.';
+        return;
+      }
+
       saveBtn.disabled = true;
       const original = saveBtn.textContent;
       saveBtn.textContent = 'Guardando…';
       try {
-        const body = JSON.stringify({ name, description, color, kind, rules });
+        const body = JSON.stringify({
+          name, description, color, kind, rules,
+          group_name, subgroup_name,
+        });
         if (_collectionEditing) {
           await api(`/collections/${_collectionEditing}`, { method: 'PATCH', body });
         } else {
@@ -396,6 +523,27 @@
     document.getElementById('pv-coll-name').value = existing?.name || '';
     document.getElementById('pv-coll-description').value = existing?.description || '';
     document.getElementById('pv-coll-color').value = existing?.color || '';
+    document.getElementById('pv-coll-group').value    = existing?.group_name    || '';
+    document.getElementById('pv-coll-subgroup').value = existing?.subgroup_name || '';
+    // Populate datalists from the existing collections so the user
+    // gets autocomplete suggestions without typos.
+    const groupSet    = new Set();
+    const subgroupSet = new Set();
+    _allCollections.forEach(c => {
+      if (c.group_name)    groupSet.add(c.group_name);
+      if (c.subgroup_name) subgroupSet.add(c.subgroup_name);
+    });
+    const fillList = (id, set) => {
+      const dl = document.getElementById(id);
+      if (!dl) return;
+      dl.innerHTML = Array.from(set)
+        .sort((a, b) => a.localeCompare(b, 'es'))
+        .map(v => `<option value="${esc(v)}"></option>`)
+        .join('');
+    };
+    fillList('pv-coll-group-list',    groupSet);
+    fillList('pv-coll-subgroup-list', subgroupSet);
+
     const kindVal = existing?.kind || 'manual';
     modal.querySelectorAll('input[name="pv-coll-kind"]').forEach(r => {
       r.checked = r.value === kindVal;
@@ -472,6 +620,40 @@
     }
   }
 
+  // ── Sidebar header indicators ─────────────────────────────────────────
+  // When a Colecciones / Tags filter is active the section header
+  // highlights in white + bold so the user still notices the filter
+  // even with that section collapsed.
+  function refreshFilterIndicators() {
+    const cHasFilter = !!(state.collectionId
+                          || state.collectionGroup
+                          || state.collectionSubgroup);
+    const tHasFilter = !!state.tagId;
+    paintToggle('btn-toggle-collections', cHasFilter);
+    paintToggle('btn-toggle-tags', tHasFilter);
+  }
+  function paintToggle(buttonId, active) {
+    const btn = document.getElementById(buttonId);
+    if (!btn) return;
+    if (active) {
+      btn.style.color = 'white';
+      // Drop a tiny dot next to the label to mark the active filter.
+      if (!btn.querySelector('.pv-active-dot')) {
+        const dot = document.createElement('span');
+        dot.className = 'pv-active-dot';
+        dot.title = 'Hay un filtro activo en esta sección';
+        dot.style.cssText =
+          'display:inline-block;width:6px;height:6px;border-radius:50%;' +
+          'background:#fbbf24;margin-left:4px;flex-shrink:0;';
+        btn.appendChild(dot);
+      }
+    } else {
+      btn.style.color = 'rgba(255,255,255,0.32)';
+      const dot = btn.querySelector('.pv-active-dot');
+      if (dot) dot.remove();
+    }
+  }
+
   // ── Collapsible sidebar sections ──────────────────────────────────────
   function wireSidebarToggles() {
     const pairs = [
@@ -542,11 +724,16 @@
     try {
       const tags = await api('/tags');
       const container = document.getElementById('tag-list');
+      const countSpan = document.getElementById('tag-count');
       container.innerHTML = '';
+      if (countSpan) countSpan.textContent = tags.length > 0 ? `(${tags.length})` : '';
       tags.forEach(t => {
         const btn = document.createElement('button');
         btn.className = 'pv-nav-btn';
         btn.dataset.tagId = t.id;
+        btn.title = IS_ADMIN
+          ? '• Click: filtrar la lista\n• Click derecho: borrar este tag'
+          : 'Click para filtrar la lista';
         btn.innerHTML = `
           <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;">
             <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${esc(t.color || '#9ca3af')}"></span>
@@ -559,10 +746,21 @@
           state.page = 1;
           loadArticles();
           highlightActiveTag();
+          refreshFilterIndicators();
+        });
+        btn.addEventListener('contextmenu', ev => {
+          if (!IS_ADMIN) return;
+          ev.preventDefault();
+          if (!confirm(`¿Borrar el tag "${t.name}"? Los artículos que lo lleven dejan de tenerlo asignado (no se borran).`)) return;
+          api(`/tags/${t.id}`, { method: 'DELETE' })
+            .then(() => { if (state.tagId === t.id) state.tagId = null;
+                          refreshTags(); loadArticles(); refreshFilterIndicators(); })
+            .catch(e => alert('Error: ' + e.message));
         });
         container.appendChild(btn);
       });
       highlightActiveTag();
+      refreshFilterIndicators();
     } catch (e) { console.error(e); }
   }
 
@@ -889,6 +1087,8 @@
     if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
     if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
     if (state.collectionId)        params.set('collection', state.collectionId);
+    if (state.collectionGroup)     params.set('collection_group', state.collectionGroup);
+    if (state.collectionSubgroup)  params.set('collection_subgroup', state.collectionSubgroup);
     if (state.hasJc !== null)      params.set('has_jc', state.hasJc ? '1' : '0');
     if (state.jcPresenter)         params.set('jc_presenter', state.jcPresenter);
     if (state.jcYear)              params.set('jc_year', state.jcYear);

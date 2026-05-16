@@ -66,7 +66,9 @@ def api_list_articles():
     journal     = (request.args.get("journal") or "").strip()
     authors_q   = (request.args.get("authors") or "").strip()
     tag_id      = request.args.get("tag", type=int)
-    collection_id = (request.args.get("collection") or "").strip() or None
+    collection_id    = (request.args.get("collection") or "").strip() or None
+    collection_group    = (request.args.get("collection_group") or "").strip() or None
+    collection_subgroup = (request.args.get("collection_subgroup") or "").strip() or None
     has_summary = request.args.get("has_summary")
     in_prionread_raw = request.args.get("in_prionread")
     in_prionread = True if in_prionread_raw == "1" else (False if in_prionread_raw == "0" else None)
@@ -138,6 +140,8 @@ def api_list_articles():
                                    is_favorite, is_read,
                                    sort, page, page_size,
                                    collection_id=collection_id,
+                                   collection_group=collection_group,
+                                   collection_subgroup=collection_subgroup,
                                    has_jc=has_jc,
                                    jc_presenter=jc_presenter,
                                    jc_year=jc_year)
@@ -160,6 +164,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         is_favorite, is_read,
                         sort, page, page_size,
                         *, collection_id=None,
+                        collection_group=None, collection_subgroup=None,
                         has_jc=None, jc_presenter=None, jc_year=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
@@ -345,6 +350,29 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             " AND pca.collection_id = CAST(:collection_id AS uuid)"
         )
         params["collection_id"] = collection_id
+    # Group / subgroup filter: aggregate the article ids across every
+    # matching collection (manual + smart) and filter the list to that
+    # union. Done server-side so the URL stays clean and an empty group
+    # short-circuits to total=0 without scanning articles.
+    if collection_group:
+        try:
+            from .services import collections as _coll
+            cids = _coll.find_in_group(collection_group, collection_subgroup)
+            aids = _coll.aggregate_article_ids(cids) if cids else []
+        except Exception as exc:
+            logger.exception("collection group filter failed")
+            aids = []
+        if not aids:
+            # Quick-return: no article matches, save Postgres a scan.
+            return jsonify({
+                "items": [], "total": 0, "page": page,
+                "size": page_size, "filtered_by_group": True,
+            })
+        conditions.append("articles.id = ANY(CAST(:agg_ids AS uuid[]))")
+        params["agg_ids"] = aids
+        # Re-build the WHERE because we appended after the previous join.
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
     from_clause = " ".join(join_parts)
 
     count_sql = sql_text(f"SELECT COUNT(*) {from_clause} {where}")
@@ -709,6 +737,28 @@ def api_list_tags():
             {"id": r.id, "name": r.name, "color": r.color, "count": r.n_articles}
             for r in rows
         ])
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/tags/<int:tag_id>", methods=["DELETE"])
+@admin_required
+def api_delete_tag(tag_id):
+    """Delete a tag definition. Cascade removes article_tag_link rows
+    so any article previously carrying the tag just stops showing it
+    in the chip list."""
+    s = _session()
+    try:
+        t = s.get(models.ArticleTag, tag_id)
+        if not t:
+            return jsonify({"error": "not_found"}), 404
+        s.delete(t)
+        s.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        s.rollback()
+        logger.exception("api_delete_tag failed")
+        return jsonify({"error": "internal_error", "detail": str(e)[:300]}), 500
     finally:
         s.close()
 
@@ -1744,6 +1794,8 @@ def api_collections_create():
             kind=(data.get("kind") or "manual").strip().lower(),
             rules=data.get("rules") or None,
             color=(data.get("color") or "").strip() or None,
+            group_name=data.get("group_name"),
+            subgroup_name=data.get("subgroup_name"),
             created_by=_viewer_id(),
         )
         return jsonify(c), 201
@@ -1777,6 +1829,8 @@ def api_collections_update(cid):
             description=data.get("description"),
             rules=data.get("rules"),
             color=data.get("color"),
+            group_name=data.get("group_name"),
+            subgroup_name=data.get("subgroup_name"),
         )
     except ValueError as exc:
         return jsonify({"error": "invalid", "detail": str(exc)}), 400
