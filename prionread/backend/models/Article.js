@@ -8,7 +8,11 @@ const Article = sequelize.define('Article', {
     primaryKey: true,
   },
   title: {
-    type: DataTypes.STRING,
+    // TEXT instead of STRING(255) so long scientific titles (>255 chars)
+    // from CrossRef / PubMed land cleanly. Migration 022 promotes the
+    // DB column; mirroring here keeps sequelize.sync({ alter: true })
+    // from re-shortening it on every PrionRead backend boot.
+    type: DataTypes.TEXT,
     allowNull: false,
   },
   authors: {
@@ -26,11 +30,14 @@ const Article = sequelize.define('Article', {
     allowNull: true,
   },
   journal: {
-    type: DataTypes.STRING,
+    // TEXT — see comment on `title`.
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   doi: {
-    type: DataTypes.STRING,
+    // TEXT — DOIs are usually short but a few publishers (notably
+    // book chapters) emit much longer identifiers that overflow 255.
+    type: DataTypes.TEXT,
     unique: true,
     allowNull: true,
   },
@@ -65,7 +72,8 @@ const Article = sequelize.define('Article', {
     validate: { min: 1, max: 5 },
   },
   dropbox_path: {
-    type: DataTypes.STRING,
+    // TEXT — nested paths with long DOI slugs can exceed 255 chars.
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   dropbox_link: {
