@@ -905,31 +905,31 @@
   }
 
   function updateBulkBar() {
-    const bar = document.getElementById('pv-bulk-bar');
-    if (!bar) return;
+    const bars = ['pv-bulk-bar', 'pv-bulk-bar-top']
+      .map(id => document.getElementById(id))
+      .filter(Boolean);
+    if (!bars.length) return;
     const count = state.selectedIds.size;
-    if (!count) {
-      bar.style.display = 'none';
-      return;
-    }
-    bar.style.display = 'flex';
-    document.getElementById('pv-bulk-count').textContent =
-      count === 1 ? '1 seleccionado' : `${count} seleccionados`;
-
-    const filteredBtn = document.getElementById('pv-bulk-select-filtered');
-    const filteredCnt = document.getElementById('pv-bulk-filtered-count');
-    if (filteredBtn && filteredCnt) {
-      // Offer "select all matching the filter" only when there are
-      // more results in the filter than are currently selected on
-      // this page.
-      const total = state.lastTotal || 0;
-      if (total > count) {
-        filteredBtn.style.display = 'inline-block';
-        filteredCnt.textContent = total;
-      } else {
-        filteredBtn.style.display = 'none';
+    const total = state.lastTotal || 0;
+    const showFiltered = count > 0 && total > count;
+    bars.forEach((bar, idx) => {
+      if (!count) { bar.style.display = 'none'; return; }
+      bar.style.display = 'flex';
+      const s = idx === 0 ? '' : '-top';
+      const countEl = document.getElementById('pv-bulk-count' + s);
+      if (countEl) countEl.textContent =
+        count === 1 ? '1 seleccionado' : `${count} seleccionados`;
+      const fBtn = document.getElementById('pv-bulk-select-filtered' + s);
+      const fCnt = document.getElementById('pv-bulk-filtered-count' + s);
+      if (fBtn && fCnt) {
+        if (showFiltered) {
+          fBtn.style.display = 'inline-block';
+          fCnt.textContent = total;
+        } else {
+          fBtn.style.display = 'none';
+        }
       }
-    }
+    });
   }
 
   async function fetchAllFilteredIds() {
@@ -957,10 +957,111 @@
     return r;
   }
 
+  // ── Bulk bar HTML — rendered into BOTH #pv-bulk-bar (sticky bottom)
+  // and #pv-bulk-bar-top (above the article list) so the actions are
+  // never out of sight on long pages. The `suffix` param keeps inner
+  // element ids unique across the two copies.
+  function bulkBarHtml(suffix) {
+    const s = suffix || '';
+    return `
+      <span id="pv-bulk-count${s}" style="font-weight:600;white-space:nowrap;">0 seleccionados</span>
+      <button id="pv-bulk-select-filtered${s}" type="button"
+              style="display:none;padding:4px 10px;border-radius:6px;
+                     background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);
+                     font-size:12px;cursor:pointer;white-space:nowrap;">
+        Seleccionar los <span id="pv-bulk-filtered-count${s}">—</span> que cumplen el filtro
+      </button>
+      <span style="flex:1;"></span>
+
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:11.5px;opacity:0.7;text-transform:uppercase;letter-spacing:0.05em;">Prioridad</span>
+        <div id="pv-bulk-priority${s}" style="display:flex;gap:3px;"></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:11.5px;opacity:0.7;text-transform:uppercase;letter-spacing:0.05em;">Color</span>
+        <div id="pv-bulk-color${s}" style="display:flex;gap:3px;align-items:center;"></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button id="pv-bulk-flag-on${s}"  type="button" title="Poner bandera"
+                style="padding:4px 8px;border-radius:6px;background:#e11d48;color:white;border:none;cursor:pointer;font-size:12px;">🚩 +</button>
+        <button id="pv-bulk-flag-off${s}" type="button" title="Quitar bandera"
+                style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;">🚩 −</button>
+        <button id="pv-bulk-star-on${s}"  type="button" title="Marcar como hito"
+                style="padding:4px 8px;border-radius:6px;background:#f59e0b;color:white;border:none;cursor:pointer;font-size:12px;">★ +</button>
+        <button id="pv-bulk-star-off${s}" type="button" title="Quitar hito"
+                style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;">★ −</button>
+        <button id="pv-bulk-fav-on${s}"   type="button" title="Añadir a mis favoritos"
+                style="padding:4px 8px;border-radius:6px;background:#e11d48;color:white;border:none;cursor:pointer;font-size:12px;">♥ +</button>
+        <button id="pv-bulk-fav-off${s}"  type="button" title="Quitar de mis favoritos"
+                style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;">♥ −</button>
+        <button id="pv-bulk-read-on${s}"  type="button" title="Marcar como leídos por mí"
+                style="padding:4px 8px;border-radius:6px;background:#15803d;color:white;border:none;cursor:pointer;font-size:12px;font-weight:700;">✓ +</button>
+        <button id="pv-bulk-read-off${s}" type="button" title="Marcar como no leídos"
+                style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;font-weight:700;">✓ −</button>
+      </div>
+
+      <button id="pv-bulk-tags${s}" type="button"
+              title="Añadir o quitar tags a los artículos seleccionados"
+              style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
+                     border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
+                     font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        <i class="fas fa-tags"></i> Tags
+      </button>
+
+      <button id="pv-bulk-summarize${s}" type="button"
+              title="Generar (o regenerar) resúmenes IA solo de los artículos seleccionados"
+              style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
+                     border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
+                     font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        <i class="fas fa-wand-magic-sparkles"></i> Resúmenes IA
+      </button>
+
+      <button id="pv-bulk-addpack${s}" type="button"
+              title="Añadir los artículos seleccionados a un PrionPack"
+              style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
+                     border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
+                     font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        <i class="fas fa-cubes-stacked"></i> A PrionPack
+      </button>
+
+      <button id="pv-bulk-addcollection${s}" type="button"
+              title="Añadir los artículos seleccionados a una colección"
+              style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
+                     border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
+                     font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        <i class="fas fa-folder-plus"></i> A colección
+      </button>
+
+      <button id="pv-bulk-delete${s}" type="button"
+              title="Eliminar los artículos seleccionados (y sus PDFs en Dropbox)"
+              style="padding:4px 10px;border-radius:6px;background:#b91c1c;color:white;
+                     border:1px solid #fecaca;cursor:pointer;font-size:12px;font-weight:600;
+                     display:inline-flex;align-items:center;gap:4px;">
+        <i class="fas fa-trash"></i> Eliminar
+      </button>
+
+      <button id="pv-bulk-clear${s}" type="button"
+              style="padding:4px 10px;border-radius:6px;background:transparent;color:white;
+                     border:1px solid rgba(255,255,255,0.4);cursor:pointer;font-size:12px;">
+        Limpiar
+      </button>`;
+  }
+
+  const _BULK_SUFFIXES = ['', '-top'];
+
   function wireBulkBar() {
     if (!IS_ADMIN) return;
+    // Inject the same markup into both bars so the actions are in reach
+    // from the top AND the bottom of long article lists.
+    const bottom = document.getElementById('pv-bulk-bar');
+    const top    = document.getElementById('pv-bulk-bar-top');
+    if (bottom) bottom.innerHTML = bulkBarHtml('');
+    if (top)    top.innerHTML    = bulkBarHtml('-top');
 
-    // Header select-all toggle
+    // Header select-all toggle (lives in the table thead, not the bar
+    // itself — wire only once.)
     const hdr = document.getElementById('pv-select-all');
     if (hdr) {
       hdr.addEventListener('change', () => {
@@ -975,8 +1076,16 @@
       });
     }
 
+    _BULK_SUFFIXES.forEach(wireOneBulkBar);
+  }
+
+  function wireOneBulkBar(suffix) {
+    const s = suffix || '';
+    const $id = id => document.getElementById(id + s);
+    if (!$id('pv-bulk-count')) return;
+
     // "Select all matching the filter" expansion
-    const filteredBtn = document.getElementById('pv-bulk-select-filtered');
+    const filteredBtn = $id('pv-bulk-select-filtered');
     if (filteredBtn) {
       filteredBtn.addEventListener('click', async () => {
         filteredBtn.disabled = true;
@@ -1000,7 +1109,7 @@
     }
 
     // Clear-selection button
-    const clearBtn = document.getElementById('pv-bulk-clear');
+    const clearBtn = $id('pv-bulk-clear');
     if (clearBtn) {
       clearBtn.addEventListener('click', () => {
         state.selectedIds.clear();
@@ -1011,7 +1120,7 @@
     }
 
     // Priority chips
-    const prioBox = document.getElementById('pv-bulk-priority');
+    const prioBox = $id('pv-bulk-priority');
     if (prioBox) {
       prioBox.innerHTML = [1, 2, 3, 4, 5].map(p => {
         const style = p >= 5 ? 'background:#fee2e2;color:#b91c1c;'
@@ -1030,7 +1139,7 @@
     }
 
     // Color dots
-    const colorBox = document.getElementById('pv-bulk-color');
+    const colorBox = $id('pv-bulk-color');
     if (colorBox) {
       const dots = COLOR_LABELS.map(c =>
         `<button type="button" class="pv-bulk-color" data-color="${c.value}"
@@ -1050,20 +1159,34 @@
         }));
     }
 
-    // Flag / milestone toggles
-    document.getElementById('pv-bulk-flag-on') ?.addEventListener('click',
+    // Flag / milestone toggles (article-level)
+    $id('pv-bulk-flag-on') ?.addEventListener('click',
       () => doBulk({is_flagged: true},   'bandera'));
-    document.getElementById('pv-bulk-flag-off')?.addEventListener('click',
+    $id('pv-bulk-flag-off')?.addEventListener('click',
       () => doBulk({is_flagged: false},  'sin bandera'));
-    document.getElementById('pv-bulk-star-on') ?.addEventListener('click',
+    $id('pv-bulk-star-on') ?.addEventListener('click',
       () => doBulk({is_milestone: true}, 'hito'));
-    document.getElementById('pv-bulk-star-off')?.addEventListener('click',
+    $id('pv-bulk-star-off')?.addEventListener('click',
       () => doBulk({is_milestone: false},'sin hito'));
+
+    // Favorite / read toggles (per-viewer state)
+    $id('pv-bulk-fav-on') ?.addEventListener('click',
+      () => doBulkUserState({is_favorite: true},  'favorito'));
+    $id('pv-bulk-fav-off')?.addEventListener('click',
+      () => doBulkUserState({is_favorite: false}, 'no favorito'));
+    $id('pv-bulk-read-on') ?.addEventListener('click',
+      () => doBulkUserState({is_read: true},      'leído'));
+    $id('pv-bulk-read-off')?.addEventListener('click',
+      () => doBulkUserState({is_read: false},     'no leído'));
+
+    // Tags picker
+    $id('pv-bulk-tags')?.addEventListener('click',
+      () => openBulkTagPicker(Array.from(state.selectedIds)));
 
     // Bulk AI summary on the current selection — opens the existing
     // modal in "selection" mode so the user picks a provider, then
     // Start sends the chosen ids to the backend.
-    document.getElementById('pv-bulk-summarize')?.addEventListener('click',
+    $id('pv-bulk-summarize')?.addEventListener('click',
       () => {
         const count = state.selectedIds.size;
         if (!count) return;
@@ -1075,15 +1198,15 @@
     // Bulk add to PrionPack — opens the same pack picker modal as the
     // single-article flow, but POSTs to /import-articles with the
     // whole selection.
-    document.getElementById('pv-bulk-addpack')?.addEventListener('click',
+    $id('pv-bulk-addpack')?.addEventListener('click',
       () => openBulkPackPicker(Array.from(state.selectedIds)));
 
     // Bulk add to a manual Collection.
-    document.getElementById('pv-bulk-addcollection')?.addEventListener('click',
+    $id('pv-bulk-addcollection')?.addEventListener('click',
       () => openAddToCollectionPicker(Array.from(state.selectedIds)));
 
     // Bulk DELETE — destructive, double-confirm.
-    document.getElementById('pv-bulk-delete')?.addEventListener('click',
+    $id('pv-bulk-delete')?.addEventListener('click',
       async () => {
         const count = state.selectedIds.size;
         if (!count) return;
@@ -1119,6 +1242,128 @@
           alert('Error en el borrado masivo: ' + e.message);
         }
       });
+  }
+
+  async function doBulkUserState(payload, descr) {
+    const ids = Array.from(state.selectedIds);
+    if (!ids.length) return;
+    if (ids.length > 5 && !confirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
+    try {
+      await api('/articles/bulk-user-state', {
+        method: 'POST',
+        body: JSON.stringify({ ids, ...payload }),
+      });
+      loadArticles();
+    } catch (e) {
+      alert('Error en la operación masiva: ' + e.message);
+    }
+  }
+
+  // ── Bulk tag picker ──────────────────────────────────────────────────
+  // Each tag is a tri-state chip: idle (no change), add (+), remove (−).
+  // On Apply we POST a single /articles/bulk-tags call with the chosen
+  // add / remove lists.
+  let _bulkTagState = new Map();   // tagId -> 'add' | 'remove' | undefined
+
+  async function openBulkTagPicker(ids) {
+    if (!ids || !ids.length) return;
+    const modal = document.getElementById('pv-bulk-tag-modal');
+    if (!modal) return;
+
+    _bulkTagState = new Map();
+    document.getElementById('pv-bulk-tag-summary').textContent =
+      `Selección: ${ids.length} artículo${ids.length === 1 ? '' : 's'}.`;
+    document.getElementById('pv-bulk-tag-error').style.display = 'none';
+
+    const list = document.getElementById('pv-bulk-tag-list');
+    list.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Cargando…</span>';
+
+    let tags = [];
+    try { tags = await api('/tags'); }
+    catch (e) {
+      list.innerHTML = `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
+      modal.style.display = 'flex';
+      return;
+    }
+    if (!tags.length) {
+      list.innerHTML = '<span style="color:#9ca3af;font-style:italic;">No hay tags creados. Crea uno desde el menú lateral.</span>';
+      modal.style.display = 'flex';
+      return;
+    }
+
+    function renderChips() {
+      list.innerHTML = tags.map(t => {
+        const st = _bulkTagState.get(t.id);
+        const baseColor = t.color || '#6b7280';
+        const bg     = st === 'add'    ? '#16a34a' : st === 'remove' ? '#dc2626' : 'white';
+        const fg     = st ? 'white' : esc(baseColor);
+        const border = st === 'add'    ? '#16a34a' : st === 'remove' ? '#dc2626' : esc(baseColor);
+        const prefix = st === 'add' ? '+ ' : st === 'remove' ? '− ' : '';
+        return `
+          <button type="button" class="pv-bulk-tag-chip" data-tag-id="${t.id}"
+                  title="Clic para alternar: añadir → quitar → sin cambios"
+                  style="padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;
+                         cursor:pointer;border:1.5px solid ${border};
+                         background:${bg};color:${fg};
+                         display:inline-flex;align-items:center;gap:5px;">
+            ${prefix}${esc(t.name)}
+          </button>`;
+      }).join('');
+      list.querySelectorAll('.pv-bulk-tag-chip').forEach(b =>
+        b.addEventListener('click', () => {
+          const tid = parseInt(b.dataset.tagId, 10);
+          const cur = _bulkTagState.get(tid);
+          if      (cur === undefined) _bulkTagState.set(tid, 'add');
+          else if (cur === 'add')     _bulkTagState.set(tid, 'remove');
+          else                        _bulkTagState.delete(tid);
+          renderChips();
+        }));
+    }
+    renderChips();
+
+    document.getElementById('pv-bulk-tag-apply').onclick = async () => {
+      const add_tag_ids    = Array.from(_bulkTagState.entries())
+        .filter(([, v]) => v === 'add').map(([k]) => k);
+      const remove_tag_ids = Array.from(_bulkTagState.entries())
+        .filter(([, v]) => v === 'remove').map(([k]) => k);
+      const err = document.getElementById('pv-bulk-tag-error');
+      err.style.display = 'none';
+      if (!add_tag_ids.length && !remove_tag_ids.length) {
+        err.textContent = 'No has marcado ningún tag.';
+        err.style.display = 'block';
+        return;
+      }
+      const apply = document.getElementById('pv-bulk-tag-apply');
+      apply.disabled = true;
+      const original = apply.textContent;
+      apply.textContent = 'Aplicando…';
+      try {
+        await api('/articles/bulk-tags', {
+          method: 'POST',
+          body: JSON.stringify({ ids, add_tag_ids, remove_tag_ids }),
+        });
+        modal.style.display = 'none';
+        loadArticles();
+        refreshTags();
+      } catch (e) {
+        err.textContent = 'Error: ' + e.message;
+        err.style.display = 'block';
+        apply.disabled = false;
+        apply.textContent = original;
+      }
+    };
+
+    modal.style.display = 'flex';
+  }
+
+  function wireBulkTagModal() {
+    const modal = document.getElementById('pv-bulk-tag-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+    const close = () => { modal.style.display = 'none'; };
+    document.getElementById('pv-bulk-tag-close')?.addEventListener('click', close);
+    document.getElementById('pv-bulk-tag-cancel')?.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
   }
 
   async function doBulk(updates, descr) {
@@ -3577,6 +3822,7 @@
       wireBatchSearchable();
       wireBulkBar();
       wireBulkLookup();
+      wireBulkTagModal();
     }
 
     refreshStats();

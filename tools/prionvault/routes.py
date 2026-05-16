@@ -1355,6 +1355,166 @@ def api_articles_bulk_update():
         s.close()
 
 
+@prionvault_bp.route("/api/articles/bulk-user-state", methods=["POST"])
+@login_required
+def api_articles_bulk_user_state():
+    """Set is_favorite and/or read_at for the viewer across many articles.
+
+    Body:
+      {
+        "ids":         ["<uuid>", ...],
+        "is_favorite": true | false,    // optional
+        "is_read":     true | false,    // optional
+      }
+    At least one of is_favorite / is_read must be provided.
+    """
+    user_id = _viewer_id()
+    if not user_id:
+        return jsonify({"error": "not authenticated"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids",
+                        "detail": "Pasa una lista de UUIDs en `ids`."}), 400
+    if len(ids) > _BULK_MAX_IDS:
+        return jsonify({"error": "too_many",
+                        "detail": f"Máximo {_BULK_MAX_IDS} ids por llamada."}), 400
+    ids = [str(x) for x in ids if x]
+
+    set_fav  = "is_favorite" in data
+    set_read = "is_read" in data
+    if not (set_fav or set_read):
+        return jsonify({"error": "no_fields",
+                        "detail": "Indica is_favorite y/o is_read."}), 400
+
+    fav  = bool(data.get("is_favorite")) if set_fav  else None
+    read = bool(data.get("is_read"))     if set_read else None
+
+    # Build the UPSERT — only the columns actually requested move.
+    set_parts = []
+    params = {"uid": str(user_id), "ids": ids, "now": datetime.utcnow()}
+    if set_fav:
+        set_parts.append("is_favorite = :fav")
+        params["fav"] = fav
+    if set_read:
+        # read_at is the source of truth; is_read is derived (`read_at IS NOT NULL`).
+        if read:
+            set_parts.append("read_at = COALESCE(prionvault_user_state.read_at, :now)")
+        else:
+            set_parts.append("read_at = NULL")
+
+    insert_cols = ["user_id", "article_id", "created_at", "updated_at"]
+    insert_vals = [":uid", "x.article_id", ":now", ":now"]
+    if set_fav:
+        insert_cols.append("is_favorite")
+        insert_vals.append(":fav")
+    if set_read:
+        insert_cols.append("read_at")
+        insert_vals.append(":now" if read else "NULL")
+
+    set_parts.append("updated_at = :now")
+
+    s = _session()
+    try:
+        sql = sql_text(f"""
+            INSERT INTO prionvault_user_state ({", ".join(insert_cols)})
+            SELECT {", ".join(insert_vals)}
+              FROM unnest(CAST(:ids AS uuid[])) AS x(article_id)
+              JOIN articles a ON a.id = x.article_id
+            ON CONFLICT (user_id, article_id) DO UPDATE
+              SET {", ".join(set_parts)}
+        """)
+        res = s.execute(sql, params)
+        s.commit()
+        updated_fields = []
+        if set_fav:  updated_fields.append("is_favorite")
+        if set_read: updated_fields.append("is_read")
+        return jsonify({"ok": True, "updated": res.rowcount or 0,
+                        "fields": updated_fields})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("bulk user-state failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/bulk-tags", methods=["POST"])
+@admin_required
+def api_articles_bulk_tags():
+    """Attach or detach tags from many articles in one call.
+
+    Body:
+      {
+        "ids":            ["<uuid>", ...],
+        "add_tag_ids":    [1, 2, ...],   // optional
+        "remove_tag_ids": [3, ...],      // optional
+      }
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids"}), 400
+    if len(ids) > _BULK_MAX_IDS:
+        return jsonify({"error": "too_many",
+                        "detail": f"Máximo {_BULK_MAX_IDS} ids por llamada."}), 400
+    ids = [str(x) for x in ids if x]
+
+    def _clean_int_list(value):
+        out = []
+        for v in (value or []):
+            try:
+                out.append(int(v))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    add_tags    = _clean_int_list(data.get("add_tag_ids"))
+    remove_tags = _clean_int_list(data.get("remove_tag_ids"))
+    if not add_tags and not remove_tags:
+        return jsonify({"error": "no_tags"}), 400
+
+    s = _session()
+    try:
+        added = 0
+        if add_tags:
+            res = s.execute(sql_text(
+                """
+                INSERT INTO article_tag_link (article_id, tag_id, added_by)
+                SELECT a.article_id, t.tag_id, :uid
+                  FROM unnest(CAST(:ids  AS uuid[])) AS a(article_id)
+                 CROSS JOIN unnest(CAST(:tags AS int[]))  AS t(tag_id)
+                  JOIN articles    ar ON ar.id = a.article_id
+                  JOIN article_tag tg ON tg.id = t.tag_id
+                ON CONFLICT (article_id, tag_id) DO NOTHING
+                """
+            ), {"ids": ids, "tags": add_tags, "uid": _viewer_id()})
+            added = res.rowcount or 0
+
+        removed = 0
+        if remove_tags:
+            res = s.execute(sql_text(
+                """
+                DELETE FROM article_tag_link
+                 WHERE article_id = ANY(CAST(:ids  AS uuid[]))
+                   AND tag_id     = ANY(CAST(:tags AS int[]))
+                """
+            ), {"ids": ids, "tags": remove_tags})
+            removed = res.rowcount or 0
+
+        s.commit()
+        return jsonify({"ok": True, "added": added, "removed": removed})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("bulk tags failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 _LOOKUP_BULK_MAX = 500
 
 
