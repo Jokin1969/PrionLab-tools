@@ -218,6 +218,26 @@
     }
   }
 
+  // ── Collapse state for the collection sidebar (groups + subgroups) ───
+  const _COLL_GROUPS_KEY    = 'pv-coll-collapsed-groups';
+  const _COLL_SUBGROUPS_KEY = 'pv-coll-collapsed-subgroups';
+
+  function _loadCollapsedSet(key) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(key) || '[]');
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch { return new Set(); }
+  }
+  function _saveCollapsedSet(key, set) {
+    try { localStorage.setItem(key, JSON.stringify(Array.from(set))); }
+    catch { /* localStorage full or disabled — silently drop */ }
+  }
+  function _toggleCollapsed(key, value) {
+    const set = _loadCollapsedSet(key);
+    if (set.has(value)) set.delete(value); else set.add(value);
+    _saveCollapsedSet(key, set);
+  }
+
   async function refreshCollections() {
     const container = document.getElementById('collection-list');
     if (!container) return;
@@ -250,6 +270,8 @@
     });
 
     container.innerHTML = '';
+    const collapsedG  = _loadCollapsedSet(_COLL_GROUPS_KEY);
+    const collapsedSG = _loadCollapsedSet(_COLL_SUBGROUPS_KEY);
 
     // Render groups in alphabetical order, then "no group" last
     // ("Sin grupo" sentinel = empty key).
@@ -260,14 +282,20 @@
 
     groupKeys.forEach(g => {
       const subBranch = tree[g];
-      if (g) container.appendChild(buildGroupHeader(g, subBranch));
+      const groupCollapsed = !!g && collapsedG.has(g);
+      if (g) container.appendChild(buildGroupHeader(g, subBranch, groupCollapsed));
+      if (groupCollapsed) return;   // skip subgroups + rows under collapsed group
+
       const subKeys = Object.keys(subBranch)
         .filter(k => k !== '')
         .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
       if ('' in subBranch) subKeys.push('');
       subKeys.forEach(sg => {
         const colls = subBranch[sg];
-        if (sg) container.appendChild(buildSubgroupHeader(g, sg, colls));
+        const sgKey = `${g}::${sg}`;
+        const sgCollapsed = !!sg && collapsedSG.has(sgKey);
+        if (sg) container.appendChild(buildSubgroupHeader(g, sg, colls, sgCollapsed));
+        if (sgCollapsed) return;
         colls
           .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
           .forEach(c => container.appendChild(buildCollectionRow(c, !!g)));
@@ -283,15 +311,25 @@
       ? `(${_allCollections.length})` : '';
   }
 
-  function buildGroupHeader(group, subBranch) {
+  function buildGroupHeader(group, subBranch, collapsed) {
     const collCount = Object.values(subBranch)
       .reduce((acc, list) => acc + list.length, 0);
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup = group;
-    btn.title = `Filtrar por grupo "${group}" (${collCount} colección${collCount === 1 ? '' : 'es'})`;
+    btn.title = `Filtrar por grupo "${group}" (${collCount} colección${collCount === 1 ? '' : 'es'}).\n` +
+                `Pulsa la flecha de la izquierda para plegar / desplegar.`;
     btn.style.padding = '5px 10px';
+    const chev = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
     btn.innerHTML = `
+      <span class="pv-coll-chevron"
+            title="${collapsed ? 'Desplegar' : 'Plegar'}"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   width:18px;height:18px;border-radius:4px;flex-shrink:0;
+                   color:rgba(255,255,255,0.6);cursor:pointer;"
+            onmouseover="this.style.background='rgba(255,255,255,0.14)';this.style.color='white';"
+            onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.6)';"
+      ><i class="fas ${chev}" style="font-size:9px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder-open" style="font-size:11px;opacity:0.7;"></i>
         <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:11px;
@@ -299,7 +337,14 @@
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${collCount}</span>
     `;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (ev) => {
+      // Chevron toggles collapse state without changing the filter.
+      if (ev.target.closest('.pv-coll-chevron')) {
+        ev.preventDefault();
+        _toggleCollapsed(_COLL_GROUPS_KEY, group);
+        refreshCollections();
+        return;
+      }
       const sameGroup = state.collectionGroup === group && !state.collectionSubgroup;
       state.collectionGroup    = sameGroup ? null : group;
       state.collectionSubgroup = null;
@@ -312,21 +357,37 @@
     return btn;
   }
 
-  function buildSubgroupHeader(group, subgroup, colls) {
+  function buildSubgroupHeader(group, subgroup, colls, collapsed) {
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup    = group;
     btn.dataset.collectionSubgroup = subgroup;
-    btn.title = `Filtrar por "${group} · ${subgroup}"`;
+    btn.title = `Filtrar por "${group} · ${subgroup}".\n` +
+                `Pulsa la flecha de la izquierda para plegar / desplegar.`;
     btn.style.padding = '4px 10px 4px 22px';
+    const chev = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
     btn.innerHTML = `
+      <span class="pv-coll-chevron"
+            title="${collapsed ? 'Desplegar' : 'Plegar'}"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   width:16px;height:16px;border-radius:4px;flex-shrink:0;
+                   color:rgba(255,255,255,0.55);cursor:pointer;"
+            onmouseover="this.style.background='rgba(255,255,255,0.14)';this.style.color='white';"
+            onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.55)';"
+      ><i class="fas ${chev}" style="font-size:8.5px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
         <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${colls.length}</span>
     `;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (ev) => {
+      if (ev.target.closest('.pv-coll-chevron')) {
+        ev.preventDefault();
+        _toggleCollapsed(_COLL_SUBGROUPS_KEY, `${group}::${subgroup}`);
+        refreshCollections();
+        return;
+      }
       const same = state.collectionGroup === group
                 && state.collectionSubgroup === subgroup;
       state.collectionGroup    = same ? null : group;
@@ -351,20 +412,25 @@
     btn.title = (c.description ? c.description + '\n\n' : '') +
                 (IS_ADMIN
                   ? '• Click: filtrar la lista\n' +
-                    '• Shift+click: editar\n' +
-                    '• Click derecho: eliminar\n' +
-                    '• Botón 📦 a la derecha: mandar a un PrionPack'
+                    '• Botón ✏ a la derecha: editar\n' +
+                    '• Botón 📦 a la derecha: mandar a un PrionPack\n' +
+                    '• Click derecho: eliminar'
                   : 'Click para filtrar la lista');
-    const packBtn = IS_ADMIN
-      ? `<span class="pv-coll-send-pack" data-collection-id="${esc(c.id)}"
-               title="Enviar todos los artículos de esta colección a un PrionPack"
-               style="display:inline-flex;align-items:center;justify-content:center;
-                      padding:2px 5px;border-radius:5px;cursor:pointer;
-                      background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
-                      margin-left:6px;flex-shrink:0;line-height:1;"
-               onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
-               onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
-          ><i class="fas fa-cubes-stacked" style="font-size:10px;"></i></span>`
+    const miniBtn = (cls, icon, title) => `
+      <span class="${cls}" data-collection-id="${esc(c.id)}"
+            title="${title}"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   padding:2px 5px;border-radius:5px;cursor:pointer;
+                   background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
+                   margin-left:4px;flex-shrink:0;line-height:1;"
+            onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
+            onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
+      ><i class="fas ${icon}" style="font-size:10px;"></i></span>`;
+    const adminBtns = IS_ADMIN
+      ? miniBtn('pv-coll-edit',      'fa-pen',
+                'Editar esta colección') +
+        miniBtn('pv-coll-send-pack', 'fa-cubes-stacked',
+                'Enviar todos los artículos de esta colección a un PrionPack')
       : '';
     btn.innerHTML = `
       <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;flex:1;">
@@ -374,7 +440,7 @@
       </span>
       <span style="display:inline-flex;align-items:center;flex-shrink:0;">
         <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;">${c.article_count}</span>
-        ${packBtn}
+        ${adminBtns}
       </span>
     `;
     btn.addEventListener('click', (ev) => {
@@ -401,11 +467,19 @@
                       refreshCollections(); loadArticles(); })
         .catch(e => alert('Error: ' + e.message));
     });
-    // "Send to pack" badge.
+    // Wire the inline admin badges (✏ edit, 📦 send-to-pack). They live
+    // inside the row button so we must stopPropagation to keep the
+    // row-level filter click from also firing.
     setTimeout(() => {
-      const badge = btn.querySelector('.pv-coll-send-pack');
-      if (!badge) return;
-      badge.addEventListener('click', async (ev) => {
+      const editBadge = btn.querySelector('.pv-coll-edit');
+      if (editBadge) editBadge.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        openCollectionEditor(c);
+      });
+
+      const packBadge = btn.querySelector('.pv-coll-send-pack');
+      if (packBadge) packBadge.addEventListener('click', async (ev) => {
         ev.stopPropagation();
         try {
           const r = await api(`/collections/${c.id}/article-ids`);
