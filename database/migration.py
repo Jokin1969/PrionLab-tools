@@ -231,6 +231,7 @@ def _migrate_publications(session, username_to_id: dict) -> int:
 def run_migration() -> dict:
     """Run full CSV → PostgreSQL migration.  Returns {'success': bool, ...}."""
     from database.config import db
+    from sqlalchemy import text as _text
 
     if not db.is_configured():
         return {"success": False, "error": "DATABASE_URL not set"}
@@ -240,6 +241,30 @@ def run_migration() -> dict:
         logger.info("Schema created / verified")
     except Exception as e:
         return {"success": False, "error": f"Schema creation failed: {e}"}
+
+    # Skip the CSV import when the live `users` table already follows the
+    # PrionRead / Sequelize schema (columns: name, password, email, role
+    # ENUM). The ORM-style queries in _migrate_users would otherwise hit
+    # `column users.username does not exist` and crash the startup. This
+    # is the case on the deployed instance, where Postgres has always
+    # been the source of truth and CSVs were never loaded.
+    try:
+        with db.engine.connect() as conn:
+            cols = {r[0] for r in conn.execute(_text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'users'"
+            )).all()}
+        if cols and "username" not in cols and "name" in cols:
+            logger.info(
+                "Skipping legacy CSV→Postgres migration: live users table "
+                "uses the PrionRead schema (columns=%s).",
+                sorted(cols)[:8] + (["…"] if len(cols) > 8 else []),
+            )
+            return {"success": True, "skipped": "prionread_schema"}
+    except Exception as exc:
+        # Introspection failure is non-fatal — just fall through to the
+        # legacy path so the original behaviour is preserved.
+        logger.warning("users schema probe failed: %s", exc)
 
     try:
         with db.get_session() as session:
