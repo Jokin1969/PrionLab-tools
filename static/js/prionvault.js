@@ -4381,12 +4381,24 @@
   function renderJobRow(j) {
     const tr = document.createElement('tr');
     const showRetry = (j.status === 'failed' || j.status === 'duplicate');
+    const stepFull  = j.step || '';
+    // The step string is `done | doi=… | /path/to.pdf` — long, with
+    // no spaces inside the URL-ish tokens, so word-break:break-word
+    // ended up wrapping one character per line. Truncate to a single
+    // line and keep the full value in `title` for hover inspection.
+    const stepShort = stepFull.length > 70 ? stepFull.slice(0, 70) + '…' : stepFull;
     tr.innerHTML = `
       <td style="color:#9ca3af;">${j.id}</td>
       <td title="${escapeHtml(j.pdf_filename || '')}">${escapeHtml((j.pdf_filename || '').slice(0, 60))}</td>
       <td><span style="font-size:11px;font-weight:600;color:${statusColor(j.status)};">${escapeHtml(j.status)}</span></td>
-      <td style="color:#6b7280;max-width:180px;word-break:break-word;">${escapeHtml(j.step || '')}</td>
-      <td style="color:#b91c1c;">${escapeHtml(j.error || '')}</td>
+      <td title="${escapeHtml(stepFull)}"
+          style="color:#6b7280;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,monospace;font-size:11.5px;">
+        ${escapeHtml(stepShort)}
+      </td>
+      <td title="${escapeHtml(j.error || '')}"
+          style="color:#b91c1c;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        ${escapeHtml((j.error || '').slice(0, 80))}
+      </td>
       <td style="color:#9ca3af;white-space:nowrap;">${j.created_at ? j.created_at.slice(0, 16).replace('T', ' ') : ''}</td>
       <td>${showRetry ? `<button class="pv-btn-retry" data-job="${j.id}">Retry</button>` : ''}</td>
     `;
