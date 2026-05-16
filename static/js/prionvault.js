@@ -5857,8 +5857,22 @@
       }
 
       if (s.last_error) {
+        // Real error (download / pdfplumber crash / DB write fail).
         errorEl.style.display = 'block';
+        errorEl.style.background = '#fef2f2';
+        errorEl.style.borderColor = '#fecaca';
+        errorEl.style.color = '#b91c1c';
         errorEl.textContent = 'Último error: ' + s.last_error;
+      } else if (s.last_skipped) {
+        // Not an error — this PDF is a scan and will be picked up by
+        // the OCR batch. Show it as info so the user can stop reading
+        // it as a failure.
+        errorEl.style.display = 'block';
+        errorEl.style.background = '#fef3c7';
+        errorEl.style.borderColor = '#fde68a';
+        errorEl.style.color = '#92400e';
+        errorEl.textContent =
+          'Sin capa de texto (lo recogerá el OCR): ' + s.last_skipped;
       } else {
         errorEl.style.display = 'none';
       }

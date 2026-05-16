@@ -53,6 +53,7 @@ _state = {
     "skipped":           0,
     "current_article":   None,
     "last_error":        None,
+    "last_skipped":      None,   # most recent scan-detected paper
     "total_chars":       0,
     "total_pages":       0,
 }
@@ -115,6 +116,7 @@ def start_batch(*, viewer_user_id=None,
             "skipped":         0,
             "current_article": None,
             "last_error":      None,
+            "last_skipped":    None,
             "total_chars":     0,
             "total_pages":     0,
         })
@@ -243,10 +245,13 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
         if not result.text or len(result.text) < _MIN_USEFUL_CHARS:
             # No text layer (pure scan, encrypted, image-only). Leave
             # extracted_text alone so batch_ocr can pick this up later.
+            # This is an EXPECTED branch, not an error — keep last_error
+            # untouched so a real failure remains visible, and record
+            # the most recent scan-detected paper separately so the UI
+            # can display it as informational, not red.
             with _lock:
                 _state["skipped"] += 1
-                detail = result.error or "no text layer (probably scanned)"
-                _state["last_error"] = f"{title[:80]} — {detail[:160]}"
+                _state["last_skipped"] = f"{title[:160]}"
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
 
