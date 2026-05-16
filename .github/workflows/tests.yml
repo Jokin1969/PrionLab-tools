@@ -1,0 +1,49 @@
+# Lints the Python test suite on every push / PR. Add this workflow to
+# the required status checks in the repo's branch-protection rules so a
+# failing run blocks merges to main:
+#   Settings → Branches → Add rule → main → Require status checks → "tests".
+name: tests
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install runtime + dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # WeasyPrint pulls in heavy system fonts/cairo bindings that
+          # the unit suite never exercises. The deploy env on Railway
+          # installs everything; here we lean on apt for the C deps
+          # that pdfplumber / lxml / psycopg2-binary need pre-built.
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+              libxml2-dev libxslt1-dev libffi-dev \
+              libpango-1.0-0 libpangoft2-1.0-0
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        run: pytest -q tests/
