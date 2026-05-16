@@ -3172,14 +3172,25 @@ def api_migrations_force_rerun():
     Use this when a migration was recorded as applied but some statements
     actually failed (e.g. CREATE EXTENSION needs superuser). All statements
     use IF NOT EXISTS guards so re-running is safe.
+
+    By default it clears only the two early migrations whose statements
+    historically need root privileges (CREATE EXTENSION). Pass a JSON body
+    `{"names": ["015_collection_hierarchy.sql", ...]}` to clear additional
+    migrations whose recorded apply was incomplete.
     """
     from .migrate import run_pending_migrations
     from sqlalchemy import text as _text
+    default_names = ["001_prionvault_tables.sql", "003_fix_step_column.sql"]
+    body = request.get_json(silent=True) or {}
+    extra = body.get("names") or []
+    if not isinstance(extra, list) or not all(isinstance(n, str) for n in extra):
+        return jsonify({"error": "names must be a list of strings"}), 400
+    names = list({*default_names, *extra})
     try:
         with db.engine.begin() as conn:
             conn.execute(_text(
                 "DELETE FROM applied_migrations WHERE name = ANY(:names)"
-            ), {"names": ["001_prionvault_tables.sql", "003_fix_step_column.sql"]})
+            ), {"names": names})
     except Exception as exc:
         return jsonify({"error": f"could not clear migration log: {exc}"}), 500
     summary = run_pending_migrations()
