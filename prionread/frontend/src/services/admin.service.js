@@ -61,7 +61,6 @@ export const adminService = {
   // PDF health
   verifyPdfs: async () => (await api.post('/admin/articles/verify-pdfs')).data,
   clearPdfLink: async (articleId) => (await api.delete(`/articles/${articleId}/pdf-link`)).data,
-  syncDropboxPdfs: async () => (await api.post('/admin/articles/sync-dropbox')).data,
 
   // Duplicate detection
   findDuplicates: async () => (await api.get('/admin/articles/find-duplicates')).data,
@@ -73,11 +72,10 @@ export const adminService = {
     return (await api.post('/articles/analyze-pdf', fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
   },
 
-  // PrionVault <-> PrionRead sync
-  getSyncStatus: async () => (await api.get('/admin/sync/status')).data,
-  runPrionVaultMigration: async () => (await api.post('/admin/sync/run-migration')).data,
-  markPendingForPrionVault: async () => (await api.post('/admin/sync/mark-pending')).data,
-  backfillPdfPages: async (limit = 50) => (await api.post('/admin/sync/backfill-pdf-pages', { limit })).data,
+  // Maintenance utility — keeps user_articles.status in sync with the
+  // existence of summaries / evaluations. The Sincronización page that
+  // exposed this is gone; the only caller now is the small button in
+  // the admin Dashboard footer.
   backfillStatus: async () => (await api.post('/admin/sync/backfill-status')).data,
 
   // Notification rules

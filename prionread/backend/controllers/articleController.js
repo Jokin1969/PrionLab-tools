@@ -539,38 +539,6 @@ async function clearPdfLink(req, res) {
   }
 }
 
-async function syncDropboxPDFs(req, res) {
-  const ROOT_FOLDER = '/PrionLab tools/PrionVault';
-  try {
-    let files;
-    try { files = await listFiles(); }
-    catch (err) { return serviceError(res, err); }
-    const results = { matched: 0, updated: 0, stale_migrated: 0, already_ok: 0, unmatched: [] };
-    for (const file of files) {
-      if (!file.name.toLowerCase().endsWith('.pdf')) continue;
-      if (!file.path_lower.includes(ROOT_FOLDER.toLowerCase())) continue; // skip files outside PrionVault
-      const baseName = file.name.replace(/\.pdf$/i, '');
-      let article = null;
-      if (baseName.startsWith('PMID_')) {
-        article = await Article.findOne({ where: { pubmed_id: baseName.slice(5) } });
-      } else {
-        article = await Article.findOne({ where: { doi: baseName.replace(/_/g, '/').toLowerCase() } });
-      }
-      if (!article) { results.unmatched.push(file.name); continue; }
-      if (article.dropbox_path === file.path) { results.already_ok++; continue; }
-      const wasStale = article.dropbox_path && !article.dropbox_path.startsWith(ROOT_FOLDER);
-      await article.update({ dropbox_path: file.path, dropbox_link: null });
-      if (wasStale) results.stale_migrated++;
-      else if (article.dropbox_path) results.updated++;
-      else results.matched++;
-    }
-    return res.json(results);
-  } catch (err) {
-    console.error('[syncDropboxPDFs]', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-}
-
 // ─── POST /api/articles/analyze-pdf ──────────────────────────────────────────
 // Extracts DOI from uploaded PDF, fetches metadata, returns preview + Dropbox filename.
 
@@ -616,7 +584,7 @@ async function analyzePdf(req, res) {
 module.exports = {
   createArticle, getArticles, getArticleById, updateArticle, deleteArticle,
   generateDownloadLinkHandler, fetchMetadata, uploadArticlePDF, getDownloadLink,
-  deleteArticlePDF, listDropboxFiles, verifyArticlePDFs, clearPdfLink, syncDropboxPDFs,
+  deleteArticlePDF, listDropboxFiles, verifyArticlePDFs, clearPdfLink,
   analyzePdf, viewPdf,
   sendToProtonVault, _prionvaultMap,
 };

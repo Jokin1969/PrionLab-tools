@@ -4,8 +4,8 @@ const crypto = require('crypto');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getGlobalDashboard } = require('../controllers/adminDashboardController');
 const { getUserDetailedStats, exportUsersCSV, resetUserPassword, sendReminderToUser } = require('../controllers/adminUserController');
-const { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll, findDuplicateArticles, getSyncStatus } = require('../controllers/adminArticleController');
-const { verifyArticlePDFs, syncDropboxPDFs } = require('../controllers/articleController');
+const { getArticlesAnalytics, getAssignmentsMatrix, getArticleEngagement, assignArticleToAll, findDuplicateArticles } = require('../controllers/adminArticleController');
+const { verifyArticlePDFs } = require('../controllers/articleController');
 const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
 const { User, NotificationRule, NotificationLog } = require('../models');
@@ -133,175 +133,16 @@ router.get('/articles/assignments-matrix',  getAssignmentsMatrix);
 
 // PDF health check
 router.post('/articles/verify-pdfs',  verifyArticlePDFs);
-router.post('/articles/sync-dropbox', syncDropboxPDFs);
 
 // Duplicate detection
 router.get('/articles/find-duplicates', findDuplicateArticles);
 
-// PrionVault ↔ PrionRead sync status
-router.get('/sync/status', getSyncStatus);
-
-// Mark "only in PrionRead" articles as pending in PrionVault pipeline,
-// auto-linking Dropbox PDFs that already exist at the expected path.
-router.post('/sync/mark-pending', async (_req, res) => {
-  const { sequelize: sq } = require('../models');
-  const { dropboxPath, listFiles } = require('../services/dropbox');
-
-  // Verify PrionVault columns exist
-  try {
-    await sq.query("SELECT extraction_status, source FROM articles LIMIT 0");
-  } catch {
-    return res.status(409).json({ error: 'PrionVault columns not yet migrated. Run the migration first.' });
-  }
-
-  try {
-    // Single transaction: locks the candidate rows so a second admin
-    // request running this sync at the same time doesn't double-set
-    // the same row (the old loop did SELECT then N×UPDATE without any
-    // isolation, so two concurrent admins could both mark + auto-link
-    // the same article).
-    const result = await sq.transaction(async (t) => {
-      // FOR UPDATE OF articles: lock the rows we're about to mutate
-      // for the duration of the transaction. user_articles is the
-      // sub-query and stays unlocked.
-      const rows = await sq.query(
-        `SELECT id, doi, pubmed_id, dropbox_path, source FROM articles
-         WHERE id IN (SELECT DISTINCT article_id FROM user_articles)
-           AND (pdf_md5 IS NULL)
-           AND (extraction_status IS NULL OR extraction_status = 'pending')
-         FOR UPDATE OF articles`,
-        { type: sq.QueryTypes.SELECT, transaction: t }
-      );
-
-      if (!rows.length) {
-        return { updated: 0, pdfs_linked: 0, needs_pdf: 0 };
-      }
-
-      // Scan Dropbox once — build a lowercase-path → real-path map.
-      let fileMap = new Map();
-      try {
-        const files = await listFiles();
-        for (const f of files) fileMap.set(f.path.toLowerCase(), f.path);
-      } catch {
-        // Dropbox unavailable — continue without PDF auto-linking.
-      }
-
-      let pdfsLinked = 0;
-      let needsPdf = 0;
-
-      for (const row of rows) {
-        let newDropboxPath = null;
-        if (!row.dropbox_path) {
-          const expected = dropboxPath(row);
-          if (fileMap.has(expected.toLowerCase())) {
-            newDropboxPath = expected;
-            pdfsLinked++;
-          } else {
-            needsPdf++;
-          }
-        }
-        await sq.query(
-          `UPDATE articles
-           SET extraction_status = 'pending',
-               source = COALESCE(NULLIF(source, ''), 'prionread')
-               ${newDropboxPath ? ", dropbox_path = :dp, dropbox_link = NULL" : ""}
-           WHERE id = :id`,
-          {
-            replacements: { id: row.id,
-                            ...(newDropboxPath ? { dp: newDropboxPath } : {}) },
-            type: sq.QueryTypes.UPDATE,
-            transaction: t,
-          }
-        );
-      }
-
-      return { updated: rows.length,
-               pdfs_linked: pdfsLinked,
-               needs_pdf:   needsPdf };
-    });
-
-    res.json({ ok: true, ...result });
-  } catch (err) {
-    console.error('[POST /admin/sync/mark-pending]', err);
-    res.status(500).json({ error: 'Error marking articles as pending' });
-  }
-});
-
-// Apply PrionVault columns to the shared articles table (idempotent)
-router.post('/sync/run-migration', async (_req, res) => {
-  const { sequelize: sq } = require('../models');
-  const statements = [
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_md5           CHAR(32)",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_size_bytes    BIGINT",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS pdf_pages         INTEGER",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_status VARCHAR(20) DEFAULT 'pending'",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS extraction_error  TEXT",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_ai        TEXT",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_human     TEXT",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS indexed_at        TIMESTAMPTZ",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS source            VARCHAR(40) DEFAULT 'manual'",
-  ];
-  const results = { ok: [], failed: [] };
-  for (const stmt of statements) {
-    try {
-      await sq.query(stmt);
-      results.ok.push(stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0]);
-    } catch (err) {
-      results.failed.push({ column: stmt.split('ADD COLUMN IF NOT EXISTS')[1]?.trim().split(' ')[0], error: err.message });
-    }
-  }
-  res.json({ applied: results.ok.length, errors: results.failed.length, results });
-});
-
 router.get('/articles/:articleId/engagement',       getArticleEngagement);
 router.post('/articles/:articleId/assign-to-all',   assignArticleToAll);
 
-// ─── PDF page backfill ────────────────────────────────────────────────────────
-// Downloads each PDF from Dropbox and counts pages via pdf-parse.
-// Processes articles that have dropbox_path but no pdf_pages yet.
-router.post('/sync/backfill-pdf-pages', async (req, res) => {
-  const { sequelize: sq } = require('../models');
-  const dbx = require('../config/dropbox');
-  const pdfParse = require('pdf-parse');
-
-  const limit = Math.min(500, Math.max(1, parseInt(req.body?.limit ?? 50, 10) || 50));
-
-  try {
-    const rows = await sq.query(
-      `SELECT id::text, dropbox_path FROM articles
-       WHERE dropbox_path IS NOT NULL AND pdf_pages IS NULL
-       ORDER BY created_at DESC LIMIT :limit`,
-      { replacements: { limit }, type: sq.QueryTypes.SELECT }
-    );
-
-    if (!rows.length) return res.json({ processed: 0, updated: 0, failed: 0, errors: [] });
-
-    let updated = 0;
-    const errors = [];
-
-    for (const { id, dropbox_path } of rows) {
-      try {
-        const dl = await dbx.filesDownload({ path: dropbox_path });
-        const buf = Buffer.from(dl.result.fileBinary);
-        const { numpages } = await pdfParse(buf, { max: 0 });
-        await sq.query(
-          'UPDATE articles SET pdf_pages = :p WHERE id = :id',
-          { replacements: { p: numpages, id }, type: sq.QueryTypes.UPDATE }
-        );
-        updated++;
-      } catch (err) {
-        errors.push({ id, error: err.message?.slice(0, 200) ?? 'unknown' });
-      }
-    }
-
-    res.json({ processed: rows.length, updated, failed: errors.length, errors: errors.slice(0, 20) });
-  } catch (err) {
-    console.error('[POST /admin/sync/backfill-pdf-pages]', err);
-    res.status(500).json({ error: 'Error during PDF page backfill' });
-  }
-});
-
 // ─── Status backfill: fix articles stuck at 'read' that are actually summarized/evaluated ───
+// Surviving piece of the deleted Sincronización page — exposed via the small
+// "Reparar estados" button on the admin Dashboard.
 router.post('/sync/backfill-status', async (req, res) => {
   try {
     const { sequelize: sq, UserArticle, ArticleRating } = require('../models');

@@ -7,6 +7,8 @@ import { ProgressChart } from '../../components/charts/ProgressChart';
 const AdminDashboard = () => {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [repairing, setRepairing] = useState(false);
+  const [repairFlash, setRepairFlash] = useState('');
 
   useEffect(() => {
     loadDashboard();
@@ -20,6 +22,25 @@ const AdminDashboard = () => {
       console.error('Error loading dashboard:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRepairStatuses = async () => {
+    setRepairing(true);
+    setRepairFlash('');
+    try {
+      const r = await adminService.backfillStatus();
+      const parts = [`${r.fixed} de ${r.checked} estados corregidos`];
+      if (r.bonus_awarded > 0) {
+        parts.push(`⚡ ${r.bonus_awarded} bonus PrionBonus acreditados retroactivamente`);
+      }
+      setRepairFlash('✅ ' + parts.join(' · '));
+      setTimeout(() => setRepairFlash(''), 6000);
+    } catch (err) {
+      setRepairFlash('❌ ' + (err?.response?.data?.error || 'Error reparando estados'));
+      setTimeout(() => setRepairFlash(''), 6000);
+    } finally {
+      setRepairing(false);
     }
   };
 
@@ -224,6 +245,28 @@ const AdminDashboard = () => {
           </div>
         </Card>
       )}
+
+      {/* Maintenance utilities — small admin footer with the only
+          piece worth keeping from the deleted Sincronización page. */}
+      <Card title="🔧 Mantenimiento">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleRepairStatuses}
+            disabled={repairing}
+            title="Recalcula user_articles.status cuando hay incoherencia (paper con resumen / evaluación pero status='read')."
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+          >
+            {repairing ? '⏳ Reparando…' : '🔧 Reparar estados de lectura'}
+          </button>
+          {repairFlash && (
+            <span className={`text-xs ${
+              repairFlash.startsWith('❌') ? 'text-red-700' : 'text-green-700'
+            }`}>
+              {repairFlash}
+            </span>
+          )}
+        </div>
+      </Card>
     </div>
   );
 };
