@@ -2556,6 +2556,120 @@ def api_count_pdf_pages(aid):
         db.Session.remove()
 
 
+@prionvault_bp.route("/api/admin/retry-abstracts", methods=["POST"])
+@admin_required
+def api_admin_retry_abstracts():
+    """Re-attempt the abstract lookup for articles that still don't
+    have one but carry a DOI or PMID. Includes the rows we previously
+    marked as 'abstract_unavailable', so a parser improvement (e.g.
+    pubmed_efetch_abstract) can rescue them.
+
+    Body (optional): {"limit": 50}. Default 50, capped at 200.
+    """
+    from .ingestion.metadata_resolver import (
+        resolve_metadata, pubmed_by_doi, pubmed_efetch_abstract,
+    )
+
+    data  = request.get_json(silent=True) or {}
+    try:
+        limit = int(data.get("limit", 50))
+    except (TypeError, ValueError):
+        limit = 50
+    limit = max(1, min(200, limit))
+
+    s = _session()
+    try:
+        rows = s.execute(sql_text(
+            """SELECT id, doi, pubmed_id FROM articles
+               WHERE coalesce(abstract, '') = ''
+                 AND (doi IS NOT NULL OR pubmed_id IS NOT NULL)
+               ORDER BY abstract_unavailable DESC, updated_at ASC
+               LIMIT :limit"""
+        ), {"limit": limit}).mappings().all()
+
+        recovered    = 0
+        still_missing = 0
+        learned_pmids = 0
+        for r in rows:
+            aid  = str(r["id"])
+            doi  = (r["doi"] or "").strip() or None
+            pmid = (r["pubmed_id"] or "").strip() if r["pubmed_id"] else None
+
+            new_pmid_for_save = None
+            if doi and not pmid:
+                try:
+                    m = pubmed_by_doi(doi)
+                    if m and m.pubmed_id:
+                        pmid = m.pubmed_id
+                        new_pmid_for_save = pmid
+                except Exception:
+                    pass
+
+            abstract = None
+            try:
+                meta = resolve_metadata(doi=doi, pmid_hint=pmid)
+                if meta and meta.abstract:
+                    abstract = meta.abstract.strip()
+            except Exception:
+                pass
+            if not abstract and pmid:
+                try:
+                    abstract = pubmed_efetch_abstract(pmid)
+                except Exception:
+                    abstract = None
+
+            if abstract:
+                params = {"abs": abstract, "id": aid}
+                set_parts = ["abstract = :abs", "abstract_unavailable = FALSE"]
+                if new_pmid_for_save:
+                    set_parts.append("pubmed_id = :pmid")
+                    params["pmid"] = new_pmid_for_save
+                s.execute(sql_text(
+                    f"UPDATE articles SET {', '.join(set_parts)}, "
+                    "updated_at = NOW() WHERE id = :id"
+                ), params)
+                recovered += 1
+                if new_pmid_for_save:
+                    learned_pmids += 1
+            else:
+                params = {"id": aid}
+                set_parts = ["abstract_unavailable = TRUE"]
+                if new_pmid_for_save:
+                    set_parts.append("pubmed_id = :pmid")
+                    params["pmid"] = new_pmid_for_save
+                s.execute(sql_text(
+                    f"UPDATE articles SET {', '.join(set_parts)}, "
+                    "updated_at = NOW() WHERE id = :id"
+                ), params)
+                still_missing += 1
+                if new_pmid_for_save:
+                    learned_pmids += 1
+
+        # Quick "how much is left?" count so the UI can suggest
+        # another run when the batch is full.
+        remaining = s.execute(sql_text(
+            """SELECT COUNT(*) FROM articles
+               WHERE coalesce(abstract, '') = ''
+                 AND (doi IS NOT NULL OR pubmed_id IS NOT NULL)"""
+        )).scalar() or 0
+
+        s.commit()
+        return jsonify({
+            "ok":              True,
+            "processed":       len(rows),
+            "recovered":       recovered,
+            "still_missing":   still_missing,
+            "learned_pmids":   learned_pmids,
+            "remaining":       int(remaining),
+        })
+    except Exception as exc:
+        s.rollback()
+        logger.exception("retry-abstracts failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/admin/clean-metadata", methods=["POST"])
 @admin_required
 def api_admin_clean_metadata():

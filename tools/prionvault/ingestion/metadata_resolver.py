@@ -32,8 +32,9 @@ _USER_AGENT = (
 
 _CROSSREF_WORKS = "https://api.crossref.org/works/"
 _CROSSREF_QUERY = "https://api.crossref.org/works"
-_PUBMED_ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+_PUBMED_ESEARCH  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 _PUBMED_ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+_PUBMED_EFETCH   = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
 _TIMEOUT = 8.0  # seconds — CrossRef occasionally takes 5-6 s
 _HDRS = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
@@ -192,6 +193,66 @@ def crossref_by_title(title_hint: str, year_hint: Optional[int] = None,
 
 
 # ── PubMed E-utilities ──────────────────────────────────────────────────────
+def pubmed_efetch_abstract(pmid: str) -> Optional[str]:
+    """Pull just the abstract text for a PMID via efetch.
+
+    esummary (used by the two pubmed_by_* helpers below for cheap
+    metadata) DOES NOT include the abstract — that lives only in the
+    XML returned by efetch with rettype=abstract. Handles both:
+
+      <Abstract>
+        <AbstractText>plain single paragraph</AbstractText>
+      </Abstract>
+
+    and the structured form many journals (PLoS, BMC, …) use:
+
+      <Abstract>
+        <AbstractText Label="BACKGROUND">…</AbstractText>
+        <AbstractText Label="METHODS">…</AbstractText>
+        <AbstractText Label="RESULTS">…</AbstractText>
+        <AbstractText Label="CONCLUSION">…</AbstractText>
+      </Abstract>
+
+    Structured sections are joined back together with their labels so
+    the result reads naturally.
+    """
+    if not pmid:
+        return None
+    try:
+        r = requests.get(_PUBMED_EFETCH, params={
+            "db":      "pubmed",
+            "id":      pmid,
+            "rettype": "abstract",
+            "retmode": "xml",
+        }, headers={"User-Agent": _USER_AGENT, "Accept": "application/xml"},
+           timeout=_TIMEOUT)
+        r.raise_for_status()
+    except Exception as exc:
+        logger.debug("PubMed efetch abstract for %s failed: %s", pmid, exc)
+        return None
+
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(r.content)
+    except ET.ParseError as exc:
+        logger.debug("PubMed efetch returned invalid XML for %s: %s", pmid, exc)
+        return None
+
+    parts = []
+    for at in root.iter("AbstractText"):
+        # itertext() concatenates text across nested inline tags
+        # (<i>, <sup>, …) which the JATS-ish abstract often uses.
+        text = "".join(at.itertext()).strip()
+        if not text:
+            continue
+        label = (at.get("Label") or "").strip()
+        parts.append(f"{label}: {text}" if label else text)
+    if not parts:
+        return None
+    return "\n\n".join(parts)
+
+
+
 def pubmed_by_doi(doi: str) -> Optional[Metadata]:
     if not doi:
         return None
@@ -245,6 +306,7 @@ def pubmed_by_doi(doi: str) -> Optional[Metadata]:
         volume=summary.get("volume"),
         issue=summary.get("issue"),
         pages=summary.get("pages"),
+        abstract=pubmed_efetch_abstract(pmid),
         source="pubmed",
         raw=summary,
     )
@@ -303,6 +365,7 @@ def pubmed_by_pmid(pmid: str) -> Optional[Metadata]:
         volume=summary.get("volume"),
         issue=summary.get("issue"),
         pages=summary.get("pages"),
+        abstract=pubmed_efetch_abstract(pmid),
         source="pubmed_pmid",
         raw=summary,
     )

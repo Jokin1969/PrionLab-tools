@@ -1526,6 +1526,13 @@
       a.indexed_at
         ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
         : '',
+      a.pubmed_id
+        ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pubmed_id)}/"
+              target="_blank" rel="noopener"
+              onclick="event.stopPropagation();"
+              title="Abrir en PubMed (PMID ${esc(a.pubmed_id)})"
+              style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;text-decoration:none;">PMID ↗</a>`
+        : '',
       a.pdf_is_scan
         ? '<span title="El PDF era una imagen escaneada; el texto se ha recuperado con OCR." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">📸 OCR</span>'
         : '',
@@ -2043,8 +2050,15 @@
           ${a.journal ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${esc(a.journal)}` : ''}
           ${a.year    ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${a.year}` : ''}
           ${a.doi     ? `<span style="margin:0 4px;color:#d1d5db;">·</span>
-                         <a href="https://doi.org/${esc(a.doi)}" target="_blank"
+                         <a href="https://doi.org/${esc(a.doi)}" target="_blank" rel="noopener"
                             style="color:#0F3460;text-decoration:none;">${esc(a.doi)}</a>` : ''}
+          ${a.pubmed_id ? `<span style="margin:0 4px;color:#d1d5db;">·</span>
+                           <a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pubmed_id)}/"
+                              target="_blank" rel="noopener"
+                              title="Abrir en PubMed (útil para copiar el abstract a mano si la descarga falla)"
+                              style="color:#0F3460;text-decoration:none;font-weight:600;">
+                              PMID ${esc(a.pubmed_id)} ↗
+                           </a>` : ''}
         </div>
         ${a.abstract ? `
           <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Abstract</h3>
@@ -4082,6 +4096,7 @@
       wireBatchImport();
       wireScanFolder();
       wireCleanMetadata();
+      wireRetryAbstracts();
       wireDuplicates();
       wireBatchSummary();
       wireBatchIndex();
@@ -4642,6 +4657,45 @@
           `  · authors:  ${pf.authors  ?? 0}\n` +
           `  · journal:  ${pf.journal  ?? 0}\n` +
           `  · abstract: ${pf.abstract ?? 0}`
+        );
+        loadArticles();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    });
+  }
+
+  // ── Retry-abstracts backfill ─────────────────────────────────────────
+  // Drives /api/admin/retry-abstracts in 50-article chunks so the user
+  // can rescue PLoS/BMC-style papers that the old esummary-only parser
+  // couldn't fetch the abstract for. Each click reports recovered /
+  // still missing / remaining so it's obvious whether another round
+  // is worth it.
+  function wireRetryAbstracts() {
+    const btn = document.getElementById('btn-retry-abstracts');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<span><i class="fas fa-spinner fa-spin" style="width:13px;margin-right:6px;opacity:0.7;"></i>Reintentando…</span>';
+      try {
+        const r = await api('/admin/retry-abstracts', {
+          method: 'POST',
+          body: JSON.stringify({ limit: 50 }),
+        });
+        const more = r.remaining > 0
+          ? `\n\nQuedan ${r.remaining} sin abstract. Vuelve a pulsar para procesar otros 50.`
+          : '\n\n✓ Sin artículos pendientes.';
+        alert(
+          `Reintento completado.\n\n` +
+          `Procesados: ${r.processed}\n` +
+          `Abstract recuperado: ${r.recovered}\n` +
+          `Aún sin abstract (marcados como confirmados): ${r.still_missing}\n` +
+          `PMIDs descubiertos por el camino: ${r.learned_pmids}` +
+          more
         );
         loadArticles();
       } catch (e) {
