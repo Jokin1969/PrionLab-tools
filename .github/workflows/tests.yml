@@ -1,7 +1,8 @@
-# Lints the Python test suite on every push / PR. Add this workflow to
-# the required status checks in the repo's branch-protection rules so a
-# failing run blocks merges to main:
-#   Settings → Branches → Add rule → main → Require status checks → "tests".
+# Lints the Python test suite and the PrionRead Node/Vite build on every
+# push / PR. Add these jobs to the required status checks in the repo's
+# branch-protection rules so a failing run blocks merges to main:
+#   Settings → Branches → Add rule → main → Require status checks →
+#   tick "pytest", "backend-syntax", "frontend-build".
 name: tests
 
 on:
@@ -47,3 +48,59 @@ jobs:
 
       - name: Run pytest
         run: pytest -q tests/
+
+  backend-syntax:
+    name: backend-syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: prionread/backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: prionread/backend
+
+      - name: Syntax-check every backend .js file
+        # `node --check` parses each file standalone (no execution / no
+        # side effects). xargs runs them in parallel; -P auto-saturates
+        # the runner's CPUs. The PWD walk excludes node_modules.
+        run: |
+          find . -name node_modules -prune -o -name '*.js' -type f -print \
+            | xargs -P 0 -I {} node --check "{}"
+        working-directory: prionread/backend
+
+  frontend-build:
+    name: frontend-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: prionread/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: prionread/frontend
+
+      - name: Build (vite)
+        # `npm run build` is `vite build` — catches JSX/TS parse errors,
+        # missing imports and unresolved CSS that a plain `node --check`
+        # would not see. Same command Railway runs in nixpacks build.
+        run: npm run build
+        working-directory: prionread/frontend
