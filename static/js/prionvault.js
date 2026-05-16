@@ -2102,6 +2102,14 @@
             <span>Añadir a PrionPack</span>
           </button>
           ${IS_ADMIN ? `
+            <button id="pv-edit-article-btn" type="button"
+                    title="Editar campos del artículo (incluye reintento de CrossRef/PubMed con DOI o PMID corregidos)"
+                    style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;
+                           font-size:13px;font-weight:600;color:#0F3460;cursor:pointer;
+                           display:inline-flex;align-items:center;gap:6px;">
+              <i class="fas fa-pen-to-square"></i>
+              <span>Editar</span>
+            </button>
             <button id="pv-delete-article-btn" type="button"
                     title="Eliminar este artículo y su PDF de Dropbox"
                     style="padding:7px 14px;border-radius:8px;border:1px solid #fecaca;background:white;
@@ -2124,6 +2132,7 @@
       renderAiSummary(a);
       wireUnpaywallButton(a);
       wireAddToPackButton(a);
+      wireEditArticleButton(a);
       wireDeleteArticleButton(a);
       renderTagPickerSection(a);
       renderSimilarSection(a);
@@ -3129,6 +3138,131 @@
     `;
   }
 
+  // ── Edit article modal ─────────────────────────────────────────────
+  // Opened from the detail modal's "✏ Editar" button. The point of
+  // the modal is to recover from a wrong DOI / PMID: the user
+  // corrects the identifier, re-runs the lookup, sees the fields
+  // refill with the (hopefully correct) metadata, and saves.
+  function wireEditArticleButton(a) {
+    const btn = document.getElementById('pv-edit-article-btn');
+    if (btn) btn.addEventListener('click', () => openEditModal(a));
+  }
+
+  let _editTarget = null;
+
+  function openEditModal(a) {
+    const modal = document.getElementById('pv-edit-modal');
+    if (!modal) return;
+    _editTarget = a;
+    document.getElementById('pv-edit-title').value    = a.title    || '';
+    document.getElementById('pv-edit-authors').value  = a.authors  || '';
+    document.getElementById('pv-edit-year').value     = a.year     || '';
+    document.getElementById('pv-edit-journal').value  = a.journal  || '';
+    document.getElementById('pv-edit-doi').value      = a.doi      || '';
+    document.getElementById('pv-edit-pmid').value     = a.pubmed_id || '';
+    document.getElementById('pv-edit-abstract').value = a.abstract || '';
+    const status = document.getElementById('pv-edit-status');
+    status.textContent = '';
+    status.style.color = '#6b7280';
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('pv-edit-doi').focus(), 50);
+  }
+
+  function _editStatus(msg, color) {
+    const el = document.getElementById('pv-edit-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = color || '#6b7280';
+  }
+
+  async function _editRefetch(by) {
+    const status = document.getElementById('pv-edit-status');
+    const doiEl  = document.getElementById('pv-edit-doi');
+    const pmidEl = document.getElementById('pv-edit-pmid');
+    const payload = { doi: '', pubmed_id: '' };
+    if (by === 'doi')  payload.doi       = doiEl.value.trim();
+    if (by === 'pmid') payload.pubmed_id = pmidEl.value.trim();
+    if (!payload.doi && !payload.pubmed_id) {
+      _editStatus('Rellena un DOI o un PMID antes de buscar.', '#b91c1c');
+      return;
+    }
+    _editStatus(`Consultando ${by === 'doi' ? 'CrossRef / PubMed por DOI' : 'PubMed por PMID'}…`);
+    try {
+      const r = await api('/articles/lookup', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (!r.found) {
+        _editStatus(`No se encontraron metadatos con ese ${by.toUpperCase()}.`, '#b45309');
+        return;
+      }
+      const m = r.metadata || {};
+      // Overwrite every field the lookup returned. The user can
+      // still hand-edit before saving — we don't second-guess them.
+      if (m.title)    document.getElementById('pv-edit-title').value    = m.title;
+      if (m.authors)  document.getElementById('pv-edit-authors').value  = m.authors;
+      if (m.year)     document.getElementById('pv-edit-year').value     = m.year;
+      if (m.journal)  document.getElementById('pv-edit-journal').value  = m.journal;
+      if (m.doi)      doiEl.value  = m.doi;
+      if (m.pubmed_id) pmidEl.value = m.pubmed_id;
+      if (m.abstract) document.getElementById('pv-edit-abstract').value = m.abstract;
+      const dupNote = r.duplicate_of && r.duplicate_of !== _editTarget?.id
+        ? '  ⚠️ Ya existe otro artículo con ese DOI/PMID — revisa antes de guardar.'
+        : '';
+      _editStatus(`✓ Metadatos cargados desde ${m.source || 'el resolver'}. Edita si hace falta y guarda.${dupNote}`,
+                  dupNote ? '#b45309' : '#15803d');
+    } catch (e) {
+      _editStatus('Error de lookup: ' + e.message, '#b91c1c');
+    }
+  }
+
+  function wireEditModal() {
+    const modal = document.getElementById('pv-edit-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+    const close = () => { modal.style.display = 'none'; _editTarget = null; };
+    document.getElementById('pv-edit-close') ?.addEventListener('click', close);
+    document.getElementById('pv-edit-cancel')?.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+    document.getElementById('pv-edit-refetch-doi') ?.addEventListener('click', () => _editRefetch('doi'));
+    document.getElementById('pv-edit-refetch-pmid')?.addEventListener('click', () => _editRefetch('pmid'));
+    document.getElementById('pv-edit-save')?.addEventListener('click', async () => {
+      if (!_editTarget) return;
+      const updates = {
+        title:     document.getElementById('pv-edit-title').value.trim(),
+        authors:   document.getElementById('pv-edit-authors').value.trim() || null,
+        year:      parseInt(document.getElementById('pv-edit-year').value, 10) || null,
+        journal:   document.getElementById('pv-edit-journal').value.trim() || null,
+        doi:       document.getElementById('pv-edit-doi').value.trim()  || null,
+        pubmed_id: document.getElementById('pv-edit-pmid').value.trim() || null,
+        abstract:  document.getElementById('pv-edit-abstract').value.trim() || null,
+      };
+      if (!updates.title) {
+        _editStatus('El título no puede estar vacío.', '#b91c1c');
+        return;
+      }
+      const saveBtn = document.getElementById('pv-edit-save');
+      saveBtn.disabled = true;
+      const original = saveBtn.textContent;
+      saveBtn.textContent = 'Guardando…';
+      try {
+        await api(`/articles/${_editTarget.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(updates),
+        });
+        const aid = _editTarget.id;
+        close();
+        loadArticles();
+        // Reopen the detail modal so the user sees the new values.
+        openDetail(aid);
+      } catch (e) {
+        _editStatus('Error al guardar: ' + e.message, '#b91c1c');
+        saveBtn.disabled = false;
+        saveBtn.textContent = original;
+      }
+    });
+  }
+
   // ── Add to PrionPack (per-article) ───────────────────────────────────
   function wireDeleteArticleButton(a) {
     const btn = document.getElementById('pv-delete-article-btn');
@@ -3935,6 +4069,7 @@
       wireImport();
       wireQueue();
       wireAddByDoi();
+      wireEditModal();
       wireBatchImport();
       wireScanFolder();
       wireDuplicates();

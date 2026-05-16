@@ -684,6 +684,86 @@
 </div>
 
 <!-- ── Sync status modal ─────────────────────────────────────────────── -->
+
+<!-- ── Edit article modal (admin) ─────────────────────────────────── -->
+<div id="pv-edit-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:640px;">
+    <button class="pv-modal-close" id="pv-edit-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-pen-to-square" style="color:#0F3460;margin-right:8px;"></i>Editar artículo
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin-bottom:14px;">
+      Cambia el DOI o el PMID si estaban mal y pulsa <strong>Buscar de nuevo</strong>
+      para reintentar CrossRef / PubMed con los nuevos identificadores.
+      Los campos que devuelva sobrescriben el formulario; tú decides qué guardar.
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <label style="grid-column:1/-1;font-size:11.5px;color:#6b7280;font-weight:600;">
+        Title
+        <input type="text" id="pv-edit-title"
+               style="margin-top:3px;width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+      </label>
+      <label style="grid-column:1/-1;font-size:11.5px;color:#6b7280;font-weight:600;">
+        Authors
+        <input type="text" id="pv-edit-authors"
+               style="margin-top:3px;width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+      </label>
+      <label style="font-size:11.5px;color:#6b7280;font-weight:600;">
+        Year
+        <input type="number" id="pv-edit-year" min="1900" max="2100"
+               style="margin-top:3px;width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+      </label>
+      <label style="font-size:11.5px;color:#6b7280;font-weight:600;">
+        Journal
+        <input type="text" id="pv-edit-journal"
+               style="margin-top:3px;width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+      </label>
+
+      <label style="font-size:11.5px;color:#6b7280;font-weight:600;">
+        DOI
+        <div style="display:flex;gap:5px;margin-top:3px;">
+          <input type="text" id="pv-edit-doi"
+                 style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;">
+          <button type="button" id="pv-edit-refetch-doi"
+                  title="Buscar metadatos con el DOI actual del campo (CrossRef → PubMed)"
+                  style="padding:6px 10px;border-radius:6px;background:#0F3460;color:white;border:none;font-size:12px;cursor:pointer;flex-shrink:0;">🔍 Buscar</button>
+        </div>
+      </label>
+      <label style="font-size:11.5px;color:#6b7280;font-weight:600;">
+        PMID
+        <div style="display:flex;gap:5px;margin-top:3px;">
+          <input type="text" id="pv-edit-pmid"
+                 style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;">
+          <button type="button" id="pv-edit-refetch-pmid"
+                  title="Buscar metadatos con el PMID actual del campo (PubMed)"
+                  style="padding:6px 10px;border-radius:6px;background:#0F3460;color:white;border:none;font-size:12px;cursor:pointer;flex-shrink:0;">🔍 Buscar</button>
+        </div>
+      </label>
+
+      <label style="grid-column:1/-1;font-size:11.5px;color:#6b7280;font-weight:600;">
+        Abstract
+        <textarea id="pv-edit-abstract" rows="5"
+                  style="margin-top:3px;width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;"></textarea>
+      </label>
+    </div>
+
+    <div id="pv-edit-status" style="font-size:12.5px;color:#6b7280;margin-bottom:10px;min-height:18px;"></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button id="pv-edit-cancel"
+              style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;font-size:13px;cursor:pointer;">
+        Cancelar
+      </button>
+      <button id="pv-edit-save"
+              style="padding:8px 16px;border-radius:8px;border:none;background:#0F3460;color:white;font-size:13px;font-weight:600;cursor:pointer;">
+        Guardar cambios
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Add by DOI / PMID modal ─────────────────────────────────────── -->
 <div id="pv-add-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
