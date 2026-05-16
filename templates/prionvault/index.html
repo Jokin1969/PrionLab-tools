@@ -258,6 +258,7 @@
         <input type="text" id="pv-search-input"
                style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#111827;min-width:0;"
                placeholder="Search title, abstract, authors, journal…"
+               title='Busca en title, abstract, authors, journal.&#10;&#10;Operadores:&#10;  prion AND BSE&#10;  Castilla OR Soto&#10;  BSE -review&#10;  "prion protein"&#10;&#10;Para autor exacto usa el filtro Autores.'
                autocomplete="off" />
         <button id="btn-search-mode"
                 data-mode="text"
@@ -305,15 +306,6 @@
           </button>
         </div>
       </div>
-      <div style="font-size:11px;color:#9ca3af;margin-bottom:8px;padding-left:4px;">
-        Operadores:
-        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">prion AND BSE</code>
-        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">Castilla OR Soto</code>
-        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">BSE -review</code>
-        <code style="background:#f3f4f6;padding:0 4px;border-radius:3px;">"prion protein"</code>
-        · Para autor exacto usa el filtro <strong>Autores</strong>.
-      </div>
-
       <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Year
@@ -435,6 +427,23 @@
           JC año
           <input type="number" id="filter-jc-year" class="pv-filter-input"
                  placeholder="2024" min="1980" max="2100" style="width:80px;">
+        </label>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
+               title="Pertenencia a un PrionPack: el match se hace por DOI contra las references/introReferences del pack.">
+          PrionPacks
+          <select id="filter-has-pp" class="pv-filter-input">
+            <option value="">cualquiera</option>
+            <option value="1">sí — en algún pack</option>
+            <option value="0">no — sin pack</option>
+          </select>
+        </label>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+          Pack
+          <select id="filter-pp-id" class="pv-filter-input" style="min-width:150px;max-width:240px;">
+            <option value="">todos</option>
+          </select>
         </label>
 
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">

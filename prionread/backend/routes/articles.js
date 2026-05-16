@@ -81,7 +81,7 @@ router.get('/:id/pdf/link', authenticate, getDownloadLink);
 router.get('/:id/pdf/view', authenticate, viewPdf);
 router.delete('/:id/pdf', authenticate, requireAdmin, deleteArticlePDF);
 router.delete('/:id/pdf-link', authenticate, requireAdmin, clearPdfLink);
-router.post('/:id/send-to-prionvault', authenticate, sendToProtonVault);
+router.post('/:id/send-to-prionvault', authenticate, requireAdmin, sendToProtonVault);
 
 // ── Journal Club (read-only from PrionRead) ──────────────────────────────────
 // Mounts GET /api/articles/:articleId/jc — file-URL route lives at

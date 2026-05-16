@@ -80,6 +80,9 @@ def api_list_articles():
     has_jc           = True if has_jc_raw == "1" else (False if has_jc_raw == "0" else None)
     jc_presenter     = (request.args.get("jc_presenter") or "").strip() or None
     jc_year          = request.args.get("jc_year", type=int)
+    has_pp_raw       = request.args.get("has_pp")
+    has_pp           = True if has_pp_raw == "1" else (False if has_pp_raw == "0" else None)
+    pp_id            = (request.args.get("pp_id") or "").strip() or None
     color_label = (request.args.get("color_label") or "").strip().lower() or None
     priority_eq = request.args.get("priority_eq", type=int)
     extraction = (request.args.get("extraction_status") or "").strip().lower() or None
@@ -144,7 +147,9 @@ def api_list_articles():
                                    collection_subgroup=collection_subgroup,
                                    has_jc=has_jc,
                                    jc_presenter=jc_presenter,
-                                   jc_year=jc_year)
+                                   jc_year=jc_year,
+                                   has_pp=has_pp,
+                                   pp_id=pp_id)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -156,6 +161,55 @@ def api_list_articles():
 _VALID_COLOR_LABELS = {"red", "orange", "yellow", "green", "blue", "purple"}
 
 
+# ── PrionPacks DOI index ────────────────────────────────────────────────────
+# Articles are linked to packs implicitly: a pack's `references` /
+# `introReferences` are free-text strings that contain a DOI. We extract
+# the DOIs once per request and build a two-way map for filtering and for
+# per-article badges in the listing.
+
+_DOI_RE = re.compile(r"10\.\d{4,}/[^\s'\";,)>\]]+", re.IGNORECASE)
+
+
+def _extract_dois(ref: str) -> list[str]:
+    if not isinstance(ref, str):
+        return []
+    return [m.group(0).rstrip(".,;").lower() for m in _DOI_RE.finditer(ref)]
+
+
+def _prionpacks_doi_index() -> tuple[dict, dict]:
+    """Returns ({pack_id: pack_title}, {doi_lower: [pack_id, ...]}).
+    Empty maps if the prionpacks module fails to load (best effort)."""
+    titles: dict[str, str] = {}
+    doi_to_packs: dict[str, list[str]] = {}
+    try:
+        from tools.prionpacks import models as pp_models
+        for pkg in pp_models.list_packages():
+            if not pkg.get("active", True):
+                continue
+            pid = pkg.get("id")
+            if not pid:
+                continue
+            titles[pid] = pkg.get("title") or pid
+            for ref in (pkg.get("references") or []) + (pkg.get("introReferences") or []):
+                for doi in _extract_dois(ref):
+                    bucket = doi_to_packs.setdefault(doi, [])
+                    if pid not in bucket:
+                        bucket.append(pid)
+    except Exception as exc:
+        logger.warning("prionpacks DOI index failed: %s", exc)
+    return titles, doi_to_packs
+
+
+@prionvault_bp.route("/api/prionpacks", methods=["GET"])
+@login_required
+def api_prionpacks_list():
+    """Minimal pack list used by the article-listing filter dropdown."""
+    titles, _ = _prionpacks_doi_index()
+    items = [{"id": pid, "title": t} for pid, t in titles.items()]
+    items.sort(key=lambda x: x["id"])
+    return jsonify({"items": items})
+
+
 def _list_articles_impl(s, q, year_min, year_max, journal,
                         authors_q,
                         tag_id, has_summary, in_prionread,
@@ -165,7 +219,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         sort, page, page_size,
                         *, collection_id=None,
                         collection_group=None, collection_subgroup=None,
-                        has_jc=None, jc_presenter=None, jc_year=None):
+                        has_jc=None, jc_presenter=None, jc_year=None,
+                        has_pp=None, pp_id=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -261,6 +316,25 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "AND EXTRACT(YEAR FROM jp.presented_at) = :jc_year)"
         )
         params["jc_year"] = jc_year
+
+    # ── PrionPacks: filter and attach per-article. The DOI index is built
+    # once per request so we can also decorate every returned row with the
+    # list of packs it belongs to (used by the listing badges).
+    pp_titles, pp_doi_to_packs = _prionpacks_doi_index()
+    if pp_id:
+        scoped_dois = [d for d, packs in pp_doi_to_packs.items() if pp_id in packs]
+        conditions.append("lower(doi) = ANY(:pp_scoped_dois)")
+        params["pp_scoped_dois"] = scoped_dois or [""]   # empty list breaks ANY
+    elif has_pp is True:
+        all_pp_dois = list(pp_doi_to_packs.keys())
+        conditions.append("lower(doi) = ANY(:pp_all_dois)")
+        params["pp_all_dois"] = all_pp_dois or [""]
+    elif has_pp is False:
+        all_pp_dois = list(pp_doi_to_packs.keys())
+        if all_pp_dois:
+            conditions.append("(doi IS NULL OR lower(doi) <> ALL(:pp_all_dois))")
+            params["pp_all_dois"] = all_pp_dois
+        # If there are no PrionPacks at all, "sin PrionPack" matches everything → no filter.
 
     if color_label in _VALID_COLOR_LABELS:
         conditions.append("color_label = :color_label")
@@ -453,6 +527,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         d = dict(zip(col_names, r))
         aid = _uuid.UUID(str(d["id"]))
         in_pr = aid in prionread_counts
+        adoi = (d.get("doi") or "").strip().lower()
+        pp_ids = pp_doi_to_packs.get(adoi, []) if adoi else []
         out = {
             "id":            str(d["id"]),
             "title":         d.get("title") or "",
@@ -484,6 +560,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "is_favorite":    (user_states.get(aid) or {}).get("is_favorite", False),
             "is_read":        (user_states.get(aid) or {}).get("is_read", False),
             "read_at":        (user_states.get(aid) or {}).get("read_at"),
+            "prionpacks":     [{"id": p, "title": pp_titles.get(p, p)} for p in pp_ids],
         }
         if is_admin:
             out["pdf_md5"]          = d.get("pdf_md5")

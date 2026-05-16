@@ -47,6 +47,8 @@
     hasJc: null,         // null = all, true = JC sí, false = sin JC
     jcPresenter: '',     // substring filter on JC presenter name
     jcYear: null,        // year of JC presentation
+    hasPp: null,         // null = all, true = en algún PrionPack, false = sin pack
+    ppId: '',            // specific PrionPack id (e.g. "PRP-001") or ''
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
     selectedIds: new Set(),  // UUIDs selected for bulk operations
@@ -197,6 +199,24 @@
   // Cache the full set of collections so the editor's "group"/"subgroup"
   // datalists can suggest existing labels without a second fetch.
   let _allCollections = [];
+
+  async function refreshPrionPacksDropdown() {
+    const sel = document.getElementById('filter-pp-id');
+    if (!sel) return;
+    try {
+      const r = await api('/prionpacks');
+      const items = r.items || [];
+      const current = sel.value;
+      sel.innerHTML = '<option value="">todos</option>' +
+        items.map(p =>
+          `<option value="${esc(p.id)}">${esc(p.id)} — ${esc((p.title || '').slice(0, 60))}</option>`
+        ).join('');
+      if (current) sel.value = current;
+    } catch (e) {
+      // Non-fatal — the dropdown stays with just "todos".
+      console.warn('refreshPrionPacksDropdown:', e.message);
+    }
+  }
 
   async function refreshCollections() {
     const container = document.getElementById('collection-list');
@@ -1092,6 +1112,8 @@
     if (state.hasJc !== null)      params.set('has_jc', state.hasJc ? '1' : '0');
     if (state.jcPresenter)         params.set('jc_presenter', state.jcPresenter);
     if (state.jcYear)              params.set('jc_year', state.jcYear);
+    if (state.hasPp !== null)      params.set('has_pp', state.hasPp ? '1' : '0');
+    if (state.ppId)                params.set('pp_id', state.ppId);
     if (state.sort)                params.set('sort', state.sort);
     params.set('page', state.page);
     params.set('size', state.size);
@@ -1142,6 +1164,10 @@
               ? esc(a.jc_count + ' presentaciones en Journal Club')
               : 'Presentado en Journal Club'}"
                 style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fce7f3;color:#be185d;">JC${a.jc_count > 1 ? ' ' + a.jc_count : ''}</span>`
+        : '',
+      (a.prionpacks && a.prionpacks.length)
+        ? `<span title="${esc('En PrionPack:\n' + a.prionpacks.map(p => `${p.id} — ${p.title}`).join('\n'))}"
+                style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;">📦 ${esc(a.prionpacks[0].id)}${a.prionpacks.length > 1 ? ' +' + (a.prionpacks.length - 1) : ''}</span>`
         : '',
       ratingChip,
     ].filter(Boolean).join('');
@@ -3428,6 +3454,19 @@
       state.page = 1;
       loadArticles();
     });
+
+    document.getElementById('filter-has-pp')?.addEventListener('change', e => {
+      const v = e.target.value;
+      state.hasPp = v === '1' ? true : (v === '0' ? false : null);
+      state.page = 1;
+      loadArticles();
+    });
+
+    document.getElementById('filter-pp-id')?.addEventListener('change', e => {
+      state.ppId = e.target.value || '';
+      state.page = 1;
+      loadArticles();
+    });
     const psSel = document.getElementById('page-size-select');
     if (psSel) {
       psSel.value = String(state.size);
@@ -3499,6 +3538,7 @@
     refreshTags();
     wireNewCollectionButton();
     refreshCollections();
+    refreshPrionPacksDropdown();
     wireSidebarToggles();
 
     // Wire focus trapping for every modal in the page. Safe / idempotent.

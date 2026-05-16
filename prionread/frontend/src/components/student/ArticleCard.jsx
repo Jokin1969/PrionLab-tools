@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import { Button } from '../common';
 import { VaultBadge } from '../common/VaultBadge';
 import { studentService } from '../../services/student.service';
+import { useAuth } from '../../hooks/useAuth';
 
 export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
+  const { isAdmin } = useAuth();
   const [fetchingPdf, setFetchingPdf]       = useState(false);
   const [showBlockMsg, setShowBlockMsg]     = useState(false);
   const [confirmUnmark, setConfirmUnmark]   = useState(false);
@@ -78,7 +80,9 @@ export const ArticleCard = ({ article, onMarkAsRead, onUnmarkAsRead }) => {
 
         <div className="ml-4 flex flex-col items-end gap-2 shrink-0">
           <div className="flex items-center gap-1.5">
-            <VaultBadge articleId={article.id} inPrionvault={article.in_prionvault ?? false} />
+            {isAdmin && (
+              <VaultBadge articleId={article.id} inPrionvault={article.in_prionvault ?? false} />
+            )}
             <span className={`px-3 py-1 text-xs font-medium rounded-full ${statusColors[article.status] ?? statusColors.pending}`}>
               {statusLabels[article.status] ?? 'Pendiente'}
             </span>
