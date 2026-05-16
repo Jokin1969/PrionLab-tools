@@ -167,8 +167,14 @@ class Job:
 
 # ── Enqueue ────────────────────────────────────────────────────────────────
 def enqueue_pdf(*, content: bytes, filename: str,
-                user_id: Optional[UUID] = None) -> int:
+                user_id: Optional[UUID] = None,
+                source_dropbox_path: Optional[str] = None) -> int:
     """Stage `content` to a temp file and create a queued job.
+
+    `source_dropbox_path` (optional): when the PDF was pulled from a
+    Dropbox watch folder, recording its path here lets `cleanup_source_pdf`
+    delete the original after a successful ingest. Hand-uploaded jobs
+    leave it unset.
 
     Returns the new job id. Raises if the DB is unreachable.
     """
@@ -182,13 +188,41 @@ def enqueue_pdf(*, content: bytes, filename: str,
         row = conn.execute(text(
             """
             INSERT INTO prionvault_ingest_job
-              (pdf_filename, pdf_md5, status, step, created_by, created_at)
-            VALUES (:fn, :md5, 'queued', 'staged', :uid, NOW())
+              (pdf_filename, pdf_md5, status, step, created_by,
+               source_dropbox_path, created_at)
+            VALUES (:fn, :md5, 'queued', 'staged', :uid, :sp, NOW())
             RETURNING id
             """
         ), {"fn": str(staged), "md5": md5,
-            "uid": str(user_id) if user_id else None}).first()
+            "uid": str(user_id) if user_id else None,
+            "sp": source_dropbox_path}).first()
     return int(row[0])
+
+
+def cleanup_source_pdf(job_id: int) -> None:
+    """Best-effort: delete the source PDF from Dropbox for jobs that
+    came in via the watch-folder scanner. Called by the worker right
+    after a `done` or `duplicate` transition so the source folder ends
+    up with only the PDFs that failed to import.
+    """
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(text(
+            "SELECT source_dropbox_path FROM prionvault_ingest_job WHERE id = :id"
+        ), {"id": job_id}).first()
+    src = row[0] if row else None
+    if not src:
+        return
+    try:
+        from core.dropbox_client import get_client
+        client = get_client()
+        if client is None:
+            logger.warning("cleanup_source_pdf: no Dropbox client, skipping %s", src)
+            return
+        client.files_delete_v2(src)
+        logger.info("cleanup_source_pdf: removed %s after job %d", src, job_id)
+    except Exception as exc:
+        logger.warning("cleanup_source_pdf: %s — %s", src, exc)
 
 
 # ── Worker-side: claim the next job ────────────────────────────────────────

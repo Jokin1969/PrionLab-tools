@@ -2353,6 +2353,95 @@ def api_ingest_clear_failed():
     return jsonify({"ok": True, "deleted": deleted})
 
 
+_DEFAULT_WATCH_FOLDER = "/PrionLab tools/PDFs"
+
+
+@prionvault_bp.route("/api/ingest/scan-folder", methods=["POST"])
+@admin_required
+def api_ingest_scan_folder():
+    """List PDFs in a Dropbox folder and enqueue each one for ingestion.
+
+    The worker's success / duplicate transitions delete the source file
+    from the folder, so over time the folder ends up containing only the
+    PDFs that couldn't be auto-ingested (scans without text, etc.).
+
+    Body (all optional):
+      { "folder": "/PrionLab tools/PDFs" }
+    """
+    from .ingestion import queue as ingest_queue
+
+    data   = request.get_json(silent=True) or {}
+    folder = (data.get("folder") or _DEFAULT_WATCH_FOLDER).strip()
+    if not folder.startswith("/"):
+        folder = "/" + folder
+    folder = folder.rstrip("/") or "/"
+
+    try:
+        from core.dropbox_client import get_client
+        import dropbox
+    except Exception as exc:
+        return jsonify({"error": "dropbox_unavailable",
+                        "detail": str(exc)[:200]}), 503
+
+    client = get_client()
+    if client is None:
+        return jsonify({"error": "dropbox_not_configured"}), 503
+
+    try:
+        result  = client.files_list_folder(folder)
+        entries = list(result.entries)
+        while result.has_more:
+            result = client.files_list_folder_continue(result.cursor)
+            entries.extend(result.entries)
+    except dropbox.exceptions.ApiError as exc:
+        # Most common: folder doesn't exist. Surface the path so the
+        # admin can fix the typo without digging into logs.
+        return jsonify({"error": "folder_not_accessible",
+                        "folder": folder,
+                        "detail": str(exc)[:200]}), 404
+    except Exception as exc:
+        logger.exception("scan-folder: list failed for %s", folder)
+        return jsonify({"error": "list_failed", "detail": str(exc)[:200]}), 502
+
+    user_id    = _viewer_id()
+    queued_ids = []
+    skipped    = []
+    for entry in entries:
+        if not isinstance(entry, dropbox.files.FileMetadata):
+            continue
+        if not entry.name.lower().endswith(".pdf"):
+            continue
+        try:
+            _meta, response = client.files_download(entry.path_lower)
+            content = response.content
+        except Exception as exc:
+            skipped.append({"path": entry.path_display,
+                            "error": f"download failed: {str(exc)[:160]}"})
+            continue
+        try:
+            jid = ingest_queue.enqueue_pdf(
+                content=content,
+                filename=entry.name,
+                user_id=user_id,
+                source_dropbox_path=entry.path_display,
+            )
+            queued_ids.append(jid)
+        except Exception as exc:
+            skipped.append({"path": entry.path_display,
+                            "error": f"enqueue failed: {str(exc)[:160]}"})
+
+    return jsonify({
+        "ok":             True,
+        "folder":         folder,
+        "scanned":        len(entries),
+        "pdfs_found":     len(queued_ids) + len(skipped),
+        "queued":         len(queued_ids),
+        "skipped":        len(skipped),
+        "skipped_detail": skipped[:20],
+        "job_ids":        queued_ids,
+    }), 202
+
+
 # ── PDF streaming (inline viewer) ───────────────────────────────────────────
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["GET"])
 @login_required

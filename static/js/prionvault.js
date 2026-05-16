@@ -3891,6 +3891,7 @@
       wireQueue();
       wireAddByDoi();
       wireBatchImport();
+      wireScanFolder();
       wireDuplicates();
       wireBatchSummary();
       wireBatchIndex();
@@ -4362,6 +4363,61 @@
           statusEl.style.color = '#b91c1c';
         }
         btnSave.disabled = false;
+      }
+    });
+  }
+
+  // ── Scan Dropbox folder ─────────────────────────────────────────────
+  // Triggers /api/ingest/scan-folder, which lists PDFs in the watch
+  // folder, queues each one through the regular ingest pipeline, and
+  // deletes successful ones from Dropbox. Failures stay in the folder
+  // for manual review.
+  function wireScanFolder() {
+    const btn = document.getElementById('btn-scan-folder');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const folder = prompt(
+        'Carpeta de Dropbox a escanear (los PDFs que se importen bien o ya estén ' +
+        'en la biblioteca se borrarán de ahí; los que fallen permanecen):',
+        '/PrionLab tools/PDFs'
+      );
+      if (folder === null) return;
+      const trimmed = folder.trim();
+      if (!trimmed) return;
+      btn.disabled = true;
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = '<span><i class="fas fa-spinner fa-spin" style="width:13px;margin-right:6px;opacity:0.7;"></i>Escaneando…</span>';
+      try {
+        const res = await fetch(API + '/ingest/scan-folder', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder: trimmed }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(
+            `No se pudo escanear la carpeta:\n${data.error || res.status}` +
+            (data.detail ? `\n${data.detail}` : '')
+          );
+        } else {
+          const skipped = data.skipped
+            ? `\n${data.skipped} omitidos (revisa la consola para el detalle).`
+            : '';
+          alert(
+            `Carpeta ${data.folder}: ${data.scanned} entradas vistas, ` +
+            `${data.queued} PDFs encolados.${skipped}\n\n` +
+            `Sigue el progreso en el panel de "Ingest queue". Los que terminen ` +
+            `bien o sean duplicados se borrarán solos de la carpeta.`
+          );
+          if (data.skipped) console.warn('scan-folder skipped:', data.skipped_detail);
+          refreshQueue?.();
+        }
+      } catch (err) {
+        alert('Error de red al escanear: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
       }
     });
   }

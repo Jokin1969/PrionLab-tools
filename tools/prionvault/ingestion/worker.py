@@ -76,6 +76,7 @@ def _process_job(job: ingest_queue.Job) -> None:
                                step=f"duplicate | by {reason}{doi_info}{enr_info}",
                                article_id=dup_id,
                                error=f"Already in library (matched by {reason}).")
+        ingest_queue.cleanup_source_pdf(job.id)
         _cleanup_staged(staged)
         return
 
@@ -125,6 +126,7 @@ def _process_job(job: ingest_queue.Job) -> None:
     summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}"
     ingest_queue.mark_step(job.id, status="done", step=summary,
                            article_id=article_id)
+    ingest_queue.cleanup_source_pdf(job.id)
     _cleanup_staged(staged)
 
 
