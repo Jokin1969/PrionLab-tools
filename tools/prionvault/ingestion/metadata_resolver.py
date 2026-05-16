@@ -54,6 +54,16 @@ class Metadata:
     source:    Optional[str] = None  # "crossref" | "pubmed" | "title_search"
     raw:       dict = field(default_factory=dict)
 
+    def __post_init__(self):
+        # Centralised cleanup: every Metadata object — no matter which
+        # resolver built it — goes through the same tidy pass, so
+        # callers don't have to remember to call clean_metadata_text.
+        from ..services.text_cleanup import clean_metadata_text
+        for fld in ("title", "authors", "journal", "abstract"):
+            v = getattr(self, fld, None)
+            if v:
+                setattr(self, fld, clean_metadata_text(v))
+
 
 # ── CrossRef ────────────────────────────────────────────────────────────────
 def _format_authors(items: list) -> Optional[str]:
@@ -120,7 +130,11 @@ def crossref_by_doi(doi: str) -> Optional[Metadata]:
         volume=data.get("volume"),
         issue=data.get("issue"),
         pages=data.get("page"),
-        abstract=_crossref_clean_abstract(data.get("abstract")),
+        # Raw — Metadata.__post_init__ runs clean_metadata_text, which
+        # decodes entities and turns <jats:sup>X</jats:sup> into Unicode
+        # superscripts. Doing it here too would strip the tags before
+        # the Unicode pass ever sees them.
+        abstract=data.get("abstract"),
         source="crossref",
         raw=data,
     )
@@ -171,7 +185,7 @@ def crossref_by_title(title_hint: str, year_hint: Optional[int] = None,
         volume=best.get("volume"),
         issue=best.get("issue"),
         pages=best.get("page"),
-        abstract=_crossref_clean_abstract(best.get("abstract")),
+        abstract=best.get("abstract"),  # cleaned via __post_init__
         source="title_search",
         raw=best,
     )

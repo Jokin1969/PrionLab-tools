@@ -2556,6 +2556,64 @@ def api_count_pdf_pages(aid):
         db.Session.remove()
 
 
+@prionvault_bp.route("/api/admin/clean-metadata", methods=["POST"])
+@admin_required
+def api_admin_clean_metadata():
+    """Re-run the text-cleanup pass over every article in the library.
+
+    Picks up rows that were ingested before clean_metadata_text was in
+    place and surfaces them with proper Unicode characters
+    (Ca²⁺ instead of `Ca<sup>2+</sup>`, María instead of `Mar&iacute;a`,
+    etc.).
+
+    No-op rows (already-clean text) skip the UPDATE so the audit trail
+    stays meaningful. Returns counts so the admin can see how much
+    work the pass actually did.
+    """
+    from .services.text_cleanup import clean_metadata_text
+
+    s = _session()
+    try:
+        rows = s.execute(sql_text(
+            "SELECT id, title, authors, journal, abstract FROM articles"
+        )).mappings().all()
+
+        FIELDS = ("title", "authors", "journal", "abstract")
+        changed_rows = 0
+        per_field = {f: 0 for f in FIELDS}
+
+        for r in rows:
+            updates = {}
+            for f in FIELDS:
+                original = r[f]
+                cleaned  = clean_metadata_text(original) if original else original
+                if cleaned != original:
+                    updates[f] = cleaned
+            if not updates:
+                continue
+            set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+            s.execute(sql_text(
+                f"UPDATE articles SET {set_clause}, updated_at = NOW() "
+                f"WHERE id = :id"
+            ), {**updates, "id": str(r["id"])})
+            changed_rows += 1
+            for f in updates:
+                per_field[f] += 1
+        s.commit()
+        return jsonify({
+            "ok": True,
+            "scanned": len(rows),
+            "changed_rows": changed_rows,
+            "per_field":    per_field,
+        })
+    except Exception as exc:
+        s.rollback()
+        logger.exception("clean-metadata backfill failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/admin/backfill-pdf-pages", methods=["POST"])
 @admin_required
 def api_backfill_pdf_pages():

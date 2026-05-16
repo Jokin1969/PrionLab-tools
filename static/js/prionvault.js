@@ -4072,6 +4072,7 @@
       wireEditModal();
       wireBatchImport();
       wireScanFolder();
+      wireCleanMetadata();
       wireDuplicates();
       wireBatchSummary();
       wireBatchIndex();
@@ -4598,6 +4599,47 @@
       } finally {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
+      }
+    });
+  }
+
+  // ── Clean metadata backfill ──────────────────────────────────────────
+  // One-off pass over every article in the library that decodes HTML
+  // entities and converts <sup>...</sup> / <sub>...</sub> to Unicode.
+  // Triggered manually from the sidebar; the same logic also runs at
+  // ingest time via metadata_resolver.Metadata.__post_init__, so the
+  // button is mostly useful for rows that already existed when the
+  // cleanup pass shipped.
+  function wireCleanMetadata() {
+    const btn = document.getElementById('btn-clean-metadata');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      if (!confirm('Va a recorrer todos los artículos limpiando entidades HTML y ' +
+                   'transformando sup/sub a Unicode. La acción es idempotente y ' +
+                   'reversible (sólo actualiza filas con cambios). ¿Continuar?')) {
+        return;
+      }
+      btn.disabled = true;
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<span><i class="fas fa-spinner fa-spin" style="width:13px;margin-right:6px;opacity:0.7;"></i>Limpiando…</span>';
+      try {
+        const r = await api('/admin/clean-metadata', { method: 'POST' });
+        const pf = r.per_field || {};
+        alert(
+          `Backfill completado.\n\n` +
+          `Filas examinadas: ${r.scanned}\n` +
+          `Filas modificadas: ${r.changed_rows}\n` +
+          `  · title:    ${pf.title    ?? 0}\n` +
+          `  · authors:  ${pf.authors  ?? 0}\n` +
+          `  · journal:  ${pf.journal  ?? 0}\n` +
+          `  · abstract: ${pf.abstract ?? 0}`
+        );
+        loadArticles();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
       }
     });
   }
