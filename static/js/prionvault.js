@@ -315,12 +315,20 @@
   }
 
   function buildGroupHeader(group, subBranch, collapsed) {
-    const collCount = Object.values(subBranch)
-      .reduce((acc, list) => acc + list.length, 0);
+    // Sum the article_count across every collection under this group
+    // (article positions, so the same paper present in two child
+    // collections counts twice — the tooltip says so). Replaces the
+    // earlier "number of child collections" rollup that read as the
+    // count of folders rather than the body of work behind them.
+    const colls = Object.values(subBranch).flat();
+    const collCount     = colls.length;
+    const articlesTotal = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup = group;
-    btn.title = `Filtrar por grupo "${group}" (${collCount} colección${collCount === 1 ? '' : 'es'}).\n` +
+    btn.title = `Filtrar por grupo "${group}" — ${articlesTotal} artículo${articlesTotal === 1 ? '' : 's'}` +
+                ` en ${collCount} colección${collCount === 1 ? '' : 'es'}` +
+                ` (un artículo presente en N colecciones cuenta N veces).\n` +
                 `Pulsa la flecha de la izquierda para plegar / desplegar.`;
     btn.style.padding = '5px 10px';
     const chev = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
@@ -338,7 +346,7 @@
         <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:11px;
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
-      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${collCount}</span>
+      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${articlesTotal}</span>
     `;
     btn.addEventListener('click', (ev) => {
       // Chevron toggles collapse state without changing the filter.
@@ -361,11 +369,16 @@
   }
 
   function buildSubgroupHeader(group, subgroup, colls, collapsed) {
+    // Same swap as buildGroupHeader: chip now shows the article-count
+    // rollup, not the number of child collection folders.
+    const collCount     = colls.length;
+    const articlesTotal = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup    = group;
     btn.dataset.collectionSubgroup = subgroup;
-    btn.title = `Filtrar por "${group} · ${subgroup}".\n` +
+    btn.title = `Filtrar por "${group} · ${subgroup}" — ${articlesTotal} artículo${articlesTotal === 1 ? '' : 's'}` +
+                ` en ${collCount} colección${collCount === 1 ? '' : 'es'}.\n` +
                 `Pulsa la flecha de la izquierda para plegar / desplegar.`;
     btn.style.padding = '4px 10px 4px 22px';
     const chev = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
@@ -382,7 +395,7 @@
         <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
         <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
-      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${colls.length}</span>
+      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${articlesTotal}</span>
     `;
     btn.addEventListener('click', (ev) => {
       if (ev.target.closest('.pv-coll-chevron')) {
