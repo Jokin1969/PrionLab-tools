@@ -733,6 +733,113 @@
     setTimeout(() => document.getElementById('pv-coll-name').focus(), 30);
   }
 
+  // ── Chunks inspector ────────────────────────────────────────────────
+  // Modal opened from the green "indexed" chip in the listing. Fetches
+  // /api/articles/<id>/chunks and renders one collapsible card per
+  // chunk so the admin can verify chunking + indexation status.
+  function _chunksWireOnce() {
+    const modal = document.getElementById('pv-chunks-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+    const close = () => { modal.style.display = 'none'; };
+    document.getElementById('pv-chunks-close')?.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+  }
+
+  async function openChunksInspector(articleId, articleTitle) {
+    const modal = document.getElementById('pv-chunks-modal');
+    if (!modal) return alert('UI: pv-chunks-modal no está montado.');
+    _chunksWireOnce();
+
+    document.getElementById('pv-chunks-article-title').textContent =
+      articleTitle ? `· ${articleTitle.slice(0, 80)}${articleTitle.length > 80 ? '…' : ''}` : '';
+    const summary = document.getElementById('pv-chunks-summary');
+    const list    = document.getElementById('pv-chunks-list');
+    summary.innerHTML = '<span style="grid-column:1/-1;color:#6b7280;">Cargando…</span>';
+    list.innerHTML    = '';
+    modal.style.display = 'flex';
+
+    let data;
+    try {
+      data = await api(`/articles/${articleId}/chunks`);
+    } catch (e) {
+      summary.innerHTML = `<span style="grid-column:1/-1;color:#b91c1c;">Error: ${esc(e.message)}</span>`;
+      return;
+    }
+
+    const fmtNum = (n) => (n || 0).toLocaleString('es-ES');
+    summary.innerHTML = `
+      <span style="color:#6b7280;">Modelo</span>
+      <span style="font-weight:600;">${esc(data.model || '?')}</span>
+      <span style="color:#6b7280;">Dimensiones</span>
+      <span style="font-weight:600;">${data.embedding_dim} <span style="color:#9ca3af;font-weight:normal;">por vector</span></span>
+
+      <span style="color:#6b7280;">Total chunks</span>
+      <span style="font-weight:600;">${fmtNum(data.total_chunks)}</span>
+      <span style="color:#6b7280;">Indexados</span>
+      <span style="font-weight:600;color:${data.missing === 0 ? '#15803d' : '#b45309'};">
+        ${fmtNum(data.indexed)} / ${fmtNum(data.total_chunks)}
+        ${data.missing > 0 ? `<span style="font-weight:normal;font-size:11.5px;"> · ${data.missing} sin vector</span>` : ''}
+      </span>
+
+      <span style="color:#6b7280;">Tokens (suma)</span>
+      <span style="font-weight:600;">${fmtNum(data.total_tokens)}</span>
+      <span style="color:#6b7280;">Caracteres</span>
+      <span style="font-weight:600;">${fmtNum(data.total_chars)}</span>
+    `;
+
+    if (!data.chunks.length) {
+      list.innerHTML = `<div style="text-align:center;color:#9ca3af;padding:24px 12px;font-size:13px;">
+        Este artículo no tiene chunks. Probablemente no se ha pasado por el indexador todavía
+        (sidebar → <strong>Index for AI search</strong>).
+      </div>`;
+      return;
+    }
+
+    list.innerHTML = data.chunks.map(c => _chunksRowHtml(c)).join('');
+    // Wire the "ver texto completo" toggles. Each row holds the full
+    // chunk_text in a sibling <details>; nothing extra to do beyond
+    // letting the browser handle <details> open/close.
+  }
+
+  function _chunksRowHtml(c) {
+    const pages = (c.page_from != null && c.page_to != null)
+      ? (c.page_from === c.page_to ? `p. ${c.page_from}` : `pp. ${c.page_from}–${c.page_to}`)
+      : '—';
+    const dims = c.embedding_preview && c.embedding_preview.length
+      ? `[${c.embedding_preview.map(v => v.toFixed(4)).join(', ')}, …]`
+      : '—';
+    const status = c.has_embedding
+      ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">● vectorizado</span>`
+      : `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">○ sin vector</span>`;
+    return `
+      <div style="border-bottom:1px solid #e5e7eb;padding:10px 12px;">
+        <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:#6b7280;margin-bottom:4px;flex-wrap:wrap;">
+          <span style="font-weight:700;color:#111827;font-size:13px;">#${c.chunk_index}</span>
+          <span title="Páginas del PDF cubiertas por este chunk">📄 ${esc(pages)}</span>
+          <span title="Tokens estimados (lo que cobra Voyage)">${c.tokens != null ? c.tokens.toLocaleString('es-ES') + ' tokens' : '— tokens'}</span>
+          <span title="Caracteres del texto">${c.chars.toLocaleString('es-ES')} chars</span>
+          <span title="Campo de origen — normalmente extracted_text del PDF; abstract si el chunker partió desde ahí">campo: ${esc(c.source_field || '')}</span>
+          <span style="margin-left:auto;">${status}</span>
+        </div>
+        <div style="font-size:12.5px;color:#374151;line-height:1.55;background:white;padding:6px 8px;border-radius:5px;border:1px solid #e5e7eb;font-family:ui-serif,Georgia,serif;">
+          ${esc(c.preview)}${c.chars > c.preview.length ? '…' : ''}
+        </div>
+        <details style="margin-top:6px;font-size:11.5px;color:#6b7280;">
+          <summary style="cursor:pointer;color:#0F3460;">Ver chunk completo + primeras 8 dimensiones del vector</summary>
+          <div style="margin-top:6px;background:white;border:1px solid #e5e7eb;border-radius:5px;padding:6px 8px;">
+            <div style="font-size:11.5px;color:#374151;line-height:1.5;white-space:pre-wrap;font-family:ui-monospace,monospace;max-height:240px;overflow-y:auto;">
+              ${esc(c.chunk_text || '')}
+            </div>
+            <div style="margin-top:6px;font-family:ui-monospace,monospace;font-size:11px;color:#6b7280;">
+              <strong style="color:#111827;">Embedding (primeras 8 / 1024 dim):</strong> ${esc(dims)}
+            </div>
+          </div>
+        </details>
+      </div>
+    `;
+  }
+
   // ── Bulk add-to-collection picker (modal) ───────────────────────────
   // Replaces the old prompt() flow. Shows the same group → subgroup →
   // collection tree the sidebar uses, with checkboxes so multiple
@@ -1734,7 +1841,13 @@
         ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
         : '',
       a.indexed_at
-        ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>'
+        ? (IS_ADMIN
+            ? `<button type="button" class="pv-indexed-chip" data-aid="${esc(a.id)}"
+                        title="Indexado por Voyage el ${esc((a.indexed_at || '').slice(0, 10))} — clic para ver los chunks (qué texto se embebió y dónde)"
+                        style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;
+                               font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;
+                               border:none;cursor:pointer;line-height:1.2;">indexed</button>`
+            : '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">indexed</span>')
         : '',
       a.pubmed_id
         ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pubmed_id)}/"
@@ -2042,6 +2155,12 @@
       if (prChip) prChip.addEventListener('click', e => {
         e.stopPropagation();
         openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+
+      const indexedChip = row.querySelector('.pv-indexed-chip');
+      if (indexedChip) indexedChip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openChunksInspector(a.id, a.title);
       });
 
       const editBtn = row.querySelector('.pv-edit-row-btn');

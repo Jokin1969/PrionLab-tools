@@ -1338,6 +1338,38 @@
 </div>
 
 <!-- ── Collection editor modal (manual + smart) ───────────────────── -->
+<!-- ── Article chunks inspector ──────────────────────────────────────
+     Opens from the green "indexed" chip in the listing. Shows the
+     same fragments that Voyage embedded + their position in the
+     paper + a peek at the first 8 dimensions of each vector. Lets
+     the admin verify whether a paper is fully indexed and whether
+     the chunk text looks like real prose (vs. OCR garbage). -->
+<div id="pv-chunks-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:880px;">
+    <button class="pv-modal-close" id="pv-chunks-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-cubes" style="color:#0F3460;margin-right:8px;"></i>
+      Chunks indexados <span id="pv-chunks-article-title" style="color:#6b7280;font-weight:500;font-size:14px;"></span>
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 12px;">
+      Cada fila es un fragmento del PDF que Voyage embebió como vector. RAG (los botones
+      <em>Pregunta a Claude/GPT</em>) busca cuáles de estos fragmentos son más cercanos a tu pregunta
+      y se los pasa al modelo como contexto.
+    </p>
+
+    <div id="pv-chunks-summary"
+         style="display:grid;grid-template-columns:repeat(4, 1fr);gap:6px 14px;margin-bottom:12px;
+                background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:12.5px;">
+      <span style="grid-column:1/-1;color:#6b7280;">Cargando…</span>
+    </div>
+
+    <div id="pv-chunks-list"
+         style="max-height:480px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;">
+    </div>
+  </div>
+</div>
+
 <!-- ── Bulk add-to-collection picker ─────────────────────────────────
      Replaces the old prompt()-based numbered-list flow. Shows the full
      group → subgroup → collection tree, lets the admin tick multiple

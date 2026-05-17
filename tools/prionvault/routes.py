@@ -2835,6 +2835,92 @@ def api_article_pdf(aid):
     )
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/chunks", methods=["GET"])
+@admin_required
+def api_article_chunks(aid):
+    """Return the article's chunked text + a peek at each chunk's
+    Voyage embedding. Powers the "Indexed" badge → "Ver chunks"
+    modal in the listing.
+
+    The full 1024-dim vector is way too big to ship to the UI for
+    every chunk; we only send `embedding_preview` (first 8 dims)
+    so the admin can sanity-check that the column is populated.
+    `has_embedding` flags chunks that haven't been indexed yet.
+    """
+    s = _session()
+    try:
+        head = s.execute(sql_text(
+            "SELECT title, year FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not head:
+            return jsonify({"error": "article not found"}), 404
+
+        rows = s.execute(sql_text(
+            """
+            SELECT id, chunk_index, source_field, chunk_text, tokens,
+                   page_from, page_to,
+                   (embedding IS NOT NULL) AS has_embedding,
+                   -- pgvector serialises a vector as "[v0,v1,...]" text;
+                   -- splitting once gives us cheap access to the first
+                   -- few dims without dragging the whole 1024-element
+                   -- array across the wire.
+                   CASE WHEN embedding IS NOT NULL
+                        THEN substring(embedding::text, 1, 220)
+                        ELSE NULL END AS embedding_head,
+                   created_at
+              FROM article_chunk
+             WHERE article_id = :aid
+             ORDER BY source_field, chunk_index
+            """
+        ), {"aid": str(aid)}).mappings().all()
+    finally:
+        s.close()
+
+    chunks = []
+    for r in rows:
+        head_txt = (r["embedding_head"] or "")
+        first_dims: list[float] = []
+        if head_txt.startswith("["):
+            for tok in head_txt[1:].split(",")[:8]:
+                try:
+                    first_dims.append(float(tok))
+                except ValueError:
+                    break
+        text = r["chunk_text"] or ""
+        chunks.append({
+            "id":            int(r["id"]),
+            "chunk_index":   int(r["chunk_index"]),
+            "source_field":  r["source_field"],
+            "tokens":        int(r["tokens"]) if r["tokens"] is not None else None,
+            "chars":         len(text),
+            "page_from":     int(r["page_from"]) if r["page_from"] is not None else None,
+            "page_to":       int(r["page_to"])   if r["page_to"]   is not None else None,
+            "preview":       text[:240],
+            "chunk_text":    text,
+            "has_embedding": bool(r["has_embedding"]),
+            "embedding_preview": first_dims,
+            "created_at":    r["created_at"].isoformat() if r["created_at"] else None,
+        })
+
+    total = len(chunks)
+    indexed = sum(1 for c in chunks if c["has_embedding"])
+    total_tokens = sum((c["tokens"] or 0) for c in chunks)
+    total_chars  = sum(c["chars"]         for c in chunks)
+    return jsonify({
+        "article_id":    str(aid),
+        "title":         head[0],
+        "year":          head[1],
+        "total_chunks":  total,
+        "indexed":       indexed,
+        "missing":       total - indexed,
+        "total_tokens":  total_tokens,
+        "total_chars":   total_chars,
+        "embedding_dim": 1024,           # voyage-3-large
+        "model":         "voyage-3-large",
+        "chunks":        chunks,
+    })
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/identify-pmid", methods=["POST"])
 @admin_required
 def api_article_identify_pmid(aid):
