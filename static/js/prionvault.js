@@ -5354,6 +5354,15 @@
   // folder, queues each one through the regular ingest pipeline, and
   // deletes successful ones from Dropbox. Failures stay in the folder
   // for manual review.
+  //
+  // Chunked client-side so each click drains up to _SCAN_TARGET_PER_CLICK
+  // PDFs (default 250). The server caps each request at 50 (downloads
+  // are ~1-3 s each and gunicorn would kill anything past ~100 s) and
+  // skips files that already have an in-flight job, so back-to-back
+  // chunks don't re-process the same PDFs while the worker catches up.
+  const _SCAN_CHUNK_SIZE       = 50;
+  const _SCAN_TARGET_PER_CLICK = 250;
+
   function wireScanFolder() {
     const btn = document.getElementById('btn-scan-folder');
     if (!btn) return;
@@ -5368,36 +5377,67 @@
       if (!trimmed) return;
       btn.disabled = true;
       const originalHtml = btn.innerHTML;
-      btn.innerHTML = '<span><i class="fas fa-spinner fa-spin" style="width:13px;margin-right:6px;opacity:0.7;"></i>Escaneando…</span>';
+      const chunks = Math.ceil(_SCAN_TARGET_PER_CLICK / _SCAN_CHUNK_SIZE);
+      let totalQueued       = 0;
+      let totalSkipped      = 0;
+      let lastFolder        = trimmed;
+      let lastPdfsFound     = 0;
+      let lastRemaining     = 0;
+      let lastAlreadyQueued = 0;
+      const allSkippedDetail = [];
+      let lastError         = null;
       try {
-        const res = await fetch(API + '/ingest/scan-folder', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder: trimmed }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          alert(
-            `No se pudo escanear la carpeta:\n${data.error || res.status}` +
-            (data.detail ? `\n${data.detail}` : '')
-          );
+        for (let i = 1; i <= chunks; i++) {
+          btn.innerHTML =
+            `<span><i class="fas fa-spinner fa-spin" style="width:13px;margin-right:6px;opacity:0.7;"></i>` +
+            `Escaneando… (lote ${i}/${chunks})</span>`;
+          const res = await fetch(API + '/ingest/scan-folder', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder: trimmed, limit: _SCAN_CHUNK_SIZE }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            lastError = data.error || res.status;
+            if (data.detail) lastError += `\n${data.detail}`;
+            break;
+          }
+          totalQueued       += data.queued || 0;
+          totalSkipped      += data.skipped || 0;
+          lastFolder         = data.folder || lastFolder;
+          lastPdfsFound      = data.pdfs_found || 0;
+          lastRemaining      = data.remaining || 0;
+          lastAlreadyQueued  = data.already_queued || 0;
+          if (Array.isArray(data.skipped_detail))
+            allSkippedDetail.push(...data.skipped_detail);
+          // Stop early when nothing new came back — either the folder
+          // emptied or every fresh PDF is already in the queue.
+          if ((data.queued || 0) === 0) break;
+        }
+
+        if (lastError) {
+          alert(`No se pudo escanear la carpeta:\n${lastError}`);
         } else {
-          const skippedMsg = data.skipped
-            ? `\n${data.skipped} omitidos (revisa la consola para el detalle).`
+          const skippedMsg = totalSkipped
+            ? `\n${totalSkipped} omitidos (revisa la consola para el detalle).`
             : '';
-          const moreMsg = data.remaining > 0
-            ? `\n\nQuedan ${data.remaining} PDFs sin procesar en la carpeta. ` +
-              `Vuelve a pulsar "Scan Dropbox folder" cuando termine la cola actual ` +
-              `(o tras unos minutos para que el worker descargue espacio en disco).`
+          const alreadyMsg = lastAlreadyQueued
+            ? `\n${lastAlreadyQueued} ya estaban en la cola (no se re-encolan).`
+            : '';
+          const moreMsg = lastRemaining > 0
+            ? `\n\nQuedan ${lastRemaining} PDFs sin procesar en la carpeta. ` +
+              `Vuelve a pulsar "Scan Dropbox folder" cuando el worker libere espacio ` +
+              `(unos minutos).`
             : '';
           alert(
-            `Carpeta ${data.folder}: ${data.pdfs_found} PDFs encontrados, ` +
-            `${data.queued} encolados en esta tanda.${skippedMsg}\n\n` +
+            `Carpeta ${lastFolder}: ${lastPdfsFound} PDFs encontrados, ` +
+            `${totalQueued} encolados en esta tanda.${alreadyMsg}${skippedMsg}\n\n` +
             `Sigue el progreso en el panel de "Ingest queue". Los que terminen ` +
             `bien o sean duplicados se borrarán solos de la carpeta.${moreMsg}`
           );
-          if (data.skipped) console.warn('scan-folder skipped:', data.skipped_detail);
+          if (allSkippedDetail.length)
+            console.warn('scan-folder skipped:', allSkippedDetail);
           refreshQueue?.();
         }
       } catch (err) {

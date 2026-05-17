@@ -2655,13 +2655,14 @@ def api_ingest_scan_folder():
     folder = folder.rstrip("/") or "/"
     # Cap the per-call work so we never run past gunicorn's request
     # timeout (default 120 s on Railway). Downloading a PDF from
-    # Dropbox + a couple of DB writes takes ~1-3 s per file; 30 keeps
+    # Dropbox + a couple of DB writes takes ~1-3 s per file; 50 keeps
     # a comfortable margin even on slow links. The user re-clicks the
-    # button to drain the rest — see the `remaining` field below.
+    # button (or the frontend loops chunks) to drain the rest — see
+    # the `remaining` field below.
     try:
-        per_call_limit = int(data.get("limit", 30))
+        per_call_limit = int(data.get("limit", 50))
     except (TypeError, ValueError):
-        per_call_limit = 30
+        per_call_limit = 50
     per_call_limit = max(1, min(100, per_call_limit))
 
     try:
@@ -2697,9 +2698,37 @@ def api_ingest_scan_folder():
     pdf_entries  = [e for e in entries
                     if isinstance(e, dropbox.files.FileMetadata)
                     and e.name.lower().endswith(".pdf")]
+
+    # Skip PDFs that already have an in-flight ingest job (queued /
+    # uploading / extracting / resolving / indexing). Without this the
+    # worker deletes the file only AFTER it finishes — so two scans
+    # back-to-back (or a chunked client loop) would re-download and
+    # re-enqueue the same files until the worker caught up.
+    in_flight_paths = set()
+    if pdf_entries:
+        candidate_paths = [e.path_display for e in pdf_entries]
+        s = _session()
+        try:
+            rows = s.execute(sql_text("""
+                SELECT source_dropbox_path
+                  FROM prionvault_ingest_job
+                 WHERE source_dropbox_path = ANY(:paths)
+                   AND status IN
+                       ('queued', 'uploading', 'extracting',
+                        'resolving', 'indexing')
+            """), {"paths": candidate_paths}).all()
+            in_flight_paths = {r[0] for r in rows if r[0]}
+        finally:
+            s.close()
+
+    fresh_entries = [e for e in pdf_entries
+                     if e.path_display not in in_flight_paths]
+
     total_pdfs   = len(pdf_entries)
-    to_process   = pdf_entries[:per_call_limit]
-    remaining    = total_pdfs - len(to_process)
+    already_queued = len(in_flight_paths)
+    fresh_total  = len(fresh_entries)
+    to_process   = fresh_entries[:per_call_limit]
+    remaining    = fresh_total - len(to_process)
 
     for entry in to_process:
         try:
@@ -2726,6 +2755,7 @@ def api_ingest_scan_folder():
         "folder":         folder,
         "scanned":        len(entries),
         "pdfs_found":     total_pdfs,
+        "already_queued": already_queued,
         "queued":         len(queued_ids),
         "skipped":        len(skipped),
         "skipped_detail": skipped[:20],
