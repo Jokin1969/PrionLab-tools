@@ -1377,6 +1377,20 @@ def api_article_update(aid):
                            "o reploy para que se aplique sola."),
                 "db_error": msg,
             }), 422
+
+        # Auto-link to PrionPack collections that cite this DOI. The
+        # PATCH form lets admins paste / correct a DOI by hand, which
+        # is the moment the link makes sense. Best-effort — failures
+        # are logged and swallowed.
+        new_doi = (updates.get("doi") or "").strip()
+        if new_doi:
+            try:
+                from .services.prionpack_sync import sync_doi
+                sync_doi(new_doi)
+            except Exception as exc:
+                logger.warning("api_article_update %s: prionpack sync_doi failed: %s",
+                               aid, exc)
+
         return jsonify(a.to_dict(include_text=True, viewer_role="admin"))
     finally:
         s.close()
@@ -4660,6 +4674,22 @@ def api_migrations_run():
     except Exception:
         pass
     return jsonify(summary)
+
+
+@prionvault_bp.route("/api/admin/prionpacks/sync", methods=["POST"])
+@admin_required
+def api_admin_prionpacks_sync():
+    """Full backfill of PrionPack reference lists into their
+    auto-managed PrionVault collections (group=PrionPacks, subgroup=
+    "<pack-id> — <title>", names "Introducción" and "Referencias
+    generales"). Idempotent — re-runs are cheap (existing memberships
+    are skipped, not re-added)."""
+    from .services.prionpack_sync import sync_all
+    try:
+        return jsonify(sync_all())
+    except Exception as exc:
+        logger.exception("prionpacks sync_all failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
 
 
 @prionvault_bp.route("/api/admin/auto-scan/status", methods=["GET"])

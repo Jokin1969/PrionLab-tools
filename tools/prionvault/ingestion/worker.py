@@ -160,6 +160,17 @@ def _process_job(job: ingest_queue.Job) -> None:
     ingest_queue.cleanup_source_pdf(job.id, status="done")
     _cleanup_staged(staged)
 
+    # Auto-link the new article to any PrionPack collection that cites
+    # its DOI. Best-effort — a failure here must never poison the job
+    # (the ingest is already complete and the row is in the catalog).
+    if final_doi:
+        try:
+            from ..services.prionpack_sync import sync_doi
+            sync_doi(final_doi)
+        except Exception as exc:
+            logger.warning("worker: prionpack sync_doi failed for %s: %s",
+                           final_doi, exc)
+
 
 def _enrich_duplicate(*, article_id, content: bytes, md5: str,
                        extraction, doi: Optional[str]) -> list[str]:

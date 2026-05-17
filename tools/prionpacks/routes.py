@@ -11,6 +11,20 @@ from . import members as members_module
 logger = logging.getLogger(__name__)
 
 
+def _post_save_sync(pkg):
+    """Fire-and-forget: reconcile this pack with its two auto-managed
+    PrionVault collections after every save. Failures are logged and
+    swallowed so a PrionVault hiccup never blocks a PrionPack save."""
+    if not pkg:
+        return
+    try:
+        from tools.prionvault.services.prionpack_sync import sync_pack
+        sync_pack(pkg)
+    except Exception as exc:
+        logger.warning("prionpacks: post-save PrionVault sync failed for %s: %s",
+                       pkg.get("id"), exc)
+
+
 def _colleagues():
     """Build the COLLEAGUES dict dynamically from the members store."""
     result = {}
@@ -161,6 +175,7 @@ def api_import_article(pkg_id):
         })
 
     updated_pkg = models.update_package(pkg_id, update_data)
+    _post_save_sync(updated_pkg)
     return jsonify({
         'ok': True,
         'added_to': added_to,
@@ -250,6 +265,7 @@ def api_import_articles(pkg_id):
 
     if update_data:
         pkg = models.update_package(pkg_id, update_data)
+        _post_save_sync(pkg)
 
     return jsonify({
         'ok':        True,
@@ -289,7 +305,8 @@ def api_import_section(pkg_id):
             update['affiliations'] = affiliations
         if not update:
             return jsonify({'error': 'No hay contenido para importar.'}), 400
-        models.update_package(pkg_id, update)
+        pkg = models.update_package(pkg_id, update)
+        _post_save_sync(pkg)
         return jsonify({'ok': True, 'updated': list(update.keys())})
 
     field_key = SECTION_MAP.get(section)
@@ -300,7 +317,8 @@ def api_import_section(pkg_id):
     if not text:
         return jsonify({'error': 'No hay contenido para importar.'}), 400
 
-    models.update_package(pkg_id, {field_key: text})
+    pkg = models.update_package(pkg_id, {field_key: text})
+    _post_save_sync(pkg)
     return jsonify({'ok': True, 'updated': [field_key]})
 
 
@@ -311,6 +329,7 @@ def api_create():
     if not data.get('title', '').strip():
         return jsonify({'error': 'title is required'}), 400
     pkg = models.create_package(data)
+    _post_save_sync(pkg)
     return jsonify(pkg), 201
 
 
@@ -321,6 +340,7 @@ def api_update(pkg_id):
     pkg = models.update_package(pkg_id, data)
     if pkg is None:
         return jsonify({'error': 'not found'}), 404
+    _post_save_sync(pkg)
     return jsonify(pkg)
 
 

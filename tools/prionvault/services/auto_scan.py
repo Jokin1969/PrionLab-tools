@@ -215,6 +215,16 @@ def _run_loop() -> None:
                 logger.info("auto-scan: done — folder=%s queued=%d skipped=%d (%d ms)",
                             summary["folder"], summary["queued"],
                             summary["skipped"], runtime_ms)
+                # After every auto-scan run, also do a full PrionPack
+                # ↔ PrionVault sync. Cheap (single SELECT per branch)
+                # and catches edge cases where a new article landed
+                # but the per-DOI hook in the worker didn't fire (DB
+                # restart mid-job, etc.). Best-effort.
+                try:
+                    from .prionpack_sync import sync_all
+                    sync_all()
+                except Exception as exc:
+                    logger.warning("auto-scan: prionpack sync_all failed: %s", exc)
             except Exception as exc:
                 runtime_ms = int((time.monotonic() - t0) * 1000)
                 logger.exception("auto-scan: unhandled error")
