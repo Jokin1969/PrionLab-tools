@@ -4614,6 +4614,38 @@ def api_migrations_run():
     return jsonify(summary)
 
 
+@prionvault_bp.route("/api/admin/articles-schema", methods=["GET"])
+@admin_required
+def api_admin_articles_schema():
+    """Inspect the live column types of `articles` straight from
+    information_schema. Diagnostic-only — used to confirm whether
+    a migration like 022 (VARCHAR → TEXT) actually took effect on
+    production, or whether the applied_migrations row marked it
+    "done" while the ALTER silently failed.
+    """
+    try:
+        with db.engine.connect() as conn:
+            rows = conn.execute(sql_text("""
+                SELECT column_name, data_type, character_maximum_length, is_nullable
+                  FROM information_schema.columns
+                 WHERE table_name = 'articles'
+                 ORDER BY ordinal_position
+            """)).all()
+    except Exception as exc:
+        return jsonify({"error": "introspect_failed", "detail": str(exc)[:300]}), 500
+    return jsonify({
+        "columns": [
+            {
+                "name":       r[0],
+                "data_type":  r[1],
+                "max_length": int(r[2]) if r[2] is not None else None,
+                "nullable":   (r[3] == "YES"),
+            }
+            for r in rows
+        ],
+    })
+
+
 @prionvault_bp.route("/api/admin/migrations/force-rerun", methods=["POST"])
 @admin_required
 def api_migrations_force_rerun():
