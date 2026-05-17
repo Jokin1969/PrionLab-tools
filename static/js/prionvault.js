@@ -3190,6 +3190,21 @@
       saveBtn.disabled = false;
       saveBtn.textContent = 'Guardar cambios';
     }
+    const saveNextBtn = document.getElementById('pv-edit-save-next');
+    if (saveNextBtn) {
+      saveNextBtn.disabled = false;
+      saveNextBtn.textContent = 'Guardar y siguiente →';
+    }
+    const aiBtn = document.getElementById('pv-edit-identify-ai');
+    if (aiBtn) {
+      const ok = !!a.has_pdf;
+      aiBtn.disabled = !ok;
+      aiBtn.style.opacity = ok ? '1' : '0.45';
+      aiBtn.style.cursor  = ok ? 'pointer' : 'not-allowed';
+      aiBtn.title = ok
+        ? 'La IA lee el PDF, identifica el artículo y busca su PMID en PubMed'
+        : 'Este artículo no tiene PDF guardado';
+    }
     modal.style.display = 'flex';
     setTimeout(() => document.getElementById('pv-edit-doi').focus(), 50);
   }
@@ -3242,6 +3257,126 @@
     }
   }
 
+  // Find the article id that follows the currently-edited one in the
+  // visible results table, or null if we're at the last row of the page.
+  function _editNextRowId() {
+    if (!_editTarget) return null;
+    const cb = document.querySelector(`.pv-row-select[data-aid="${_editTarget.id}"]`);
+    if (!cb) return null;
+    const row = cb.closest('tr');
+    let next = row && row.nextElementSibling;
+    while (next) {
+      const nextCb = next.querySelector('.pv-row-select');
+      if (nextCb && nextCb.dataset.aid) return nextCb.dataset.aid;
+      next = next.nextElementSibling;
+    }
+    return null;
+  }
+
+  // Run "🤖 IA": ship the saved PDF off to the backend, get a PMID back,
+  // and either chain into _editRefetch('pmid') to refill the form or
+  // surface the duplicate warning (PDF was moved aside server-side).
+  async function _editIdentifyAI() {
+    if (!_editTarget) return;
+    if (!_editTarget.has_pdf) {
+      _editStatus('Este artículo no tiene PDF guardado.', '#b91c1c');
+      return;
+    }
+    const btn = document.getElementById('pv-edit-identify-ai');
+    if (btn) { btn.disabled = true; btn.textContent = '🤖 Pensando…'; }
+    _editStatus('La IA está leyendo el PDF…');
+    try {
+      const r = await api(`/articles/${_editTarget.id}/identify-pmid`, { method: 'POST' });
+      const id = r.identified || {};
+      const idLabel = `«${id.title || '(sin título)'}» · ${id.first_author_lastname || '?'} · ${id.year || '?'}`;
+      if (r.duplicate) {
+        const dup = r.duplicate_of || {};
+        const moved = r.moved_to
+          ? `<br>📂 PDF movido a <code style="font-size:11px;">${esc(r.moved_to)}</code>`
+          : (r.move_error ? `<br><span style="color:#b91c1c;">⚠️ No se pudo mover el PDF: ${esc(r.move_error)}</span>` : '');
+        const link = dup.id
+          ? ` — <a href="#" id="pv-edit-ai-dup-open" style="color:#0F3460;text-decoration:underline;">Ver original</a>`
+          : '';
+        const el = document.getElementById('pv-edit-status');
+        el.innerHTML =
+          `⚠️ Duplicado detectado. La IA identificó ${esc(idLabel)} → PMID ${esc(String(r.pmid))},` +
+          ` que ya existe en la biblioteca${link}.${moved}<br>` +
+          'Decide si quieres borrar este registro o conservarlo sin PDF.';
+        el.style.color = '#b45309';
+        if (dup.id) {
+          const a = document.getElementById('pv-edit-ai-dup-open');
+          if (a) a.addEventListener('click', (ev) => { ev.preventDefault(); openDetail(dup.id); });
+        }
+        // Reflect the unlink locally so the AI button greys out if pressed again.
+        if (_editTarget) _editTarget.has_pdf = false;
+      } else {
+        document.getElementById('pv-edit-pmid').value = String(r.pmid);
+        _editStatus(`La IA identificó ${idLabel} → PMID ${r.pmid}. Buscando metadatos…`);
+        await _editRefetch('pmid');
+      }
+    } catch (e) {
+      const body = e.body || {};
+      const hint = body.identified
+        ? ` (la IA pensó: «${body.identified.title || '?'}» · ${body.identified.first_author_lastname || '?'} · ${body.identified.year || '?'})`
+        : '';
+      _editStatus(`No se pudo identificar el PMID con IA: ${e.message}${hint}`, '#b91c1c');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 IA'; }
+    }
+  }
+
+  // Shared save handler. Resolves to the saved article's id on success,
+  // or null if the PATCH was rejected (409 / validation). The caller
+  // decides whether to advance to the next row, reopen the detail modal,
+  // or just close.
+  async function _editPerformSave(triggerBtnId) {
+    if (!_editTarget) return null;
+    const updates = {
+      title:     document.getElementById('pv-edit-title').value.trim(),
+      authors:   document.getElementById('pv-edit-authors').value.trim() || null,
+      year:      parseInt(document.getElementById('pv-edit-year').value, 10) || null,
+      journal:   document.getElementById('pv-edit-journal').value.trim() || null,
+      doi:       document.getElementById('pv-edit-doi').value.trim()  || null,
+      pubmed_id: document.getElementById('pv-edit-pmid').value.trim() || null,
+      abstract:  document.getElementById('pv-edit-abstract').value.trim() || null,
+    };
+    if (!updates.title) {
+      _editStatus('El título no puede estar vacío.', '#b91c1c');
+      return null;
+    }
+    const btn = triggerBtnId ? document.getElementById(triggerBtnId) : null;
+    let originalLabel = null;
+    if (btn) { originalLabel = btn.textContent; btn.disabled = true; btn.textContent = 'Guardando…'; }
+    try {
+      await api(`/articles/${_editTarget.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+      return _editTarget.id;
+    } catch (e) {
+      if (e.status === 409) {
+        const dup = (e.body && e.body.duplicate_of) || '';
+        const where = (e.body && e.body.matched_on === 'pubmed_id') ? 'PMID' : 'DOI';
+        const linkHtml = dup
+          ? ` — <a href="#" id="pv-edit-dup-open" style="color:#0F3460;text-decoration:underline;">Ver existente</a>`
+          : '';
+        const el = document.getElementById('pv-edit-status');
+        el.innerHTML = `⚠️ Ya existe otro artículo con ese ${where}.` +
+                       ` Corrige el campo antes de guardar.${linkHtml}`;
+        el.style.color = '#b45309';
+        if (dup) {
+          const lnk = document.getElementById('pv-edit-dup-open');
+          if (lnk) lnk.addEventListener('click', (ev) => { ev.preventDefault(); openDetail(dup); });
+        }
+      } else {
+        _editStatus('Error al guardar: ' + e.message, '#b91c1c');
+      }
+      return null;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+    }
+  }
+
   function wireEditModal() {
     const modal = document.getElementById('pv-edit-modal');
     if (!modal || modal.dataset.wired) return;
@@ -3252,58 +3387,32 @@
     modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
     document.getElementById('pv-edit-refetch-doi') ?.addEventListener('click', () => _editRefetch('doi'));
     document.getElementById('pv-edit-refetch-pmid')?.addEventListener('click', () => _editRefetch('pmid'));
+    document.getElementById('pv-edit-identify-ai') ?.addEventListener('click', _editIdentifyAI);
+
     document.getElementById('pv-edit-save')?.addEventListener('click', async () => {
-      if (!_editTarget) return;
-      const updates = {
-        title:     document.getElementById('pv-edit-title').value.trim(),
-        authors:   document.getElementById('pv-edit-authors').value.trim() || null,
-        year:      parseInt(document.getElementById('pv-edit-year').value, 10) || null,
-        journal:   document.getElementById('pv-edit-journal').value.trim() || null,
-        doi:       document.getElementById('pv-edit-doi').value.trim()  || null,
-        pubmed_id: document.getElementById('pv-edit-pmid').value.trim() || null,
-        abstract:  document.getElementById('pv-edit-abstract').value.trim() || null,
-      };
-      if (!updates.title) {
-        _editStatus('El título no puede estar vacío.', '#b91c1c');
+      const aid = await _editPerformSave('pv-edit-save');
+      if (!aid) return;
+      close();
+      loadArticles();
+      openDetail(aid);
+    });
+
+    document.getElementById('pv-edit-save-next')?.addEventListener('click', async () => {
+      const nextId = _editNextRowId();
+      const aid = await _editPerformSave('pv-edit-save-next');
+      if (!aid) return;
+      // Refresh the list so the row we just edited shows updated values.
+      loadArticles();
+      if (!nextId) {
+        _editStatus('Guardado. No hay más artículos en esta página.', '#15803d');
         return;
       }
-      const saveBtn = document.getElementById('pv-edit-save');
-      saveBtn.disabled = true;
-      const original = saveBtn.textContent;
-      saveBtn.textContent = 'Guardando…';
+      _editStatus('Guardado. Cargando siguiente…', '#15803d');
       try {
-        await api(`/articles/${_editTarget.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(updates),
-        });
-        const aid = _editTarget.id;
-        close();
-        loadArticles();
-        // Reopen the detail modal so the user sees the new values.
-        openDetail(aid);
+        const next = await api(`/articles/${nextId}`);
+        openEditModal(next);
       } catch (e) {
-        if (e.status === 409) {
-          const dup = (e.body && e.body.duplicate_of) || '';
-          const where = (e.body && e.body.matched_on === 'pubmed_id') ? 'PMID' : 'DOI';
-          const linkHtml = dup
-            ? ` — <a href="#" id="pv-edit-dup-open" style="color:#0F3460;text-decoration:underline;">Ver existente</a>`
-            : '';
-          const el = document.getElementById('pv-edit-status');
-          el.innerHTML = `⚠️ Ya existe otro artículo con ese ${where}.` +
-                         ` Corrige el campo antes de guardar.${linkHtml}`;
-          el.style.color = '#b45309';
-          if (dup) {
-            const lnk = document.getElementById('pv-edit-dup-open');
-            if (lnk) lnk.addEventListener('click', (ev) => {
-              ev.preventDefault();
-              openDetail(dup);
-            });
-          }
-        } else {
-          _editStatus('Error al guardar: ' + e.message, '#b91c1c');
-        }
-        saveBtn.disabled = false;
-        saveBtn.textContent = original;
+        _editStatus(`Guardado. No se pudo abrir el siguiente: ${e.message}`, '#b91c1c');
       }
     });
   }

@@ -371,6 +371,59 @@ def pubmed_by_pmid(pmid: str) -> Optional[Metadata]:
     )
 
 
+def pubmed_search_pmid_by_title(title: str,
+                                author: Optional[str] = None,
+                                year: Optional[int] = None) -> Optional[str]:
+    """Find a PMID from a title fragment (+ optional author surname / year).
+
+    Used by the AI-assisted PMID lookup: the model returns a title from
+    PDF text, and we resolve it through PubMed esearch. We trim to the
+    first ~10 words because long titles with punctuation routinely
+    break PubMed's parser, and the first 10 are essentially unique.
+    Tries the narrowest query first and progressively relaxes.
+    """
+    if not title:
+        return None
+
+    words = re.sub(r"[^\w\s-]+", " ", title, flags=re.UNICODE).split()
+    if not words:
+        return None
+    title_part = " ".join(words[:10])
+
+    author_part = None
+    if author:
+        a = re.sub(r"[^\w\s-]+", "", author, flags=re.UNICODE).strip()
+        if a:
+            author_part = a
+
+    tiers = []
+    base = f'"{title_part}"[Title]'
+    if author_part and year:
+        tiers.append(f'{base} AND {author_part}[Author] AND {year}[PDAT]')
+    if author_part:
+        tiers.append(f'{base} AND {author_part}[Author]')
+    if year:
+        tiers.append(f'{base} AND {year}[PDAT]')
+    tiers.append(base)
+
+    for term in tiers:
+        try:
+            r = requests.get(_PUBMED_ESEARCH, params={
+                "db":      "pubmed",
+                "term":    term,
+                "retmax":  "1",
+                "retmode": "json",
+            }, headers=_HDRS, timeout=_TIMEOUT)
+            r.raise_for_status()
+        except Exception as exc:
+            logger.debug("PubMed esearch by title tier failed (%s): %s", term, exc)
+            continue
+        ids = ((r.json().get("esearchresult") or {}).get("idlist")) or []
+        if ids:
+            return ids[0]
+    return None
+
+
 # ── Public entrypoint ───────────────────────────────────────────────────────
 def resolve_metadata(*, doi: Optional[str] = None,
                      pmid_hint: Optional[str] = None,

@@ -2588,6 +2588,164 @@ def api_article_pdf(aid):
     )
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/identify-pmid", methods=["POST"])
+@admin_required
+def api_article_identify_pmid(aid):
+    """AI-assisted PMID lookup from the article's PDF.
+
+    Flow:
+      1. Download the article's saved PDF from Dropbox.
+      2. Extract text from the first pages with pdfplumber.
+      3. gpt-4o-mini returns {title, first_author_lastname, year}.
+      4. PubMed esearch resolves a PMID from those hints.
+      5. If another article already owns that PMID, this row is a
+         duplicate — move its PDF to `<parent>/_duplicates/<file>`
+         (same convention used by the ingest worker), detach
+         dropbox_path on the row, and return duplicate=true so the
+         UI can warn instead of chaining the metadata fetch.
+
+    Returns 200 in every "we ran successfully" case (including the
+    duplicate one), 404 if no PDF, 422 if the AI couldn't identify
+    a title, 502 if Dropbox / pdfplumber failed, 503 if OpenAI is
+    not configured.
+    """
+    from .ingestion.metadata_resolver import pubmed_search_pmid_by_title
+    from .ingestion.pdf_extractor import extract_pdf
+    from .services.ai_identifier import (
+        identify_article_from_pdf_text, AIIdentifierError,
+    )
+
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT dropbox_path FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row:
+            return jsonify({"error": "article not found"}), 404
+        dropbox_path = row[0]
+    finally:
+        s.close()
+
+    if not dropbox_path:
+        return jsonify({"error": "Este artículo no tiene PDF guardado"}), 422
+
+    try:
+        from core.dropbox_client import get_client
+    except Exception as exc:
+        logger.warning("identify_pmid: dropbox import failed: %s", exc)
+        return jsonify({"error": "dropbox client unavailable"}), 503
+
+    client = get_client()
+    if client is None:
+        return jsonify({"error": "dropbox client unavailable"}), 503
+
+    try:
+        _meta, response = client.files_download(dropbox_path)
+        pdf_bytes = response.content
+    except Exception as exc:
+        logger.warning("identify_pmid: dropbox download failed (%s): %s", dropbox_path, exc)
+        return jsonify({"error": f"No se pudo descargar el PDF: {exc}"}), 502
+
+    extraction = extract_pdf(pdf_bytes)
+    if extraction.error and not extraction.text:
+        return jsonify({"error": f"No se pudo leer el PDF: {extraction.error}"}), 502
+
+    try:
+        identified = identify_article_from_pdf_text(extraction.text)
+    except AIIdentifierError as exc:
+        status_map = {
+            "NOT_CONFIGURED": 503,
+            "INVALID_KEY":    503,
+            "INVALID_INPUT":  422,
+            "RATE_LIMITED":   429,
+            "EMPTY_RESPONSE": 502,
+            "UPSTREAM_ERROR": 502,
+        }
+        return jsonify({"error": str(exc)}), status_map.get(exc.code, 500)
+
+    if not identified.get("title"):
+        return jsonify({
+            "error":      "La IA no pudo identificar el título en el PDF",
+            "identified": identified,
+        }), 422
+
+    pmid = pubmed_search_pmid_by_title(
+        title=identified["title"],
+        author=identified.get("first_author_lastname"),
+        year=identified.get("year"),
+    )
+    if not pmid:
+        return jsonify({
+            "error":      "PubMed no encontró ningún PMID para el artículo identificado",
+            "identified": identified,
+        }), 404
+
+    # Duplicate guard: if any OTHER article already owns this PMID,
+    # the row being edited is a duplicate of that one.
+    s = _session()
+    try:
+        dup = s.execute(sql_text(
+            "SELECT id, title, doi, pubmed_id, year FROM articles "
+            "WHERE pubmed_id = :p AND id <> :aid LIMIT 1"
+        ), {"p": str(pmid), "aid": str(aid)}).first()
+    finally:
+        s.close()
+
+    if dup:
+        # Move PDF to <parent>/_duplicates/<file> — same shape the
+        # ingest worker uses in cleanup_source_pdf().
+        parent  = dropbox_path.rsplit("/", 1)[0]
+        base    = dropbox_path.rsplit("/", 1)[1]
+        dup_dir = f"{parent}/_duplicates"
+        dest    = f"{dup_dir}/{base}"
+        moved_to    = None
+        move_error  = None
+        try:
+            import dropbox
+            try:
+                client.files_create_folder_v2(dup_dir)
+            except dropbox.exceptions.ApiError as exc:
+                if "conflict" not in str(exc).lower():
+                    raise
+            result = client.files_move_v2(dropbox_path, dest, autorename=True)
+            meta = getattr(result, "metadata", None)
+            moved_to = getattr(meta, "path_display", None) or dest
+        except Exception as exc:
+            move_error = str(exc)[:300]
+            logger.warning("identify_pmid: move-to-duplicates failed (%s -> %s): %s",
+                           dropbox_path, dest, exc)
+
+        # Detach the PDF from the row so the UI no longer claims it.
+        if moved_to:
+            s = _session()
+            try:
+                s.execute(sql_text(
+                    "UPDATE articles SET dropbox_path = NULL, dropbox_link = NULL, "
+                    "                    updated_at = NOW() "
+                    "WHERE id = :aid"
+                ), {"aid": str(aid)})
+                s.commit()
+            finally:
+                s.close()
+
+        return jsonify({
+            "pmid":         pmid,
+            "identified":   identified,
+            "duplicate":    True,
+            "duplicate_of": {
+                "id":        str(dup[0]),
+                "title":     dup[1],
+                "doi":       dup[2],
+                "pubmed_id": dup[3],
+                "year":      dup[4],
+            },
+            "moved_to":   moved_to,
+            "move_error": move_error,
+        })
+
+    return jsonify({"pmid": pmid, "identified": identified})
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/count-pages", methods=["POST"])
 @admin_required
 def api_count_pdf_pages(aid):
