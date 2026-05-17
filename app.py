@@ -425,10 +425,17 @@ def create_app() -> Flask:
 
     @app.route("/health")
     def health():
+        # Railway sets RAILWAY_GIT_COMMIT_SHA at build time; surfacing it
+        # here lets us compare the running deploy against the latest
+        # commit on main without opening the Railway dashboard. Handy
+        # for "did my fix ship?" questions during incident response.
+        sha = os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("GIT_COMMIT_SHA")
         return jsonify({
-            "status": "ok",
-            "dropbox": config.dropbox_configured(),
-            "smtp": config.smtp_configured(),
+            "status":     "ok",
+            "dropbox":    config.dropbox_configured(),
+            "smtp":       config.smtp_configured(),
+            "commit_sha": sha,
+            "commit_short": (sha[:7] if sha else None),
         })
 
     @app.errorhandler(404)
