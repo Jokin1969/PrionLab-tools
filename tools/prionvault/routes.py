@@ -4692,6 +4692,95 @@ def api_admin_prionpacks_sync():
         return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
 
 
+@prionvault_bp.route("/api/admin/prionpacks/sync-debug/<pkg_id>", methods=["GET"])
+@admin_required
+def api_admin_prionpacks_sync_debug(pkg_id):
+    """Dump everything the sync layer sees for one pack so the admin
+    can tell at a glance whether (a) the deploy is current, (b) the
+    expected subgroup label matches the one the admin already created
+    by hand, and (c) which referenced DOIs are actually in PrionVault.
+    Read-only — does NOT mutate any collections."""
+    from .services.prionpack_sync import (
+        _extract_dois, _subgroup_label_for, _resolve_dois_to_article_ids,
+        PACK_GROUP_NAME, INTRO_COLL_NAME, GENERAL_COLL_NAME,
+    )
+    from .services import collections as _collections
+
+    try:
+        from tools.prionpacks import models as pp_models
+    except Exception as exc:
+        return jsonify({"error": "prionpacks_unavailable",
+                        "detail": str(exc)[:200]}), 503
+
+    pack = pp_models.get_package(pkg_id)
+    if not pack:
+        return jsonify({"error": "pack_not_found", "id": pkg_id}), 404
+
+    expected_subgroup = _subgroup_label_for(pack)
+
+    intro_refs   = pack.get("introReferences") or []
+    general_refs = pack.get("references")      or []
+    intro_dois   = sorted({d for r in intro_refs   for d in _extract_dois(r)})
+    general_dois = sorted({d for r in general_refs for d in _extract_dois(r)})
+
+    intro_aids   = _resolve_dois_to_article_ids(intro_dois)
+    general_aids = _resolve_dois_to_article_ids(general_dois)
+
+    # All collections that already live under "PrionPacks" group. Lets
+    # the admin spot whether the sync's subgroup label matches the one
+    # they created by hand (probably the most common reason "I don't
+    # see anything" — the labels don't match exactly).
+    matching = _collections.find_in_group(PACK_GROUP_NAME)
+    existing_pack_collections = []
+    for cid in matching:
+        c = _collections.get(cid)
+        if not c:
+            continue
+        existing_pack_collections.append({
+            "id":            c["id"],
+            "subgroup_name": c.get("subgroup_name"),
+            "name":          c.get("name"),
+            "article_count": c.get("article_count", 0),
+        })
+
+    # Which DOIs were found in PrionVault and which weren't, so the
+    # admin can tell apart "DOI absent from catalogue" (sync can't
+    # help) vs. "DOI is in catalogue but sync didn't pick it up"
+    # (something else is wrong).
+    def _doi_resolution(dois):
+        if not dois:
+            return []
+        eng = _get_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(sql_text(
+                "SELECT id, lower(doi) AS doi FROM articles "
+                "WHERE lower(doi) = ANY(:d)"
+            ), {"d": dois}).all()
+        hit = {r[1]: str(r[0]) for r in rows}
+        return [{"doi": d, "article_id": hit.get(d)} for d in dois]
+
+    return jsonify({
+        "pack": {
+            "id":     pack.get("id"),
+            "title":  pack.get("title"),
+            "active": pack.get("active", True),
+        },
+        "expected": {
+            "group":    PACK_GROUP_NAME,
+            "subgroup": expected_subgroup,
+            "intro_collection_name":   INTRO_COLL_NAME,
+            "general_collection_name": GENERAL_COLL_NAME,
+        },
+        "intro_refs_count":   len(intro_refs),
+        "general_refs_count": len(general_refs),
+        "intro_dois":         _doi_resolution(intro_dois),
+        "general_dois":       _doi_resolution(general_dois),
+        "intro_matched_count":   len(intro_aids),
+        "general_matched_count": len(general_aids),
+        "existing_pack_collections": existing_pack_collections,
+    })
+
+
 @prionvault_bp.route("/api/admin/auto-scan/status", methods=["GET"])
 @admin_required
 def api_admin_auto_scan_status():
