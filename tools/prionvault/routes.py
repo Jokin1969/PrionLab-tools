@@ -2807,124 +2807,27 @@ def api_ingest_scan_folder():
     PDFs that couldn't be auto-ingested (scans without text, etc.).
 
     Body (all optional):
-      { "folder": "/PrionLab tools/PDFs" }
+      { "folder": "/PrionLab tools/PDFs", "limit": 50 }
     """
-    from .ingestion import queue as ingest_queue
+    from .services.folder_scanner import scan_folder_into_queue
 
     data   = request.get_json(silent=True) or {}
     folder = (data.get("folder") or _DEFAULT_WATCH_FOLDER).strip()
-    if not folder.startswith("/"):
-        folder = "/" + folder
-    folder = folder.rstrip("/") or "/"
-    # Cap the per-call work so we never run past gunicorn's request
-    # timeout (default 120 s on Railway). Downloading a PDF from
-    # Dropbox + a couple of DB writes takes ~1-3 s per file; 50 keeps
-    # a comfortable margin even on slow links. The user re-clicks the
-    # button (or the frontend loops chunks) to drain the rest — see
-    # the `remaining` field below.
     try:
         per_call_limit = int(data.get("limit", 50))
     except (TypeError, ValueError):
         per_call_limit = 50
-    per_call_limit = max(1, min(100, per_call_limit))
 
-    try:
-        from core.dropbox_client import get_client
-        import dropbox
-    except Exception as exc:
-        return jsonify({"error": "dropbox_unavailable",
-                        "detail": str(exc)[:200]}), 503
-
-    client = get_client()
-    if client is None:
-        return jsonify({"error": "dropbox_not_configured"}), 503
-
-    try:
-        result  = client.files_list_folder(folder)
-        entries = list(result.entries)
-        while result.has_more:
-            result = client.files_list_folder_continue(result.cursor)
-            entries.extend(result.entries)
-    except dropbox.exceptions.ApiError as exc:
-        # Most common: folder doesn't exist. Surface the path so the
-        # admin can fix the typo without digging into logs.
-        return jsonify({"error": "folder_not_accessible",
-                        "folder": folder,
-                        "detail": str(exc)[:200]}), 404
-    except Exception as exc:
-        logger.exception("scan-folder: list failed for %s", folder)
-        return jsonify({"error": "list_failed", "detail": str(exc)[:200]}), 502
-
-    user_id      = _viewer_id()
-    queued_ids   = []
-    skipped      = []
-    pdf_entries  = [e for e in entries
-                    if isinstance(e, dropbox.files.FileMetadata)
-                    and e.name.lower().endswith(".pdf")]
-
-    # Skip PDFs that already have an in-flight ingest job (queued /
-    # uploading / extracting / resolving / indexing). Without this the
-    # worker deletes the file only AFTER it finishes — so two scans
-    # back-to-back (or a chunked client loop) would re-download and
-    # re-enqueue the same files until the worker caught up.
-    in_flight_paths = set()
-    if pdf_entries:
-        candidate_paths = [e.path_display for e in pdf_entries]
-        s = _session()
-        try:
-            rows = s.execute(sql_text("""
-                SELECT source_dropbox_path
-                  FROM prionvault_ingest_job
-                 WHERE source_dropbox_path = ANY(:paths)
-                   AND status IN
-                       ('queued', 'uploading', 'extracting',
-                        'resolving', 'indexing')
-            """), {"paths": candidate_paths}).all()
-            in_flight_paths = {r[0] for r in rows if r[0]}
-        finally:
-            s.close()
-
-    fresh_entries = [e for e in pdf_entries
-                     if e.path_display not in in_flight_paths]
-
-    total_pdfs   = len(pdf_entries)
-    already_queued = len(in_flight_paths)
-    fresh_total  = len(fresh_entries)
-    to_process   = fresh_entries[:per_call_limit]
-    remaining    = fresh_total - len(to_process)
-
-    for entry in to_process:
-        try:
-            _meta, response = client.files_download(entry.path_lower)
-            content = response.content
-        except Exception as exc:
-            skipped.append({"path": entry.path_display,
-                            "error": f"download failed: {str(exc)[:160]}"})
-            continue
-        try:
-            jid = ingest_queue.enqueue_pdf(
-                content=content,
-                filename=entry.name,
-                user_id=user_id,
-                source_dropbox_path=entry.path_display,
-            )
-            queued_ids.append(jid)
-        except Exception as exc:
-            skipped.append({"path": entry.path_display,
-                            "error": f"enqueue failed: {str(exc)[:160]}"})
-
-    return jsonify({
-        "ok":             True,
-        "folder":         folder,
-        "scanned":        len(entries),
-        "pdfs_found":     total_pdfs,
-        "already_queued": already_queued,
-        "queued":         len(queued_ids),
-        "skipped":        len(skipped),
-        "skipped_detail": skipped[:20],
-        "job_ids":        queued_ids,
-        "remaining":      remaining,
-    }), 202
+    result = scan_folder_into_queue(
+        folder=folder, per_call_limit=per_call_limit, user_id=_viewer_id(),
+    )
+    if not result.get("ok"):
+        status = (404 if result.get("error") == "folder_not_accessible"
+                  else 503 if result.get("error") in ("dropbox_unavailable",
+                                                       "dropbox_not_configured")
+                  else 502)
+        return jsonify(result), status
+    return jsonify(result), 202
 
 
 # ── PDF streaming (inline viewer) ───────────────────────────────────────────
@@ -4757,6 +4660,28 @@ def api_migrations_run():
     except Exception:
         pass
     return jsonify(summary)
+
+
+@prionvault_bp.route("/api/admin/auto-scan/status", methods=["GET"])
+@admin_required
+def api_admin_auto_scan_status():
+    """Snapshot of the auto-scan daemon: when it last ran, what it did,
+    current effective config (interval / folder / batch limit) and
+    whether the daemon thread is alive in this worker process."""
+    from .services.auto_scan import get_status
+    return jsonify(get_status())
+
+
+@prionvault_bp.route("/api/admin/auto-scan/run-now", methods=["POST"])
+@admin_required
+def api_admin_auto_scan_run_now():
+    """Tell the daemon to run on its next loop iteration (bypassing the
+    6-hour interval check). Returns immediately — the actual scan runs
+    in the daemon thread and the result is visible via /status."""
+    from .services.auto_scan import force_run_now
+    force_run_now()
+    return jsonify({"ok": True, "queued": True,
+                    "detail": "El daemon ejecutará un escaneo en cuanto despierte (≤ 1 minuto)."})
 
 
 @prionvault_bp.route("/api/admin/articles-schema", methods=["GET"])

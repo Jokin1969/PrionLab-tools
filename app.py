@@ -302,6 +302,17 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('PrionVault ingest worker failed to start: %s', e)
 
+        # Auto-scan-folder daemon: every 6 h (configurable) checks the
+        # Dropbox watch folder for new PDFs and pushes them into the
+        # ingest queue. Multi-worker safe via a DB lease (see
+        # prionvault_scheduled_runs / migration 025). Set
+        # PRIONVAULT_AUTO_SCAN_DISABLED=1 to opt out.
+        try:
+            from tools.prionvault.services.auto_scan import start_auto_scan
+            start_auto_scan()
+        except Exception as e:
+            app.logger.warning('PrionVault auto-scan daemon failed to start: %s', e)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()
