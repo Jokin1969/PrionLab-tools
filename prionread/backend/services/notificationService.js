@@ -1,4 +1,25 @@
 const cron = require('node-cron');
+// Conditional Sentry import — when SENTRY_DSN is unset (local dev),
+// @sentry/node init was a no-op in server.js and the captureException
+// calls below silently fall through.
+const Sentry = require('@sentry/node');
+
+// Wrap a cron `.catch()` so failures both surface in the logs and
+// reach Sentry tagged with the cron name. Setting tags this way
+// keeps the Sentry UI's "Issues" view groupable by which job blew
+// up — useful when one schedule starts misbehaving and the others
+// don't.
+function _reportCronError(cronName) {
+  return (err) => {
+    console.error(`[notificationService] ${cronName}:`, err);
+    if (process.env.SENTRY_DSN) {
+      Sentry.captureException(err, {
+        tags:  { cron: cronName, service: 'prionread-backend' },
+        level: 'error',
+      });
+    }
+  };
+}
 const { Op } = require('sequelize');
 const emailService = require('./emailService');
 const recommendationEngine = require('../utils/recommendationEngine');
@@ -312,9 +333,7 @@ function initializeScheduledTasks() {
   // Weekly reminders — every Monday at 09:00 Europe/Madrid
   cron.schedule('0 9 * * 1', () => {
     console.log('[notificationService] running weekly reminders');
-    sendWeeklyRemindersToAll().catch((err) =>
-      console.error('[notificationService] weekly cron error:', err)
-    );
+    sendWeeklyRemindersToAll().catch(_reportCronError('weekly-reminders'));
   }, { timezone: 'Europe/Madrid' });
 
   // Inactivity reminders — every other Wednesday at 10:00 Europe/Madrid
@@ -323,17 +342,13 @@ function initializeScheduledTasks() {
     const weekNumber = Math.ceil(new Date().getDate() / 7);
     if (weekNumber % 2 !== 0) return; // run only on even weeks
     console.log('[notificationService] running inactivity reminders');
-    sendInactivityReminders().catch((err) =>
-      console.error('[notificationService] inactivity cron error:', err)
-    );
+    sendInactivityReminders().catch(_reportCronError('inactivity-reminders'));
   }, { timezone: 'Europe/Madrid' });
 
   // Daily threshold alerts — every day at 08:00 Europe/Madrid
   cron.schedule('0 8 * * *', () => {
     console.log('[notificationService] running threshold alerts');
-    checkThresholdRules().catch((err) =>
-      console.error('[notificationService] threshold cron error:', err)
-    );
+    checkThresholdRules().catch(_reportCronError('threshold-alerts'));
   }, { timezone: 'Europe/Madrid' });
 
   // Monthly report — first Monday of each month at 09:00 Europe/Madrid
@@ -341,9 +356,7 @@ function initializeScheduledTasks() {
   // -> exactly the first Monday of the month
   cron.schedule('0 9 1-7 * 1', () => {
     console.log('[notificationService] running monthly reports');
-    sendMonthlyReportsToAll().catch((err) =>
-      console.error('[notificationService] monthly report cron error:', err)
-    );
+    sendMonthlyReportsToAll().catch(_reportCronError('monthly-reports'));
   }, { timezone: 'Europe/Madrid' });
 
   console.log('[notificationService] scheduled tasks initialized');
