@@ -1,6 +1,7 @@
 const dbx = require('../config/dropbox');
 
 const ROOT_FOLDER = '/PrionLab tools/PrionVault';
+const DUPLICATES_FOLDER = `${ROOT_FOLDER}/_Duplicados`;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,31 @@ async function listFiles(folder = ROOT_FOLDER) {
   }
 }
 
+/**
+ * Relocates a PDF to /PrionLab tools/PrionVault/_Duplicados/ when an
+ * article is recognised as a duplicate (e.g. via the AI PMID lookup).
+ * Mirrors the behaviour of the PrionVault ingest worker, which also
+ * stages duplicate sources aside instead of deleting them outright.
+ * Returns the new path, or null if there was nothing to move.
+ */
+async function moveToDuplicatesFolder(dropboxFilePath) {
+  if (!dropboxFilePath) return null;
+  const filename = dropboxFilePath.split('/').pop();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const targetPath = `${DUPLICATES_FOLDER}/${stamp}_${filename}`;
+  try {
+    const result = await dbx.filesMoveV2({
+      from_path: dropboxFilePath,
+      to_path: targetPath,
+      autorename: true,
+      allow_ownership_transfer: false,
+    });
+    return result?.result?.metadata?.path_display || targetPath;
+  } catch (err) {
+    throw wrapDropboxError(err, 'moveToDuplicatesFolder');
+  }
+}
+
 async function deletePDF(dropboxFilePath) {
   if (!dropboxFilePath) {
     throw Object.assign(new Error('dropbox_path is required'), { code: 'INVALID_INPUT' });
@@ -115,4 +141,8 @@ async function deletePDF(dropboxFilePath) {
   }
 }
 
-module.exports = { uploadPDF, generateDownloadLink, checkFileExists, listFiles, deletePDF, dropboxPath };
+module.exports = {
+  uploadPDF, generateDownloadLink, checkFileExists, listFiles,
+  deletePDF, moveToDuplicatesFolder, dropboxPath,
+  ROOT_FOLDER, DUPLICATES_FOLDER,
+};

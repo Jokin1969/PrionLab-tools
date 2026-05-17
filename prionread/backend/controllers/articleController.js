@@ -11,6 +11,7 @@ const {
   deletePDF,
   listFiles,
   dropboxPath,
+  moveToDuplicatesFolder,
 } = require('../services/dropbox');
 const { Article, ArticleRating, sequelize } = require('../models');
 const { buildArticleQuery } = require('../utils/articleFilters');
@@ -645,6 +646,34 @@ async function identifyPmid(req, res) {
       return res.status(404).json({
         error: 'PubMed no encontró ningún PMID para el artículo identificado',
         identified,
+      });
+    }
+
+    // Duplicate guard: if any OTHER article already owns this PMID,
+    // the article being edited is a duplicate. Mirror the PrionVault
+    // ingest worker's behaviour — move the current PDF aside into
+    // _Duplicados/ and detach it from the row (the row itself stays
+    // so the admin can decide to merge / delete later).
+    const existing = await Article.findOne({
+      where: { pubmed_id: String(pmid), id: { [Op.ne]: article.id } },
+      attributes: ['id', 'title', 'doi', 'pubmed_id', 'year'],
+    });
+
+    if (existing) {
+      let movedTo = null;
+      let moveError = null;
+      try { movedTo = await moveToDuplicatesFolder(article.dropbox_path); }
+      catch (err) { moveError = err.message; }
+
+      await article.update({ dropbox_path: null, dropbox_link: null });
+
+      return res.json({
+        pmid,
+        identified,
+        duplicate: true,
+        duplicate_of: existing,
+        moved_to: movedTo,
+        move_error: moveError,
       });
     }
 

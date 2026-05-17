@@ -13,6 +13,7 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
   const [fetchingMetadata, setFetchingMetadata] = useState(false);
   const [identifyingPmid, setIdentifyingPmid]   = useState(false);
   const [aiHint, setAiHint]               = useState(null);
+  const [aiDuplicate, setAiDuplicate]     = useState(null);
   const [openingPdf, setOpeningPdf]       = useState(false);
   const [error, setError]                 = useState('');
 
@@ -20,6 +21,7 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
     setError('');
     setPdfFile(null);
     setAiHint(null);
+    setAiDuplicate(null);
     if (article) {
       setFormData({
         title:        article.title || '',
@@ -79,11 +81,31 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
     if (!article?.id) return;
     setIdentifyingPmid(true);
     setAiHint(null);
+    setAiDuplicate(null);
     setError('');
     try {
       const data = await adminService.identifyPmid(article.id);
       const pmid = String(data.pmid);
       setAiHint({ pmid, identified: data.identified || null });
+
+      // Duplicate: the PMID we just found already belongs to another
+      // article. The backend has moved this PDF to _Duplicados/ and
+      // detached it. Don't chain into fetchMetadata — show the warning
+      // and let the admin decide whether to delete this row.
+      if (data.duplicate) {
+        setAiDuplicate({
+          of: data.duplicate_of,
+          movedTo: data.moved_to,
+          moveError: data.move_error,
+        });
+        // Reflect the unlinked PDF locally so the modal UI updates.
+        if (article) {
+          article.dropbox_path = null;
+          article.dropbox_link = null;
+        }
+        return;
+      }
+
       setFormData((prev) => ({ ...prev, pubmed_id: pmid }));
       // Chain straight into the existing metadata fetch — same path the
       // user runs manually after pasting a PMID.
@@ -190,6 +212,28 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
                   {aiHint.identified.first_author_lastname || '?'} · {aiHint.identified.year || '?'}
                 </div>
               )}
+            </div>
+          )}
+          {aiDuplicate && (
+            <div className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-300 rounded px-3 py-2 space-y-1">
+              <div className="font-semibold">⚠️ Duplicado detectado</div>
+              <div>
+                Este artículo ya existe en la biblioteca con PMID{' '}
+                <span className="font-mono">{aiDuplicate.of?.pubmed_id}</span>:
+              </div>
+              {aiDuplicate.of?.title && <div className="italic truncate">«{aiDuplicate.of.title}»</div>}
+              {aiDuplicate.movedTo ? (
+                <div className="text-amber-800">
+                  📂 PDF movido a <span className="font-mono">{aiDuplicate.movedTo}</span> y desvinculado de este registro.
+                </div>
+              ) : aiDuplicate.moveError ? (
+                <div className="text-red-700">
+                  No se pudo mover el PDF: {aiDuplicate.moveError}
+                </div>
+              ) : null}
+              <div className="text-amber-800">
+                Decide si quieres borrar este registro duplicado o conservarlo sin PDF.
+              </div>
             </div>
           )}
         </div>
