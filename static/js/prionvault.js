@@ -5511,12 +5511,16 @@
         const more = r.remaining > 0
           ? `\n\nQuedan ${r.remaining} sin abstract. Vuelve a pulsar para procesar otros 50.`
           : '\n\n✓ Sin artículos pendientes.';
+        const conflictsLine = r.pmid_conflicts
+          ? `\n⚠ PMID encontrado pero ya pertenecía a otro artículo (no se asignó, abstract sí): ${r.pmid_conflicts}`
+          : '';
         alert(
           `Reintento completado.\n\n` +
           `Procesados: ${r.processed}\n` +
           `Abstract recuperado: ${r.recovered}\n` +
           `Aún sin abstract (marcados como confirmados): ${r.still_missing}\n` +
           `PMIDs descubiertos por el camino: ${r.learned_pmids}` +
+          conflictsLine +
           more
         );
         loadArticles();

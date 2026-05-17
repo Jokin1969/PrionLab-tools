@@ -3049,6 +3049,7 @@ def api_admin_retry_abstracts():
         recovered    = 0
         still_missing = 0
         learned_pmids = 0
+        pmid_conflicts = 0
         for r in rows:
             aid  = str(r["id"])
             doi  = (r["doi"] or "").strip() or None
@@ -3077,32 +3078,72 @@ def api_admin_retry_abstracts():
                 except Exception:
                     abstract = None
 
+            # Build the per-row UPDATE. Use a savepoint so a unique-
+            # constraint clash on pubmed_id (another article in the
+            # library already owns the PMID PubMed resolved from the
+            # DOI) doesn't abort the whole batch — we retry the row
+            # without writing pubmed_id, keeping the abstract.
+            base_params = {"id": aid}
+            base_set    = []
             if abstract:
-                params = {"abs": abstract, "id": aid}
-                set_parts = ["abstract = :abs", "abstract_unavailable = FALSE"]
-                if new_pmid_for_save:
-                    set_parts.append("pubmed_id = :pmid")
-                    params["pmid"] = new_pmid_for_save
-                s.execute(sql_text(
-                    f"UPDATE articles SET {', '.join(set_parts)}, "
-                    "updated_at = NOW() WHERE id = :id"
-                ), params)
-                recovered += 1
-                if new_pmid_for_save:
-                    learned_pmids += 1
+                base_set.append("abstract = :abs")
+                base_set.append("abstract_unavailable = FALSE")
+                base_params["abs"] = abstract
             else:
-                params = {"id": aid}
-                set_parts = ["abstract_unavailable = TRUE"]
-                if new_pmid_for_save:
-                    set_parts.append("pubmed_id = :pmid")
-                    params["pmid"] = new_pmid_for_save
-                s.execute(sql_text(
-                    f"UPDATE articles SET {', '.join(set_parts)}, "
-                    "updated_at = NOW() WHERE id = :id"
-                ), params)
+                base_set.append("abstract_unavailable = TRUE")
+
+            wrote_pmid = False
+            try:
+                with s.begin_nested():           # savepoint
+                    params   = dict(base_params)
+                    set_part = list(base_set)
+                    if new_pmid_for_save:
+                        set_part.append("pubmed_id = :pmid")
+                        params["pmid"] = new_pmid_for_save
+                    s.execute(sql_text(
+                        f"UPDATE articles SET {', '.join(set_part)}, "
+                        "updated_at = NOW() WHERE id = :id"
+                    ), params)
+                    wrote_pmid = bool(new_pmid_for_save)
+            except IntegrityError as exc:
+                # Most common reason: pubmed_id collides with another
+                # row (the PMID we just resolved is already owned). Re-
+                # apply the same UPDATE without touching pubmed_id so
+                # the abstract still lands.
+                if new_pmid_for_save and "pubmed_id" in str(exc).lower():
+                    pmid_conflicts += 1
+                    logger.info(
+                        "retry-abstracts: PMID %s already owned by another "
+                        "article — skipping pubmed_id write for %s, keeping "
+                        "abstract.", new_pmid_for_save, aid,
+                    )
+                    try:
+                        with s.begin_nested():
+                            s.execute(sql_text(
+                                f"UPDATE articles SET {', '.join(base_set)}, "
+                                "updated_at = NOW() WHERE id = :id"
+                            ), base_params)
+                    except Exception:
+                        logger.exception(
+                            "retry-abstracts: retry without pubmed_id also "
+                            "failed for %s", aid,
+                        )
+                        continue
+                else:
+                    logger.exception(
+                        "retry-abstracts: unexpected IntegrityError for %s", aid,
+                    )
+                    continue
+
+            if abstract:
+                recovered += 1
+            else:
                 still_missing += 1
-                if new_pmid_for_save:
-                    learned_pmids += 1
+            if wrote_pmid:
+                learned_pmids += 1
+            # Commit per row so a later failure (or worker restart)
+            # doesn't lose work that already succeeded.
+            s.commit()
 
         # Quick "how much is left?" count so the UI can suggest
         # another run when the batch is full.
@@ -3119,6 +3160,7 @@ def api_admin_retry_abstracts():
             "recovered":       recovered,
             "still_missing":   still_missing,
             "learned_pmids":   learned_pmids,
+            "pmid_conflicts":  pmid_conflicts,
             "remaining":       int(remaining),
         })
     except Exception as exc:
