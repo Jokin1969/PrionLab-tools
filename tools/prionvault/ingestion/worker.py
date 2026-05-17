@@ -123,14 +123,35 @@ def _process_job(job: ingest_queue.Job) -> None:
     # ── 5. Insert / update the article row ─────────────────────────────
     # NOTE: volume/issue/pages are NOT in the `articles` table (they exist
     # in the metadata resolver but were never added to the DB schema).
-    article_id = _upsert_article(
-        doi=final_doi, pubmed_id=pubmed_id, title=title, authors=authors,
-        journal=journal, year=year, abstract=abstract,
-        pdf_md5=md5, pdf_size_bytes=upload.size_bytes,
-        pdf_pages=extraction.pages, extracted_text=extraction.text,
-        dropbox_path=upload.dropbox_path, dropbox_link=upload.dropbox_link,
-        source=meta_source, added_by=job.created_by,
-    )
+    try:
+        article_id = _upsert_article(
+            doi=final_doi, pubmed_id=pubmed_id, title=title, authors=authors,
+            journal=journal, year=year, abstract=abstract,
+            pdf_md5=md5, pdf_size_bytes=upload.size_bytes,
+            pdf_pages=extraction.pages, extracted_text=extraction.text,
+            dropbox_path=upload.dropbox_path, dropbox_link=upload.dropbox_link,
+            source=meta_source, added_by=job.created_by,
+        )
+    except Exception as exc:
+        # Most common cause in the wild: StringDataRightTruncation on
+        # articles.title when migration 022/023 hasn't taken effect on
+        # production. Mark the job failed with a clear reason instead
+        # of letting the uncaught exception bubble into Sentry on
+        # every long-titled paper. The admin can retry the job once
+        # the migration applies.
+        msg = str(exc)[:300]
+        if "StringDataRightTruncation" in type(exc).__name__ \
+           or "value too long" in msg.lower():
+            reason = ("Esquema desactualizado: alguna columna sigue siendo "
+                      "VARCHAR(255). Aplica la migración 023 (force-rerun) "
+                      "y reintenta el job. — " + msg)
+        else:
+            reason = f"Article insert/update failed: {msg}"
+        logger.warning("worker: _upsert_article failed for job %d — %s",
+                       job.id, msg)
+        ingest_queue.mark_step(job.id, status="failed",
+                               step="upsert_article", error=reason)
+        return
 
     id_type  = "doi" if final_doi else ("pmid" if pubmed_id else "md5")
     summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}"

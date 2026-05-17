@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 from flask import jsonify, render_template, request, session, Response
 from sqlalchemy import or_, func, text as sql_text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, DataError
 
 from core.decorators import login_required, admin_required
 from database.config import db
@@ -1357,6 +1357,26 @@ def api_article_update(aid):
                 "error":  "duplicate",
                 "detail": str(exc.orig)[:200] if exc.orig else str(exc)[:200],
             }), 409
+        except DataError as exc:
+            # Almost always the StringDataRightTruncation that fires
+            # when articles.title (or another column) is still VARCHAR(
+            # 255) on production because migration 022/023 didn't take.
+            # Convert the 500 into a 422 so the user (and Sentry) get a
+            # clean, actionable message instead of an unhandled-error
+            # alert.
+            s.rollback()
+            msg = str(exc.orig)[:300] if getattr(exc, "orig", None) else str(exc)[:300]
+            logger.warning("api_article_update %s: DataError — %s", aid, msg)
+            return jsonify({
+                "error":  "value_too_long",
+                "detail": ("Algún campo supera el límite de su columna "
+                           "(casi siempre title > 255 chars). Esquema "
+                           "desactualizado en producción: corre la migración "
+                           "023 desde /api/admin/migrations/force-rerun con "
+                           "{\"names\":[\"023_articles_text_columns_verified.sql\"]} "
+                           "o reploy para que se aplique sola."),
+                "db_error": msg,
+            }), 422
         return jsonify(a.to_dict(include_text=True, viewer_role="admin"))
     finally:
         s.close()
