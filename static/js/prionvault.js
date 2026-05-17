@@ -5461,6 +5461,17 @@
   }
 
   // ── PMID backfill modal ──────────────────────────────────────────────
+  //
+  // We chunk the work in 50-article HTTP requests (~10-25 s each at
+  // PubMed's typical 200-500 ms response time) so each one stays
+  // comfortably inside the gunicorn 30 s window. A single user click
+  // loops up to _PMID_TARGET_PER_CLICK / _PMID_CHUNK_SIZE chunks, so
+  // 250 / 50 = 5 sequential requests, ~1-2 min total wall time. The
+  // loop breaks early if a chunk comes back with fewer rows than
+  // requested (the pending queue ran dry).
+  const _PMID_CHUNK_SIZE       = 50;
+  const _PMID_TARGET_PER_CLICK = 250;
+
   function wirePmidBackfill() {
     const btn      = document.getElementById('btn-backfill-pmids');
     const modal    = document.getElementById('pv-pmid-modal');
@@ -5520,7 +5531,8 @@
           runBtn.disabled = false;
           runBtn.style.opacity = '1';
           runBtn.style.cursor = 'pointer';
-          runBtn.textContent = `🔄 Recuperar PMIDs faltantes (${Math.min(50, s.missing_pmid)} en este lote)`;
+          const target = Math.min(_PMID_TARGET_PER_CLICK, s.missing_pmid);
+          runBtn.textContent = `🔄 Recuperar PMIDs faltantes (${target} en esta tanda)`;
         }
       } catch (e) {
         statsEl.innerHTML = `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
@@ -5545,43 +5557,50 @@
     async function runBatch() {
       runBtn.disabled = true;
       const orig = runBtn.textContent;
-      runBtn.textContent = '⏳ Buscando en PubMed…';
-      _appendLog(`<b>${new Date().toLocaleTimeString()}</b> Procesando lote (hasta 50 artículos)…`);
+      const CHUNK = _PMID_CHUNK_SIZE;          // 50 per HTTP request
+      const TARGET = _PMID_TARGET_PER_CLICK;   // 250 per click
+      let totalProcessed = 0;
+      let totalFound     = 0;
       try {
-        const r = await api('/admin/pmid-backfill', {
-          method: 'POST',
-          body: JSON.stringify({ limit: 50 }),
-        });
-        (r.items || []).forEach(it => {
-          const title = (it.title || '').slice(0, 80);
-          const titleEsc = esc(title) + (it.title && it.title.length > 80 ? '…' : '');
-          if (it.found_pmid && !it.reason) {
-            _appendLog(
-              `✓ <a href="https://pubmed.ncbi.nlm.nih.gov/${esc(String(it.found_pmid))}/" ` +
-                `target="_blank" rel="noopener" style="color:#0F3460;font-weight:600;">PMID ${esc(String(it.found_pmid))}</a> ` +
-              `<span style="color:#9ca3af;">(${esc(it.via || '?')})</span> — ${titleEsc}`,
-              'ok'
-            );
-          } else if (it.reason === 'duplicate') {
-            _appendLog(
-              `⚠ Duplicado: PMID ${esc(String(it.found_pmid))} ya pertenece a otro artículo — ${titleEsc}`,
-              'warn'
-            );
-          } else if (it.reason === 'not_found') {
-            _appendLog(
-              `✗ Sin coincidencia en PubMed — ${titleEsc}`,
-              'error'
-            );
-          } else {
-            _appendLog(
-              `✗ ${esc(it.reason || 'error')} — ${titleEsc}`,
-              'error'
-            );
-          }
-        });
+        const chunks = Math.ceil(TARGET / CHUNK);
+        for (let i = 1; i <= chunks; i++) {
+          runBtn.textContent = `⏳ Buscando en PubMed… (lote ${i}/${chunks})`;
+          _appendLog(`<b>${new Date().toLocaleTimeString()}</b> Lote ${i}/${chunks} — hasta ${CHUNK} artículos…`);
+          const r = await api('/admin/pmid-backfill', {
+            method: 'POST',
+            body: JSON.stringify({ limit: CHUNK }),
+          });
+          (r.items || []).forEach(it => {
+            const title = (it.title || '').slice(0, 80);
+            const titleEsc = esc(title) + (it.title && it.title.length > 80 ? '…' : '');
+            if (it.found_pmid && !it.reason) {
+              _appendLog(
+                `✓ <a href="https://pubmed.ncbi.nlm.nih.gov/${esc(String(it.found_pmid))}/" ` +
+                  `target="_blank" rel="noopener" style="color:#0F3460;font-weight:600;">PMID ${esc(String(it.found_pmid))}</a> ` +
+                `<span style="color:#9ca3af;">(${esc(it.via || '?')})</span> — ${titleEsc}`,
+                'ok'
+              );
+            } else if (it.reason === 'duplicate') {
+              _appendLog(
+                `⚠ Duplicado: PMID ${esc(String(it.found_pmid))} ya pertenece a otro artículo — ${titleEsc}`,
+                'warn'
+              );
+            } else if (it.reason === 'not_found') {
+              _appendLog(`✗ Sin coincidencia en PubMed — ${titleEsc}`, 'error');
+            } else {
+              _appendLog(`✗ ${esc(it.reason || 'error')} — ${titleEsc}`, 'error');
+            }
+          });
+          totalProcessed += r.processed || 0;
+          totalFound     += r.found || 0;
+          // If the server gave us fewer rows than we asked for, the
+          // queue is empty — stop early instead of issuing more HTTPs
+          // we know will return [].
+          if ((r.processed || 0) < CHUNK) break;
+        }
         _appendLog(
-          `<b>Lote terminado</b> — procesados ${r.processed}, recuperados ${r.found}.`,
-          r.found > 0 ? 'ok' : 'warn'
+          `<b>Tanda terminada</b> — procesados ${totalProcessed}, recuperados ${totalFound}.`,
+          totalFound > 0 ? 'ok' : 'warn'
         );
         await refreshStats();
         // Refresh the listing so newly-found PMIDs appear as the
