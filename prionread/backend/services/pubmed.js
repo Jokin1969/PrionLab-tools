@@ -118,7 +118,11 @@ async function fetchArticleByPubMedID(pmid) {
   try {
     const { data } = await axios.get(EFETCH_URL, {
       params: { ...NCBI_PARAMS, id, rettype: 'abstract', retmode: 'xml' },
-      timeout: 10000,
+      // efetch's abstract response is heavier than esummary; the
+      // previous 10 s timeout occasionally cut off perfectly valid
+      // responses on a slow round-trip, which silently dropped the
+      // abstract.
+      timeout: 20000,
     });
     xml = typeof data === 'string' ? data : String(data);
   } catch (err) {

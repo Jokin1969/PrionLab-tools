@@ -225,10 +225,14 @@ def pubmed_efetch_abstract(pmid: str) -> Optional[str]:
             "rettype": "abstract",
             "retmode": "xml",
         }, headers={"User-Agent": _USER_AGENT, "Accept": "application/xml"},
-           timeout=_TIMEOUT)
+           # efetch's abstract response is heavier than esummary; the
+           # default _TIMEOUT (8 s) routinely cuts off perfectly valid
+           # responses on a slow round-trip, which is the most common
+           # reason an article's abstract silently fails to land.
+           timeout=20.0)
         r.raise_for_status()
     except Exception as exc:
-        logger.debug("PubMed efetch abstract for %s failed: %s", pmid, exc)
+        logger.info("PubMed efetch abstract for %s failed: %s", pmid, exc)
         return None
 
     import xml.etree.ElementTree as ET
@@ -464,9 +468,16 @@ def resolve_metadata(*, doi: Optional[str] = None,
                 cr = crossref_by_title(meta.title, year_hint=meta.year)
                 if cr and cr.doi:
                     meta.doi = cr.doi
-                    # Also enrich with CrossRef abstract if PubMed had none.
                     if not meta.abstract and cr.abstract:
                         meta.abstract = cr.abstract
+            # Last-chance abstract enrichment: PubMed sometimes returns
+            # a DOI but no abstract (older papers, efetch timeout, or
+            # records where the abstract lives in a publisher-specific
+            # field PubMed doesn't index). CrossRef-by-DOI often has it.
+            if not meta.abstract and meta.doi:
+                cr = crossref_by_doi(meta.doi)
+                if cr and cr.abstract:
+                    meta.abstract = cr.abstract
             return meta
 
     if title_hint:

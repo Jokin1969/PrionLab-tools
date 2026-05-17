@@ -97,7 +97,18 @@ async function resolveExternalMetadata(doi, pubmed_id) {
     }
     return meta;
   }
-  return fetchArticleByPubMedID(pubmed_id);
+  // PMID-only lookup. PubMed sometimes returns a DOI but no abstract
+  // (older papers, efetch timeout, or records where the abstract
+  // lives in a publisher-only field PubMed doesn't index); CrossRef-
+  // by-DOI usually has it.
+  const meta = await fetchArticleByPubMedID(pubmed_id);
+  if (meta && !meta.abstract && meta.doi) {
+    try {
+      const cr = await fetchArticleByDOI(meta.doi);
+      if (cr && cr.abstract) meta.abstract = cr.abstract;
+    } catch { /* best-effort */ }
+  }
+  return meta;
 }
 
 const AVG_RATING_LITERAL = literal(

@@ -1528,7 +1528,7 @@
     const badges = [
       IS_ADMIN
         ? `<button type="button" class="pv-edit-row-btn" data-aid="${esc(a.id)}"
-                    title="Editar artículo"
+                    title="${a.pubmed_id ? 'Editar artículo + abrir PubMed en otra pestaña' : 'Editar artículo'}"
                     style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:4px;
                            font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;
                            border:none;cursor:pointer;line-height:1.2;">✏ Editar</button>`
@@ -1850,6 +1850,14 @@
       const editBtn = row.querySelector('.pv-edit-row-btn');
       if (editBtn) editBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        // If we already know the PMID at list time, pop PubMed in a
+        // background tab as part of the same click. Opening before
+        // the await keeps the popup-blocker happy (user-gesture
+        // chain stays intact). Edit modal still opens.
+        if (a.pubmed_id) {
+          window.open(`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(a.pubmed_id)}/`,
+                      '_blank', 'noopener');
+        }
         editBtn.disabled = true;
         try {
           // Pull a fresh copy so the modal sees the latest fields
@@ -3234,6 +3242,7 @@
     const delBtn = document.getElementById('pv-edit-delete');
     if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 Borrar artículo'; }
     _editRenderPdfPreview(a);
+    _editSyncPmidLink(a.pubmed_id || '');
     const aiBtn = document.getElementById('pv-edit-identify-ai');
     if (aiBtn) {
       const ok = !!a.has_pdf;
@@ -3286,6 +3295,7 @@
       if (m.journal)  document.getElementById('pv-edit-journal').value  = m.journal;
       if (m.doi)      doiEl.value  = m.doi;
       if (m.pubmed_id) pmidEl.value = m.pubmed_id;
+      _editSyncPmidLink(pmidEl.value);
       if (m.abstract) document.getElementById('pv-edit-abstract').value = m.abstract;
       const dupNote = r.duplicate_of && r.duplicate_of !== _editTarget?.id
         ? '  ⚠️ Ya existe otro artículo con ese DOI/PMID — revisa antes de guardar.'
@@ -3326,6 +3336,24 @@
       prev = prev.previousElementSibling;
     }
     return null;
+  }
+
+  // Toggle the "PMID ↗" external link button next to the PMID input
+  // to match the current value. Reads from the DOM (input.value)
+  // rather than from _editTarget so it stays correct after the user
+  // pastes / clears the field, or after _editRefetch fills it in.
+  function _editSyncPmidLink(rawValue) {
+    const link = document.getElementById('pv-edit-pmid-link');
+    if (!link) return;
+    const pmid = String(rawValue || '').trim();
+    if (/^\d+$/.test(pmid)) {
+      link.href = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+      link.style.display = '';
+      link.title = `Abrir PMID ${pmid} en PubMed (nueva pestaña)`;
+    } else {
+      link.removeAttribute('href');
+      link.style.display = 'none';
+    }
   }
 
   // Render the mini-PDF preview at the top of the Edit modal. Sized
@@ -3529,6 +3557,16 @@
     document.getElementById('pv-edit-refetch-doi') ?.addEventListener('click', () => _editRefetch('doi'));
     document.getElementById('pv-edit-refetch-pmid')?.addEventListener('click', () => _editRefetch('pmid'));
     document.getElementById('pv-edit-identify-ai') ?.addEventListener('click', _editIdentifyAI);
+
+    // Keep the "PMID ↗" link in sync with whatever's in the input.
+    // Hidden when empty so the user only sees it when there's an
+    // actual PubMed entry to open.
+    const pmidInput = document.getElementById('pv-edit-pmid');
+    if (pmidInput) {
+      const syncPmidLink = () => _editSyncPmidLink(pmidInput.value);
+      pmidInput.addEventListener('input', syncPmidLink);
+      pmidInput.addEventListener('change', syncPmidLink);
+    }
 
     document.getElementById('pv-edit-save')?.addEventListener('click', async () => {
       const aid = await _editPerformSave('pv-edit-save');
