@@ -1338,6 +1338,57 @@
 </div>
 
 <!-- ── Collection editor modal (manual + smart) ───────────────────── -->
+<!-- ── Bulk add-to-collection picker ─────────────────────────────────
+     Replaces the old prompt()-based numbered-list flow. Shows the full
+     group → subgroup → collection tree, lets the admin tick multiple
+     collections at once, and respects the same sort order as the
+     sidebar so the mental model is consistent. -->
+<div id="pv-bulk-collection-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:680px;">
+    <button class="pv-modal-close" id="pv-bulk-coll-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-folder-plus" style="color:#0F3460;margin-right:8px;"></i>
+      <span id="pv-bulk-coll-title">Añadir artículos a colecciones</span>
+    </h2>
+    <p id="pv-bulk-coll-summary" style="color:#6b7280;font-size:12.5px;margin:0 0 12px;">
+      Marca las colecciones donde quieres meter los artículos. Puedes elegir varias.
+    </p>
+
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <input id="pv-bulk-coll-search" type="text"
+             placeholder="Filtrar por nombre, grupo o subgrupo…"
+             style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
+      <button id="pv-bulk-coll-newbtn" type="button"
+              title="Crear una nueva colección antes de añadir"
+              style="padding:6px 12px;border-radius:6px;background:white;color:#0F3460;border:1px solid #d1d5db;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+        + Nueva colección
+      </button>
+    </div>
+
+    <div id="pv-bulk-coll-tree"
+         style="max-height:380px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;padding:6px;">
+      <div style="text-align:center;color:#9ca3af;padding:24px 12px;font-size:13px;">Cargando colecciones…</div>
+    </div>
+
+    <div id="pv-bulk-coll-result" style="font-size:12.5px;color:#6b7280;margin-top:8px;min-height:18px;"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;">
+      <span id="pv-bulk-coll-count" style="font-size:12px;color:#6b7280;">0 colecciones seleccionadas</span>
+      <div style="display:flex;gap:8px;">
+        <button id="pv-bulk-coll-cancel" type="button"
+                style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;font-size:13px;cursor:pointer;">
+          Cancelar
+        </button>
+        <button id="pv-bulk-coll-submit" type="button" disabled
+                style="padding:8px 16px;border-radius:8px;border:none;background:#0F3460;color:white;font-size:13px;font-weight:600;cursor:pointer;opacity:0.5;">
+          Añadir
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="pv-collection-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
   <div class="pv-modal-inner" style="max-width:680px;">

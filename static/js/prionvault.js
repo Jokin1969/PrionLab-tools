@@ -720,47 +720,231 @@
     setTimeout(() => document.getElementById('pv-coll-name').focus(), 30);
   }
 
+  // ── Bulk add-to-collection picker (modal) ───────────────────────────
+  // Replaces the old prompt() flow. Shows the same group → subgroup →
+  // collection tree the sidebar uses, with checkboxes so multiple
+  // destinations can be picked in one pass. Smart collections are
+  // hidden — the backend rejects POST to them.
+  const _BULK_COLL_STATE = { articleIds: [], picked: new Set(), items: [] };
+
   async function openAddToCollectionPicker(articleIds) {
     if (!articleIds || !articleIds.length) {
       alert('Selecciona al menos un artículo primero.');
       return;
     }
-    let items = [];
+    const modal = document.getElementById('pv-bulk-collection-modal');
+    if (!modal) return alert('UI: pv-bulk-collection-modal no está montado.');
+
+    _BULK_COLL_STATE.articleIds = articleIds.slice();
+    _BULK_COLL_STATE.picked.clear();
+    _BULK_COLL_STATE.items     = [];
+
+    // Reset transient UI on every open.
+    document.getElementById('pv-bulk-coll-summary').textContent =
+      `Marca las colecciones donde quieres meter ${articleIds.length} artículo${articleIds.length === 1 ? '' : 's'}. Puedes elegir varias.`;
+    document.getElementById('pv-bulk-coll-search').value  = '';
+    document.getElementById('pv-bulk-coll-result').textContent = '';
+    _bulkCollSyncSubmit();
+    document.getElementById('pv-bulk-coll-tree').innerHTML =
+      '<div style="text-align:center;color:#9ca3af;padding:24px 12px;font-size:13px;">Cargando colecciones…</div>';
+    modal.style.display = 'flex';
+
     try {
       const r = await api('/collections');
-      items = (r.items || []).filter(c => c.kind === 'manual');
+      _BULK_COLL_STATE.items = (r.items || []).filter(c => c.kind === 'manual');
     } catch (e) {
-      alert('No se pudieron cargar las colecciones: ' + e.message);
+      document.getElementById('pv-bulk-coll-tree').innerHTML =
+        `<div style="color:#b91c1c;padding:14px;font-size:13px;">No se pudieron cargar las colecciones: ${esc(e.message)}</div>`;
       return;
     }
-    if (!items.length) {
-      if (!confirm('No tienes ninguna colección manual. ¿Crear una nueva ahora?')) return;
-      document.getElementById('btn-new-collection')?.click();
+
+    if (!_BULK_COLL_STATE.items.length) {
+      document.getElementById('pv-bulk-coll-tree').innerHTML =
+        `<div style="text-align:center;color:#9ca3af;padding:24px 12px;font-size:13px;">
+           No tienes ninguna colección manual.<br>
+           <span style="font-size:11.5px;">Pulsa <strong>+ Nueva colección</strong> arriba.</span>
+         </div>`;
       return;
     }
-    const lines = items.map((c, i) => `  ${i+1}. ${c.name} (${c.article_count})`);
-    const pick = prompt(
-      `Elige una colección para añadir ${articleIds.length} artículo(s):\n\n` +
-      lines.join('\n') + '\n\nEscribe el número:'
-    );
-    if (pick === null) return;
-    const idx = parseInt(pick.trim(), 10) - 1;
-    if (!Number.isFinite(idx) || idx < 0 || idx >= items.length) {
-      alert('Selección inválida.');
+
+    _renderBulkCollTree('');
+  }
+
+  function _renderBulkCollTree(filterText) {
+    const container = document.getElementById('pv-bulk-coll-tree');
+    if (!container) return;
+    const needle = (filterText || '').trim().toLowerCase();
+    const match  = (c) =>
+      !needle ||
+      (c.name          || '').toLowerCase().includes(needle) ||
+      (c.group_name    || '').toLowerCase().includes(needle) ||
+      (c.subgroup_name || '').toLowerCase().includes(needle);
+
+    // Same (group → subgroup → collections) tree the sidebar uses, so
+    // the picker reads in the same order as the rest of the UI.
+    const tree = {};
+    _BULK_COLL_STATE.items.forEach(c => {
+      if (!match(c)) return;
+      const g  = (c.group_name    || '').trim();
+      const sg = (c.subgroup_name || '').trim();
+      if (!tree[g])     tree[g] = {};
+      if (!tree[g][sg]) tree[g][sg] = [];
+      tree[g][sg].push(c);
+    });
+
+    const groupKeys = Object.keys(tree)
+      .filter(k => k !== '')
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    if ('' in tree) groupKeys.push('');
+
+    if (groupKeys.length === 0) {
+      container.innerHTML =
+        `<div style="text-align:center;color:#9ca3af;padding:24px 12px;font-size:13px;">Sin coincidencias para «${esc(filterText)}».</div>`;
       return;
     }
-    const target = items[idx];
-    try {
-      const r = await api(`/collections/${target.id}/articles`, {
-        method: 'POST',
-        body: JSON.stringify({ ids: articleIds }),
+
+    const html = [];
+    groupKeys.forEach(g => {
+      const subBranch = tree[g];
+      const groupLabel = g || '(sin grupo)';
+      html.push(
+        `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;` +
+          `color:${g ? '#0F3460' : '#9ca3af'};padding:8px 6px 4px;border-top:1px solid #e5e7eb;margin-top:4px;">` +
+          esc(groupLabel) +
+        `</div>`
+      );
+      const subKeys = Object.keys(subBranch)
+        .filter(k => k !== '')
+        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+      if ('' in subBranch) subKeys.push('');
+
+      subKeys.forEach(sg => {
+        if (sg) {
+          html.push(
+            `<div style="font-size:11.5px;font-weight:600;color:#6b7280;` +
+              `padding:4px 6px 2px 14px;">› ${esc(sg)}</div>`
+          );
+        }
+        subBranch[sg]
+          .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
+          .forEach(c => {
+            const checked = _BULK_COLL_STATE.picked.has(c.id) ? 'checked' : '';
+            const dot = c.color
+              ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${esc(c.color)};flex-shrink:0;"></span>`
+              : '';
+            html.push(
+              `<label class="pv-bulk-coll-row" style="display:flex;align-items:center;gap:8px;` +
+                `padding:5px 10px 5px ${sg ? 26 : 14}px;border-radius:5px;cursor:pointer;font-size:13px;` +
+                `transition:background 0.1s;"` +
+                `onmouseover="this.style.background='#eef2ff';"` +
+                `onmouseout="this.style.background='transparent';">` +
+                `<input type="checkbox" class="pv-bulk-coll-cb" data-cid="${esc(c.id)}" ${checked} ` +
+                  `style="margin:0;cursor:pointer;">` +
+                dot +
+                `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#111827;">` +
+                  esc(c.name) +
+                `</span>` +
+                `<span style="color:#9ca3af;font-size:11.5px;flex-shrink:0;">${c.article_count || 0}</span>` +
+              `</label>`
+            );
+          });
       });
-      refreshCollections();
-      alert(`Añadidos ${r.added} a "${target.name}". ` +
-            `${r.skipped} ya estaban dentro.`);
-    } catch (e) {
-      alert('Error: ' + e.message);
+    });
+
+    container.innerHTML = html.join('');
+    // Wire the freshly-rendered checkboxes.
+    container.querySelectorAll('.pv-bulk-coll-cb').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const cid = cb.dataset.cid;
+        if (cb.checked) _BULK_COLL_STATE.picked.add(cid);
+        else            _BULK_COLL_STATE.picked.delete(cid);
+        _bulkCollSyncSubmit();
+      });
+    });
+  }
+
+  function _bulkCollSyncSubmit() {
+    const n = _BULK_COLL_STATE.picked.size;
+    const btn   = document.getElementById('pv-bulk-coll-submit');
+    const count = document.getElementById('pv-bulk-coll-count');
+    if (count) {
+      count.textContent = n === 0 ? '0 colecciones seleccionadas'
+                         : n === 1 ? '1 colección seleccionada'
+                         :          `${n} colecciones seleccionadas`;
     }
+    if (btn) {
+      btn.disabled        = n === 0;
+      btn.style.opacity   = n === 0 ? '0.5' : '1';
+      btn.style.cursor    = n === 0 ? 'not-allowed' : 'pointer';
+      btn.textContent     = n === 0
+        ? 'Añadir'
+        : `Añadir a ${n} colección${n === 1 ? '' : 'es'}`;
+    }
+  }
+
+  function wireBulkCollectionPicker() {
+    const modal    = document.getElementById('pv-bulk-collection-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+
+    const close = () => { modal.style.display = 'none'; };
+    document.getElementById('pv-bulk-coll-close') ?.addEventListener('click', close);
+    document.getElementById('pv-bulk-coll-cancel')?.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop')     ?.addEventListener('click', close);
+
+    document.getElementById('pv-bulk-coll-search')?.addEventListener('input', (e) => {
+      _renderBulkCollTree(e.target.value);
+    });
+    document.getElementById('pv-bulk-coll-newbtn')?.addEventListener('click', () => {
+      close();
+      document.getElementById('btn-new-collection')?.click();
+    });
+
+    document.getElementById('pv-bulk-coll-submit')?.addEventListener('click', async () => {
+      const ids = _BULK_COLL_STATE.articleIds.slice();
+      const targets = Array.from(_BULK_COLL_STATE.picked);
+      if (!targets.length || !ids.length) return;
+
+      const submit = document.getElementById('pv-bulk-coll-submit');
+      const orig   = submit.textContent;
+      submit.disabled = true;
+      submit.textContent = 'Añadiendo…';
+      const result = document.getElementById('pv-bulk-coll-result');
+
+      // Resolve each collection sequentially — POSTs are cheap and
+      // doing them one-by-one keeps the per-collection result clean
+      // for the summary line below.
+      const lines = [];
+      let totalAdded = 0;
+      for (const cid of targets) {
+        const meta = _BULK_COLL_STATE.items.find(c => c.id === cid);
+        const name = meta ? meta.name : cid;
+        try {
+          const r = await api(`/collections/${cid}/articles`, {
+            method: 'POST',
+            body: JSON.stringify({ ids }),
+          });
+          totalAdded += r.added || 0;
+          lines.push(`✓ ${name}: +${r.added || 0}` +
+                     (r.skipped ? ` (${r.skipped} ya estaban)` : ''));
+        } catch (e) {
+          lines.push(`✗ ${name}: ${e.message}`);
+        }
+      }
+      result.innerHTML = lines.map(l =>
+        `<div style="padding:2px 0;${l.startsWith('✓') ? 'color:#15803d;' : 'color:#b91c1c;'}">${esc(l)}</div>`
+      ).join('');
+
+      submit.disabled = false;
+      submit.textContent = orig;
+      refreshCollections();
+      loadArticles?.();
+      // Close automatically after a beat if everything succeeded so
+      // the user doesn't have to click anywhere.
+      if (lines.every(l => l.startsWith('✓'))) {
+        setTimeout(() => { if (modal.style.display !== 'none') close(); }, 1200);
+      }
+    });
   }
 
   // ── Sidebar header indicators ─────────────────────────────────────────
@@ -4531,6 +4715,7 @@
       wireCleanMetadata();
       wireRetryAbstracts();
       wirePmidBackfill();
+      wireBulkCollectionPicker();
       wireDuplicates();
       wireBatchSummary();
       wireBatchIndex();
