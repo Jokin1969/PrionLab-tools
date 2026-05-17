@@ -5125,6 +5125,21 @@
     // ended up wrapping one character per line. Truncate to a single
     // line and keep the full value in `title` for hover inspection.
     const stepShort = stepFull.length > 70 ? stepFull.slice(0, 70) + '…' : stepFull;
+
+    // × force-delete is always available — covers zombies stuck in
+    // 'extracting' / 'resolving' after a worker crash, which the
+    // bulk "Limpiar terminados" path deliberately won't touch.
+    const deleteBtn = `<button class="pv-btn-del" data-job="${j.id}"
+                                title="Borrar esta fila (también si está atascada). Borra el PDF staged si lo hubiera."
+                                style="border:none;background:transparent;color:#9ca3af;cursor:pointer;
+                                       font-size:14px;line-height:1;padding:2px 6px;border-radius:4px;"
+                                onmouseover="this.style.background='#fee2e2';this.style.color='#b91c1c';"
+                                onmouseout="this.style.background='transparent';this.style.color='#9ca3af';"
+                        >×</button>`;
+    const retryBtn = showRetry
+      ? `<button class="pv-btn-retry" data-job="${j.id}">Retry</button> `
+      : '';
+
     tr.innerHTML = `
       <td style="color:#9ca3af;">${j.id}</td>
       <td title="${escapeHtml(j.pdf_filename || '')}">${escapeHtml((j.pdf_filename || '').slice(0, 60))}</td>
@@ -5138,7 +5153,7 @@
         ${escapeHtml((j.error || '').slice(0, 80))}
       </td>
       <td style="color:#9ca3af;white-space:nowrap;">${j.created_at ? j.created_at.slice(0, 16).replace('T', ' ') : ''}</td>
-      <td>${showRetry ? `<button class="pv-btn-retry" data-job="${j.id}">Retry</button>` : ''}</td>
+      <td style="white-space:nowrap;">${retryBtn}${deleteBtn}</td>
     `;
     if (showRetry) {
       tr.querySelector('.pv-btn-retry').addEventListener('click', async () => {
@@ -5146,6 +5161,23 @@
         if (r.ok) refreshQueue();
       });
     }
+    tr.querySelector('.pv-btn-del').addEventListener('click', async () => {
+      const label = `${j.pdf_filename || '(sin nombre)'} (#${j.id}, ${j.status})`;
+      if (!confirm(`Borrar la fila ${label} de la cola?\n\nSi el PDF estaba a medio procesar también se elimina el archivo staged. La acción no se puede deshacer.`)) return;
+      try {
+        const r = await fetch('/prionvault/api/ingest/jobs/' + j.id, {
+          method: 'DELETE', credentials: 'same-origin',
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          alert('No se pudo borrar: ' + (d.error || r.status));
+          return;
+        }
+        refreshQueue();
+      } catch (err) {
+        alert('Error de red: ' + err.message);
+      }
+    });
     return tr;
   }
 

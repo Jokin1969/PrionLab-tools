@@ -494,6 +494,46 @@ def clear_finished() -> int:
 clear_failed = clear_finished
 
 
+def delete_job(job_id: int) -> tuple[bool, bool]:
+    """Force-remove a single job row regardless of status.
+
+    Used to reap zombies — jobs that the worker started (status
+    extracting / resolving / …) but never finished because the
+    process crashed or was redeployed mid-flight. "Limpiar
+    terminados" deliberately skips those to avoid interrupting a
+    live worker; this is the explicit escape hatch.
+
+    Also tries to delete the staged PDF on disk so /tmp doesn't
+    accumulate. Returns (row_deleted, staged_file_removed).
+    """
+    try:
+        eng = _get_engine()
+    except Exception:
+        return False, False
+    with eng.begin() as conn:
+        row = conn.execute(text(
+            "SELECT pdf_filename FROM prionvault_ingest_job WHERE id = :id"
+        ), {"id": job_id}).first()
+        if row is None:
+            return False, False
+        staged_path = row[0]
+        conn.execute(text(
+            "DELETE FROM prionvault_ingest_job WHERE id = :id"
+        ), {"id": job_id})
+
+    staged_removed = False
+    if staged_path:
+        try:
+            p = Path(staged_path)
+            if p.exists():
+                p.unlink()
+                staged_removed = True
+        except Exception as exc:
+            logger.warning("delete_job(%d): could not unlink staged %s: %s",
+                           job_id, staged_path, exc)
+    return True, staged_removed
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 def _md5_of(content: bytes) -> str:
     import hashlib

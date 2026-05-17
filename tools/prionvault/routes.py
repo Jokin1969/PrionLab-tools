@@ -2461,6 +2461,24 @@ def api_ingest_clear_failed():
     return jsonify({"ok": True, "deleted": deleted})
 
 
+@prionvault_bp.route("/api/ingest/jobs/<int:job_id>", methods=["DELETE"])
+@admin_required
+def api_ingest_job_delete(job_id):
+    """Force-delete a single job row.
+
+    Used to clear zombie jobs whose status is still in a 'processing'
+    bucket (extracting / resolving / …) because the worker crashed
+    or got restarted mid-flight. The bulk "Limpiar terminados" path
+    deliberately leaves those alone so a live worker isn't
+    interrupted; this endpoint is the explicit escape hatch.
+    """
+    from .ingestion import queue as ingest_queue
+    deleted, staged_removed = ingest_queue.delete_job(job_id)
+    if not deleted:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True, "staged_removed": staged_removed})
+
+
 # ── PMID backfill (find missing PubMed IDs for known articles) ─────────────
 
 @prionvault_bp.route("/api/admin/pmid-stats", methods=["GET"])
