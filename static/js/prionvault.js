@@ -3227,6 +3227,10 @@
       saveNextBtn.disabled = false;
       saveNextBtn.textContent = 'Guardar y siguiente →';
     }
+    const nextBtn = document.getElementById('pv-edit-next');
+    if (nextBtn) { nextBtn.disabled = false; nextBtn.textContent = 'Siguiente →'; }
+    const delBtn = document.getElementById('pv-edit-delete');
+    if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 Borrar artículo'; }
     const aiBtn = document.getElementById('pv-edit-identify-ai');
     if (aiBtn) {
       const ok = !!a.has_pdf;
@@ -3493,20 +3497,73 @@
       const nextId = _editNextRowId();
       const aid = await _editPerformSave('pv-edit-save-next');
       if (!aid) return;
-      // Refresh the list so the row we just edited shows updated values.
       loadArticles();
-      if (!nextId) {
-        _editStatus('Guardado. No hay más artículos en esta página.', '#15803d');
+      await _editAdvanceTo(nextId, 'Guardado.');
+    });
+
+    // Plain "Siguiente →": no save, no delete, just move on. Useful
+    // when the current row is fine as-is and the admin wants to
+    // skim through the list.
+    document.getElementById('pv-edit-next')?.addEventListener('click', async () => {
+      const nextId = _editNextRowId();
+      await _editAdvanceTo(nextId, '');
+    });
+
+    // "🗑 Borrar artículo": typically used right after the AI flow
+    // surfaces "este ya está metido". Wipes the row + PDF and jumps
+    // straight to the next article so the triage keeps flowing.
+    document.getElementById('pv-edit-delete')?.addEventListener('click', async () => {
+      if (!_editTarget) return;
+      const stub = (_editTarget.title || '').slice(0, 80);
+      const ok = confirm(
+        'Vas a eliminar este artículo de la biblioteca:\n\n' +
+        `"${stub}${(_editTarget.title || '').length > 80 ? '…' : ''}"\n\n` +
+        '• La fila se borra de la base de datos.\n' +
+        '• El PDF se borra de Dropbox (queda en el historial ~30 días).\n' +
+        '• Desaparece de PrionRead, PrionPacks, asignaciones y ratings.\n\n' +
+        'Esta acción no se puede deshacer desde la app. ¿Continuar?'
+      );
+      if (!ok) return;
+      const nextId = _editNextRowId();
+      const btn = document.getElementById('pv-edit-delete');
+      const orig = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
+      try {
+        await api(`/articles/${_editTarget.id}`, { method: 'DELETE' });
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+        _editStatus('Error al eliminar: ' + e.message, '#b91c1c');
         return;
       }
-      _editStatus('Guardado. Cargando siguiente…', '#15803d');
-      try {
-        const next = await api(`/articles/${nextId}`);
-        openEditModal(next);
-      } catch (e) {
-        _editStatus(`Guardado. No se pudo abrir el siguiente: ${e.message}`, '#b91c1c');
+      // Drop a stale selection if any.
+      if (state.selectedIds && state.selectedIds.has(_editTarget.id)) {
+        state.selectedIds.delete(_editTarget.id);
+        if (typeof updateBulkBar === 'function') updateBulkBar();
       }
+      loadArticles();
+      refreshStats();
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
+      await _editAdvanceTo(nextId, 'Artículo eliminado.');
     });
+  }
+
+  // Shared "open the next article in the visible list" helper. If
+  // there's no next row on the current page, closes the modal with
+  // a status message instead so the admin knows pagination is the
+  // next step.
+  async function _editAdvanceTo(nextId, prefix) {
+    if (!nextId) {
+      const msg = (prefix ? prefix + ' ' : '') + 'No hay más artículos en esta página.';
+      _editStatus(msg.trim(), '#15803d');
+      return;
+    }
+    if (prefix) _editStatus(`${prefix} Cargando siguiente…`, '#15803d');
+    try {
+      const next = await api(`/articles/${nextId}`);
+      openEditModal(next);
+    } catch (e) {
+      _editStatus(`${prefix || ''} No se pudo abrir el siguiente: ${e.message}`.trim(), '#b91c1c');
+    }
   }
 
   // ── Add to PrionPack (per-article) ───────────────────────────────────
