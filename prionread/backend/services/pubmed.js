@@ -154,4 +154,66 @@ async function fetchArticleByPubMedID(pmid) {
   });
 }
 
-module.exports = { fetchArticleByPubMedID, searchPubMedByDOI };
+// ─── Title-based PMID lookup (used by AI-assisted identification) ────────────
+
+/**
+ * Builds a PubMed search term from a title fragment, optionally narrowed by
+ * first-author surname and publication year. We deliberately take only the
+ * first ~10 words of the title — long titles with punctuation often break
+ * PubMed's parser, while the first 10 words are essentially unique.
+ */
+function buildTitleSearchTerm({ title, author, year }) {
+  if (!title) return null;
+  const words = title
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 10)
+    .join(' ');
+  if (!words) return null;
+
+  const parts = [`"${words}"[Title]`];
+  if (author) {
+    const a = author.replace(/[^\p{L}\s-]+/gu, '').trim();
+    if (a) parts.push(`${a}[Author]`);
+  }
+  if (year && Number.isInteger(year)) parts.push(`${year}[PDAT]`);
+  return parts.join(' AND ');
+}
+
+async function esearchTopPmid(term) {
+  const { data } = await axios.get(ESEARCH_URL, {
+    params: { ...NCBI_PARAMS, term, retmax: 1 },
+    timeout: 8000,
+  });
+  return data?.esearchresult?.idlist?.[0] || null;
+}
+
+/**
+ * Looks up a PMID from the article's bibliographic header. Tries the
+ * narrowest query first (title + author + year), then progressively
+ * relaxes — author+year are tried as separate filters because PubMed
+ * indexes some old papers without one or the other.
+ *
+ * Returns the PMID string, or null if no hit on any tier.
+ */
+async function searchPubMedByTitle({ title, author, year }) {
+  if (!title) return null;
+
+  const tiers = [
+    buildTitleSearchTerm({ title, author, year }),
+    buildTitleSearchTerm({ title, author }),
+    buildTitleSearchTerm({ title, year }),
+    buildTitleSearchTerm({ title }),
+  ].filter(Boolean);
+
+  for (const term of tiers) {
+    try {
+      const pmid = await esearchTopPmid(term);
+      if (pmid) return pmid;
+    } catch { /* try next tier */ }
+  }
+  return null;
+}
+
+module.exports = { fetchArticleByPubMedID, searchPubMedByDOI, searchPubMedByTitle };

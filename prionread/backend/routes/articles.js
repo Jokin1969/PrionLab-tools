@@ -17,6 +17,7 @@ const {
   analyzePdf,
   viewPdf,
   sendToProtonVault,
+  identifyPmid,
 } = require('../controllers/articleController');
 
 const router = Router();
@@ -82,6 +83,10 @@ router.get('/:id/pdf/view', authenticate, viewPdf);
 router.delete('/:id/pdf', authenticate, requireAdmin, deleteArticlePDF);
 router.delete('/:id/pdf-link', authenticate, requireAdmin, clearPdfLink);
 router.post('/:id/send-to-prionvault', authenticate, requireAdmin, sendToProtonVault);
+
+// AI-assisted PMID lookup: OpenAI reads the saved PDF, extracts title +
+// first-author + year, and queries PubMed esearch to resolve a PMID.
+router.post('/:id/identify-pmid', authenticate, requireAdmin, identifyPmid);
 
 // ── Journal Club (read-only from PrionRead) ──────────────────────────────────
 // Mounts GET /api/articles/:articleId/jc — file-URL route lives at

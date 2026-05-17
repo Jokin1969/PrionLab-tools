@@ -2,7 +2,8 @@ const { Op, literal } = require('sequelize');
 const axios = require('axios');
 const pdfParse = require('pdf-parse');
 const { fetchArticleByDOI } = require('../services/crossref');
-const { fetchArticleByPubMedID, searchPubMedByDOI } = require('../services/pubmed');
+const { fetchArticleByPubMedID, searchPubMedByDOI, searchPubMedByTitle } = require('../services/pubmed');
+const { identifyArticleFromPdfText } = require('../services/openai');
 const {
   uploadPDF,
   generateDownloadLink: dbxDownloadLink,
@@ -581,10 +582,83 @@ async function analyzePdf(req, res) {
   }
 }
 
+// ─── POST /api/articles/:id/identify-pmid ────────────────────────────────────
+// Uses OpenAI to read the article's PDF, extract title + first-author + year,
+// then queries PubMed esearch to resolve a PMID. Saves the manual workflow
+// of: open PDF → read title → search PubMed → copy PMID → paste → click
+// "Obtener Metadatos". The frontend chains the returned PMID straight into
+// the existing fetchMetadata call.
+
+async function identifyPmid(req, res) {
+  try {
+    const article = await Article.findByPk(req.params.id, {
+      attributes: ['id', 'dropbox_path'],
+    });
+    if (!article) return res.status(404).json({ error: 'Article not found' });
+    if (!article.dropbox_path) {
+      return res.status(422).json({ error: 'Este artículo no tiene PDF guardado' });
+    }
+
+    let downloadUrl;
+    try { downloadUrl = await dbxDownloadLink(article.dropbox_path); }
+    catch (err) { return serviceError(res, err); }
+
+    let pdfBuffer;
+    try {
+      const resp = await axios.get(downloadUrl, { responseType: 'arraybuffer', timeout: 20000 });
+      pdfBuffer = Buffer.from(resp.data);
+    } catch (err) {
+      return res.status(502).json({ error: `No se pudo descargar el PDF: ${err.message}` });
+    }
+
+    let pdfText;
+    try {
+      const parsed = await pdfParse(pdfBuffer, { max: 3 });
+      pdfText = parsed.text || '';
+    } catch (err) {
+      return res.status(502).json({ error: `No se pudo leer el PDF: ${err.message}` });
+    }
+
+    let identified;
+    try { identified = await identifyArticleFromPdfText(pdfText); }
+    catch (err) {
+      if (err.code === 'NOT_CONFIGURED') {
+        return res.status(503).json({ error: 'OpenAI no está configurado en el servidor (falta OPENAI_API_KEY)' });
+      }
+      return serviceError(res, err);
+    }
+
+    if (!identified.title) {
+      return res.status(422).json({
+        error: 'La IA no pudo identificar el título en el PDF',
+        identified,
+      });
+    }
+
+    const pmid = await searchPubMedByTitle({
+      title: identified.title,
+      author: identified.first_author_lastname,
+      year: identified.year,
+    });
+
+    if (!pmid) {
+      return res.status(404).json({
+        error: 'PubMed no encontró ningún PMID para el artículo identificado',
+        identified,
+      });
+    }
+
+    return res.json({ pmid, identified });
+  } catch (err) {
+    console.error('[identifyPmid]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   createArticle, getArticles, getArticleById, updateArticle, deleteArticle,
   generateDownloadLinkHandler, fetchMetadata, uploadArticlePDF, getDownloadLink,
   deleteArticlePDF, listDropboxFiles, verifyArticlePDFs, clearPdfLink,
-  analyzePdf, viewPdf,
+  analyzePdf, viewPdf, identifyPmid,
   sendToProtonVault, _prionvaultMap,
 };

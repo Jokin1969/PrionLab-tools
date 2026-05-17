@@ -52,6 +52,8 @@ export const adminService = {
   deleteArticle: async (articleId) => (await api.delete(`/articles/${articleId}`)).data,
   fetchMetadata: async (doi, pubmedId) =>
     (await api.post('/articles/fetch-metadata', { doi, pubmed_id: pubmedId })).data,
+  identifyPmid: async (articleId) =>
+    (await api.post(`/articles/${articleId}/identify-pmid`)).data,
   getArticlePdfLink: async (articleId) =>
     (await api.post(`/articles/${articleId}/download-link`)).data,
 

@@ -168,4 +168,83 @@ ${buildPromptContent(article)}`;
   return parsed.questions;
 }
 
-module.exports = { generateSummary, generateEvaluation };
+/**
+ * Asks the model to extract the bibliographic header (title, first-author
+ * surname, publication year) from the raw text of a scientific PDF.
+ *
+ * Pre-trimmed to the first ~12k characters because:
+ *  - Title / authors / year always appear on page 1.
+ *  - gpt-4o-mini's context is huge but we don't need to pay for the whole
+ *    paper just to read the masthead.
+ *
+ * Returns { title, first_author_lastname, year } — any field may be null
+ * if the model can't determine it confidently.
+ */
+async function identifyArticleFromPdfText(pdfText) {
+  const client = getClient();
+
+  const excerpt = (pdfText || '').slice(0, 12000);
+  if (!excerpt.trim()) {
+    throw Object.assign(new Error('PDF text is empty'), { code: 'INVALID_INPUT' });
+  }
+
+  const systemPrompt = `You extract bibliographic metadata from scientific PDFs.
+Reply ONLY with valid JSON, no markdown, no prose.`;
+
+  const userPrompt = `Below is text extracted from the first pages of a scientific paper.
+Identify the article and reply with this exact JSON shape:
+
+{
+  "title": "the full article title, single line, no trailing period",
+  "first_author_lastname": "Surname only of the first listed author",
+  "year": 1234
+}
+
+Rules:
+- "title" must be the article's own title, not the journal name or running header.
+- Strip line breaks and hyphenation that came from PDF layout (e.g. "glyco-\\nforms" -> "glycoforms").
+- "first_author_lastname" is just the family name (e.g. "Stack", "García-López"), no initials.
+- "year" is the integer publication year (e.g. 2002). Use the article's own year, not "Received" or "Accepted" dates if both are present.
+- If a field cannot be determined confidently, set it to null.
+
+PDF text:
+"""
+${excerpt}
+"""`;
+
+  let response;
+  try {
+    response = await client.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 300,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+  } catch (err) {
+    if (err?.status === 401) throw Object.assign(new Error('Invalid OpenAI API key'), { code: 'INVALID_KEY' });
+    if (err?.status === 429) throw Object.assign(new Error('OpenAI rate limit or quota exceeded'), { code: 'RATE_LIMITED' });
+    throw Object.assign(new Error(`OpenAI request failed: ${err?.message || 'unknown error'}`), { code: 'UPSTREAM_ERROR' });
+  }
+
+  const text = response.choices?.[0]?.message?.content?.trim();
+  if (!text) throw Object.assign(new Error('OpenAI returned an empty response'), { code: 'EMPTY_RESPONSE' });
+
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch { throw Object.assign(new Error('OpenAI returned invalid JSON'), { code: 'UPSTREAM_ERROR' }); }
+
+  return {
+    title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : null,
+    first_author_lastname:
+      typeof parsed.first_author_lastname === 'string' && parsed.first_author_lastname.trim()
+        ? parsed.first_author_lastname.trim()
+        : null,
+    year: Number.isInteger(parsed.year) && parsed.year > 1800 && parsed.year < 2100 ? parsed.year : null,
+  };
+}
+
+module.exports = { generateSummary, generateEvaluation, identifyArticleFromPdfText };

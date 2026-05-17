@@ -11,12 +11,15 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
   const [pdfFile, setPdfFile]             = useState(null);
   const [saving, setSaving]               = useState(false);
   const [fetchingMetadata, setFetchingMetadata] = useState(false);
+  const [identifyingPmid, setIdentifyingPmid]   = useState(false);
+  const [aiHint, setAiHint]               = useState(null);
   const [openingPdf, setOpeningPdf]       = useState(false);
   const [error, setError]                 = useState('');
 
   useEffect(() => {
     setError('');
     setPdfFile(null);
+    setAiHint(null);
     if (article) {
       setFormData({
         title:        article.title || '',
@@ -47,11 +50,16 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
     });
   };
 
-  const handleFetchMetadata = async () => {
-    if (!formData.doi && !formData.pubmed_id) return;
+  // `overrides` lets callers (notably the AI PMID identifier) trigger a
+  // fetch with a freshly resolved id without waiting for React state to
+  // settle from the preceding setFormData call.
+  const handleFetchMetadata = async (overrides = {}) => {
+    const doi  = overrides.doi       ?? formData.doi;
+    const pmid = overrides.pubmed_id ?? formData.pubmed_id;
+    if (!doi && !pmid) return;
     setFetchingMetadata(true);
     try {
-      const data = await adminService.fetchMetadata(formData.doi, formData.pubmed_id);
+      const data = await adminService.fetchMetadata(doi, pmid);
       const m = data.metadata ?? data;
       setFormData((prev) => ({
         ...prev,
@@ -65,6 +73,29 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
       }));
     } catch { /* fields remain editable */ }
     finally { setFetchingMetadata(false); }
+  };
+
+  const handleIdentifyPmid = async () => {
+    if (!article?.id) return;
+    setIdentifyingPmid(true);
+    setAiHint(null);
+    setError('');
+    try {
+      const data = await adminService.identifyPmid(article.id);
+      const pmid = String(data.pmid);
+      setAiHint({ pmid, identified: data.identified || null });
+      setFormData((prev) => ({ ...prev, pubmed_id: pmid }));
+      // Chain straight into the existing metadata fetch — same path the
+      // user runs manually after pasting a PMID.
+      await handleFetchMetadata({ pubmed_id: pmid });
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'No se pudo identificar el PMID con IA';
+      const identified = err?.response?.data?.identified;
+      if (identified) setAiHint({ pmid: null, identified });
+      setError(msg);
+    } finally {
+      setIdentifyingPmid(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -134,9 +165,33 @@ export const ArticleModal = ({ isOpen, onClose, onSave, article = null }) => {
             <Input label="DOI" value={formData.doi} onChange={(e) => handleChange('doi', e.target.value)} placeholder="10.xxxx/xxxxx" />
             <Input label="PubMed ID" value={formData.pubmed_id} onChange={(e) => handleChange('pubmed_id', e.target.value)} placeholder="12345678" />
           </div>
-          <Button type="button" variant="secondary" size="sm" onClick={handleFetchMetadata} loading={fetchingMetadata} disabled={!formData.doi && !formData.pubmed_id} className="mt-2">
-            🔍 Obtener Metadatos
-          </Button>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <Button type="button" variant="secondary" size="sm" onClick={() => handleFetchMetadata()} loading={fetchingMetadata} disabled={!formData.doi && !formData.pubmed_id}>
+              🔍 Obtener Metadatos
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleIdentifyPmid}
+              loading={identifyingPmid}
+              disabled={!hasPdf || identifyingPmid || fetchingMetadata}
+              title={hasPdf ? 'La IA lee el PDF, identifica el artículo y busca su PMID en PubMed' : 'Guarda el artículo con un PDF para usar esta opción'}
+            >
+              🤖 Buscar PMID con IA
+            </Button>
+          </div>
+          {aiHint && (
+            <div className="mt-2 text-xs text-blue-800 bg-blue-100/60 border border-blue-200 rounded px-2 py-1.5 space-y-0.5">
+              {aiHint.pmid && <div>PMID propuesto por IA: <span className="font-mono font-semibold">{aiHint.pmid}</span></div>}
+              {aiHint.identified?.title && <div className="text-blue-700 italic truncate">«{aiHint.identified.title}»</div>}
+              {(aiHint.identified?.first_author_lastname || aiHint.identified?.year) && (
+                <div className="text-blue-700">
+                  {aiHint.identified.first_author_lastname || '?'} · {aiHint.identified.year || '?'}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {error && (
