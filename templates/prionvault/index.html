@@ -219,6 +219,10 @@
               title="Reintenta CrossRef + PubMed (con efetch para el abstract) en los artículos sin abstract — incluye los marcados como 'no disponible' por si el parser nuevo los rescata. Procesa 50 por click.">
         <span><i class="fas fa-rotate" style="width:13px;margin-right:6px;opacity:0.7;"></i>Reintentar abstracts</span>
       </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-backfill-pmids"
+              title="Recupera el PMID de los artículos que ya tienen DOI o título conocido pero les falta. Procesa por lotes de 50.">
+        <span><i class="fas fa-hashtag" style="width:13px;margin-right:6px;opacity:0.7;"></i>Recuperar PMIDs</span>
+      </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-batch-import">
         <span><i class="fas fa-layer-group" style="width:13px;margin-right:6px;opacity:0.7;"></i>Batch import (DOIs/PMIDs)</span>
       </button>
@@ -702,6 +706,47 @@
   </div>
 </div>
 
+<!-- ── PMID backfill modal (admin) ─────────────────────────────────── -->
+<div id="pv-pmid-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:680px;">
+    <button class="pv-modal-close" id="pv-pmid-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-hashtag" style="color:#0F3460;margin-right:8px;"></i>Recuperar PMIDs faltantes
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin-bottom:14px;">
+      Busca el PMID en PubMed para los artículos a los que les falta. Si tienen
+      DOI, se usa <code>doi[doi]</code> (esearch exacto). Si no, se prueba con
+      título + primer autor + año. Procesa por lotes de 50; pulsa de nuevo para
+      el siguiente.
+    </p>
+
+    <div id="pv-pmid-stats"
+         style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-bottom:14px;
+                background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;
+                font-size:13px;">
+      <span style="color:#6b7280;">Cargando…</span>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <button id="pv-pmid-run"
+              style="padding:8px 14px;border-radius:8px;border:none;background:#0F3460;color:white;font-size:13px;font-weight:600;cursor:pointer;">
+        🔄 Recuperar PMIDs faltantes (50 por lote)
+      </button>
+      <button id="pv-pmid-refresh"
+              style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">
+        Refrescar contadores
+      </button>
+    </div>
+
+    <div id="pv-pmid-log" style="max-height:260px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fafafa;font-size:12px;color:#374151;">
+      <div style="color:#9ca3af;text-align:center;padding:24px 12px;">
+        El log de búsquedas aparecerá aquí.
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Sync status modal ─────────────────────────────────────────────── -->
 
 <!-- ── Edit article modal (admin) ─────────────────────────────────── -->
@@ -789,6 +834,11 @@
                 title="La IA lee el PDF, identifica el artículo y busca su PMID en PubMed. Si no encuentra el PMID, copia el título al portapapeles para buscarlo a mano."
                 style="padding:8px 14px;border-radius:8px;background:#7c3aed;color:white;border:none;font-size:13px;font-weight:600;cursor:pointer;">
           🤖 Buscar PMID con IA
+        </button>
+        <button type="button" id="pv-edit-no-abstract"
+                title='Rellena el Abstract con "No abstract available." (no guarda — pulsa Guardar después).'
+                style="padding:8px 14px;border-radius:8px;background:white;color:#6b7280;border:1px solid #e5e7eb;font-size:13px;font-weight:600;cursor:pointer;">
+          📕 Sin abstract
         </button>
         <button type="button" id="pv-edit-delete"
                 title="Borrar este artículo de la base de datos y su PDF de Dropbox. Útil cuando la IA ha detectado que es un duplicado."

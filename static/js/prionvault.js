@@ -3241,6 +3241,8 @@
     if (prevBtn) { prevBtn.disabled = false; prevBtn.textContent = '← Anterior'; }
     const delBtn = document.getElementById('pv-edit-delete');
     if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 Borrar artículo'; }
+    const noAbsBtn = document.getElementById('pv-edit-no-abstract');
+    if (noAbsBtn) { noAbsBtn.disabled = false; noAbsBtn.textContent = '📕 Sin abstract'; }
     _editRenderPdfPreview(a);
     _editSyncPmidLink(a.pubmed_id || '');
     const aiBtn = document.getElementById('pv-edit-identify-ai');
@@ -3557,6 +3559,19 @@
     document.getElementById('pv-edit-refetch-doi') ?.addEventListener('click', () => _editRefetch('doi'));
     document.getElementById('pv-edit-refetch-pmid')?.addEventListener('click', () => _editRefetch('pmid'));
     document.getElementById('pv-edit-identify-ai') ?.addEventListener('click', _editIdentifyAI);
+
+    // Quick filler for the "no abstract" case — saves the admin from
+    // copy-pasting the literal sentinel string. Doesn't auto-save;
+    // the user still has to press Guardar so this composes with
+    // any other edits in flight.
+    document.getElementById('pv-edit-no-abstract')?.addEventListener('click', () => {
+      const ta = document.getElementById('pv-edit-abstract');
+      if (ta) {
+        ta.value = 'No abstract available.';
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        _editStatus('Abstract marcado como "No abstract available." — recuerda Guardar.', '#6b7280');
+      }
+    });
 
     // Keep the "PMID ↗" link in sync with whatever's in the input.
     // Hidden when empty so the user only sees it when there's an
@@ -4486,6 +4501,7 @@
       wireScanFolder();
       wireCleanMetadata();
       wireRetryAbstracts();
+      wirePmidBackfill();
       wireDuplicates();
       wireBatchSummary();
       wireBatchIndex();
@@ -5442,6 +5458,142 @@
         btn.innerHTML = orig;
       }
     });
+  }
+
+  // ── PMID backfill modal ──────────────────────────────────────────────
+  function wirePmidBackfill() {
+    const btn      = document.getElementById('btn-backfill-pmids');
+    const modal    = document.getElementById('pv-pmid-modal');
+    const closeBtn = document.getElementById('pv-pmid-close');
+    const runBtn   = document.getElementById('pv-pmid-run');
+    const refBtn   = document.getElementById('pv-pmid-refresh');
+    const statsEl  = document.getElementById('pv-pmid-stats');
+    const logEl    = document.getElementById('pv-pmid-log');
+    if (!btn || !modal) return;
+
+    const close = () => { modal.style.display = 'none'; };
+    btn.addEventListener('click', async () => {
+      modal.style.display = 'flex';
+      logEl.innerHTML =
+        `<div style="color:#9ca3af;text-align:center;padding:24px 12px;">El log de búsquedas aparecerá aquí.</div>`;
+      await refreshStats();
+    });
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+    refBtn.addEventListener('click', refreshStats);
+    runBtn.addEventListener('click', runBatch);
+
+    async function refreshStats() {
+      statsEl.innerHTML = '<span style="color:#6b7280;">Cargando…</span>';
+      try {
+        const s = await api('/admin/pmid-stats');
+        const pct = (n) => s.total ? ` (${(100 * n / s.total).toFixed(1)}%)` : '';
+        statsEl.innerHTML = `
+          <span style="color:#6b7280;">Total artículos</span>
+          <span style="text-align:right;font-weight:700;">${s.total}</span>
+
+          <span style="color:#6b7280;">Con DOI</span>
+          <span style="text-align:right;">${s.has_doi}<span style="color:#9ca3af;font-weight:normal;">${pct(s.has_doi)}</span></span>
+
+          <span style="color:#6b7280;">Con PMID</span>
+          <span style="text-align:right;">${s.has_pmid}<span style="color:#9ca3af;font-weight:normal;">${pct(s.has_pmid)}</span></span>
+
+          <span style="color:#6b7280;">Con DOI y PMID</span>
+          <span style="text-align:right;">${s.has_both}</span>
+
+          <span style="color:#b45309;font-weight:600;">DOI sin PMID</span>
+          <span style="text-align:right;color:#b45309;font-weight:700;">${s.has_doi_only}</span>
+
+          <span style="color:#b45309;font-weight:600;">Sin DOI ni PMID</span>
+          <span style="text-align:right;color:#b45309;font-weight:700;">${s.has_neither}</span>
+
+          <span style="grid-column:1/-1;border-top:1px solid #e5e7eb;margin-top:4px;padding-top:6px;color:#374151;font-weight:600;">
+            Pendientes de recuperar: <span style="color:#b91c1c;">${s.missing_pmid}</span>
+          </span>
+        `;
+        if (s.missing_pmid === 0) {
+          runBtn.disabled = true;
+          runBtn.style.opacity = '0.5';
+          runBtn.style.cursor = 'not-allowed';
+          runBtn.textContent = '✓ Todos los artículos tienen PMID';
+        } else {
+          runBtn.disabled = false;
+          runBtn.style.opacity = '1';
+          runBtn.style.cursor = 'pointer';
+          runBtn.textContent = `🔄 Recuperar PMIDs faltantes (${Math.min(50, s.missing_pmid)} en este lote)`;
+        }
+      } catch (e) {
+        statsEl.innerHTML = `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
+      }
+    }
+
+    function _appendLog(html, kind) {
+      // Replace the placeholder on first append.
+      const placeholder = logEl.querySelector('div[style*="text-align:center"]');
+      if (placeholder) placeholder.remove();
+      const row = document.createElement('div');
+      const color = kind === 'ok'     ? '#15803d'
+                  : kind === 'error'  ? '#b91c1c'
+                  : kind === 'warn'   ? '#b45309'
+                  : '#6b7280';
+      row.style.cssText = 'display:flex;gap:8px;padding:3px 4px;border-bottom:1px solid #f3f4f6;line-height:1.4;';
+      row.innerHTML = `<span style="color:${color};flex-shrink:0;">●</span><span style="flex:1;min-width:0;">${html}</span>`;
+      logEl.appendChild(row);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function runBatch() {
+      runBtn.disabled = true;
+      const orig = runBtn.textContent;
+      runBtn.textContent = '⏳ Buscando en PubMed…';
+      _appendLog(`<b>${new Date().toLocaleTimeString()}</b> Procesando lote (hasta 50 artículos)…`);
+      try {
+        const r = await api('/admin/pmid-backfill', {
+          method: 'POST',
+          body: JSON.stringify({ limit: 50 }),
+        });
+        (r.items || []).forEach(it => {
+          const title = (it.title || '').slice(0, 80);
+          const titleEsc = esc(title) + (it.title && it.title.length > 80 ? '…' : '');
+          if (it.found_pmid && !it.reason) {
+            _appendLog(
+              `✓ <a href="https://pubmed.ncbi.nlm.nih.gov/${esc(String(it.found_pmid))}/" ` +
+                `target="_blank" rel="noopener" style="color:#0F3460;font-weight:600;">PMID ${esc(String(it.found_pmid))}</a> ` +
+              `<span style="color:#9ca3af;">(${esc(it.via || '?')})</span> — ${titleEsc}`,
+              'ok'
+            );
+          } else if (it.reason === 'duplicate') {
+            _appendLog(
+              `⚠ Duplicado: PMID ${esc(String(it.found_pmid))} ya pertenece a otro artículo — ${titleEsc}`,
+              'warn'
+            );
+          } else if (it.reason === 'not_found') {
+            _appendLog(
+              `✗ Sin coincidencia en PubMed — ${titleEsc}`,
+              'error'
+            );
+          } else {
+            _appendLog(
+              `✗ ${esc(it.reason || 'error')} — ${titleEsc}`,
+              'error'
+            );
+          }
+        });
+        _appendLog(
+          `<b>Lote terminado</b> — procesados ${r.processed}, recuperados ${r.found}.`,
+          r.found > 0 ? 'ok' : 'warn'
+        );
+        await refreshStats();
+        // Refresh the listing so newly-found PMIDs appear as the
+        // "PMID ↗" chip without a manual reload.
+        if (typeof loadArticles === 'function') loadArticles();
+      } catch (e) {
+        _appendLog(`Error: ${esc(e.message)}`, 'error');
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = orig;
+      }
+    }
   }
 
   // ── Batch import by DOI/PMID list ────────────────────────────────────

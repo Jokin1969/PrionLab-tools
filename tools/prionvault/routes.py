@@ -8,6 +8,7 @@ the frontend can wire against it.
 import logging
 import re
 from datetime import datetime
+from typing import Optional
 from flask import jsonify, render_template, request, session, Response
 from sqlalchemy import or_, func, text as sql_text
 from sqlalchemy.exc import IntegrityError
@@ -2458,6 +2459,176 @@ def api_ingest_clear_failed():
     from .ingestion import queue as ingest_queue
     deleted = ingest_queue.clear_failed()
     return jsonify({"ok": True, "deleted": deleted})
+
+
+# ── PMID backfill (find missing PubMed IDs for known articles) ─────────────
+
+@prionvault_bp.route("/api/admin/pmid-stats", methods=["GET"])
+@admin_required
+def api_pmid_stats():
+    """Counts that drive the PMID backfill modal: how many articles
+    in the library have DOI, PMID, both, just DOI, just PMID, neither.
+    """
+    s = _session()
+    try:
+        row = s.execute(sql_text("""
+            SELECT
+              COUNT(*)                                              AS total,
+              COUNT(*) FILTER (WHERE doi       IS NOT NULL)         AS has_doi,
+              COUNT(*) FILTER (WHERE pubmed_id IS NOT NULL)         AS has_pmid,
+              COUNT(*) FILTER (WHERE doi IS NOT NULL
+                              AND pubmed_id IS NOT NULL)            AS has_both,
+              COUNT(*) FILTER (WHERE doi IS NOT NULL
+                              AND pubmed_id IS NULL)                AS has_doi_only,
+              COUNT(*) FILTER (WHERE doi IS NULL
+                              AND pubmed_id IS NOT NULL)            AS has_pmid_only,
+              COUNT(*) FILTER (WHERE doi IS NULL
+                              AND pubmed_id IS NULL)                AS has_neither
+            FROM articles
+        """)).first()
+        return jsonify({
+            "total":         int(row.total or 0),
+            "has_doi":       int(row.has_doi or 0),
+            "has_pmid":      int(row.has_pmid or 0),
+            "has_both":      int(row.has_both or 0),
+            "has_doi_only":  int(row.has_doi_only or 0),
+            "has_pmid_only": int(row.has_pmid_only or 0),
+            "has_neither":   int(row.has_neither or 0),
+            "missing_pmid":  int((row.has_doi_only or 0) + (row.has_neither or 0)),
+        })
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/admin/pmid-backfill", methods=["POST"])
+@admin_required
+def api_pmid_backfill():
+    """Process one batch of PMID-less articles.
+
+    For each candidate:
+      - If it has a DOI, query PubMed esearch by DOI (precise).
+      - Otherwise fall back to title + first-author + year search.
+    The newly-found PMID is written back. Articles where the resolved
+    PMID is already owned by another row are reported as duplicates
+    (no update — the existing duplicate-detection flow handles those).
+
+    Body: { "limit": 50 }   — defaults to 50 so the request stays
+    well inside the gunicorn 30 s timeout (~200-500 ms per PubMed call).
+    """
+    from .ingestion.metadata_resolver import (
+        pubmed_by_doi, pubmed_search_pmid_by_title,
+    )
+
+    data  = request.get_json(force=True, silent=True) or {}
+    limit = max(1, min(200, int(data.get("limit") or 50)))
+
+    s = _session()
+    try:
+        # Prefer DOI-holding rows first — they're cheaper and more
+        # reliable than title search, so the user sees fast wins
+        # before we burn time on heuristic title hits.
+        rows = s.execute(sql_text("""
+            SELECT id, title, authors, year, doi
+              FROM articles
+             WHERE pubmed_id IS NULL
+             ORDER BY (doi IS NULL), created_at
+             LIMIT :n
+        """), {"n": limit}).all()
+    finally:
+        s.close()
+
+    items: list[dict] = []
+    found = 0
+
+    for r in rows:
+        aid     = str(r.id)
+        title   = r.title
+        authors = r.authors or ""
+        year    = r.year
+        doi     = r.doi
+
+        pmid: Optional[str] = None
+        via: Optional[str]  = None
+        reason: Optional[str] = None
+
+        # 1) DOI-based lookup.
+        if doi:
+            try:
+                meta = pubmed_by_doi(doi)
+                if meta and meta.pubmed_id:
+                    pmid = str(meta.pubmed_id)
+                    via  = "doi"
+            except Exception as exc:
+                logger.info("pmid-backfill DOI lookup failed for %s: %s", aid, exc)
+
+        # 2) Title + author + year fallback.
+        if not pmid and title:
+            first_author = (authors.split(";")[0] if authors else "").strip()
+            # "Stack M" → "Stack". The resolver also strips initials
+            # internally, but keeping the surname-only here makes the
+            # esearch term tighter.
+            first_author = first_author.split()[0] if first_author else None
+            try:
+                pmid = pubmed_search_pmid_by_title(
+                    title=title, author=first_author, year=year,
+                )
+                if pmid:
+                    via = "title"
+            except Exception as exc:
+                logger.info("pmid-backfill title lookup failed for %s: %s", aid, exc)
+
+        if not pmid:
+            items.append({
+                "id":        aid,
+                "title":     title,
+                "doi":       doi,
+                "found_pmid": None,
+                "via":       None,
+                "reason":    "not_found",
+            })
+            continue
+
+        # 3) Write back. Unique constraint on pubmed_id means another
+        #    row already owns this PMID — surface that without raising.
+        s = _session()
+        try:
+            try:
+                s.execute(sql_text("""
+                    UPDATE articles
+                       SET pubmed_id = :p, updated_at = NOW()
+                     WHERE id = :id AND pubmed_id IS NULL
+                """), {"p": pmid, "id": aid})
+                s.commit()
+                found += 1
+                items.append({
+                    "id":         aid,
+                    "title":      title,
+                    "doi":        doi,
+                    "found_pmid": pmid,
+                    "via":        via,
+                })
+            except Exception as exc:
+                s.rollback()
+                msg = str(exc)[:200]
+                items.append({
+                    "id":        aid,
+                    "title":     title,
+                    "doi":       doi,
+                    "found_pmid": pmid,
+                    "via":       via,
+                    "reason":    "duplicate" if "unique" in msg.lower()
+                                              or "pubmed_id" in msg.lower()
+                                              else "update_failed",
+                    "error":     msg,
+                })
+        finally:
+            s.close()
+
+    return jsonify({
+        "processed": len(items),
+        "found":     found,
+        "items":     items,
+    })
 
 
 _DEFAULT_WATCH_FOLDER = "/PrionLab tools/PDFs"
