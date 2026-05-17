@@ -6027,13 +6027,17 @@
   const _PMID_TARGET_PER_CLICK = 250;
 
   function wirePmidBackfill() {
-    const btn      = document.getElementById('btn-backfill-pmids');
-    const modal    = document.getElementById('pv-pmid-modal');
-    const closeBtn = document.getElementById('pv-pmid-close');
-    const runBtn   = document.getElementById('pv-pmid-run');
-    const refBtn   = document.getElementById('pv-pmid-refresh');
-    const statsEl  = document.getElementById('pv-pmid-stats');
-    const logEl    = document.getElementById('pv-pmid-log');
+    const btn        = document.getElementById('btn-backfill-pmids');
+    const modal      = document.getElementById('pv-pmid-modal');
+    const closeBtn   = document.getElementById('pv-pmid-close');
+    const runBtn     = document.getElementById('pv-pmid-run');
+    const refBtn     = document.getElementById('pv-pmid-refresh');
+    const manualBtn  = document.getElementById('pv-pmid-manual');
+    const statsEl    = document.getElementById('pv-pmid-stats');
+    const logEl      = document.getElementById('pv-pmid-log');
+    const manualPanel= document.getElementById('pv-pmid-manual-panel');
+    const manualList = document.getElementById('pv-pmid-manual-list');
+    const manualCount= document.getElementById('pv-pmid-manual-count');
     if (!btn || !modal) return;
 
     const close = () => { modal.style.display = 'none'; };
@@ -6041,12 +6045,14 @@
       modal.style.display = 'flex';
       logEl.innerHTML =
         `<div style="color:#9ca3af;text-align:center;padding:24px 12px;">El log de búsquedas aparecerá aquí.</div>`;
+      if (manualPanel) manualPanel.style.display = 'none';
       await refreshStats();
     });
     closeBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
     refBtn.addEventListener('click', refreshStats);
     runBtn.addEventListener('click', runBatch);
+    manualBtn?.addEventListener('click', loadManual);
 
     async function refreshStats() {
       statsEl.innerHTML = '<span style="color:#6b7280;">Cargando…</span>';
@@ -6167,6 +6173,152 @@
         runBtn.textContent = orig;
       }
     }
+
+    // Manual PMID-entry panel: lists every article still without a
+    // PMID, with a one-click "Buscar en PubMed" link pre-filled with
+    // the title and a tiny input for pasting the PMID found by hand.
+    // The PATCH /api/articles/<id> endpoint already handles the
+    // uniqueness check (409 on PMID already owned) and the new 422
+    // for the VARCHAR(255) bug — we surface either cleanly.
+    async function loadManual() {
+      if (!manualPanel) return;
+      manualPanel.style.display = 'block';
+      manualList.innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:24px 12px;font-size:13px;">Cargando pendientes…</div>';
+      try {
+        const r = await api('/admin/pmid-missing?limit=500');
+        manualCount.textContent = `· ${r.total} en total`;
+        if (!r.items || !r.items.length) {
+          manualList.innerHTML =
+            '<div style="text-align:center;color:#15803d;padding:24px 12px;font-size:13px;">✓ Ningún artículo pendiente. Todos tienen PMID.</div>';
+          return;
+        }
+        manualList.innerHTML = r.items.map(it => _manualPmidRowHtml(it)).join('');
+        // Wire each row's save button. Enter on the input also saves.
+        manualList.querySelectorAll('.pv-pmid-manual-save').forEach(b => {
+          b.addEventListener('click', () => saveManualPmid(b.dataset.aid));
+        });
+        manualList.querySelectorAll('.pv-pmid-manual-input').forEach(inp => {
+          inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              saveManualPmid(inp.dataset.aid);
+            }
+          });
+        });
+      } catch (e) {
+        manualList.innerHTML =
+          `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    async function saveManualPmid(aid) {
+      const row = manualList.querySelector(`[data-row-aid="${CSS.escape(aid)}"]`);
+      if (!row) return;
+      const input = row.querySelector('.pv-pmid-manual-input');
+      const saveBtn = row.querySelector('.pv-pmid-manual-save');
+      const status  = row.querySelector('.pv-pmid-manual-status');
+      const raw = (input.value || '').trim();
+      // Accept "12345678", "PMID 12345678", "PMID:12345678", or even
+      // a copy-pasted PubMed URL — strip down to the trailing digits.
+      const m = raw.match(/(\d{4,})/);
+      if (!m) {
+        status.textContent = 'PMID inválido (esperaba dígitos).';
+        status.style.color = '#b91c1c';
+        return;
+      }
+      const pmid = m[1];
+      saveBtn.disabled    = true;
+      const origLabel     = saveBtn.textContent;
+      saveBtn.textContent = '⏳';
+      status.textContent  = '';
+      try {
+        await api(`/articles/${aid}`, {
+          method: 'PATCH',
+          body:   JSON.stringify({ pubmed_id: pmid }),
+        });
+        // Fade out the row on success and update the running tally.
+        row.style.transition = 'opacity 0.4s, max-height 0.4s';
+        row.style.opacity = '0.3';
+        status.style.color = '#15803d';
+        status.textContent = `✓ PMID ${pmid} guardado.`;
+        // Refresh the global stats panel and the main listing's
+        // "PMID ↗" chips after a moment so the change is visible.
+        setTimeout(() => {
+          row.remove();
+          refreshStats();
+          if (typeof loadArticles === 'function') loadArticles();
+          // If the list is now empty, replace with success message.
+          if (!manualList.querySelector('[data-row-aid]')) {
+            manualList.innerHTML =
+              '<div style="text-align:center;color:#15803d;padding:24px 12px;font-size:13px;">✓ Ya está. Todos los pendientes resueltos.</div>';
+          }
+        }, 600);
+      } catch (e) {
+        const body = e.body || {};
+        let msg = e.message || 'error';
+        if (e.status === 409 && body.duplicate_of) {
+          msg = `Ese PMID ya pertenece a otro artículo. Ver: ${body.duplicate_of}`;
+        }
+        status.style.color = '#b91c1c';
+        status.textContent = `✗ ${msg}`;
+        saveBtn.disabled    = false;
+        saveBtn.textContent = origLabel;
+      }
+    }
+  }
+
+  function _manualPmidRowHtml(it) {
+    const escAttr = (v) => esc(String(v || ''));
+    const title   = it.title || '(sin título)';
+    const yearTxt = it.year ? ` · ${it.year}` : '';
+    const journal = it.journal ? ` · ${esc(it.journal)}` : '';
+    const doiLink = it.doi
+      ? `<a href="https://doi.org/${escAttr(it.doi)}" target="_blank" rel="noopener" style="color:#3730a3;text-decoration:none;font-weight:600;">DOI</a>`
+      : '';
+    // PubMed best-match search pre-filled with the title — clicking
+    // takes the admin straight to the candidate list; usually the
+    // first hit is the paper they're looking at.
+    const pubmedUrl =
+      'https://pubmed.ncbi.nlm.nih.gov/?term=' + encodeURIComponent(title);
+    // Authors string can be quite long (collaborator lists) — trim.
+    const authors = (it.authors || '').slice(0, 80) +
+                    ((it.authors || '').length > 80 ? '…' : '');
+    return `
+      <div data-row-aid="${escAttr(it.id)}"
+           style="border-bottom:1px solid #e5e7eb;padding:8px 10px;background:white;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:600;color:#111827;line-height:1.35;
+                        overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+                        -webkit-line-clamp:2;-webkit-box-orient:vertical;"
+                 title="${escAttr(title)}">${esc(title)}</div>
+            <div style="font-size:11.5px;color:#6b7280;margin-top:2px;">
+              ${esc(authors)}${yearTxt}${journal}
+            </div>
+            <div style="margin-top:5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <a href="${escAttr(pubmedUrl)}" target="_blank" rel="noopener"
+                 style="font-size:11.5px;padding:2px 8px;border-radius:4px;background:#dbeafe;color:#1d4ed8;
+                        font-weight:600;text-decoration:none;">🔍 Buscar en PubMed ↗</a>
+              ${doiLink ? `<span style="font-size:11.5px;">${doiLink}</span>` : ''}
+            </div>
+          </div>
+          <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;min-width:200px;">
+            <div style="display:flex;gap:5px;">
+              <input type="text" class="pv-pmid-manual-input" data-aid="${escAttr(it.id)}"
+                     placeholder="Pega el PMID"
+                     inputmode="numeric"
+                     style="width:130px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12.5px;font-family:ui-monospace,monospace;">
+              <button type="button" class="pv-pmid-manual-save" data-aid="${escAttr(it.id)}"
+                      style="padding:5px 12px;border-radius:5px;border:none;background:#0F3460;color:white;font-size:12px;font-weight:600;cursor:pointer;">
+                Guardar
+              </button>
+            </div>
+            <div class="pv-pmid-manual-status" style="font-size:11px;color:#6b7280;text-align:right;min-height:14px;"></div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   // ── Batch import by DOI/PMID list ────────────────────────────────────

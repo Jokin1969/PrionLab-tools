@@ -2501,6 +2501,50 @@ def api_ingest_job_delete(job_id):
 
 # ── PMID backfill (find missing PubMed IDs for known articles) ─────────────
 
+@prionvault_bp.route("/api/admin/pmid-missing", methods=["GET"])
+@admin_required
+def api_pmid_missing():
+    """Articles still without a PMID after the automatic backfill.
+
+    Drives the "Asignar a mano" panel in the Recuperar PMIDs modal —
+    the admin sees one row per paper with title / year / journal /
+    DOI, a click-through to a PubMed search pre-filled with the
+    title, and a tiny input for pasting the PMID found by hand.
+    """
+    limit  = max(1, min(500, request.args.get("limit", 200, type=int)))
+    s = _session()
+    try:
+        rows = s.execute(sql_text("""
+            SELECT id, title, authors, year, journal, doi, created_at
+              FROM articles
+             WHERE pubmed_id IS NULL
+             ORDER BY (doi IS NULL), created_at
+             LIMIT :n
+        """), {"n": limit}).all()
+
+        total = s.execute(sql_text(
+            "SELECT COUNT(*) FROM articles WHERE pubmed_id IS NULL"
+        )).scalar() or 0
+    finally:
+        s.close()
+
+    return jsonify({
+        "total":   int(total),
+        "items": [
+            {
+                "id":      str(r.id),
+                "title":   r.title or "",
+                "authors": r.authors or "",
+                "year":    r.year,
+                "journal": r.journal,
+                "doi":     r.doi,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    })
+
+
 @prionvault_bp.route("/api/admin/pmid-stats", methods=["GET"])
 @admin_required
 def api_pmid_stats():
