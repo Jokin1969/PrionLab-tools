@@ -4238,17 +4238,46 @@
       }
     }
 
+    // Clear-search × button: visible only when the input has content,
+    // clicking it wipes the box, refocuses, and triggers the same
+    // debounced reload as typing would. Esc on the input does the
+    // same thing for keyboard users.
+    const clearBtn = document.getElementById('pv-search-clear');
+    const syncClearBtn = () => {
+      if (!clearBtn) return;
+      clearBtn.style.display = searchInput.value ? 'inline-flex' : 'none';
+    };
+    const clearSearch = () => {
+      if (!searchInput.value && !state.q) return;
+      searchInput.value = '';
+      state.q = '';
+      syncClearBtn();
+      searchInput.focus();
+      state.page = 1;
+      loadArticles();
+    };
+    if (clearBtn) clearBtn.addEventListener('click', clearSearch);
+
     searchInput.addEventListener('input', e => {
+      syncClearBtn();
       if (searchModeBtn.dataset.mode === 'ai') return;  // text-only debounced search
       state.q = e.target.value.trim();
       onSearch();
     });
     searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        clearSearch();
+        return;
+      }
       if (e.key === 'Enter' && searchModeBtn.dataset.mode === 'ai') {
         e.preventDefault();
         runRagSearch(searchInput.value.trim());
       }
     });
+    // First paint — in case the input was restored with a value
+    // (URL state, persisted filter, etc.).
+    syncClearBtn();
     searchModeBtn.addEventListener('click', () => {
       setSearchMode(searchModeBtn.dataset.mode === 'ai' ? 'text' : 'ai');
     });

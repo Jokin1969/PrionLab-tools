@@ -276,6 +276,16 @@
                placeholder="Search title, abstract, authors, journal…"
                title='Busca en title, abstract, authors, journal.&#10;&#10;Operadores:&#10;  prion AND BSE&#10;  Castilla OR Soto&#10;  BSE -review&#10;  "prion protein"&#10;&#10;Para autor exacto usa el filtro Autores.'
                autocomplete="off" />
+        <button id="pv-search-clear" type="button"
+                title="Limpiar búsqueda (Esc)"
+                aria-label="Limpiar búsqueda"
+                style="display:none;align-items:center;justify-content:center;
+                       width:20px;height:20px;flex-shrink:0;border:none;border-radius:50%;
+                       background:#d1d5db;color:white;font-size:13px;font-weight:700;line-height:1;
+                       cursor:pointer;padding:0 0 1px;
+                       transition:background 0.12s ease;"
+                onmouseover="this.style.background='#9ca3af';"
+                onmouseout="this.style.background='#d1d5db';">×</button>
         <button id="btn-search-mode"
                 data-mode="text"
                 style="display:none;"
