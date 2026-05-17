@@ -247,8 +247,16 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         #   Castilla BSE      — both (default AND between bare terms)
         # plainto_tsquery is kept as a fallback for clusters where
         # websearch is unavailable (very old Postgres).
+        #
+        # We OR the FTS predicate with a plain ILIKE substring match
+        # on title / abstract so the user can type incomplete words
+        # ("a marker ass" → "…a marker associated…") without losing
+        # the FTS syntax above. ILIKE is a sequential scan but at
+        # current catalog size (~thousands) the cost is invisible.
         conditions.append(
-            "search_vector @@ websearch_to_tsquery('simple', :q)"
+            "(search_vector @@ websearch_to_tsquery('simple', :q) "
+            "   OR title ILIKE :q_like "
+            "   OR coalesce(abstract,'') ILIKE :q_like)"
             if "search_vector" in pv_cols
             else "(title ILIKE :q_like OR coalesce(abstract,'') ILIKE :q_like)"
         )
