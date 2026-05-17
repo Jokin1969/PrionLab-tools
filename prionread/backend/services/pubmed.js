@@ -183,17 +183,45 @@ function buildTitleSearchTerm({ title, author, year }) {
 
 async function esearchTopPmid(term) {
   const { data } = await axios.get(ESEARCH_URL, {
-    params: { ...NCBI_PARAMS, term, retmax: 1 },
+    // Best-match ranking matches PubMed's web search box; without
+    // it esearch returns most-recent first, which can bury the
+    // actual paper.
+    params: { ...NCBI_PARAMS, term, retmax: 1, sort: 'relevance' },
     timeout: 8000,
   });
   return data?.esearchresult?.idlist?.[0] || null;
 }
 
 /**
+ * Builds a free-text PubMed term — no field qualifier, so the search
+ * runs against PubMed's default index (Title + Abstract + MeSH). Used
+ * as a final fallback for titles whose punctuation confuses the
+ * strict [Title] phrase operator.
+ */
+function buildFreeTextTerm({ title, author, year }) {
+  if (!title) return null;
+  const words = title
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 10)
+    .join(' ');
+  if (!words) return null;
+  const parts = [words];
+  if (author) {
+    const a = author.replace(/[^\p{L}\s-]+/gu, '').trim();
+    if (a) parts.push(`${a}[Author]`);
+  }
+  if (year && Number.isInteger(year)) parts.push(`${year}[PDAT]`);
+  return parts.join(' AND ');
+}
+
+/**
  * Looks up a PMID from the article's bibliographic header. Tries the
- * narrowest query first (title + author + year), then progressively
- * relaxes — author+year are tried as separate filters because PubMed
- * indexes some old papers without one or the other.
+ * narrowest query first and progressively relaxes — the final tiers
+ * drop the [Title] field qualifier so titles with colons or
+ * parentheses (which the strict phrase operator chokes on) still
+ * resolve.
  *
  * Returns the PMID string, or null if no hit on any tier.
  */
@@ -205,6 +233,8 @@ async function searchPubMedByTitle({ title, author, year }) {
     buildTitleSearchTerm({ title, author }),
     buildTitleSearchTerm({ title, year }),
     buildTitleSearchTerm({ title }),
+    buildFreeTextTerm({ title, author }),
+    buildFreeTextTerm({ title }),
   ].filter(Boolean);
 
   for (const term of tiers) {

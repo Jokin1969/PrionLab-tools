@@ -405,6 +405,14 @@ def pubmed_search_pmid_by_title(title: str,
     if year:
         tiers.append(f'{base} AND {year}[PDAT]')
     tiers.append(base)
+    # Looser fallbacks. The [Title] phrase operator is strict about
+    # token order and punctuation — papers with colons / parentheses
+    # in their titles routinely fail the strict tiers but resolve
+    # cleanly when we drop the field qualifier and let PubMed's
+    # default index (Title + Abstract + MeSH) handle the search.
+    if author_part:
+        tiers.append(f'{title_part} AND {author_part}[Author]')
+    tiers.append(title_part)
 
     for term in tiers:
         try:
@@ -413,6 +421,10 @@ def pubmed_search_pmid_by_title(title: str,
                 "term":    term,
                 "retmax":  "1",
                 "retmode": "json",
+                # Best-match ranking is what PubMed's web search box
+                # uses; without it esearch returns most-recent first,
+                # which can bury the actual paper.
+                "sort":    "relevance",
             }, headers=_HDRS, timeout=_TIMEOUT)
             r.raise_for_status()
         except Exception as exc:

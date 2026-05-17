@@ -758,9 +758,6 @@
           <button type="button" id="pv-edit-refetch-pmid"
                   title="Buscar metadatos con el PMID actual del campo (PubMed)"
                   style="padding:6px 10px;border-radius:6px;background:#0F3460;color:white;border:none;font-size:12px;cursor:pointer;flex-shrink:0;">🔍 Buscar</button>
-          <button type="button" id="pv-edit-identify-ai"
-                  title="La IA lee el PDF, identifica el artículo y busca su PMID en PubMed"
-                  style="padding:6px 10px;border-radius:6px;background:#7c3aed;color:white;border:none;font-size:12px;cursor:pointer;flex-shrink:0;">🤖 IA</button>
         </div>
       </label>
 
@@ -773,11 +770,18 @@
 
     <div id="pv-edit-status" style="font-size:12.5px;color:#6b7280;margin-bottom:10px;min-height:18px;"></div>
 
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-      <button id="pv-edit-cancel"
-              style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;font-size:13px;cursor:pointer;">
-        Cancelar
-      </button>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="pv-edit-cancel"
+                style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;font-size:13px;cursor:pointer;">
+          Cancelar
+        </button>
+        <button type="button" id="pv-edit-identify-ai"
+                title="La IA lee el PDF, identifica el artículo y busca su PMID en PubMed. Si no encuentra el PMID, copia el título al portapapeles para buscarlo a mano."
+                style="padding:8px 14px;border-radius:8px;background:#7c3aed;color:white;border:none;font-size:13px;font-weight:600;cursor:pointer;">
+          🤖 Buscar PMID con IA
+        </button>
+      </div>
       <div style="display:flex;gap:8px;">
         <button id="pv-edit-save"
                 style="padding:8px 16px;border-radius:8px;border:none;background:#0F3460;color:white;font-size:13px;font-weight:600;cursor:pointer;">

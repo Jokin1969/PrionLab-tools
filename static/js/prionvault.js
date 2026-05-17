@@ -3231,10 +3231,11 @@
     if (aiBtn) {
       const ok = !!a.has_pdf;
       aiBtn.disabled = !ok;
+      aiBtn.textContent = '🤖 Buscar PMID con IA';
       aiBtn.style.opacity = ok ? '1' : '0.45';
       aiBtn.style.cursor  = ok ? 'pointer' : 'not-allowed';
       aiBtn.title = ok
-        ? 'La IA lee el PDF, identifica el artículo y busca su PMID en PubMed'
+        ? 'La IA lee el PDF, identifica el artículo y busca su PMID en PubMed. Si no encuentra el PMID, copia el título al portapapeles para buscarlo a mano.'
         : 'Este artículo no tiene PDF guardado';
     }
     modal.style.display = 'flex';
@@ -3305,9 +3306,39 @@
     return null;
   }
 
-  // Run "🤖 IA": ship the saved PDF off to the backend, get a PMID back,
-  // and either chain into _editRefetch('pmid') to refill the form or
-  // surface the duplicate warning (PDF was moved aside server-side).
+  // Best-effort clipboard copy. Returns true if it worked, false if
+  // the API was unavailable or the browser rejected (e.g. http context).
+  async function _copyToClipboard(text) {
+    if (!text) return false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_e) { /* fall through */ }
+    // Legacy fallback: hidden textarea + document.execCommand('copy').
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  // Run "🤖 Buscar PMID con IA": ship the saved PDF off to the backend,
+  // get a PMID back, and either chain into _editRefetch('pmid') to
+  // refill the form, surface the duplicate warning (PDF was moved
+  // aside server-side), or — when PubMed esearch couldn't resolve the
+  // title — copy the title to the clipboard and offer a one-click
+  // PubMed search link so the user can paste it and pick the PMID by
+  // hand.
   async function _editIdentifyAI() {
     if (!_editTarget) return;
     if (!_editTarget.has_pdf) {
@@ -3348,12 +3379,41 @@
       }
     } catch (e) {
       const body = e.body || {};
-      const hint = body.identified
-        ? ` (la IA pensó: «${body.identified.title || '?'}» · ${body.identified.first_author_lastname || '?'} · ${body.identified.year || '?'})`
-        : '';
-      _editStatus(`No se pudo identificar el PMID con IA: ${e.message}${hint}`, '#b91c1c');
+      const guessed = body.identified || {};
+      const title  = (typeof guessed.title === 'string' ? guessed.title : '').trim();
+      const author = guessed.first_author_lastname || '?';
+      const year   = guessed.year || '?';
+
+      // PubMed esearch came up empty but the AI did read the PDF — copy
+      // the title to the clipboard so the user can paste it into the
+      // PubMed search box in their browser. Also emit a one-click link
+      // straight to PubMed pre-filled with the title.
+      let copied = false;
+      if (title) copied = await _copyToClipboard(title);
+
+      const el = document.getElementById('pv-edit-status');
+      el.style.color = '#b91c1c';
+      const hintParts = [];
+      hintParts.push(`No se pudo identificar el PMID con IA: ${esc(e.message || '')}`);
+      if (title) {
+        const url = `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(title)}`;
+        hintParts.push(
+          `La IA pensó: «${esc(title)}» · ${esc(String(author))} · ${esc(String(year))}.`);
+        if (copied) {
+          hintParts.push(
+            `<span style="color:#15803d;">📋 Título copiado al portapapeles</span> — ` +
+            `pégalo en <a href="${esc(url)}" target="_blank" rel="noopener" ` +
+              `style="color:#0F3460;text-decoration:underline;">PubMed</a> ` +
+              `o usa el enlace para abrir la búsqueda ya rellenada.`);
+        } else {
+          hintParts.push(
+            `<a href="${esc(url)}" target="_blank" rel="noopener" ` +
+              `style="color:#0F3460;text-decoration:underline;">Abrir búsqueda en PubMed con este título ↗</a>`);
+        }
+      }
+      el.innerHTML = hintParts.join('<br>');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '🤖 IA'; }
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 Buscar PMID con IA'; }
     }
   }
 
