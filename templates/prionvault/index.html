@@ -223,6 +223,10 @@
               title="Recupera el PMID de los artículos que ya tienen DOI o título conocido pero les falta. Procesa por lotes de 50.">
         <span><i class="fas fa-hashtag" style="width:13px;margin-right:6px;opacity:0.7;"></i>Recuperar PMIDs</span>
       </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-prionpack-sync"
+              title="Sincroniza las referencias de los PrionPacks con sus colecciones en PrionVault. Diagnóstico por pack incluido.">
+        <span><i class="fas fa-link" style="width:13px;margin-right:6px;opacity:0.7;"></i>Sync PrionPacks</span>
+      </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-batch-import">
         <span><i class="fas fa-layer-group" style="width:13px;margin-right:6px;opacity:0.7;"></i>Batch import (DOIs/PMIDs)</span>
       </button>
@@ -1355,6 +1359,73 @@
 </div>
 
 <!-- ── Collection editor modal (manual + smart) ───────────────────── -->
+<!-- ── PrionPacks ↔ PrionVault sync modal ──────────────────────────
+     Replaces the DevTools-console diagnostic flow. Two actions:
+       1. "Sync completo ahora" — POST /api/admin/prionpacks/sync
+       2. "Diagnosticar pack" — GET /api/admin/prionpacks/sync-debug/<id>
+     Both render the result as a readable card list so the admin
+     doesn't have to read raw JSON. -->
+<div id="pv-prionpack-sync-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:760px;">
+    <button class="pv-modal-close" id="pv-pp-sync-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-link" style="color:#0F3460;margin-right:8px;"></i>Sync PrionPacks ↔ Colecciones
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 14px;">
+      Para cada PrionPack activo, la sync crea las colecciones
+      <strong>Introducción</strong> y <strong>Referencias generales</strong> bajo
+      el grupo <code>PrionPacks</code> y las puebla con los artículos
+      cuyo DOI aparece en las listas de referencias del pack. Es
+      idempotente: re-ejecutarla no duplica nada.
+    </p>
+
+    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:12.5px;font-weight:600;color:#111827;margin-bottom:6px;">
+        🔄 Sync completo
+      </div>
+      <p style="margin:0 0 8px;font-size:12px;color:#6b7280;">
+        Recorre todos los packs y reconcilia con PrionVault. Úsalo
+        para llenar las colecciones por primera vez o tras añadir
+        muchos DOIs nuevos a un pack.
+      </p>
+      <button id="pv-pp-sync-run"
+              style="padding:7px 14px;border-radius:6px;border:none;background:#0F3460;color:white;font-size:12.5px;font-weight:600;cursor:pointer;">
+        Sync completo ahora
+      </button>
+    </div>
+
+    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:12.5px;font-weight:600;color:#111827;margin-bottom:6px;">
+        🔍 Diagnosticar un pack
+      </div>
+      <p style="margin:0 0 8px;font-size:12px;color:#6b7280;">
+        Para entender por qué un pack no se está poblando. Muestra
+        el nombre exacto de subgrupo + colecciones que la sync
+        espera, las que ya existen bajo <code>PrionPacks</code>, y
+        cada DOI con su estado en PrionVault.
+      </p>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="pv-pp-sync-pack"
+                style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12.5px;">
+          <option value="">Cargando packs…</option>
+        </select>
+        <button id="pv-pp-sync-debug"
+                style="padding:7px 14px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">
+          Diagnosticar
+        </button>
+      </div>
+    </div>
+
+    <div id="pv-pp-sync-result"
+         style="max-height:420px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;padding:8px;min-height:60px;font-size:12.5px;color:#374151;">
+      <div style="color:#9ca3af;text-align:center;padding:18px;">
+        El resultado aparecerá aquí.
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Article chunks inspector ──────────────────────────────────────
      Opens from the green "indexed" chip in the listing. Shows the
      same fragments that Voyage embedded + their position in the

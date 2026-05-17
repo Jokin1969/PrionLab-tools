@@ -1199,6 +1199,233 @@
     });
   }
 
+  // ── PrionPacks ↔ PrionVault sync panel ──────────────────────────────
+  // Replaces the DevTools-console diagnostic flow. Opens from the
+  // "Sync PrionPacks" sidebar button. Two actions: a full reconcile
+  // and a per-pack debug dump rendered as readable cards.
+  function wirePrionpackSync() {
+    const sidebarBtn = document.getElementById('btn-prionpack-sync');
+    const modal      = document.getElementById('pv-prionpack-sync-modal');
+    if (!sidebarBtn || !modal) return;
+
+    const closeBtn = document.getElementById('pv-pp-sync-close');
+    const runBtn   = document.getElementById('pv-pp-sync-run');
+    const debugBtn = document.getElementById('pv-pp-sync-debug');
+    const select   = document.getElementById('pv-pp-sync-pack');
+    const result   = document.getElementById('pv-pp-sync-result');
+
+    const close = () => { modal.style.display = 'none'; };
+
+    sidebarBtn.addEventListener('click', async () => {
+      modal.style.display = 'flex';
+      result.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:18px;">El resultado aparecerá aquí.</div>';
+      // Populate the pack <select> on every open so newly-created
+      // packs show up without a hard refresh.
+      try {
+        const r = await api('/prionpacks');
+        const items = r.items || [];
+        select.innerHTML = items.length
+          ? '<option value="">— Elige un pack —</option>' +
+            items.map(it => `<option value="${esc(it.id)}">${esc(it.id)} — ${esc(it.title || '(sin título)')}</option>`).join('')
+          : '<option value="">No hay packs activos</option>';
+      } catch (e) {
+        select.innerHTML = `<option value="">Error: ${esc(e.message)}</option>`;
+      }
+    });
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    runBtn.addEventListener('click', async () => {
+      const origLabel = runBtn.textContent;
+      runBtn.disabled = true;
+      runBtn.textContent = '⏳ Sincronizando…';
+      result.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:18px;">Sincronizando todos los packs…</div>';
+      try {
+        const r = await api('/admin/prionpacks/sync', { method: 'POST' });
+        _renderSyncAll(result, r);
+        refreshCollections?.();   // sidebar counts may have changed
+      } catch (e) {
+        result.innerHTML =
+          `<div style="color:#b91c1c;padding:10px;">Error: ${esc(e.message)}</div>`;
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = origLabel;
+      }
+    });
+
+    debugBtn.addEventListener('click', async () => {
+      const pid = select.value;
+      if (!pid) {
+        result.innerHTML =
+          '<div style="color:#b45309;padding:10px;">Elige un pack en el desplegable primero.</div>';
+        return;
+      }
+      const orig = debugBtn.textContent;
+      debugBtn.disabled = true;
+      debugBtn.textContent = '⏳ Analizando…';
+      result.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:18px;">Leyendo configuración del pack…</div>';
+      try {
+        const r = await api(`/admin/prionpacks/sync-debug/${encodeURIComponent(pid)}`);
+        _renderSyncDebug(result, r);
+      } catch (e) {
+        result.innerHTML =
+          `<div style="color:#b91c1c;padding:10px;">Error: ${esc(e.message)}</div>`;
+      } finally {
+        debugBtn.disabled = false;
+        debugBtn.textContent = orig;
+      }
+    });
+  }
+
+  function _renderSyncAll(target, r) {
+    const totals = (r && r.totals) || {};
+    const perPack = Array.isArray(r && r.per_pack) ? r.per_pack : [];
+    const totalsHtml = `
+      <div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:6px;padding:10px;margin-bottom:10px;">
+        <div style="font-weight:700;color:#15803d;margin-bottom:4px;">✓ Sync terminada</div>
+        <div style="font-size:12.5px;color:#166534;line-height:1.7;">
+          Packs procesados: <b>${totals.packs ?? '—'}</b><br>
+          Artículos casados: <b>${totals.matched ?? '—'}</b><br>
+          Añadidos a "Introducción": <b>${totals.intro_added ?? 0}</b>
+          <span style="color:#15803d;opacity:0.7;">
+            (${totals.intro_skipped ?? 0} ya estaban)
+          </span><br>
+          Añadidos a "Referencias generales": <b>${totals.general_added ?? 0}</b>
+          <span style="color:#15803d;opacity:0.7;">
+            (${totals.general_skipped ?? 0} ya estaban)
+          </span>
+        </div>
+      </div>
+    `;
+    const rows = perPack.map(p => {
+      if (p.skipped) {
+        return `<div style="padding:5px 8px;color:#9ca3af;font-size:12px;">
+                  <code>${esc(p.pack_id)}</code> — saltado (${esc(p.skipped)})
+                </div>`;
+      }
+      const intro = p.intro || {};
+      const gen   = p.general || {};
+      return `
+        <div style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;">
+          <code style="color:#374151;font-weight:600;">${esc(p.pack_id)}</code>
+          <span style="color:#6b7280;margin-left:6px;">
+            intro <b style="color:${intro.added ? '#15803d' : '#9ca3af'};">+${intro.added ?? 0}</b>
+            <span style="opacity:0.6;">(${intro.matched ?? 0}/${intro.total_dois ?? 0} casan)</span>
+            · gen <b style="color:${gen.added ? '#15803d' : '#9ca3af'};">+${gen.added ?? 0}</b>
+            <span style="opacity:0.6;">(${gen.matched ?? 0}/${gen.total_dois ?? 0} casan)</span>
+          </span>
+        </div>
+      `;
+    }).join('');
+    target.innerHTML = totalsHtml +
+      (rows ? `<div style="border:1px solid #e5e7eb;border-radius:6px;background:white;">${rows}</div>` : '');
+  }
+
+  function _renderSyncDebug(target, r) {
+    const pack = r.pack || {};
+    const exp  = r.expected || {};
+    const existing = r.existing_pack_collections || [];
+
+    // Find which existing collections match the expected subgroup + name
+    // exactly (case-insensitive). Highlight mismatches in amber so the
+    // operator sees at a glance what's blocking the sync.
+    const norm = (s) => (s || '').trim().toLowerCase();
+    const expSub = norm(exp.subgroup);
+    const expIntro = norm(exp.intro_collection_name);
+    const expGen   = norm(exp.general_collection_name);
+
+    const existingHtml = existing.length
+      ? existing.map(c => {
+          const sg = norm(c.subgroup_name);
+          const n  = norm(c.name);
+          const subMatch  = sg === expSub;
+          const nameMatch = (n === expIntro || n === expGen);
+          const ok = subMatch && nameMatch;
+          const color = ok ? '#15803d' : '#b45309';
+          const flag  = ok ? '✓ casa con la sync'
+                          : !subMatch && nameMatch ? '⚠ nombre OK pero subgrupo NO casa'
+                          : subMatch && !nameMatch ? '⚠ subgrupo OK pero nombre NO casa'
+                          : '⚠ ninguno coincide';
+          return `
+            <div style="padding:5px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;">
+              <span style="color:${color};font-weight:600;">${flag}</span>
+              <div style="margin-top:2px;color:#6b7280;">
+                Subgrupo: <code>${esc(c.subgroup_name || '(vacío)')}</code><br>
+                Nombre: <code>${esc(c.name || '')}</code>
+                · artículos: ${c.article_count ?? 0}
+              </div>
+            </div>
+          `;
+        }).join('')
+      : '<div style="padding:8px;color:#9ca3af;font-size:12px;">Aún no hay colecciones bajo el grupo "PrionPacks".</div>';
+
+    const renderDoiList = (label, dois, matched) => {
+      const total = dois.length;
+      if (!total) {
+        return `
+          <div style="margin-bottom:10px;">
+            <div style="font-weight:600;color:#374151;">${esc(label)}</div>
+            <div style="color:#9ca3af;font-size:12px;padding:4px 0;">Sin DOIs en esta sección.</div>
+          </div>`;
+      }
+      const rows = dois.map(d => {
+        const found = !!d.article_id;
+        const color = found ? '#15803d' : '#b45309';
+        const icon  = found ? '✓' : '✗';
+        return `
+          <div style="padding:3px 8px;border-bottom:1px solid #f9fafb;display:flex;gap:8px;align-items:center;">
+            <span style="color:${color};font-weight:700;">${icon}</span>
+            <code style="font-size:11.5px;color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.doi)}</code>
+            <span style="font-size:11px;color:#9ca3af;flex-shrink:0;">
+              ${found ? 'en PrionVault' : 'no está'}
+            </span>
+          </div>
+        `;
+      }).join('');
+      return `
+        <div style="margin-bottom:10px;">
+          <div style="font-weight:600;color:#374151;">
+            ${esc(label)}
+            <span style="font-weight:normal;color:#6b7280;">
+              · ${matched}/${total} casan en PrionVault
+            </span>
+          </div>
+          <div style="margin-top:4px;border:1px solid #e5e7eb;border-radius:5px;background:white;max-height:200px;overflow-y:auto;">
+            ${rows}
+          </div>
+        </div>
+      `;
+    };
+
+    target.innerHTML = `
+      <div style="margin-bottom:10px;font-size:13px;">
+        <span style="font-weight:700;color:#111827;">${esc(pack.id || '')}</span>
+        <span style="color:#6b7280;"> — ${esc(pack.title || '(sin título)')}</span>
+        ${pack.active === false ? '<span style="margin-left:8px;color:#b91c1c;font-weight:600;">⚠ pack inactivo (la sync lo salta)</span>' : ''}
+      </div>
+
+      <div style="background:#f3f4f6;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#374151;line-height:1.6;">
+        <div><strong>Lo que la sync espera:</strong></div>
+        <div>Grupo: <code>${esc(exp.group || '')}</code></div>
+        <div>Subgrupo: <code>${esc(exp.subgroup || '')}</code></div>
+        <div>Colecciones: <code>${esc(exp.intro_collection_name || '')}</code> +
+                         <code>${esc(exp.general_collection_name || '')}</code></div>
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <div style="font-weight:600;color:#374151;margin-bottom:4px;">
+          Colecciones ya existentes bajo grupo "${esc(exp.group || 'PrionPacks')}"
+        </div>
+        <div style="border:1px solid #e5e7eb;border-radius:5px;background:white;">
+          ${existingHtml}
+        </div>
+      </div>
+
+      ${renderDoiList('Introducción — DOIs', r.intro_dois || [], r.intro_matched_count || 0)}
+      ${renderDoiList('Referencias generales — DOIs', r.general_dois || [], r.general_matched_count || 0)}
+    `;
+  }
+
   // ── Sidebar header indicators ─────────────────────────────────────────
   // When a Colecciones / Tags filter is active the section header
   // highlights in white + bold so the user still notices the filter
@@ -4980,6 +5207,7 @@
       wireRetryAbstracts();
       wirePmidBackfill();
       wireBulkCollectionPicker();
+      wirePrionpackSync();
       wireDuplicates();
       wireBatchSummary();
       wireBatchIndex();
