@@ -57,6 +57,7 @@ _PRIONVAULT_MIGRATIONS = (
     "021_articles_abstract_unavailable.sql",
     "022_articles_promote_to_text.sql",
     "023_articles_text_columns_verified.sql",
+    "024_articles_pubmed_unavailable.sql",
 )
 
 _BOOTSTRAP_SQL = """

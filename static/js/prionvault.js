@@ -6078,6 +6078,11 @@
           <span style="color:#b45309;font-weight:600;">Sin DOI ni PMID</span>
           <span style="text-align:right;color:#b45309;font-weight:700;">${s.has_neither}</span>
 
+          ${s.confirmed_no_pmid ? `
+            <span style="color:#6b7280;">Sin PMID confirmado (no existe)</span>
+            <span style="text-align:right;color:#6b7280;">${s.confirmed_no_pmid}</span>
+          ` : ''}
+
           <span style="grid-column:1/-1;border-top:1px solid #e5e7eb;margin-top:4px;padding-top:6px;color:#374151;font-weight:600;">
             Pendientes de recuperar: <span style="color:#b91c1c;">${s.missing_pmid}</span>
           </span>
@@ -6206,6 +6211,9 @@
             }
           });
         });
+        manualList.querySelectorAll('.pv-pmid-manual-nopmid').forEach(b => {
+          b.addEventListener('click', () => markNoPmid(b.dataset.aid));
+        });
       } catch (e) {
         manualList.innerHTML =
           `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
@@ -6266,6 +6274,49 @@
         saveBtn.textContent = origLabel;
       }
     }
+
+    // "✗ No existe PMID" — flag the paper as confirmed-not-in-PubMed
+    // so the auto-backfill stops trying it and the manual list stops
+    // showing it. Reversible via the same endpoint with {value:false}
+    // if the admin changes their mind.
+    async function markNoPmid(aid) {
+      const row    = manualList.querySelector(`[data-row-aid="${CSS.escape(aid)}"]`);
+      if (!row) return;
+      const btn    = row.querySelector('.pv-pmid-manual-nopmid');
+      const status = row.querySelector('.pv-pmid-manual-status');
+      if (!confirm('Marcar este artículo como confirmado-sin-PMID?\n\n' +
+                   '• La búsqueda automática lo saltará en futuros lotes.\n' +
+                   '• Desaparece de esta lista de pendientes.\n' +
+                   '• Se puede deshacer luego desde Editar → vaciar campo y guardar.\n\n' +
+                   '¿Continuar?')) return;
+      const orig = btn.textContent;
+      btn.disabled    = true;
+      btn.textContent = '⏳';
+      status.textContent = '';
+      try {
+        await api(`/articles/${aid}/mark-no-pmid`, {
+          method: 'POST',
+          body:   JSON.stringify({ value: true }),
+        });
+        status.style.color = '#6b7280';
+        status.textContent = 'Marcado sin PMID.';
+        row.style.transition = 'opacity 0.4s';
+        row.style.opacity = '0.3';
+        setTimeout(() => {
+          row.remove();
+          refreshStats();
+          if (!manualList.querySelector('[data-row-aid]')) {
+            manualList.innerHTML =
+              '<div style="text-align:center;color:#15803d;padding:24px 12px;font-size:13px;">✓ Ya está. Todos los pendientes resueltos.</div>';
+          }
+        }, 500);
+      } catch (e) {
+        status.style.color = '#b91c1c';
+        status.textContent = `✗ ${e.message || 'error'}`;
+        btn.disabled    = false;
+        btn.textContent = orig;
+      }
+    }
   }
 
   function _manualPmidRowHtml(it) {
@@ -6314,6 +6365,11 @@
                 Guardar
               </button>
             </div>
+            <button type="button" class="pv-pmid-manual-nopmid" data-aid="${escAttr(it.id)}"
+                    title="Marca este artículo como confirmado-sin-PMID. La búsqueda automática y la lista manual lo dejarán en paz."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11px;font-weight:600;cursor:pointer;align-self:flex-end;">
+              ✗ No existe PMID
+            </button>
             <div class="pv-pmid-manual-status" style="font-size:11px;color:#6b7280;text-align:right;min-height:14px;"></div>
           </div>
         </div>

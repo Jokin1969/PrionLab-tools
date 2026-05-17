@@ -2510,20 +2510,34 @@ def api_pmid_missing():
     the admin sees one row per paper with title / year / journal /
     DOI, a click-through to a PubMed search pre-filled with the
     title, and a tiny input for pasting the PMID found by hand.
+
+    Excludes papers explicitly marked `pubmed_unavailable = TRUE`
+    (books / conference abstracts / theses that genuinely don't
+    have a PubMed entry, and which the admin has flagged via the
+    "✗ No existe PMID" button). Pass ?include_unavailable=true to
+    see those too if the admin wants to review the flagged list.
     """
     limit  = max(1, min(500, request.args.get("limit", 200, type=int)))
+    include_unavailable = request.args.get("include_unavailable", "false").lower() == "true"
     s = _session()
     try:
-        rows = s.execute(sql_text("""
+        pv_cols = _get_pv_columns(s)
+        has_unavail_col = "pubmed_unavailable" in pv_cols
+        unavail_clause = ""
+        if has_unavail_col and not include_unavailable:
+            unavail_clause = " AND pubmed_unavailable = FALSE"
+
+        rows = s.execute(sql_text(f"""
             SELECT id, title, authors, year, journal, doi, created_at
+                   {", pubmed_unavailable" if has_unavail_col else ""}
               FROM articles
-             WHERE pubmed_id IS NULL
+             WHERE pubmed_id IS NULL{unavail_clause}
              ORDER BY (doi IS NULL), created_at
              LIMIT :n
         """), {"n": limit}).all()
 
         total = s.execute(sql_text(
-            "SELECT COUNT(*) FROM articles WHERE pubmed_id IS NULL"
+            f"SELECT COUNT(*) FROM articles WHERE pubmed_id IS NULL{unavail_clause}"
         )).scalar() or 0
     finally:
         s.close()
@@ -2538,11 +2552,58 @@ def api_pmid_missing():
                 "year":    r.year,
                 "journal": r.journal,
                 "doi":     r.doi,
+                "pubmed_unavailable": bool(getattr(r, "pubmed_unavailable", False)),
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
         ],
     })
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/mark-no-pmid", methods=["POST"])
+@admin_required
+def api_article_mark_no_pmid(aid):
+    """Flag (or un-flag) an article as confirmed-not-in-PubMed.
+
+    Body: { "value": true|false }   — defaults to true.
+
+    Sets `pubmed_unavailable` on the article so the backfill batch,
+    the manual-entry list, and any future "🤖 Buscar PMID con IA"
+    nudge skip this paper instead of wasting NCBI roundtrips. Used
+    for books, conference abstracts, theses, and other items that
+    genuinely don't have a PubMed entry.
+    """
+    body  = request.get_json(silent=True) or {}
+    value = bool(body.get("value", True))
+    s = _session()
+    try:
+        pv_cols = _get_pv_columns(s)
+        if "pubmed_unavailable" not in pv_cols:
+            return jsonify({
+                "error": "schema_missing",
+                "detail": "Run migration 024 (force-rerun) to add the pubmed_unavailable column.",
+            }), 503
+        res = s.execute(sql_text("""
+            UPDATE articles
+               SET pubmed_unavailable = :v, updated_at = NOW()
+             WHERE id = :aid
+             RETURNING id, pubmed_unavailable
+        """), {"v": value, "aid": str(aid)}).first()
+        if not res:
+            s.rollback()
+            return jsonify({"error": "not_found"}), 404
+        s.commit()
+        return jsonify({
+            "ok": True,
+            "id": str(res[0]),
+            "pubmed_unavailable": bool(res[1]),
+        })
+    except Exception as exc:
+        s.rollback()
+        logger.exception("mark-no-pmid failed for %s", aid)
+        return jsonify({"error": "internal_error", "detail": str(exc)[:200]}), 500
+    finally:
+        s.close()
 
 
 @prionvault_bp.route("/api/admin/pmid-stats", methods=["GET"])
@@ -2553,7 +2614,18 @@ def api_pmid_stats():
     """
     s = _session()
     try:
-        row = s.execute(sql_text("""
+        pv_cols = _get_pv_columns(s)
+        # The `confirmed_no_pmid` bucket only exists once migration 024
+        # has run. Until then we report 0 and the manual flow is a no-op.
+        has_unavail_col = "pubmed_unavailable" in pv_cols
+        confirmed_expr = (
+            "COUNT(*) FILTER (WHERE pubmed_id IS NULL AND pubmed_unavailable = TRUE)"
+            if has_unavail_col else "0::int"
+        )
+        # When the column exists, exclude its TRUE rows from the
+        # "missing" bucket — those don't need any more PubMed work.
+        missing_filter = " AND pubmed_unavailable = FALSE" if has_unavail_col else ""
+        row = s.execute(sql_text(f"""
             SELECT
               COUNT(*)                                              AS total,
               COUNT(*) FILTER (WHERE doi       IS NOT NULL)         AS has_doi,
@@ -2561,22 +2633,24 @@ def api_pmid_stats():
               COUNT(*) FILTER (WHERE doi IS NOT NULL
                               AND pubmed_id IS NOT NULL)            AS has_both,
               COUNT(*) FILTER (WHERE doi IS NOT NULL
-                              AND pubmed_id IS NULL)                AS has_doi_only,
+                              AND pubmed_id IS NULL{missing_filter}) AS has_doi_only,
               COUNT(*) FILTER (WHERE doi IS NULL
                               AND pubmed_id IS NOT NULL)            AS has_pmid_only,
               COUNT(*) FILTER (WHERE doi IS NULL
-                              AND pubmed_id IS NULL)                AS has_neither
+                              AND pubmed_id IS NULL{missing_filter}) AS has_neither,
+              {confirmed_expr}                                       AS confirmed_no_pmid
             FROM articles
         """)).first()
         return jsonify({
-            "total":         int(row.total or 0),
-            "has_doi":       int(row.has_doi or 0),
-            "has_pmid":      int(row.has_pmid or 0),
-            "has_both":      int(row.has_both or 0),
-            "has_doi_only":  int(row.has_doi_only or 0),
-            "has_pmid_only": int(row.has_pmid_only or 0),
-            "has_neither":   int(row.has_neither or 0),
-            "missing_pmid":  int((row.has_doi_only or 0) + (row.has_neither or 0)),
+            "total":             int(row.total or 0),
+            "has_doi":           int(row.has_doi or 0),
+            "has_pmid":          int(row.has_pmid or 0),
+            "has_both":          int(row.has_both or 0),
+            "has_doi_only":      int(row.has_doi_only or 0),
+            "has_pmid_only":     int(row.has_pmid_only or 0),
+            "has_neither":       int(row.has_neither or 0),
+            "confirmed_no_pmid": int(row.confirmed_no_pmid or 0),
+            "missing_pmid":      int((row.has_doi_only or 0) + (row.has_neither or 0)),
         })
     finally:
         s.close()
@@ -2609,10 +2683,17 @@ def api_pmid_backfill():
         # Prefer DOI-holding rows first — they're cheaper and more
         # reliable than title search, so the user sees fast wins
         # before we burn time on heuristic title hits.
-        rows = s.execute(sql_text("""
+        # `pubmed_unavailable = TRUE` rows are explicitly excluded —
+        # the admin has confirmed those papers don't have a PMID
+        # (books, conference abstracts, theses) so we'd just be
+        # wasting NCBI roundtrips on every batch.
+        pv_cols = _get_pv_columns(s)
+        unavail_filter = " AND pubmed_unavailable = FALSE" \
+            if "pubmed_unavailable" in pv_cols else ""
+        rows = s.execute(sql_text(f"""
             SELECT id, title, authors, year, doi
               FROM articles
-             WHERE pubmed_id IS NULL
+             WHERE pubmed_id IS NULL{unavail_filter}
              ORDER BY (doi IS NULL), created_at
              LIMIT :n
         """), {"n": limit}).all()
