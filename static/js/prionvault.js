@@ -3229,8 +3229,11 @@
     }
     const nextBtn = document.getElementById('pv-edit-next');
     if (nextBtn) { nextBtn.disabled = false; nextBtn.textContent = 'Siguiente →'; }
+    const prevBtn = document.getElementById('pv-edit-prev');
+    if (prevBtn) { prevBtn.disabled = false; prevBtn.textContent = '← Anterior'; }
     const delBtn = document.getElementById('pv-edit-delete');
     if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 Borrar artículo'; }
+    _editRenderPdfPreview(a);
     const aiBtn = document.getElementById('pv-edit-identify-ai');
     if (aiBtn) {
       const ok = !!a.has_pdf;
@@ -3308,6 +3311,42 @@
       next = next.nextElementSibling;
     }
     return null;
+  }
+
+  // Mirror of _editNextRowId but walking backwards.
+  function _editPrevRowId() {
+    if (!_editTarget) return null;
+    const cb = document.querySelector(`.pv-row-select[data-aid="${_editTarget.id}"]`);
+    if (!cb) return null;
+    const row = cb.closest('tr');
+    let prev = row && row.previousElementSibling;
+    while (prev) {
+      const prevCb = prev.querySelector('.pv-row-select');
+      if (prevCb && prevCb.dataset.aid) return prevCb.dataset.aid;
+      prev = prev.previousElementSibling;
+    }
+    return null;
+  }
+
+  // Render the mini-PDF preview at the top of the Edit modal. Sized
+  // at ~1/4 of the detail-modal viewer (78vh) so the title is
+  // legible without taking over the modal. The Open Parameters
+  // (#view=FitH&toolbar=0) ask Chromium / Firefox to fit the page
+  // width and hide the toolbar; Safari ignores them but the iframe
+  // still renders correctly.
+  function _editRenderPdfPreview(a) {
+    const box = document.getElementById('pv-edit-pdf-preview');
+    if (!box) return;
+    if (!a || !a.has_pdf) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+    box.style.display = 'block';
+    box.innerHTML = `<iframe
+        src="/prionvault/api/articles/${esc(a.id)}/pdf#view=FitH&toolbar=0&navpanes=0"
+        style="display:block;width:100%;height:220px;border:0;background:#1f2937;"
+        title="PDF: ${esc(a.title || '')}"></iframe>`;
   }
 
   // Best-effort clipboard copy. Returns true if it worked, false if
@@ -3477,7 +3516,13 @@
     const modal = document.getElementById('pv-edit-modal');
     if (!modal || modal.dataset.wired) return;
     modal.dataset.wired = '1';
-    const close = () => { modal.style.display = 'none'; _editTarget = null; };
+    const close = () => {
+      modal.style.display = 'none';
+      _editTarget = null;
+      // Drop the iframe so it stops loading / playing PDF.js timers.
+      const pdfBox = document.getElementById('pv-edit-pdf-preview');
+      if (pdfBox) { pdfBox.style.display = 'none'; pdfBox.innerHTML = ''; }
+    };
     document.getElementById('pv-edit-close') ?.addEventListener('click', close);
     document.getElementById('pv-edit-cancel')?.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
@@ -3501,17 +3546,23 @@
       await _editAdvanceTo(nextId, 'Guardado.');
     });
 
-    // Plain "Siguiente →": no save, no delete, just move on. Useful
-    // when the current row is fine as-is and the admin wants to
-    // skim through the list.
+    // Plain "Siguiente →" / "← Anterior": no save, no delete, just
+    // move on. Useful when the current row is fine as-is and the
+    // admin wants to skim through the list.
     document.getElementById('pv-edit-next')?.addEventListener('click', async () => {
       const nextId = _editNextRowId();
       await _editAdvanceTo(nextId, '');
+    });
+    document.getElementById('pv-edit-prev')?.addEventListener('click', async () => {
+      const prevId = _editPrevRowId();
+      await _editAdvanceTo(prevId, '');
     });
 
     // "🗑 Borrar artículo": typically used right after the AI flow
     // surfaces "este ya está metido". Wipes the row + PDF and jumps
     // straight to the next article so the triage keeps flowing.
+    // When the deleted row was the last on the current page, advance
+    // to the next page automatically and open its first visible row.
     document.getElementById('pv-edit-delete')?.addEventListener('click', async () => {
       if (!_editTarget) return;
       const stub = (_editTarget.title || '').slice(0, 80);
@@ -3524,7 +3575,9 @@
         'Esta acción no se puede deshacer desde la app. ¿Continuar?'
       );
       if (!ok) return;
+      // Snapshot navigation context BEFORE the row disappears.
       const nextId = _editNextRowId();
+      const hasMorePages = (state.page * state.size) < (state.lastTotal || 0);
       const btn = document.getElementById('pv-edit-delete');
       const orig = btn ? btn.textContent : null;
       if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
@@ -3535,15 +3588,28 @@
         _editStatus('Error al eliminar: ' + e.message, '#b91c1c');
         return;
       }
-      // Drop a stale selection if any.
       if (state.selectedIds && state.selectedIds.has(_editTarget.id)) {
         state.selectedIds.delete(_editTarget.id);
         if (typeof updateBulkBar === 'function') updateBulkBar();
       }
-      loadArticles();
       refreshStats();
       if (btn) { btn.disabled = false; btn.textContent = orig; }
-      await _editAdvanceTo(nextId, 'Artículo eliminado.');
+
+      if (nextId) {
+        loadArticles();
+        await _editAdvanceTo(nextId, 'Artículo eliminado.');
+        return;
+      }
+      if (hasMorePages) {
+        state.page += 1;
+        await loadArticles();
+        const firstRow = document.querySelector('.pv-row-select');
+        const firstId  = firstRow ? firstRow.dataset.aid : null;
+        await _editAdvanceTo(firstId, `Artículo eliminado. Página ${state.page}.`);
+        return;
+      }
+      loadArticles();
+      _editStatus('Artículo eliminado. No hay más artículos.', '#15803d');
     });
   }
 

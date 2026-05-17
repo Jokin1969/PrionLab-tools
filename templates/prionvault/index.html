@@ -712,11 +712,17 @@
     <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
       <i class="fas fa-pen-to-square" style="color:#0F3460;margin-right:8px;"></i>Editar artículo
     </h2>
-    <p style="color:#6b7280;font-size:12.5px;margin-bottom:14px;">
+    <p style="color:#6b7280;font-size:12.5px;margin-bottom:10px;">
       Cambia el DOI o el PMID si estaban mal y pulsa <strong>Buscar de nuevo</strong>
       para reintentar CrossRef / PubMed con los nuevos identificadores.
       Los campos que devuelva sobrescriben el formulario; tú decides qué guardar.
     </p>
+
+    <!-- Mini-preview of the PDF — first ~1/4 of page 1 so the title
+         is legible without taking over the modal. Shown only when
+         the article has a Dropbox path; toggled in JS. -->
+    <div id="pv-edit-pdf-preview" style="display:none;margin-bottom:10px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#1f2937;">
+    </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
       <label style="grid-column:1/-1;font-size:11.5px;color:#6b7280;font-weight:600;">
@@ -788,6 +794,11 @@
         </button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="pv-edit-prev"
+                title="Volver al artículo anterior de la lista sin guardar nada"
+                style="padding:8px 14px;border-radius:8px;background:white;color:#374151;border:1px solid #d1d5db;font-size:13px;font-weight:600;cursor:pointer;">
+          ← Anterior
+        </button>
         <button id="pv-edit-next"
                 title="Saltar al siguiente artículo de la lista sin guardar nada"
                 style="padding:8px 14px;border-radius:8px;background:white;color:#374151;border:1px solid #d1d5db;font-size:13px;font-weight:600;cursor:pointer;">
