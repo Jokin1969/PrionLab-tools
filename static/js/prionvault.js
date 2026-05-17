@@ -1502,7 +1502,10 @@
   function renderRow(a) {
     const row = document.createElement('tr');
     row.className = 'pv-article-row';
-    row.style.cssText = 'cursor:pointer;border-bottom:1px solid #f3f4f6;transition:background 0.1s;';
+    // Cursor lives on the two clickable cells (Article + Year), not on
+    // the whole row — clicking the left-side mark buttons or the
+    // right-side action chips used to fire openDetail by accident.
+    row.style.cssText = 'border-bottom:1px solid #f3f4f6;transition:background 0.1s;';
     row.addEventListener('mouseenter', () => { row.style.background = '#fafafa'; });
     row.addEventListener('mouseleave', () => { row.style.background = ''; });
 
@@ -1523,6 +1526,13 @@
       : '';
 
     const badges = [
+      IS_ADMIN
+        ? `<button type="button" class="pv-edit-row-btn" data-aid="${esc(a.id)}"
+                    title="Editar artículo"
+                    style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:4px;
+                           font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;
+                           border:none;cursor:pointer;line-height:1.2;">✏ Editar</button>`
+        : '',
       a.has_summary_ai
         ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
         : '',
@@ -1624,7 +1634,7 @@
     ].filter(Boolean).join('\n');
 
     const articleCell = `
-      <td style="padding:8px 12px;vertical-align:middle;max-width:520px;">
+      <td class="pv-row-open" style="padding:8px 12px;vertical-align:middle;max-width:520px;cursor:pointer;">
         <div style="font-size:14px;font-weight:600;color:#111827;line-height:1.35;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
              title="${esc(titleTooltip)}">${supHtml(a.title || '(no title)')}</div>
@@ -1635,8 +1645,8 @@
 
     // ── Year cell ────────────────────────────────────────────────────────
     const yearCell = `
-      <td style="padding:8px 8px;vertical-align:middle;font-size:13px;color:#374151;
-                 font-variant-numeric:tabular-nums;">${a.year ? a.year : '—'}</td>`;
+      <td class="pv-row-open" style="padding:8px 8px;vertical-align:middle;font-size:13px;color:#374151;
+                 font-variant-numeric:tabular-nums;cursor:pointer;">${a.year ? a.year : '—'}</td>`;
 
     // ── Pages cell ───────────────────────────────────────────────────────
     const pagesCell = a.pdf_pages
@@ -1836,9 +1846,31 @@
         e.stopPropagation();
         openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
       });
+
+      const editBtn = row.querySelector('.pv-edit-row-btn');
+      if (editBtn) editBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        editBtn.disabled = true;
+        try {
+          // Pull a fresh copy so the modal sees the latest fields
+          // (abstract, dropbox_path, etc.) the list view doesn't carry.
+          const fresh = await api(`/articles/${a.id}`);
+          openEditModal(fresh);
+        } catch (err) {
+          alert('No se pudo abrir el editor: ' + err.message);
+        } finally {
+          editBtn.disabled = false;
+        }
+      });
     }
 
-    row.addEventListener('click', () => openDetail(a.id));
+    // Only the Article + Year cells open the detail modal — chips and
+    // mark buttons in other cells used to swallow stray clicks via
+    // stopPropagation, but that's brittle. Scoping the listener to
+    // .pv-row-open is the simpler invariant.
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.pv-row-open')) openDetail(a.id);
+    });
     return row;
   }
 
