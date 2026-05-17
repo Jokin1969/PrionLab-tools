@@ -8,6 +8,53 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/enhanced_navbar.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/help_system.css') }}" />
+
+  {# Session meta tags — read by Sentry's setUser below so events are
+     attributable to who triggered them, without uploading PII. Names
+     match the per-page tags PrionVault already sets so the Sentry
+     init logic stays unchanged. #}
+  {% if session.get('user_id') %}
+  <meta name="pv-user-id"   content="{{ session.user_id }}">
+  <meta name="pv-user-role" content="{{ session.get('role') or 'unknown' }}">
+  {% endif %}
+
+  {# ── Browser-side Sentry ──────────────────────────────────────────────
+     No-op when SENTRY_DSN is unset, so local dev / unconfigured envs
+     stay quiet. Tagged `service: prionvault-browser` so events here
+     are distinguishable from the Flask backend (`service: prionvault`)
+     in the same Sentry project. Placed in <head> as early as possible
+     so JS errors during late-loading scripts (PrionVault, PrionPacks,
+     ManuscriptForge) flow through to Sentry. #}
+  {% if sentry_dsn_browser %}
+  <script src="https://browser.sentry-cdn.com/7.119.0/bundle.min.js"
+          crossorigin="anonymous"></script>
+  <script>
+    if (window.Sentry) {
+      Sentry.init({
+        dsn:         {{ sentry_dsn_browser | tojson }},
+        environment: {{ sentry_env         | tojson }},
+        release:     {{ commit_sha         | tojson }} || undefined,
+        sendDefaultPii: false,
+        // We don't sample traces or session replays — error capture
+        // is all we need at MVP. Adding either later is a one-line
+        // change here plus a different CDN bundle.
+        tracesSampleRate: 0,
+        initialScope: { tags: { service: 'prionvault-browser' } },
+      });
+      // Surface who's hitting the error without uploading PII — only
+      // the session role / user_id meta tags that base.html exposes.
+      var roleMeta = document.querySelector('meta[name="pv-user-role"]');
+      var idMeta   = document.querySelector('meta[name="pv-user-id"]');
+      if (roleMeta || idMeta) {
+        Sentry.setUser({
+          id:   idMeta   ? idMeta.content   : undefined,
+          role: roleMeta ? roleMeta.content : undefined,
+        });
+      }
+    }
+  </script>
+  {% endif %}
+
   {% block head_extra %}{% endblock %}
 </head>
 <body data-page-context="{{ page_context | default('') }}" data-lang="{{ current_locale }}">

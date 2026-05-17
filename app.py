@@ -368,6 +368,22 @@ def create_app() -> Flask:
             "has_prionpacks": "prionpacks.index" in app.view_functions,
         }
 
+    # ── Browser-side Sentry: every base.html-rendered page picks these
+    # up and (when the DSN is set) loads the SDK so JS errors and
+    # unhandled promise rejections in the static admin pages flow
+    # to the same Sentry project as the Flask server, tagged
+    # `service: prionvault-browser` to keep them separable.
+    @app.context_processor
+    def _inject_sentry_browser():
+        # The DSN is a public key — safe to expose to the browser.
+        # Reusing SENTRY_DSN here keeps Railway config to one knob;
+        # tags distinguish the two services in Sentry's UI.
+        return {
+            "sentry_dsn_browser": os.environ.get("SENTRY_DSN") or "",
+            "sentry_env":         os.environ.get("SENTRY_ENVIRONMENT", "production"),
+            "commit_sha":         os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "",
+        }
+
     # ── Routes ───────────────────────────────────────────────────────────────
 
     @app.route("/")
