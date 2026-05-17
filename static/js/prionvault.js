@@ -746,10 +746,19 @@
     modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
   }
 
+  // The currently inspected article id — stashed at module scope so
+  // the reindex button (rendered inside the summary grid) can fire
+  // without threading the value through every closure.
+  let _chunksCurrentArticleId   = null;
+  let _chunksCurrentArticleName = '';
+
   async function openChunksInspector(articleId, articleTitle) {
     const modal = document.getElementById('pv-chunks-modal');
     if (!modal) return alert('UI: pv-chunks-modal no está montado.');
     _chunksWireOnce();
+
+    _chunksCurrentArticleId   = articleId;
+    _chunksCurrentArticleName = articleTitle || '';
 
     document.getElementById('pv-chunks-article-title').textContent =
       articleTitle ? `· ${articleTitle.slice(0, 80)}${articleTitle.length > 80 ? '…' : ''}` : '';
@@ -758,10 +767,15 @@
     summary.innerHTML = '<span style="grid-column:1/-1;color:#6b7280;">Cargando…</span>';
     list.innerHTML    = '';
     modal.style.display = 'flex';
+    await _chunksLoad();
+  }
 
+  async function _chunksLoad() {
+    const summary = document.getElementById('pv-chunks-summary');
+    const list    = document.getElementById('pv-chunks-list');
     let data;
     try {
-      data = await api(`/articles/${articleId}/chunks`);
+      data = await api(`/articles/${_chunksCurrentArticleId}/chunks`);
     } catch (e) {
       summary.innerHTML = `<span style="grid-column:1/-1;color:#b91c1c;">Error: ${esc(e.message)}</span>`;
       return;
@@ -786,7 +800,17 @@
       <span style="font-weight:600;">${fmtNum(data.total_tokens)}</span>
       <span style="color:#6b7280;">Caracteres</span>
       <span style="font-weight:600;">${fmtNum(data.total_chars)}</span>
+
+      <span style="grid-column:1/-1;display:flex;justify-content:flex-end;border-top:1px solid #e5e7eb;padding-top:8px;margin-top:4px;">
+        <button id="pv-chunks-reindex"
+                title="Vuelve a partir el texto extraído y re-embebe cada chunk con Voyage. Útil si has cambiado el chunker o si hay chunks 'sin vector'."
+                style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#0F3460;
+                       font-size:12px;font-weight:600;cursor:pointer;">
+          ↻ Reindexar este artículo
+        </button>
+      </span>
     `;
+    document.getElementById('pv-chunks-reindex')?.addEventListener('click', _chunksReindex);
 
     if (!data.chunks.length) {
       list.innerHTML = `<div style="text-align:center;color:#9ca3af;padding:24px 12px;font-size:13px;">
@@ -797,9 +821,103 @@
     }
 
     list.innerHTML = data.chunks.map(c => _chunksRowHtml(c)).join('');
-    // Wire the "ver texto completo" toggles. Each row holds the full
-    // chunk_text in a sibling <details>; nothing extra to do beyond
-    // letting the browser handle <details> open/close.
+    list.querySelectorAll('.pv-chunk-similar-btn').forEach(btn => {
+      btn.addEventListener('click', () => _chunksLoadSimilar(btn));
+    });
+  }
+
+  async function _chunksReindex() {
+    const btn = document.getElementById('pv-chunks-reindex');
+    if (!btn || !_chunksCurrentArticleId) return;
+    if (!confirm('Reindexar este artículo:\n\n' +
+                 '• Borra los chunks actuales y los recrea desde el texto extraído.\n' +
+                 '• Vuelve a llamar a Voyage para cada chunk (≈ 0,0001-0,001 USD).\n\n' +
+                 '¿Continuar?')) return;
+    const orig = btn.textContent;
+    btn.disabled    = true;
+    btn.textContent = '⏳ Reindexando…';
+    try {
+      const r = await api(`/articles/${_chunksCurrentArticleId}/reindex`, { method: 'POST' });
+      if (r && r.error) {
+        alert('No se pudo reindexar: ' + (r.detail || r.error));
+      } else {
+        await _chunksLoad();   // refresh in place
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      // Either _chunksLoad re-rendered the summary (and this btn is
+      // a stale node) or it didn't (still on the page); both cases
+      // are safe to restore.
+      const fresh = document.getElementById('pv-chunks-reindex');
+      if (fresh) { fresh.disabled = false; fresh.textContent = orig; }
+    }
+  }
+
+  // "🔍 Buscar similares" — fetch the 5 closest chunks across the
+  // whole catalogue (excluding the source article) and render them
+  // inline below the source chunk. Toggles open/closed on click.
+  async function _chunksLoadSimilar(btn) {
+    const cid     = btn.dataset.chunkId;
+    const target  = btn.parentElement.parentElement.querySelector('.pv-chunk-similar-panel');
+    if (!cid || !target) return;
+    if (target.dataset.open === '1') {
+      target.style.display = 'none';
+      target.dataset.open  = '0';
+      btn.textContent      = '🔍 Buscar similares';
+      return;
+    }
+    target.style.display = 'block';
+    target.dataset.open  = '1';
+    target.innerHTML     = '<div style="color:#6b7280;font-size:11.5px;padding:6px 8px;">Buscando vecinos en el espacio vectorial…</div>';
+    btn.textContent = '⏳ Buscando…';
+    try {
+      const r = await api(`/chunks/${cid}/similar?limit=5`);
+      const results = r.results || [];
+      if (!results.length) {
+        target.innerHTML = '<div style="color:#9ca3af;font-size:11.5px;padding:8px;">Sin chunks similares en otros artículos.</div>';
+      } else {
+        target.innerHTML = results.map((it, i) => {
+          const pct = Math.max(0, Math.round(it.similarity * 100));
+          const colorBand = pct >= 85 ? '#15803d'
+                          : pct >= 70 ? '#0f766e'
+                          : pct >= 55 ? '#b45309'
+                          :             '#6b7280';
+          const pages = (it.page_from != null && it.page_to != null)
+            ? (it.page_from === it.page_to ? `p. ${it.page_from}` : `pp. ${it.page_from}–${it.page_to}`)
+            : '';
+          const ids = [
+            it.pubmed_id ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(String(it.pubmed_id))}/" target="_blank" rel="noopener" style="color:#0f766e;text-decoration:none;font-weight:600;">PMID ${esc(String(it.pubmed_id))}</a>` : '',
+            it.doi       ? `<a href="https://doi.org/${esc(it.doi)}" target="_blank" rel="noopener" style="color:#3730a3;text-decoration:none;font-weight:600;">DOI</a>` : '',
+          ].filter(Boolean).join(' · ');
+          return `
+            <div style="border-top:1px solid #e5e7eb;padding:8px 10px;background:white;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#6b7280;margin-bottom:3px;flex-wrap:wrap;">
+                <span style="font-weight:700;color:${colorBand};">#${i+1} · ${pct}% similar</span>
+                <a href="#" class="pv-chunk-open-article" data-aid="${esc(it.article_id)}" data-title="${esc(it.title || '')}" style="color:#111827;font-weight:600;text-decoration:none;">${esc(it.title || '(sin título)')}</a>
+                ${it.year ? `<span>· ${it.year}</span>` : ''}
+                ${pages ? `<span>· 📄 ${esc(pages)}</span>` : ''}
+                ${ids ? `<span style="margin-left:auto;">${ids}</span>` : ''}
+              </div>
+              <div style="font-size:12px;color:#374151;line-height:1.5;font-family:ui-serif,Georgia,serif;">
+                ${esc(it.preview)}${it.preview.length >= 240 ? '…' : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+        target.querySelectorAll('.pv-chunk-open-article').forEach(a => {
+          a.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            openChunksInspector(a.dataset.aid, a.dataset.title);
+          });
+        });
+      }
+      btn.textContent = '✕ Ocultar similares';
+    } catch (e) {
+      target.innerHTML = `<div style="color:#b91c1c;font-size:11.5px;padding:8px;">Error: ${esc(e.message)}</div>`;
+      btn.textContent = '🔍 Buscar similares';
+      target.dataset.open = '0';
+    }
   }
 
   function _chunksRowHtml(c) {
@@ -812,6 +930,14 @@
     const status = c.has_embedding
       ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">● vectorizado</span>`
       : `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">○ sin vector</span>`;
+    const similarBtn = c.has_embedding
+      ? `<button type="button" class="pv-chunk-similar-btn" data-chunk-id="${c.id}"
+                  title="Busca los 5 chunks más cercanos en el espacio vectorial (otros artículos que toquen el mismo tema)"
+                  style="background:none;border:none;color:#0F3460;font-size:11.5px;cursor:pointer;padding:0;text-decoration:underline;">
+           🔍 Buscar similares
+         </button>`
+      : '';
+
     return `
       <div style="border-bottom:1px solid #e5e7eb;padding:10px 12px;">
         <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:#6b7280;margin-bottom:4px;flex-wrap:wrap;">
@@ -825,17 +951,23 @@
         <div style="font-size:12.5px;color:#374151;line-height:1.55;background:white;padding:6px 8px;border-radius:5px;border:1px solid #e5e7eb;font-family:ui-serif,Georgia,serif;">
           ${esc(c.preview)}${c.chars > c.preview.length ? '…' : ''}
         </div>
-        <details style="margin-top:6px;font-size:11.5px;color:#6b7280;">
-          <summary style="cursor:pointer;color:#0F3460;">Ver chunk completo + primeras 8 dimensiones del vector</summary>
-          <div style="margin-top:6px;background:white;border:1px solid #e5e7eb;border-radius:5px;padding:6px 8px;">
-            <div style="font-size:11.5px;color:#374151;line-height:1.5;white-space:pre-wrap;font-family:ui-monospace,monospace;max-height:240px;overflow-y:auto;">
-              ${esc(c.chunk_text || '')}
+        <div style="margin-top:6px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+          ${similarBtn}
+          <details style="font-size:11.5px;color:#6b7280;margin:0;">
+            <summary style="cursor:pointer;color:#0F3460;">Ver chunk completo + primeras 8 dimensiones del vector</summary>
+            <div style="margin-top:6px;background:white;border:1px solid #e5e7eb;border-radius:5px;padding:6px 8px;">
+              <div style="font-size:11.5px;color:#374151;line-height:1.5;white-space:pre-wrap;font-family:ui-monospace,monospace;max-height:240px;overflow-y:auto;">
+                ${esc(c.chunk_text || '')}
+              </div>
+              <div style="margin-top:6px;font-family:ui-monospace,monospace;font-size:11px;color:#6b7280;">
+                <strong style="color:#111827;">Embedding (primeras 8 / 1024 dim):</strong> ${esc(dims)}
+              </div>
             </div>
-            <div style="margin-top:6px;font-family:ui-monospace,monospace;font-size:11px;color:#6b7280;">
-              <strong style="color:#111827;">Embedding (primeras 8 / 1024 dim):</strong> ${esc(dims)}
-            </div>
-          </div>
-        </details>
+          </details>
+        </div>
+        <div class="pv-chunk-similar-panel" data-open="0"
+             style="display:none;margin-top:6px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;background:#fafafa;">
+        </div>
       </div>
     `;
   }

@@ -2921,6 +2921,89 @@ def api_article_chunks(aid):
     })
 
 
+@prionvault_bp.route("/api/chunks/<int:chunk_id>/similar", methods=["GET"])
+@admin_required
+def api_chunk_similar(chunk_id):
+    """Find the chunks closest to this one in Voyage embedding space.
+
+    Powers the "🔍 Buscar similares" link in the chunks inspector
+    modal. Excludes chunks from the same source article by default
+    so the result is "other papers that talk about this", which is
+    what makes the feature interesting; pass ?same_article=true
+    to include in-paper chunks too (rare — useful for verifying
+    chunking quality).
+
+    Cosine DISTANCE (pgvector's <=>) ranges 0 (identical) to 2
+    (opposite); we surface the conventional "similarity" (1 -
+    distance) since that's what humans expect when reading a
+    "97% similar" badge.
+    """
+    same_article  = request.args.get("same_article", "false").lower() == "true"
+    limit = max(1, min(20, request.args.get("limit", 5, type=int)))
+
+    s = _session()
+    try:
+        src = s.execute(sql_text(
+            "SELECT article_id, embedding "
+            "  FROM article_chunk "
+            " WHERE id = :id AND embedding IS NOT NULL"
+        ), {"id": chunk_id}).first()
+        if not src:
+            return jsonify({"error": "chunk_not_found_or_unindexed"}), 404
+        src_article = src[0]
+
+        # pgvector binds happily through SQLAlchemy when we cast
+        # the source vector to ::vector. Cosine distance via the
+        # <=> operator uses the existing HNSW index for fast top-K.
+        if same_article:
+            where_clause = "c.id <> :chunk_id"
+        else:
+            where_clause = "c.id <> :chunk_id AND c.article_id <> :src_article"
+
+        rows = s.execute(sql_text(f"""
+            SELECT c.id, c.article_id, c.chunk_index, c.chunk_text,
+                   c.page_from, c.page_to,
+                   a.title, a.year, a.pubmed_id, a.doi,
+                   (c.embedding <=> (SELECT embedding FROM article_chunk WHERE id = :chunk_id))
+                       AS distance
+              FROM article_chunk c
+              JOIN articles a ON a.id = c.article_id
+             WHERE {where_clause}
+               AND c.embedding IS NOT NULL
+             ORDER BY c.embedding <=> (SELECT embedding FROM article_chunk WHERE id = :chunk_id)
+             LIMIT :limit
+        """), {
+            "chunk_id":    chunk_id,
+            "src_article": str(src_article),
+            "limit":       limit,
+        }).mappings().all()
+    finally:
+        s.close()
+
+    return jsonify({
+        "source_chunk_id":  chunk_id,
+        "source_article":   str(src_article),
+        "same_article":     same_article,
+        "results": [
+            {
+                "chunk_id":    int(r["id"]),
+                "article_id":  str(r["article_id"]),
+                "chunk_index": int(r["chunk_index"]),
+                "page_from":   int(r["page_from"]) if r["page_from"] is not None else None,
+                "page_to":     int(r["page_to"])   if r["page_to"]   is not None else None,
+                "title":       r["title"],
+                "year":        r["year"],
+                "pubmed_id":   r["pubmed_id"],
+                "doi":         r["doi"],
+                "preview":     (r["chunk_text"] or "")[:240],
+                "distance":    float(r["distance"]),
+                "similarity":  round(1.0 - float(r["distance"]), 4),
+            }
+            for r in rows
+        ],
+    })
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/identify-pmid", methods=["POST"])
 @admin_required
 def api_article_identify_pmid(aid):
