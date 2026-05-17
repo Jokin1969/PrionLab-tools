@@ -163,6 +163,10 @@ class Job:
     attempts:     int
     created_by:   Optional[UUID]
     staged_path:  Optional[str]
+    # Path of the PDF in the Dropbox watch folder, if any. Empty for
+    # hand-uploaded jobs (Import PDFs modal) since they're staged
+    # locally on the server and never sit on Dropbox first.
+    source_dropbox_path: Optional[str] = None
 
 
 # ── Enqueue ────────────────────────────────────────────────────────────────
@@ -277,7 +281,8 @@ def claim_next() -> Optional[Job]:
         ), {"id": jid})
         full = conn.execute(text(
             "SELECT id, article_id, pdf_filename, pdf_md5, status, step,"
-            " error, attempts, created_by FROM prionvault_ingest_job WHERE id = :id"
+            " error, attempts, created_by, source_dropbox_path "
+            "FROM prionvault_ingest_job WHERE id = :id"
         ), {"id": jid}).first()
 
     return Job(
@@ -287,6 +292,7 @@ def claim_next() -> Optional[Job]:
         staged_path=(full.pdf_filename
                      if full.pdf_filename and Path(full.pdf_filename).exists()
                      else None),
+        source_dropbox_path=full.source_dropbox_path,
     )
 
 
@@ -395,17 +401,37 @@ def snapshot(*, recent: int = 30) -> dict:
     }
 
 
-def list_jobs(*, status: Optional[str] = None, limit: int = 100) -> List[dict]:
+def list_jobs(*, status: Optional[str] = None, limit: int = 100,
+              ids: Optional[List[int]] = None) -> List[dict]:
+    """List ingest jobs.
+
+    `ids` lets the Import modal poll only the jobs from the current
+    upload session, so the user no longer sees aggregate counters
+    mixing in unrelated background work.
+    """
     try:
         eng = _get_engine()
     except Exception:
         return []
     sql = ("SELECT id, article_id, pdf_filename, status, step, error,"
            " attempts, created_at, finished_at FROM prionvault_ingest_job")
-    params = {}
+    where: List[str] = []
+    params: dict = {}
     if status:
-        sql += " WHERE status = :s"
+        where.append("status = :s")
         params["s"] = status
+    if ids:
+        # Cap to avoid pathological IN-lists; one upload session is
+        # bounded by what fits in the dropzone anyway.
+        ids = [int(x) for x in ids[:1000]]
+        if not ids:
+            return []
+        placeholders = ", ".join(f":id{i}" for i in range(len(ids)))
+        where.append(f"id IN ({placeholders})")
+        for i, x in enumerate(ids):
+            params[f"id{i}"] = x
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY created_at DESC LIMIT :n"
     params["n"] = limit
     with eng.connect() as conn:

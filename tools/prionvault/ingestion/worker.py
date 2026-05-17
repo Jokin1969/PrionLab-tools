@@ -70,10 +70,20 @@ def _process_job(job: ingest_queue.Job) -> None:
             article_id=dup_id, content=content, md5=md5,
             extraction=extraction, doi=doi,
         )
-        doi_info = f" doi={doi}" if doi else ""
-        enr_info = f" | enriched: {','.join(enriched)}" if enriched else ""
+        # Stash the rejected PDF aside. For watch-folder uploads the
+        # source already sits on Dropbox and cleanup_source_pdf moves
+        # it server-side. For hand-uploaded jobs (Import PDFs modal)
+        # there's no Dropbox source, so we explicitly upload the
+        # content into the matched paper's _duplicates folder.
+        moved_path = None
+        if not job.source_dropbox_path:
+            moved_path = _stash_duplicate_pdf(content, staged.name, dup_id)
+
+        doi_info  = f" doi={doi}" if doi else ""
+        enr_info  = f" | enriched: {','.join(enriched)}" if enriched else ""
+        move_info = f" | moved={moved_path}" if moved_path else ""
         ingest_queue.mark_step(job.id, status="duplicate",
-                               step=f"duplicate | by {reason}{doi_info}{enr_info}",
+                               step=f"duplicate | by {reason}{doi_info}{enr_info}{move_info}",
                                article_id=dup_id,
                                error=f"Already in library (matched by {reason}).")
         ingest_queue.cleanup_source_pdf(job.id, status="duplicate")
@@ -205,6 +215,63 @@ def _enrich_duplicate(*, article_id, content: bytes, md5: str,
     except Exception as exc:
         logger.warning("Duplicate enrichment failed for %s: %s", article_id, exc)
     return updated
+
+
+def _stash_duplicate_pdf(content: bytes, base_filename: str,
+                         dup_article_id) -> Optional[str]:
+    """Upload a rejected duplicate PDF into the original's _duplicates folder.
+
+    Target path:
+      <year-folder of the matched article>/_duplicates/<safe-filename>
+
+    Falls back to a top-level `_duplicates` folder if the matched
+    article has no dropbox_path yet. Returns the resulting Dropbox
+    path or None on failure (best-effort — never raises).
+    """
+    import re as _re
+    parent = "/PrionLab tools/PrionVault"
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(text(
+                "SELECT dropbox_path FROM articles WHERE id = :aid"
+            ), {"aid": str(dup_article_id)}).first()
+            if row and row[0]:
+                parent = row[0].rsplit("/", 1)[0]
+    except Exception as exc:
+        logger.debug("_stash_duplicate_pdf: parent lookup failed: %s", exc)
+
+    safe_name = _re.sub(r"[^A-Za-z0-9._-]+", "_", base_filename).strip("._-") or "duplicate.pdf"
+    target = f"{parent}/_duplicates/{safe_name}"
+
+    try:
+        from core.dropbox_client import get_client
+        import dropbox
+    except Exception as exc:
+        logger.warning("_stash_duplicate_pdf: dropbox import failed: %s", exc)
+        return None
+
+    client = get_client()
+    if client is None:
+        logger.warning("_stash_duplicate_pdf: no Dropbox client")
+        return None
+
+    try:
+        try:
+            client.files_create_folder_v2(f"{parent}/_duplicates")
+        except dropbox.exceptions.ApiError as exc:
+            if "conflict" not in str(exc).lower():
+                raise
+        result = client.files_upload(
+            content, target,
+            mode=dropbox.files.WriteMode.add,
+            autorename=True,  # append " (1)" etc. on collision
+            mute=True,
+        )
+        return getattr(result, "path_display", None) or target
+    except Exception as exc:
+        logger.warning("_stash_duplicate_pdf: upload failed for %s: %s", target, exc)
+        return None
 
 
 _articles_col_cache: set | None = None

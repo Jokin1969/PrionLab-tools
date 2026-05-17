@@ -4293,7 +4293,33 @@
   }
 
   // ── Import modal ─────────────────────────────────────────────────────
+  //
+  // Session-scoped: every PDF dropped into the modal returns a job id
+  // from /api/ingest/upload; we accumulate those ids and poll only
+  // them, so the UI never mixes in unrelated background work.
+  //
+  // When the queue drains we render a per-file summary card and, for
+  // articles the resolver couldn't enrich (source=no_metadata, marked
+  // in the job step as "done | md5=…"), offer a 🤖 button that runs
+  // the same AI-PMID flow the Edit modal uses.
+
   let _importPolling = null;
+  const _importSession = {
+    jobIds:      new Set(),     // ids enqueued from this dropzone
+    totalQueued: 0,             // total files we managed to enqueue
+    totalDropped: 0,            // total .pdf files the user dropped
+    finished:    false,         // summary already rendered
+  };
+
+  function _resetImportSession() {
+    _importSession.jobIds.clear();
+    _importSession.totalQueued  = 0;
+    _importSession.totalDropped = 0;
+    _importSession.finished     = false;
+    const progress = document.getElementById('pv-import-progress');
+    if (progress) { progress.innerHTML = ''; progress.style.display = 'none'; }
+  }
+
   function wireImport() {
     const btn            = document.getElementById('btn-import-pdfs');
     const modal          = document.getElementById('pv-import-modal');
@@ -4305,7 +4331,7 @@
     const pickFolder     = document.getElementById('pv-pick-folder');
     if (!btn || !modal) return;
 
-    const open  = () => { modal.style.display = 'flex'; startProgressPolling(); };
+    const open  = () => { _resetImportSession(); modal.style.display = 'flex'; };
     const close = () => { modal.style.display = 'none'; stopProgressPolling(); };
     btn.addEventListener('click', open);
     closeBtn.addEventListener('click', close);
@@ -4331,6 +4357,17 @@
     dropzone.addEventListener('drop', async e => {
       const files = await collectFilesFromDataTransfer(e.dataTransfer);
       if (files.length) uploadFiles(files);
+    });
+
+    // Open-article links inside per-file summary cards — delegated so
+    // we don't have to rebind every time the summary re-renders.
+    const progressEl = document.getElementById('pv-import-progress');
+    if (progressEl) progressEl.addEventListener('click', (ev) => {
+      const a = ev.target.closest('.pv-import-open-article');
+      if (!a) return;
+      ev.preventDefault();
+      const aid = a.dataset.aid;
+      if (aid) openDetail(aid);
     });
   }
 
@@ -4364,11 +4401,15 @@
     if (!arr.length) return;
     const progress = document.getElementById('pv-import-progress');
     progress.style.display = '';
-    progress.innerHTML = '';
-    appendProgress(`Queueing ${arr.length} PDF${arr.length === 1 ? '' : 's'}…`, 'info');
+    // Don't clear progress — additional drops in the same session should
+    // append, not wipe earlier per-file rows.
+    _importSession.totalDropped += arr.length;
+    _importSession.finished = false;
+    _setImportHeader(`Subiendo ${arr.length} PDF${arr.length === 1 ? '' : 's'}…`);
 
     const BATCH = 25;
-    let queued = 0;
+    let queuedNow = 0;
+    let failedNow = 0;
     for (let i = 0; i < arr.length; i += BATCH) {
       const batch = arr.slice(i, i + BATCH);
       const fd = new FormData();
@@ -4381,21 +4422,53 @@
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
-          appendProgress(`Batch ${i / BATCH + 1}: ${err.error || r.status}`, 'error');
+          appendProgressLine(`Batch ${i / BATCH + 1}: ${err.error || r.status}`, 'error');
+          failedNow += batch.length;
           continue;
         }
         const j = await r.json();
-        queued += j.queued || 0;
-        appendProgress(`Batch ${i / BATCH + 1}: ${j.queued} queued.`, 'ok');
+        (j.job_ids || []).forEach(id => _importSession.jobIds.add(Number(id)));
+        queuedNow += j.queued || 0;
+        if ((j.queued || 0) < batch.length) {
+          failedNow += batch.length - (j.queued || 0);
+        }
       } catch (e) {
-        appendProgress(`Batch ${i / BATCH + 1}: ${e.message}`, 'error');
+        appendProgressLine(`Batch ${i / BATCH + 1}: ${e.message}`, 'error');
+        failedNow += batch.length;
       }
     }
-    appendProgress(`Total queued: ${queued} / ${arr.length}.`, 'info');
+    _importSession.totalQueued += queuedNow;
+    if (failedNow) {
+      appendProgressLine(
+        `No se pudieron encolar ${failedNow} de ${arr.length} ficheros (ver detalle arriba).`,
+        'error');
+    }
+    _setImportHeader(`Procesando ${queuedNow} fichero${queuedNow === 1 ? '' : 's'}…`);
+
+    // Only kick the poller off after at least one job was created.
+    if (_importSession.jobIds.size > 0) startProgressPolling();
     refreshStats();
   }
 
-  function appendProgress(text, kind) {
+  // The header is a single sticky row at the top of the progress panel
+  // that shows live counts for *this session*. We update it in place
+  // so the log below stays clean — no more spammy "queued: 0 · ..."
+  // lines repeating every 4 seconds.
+  function _setImportHeader(text, kind = 'info') {
+    const progress = document.getElementById('pv-import-progress');
+    if (!progress) return;
+    let header = progress.querySelector('.pv-import-header');
+    if (!header) {
+      header = document.createElement('div');
+      header.className = 'pv-row pv-import-header';
+      header.style.cssText = 'background:#f3f4f6;padding:6px 8px;border-radius:6px;margin-bottom:6px;font-weight:600;';
+      progress.prepend(header);
+    }
+    const color = kind === 'error' ? '#b91c1c' : kind === 'ok' ? '#15803d' : '#374151';
+    header.innerHTML = `<span style="color:${color};">${escapeHtml(text)}</span>`;
+  }
+
+  function appendProgressLine(text, kind) {
     const progress = document.getElementById('pv-import-progress');
     if (!progress) return;
     const row = document.createElement('div');
@@ -4410,48 +4483,306 @@
   function startProgressPolling() {
     stopProgressPolling();
     const tick = async () => {
+      if (_importSession.jobIds.size === 0) return;
+      const idsParam = Array.from(_importSession.jobIds).join(',');
       try {
-        const r = await fetch('/prionvault/api/ingest/status?recent=50', { credentials: 'same-origin' });
+        const r = await fetch(
+          `/prionvault/api/ingest/jobs?ids=${idsParam}&limit=1000`,
+          { credentials: 'same-origin' });
         if (!r.ok) return;
-        const s = await r.json();
-        appendProgress(
-          `queued: ${s.queued} · processing: ${s.processing} · done: ${s.done} ` +
-          `· duplicate: ${s.duplicate} · failed: ${s.failed}`, 'info');
-        if (s.queued + s.processing === 0) {
+        const data = await r.json();
+        const jobs = data.items || [];
+        _renderSessionProgress(jobs);
+
+        const terminal = jobs.filter(j =>
+          j.status === 'done' || j.status === 'duplicate' || j.status === 'failed');
+        if (jobs.length > 0 && terminal.length === jobs.length && !_importSession.finished) {
+          _importSession.finished = true;
           stopProgressPolling();
-          _showImportSummary(s.recent || []);
+          _renderImportSummary(jobs);
+          refreshStats();
         }
-      } catch (e) { /* ignore transient */ }
+      } catch (_e) { /* transient — try again next tick */ }
     };
+    tick();  // first tick now, don't wait 4s
     _importPolling = setInterval(tick, 4000);
   }
 
-  function _showImportSummary(jobs) {
-    if (!jobs.length) return;
-    appendProgress('── Resumen por fichero ──', 'info');
-    jobs.forEach(j => {
-      const fname = j.pdf_filename || '(sin nombre)';
-      const step  = j.step || '';
-      let kind = 'ok', label = '';
-      if (j.status === 'done') {
-        const doi    = step.match(/doi=([^\s|]+)/)?.[1];
-        const pmid   = step.match(/pmid=([^\s|]+)/)?.[1];
-        const path   = step.match(/\| (\/[^\s]+)/)?.[1];
-        const id     = doi ? `DOI: ${doi}` : pmid ? `PMID: ${pmid}` : '';
-        const folder = path ? path.split('/').slice(0, -1).join('/') : '';
-        label = `✓ ${fname} → ${id}${folder ? ' → ' + folder : ''}`;
-      } else if (j.status === 'duplicate') {
-        const by = step.match(/by ([^\s|]+)/)?.[1] || '';
-        label = `⟳ ${fname} — duplicado (${by})`;
-        kind = 'info';
-      } else if (j.status === 'failed') {
-        label = `✗ ${fname} — error: ${j.error || step}`;
-        kind = 'error';
-      } else {
-        label = `${fname} — ${j.status}`;
-      }
-      appendProgress(label, kind);
+  // Live header counts while jobs are in-flight.
+  function _renderSessionProgress(jobs) {
+    const counts = { done: 0, duplicate: 0, failed: 0, inFlight: 0 };
+    for (const j of jobs) {
+      if (j.status === 'done')           counts.done++;
+      else if (j.status === 'duplicate') counts.duplicate++;
+      else if (j.status === 'failed')    counts.failed++;
+      else                               counts.inFlight++;
+    }
+    const total = jobs.length || _importSession.totalQueued;
+    const processed = counts.done + counts.duplicate + counts.failed;
+    const bits = [`${processed} / ${total} procesados`];
+    if (counts.done)      bits.push(`<span style="color:#15803d;">✓ ${counts.done}</span>`);
+    if (counts.duplicate) bits.push(`<span style="color:#b45309;">⟳ ${counts.duplicate}</span>`);
+    if (counts.failed)    bits.push(`<span style="color:#b91c1c;">✗ ${counts.failed}</span>`);
+    const progress = document.getElementById('pv-import-progress');
+    let header = progress.querySelector('.pv-import-header');
+    if (!header) {
+      header = document.createElement('div');
+      header.className = 'pv-row pv-import-header';
+      header.style.cssText = 'background:#f3f4f6;padding:6px 8px;border-radius:6px;margin-bottom:6px;font-weight:600;';
+      progress.prepend(header);
+    }
+    header.innerHTML = bits.join(' &nbsp;·&nbsp; ');
+  }
+
+  // Once the session is drained, draw one card per file with the
+  // specific outcome and — for the no-metadata case — a 🤖 button.
+  function _renderImportSummary(jobs) {
+    const progress = document.getElementById('pv-import-progress');
+    if (!progress) return;
+
+    // Clear log rows but keep the header row.
+    Array.from(progress.querySelectorAll('.pv-row')).forEach(el => {
+      if (!el.classList.contains('pv-import-header')) el.remove();
     });
+
+    const counts = { done: 0, ok_meta: 0, no_meta: 0, duplicate: 0, failed: 0 };
+    const cards = [];
+    jobs.forEach(j => {
+      const card = _buildJobSummaryCard(j);
+      cards.push(card);
+      if (j.status === 'done') {
+        counts.done++;
+        if (_jobLacksMetadata(j)) counts.no_meta++; else counts.ok_meta++;
+      } else if (j.status === 'duplicate') counts.duplicate++;
+      else if (j.status === 'failed')     counts.failed++;
+    });
+    cards.forEach(c => progress.appendChild(c));
+
+    const summaryBits = [`Sesión terminada — ${jobs.length} fichero${jobs.length === 1 ? '' : 's'}`];
+    if (counts.ok_meta)   summaryBits.push(`<span style="color:#15803d;">✓ ${counts.ok_meta} con metadatos</span>`);
+    if (counts.no_meta)   summaryBits.push(`<span style="color:#92400e;">⚠ ${counts.no_meta} sin metadatos</span>`);
+    if (counts.duplicate) summaryBits.push(`<span style="color:#b45309;">⟳ ${counts.duplicate} duplicado${counts.duplicate === 1 ? '' : 's'}</span>`);
+    if (counts.failed)    summaryBits.push(`<span style="color:#b91c1c;">✗ ${counts.failed} fallido${counts.failed === 1 ? '' : 's'}</span>`);
+    const header = progress.querySelector('.pv-import-header');
+    if (header) header.innerHTML = summaryBits.join(' &nbsp;·&nbsp; ');
+  }
+
+  function _jobLacksMetadata(j) {
+    // The worker writes "done | md5=..." when CrossRef/PubMed/title
+    // search all came back empty. That's our cue to offer the AI flow.
+    return j.status === 'done' && /^done\s*\|\s*md5=/.test(j.step || '');
+  }
+
+  function _buildJobSummaryCard(j) {
+    const card = document.createElement('div');
+    card.className = 'pv-row';
+    card.style.cssText = 'align-items:flex-start;padding:6px 8px;border-radius:6px;border:1px solid #e5e7eb;margin-bottom:4px;';
+    card.dataset.jobId = j.id;
+
+    const fname = j.pdf_filename || '(sin nombre)';
+    const step  = j.step || '';
+
+    let badge, badgeBg, badgeFg;
+    let bodyLines = [];
+    let actionHtml = '';
+
+    if (j.status === 'duplicate') {
+      const by = step.match(/by ([^\s|]+)/)?.[1] || '?';
+      badge   = '⟳ Duplicado'; badgeBg = '#fef3c7'; badgeFg = '#92400e';
+      bodyLines.push(`Coincide con un artículo existente (por ${by}).`);
+      bodyLines.push(`El PDF se ha movido a la carpeta <code style="font-size:11px;">_duplicates/</code> dentro de la subcarpeta del año.`);
+      if (j.article_id) actionHtml = _aLinkArticle(j.article_id, 'Ver original');
+    } else if (j.status === 'failed') {
+      badge   = '✗ Error'; badgeBg = '#fee2e2'; badgeFg = '#b91c1c';
+      bodyLines.push(`<span style="color:#b91c1c;">${escapeHtml(j.error || step || 'Error desconocido')}</span>`);
+      // Retry is meaningful here — the worker keeps the source PDF and a
+      // single click re-queues the job.
+      actionHtml = `<button class="pv-import-retry-btn" data-job-id="${j.id}"
+                            style="padding:3px 8px;border-radius:5px;border:1px solid #d1d5db;background:white;font-size:11.5px;cursor:pointer;">↻ Reintentar</button>`;
+    } else if (j.status === 'done') {
+      const noMeta = _jobLacksMetadata(j);
+      if (noMeta) {
+        badge   = '⚠ Sin metadatos'; badgeBg = '#fef3c7'; badgeFg = '#92400e';
+        bodyLines.push('El PDF se subió a Dropbox pero CrossRef / PubMed no devolvieron metadatos.');
+        bodyLines.push('Probablemente el PDF no contenía DOI legible. La IA puede leer el título y resolver el PMID.');
+        actionHtml = `<button class="pv-import-ai-btn" data-job-id="${j.id}" data-aid="${escapeHtml(j.article_id || '')}"
+                              style="padding:3px 8px;border-radius:5px;border:none;background:#7c3aed;color:white;font-size:11.5px;font-weight:600;cursor:pointer;">🤖 Intentar con IA</button>`;
+      } else {
+        badge   = '✓ Importado'; badgeBg = '#dcfce7'; badgeFg = '#15803d';
+        const doi   = step.match(/doi=([^\s|]+)/)?.[1];
+        const pmid  = step.match(/pmid=([^\s|]+)/)?.[1];
+        const path  = step.match(/\|\s*(\/[^\s]+)/g);
+        const target = path && path[path.length - 1] ? path[path.length - 1].replace(/^\|\s*/, '') : '';
+        if (doi)    bodyLines.push(`DOI: <code style="font-size:11px;">${escapeHtml(doi)}</code>`);
+        if (pmid)   bodyLines.push(`PMID: <code style="font-size:11px;">${escapeHtml(pmid)}</code>`);
+        if (target) bodyLines.push(`Archivo en: <code style="font-size:11px;">${escapeHtml(target)}</code>`);
+        if (j.article_id) actionHtml = _aLinkArticle(j.article_id, 'Ver artículo');
+      }
+    } else {
+      badge   = j.status; badgeBg = '#e5e7eb'; badgeFg = '#374151';
+      bodyLines.push(escapeHtml(step));
+    }
+
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;width:100%;flex-wrap:wrap;">
+        <span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:700;
+                     background:${badgeBg};color:${badgeFg};white-space:nowrap;">${escapeHtml(badge)}</span>
+        <span style="flex:1;min-width:0;font-weight:600;color:#111827;font-size:12.5px;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="${escapeHtml(fname)}">${escapeHtml(fname)}</span>
+        ${actionHtml}
+      </div>
+      ${bodyLines.length ? `<div style="margin-left:0;margin-top:4px;color:#4b5563;font-size:12px;line-height:1.5;">
+        ${bodyLines.join('<br>')}
+      </div>` : ''}`;
+
+    const retry = card.querySelector('.pv-import-retry-btn');
+    if (retry) retry.addEventListener('click', () => _retryImportJob(j.id, card));
+    const ai = card.querySelector('.pv-import-ai-btn');
+    if (ai) ai.addEventListener('click', () => _aiRecoverImportJob(j, card));
+    return card;
+  }
+
+  function _aLinkArticle(articleId, label) {
+    return `<a href="#" class="pv-import-open-article" data-aid="${escapeHtml(articleId)}"
+                style="font-size:11.5px;color:#0F3460;text-decoration:underline;flex-shrink:0;">${escapeHtml(label)} →</a>`;
+  }
+
+  async function _retryImportJob(jobId, card) {
+    const btn = card.querySelector('.pv-import-retry-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '↻ Reintentando…'; }
+    try {
+      const r = await fetch(`/prionvault/api/ingest/retry/${jobId}`, {
+        method: 'POST', credentials: 'same-origin',
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      // Job is back to queued — restart polling so the card updates
+      // when the worker finishes the second attempt.
+      _importSession.finished = false;
+      startProgressPolling();
+    } catch (e) {
+      alert('No se pudo reintentar: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Reintentar'; }
+    }
+  }
+
+  async function _aiRecoverImportJob(job, card) {
+    const aid = job.article_id;
+    const btn = card.querySelector('.pv-import-ai-btn');
+    if (!aid) {
+      alert('No hay artículo asociado al job — no se puede usar IA.');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = '🤖 Pensando…'; }
+    try {
+      const r = await api(`/articles/${aid}/identify-pmid`, { method: 'POST' });
+      if (r.duplicate) {
+        const dup = r.duplicate_of || {};
+        card.innerHTML = '';
+        card.appendChild(_buildAiResultBlock({
+          status:   'duplicate',
+          fname:    job.pdf_filename,
+          pmid:     r.pmid,
+          moved_to: r.moved_to,
+          moveErr:  r.move_error,
+          original: dup,
+        }));
+        return;
+      }
+      // 2) Resolve full metadata by PMID.
+      const lookup = await api('/articles/lookup', {
+        method: 'POST', body: JSON.stringify({ pubmed_id: String(r.pmid) }),
+      });
+      if (!lookup.found) {
+        if (btn) { btn.disabled = false; btn.textContent = '🤖 Intentar con IA'; }
+        alert(`La IA propuso PMID ${r.pmid} pero PubMed no devolvió metadatos.`);
+        return;
+      }
+      const m = lookup.metadata || {};
+      // 3) PATCH the article with whatever PubMed gave us.
+      try {
+        await api(`/articles/${aid}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title:     m.title || null,
+            authors:   m.authors || null,
+            year:      m.year || null,
+            journal:   m.journal || null,
+            doi:       m.doi || null,
+            pubmed_id: m.pubmed_id || String(r.pmid),
+            abstract:  m.abstract || null,
+          }),
+        });
+      } catch (e) {
+        // PATCH 409 = the resolved PMID/DOI already belongs to another
+        // article. Treat as duplicate at this late stage too.
+        if (e.status === 409) {
+          card.innerHTML = '';
+          card.appendChild(_buildAiResultBlock({
+            status: 'conflict',
+            fname:  job.pdf_filename,
+            pmid:   r.pmid,
+            error:  e.message,
+          }));
+          return;
+        }
+        throw e;
+      }
+      card.innerHTML = '';
+      card.appendChild(_buildAiResultBlock({
+        status:   'ok',
+        fname:    job.pdf_filename,
+        pmid:     m.pubmed_id || String(r.pmid),
+        title:    m.title,
+        year:     m.year,
+        article_id: aid,
+      }));
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 Intentar con IA'; }
+      alert('La IA no pudo identificar el PMID: ' + (e.message || 'error'));
+    }
+  }
+
+  function _buildAiResultBlock(r) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'padding:6px 8px;border-radius:6px;border:1px solid #e5e7eb;margin-bottom:4px;';
+    let badge, body;
+    if (r.status === 'ok') {
+      wrap.style.background = '#f0fdf4';
+      badge = '<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:700;background:#dcfce7;color:#15803d;">🤖 Recuperado con IA</span>';
+      const title = r.title ? `«${escapeHtml((r.title || '').slice(0, 110))}${r.title.length > 110 ? '…' : ''}»` : '';
+      body = `<div style="margin-top:4px;font-size:12px;color:#166534;">
+                PMID <code>${escapeHtml(String(r.pmid))}</code>${r.year ? ' · ' + escapeHtml(String(r.year)) : ''}<br>
+                ${title}
+              </div>`;
+    } else if (r.status === 'duplicate' || r.status === 'conflict') {
+      wrap.style.background = '#fffbeb';
+      badge = '<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:700;background:#fef3c7;color:#92400e;">⟳ Duplicado tras IA</span>';
+      const moved = r.moved_to
+        ? `El PDF se ha movido a <code style="font-size:11px;">${escapeHtml(r.moved_to)}</code> y se ha desvinculado del artículo.`
+        : (r.moveErr ? `<span style="color:#b91c1c;">No se pudo mover el PDF: ${escapeHtml(r.moveErr)}</span>` : 'Artículo desvinculado.');
+      const orig = r.original && r.original.id
+        ? `Original: ${_aLinkArticle(r.original.id, 'Ver original')}`
+        : (r.error ? `Conflicto: ${escapeHtml(r.error)}` : '');
+      body = `<div style="margin-top:4px;font-size:12px;color:#92400e;">
+                La IA identificó PMID <code>${escapeHtml(String(r.pmid))}</code>, que ya existe en la biblioteca.<br>
+                ${moved}<br>${orig}
+              </div>`;
+    } else {
+      wrap.style.background = '#fef2f2';
+      badge = '<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:700;background:#fee2e2;color:#b91c1c;">✗ IA sin éxito</span>';
+      body = `<div style="margin-top:4px;font-size:12px;color:#7f1d1d;">${escapeHtml(r.error || '')}</div>`;
+    }
+    wrap.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        ${badge}
+        <span style="flex:1;min-width:0;font-weight:600;color:#111827;font-size:12.5px;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="${escapeHtml(r.fname || '')}">${escapeHtml(r.fname || '')}</span>
+        ${r.article_id ? _aLinkArticle(r.article_id, 'Ver artículo') : ''}
+      </div>
+      ${body}`;
+    return wrap;
   }
 
   function stopProgressPolling() {

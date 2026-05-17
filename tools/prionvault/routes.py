@@ -2405,11 +2405,31 @@ def api_ingest_status():
 @prionvault_bp.route("/api/ingest/jobs", methods=["GET"])
 @admin_required
 def api_ingest_jobs():
-    """List jobs filtered by status (full-page admin view)."""
+    """List jobs filtered by status and/or explicit ids.
+
+    The Import modal uses `?ids=1,2,3` to poll only the jobs it just
+    created, so the user sees progress scoped to their upload session
+    instead of aggregates mixed in with background work.
+    """
     from .ingestion import queue as ingest_queue
     status = request.args.get("status")
-    limit  = max(1, min(500, request.args.get("limit", 100, type=int)))
-    return jsonify({"items": ingest_queue.list_jobs(status=status, limit=limit)})
+    limit  = max(1, min(1000, request.args.get("limit", 100, type=int)))
+
+    ids_raw = request.args.get("ids")
+    ids: list[int] = []
+    if ids_raw:
+        for tok in ids_raw.split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            try:
+                ids.append(int(tok))
+            except ValueError:
+                continue
+
+    return jsonify({"items": ingest_queue.list_jobs(
+        status=status, limit=limit, ids=ids or None,
+    )})
 
 
 @prionvault_bp.route("/api/ingest/retry/<int:job_id>", methods=["POST"])
