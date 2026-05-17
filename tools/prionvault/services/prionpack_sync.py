@@ -59,14 +59,70 @@ def _extract_dois(ref) -> list[str]:
 
 
 def _subgroup_label_for(pack: dict) -> str:
-    """Mirror the sidebar convention the user already established by
-    hand: "<pack id> — <pack title>". Falls back to just the id when
-    the pack has no title."""
-    pid   = (pack.get("id") or "").strip()
-    title = (pack.get("title") or "").strip()
+    """Stable subgroup label = the pack id only ("PRP-001"). The pack
+    title is intentionally NOT part of the label — titles get edited
+    over time and we don't want every rename to orphan the existing
+    auto-collections under a new subgroup. The id is immutable.
+    Earlier versions of this code used "<id> — <title>"; the migration
+    path in ensure_collections_for_pack() catches those legacy
+    subgroups and folds them into the new convention on the next sync.
+    """
+    return (pack.get("id") or "").strip()
+
+
+def _find_legacy_subgroup(pid: str) -> Optional[str]:
+    """Look for a collection whose subgroup_name starts with `<pid> — `
+    under the PrionPacks group. Returns the matched subgroup_name so
+    callers can decide whether to migrate it to the new convention."""
     if not pid:
-        return ""
-    return f"{pid} — {title}" if title else pid
+        return None
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(sql_text("""
+                SELECT subgroup_name
+                  FROM prionvault_collection
+                 WHERE lower(group_name) = lower(:g)
+                   AND subgroup_name LIKE :prefix
+                 LIMIT 1
+            """), {"g": PACK_GROUP_NAME, "prefix": f"{pid} %"}).first()
+            return row[0] if row else None
+    except Exception as exc:
+        logger.debug("legacy-subgroup lookup failed for %s: %s", pid, exc)
+        return None
+
+
+def _rename_subgroup(old_subgroup: str, new_subgroup: str) -> int:
+    """Rename every PrionPacks-group collection that lived under
+    `old_subgroup` to `new_subgroup`. Used to migrate the old
+    "<id> — <title>" naming to the stable "<id>" naming.
+    Returns the row count. Catches unique-constraint clashes so
+    one bad pair (collection already exists at the target) doesn't
+    abort the whole sync — those rows stay as-is and the caller
+    will just reuse the canonical one.
+    """
+    if not old_subgroup or old_subgroup == new_subgroup:
+        return 0
+    try:
+        eng = _get_engine()
+        with eng.begin() as conn:
+            res = conn.execute(sql_text("""
+                UPDATE prionvault_collection
+                   SET subgroup_name = :new, updated_at = NOW()
+                 WHERE lower(group_name) = lower(:g)
+                   AND subgroup_name      = :old
+                   AND NOT EXISTS (
+                       SELECT 1 FROM prionvault_collection c2
+                        WHERE lower(c2.group_name)    = lower(:g)
+                          AND c2.subgroup_name        = :new
+                          AND lower(c2.name)          = lower(prionvault_collection.name)
+                   )
+            """), {"g": PACK_GROUP_NAME, "old": old_subgroup, "new": new_subgroup})
+            return res.rowcount or 0
+    except Exception as exc:
+        logger.warning("rename subgroup %r → %r failed: %s",
+                       old_subgroup, new_subgroup, exc)
+        return 0
 
 
 def _resolve_dois_to_article_ids(dois: Iterable[str]) -> list[str]:
@@ -128,11 +184,31 @@ def _ensure_collection(*, name: str, group: str, subgroup: str,
 
 def ensure_collections_for_pack(pack: dict) -> dict:
     """Make sure the two auto-managed collections exist for this pack.
-    Returns {'intro': cid_or_None, 'general': cid_or_None}."""
-    subgroup = _subgroup_label_for(pack)
-    if not subgroup:
+
+    Subgroup convention is just the pack id ("PRP-001"). On the first
+    sync after the convention change, any legacy collections under
+    "<pid> — <old title>" are folded into the new naming so the user
+    doesn't end up with duplicates.
+
+    Returns {'intro': cid_or_None, 'general': cid_or_None}.
+    """
+    pid = (pack.get("id") or "").strip()
+    if not pid:
         return {"intro": None, "general": None}
-    pid = pack["id"]
+    subgroup = _subgroup_label_for(pack)   # == pid
+
+    # One-time migration: collections under "<pid> — …" get their
+    # subgroup_name flipped to just "<pid>" so they're reused by the
+    # ensure step below. The query is cheap (indexed on subgroup_name
+    # via the migrations) and idempotent — no rows match after the
+    # first sync.
+    legacy = _find_legacy_subgroup(pid)
+    if legacy and legacy != subgroup:
+        moved = _rename_subgroup(legacy, subgroup)
+        if moved:
+            logger.info("prionpack_sync: migrated %d collection(s) from "
+                        "subgroup %r to %r", moved, legacy, subgroup)
+
     intro_cid = _ensure_collection(
         name=INTRO_COLL_NAME, group=PACK_GROUP_NAME, subgroup=subgroup,
         description=f"Auto-sincronizada con las introReferences de {pid}.",

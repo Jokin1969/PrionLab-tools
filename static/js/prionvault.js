@@ -347,13 +347,40 @@
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${articlesTotal}</span>
+      ${IS_ADMIN ? `<span class="pv-coll-del"
+            data-group="${esc(group)}"
+            title="Borrar este grupo y todas sus colecciones (${collCount})"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   width:18px;height:18px;border-radius:4px;flex-shrink:0;margin-left:2px;
+                   color:rgba(255,255,255,0.35);cursor:pointer;visibility:hidden;"
+            onmouseover="this.style.background='rgba(239,68,68,0.25)';this.style.color='#fecaca';"
+            onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.35)';"
+      ><i class="fas fa-times" style="font-size:10px;"></i></span>` : ''}
     `;
+    // Reveal the × on hover of the row.
+    if (IS_ADMIN) {
+      btn.addEventListener('mouseenter', () => {
+        const x = btn.querySelector('.pv-coll-del');
+        if (x) x.style.visibility = 'visible';
+      });
+      btn.addEventListener('mouseleave', () => {
+        const x = btn.querySelector('.pv-coll-del');
+        if (x) x.style.visibility = 'hidden';
+      });
+    }
     btn.addEventListener('click', (ev) => {
       // Chevron toggles collapse state without changing the filter.
       if (ev.target.closest('.pv-coll-chevron')) {
         ev.preventDefault();
         _toggleCollapsed(_COLL_GROUPS_KEY, group);
         refreshCollections();
+        return;
+      }
+      // × wipes the whole group (admin only).
+      if (ev.target.closest('.pv-coll-del')) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        _deleteCollectionGroup({ group, subgroup: null, count: collCount });
         return;
       }
       const sameGroup = state.collectionGroup === group && !state.collectionSubgroup;
@@ -366,6 +393,43 @@
       loadArticles();
     });
     return btn;
+  }
+
+  // Admin: delete every collection under a group (or group+subgroup).
+  // Wired by the × that shows on hover next to group / subgroup headers.
+  // Cascade-deletes membership rows via the FK; the underlying article
+  // rows are NEVER touched, only their collection membership.
+  async function _deleteCollectionGroup({ group, subgroup, count }) {
+    if (!group) return;
+    const what = subgroup ? `el subgrupo «${subgroup}»` : `el grupo «${group}»`;
+    const msg =
+      `Vas a borrar ${what} y sus ${count} colección${count === 1 ? '' : 'es'}.\n\n` +
+      '• Las filas de las colecciones desaparecen de la sidebar.\n' +
+      '• Los artículos NO se borran — sólo se desvincula la pertenencia.\n' +
+      '• Las anotaciones / tags de cada artículo siguen igual.\n\n' +
+      'Esta acción no se puede deshacer desde la app. ¿Continuar?';
+    if (!confirm(msg)) return;
+    const params = new URLSearchParams({ group });
+    if (subgroup) params.set('subgroup', subgroup);
+    try {
+      const r = await api('/admin/collections/group?' + params.toString(),
+                          { method: 'DELETE' });
+      refreshCollections();
+      // Clear active filter if it pointed at the deleted group/subgroup.
+      if (state.collectionGroup === group &&
+          (subgroup ? state.collectionSubgroup === subgroup : true)) {
+        state.collectionGroup    = null;
+        state.collectionSubgroup = null;
+        state.collectionId       = null;
+        loadArticles();
+        refreshFilterIndicators();
+      }
+      // Tiny toast in lieu of a dedicated notifier — alert is the
+      // least intrusive option without adding a notification system.
+      console.log(`Borradas ${r.deleted} colecciones de ${what}.`);
+    } catch (e) {
+      alert('Error al borrar: ' + e.message);
+    }
   }
 
   function buildSubgroupHeader(group, subgroup, colls, collapsed) {
@@ -396,12 +460,37 @@
         <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${articlesTotal}</span>
+      ${IS_ADMIN ? `<span class="pv-coll-del"
+            data-group="${esc(group)}" data-subgroup="${esc(subgroup)}"
+            title="Borrar este subgrupo y sus ${collCount} colección(es)"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   width:16px;height:16px;border-radius:4px;flex-shrink:0;margin-left:2px;
+                   color:rgba(255,255,255,0.3);cursor:pointer;visibility:hidden;"
+            onmouseover="this.style.background='rgba(239,68,68,0.25)';this.style.color='#fecaca';"
+            onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.3)';"
+      ><i class="fas fa-times" style="font-size:9px;"></i></span>` : ''}
     `;
+    if (IS_ADMIN) {
+      btn.addEventListener('mouseenter', () => {
+        const x = btn.querySelector('.pv-coll-del');
+        if (x) x.style.visibility = 'visible';
+      });
+      btn.addEventListener('mouseleave', () => {
+        const x = btn.querySelector('.pv-coll-del');
+        if (x) x.style.visibility = 'hidden';
+      });
+    }
     btn.addEventListener('click', (ev) => {
       if (ev.target.closest('.pv-coll-chevron')) {
         ev.preventDefault();
         _toggleCollapsed(_COLL_SUBGROUPS_KEY, `${group}::${subgroup}`);
         refreshCollections();
+        return;
+      }
+      if (ev.target.closest('.pv-coll-del')) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        _deleteCollectionGroup({ group, subgroup, count: collCount });
         return;
       }
       const same = state.collectionGroup === group

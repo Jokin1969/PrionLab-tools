@@ -4676,6 +4676,50 @@ def api_migrations_run():
     return jsonify(summary)
 
 
+@prionvault_bp.route("/api/admin/collections/group", methods=["DELETE"])
+@admin_required
+def api_admin_delete_collection_group():
+    """Wipe every collection whose group (and optionally subgroup)
+    matches. Used by the × button on the group / subgroup headers in
+    the sidebar — there isn't a database row representing a group per
+    se, so "delete the group" means "delete all its collections".
+
+    Query params:
+      group     — required, exact match (case-insensitive).
+      subgroup  — optional. When omitted, every subgroup under the
+                  group is wiped. When set, only that one.
+
+    The actual rows in prionvault_collection_article cascade-delete
+    via the ON DELETE CASCADE on the FK.
+    """
+    from .services import collections as _collections
+    group    = (request.args.get("group") or "").strip()
+    subgroup = request.args.get("subgroup")
+    if subgroup is not None:
+        subgroup = subgroup.strip()
+    if not group:
+        return jsonify({"error": "group_required"}), 400
+
+    ids = _collections.find_in_group(group, subgroup if subgroup else None)
+    if not ids:
+        return jsonify({"ok": True, "deleted": 0,
+                        "group": group, "subgroup": subgroup})
+
+    deleted = 0
+    for cid in ids:
+        try:
+            if _collections.delete(cid):
+                deleted += 1
+        except Exception as exc:
+            logger.warning("delete-group: failed to delete %s: %s", cid, exc)
+    return jsonify({
+        "ok": True,
+        "deleted": deleted,
+        "group": group,
+        "subgroup": subgroup,
+    })
+
+
 @prionvault_bp.route("/api/admin/prionpacks/sync", methods=["POST"])
 @admin_required
 def api_admin_prionpacks_sync():
