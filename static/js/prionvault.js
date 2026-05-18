@@ -8240,15 +8240,29 @@
     if (dlLogBtn) dlLogBtn.addEventListener('click', async () => {
       try {
         const s = await api('/admin/batch-searchable/status');
-        _downloadBspLogCsv(s.events || []);
+        const events = s.events || [];
+        const onlyErrors = !!document.getElementById('pv-bsp-log-errors-only')?.checked;
+        _downloadBspLogCsv(onlyErrors ? events.filter(e => e.outcome === 'failed') : events);
       } catch (e) {
         alert('Error: ' + e.message);
       }
     });
+
+    const errorsToggle = document.getElementById('pv-bsp-log-errors-only');
+    // Re-render from the cache so the user sees the filter applied
+    // immediately instead of waiting for the next 2.5 s status poll.
+    if (errorsToggle) errorsToggle.addEventListener('change', () => {
+      _renderBspEventLog(_bspEventsCache);
+    });
   }
+
+  // Cache the most recent events list so the "Solo errores" checkbox
+  // can re-render without waiting for the next 2.5 s status poll.
+  let _bspEventsCache = [];
 
   // ── Render helpers for the batch-searchable per-paper log ─────────────
   function _renderBspEventLog(events) {
+    _bspEventsCache = events || [];
     const wrap   = document.getElementById('pv-bsp-log-wrap');
     const list   = document.getElementById('pv-bsp-log');
     const counter = document.getElementById('pv-bsp-log-count');
@@ -8258,7 +8272,26 @@
       return;
     }
     wrap.style.display = 'block';
-    counter.textContent = `(${events.length})`;
+
+    const onlyErrors = !!document.getElementById('pv-bsp-log-errors-only')?.checked;
+    const shown = onlyErrors
+      ? events.filter(e => e.outcome === 'failed')
+      : events;
+    const errorCount = events.filter(e => e.outcome === 'failed').length;
+    counter.textContent =
+      onlyErrors
+        ? `(${shown.length}/${events.length} — solo errores)`
+        : (errorCount
+            ? `(${events.length} · ${errorCount} con error)`
+            : `(${events.length})`);
+
+    if (!shown.length) {
+      list.innerHTML =
+        '<div style="color:#15803d;padding:18px;text-align:center;font-size:11.5px;">' +
+        '✓ Ningún error en esta sesión.</div>';
+      return;
+    }
+    events = shown;
 
     list.innerHTML = events.map(e => {
       // Outcome → colour + glyph + Spanish label
