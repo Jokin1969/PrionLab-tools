@@ -6430,11 +6430,82 @@
                   : kind === 'error'  ? '#b91c1c'
                   : kind === 'warn'   ? '#b45309'
                   : '#6b7280';
+      // data-kind drives the "Solo errores" filter; data-text caches a
+      // plain-text version of the row body for the CSV exporter so it
+      // doesn't have to parse HTML at download time.
+      row.dataset.kind = kind || 'info';
+      row.className    = 'pv-pmid-log-row';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      row.dataset.text = (tmp.textContent || '').trim();
       row.style.cssText = 'display:flex;gap:8px;padding:3px 4px;border-bottom:1px solid #f3f4f6;line-height:1.4;';
       row.innerHTML = `<span style="color:${color};flex-shrink:0;">●</span><span style="flex:1;min-width:0;">${html}</span>`;
       logEl.appendChild(row);
+      _syncPmidLogVisibility();
+      _syncPmidLogCount();
       logEl.scrollTop = logEl.scrollHeight;
     }
+
+    function _syncPmidLogVisibility() {
+      const onlyErrors = !!document.getElementById('pv-pmid-log-errors-only')?.checked;
+      logEl.querySelectorAll('.pv-pmid-log-row').forEach(r => {
+        if (!onlyErrors) {
+          r.style.display = '';
+          return;
+        }
+        // "Errors" = anything that isn't a successful PMID write.
+        // We treat 'ok' (PMID found + saved) as success, and 'error'
+        // / 'warn' (not found, duplicate, etc.) + 'info' marker
+        // lines as the actionable subset to show.
+        r.style.display = (r.dataset.kind === 'ok') ? 'none' : '';
+      });
+    }
+
+    function _syncPmidLogCount() {
+      const counter = document.getElementById('pv-pmid-log-count');
+      if (!counter) return;
+      const total = logEl.querySelectorAll('.pv-pmid-log-row').length;
+      const errs  = logEl.querySelectorAll('.pv-pmid-log-row[data-kind="error"], .pv-pmid-log-row[data-kind="warn"]').length;
+      counter.textContent = total
+        ? `· ${total} entradas${errs ? ` (${errs} sin PMID / duplicados)` : ''}`
+        : '';
+    }
+
+    document.getElementById('pv-pmid-log-errors-only')?.addEventListener('change', _syncPmidLogVisibility);
+
+    document.getElementById('pv-pmid-log-clear')?.addEventListener('click', () => {
+      if (!logEl.querySelector('.pv-pmid-log-row')) return;
+      if (!confirm('Vaciar el log de esta sesión?\n\nNo afecta a la base de datos ni a los contadores — sólo limpia lo que ves en este panel.')) return;
+      logEl.innerHTML =
+        '<div style="color:#9ca3af;text-align:center;padding:24px 12px;">El log de búsquedas aparecerá aquí.</div>';
+      _syncPmidLogCount();
+    });
+
+    document.getElementById('pv-pmid-log-csv')?.addEventListener('click', () => {
+      const rows = Array.from(logEl.querySelectorAll('.pv-pmid-log-row'));
+      if (!rows.length) { alert('Log vacío.'); return; }
+      const onlyErrors = !!document.getElementById('pv-pmid-log-errors-only')?.checked;
+      const visible = onlyErrors
+        ? rows.filter(r => r.dataset.kind !== 'ok')
+        : rows;
+      const csvEsc = (v) => {
+        const s = String(v ?? '');
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const out = [['kind', 'text']];
+      visible.forEach(r => out.push([r.dataset.kind || 'info', r.dataset.text || '']));
+      const csv = out.map(r => r.map(csvEsc).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.href = url;
+      a.download = `prionvault-pmid-log-${stamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
 
     async function runBatch() {
       runBtn.disabled = true;
