@@ -4648,6 +4648,14 @@ ${refsText}`;
     });
   }
 
+  // Module-level state for the AI-Suggest modal (declared up here so
+  // the `let` reaches initialisation BEFORE the IIFE's return below —
+  // otherwise the modal handlers, which are wired post-return via the
+  // hoisted function declarations near the bottom of the file, hit a
+  // ReferenceError when they touch _sgTab from the TDZ. See Sentry
+  // issue 2f64cbd8/d2c44e8b.
+  let _sgTab = 'internal';   // 'internal' | 'pubmed'
+
   return {
     init, showDashboard, showEditor,
     addFinding, removeFinding,
@@ -4661,8 +4669,10 @@ ${refsText}`;
   // internal (PrionVault catalog) or the PubMed branch. Each call goes
   // through Voyage + LLM, so it's slow (5-20s) — the panel shows a
   // spinner with the current step.
-
-  let _sgTab = 'internal';   // 'internal' | 'pubmed'
+  // _sgTab lives at module scope at the top of the IIFE (see above
+  // the `return {…}`) so it's reachable from these handlers, which
+  // are wired post-return and therefore run AFTER the return statement
+  // bailed out of the IIFE body.
 
   function _wireSuggestModal() {
     const btn       = document.getElementById('btn-suggest-articles');
