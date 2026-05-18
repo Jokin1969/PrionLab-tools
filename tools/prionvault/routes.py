@@ -2222,12 +2222,25 @@ def api_duplicates():
     """Return pairs of articles that look like duplicates of each other.
 
     Reasons: identical DOI, identical PMID, or Jaccard similarity ≥ 0.75
-    on title tokens (lowercased, stopwords stripped).
+    on title tokens (lowercased, stopwords stripped). Pairs the admin
+    has already dismissed via /api/duplicates/dismiss are filtered out.
     """
     threshold = max(0.0, min(1.0,
                              request.args.get("threshold", default=0.75, type=float)))
     s = _session()
     try:
+        # Load the dismissed set up-front (stored canonical so
+        # article_a < article_b). Cheap — typically a handful of rows.
+        try:
+            dis_rows = s.execute(sql_text(
+                "SELECT article_a, article_b FROM prionvault_dismissed_duplicates"
+            )).all()
+            dismissed = {(str(r[0]), str(r[1])) for r in dis_rows}
+        except Exception:
+            # Table may not exist yet on a stale deploy — degrade
+            # gracefully to "no dismissals" so the scanner still runs.
+            dismissed = set()
+
         rows = s.execute(sql_text(
             "SELECT id, title, authors, year, journal, doi, pubmed_id "
             "FROM articles ORDER BY year DESC NULLS LAST, title"
@@ -2257,6 +2270,14 @@ def api_duplicates():
                     reasons.append(f"Título similar ({int(round(title_score * 100))}%)")
                     score = max(score, title_score)
                 if reasons:
+                    # Honour the user's "no son duplicados" decisions.
+                    # Compare with canonical ordering (smaller uuid first)
+                    # so the dismissal hides the pair no matter which
+                    # member appears first in the scan.
+                    aid, bid = str(a["id"]), str(b["id"])
+                    canon = (aid, bid) if aid < bid else (bid, aid)
+                    if canon in dismissed:
+                        continue
                     pairs.append({
                         "a": {k: a[k] for k in ("id", "title", "authors", "year",
                                                  "journal", "doi", "pubmed_id")},
@@ -2271,7 +2292,85 @@ def api_duplicates():
         for p in pairs:
             p["a"]["id"] = str(p["a"]["id"])
             p["b"]["id"] = str(p["b"]["id"])
-        return jsonify({"total": len(pairs), "pairs": pairs})
+        return jsonify({
+            "total":          len(pairs),
+            "pairs":          pairs,
+            "dismissed_count": len(dismissed),
+        })
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/duplicates/dismiss", methods=["POST"])
+@admin_required
+def api_duplicates_dismiss():
+    """Mark a pair as "not a duplicate" so the scanner stops surfacing
+    it. Body: { a: <uuid>, b: <uuid>, reason?: str }. The pair is
+    stored canonicalised (smaller-uuid first) so subsequent dismiss
+    calls with the arguments flipped collapse to the same row."""
+    data = request.get_json(force=True, silent=True) or {}
+    aid_a = (data.get("a") or "").strip()
+    aid_b = (data.get("b") or "").strip()
+    reason = (data.get("reason") or "").strip() or None
+    if not aid_a or not aid_b:
+        return jsonify({"error": "a_and_b_required"}), 400
+    if aid_a == aid_b:
+        return jsonify({"error": "same_id"}), 400
+    lo, hi = (aid_a, aid_b) if aid_a < aid_b else (aid_b, aid_a)
+    s = _session()
+    try:
+        try:
+            s.execute(sql_text("""
+                INSERT INTO prionvault_dismissed_duplicates
+                  (article_a, article_b, dismissed_by, reason)
+                VALUES (:a, :b, :u, :r)
+                ON CONFLICT (article_a, article_b) DO UPDATE
+                   SET dismissed_at = NOW(),
+                       dismissed_by = EXCLUDED.dismissed_by,
+                       reason       = EXCLUDED.reason
+            """), {"a": lo, "b": hi,
+                   "u": str(_viewer_id()) if _viewer_id() else None,
+                   "r": reason})
+            s.commit()
+        except Exception as exc:
+            s.rollback()
+            msg = str(exc)[:200]
+            # ForeignKeyViolation when one of the ids no longer exists
+            # — give a clean 404 rather than the SQL detail.
+            if "ForeignKeyViolation" in type(exc).__name__ or \
+               "violates foreign key" in msg.lower():
+                return jsonify({"error": "article_not_found",
+                                "detail": msg}), 404
+            logger.exception("dismiss-duplicate failed")
+            return jsonify({"error": "internal_error", "detail": msg}), 500
+        return jsonify({"ok": True, "a": lo, "b": hi})
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/duplicates/dismiss", methods=["DELETE"])
+@admin_required
+def api_duplicates_undismiss():
+    """Reverse a previous dismissal so the pair shows up again on the
+    next scan. Body: { a: <uuid>, b: <uuid> } in any order."""
+    data = request.get_json(force=True, silent=True) or {}
+    aid_a = (data.get("a") or "").strip()
+    aid_b = (data.get("b") or "").strip()
+    if not aid_a or not aid_b:
+        return jsonify({"error": "a_and_b_required"}), 400
+    lo, hi = (aid_a, aid_b) if aid_a < aid_b else (aid_b, aid_a)
+    s = _session()
+    try:
+        res = s.execute(sql_text("""
+            DELETE FROM prionvault_dismissed_duplicates
+             WHERE article_a = :a AND article_b = :b
+        """), {"a": lo, "b": hi})
+        s.commit()
+        return jsonify({"ok": True, "deleted": res.rowcount or 0})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("undismiss-duplicate failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:200]}), 500
     finally:
         s.close()
 

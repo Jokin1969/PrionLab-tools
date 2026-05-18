@@ -6979,14 +6979,27 @@
           meta.textContent = 'Sin duplicados detectados.';
           return;
         }
-        meta.textContent = `${r.total} par${r.total === 1 ? '' : 'es'} sospechoso${r.total === 1 ? '' : 's'} encontrado${r.total === 1 ? '' : 's'} (ordenados por score).`;
+        const dis = r.dismissed_count || 0;
+        meta.textContent =
+          `${r.total} par${r.total === 1 ? '' : 'es'} sospechoso${r.total === 1 ? '' : 's'} ` +
+          `encontrado${r.total === 1 ? '' : 's'} (ordenados por score)` +
+          (dis ? ` · ${dis} pareja${dis === 1 ? '' : 's'} marcada${dis === 1 ? '' : 's'} previamente como no-duplicado` : '') +
+          '.';
         list.innerHTML = r.pairs.map(p => `
-          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafafa;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div class="pv-dup-pair" data-a="${esc(p.a.id)}" data-b="${esc(p.b.id)}"
+               style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafafa;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 ${p.reasons.map(r => `<span style="font-size:11px;padding:2px 7px;border-radius:5px;background:#fef3c7;color:#92400e;font-weight:600;">${esc(r)}</span>`).join('')}
               </div>
-              <span style="font-size:11px;color:#6b7280;font-variant-numeric:tabular-nums;">score ${(p.score * 100).toFixed(0)}%</span>
+              <span style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:11px;color:#6b7280;font-variant-numeric:tabular-nums;">score ${(p.score * 100).toFixed(0)}%</span>
+                <button class="pv-dup-dismiss"
+                        title="Marcar como NO duplicados. La pareja no volverá a aparecer en futuros escaneos hasta que un artículo sea borrado o lo re-actives manualmente."
+                        style="padding:3px 9px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:11px;font-weight:600;cursor:pointer;">
+                  ✗ No son duplicados
+                </button>
+              </span>
             </div>
             ${[p.a, p.b].map(x => `
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid #f3f4f6;">
@@ -7029,6 +7042,41 @@
               b.textContent = 'Error';
               b.disabled = false;
               alert('Error al borrar: ' + e.message);
+            }
+          });
+        });
+
+        list.querySelectorAll('.pv-dup-dismiss').forEach(b => {
+          b.addEventListener('click', async () => {
+            const card = b.closest('.pv-dup-pair');
+            if (!card) return;
+            const reason = prompt(
+              'Confirmar que NO son duplicados.\n\n' +
+              'La pareja no volverá a aparecer en futuros escaneos. ' +
+              'Si quieres, escribe una nota corta para tu propio registro ' +
+              '(opcional — pulsa Aceptar sin escribir nada para descartar sin nota):',
+              ''
+            );
+            if (reason === null) return;   // user cancelled
+            b.disabled = true;
+            const orig = b.textContent;
+            b.textContent = '…';
+            try {
+              await api('/duplicates/dismiss', {
+                method: 'POST',
+                body: JSON.stringify({
+                  a: card.dataset.a,
+                  b: card.dataset.b,
+                  reason: reason || null,
+                }),
+              });
+              card.style.transition = 'opacity 0.4s, max-height 0.4s';
+              card.style.opacity = '0.35';
+              setTimeout(() => card.remove(), 400);
+            } catch (e) {
+              b.disabled = false;
+              b.textContent = orig;
+              alert('Error: ' + e.message);
             }
           });
         });
