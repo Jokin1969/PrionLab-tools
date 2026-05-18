@@ -54,6 +54,11 @@
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
     selectedIds: new Set(),  // UUIDs selected for bulk operations
+    // When true, the listing only shows articles in selectedIds — drives
+    // the "🔍 Ver sólo seleccionados" toggle in the bulk bar. Persists
+    // across modal opens/closes (e.g. picking articles inside the PMID
+    // manual list and then surfacing them in the main grid).
+    filterSelectedOnly: false,
     lastTotal:   0,          // last seen total count of the current filter
   };
 
@@ -1733,6 +1738,25 @@
                         selectedVisible.length < visible.length;
   }
 
+  function _paintOnlySelectedBtn() {
+    ['', '-top'].forEach(s => {
+      const btn = document.getElementById('pv-bulk-only-selected' + s);
+      const lbl = document.getElementById('pv-bulk-only-selected-label' + s);
+      if (!btn || !lbl) return;
+      if (state.filterSelectedOnly) {
+        btn.style.background    = 'white';
+        btn.style.color         = '#0F3460';
+        btn.style.borderColor   = 'white';
+        lbl.textContent = '✓ Mostrando sólo seleccionados — clic para ver todos';
+      } else {
+        btn.style.background    = 'rgba(255,255,255,0.14)';
+        btn.style.color         = 'white';
+        btn.style.borderColor   = 'rgba(255,255,255,0.25)';
+        lbl.textContent = '🔍 Ver sólo seleccionados';
+      }
+    });
+  }
+
   function updateBulkBar() {
     const bars = ['pv-bulk-bar', 'pv-bulk-bar-top']
       .map(id => document.getElementById(id))
@@ -1741,6 +1765,14 @@
     const count = state.selectedIds.size;
     const total = state.lastTotal || 0;
     const showFiltered = count > 0 && total > count;
+    // If the operator was viewing only-selected and the selection drops
+    // to zero (cleared, all deleted, etc.), drop the filter too so they
+    // don't see an empty page with no obvious way out.
+    if (state.filterSelectedOnly && count === 0) {
+      state.filterSelectedOnly = false;
+      loadArticles();
+    }
+    _paintOnlySelectedBtn();
     bars.forEach((bar, idx) => {
       if (!count) { bar.style.display = 'none'; return; }
       bar.style.display = 'flex';
@@ -1799,6 +1831,13 @@
                      background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);
                      font-size:12px;cursor:pointer;white-space:nowrap;">
         Seleccionar los <span id="pv-bulk-filtered-count${s}">—</span> que cumplen el filtro
+      </button>
+      <button id="pv-bulk-only-selected${s}" type="button"
+              title="Filtrar el listado para ver SOLO los artículos que has marcado. Pulsa de nuevo para volver a ver todos."
+              style="padding:4px 10px;border-radius:6px;
+                     background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);
+                     font-size:12px;cursor:pointer;white-space:nowrap;">
+        <span id="pv-bulk-only-selected-label${s}">🔍 Ver sólo seleccionados</span>
       </button>
       <span style="flex:1;"></span>
 
@@ -1912,6 +1951,17 @@
     const s = suffix || '';
     const $id = id => document.getElementById(id + s);
     if (!$id('pv-bulk-count')) return;
+
+    // "Ver sólo seleccionados" toggle
+    const onlyBtn = $id('pv-bulk-only-selected');
+    if (onlyBtn) {
+      onlyBtn.addEventListener('click', () => {
+        state.filterSelectedOnly = !state.filterSelectedOnly;
+        state.page = 1;
+        _paintOnlySelectedBtn();
+        loadArticles();
+      });
+    }
 
     // "Select all matching the filter" expansion
     const filteredBtn = $id('pv-bulk-select-filtered');
@@ -2211,6 +2261,17 @@
   // ── Build the list query params (shared by loadArticles + fetchAllFilteredIds) ──
   function buildListParams() {
     const params = new URLSearchParams();
+    // "Show only the selected articles" short-circuits every other
+    // filter (an empty selection still sends an empty list so the
+    // backend correctly returns 0 rows, which is what the operator
+    // expects when they activated the filter with nothing checked).
+    if (state.filterSelectedOnly) {
+      params.set('ids', Array.from(state.selectedIds).join(','));
+      params.set('page', state.page);
+      params.set('size', state.size);
+      if (state.sort) params.set('sort', state.sort);
+      return params;
+    }
     if (state.q)                   params.set('q', state.q);
     if (state.yearMin)             params.set('year_min', state.yearMin);
     if (state.yearMax)             params.set('year_max', state.yearMax);
@@ -6601,8 +6662,28 @@
             '<div style="text-align:center;color:#15803d;padding:24px 12px;font-size:13px;">✓ Ningún artículo pendiente. Todos tienen PMID.</div>';
           return;
         }
-        manualList.innerHTML = r.items.map(it => _manualPmidRowHtml(it)).join('');
-        // Wire each row's save button. Enter on the input also saves.
+        // Master "Marcar todos" + per-row checkboxes write into the
+        // shared state.selectedIds so the operator can close the modal
+        // and find their picks in the main listing via the bulk-bar's
+        // "🔍 Ver sólo seleccionados" button.
+        const masterHtml = `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
+                      background:#f3f4f6;border-bottom:1px solid #e5e7eb;
+                      font-size:11.5px;color:#374151;font-weight:600;
+                      position:sticky;top:0;z-index:1;">
+            <input type="checkbox" id="pv-pmid-manual-master"
+                   title="Marcar / desmarcar todos los visibles"
+                   style="margin:0;cursor:pointer;width:14px;height:14px;">
+            <label for="pv-pmid-manual-master" style="cursor:pointer;flex:1;">
+              Marcar todos los <span id="pv-pmid-manual-master-count">${r.items.length}</span> visibles
+              <span style="font-weight:normal;color:#6b7280;">
+                — la selección queda disponible al cerrar el modal en el listado principal
+              </span>
+            </label>
+          </div>`;
+        manualList.innerHTML = masterHtml + r.items.map(it => _manualPmidRowHtml(it)).join('');
+
+        // Wire per-row save + Enter
         manualList.querySelectorAll('.pv-pmid-manual-save').forEach(b => {
           b.addEventListener('click', () => saveManualPmid(b.dataset.aid));
         });
@@ -6617,9 +6698,92 @@
         manualList.querySelectorAll('.pv-pmid-manual-nopmid').forEach(b => {
           b.addEventListener('click', () => markNoPmid(b.dataset.aid));
         });
+
+        // Per-row "🗑 Borrar" — same flow as the listing's delete: hits
+        // DELETE /api/articles/<id>, which clears the row + the Dropbox
+        // PDF + any collection memberships. Confirm dialog because it's
+        // irreversible from the UI.
+        manualList.querySelectorAll('.pv-pmid-manual-delete').forEach(b => {
+          b.addEventListener('click', () => deleteManualRow(b.dataset.aid));
+        });
+
+        // Per-row pick checkbox — keeps state.selectedIds in sync.
+        const syncMaster = () => {
+          const checks  = Array.from(manualList.querySelectorAll('.pv-pmid-manual-pick'));
+          const master  = document.getElementById('pv-pmid-manual-master');
+          if (!master) return;
+          const total   = checks.length;
+          const checked = checks.filter(c => c.checked).length;
+          master.checked = total > 0 && checked === total;
+          master.indeterminate = checked > 0 && checked < total;
+        };
+        manualList.querySelectorAll('.pv-pmid-manual-pick').forEach(cb => {
+          cb.addEventListener('change', () => {
+            if (cb.checked) state.selectedIds.add(cb.dataset.aid);
+            else            state.selectedIds.delete(cb.dataset.aid);
+            updateBulkBar();
+            syncSelectAllHeader?.();
+            syncMaster();
+          });
+        });
+
+        // Master "marcar todos los visibles"
+        const master = document.getElementById('pv-pmid-manual-master');
+        if (master) {
+          master.addEventListener('change', () => {
+            manualList.querySelectorAll('.pv-pmid-manual-pick').forEach(cb => {
+              cb.checked = master.checked;
+              if (cb.checked) state.selectedIds.add(cb.dataset.aid);
+              else            state.selectedIds.delete(cb.dataset.aid);
+            });
+            updateBulkBar();
+            syncSelectAllHeader?.();
+          });
+          syncMaster();
+        }
       } catch (e) {
         manualList.innerHTML =
           `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    async function deleteManualRow(aid) {
+      const row = manualList.querySelector(`[data-row-aid="${CSS.escape(aid)}"]`);
+      if (!row) return;
+      const status = row.querySelector('.pv-pmid-manual-status');
+      const btn    = row.querySelector('.pv-pmid-manual-delete');
+      if (!confirm(
+        'Borrar este artículo de PrionVault?\n\n' +
+        '• La fila se borra de la base de datos.\n' +
+        '• El PDF de Dropbox también (queda en el historial ~30 días).\n' +
+        '• Desaparece de PrionRead, PrionPacks, asignaciones y ratings.\n\n' +
+        'No se puede deshacer. ¿Continuar?'
+      )) return;
+      const orig = btn.textContent;
+      btn.disabled    = true;
+      btn.textContent = '⏳';
+      status.textContent = '';
+      try {
+        await api(`/articles/${aid}`, { method: 'DELETE' });
+        // Drop from selection if it was picked, then fade the row.
+        state.selectedIds.delete(aid);
+        updateBulkBar();
+        row.style.transition = 'opacity 0.4s';
+        row.style.opacity = '0.25';
+        setTimeout(() => {
+          row.remove();
+          if (!manualList.querySelector('[data-row-aid]')) {
+            manualList.innerHTML =
+              '<div style="text-align:center;color:#15803d;padding:24px 12px;font-size:13px;">✓ Ya está. Todos los pendientes resueltos.</div>';
+          }
+          refreshStats();
+          if (typeof loadArticles === 'function') loadArticles();
+        }, 400);
+      } catch (e) {
+        status.style.color = '#b91c1c';
+        status.textContent = `✗ ${e.message || 'error'}`;
+        btn.disabled    = false;
+        btn.textContent = orig;
       }
     }
 
@@ -6738,10 +6902,16 @@
     // Authors string can be quite long (collaborator lists) — trim.
     const authors = (it.authors || '').slice(0, 80) +
                     ((it.authors || '').length > 80 ? '…' : '');
+    // Persist selection across renders / refreshes by reading the
+    // shared state.selectedIds Set every time we paint a row.
+    const checked = state.selectedIds.has(it.id) ? 'checked' : '';
     return `
       <div data-row-aid="${escAttr(it.id)}"
            style="border-bottom:1px solid #e5e7eb;padding:8px 10px;background:white;">
         <div style="display:flex;gap:10px;align-items:flex-start;">
+          <input type="checkbox" class="pv-pmid-manual-pick" data-aid="${escAttr(it.id)}" ${checked}
+                 title="Seleccionar para encontrarlo después en el listado principal"
+                 style="margin-top:4px;flex-shrink:0;cursor:pointer;width:14px;height:14px;">
           <div style="flex:1;min-width:0;">
             <div style="font-size:12.5px;font-weight:600;color:#111827;line-height:1.35;
                         overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
@@ -6768,11 +6938,18 @@
                 Guardar
               </button>
             </div>
-            <button type="button" class="pv-pmid-manual-nopmid" data-aid="${escAttr(it.id)}"
-                    title="Marca este artículo como confirmado-sin-PMID. La búsqueda automática y la lista manual lo dejarán en paz."
-                    style="padding:3px 10px;border-radius:4px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11px;font-weight:600;cursor:pointer;align-self:flex-end;">
-              ✗ No existe PMID
-            </button>
+            <div style="display:flex;gap:5px;align-self:flex-end;">
+              <button type="button" class="pv-pmid-manual-nopmid" data-aid="${escAttr(it.id)}"
+                      title="Marca este artículo como confirmado-sin-PMID. La búsqueda automática y la lista manual lo dejarán en paz."
+                      style="padding:3px 10px;border-radius:4px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11px;font-weight:600;cursor:pointer;">
+                ✗ No existe PMID
+              </button>
+              <button type="button" class="pv-pmid-manual-delete" data-aid="${escAttr(it.id)}"
+                      title="Borrar el artículo de PrionVault (también borra el PDF de Dropbox)."
+                      style="padding:3px 10px;border-radius:4px;border:1px solid #fca5a5;background:white;color:#b91c1c;font-size:11px;font-weight:600;cursor:pointer;">
+                🗑 Borrar
+              </button>
+            </div>
             <div class="pv-pmid-manual-status" style="font-size:11px;color:#6b7280;text-align:right;min-height:14px;"></div>
           </div>
         </div>

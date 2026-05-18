@@ -63,6 +63,19 @@ def index():
 @login_required
 def api_list_articles():
     q           = (request.args.get("q") or "").strip()
+    # Optional "filter by article id list" — used by the bulk-bar's
+    # "Ver sólo seleccionados" button so the operator can keep their
+    # selection scoped to a working set even after leaving and
+    # re-entering the page. Comma-separated, capped at 5_000 ids so
+    # the IN-list stays reasonable.
+    ids_param   = (request.args.get("ids") or "").strip()
+    ids_filter: list[str] = []
+    if ids_param:
+        for tok in ids_param.split(","):
+            tok = tok.strip()
+            if tok:
+                ids_filter.append(tok)
+        ids_filter = ids_filter[:5000]
     year_min    = request.args.get("year_min", type=int)
     year_max    = request.args.get("year_max", type=int)
     journal     = (request.args.get("journal") or "").strip()
@@ -238,6 +251,13 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # ── Build WHERE clause using raw SQL to be resilient to missing cols ────
     conditions = []
     params: dict = {}
+
+    # Hard filter by explicit article-id list (powers the "Ver sólo
+    # seleccionados" toggle in the bulk bar). An empty list naturally
+    # yields zero rows since ANY('{}') matches nothing.
+    if ids_param:
+        conditions.append("id::text = ANY(:ids_filter)")
+        params["ids_filter"] = ids_filter
 
     if q:
         # websearch_to_tsquery (Postgres >= 11) gives the user a
