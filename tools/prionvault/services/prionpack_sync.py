@@ -70,6 +70,41 @@ def _subgroup_label_for(pack: dict) -> str:
     return (pack.get("id") or "").strip()
 
 
+def _normalize_pack_group_name() -> int:
+    """One-time fix: collections that the user created by hand carry
+    the group as they typed it ("PRIONPACKS"), which displays fine
+    but creates two siblings in the sidebar once the sync starts
+    writing under the canonical "PrionPacks". This UPDATE folds any
+    case-only variant into the canonical spelling.
+
+    Idempotent — after the first sync no rows match. Skips rows that
+    would clash with an already-canonical row (unique constraint on
+    (group, subgroup, name)) so a hypothetical "PrionPacks/PRP-001/
+    Introducción" + "PRIONPACKS/PRP-001/Introducción" pair doesn't
+    abort the whole sync.
+    """
+    try:
+        eng = _get_engine()
+        with eng.begin() as conn:
+            res = conn.execute(sql_text("""
+                UPDATE prionvault_collection AS a
+                   SET group_name = :canon, updated_at = NOW()
+                 WHERE lower(a.group_name) = lower(:canon)
+                   AND a.group_name        <> :canon
+                   AND NOT EXISTS (
+                       SELECT 1 FROM prionvault_collection b
+                        WHERE b.group_name = :canon
+                          AND coalesce(b.subgroup_name, '') = coalesce(a.subgroup_name, '')
+                          AND lower(b.name) = lower(a.name)
+                          AND b.id <> a.id
+                   )
+            """), {"canon": PACK_GROUP_NAME})
+            return res.rowcount or 0
+    except Exception as exc:
+        logger.warning("normalise group name failed: %s", exc)
+        return 0
+
+
 def _find_legacy_subgroup(pid: str) -> Optional[str]:
     """Look for a collection whose subgroup_name starts with `<pid> — `
     under the PrionPacks group. Returns the matched subgroup_name so
@@ -196,6 +231,14 @@ def ensure_collections_for_pack(pack: dict) -> dict:
     if not pid:
         return {"intro": None, "general": None}
     subgroup = _subgroup_label_for(pack)   # == pid
+
+    # Normalise the group casing first so subsequent lookups under
+    # PACK_GROUP_NAME find rows the user created as e.g. "PRIONPACKS"
+    # without spawning a parallel "PrionPacks" group.
+    moved_grp = _normalize_pack_group_name()
+    if moved_grp:
+        logger.info("prionpack_sync: normalised %d collection(s) under "
+                    "the PrionPacks group to canonical casing", moved_grp)
 
     # One-time migration: collections under "<pid> — …" get their
     # subgroup_name flipped to just "<pid>" so they're reused by the
