@@ -4792,12 +4792,22 @@ ${refsText}`;
          </div>`;
     results.innerHTML = header + items.map(it => _sgCardHtml(tab, it, packId)).join('');
 
-    // Wire per-card actions
+    // Stash the full record indexed by pmid so the PubMed-add path
+    // can pull authors / year / journal / doi without the DOM
+    // ferrying every field as a data-attribute.
+    const byPmid = new Map();
+    items.forEach(it => { if (it.pmid) byPmid.set(String(it.pmid), it); });
+
     results.querySelectorAll('.pp-sg-add-internal').forEach(b => {
-      b.addEventListener('click', () => _sgAddInternal(b.dataset.aid, b.dataset.doi, b.dataset.title, packId, b));
+      b.addEventListener('click', () => _sgAddInternal(
+        b.dataset.aid, b.dataset.doi, b.dataset.title, packId, b));
     });
     results.querySelectorAll('.pp-sg-add-pubmed').forEach(b => {
-      b.addEventListener('click', () => _sgAddPubmed(b.dataset.pmid, b.dataset.title, packId, b));
+      b.addEventListener('click', () => {
+        const it = byPmid.get(b.dataset.pmid);
+        if (!it) { alert('No se encontró el registro.'); return; }
+        _sgAddPubmed(it, packId, b);
+      });
     });
   }
 
@@ -4864,14 +4874,11 @@ ${refsText}`;
     `;
   }
 
+  // Internal tab: the candidate is already in PrionVault, so we just
+  // need its UUID + the target list. import-article expects:
+  //   { "article_id": "<uuid>", "targets": ["intro" | "general"] }
   async function _sgAddInternal(articleId, doi, title, packId, btn) {
-    // Reuse the existing import-article endpoint with what we have.
-    // It accepts either DOI or PMID free-text; we send the DOI when
-    // we have it (more reliable), else the title.
-    if (!doi && !articleId) {
-      alert('No hay DOI ni id de artículo para añadir.');
-      return;
-    }
+    if (!articleId) { alert('No hay id de artículo.'); return; }
     btn.disabled = true;
     const orig = btn.textContent;
     btn.textContent = '⏳…';
@@ -4879,15 +4886,15 @@ ${refsText}`;
       const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(packId)}/import-article`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          article: { title, doi, id: articleId },
-          target: 'general',   // default to general; admin can move later
-        }),
+        body: JSON.stringify({ article_id: articleId, targets: ['general'] }),
       });
       const d = await r.json();
       if (r.ok && d.ok) {
         btn.style.background = '#15803d';
         btn.textContent = '✓ Añadido';
+      } else if (r.ok && !d.ok && d.reason === 'already_in_pack') {
+        btn.style.background = '#9ca3af';
+        btn.textContent = '✓ Ya estaba';
       } else {
         btn.disabled = false;
         btn.textContent = orig;
@@ -4900,34 +4907,71 @@ ${refsText}`;
     }
   }
 
-  async function _sgAddPubmed(pmid, title, packId, btn) {
+  // PubMed tab: the candidate is NOT in PrionVault. Two-step flow:
+  //   1. POST /prionvault/api/articles with the metadata we already
+  //      have from esummary → returns 201 + new UUID, or 409 with the
+  //      existing duplicate_of UUID if it landed since the LLM picked
+  //      its queries (unlikely but possible).
+  //   2. POST /prionpacks/.../import-article with the UUID.
+  async function _sgAddPubmed(it, packId, btn) {
     btn.disabled = true;
     const orig = btn.textContent;
-    btn.textContent = '⏳…';
+    btn.textContent = '⏳ creando…';
+    let articleId = null;
     try {
-      const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(packId)}/import-article`, {
+      const body = {
+        title:     it.title,
+        authors:   it.authors,
+        year:      it.year,
+        journal:   it.journal,
+        doi:       it.doi,
+        pubmed_id: it.pmid,
+        source:    'manual',
+      };
+      const r = await fetch('/prionvault/api/articles', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // import-article does its own metadata lookup if given a PMID
-          // alone — the PrionVault catalog ingestion picks it up later.
-          article: { title, pubmed_id: pmid },
-          target: 'general',
-        }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
-      if (r.ok && d.ok) {
-        btn.style.background = '#15803d';
-        btn.textContent = '✓ Añadido al pack';
+      if (r.status === 201) {
+        articleId = d.id;
+      } else if (r.status === 409 && d.duplicate_of) {
+        // Raced — already in the catalog.
+        articleId = d.duplicate_of;
       } else {
         btn.disabled = false;
         btn.textContent = orig;
-        alert('No se pudo añadir: ' + (d.reason || d.error || r.status));
+        alert('No se pudo crear en PrionVault: ' + (d.error || r.status));
+        return;
       }
     } catch (e) {
       btn.disabled = false;
       btn.textContent = orig;
-      alert('Error: ' + e.message);
+      alert('Error creando: ' + e.message);
+      return;
+    }
+
+    btn.textContent = '⏳ añadiendo…';
+    try {
+      const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(packId)}/import-article`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article_id: articleId, targets: ['general'] }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        btn.style.background = '#15803d';
+        btn.textContent = '✓ Importado + añadido';
+      } else {
+        btn.disabled = false;
+        btn.textContent = orig;
+        alert('Se creó en PrionVault pero no se pudo añadir al pack: ' + (d.reason || d.error || r.status));
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = orig;
+      alert('Error añadiendo al pack: ' + e.message);
     }
   }
 })();
