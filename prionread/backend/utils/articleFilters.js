@@ -1,11 +1,15 @@
 const { Op } = require('sequelize');
 
 const ALLOWED_SORT = new Set(['year', 'title', 'priority', 'created_at', 'updated_at']);
-const DEFAULT_LIMIT = 500;
-// Bumped from 500 → 5000 so the admin assignments modal (which needs
-// the whole catalogue to compute "unassigned" client-side) can fetch
-// every article in one shot. Matches the PrionVault listing cap.
-const MAX_LIMIT = 5000;
+// DEFAULT_LIMIT is what the admin Articles page hits when it calls
+// getArticles() without an explicit `limit`. Previously 500, which
+// meant "Mostrando 500 de 1244" felt like a hard cap to the user
+// because the React UI has no Load-More control yet. Matching it to
+// MAX_LIMIT means the default response carries everything up to the
+// safety cap — fine for current catalogue sizes; revisit when the
+// library grows past ~20k and we wire proper pagination.
+const DEFAULT_LIMIT = 20000;
+const MAX_LIMIT     = 20000;
 
 /**
  * Builds a Sequelize-compatible { where, order, limit, offset } object
