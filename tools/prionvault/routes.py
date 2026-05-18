@@ -168,7 +168,8 @@ def api_list_articles():
                                    has_pp=has_pp,
                                    pp_id=pp_id,
                                    abstract_status=abstract_status,
-                                   indexed_status=indexed_status)
+                                   indexed_status=indexed_status,
+                                   ids_filter=ids_filter)
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
@@ -241,7 +242,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         has_jc=None, jc_presenter=None, jc_year=None,
                         has_pp=None, pp_id=None,
                         abstract_status=None,
-                        indexed_status=None):
+                        indexed_status=None,
+                        ids_filter=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -255,7 +257,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # Hard filter by explicit article-id list (powers the "Ver sólo
     # seleccionados" toggle in the bulk bar). An empty list naturally
     # yields zero rows since ANY('{}') matches nothing.
-    if ids_param:
+    if ids_filter:
         conditions.append("id::text = ANY(:ids_filter)")
         params["ids_filter"] = ids_filter
 
