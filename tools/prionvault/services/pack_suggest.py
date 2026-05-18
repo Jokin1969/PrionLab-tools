@@ -251,7 +251,7 @@ def suggest_internal(pack: dict, *, top_k: int = 10,
                 SELECT c.article_id, MIN(c.embedding <=> q.v) AS distance
                   FROM article_chunk c, q
                  WHERE c.embedding IS NOT NULL
-                   AND c.article_id <> ALL(:exclude)
+                   AND c.article_id <> ALL(CAST(:exclude AS uuid[]))
                  GROUP BY c.article_id
                  ORDER BY distance ASC
                  LIMIT :pool
