@@ -364,6 +364,10 @@
             <option value="year_desc">Year (newest)</option>
             <option value="year_asc">Year (oldest)</option>
             <option value="title_asc">Title A → Z</option>
+            <option value="authors_asc">Autor A → Z</option>
+            <option value="authors_desc">Autor Z → A</option>
+            <option value="journal_asc">Revista A → Z</option>
+            <option value="journal_desc">Revista Z → A</option>
           </select>
         </label>
 
@@ -437,20 +441,20 @@
           </select>
         </label>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Journal Club
-          <select id="filter-has-jc" class="pv-filter-input">
-            <option value="">cualquiera</option>
-            <option value="1">sí — presentados</option>
-            <option value="0">no — sin JC</option>
-          </select>
-        </label>
+        <button id="btn-filter-has-jc" type="button"
+                title="Mostrar sólo los artículos con presentación en Journal Club. Pulsa otra vez para ver todos."
+                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
+                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
+                       gap:5px;transition:all 0.15s;white-space:nowrap;">
+          <span style="font-size:11px;">📚</span>
+          <span>Sólo JC</span>
+        </button>
 
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          JC presentador
+          Presentador
           <input type="text" id="filter-jc-presenter" class="pv-filter-input"
                  placeholder="contiene…" style="width:140px;"
-                 title="Filtra por subcadena en el nombre del presentador (case-insensitive).">
+                 title="Filtra por subcadena en el nombre del presentador del Journal Club (case-insensitive).">
         </label>
 
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">

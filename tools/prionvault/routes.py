@@ -426,11 +426,21 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     sort_map = {
-        "added_desc": "created_at DESC NULLS LAST",
-        "added_asc":  "created_at ASC NULLS FIRST",
-        "year_desc":  "year DESC NULLS LAST",
-        "year_asc":   "year ASC NULLS FIRST",
-        "title_asc":  "title ASC",
+        "added_desc":    "created_at DESC NULLS LAST",
+        "added_asc":     "created_at ASC NULLS FIRST",
+        "year_desc":     "year DESC NULLS LAST",
+        "year_asc":      "year ASC NULLS FIRST",
+        "title_asc":     "lower(title) ASC",
+        # Authors / journal collation: use lower() + NULLS LAST so the
+        # blanks settle at the bottom regardless of direction, and the
+        # comparison is case-insensitive ("Aguzzi" sorts with "aguzzi").
+        # Authors field is semicolon-separated; the natural sort by the
+        # first surname falls out of the ordinary lexicographic order
+        # since that surname is the first token.
+        "authors_asc":   "lower(authors) ASC NULLS LAST",
+        "authors_desc":  "lower(authors) DESC NULLS LAST",
+        "journal_asc":   "lower(journal) ASC NULLS LAST",
+        "journal_desc":  "lower(journal) DESC NULLS LAST",
     }
     order = sort_map.get(sort, "created_at DESC NULLS LAST")
 

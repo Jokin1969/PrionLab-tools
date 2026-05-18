@@ -5193,12 +5193,27 @@
       state.page = 1;
       loadArticles();
     });
-    document.getElementById('filter-has-jc')?.addEventListener('change', e => {
-      const v = e.target.value;
-      state.hasJc = v === '1' ? true : (v === '0' ? false : null);
-      state.page = 1;
-      loadArticles();
-    });
+    // "Sólo JC" is a toggle: off (default) = no filter; on = show
+    // only articles with at least one Journal Club presentation.
+    // The third state ("only WITHOUT JC") of the old dropdown wasn't
+    // a feature anyone reached for; dropping it for the simpler UX.
+    const jcBtn = document.getElementById('btn-filter-has-jc');
+    if (jcBtn) {
+      const paintJc = () => {
+        const on = state.hasJc === true;
+        jcBtn.style.background    = on ? '#0F3460'   : 'white';
+        jcBtn.style.color         = on ? 'white'     : '#374151';
+        jcBtn.style.borderColor   = on ? '#0F3460'   : '#e5e7eb';
+        jcBtn.style.fontWeight    = on ? '600'       : 'normal';
+      };
+      paintJc();
+      jcBtn.addEventListener('click', () => {
+        state.hasJc = state.hasJc === true ? null : true;
+        state.page = 1;
+        paintJc();
+        loadArticles();
+      });
+    }
     document.getElementById('filter-jc-presenter')?.addEventListener('input',
       debounce(e => {
         state.jcPresenter = e.target.value.trim();
