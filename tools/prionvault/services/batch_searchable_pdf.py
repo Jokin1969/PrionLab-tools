@@ -28,6 +28,7 @@ import os
 import tempfile
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from typing import Optional
 
@@ -41,6 +42,12 @@ logger = logging.getLogger(__name__)
 # the worker interruptible by the Stop flag without hurting throughput.
 _BETWEEN_PAPERS_SLEEP_S = 0.4
 
+# How many per-paper outcome events the modal shows. In-memory ring
+# buffer, gone on restart — for a persistent audit we'd need a DB
+# table, but for "did this paper succeed, get skipped, or fail and
+# why?" during a single batch session this is enough.
+_EVENT_LOG_MAX = 500
+
 _state = {
     "running":           False,
     "started_at":        None,
@@ -53,16 +60,50 @@ _state = {
     "current_article":   None,
     "last_error":        None,
     "bytes_uploaded":    0,
+    # Per-paper outcomes — appended in chronological order. Each entry:
+    #   { "at": iso-utc, "article_id": str, "title": str,
+    #     "outcome": "done|skipped|failed",
+    #     "stage":   "download|ocr|upload|persist" | None,
+    #     "reason":  short error string when outcome=failed }
+    "events":            deque(maxlen=_EVENT_LOG_MAX),
 }
 _lock = threading.Lock()
 _thread: Optional[threading.Thread] = None
 
 
+def _log_event(article_id, title: str, outcome: str, *,
+               stage: Optional[str] = None,
+               reason: Optional[str] = None) -> None:
+    """Append a per-paper outcome to the in-memory event log."""
+    entry = {
+        "at":         datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "article_id": str(article_id) if article_id else None,
+        "title":      (title or "")[:180],
+        "outcome":    outcome,
+        "stage":      stage,
+        "reason":     (reason[:240] if isinstance(reason, str) else None),
+    }
+    with _lock:
+        _state["events"].append(entry)
+
+
 def get_status() -> dict:
     with _lock:
         snap = dict(_state)
+        # The deque is not JSON-serialisable as-is; flatten to a list
+        # newest-first so the UI can drop it straight into the log
+        # panel without re-sorting.
+        snap["events"] = list(reversed(snap.get("events") or ()))
     snap["library_stats"] = _library_stats()
     return snap
+
+
+def clear_events() -> None:
+    """Reset the in-memory event log. Used by the modal's "Limpiar log"
+    button so the operator can start a fresh trail without restarting
+    the whole batch."""
+    with _lock:
+        _state["events"].clear()
 
 
 def _library_stats() -> dict:
@@ -112,6 +153,9 @@ def start_batch(*, viewer_user_id=None,
             "last_error":      None,
             "bytes_uploaded":  0,
         })
+        # Don't clear the event log on start — the operator may have
+        # paused, looked at the log, and resumed. There's a dedicated
+        # "Limpiar log" action for clearing.
 
     _thread = threading.Thread(
         target=_run_batch,
@@ -309,10 +353,12 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
         except Exception as exc:
             logger.warning("batch_searchable: download failed for %s: %s",
                            article_id, exc)
+            reason = str(exc)
             with _lock:
                 _state["failed"] += 1
-                _state["last_error"] = (
-                    f"{title[:80]} — download: {str(exc)[:160]}")
+                _state["last_error"] = f"{title[:80]} — download: {reason[:160]}"
+            _log_event(article_id, title, "failed",
+                       stage="download", reason=reason)
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
 
@@ -330,6 +376,8 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                 logger.warning("batch_searchable: mark-only update failed: %s", exc)
             with _lock:
                 _state["skipped"] += 1
+            _log_event(article_id, title, "skipped",
+                       reason="ya tenía capa de texto")
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
 
@@ -337,6 +385,8 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
             with _lock:
                 _state["failed"] += 1
                 _state["last_error"] = f"{title[:80]} — {status}"
+            _log_event(article_id, title, "failed",
+                       stage="ocr", reason=status)
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
 
@@ -345,10 +395,12 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
         except Exception as exc:
             logger.warning("batch_searchable: upload failed for %s: %s",
                            article_id, exc)
+            reason = str(exc)
             with _lock:
                 _state["failed"] += 1
-                _state["last_error"] = (
-                    f"{title[:80]} — upload: {str(exc)[:160]}")
+                _state["last_error"] = f"{title[:80]} — upload: {reason[:160]}"
+            _log_event(article_id, title, "failed",
+                       stage="upload", reason=reason)
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
 
@@ -364,9 +416,12 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
         except Exception as exc:
             logger.exception("batch_searchable: persist failed for %s",
                              article_id)
+            reason = str(exc)
             with _lock:
                 _state["failed"] += 1
-                _state["last_error"] = f"persist: {str(exc)[:160]}"
+                _state["last_error"] = f"persist: {reason[:160]}"
+            _log_event(article_id, title, "failed",
+                       stage="persist", reason=reason)
             time.sleep(_BETWEEN_PAPERS_SLEEP_S)
             continue
 
@@ -395,6 +450,8 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
         with _lock:
             _state["processed"]      += 1
             _state["bytes_uploaded"] += len(new_bytes)
+        _log_event(article_id, title, "done",
+                   reason=f"{len(new_bytes):,} bytes subidos")
 
         time.sleep(_BETWEEN_PAPERS_SLEEP_S)
 

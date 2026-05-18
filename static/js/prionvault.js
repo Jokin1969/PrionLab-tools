@@ -8114,6 +8114,8 @@
         errorEl.style.display = 'none';
       }
 
+      _renderBspEventLog(s.events || []);
+
       countersEl.textContent = (s.processed || 0) > 0
         ? `Sesión: ${fmtMB(s.bytes_uploaded)} MB subidos a Dropbox`
         : '';
@@ -8150,6 +8152,87 @@
         errorEl.textContent = 'No se pudo detener: ' + e.message;
       }
     });
+
+    // Per-paper log controls
+    const clearLogBtn = document.getElementById('pv-bsp-log-clear');
+    if (clearLogBtn) clearLogBtn.addEventListener('click', async () => {
+      if (!confirm('Vaciar el log de esta sesión? (los contadores procesados/fallidos no se tocan)')) return;
+      try {
+        await api('/admin/batch-searchable/clear-events', { method: 'POST' });
+        refresh();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    });
+
+    const dlLogBtn = document.getElementById('pv-bsp-log-download');
+    if (dlLogBtn) dlLogBtn.addEventListener('click', async () => {
+      try {
+        const s = await api('/admin/batch-searchable/status');
+        _downloadBspLogCsv(s.events || []);
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    });
+  }
+
+  // ── Render helpers for the batch-searchable per-paper log ─────────────
+  function _renderBspEventLog(events) {
+    const wrap   = document.getElementById('pv-bsp-log-wrap');
+    const list   = document.getElementById('pv-bsp-log');
+    const counter = document.getElementById('pv-bsp-log-count');
+    if (!wrap || !list) return;
+    if (!events.length) {
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = 'block';
+    counter.textContent = `(${events.length})`;
+
+    list.innerHTML = events.map(e => {
+      // Outcome → colour + glyph + Spanish label
+      const map = {
+        done:    { glyph: '✓', color: '#15803d', bg: '#f0fdf4', label: 'OK' },
+        skipped: { glyph: '⟳', color: '#0f766e', bg: '#f0fdfa', label: 'ya legible' },
+        failed:  { glyph: '✗', color: '#b91c1c', bg: '#fef2f2', label: 'error' },
+      };
+      const m = map[e.outcome] || { glyph: '·', color: '#6b7280', bg: '#f9fafb', label: e.outcome };
+      const stage = e.stage ? ` (${e.stage})` : '';
+      const reason = e.reason ? ` — ${e.reason}` : '';
+      const t = (e.at || '').slice(11, 19);   // HH:MM:SS
+      return `
+        <div style="display:flex;gap:8px;padding:3px 8px;border-bottom:1px solid #f3f4f6;
+                    background:${m.bg};align-items:baseline;">
+          <span style="color:${m.color};font-weight:700;flex-shrink:0;width:14px;">${m.glyph}</span>
+          <span style="color:#9ca3af;flex-shrink:0;width:62px;">${esc(t)}</span>
+          <span style="color:${m.color};font-weight:600;flex-shrink:0;width:80px;">${esc(m.label)}${esc(stage)}</span>
+          <span style="color:#374151;flex:1;min-width:0;overflow:hidden;
+                       text-overflow:ellipsis;white-space:nowrap;"
+                title="${esc((e.title || '') + reason)}">${esc(e.title || '(sin título)')}${esc(reason)}</span>
+        </div>`;
+    }).join('');
+  }
+
+  function _downloadBspLogCsv(events) {
+    if (!events.length) { alert('Log vacío.'); return; }
+    const rows = [['at_utc', 'article_id', 'title', 'outcome', 'stage', 'reason']];
+    const csvEsc = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    events.forEach(e => rows.push([e.at, e.article_id, e.title, e.outcome, e.stage, e.reason]));
+    const csv = rows.map(r => r.map(csvEsc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `prionvault-searchable-log-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   document.addEventListener('DOMContentLoaded', init);

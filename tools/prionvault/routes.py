@@ -4514,6 +4514,16 @@ def api_batch_searchable_stop():
     return jsonify({"ok": True, "status": batch_searchable_pdf.stop_batch()})
 
 
+@prionvault_bp.route("/api/admin/batch-searchable/clear-events", methods=["POST"])
+@admin_required
+def api_batch_searchable_clear_events():
+    """Drop the in-memory per-paper outcome log. Counts (processed /
+    failed / skipped) are NOT reset — only the verbose event list."""
+    from .services import batch_searchable_pdf
+    batch_searchable_pdf.clear_events()
+    return jsonify({"ok": True, "status": batch_searchable_pdf.get_status()})
+
+
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():
