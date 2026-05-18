@@ -484,6 +484,76 @@ def api_send_review(pkg_id):
     })
 
 
+# ── AI-assisted "what else fits in this pack?" ───────────────────────────────
+
+@prionpacks_bp.route('/api/packages/<pkg_id>/suggest-internal', methods=['POST'])
+@login_required
+def api_suggest_internal(pkg_id):
+    """Voyage + pgvector + LLM rationale: recommend PrionVault articles
+    that fit this pack thematically. The pack's own member articles
+    are excluded from the result set."""
+    from tools.prionvault.services import pack_suggest
+    from tools.prionvault.services.llm_pool import NotConfigured
+
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    provider = (data.get('provider') or 'anthropic').strip().lower()
+    try:
+        top_k = max(1, min(40, int(data.get('top_k') or 10)))
+    except (TypeError, ValueError):
+        top_k = 10
+    rerank   = bool(data.get('rerank', True))
+    rationale = bool(data.get('rationale', True))
+
+    try:
+        result = pack_suggest.suggest_internal(
+            pkg, top_k=top_k, rerank=rerank, rationale=rationale,
+            provider=provider,
+        )
+    except NotConfigured as exc:
+        return jsonify({'error': 'provider_not_configured', 'detail': str(exc)}), 503
+    except Exception as exc:
+        logger.exception('suggest-internal failed for %s', pkg_id)
+        return jsonify({'error': 'internal_error', 'detail': str(exc)[:300]}), 500
+    return jsonify(result)
+
+
+@prionpacks_bp.route('/api/packages/<pkg_id>/suggest-pubmed', methods=['POST'])
+@login_required
+def api_suggest_pubmed(pkg_id):
+    """LLM-extracted PubMed E-Search queries + dedup + rationale. The
+    result excludes PMIDs already present in PrionVault — that subset
+    is what suggest-internal covers."""
+    from tools.prionvault.services import pack_suggest
+    from tools.prionvault.services.llm_pool import NotConfigured
+
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    provider = (data.get('provider') or 'anthropic').strip().lower()
+    try:
+        top_k = max(1, min(40, int(data.get('top_k') or 15)))
+    except (TypeError, ValueError):
+        top_k = 15
+    rationale = bool(data.get('rationale', True))
+
+    try:
+        result = pack_suggest.suggest_pubmed(
+            pkg, top_k=top_k, rationale=rationale, provider=provider,
+        )
+    except NotConfigured as exc:
+        return jsonify({'error': 'provider_not_configured', 'detail': str(exc)}), 503
+    except Exception as exc:
+        logger.exception('suggest-pubmed failed for %s', pkg_id)
+        return jsonify({'error': 'internal_error', 'detail': str(exc)[:300]}), 500
+    return jsonify(result)
+
+
 # ── Dropbox Backup ────────────────────────────────────────────────────────────
 
 @prionpacks_bp.route('/api/backup', methods=['POST'])

@@ -689,6 +689,10 @@ const PrionPacks = (() => {
     _applyMemberColorToBadge(idBadge, !isNew ? pkg.responsible : null);
     document.getElementById('btn-delete-package').style.display = isNew ? 'none' : '';
     document.getElementById('btn-send-review').style.display    = isNew ? 'none' : '';
+    // AI-suggest only makes sense on saved packs (we need the pkg_id
+    // to load the full reference list server-side).
+    const sgBtn = document.getElementById('btn-suggest-articles');
+    if (sgBtn) sgBtn.style.display = isNew ? 'none' : '';
     _updateEditorNotesBtn(isNew ? null : pkg);
     const vBadge = document.getElementById('editor-version-badge');
     if (!isNew && pkg.docxVersion) {
@@ -3439,6 +3443,7 @@ ${refsText}`;
     document.getElementById('btn-back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('btn-save-package').addEventListener('click', savePackage);
     document.getElementById('btn-delete-package').addEventListener('click', deletePackage);
+    _wireSuggestModal();
 
     // Alternative titles
     document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
@@ -4650,6 +4655,281 @@ ${refsText}`;
     toast, _recalcScore, _updateFindingGapIndicators, _scrollToGap,
     _renumberGaps, _refreshAllJumpButtons,
   };
+
+  // ── AI Suggest more articles ────────────────────────────────────────
+  // Opens the modal in the current pack's context and runs either the
+  // internal (PrionVault catalog) or the PubMed branch. Each call goes
+  // through Voyage + LLM, so it's slow (5-20s) — the panel shows a
+  // spinner with the current step.
+
+  let _sgTab = 'internal';   // 'internal' | 'pubmed'
+
+  function _wireSuggestModal() {
+    const btn       = document.getElementById('btn-suggest-articles');
+    const modal     = document.getElementById('pp-suggest-modal');
+    const closeBtn  = document.getElementById('pp-sg-close');
+    const backdrop  = modal && modal.querySelector('.pp-suggest-backdrop');
+    const tabInt    = document.getElementById('pp-sg-tab-internal');
+    const tabPub    = document.getElementById('pp-sg-tab-pubmed');
+    const runBtn    = document.getElementById('pp-sg-run');
+    if (!btn || !modal) return;
+
+    const open  = () => {
+      modal.style.display = 'flex';
+      const pid = (typeof getCurrentPackageId === 'function' && getCurrentPackageId())
+                || document.getElementById('editor-id-badge')?.textContent
+                || '';
+      document.getElementById('pp-sg-packid').textContent = pid;
+      document.getElementById('pp-sg-results').innerHTML =
+        '<div style="color:#9ca3af;text-align:center;padding:32px 12px;font-size:13px;">' +
+        'Pulsa <strong>Buscar</strong> para que la IA proponga artículos relacionados.</div>';
+      document.getElementById('pp-sg-profile-text').textContent = '';
+      document.getElementById('pp-sg-profile-meta').textContent = '—';
+      _sgSetTab('internal');
+    };
+    const close = () => { modal.style.display = 'none'; };
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+
+    tabInt.addEventListener('click', () => _sgSetTab('internal'));
+    tabPub.addEventListener('click', () => _sgSetTab('pubmed'));
+    runBtn.addEventListener('click', _sgRun);
+  }
+
+  function _sgSetTab(tab) {
+    _sgTab = tab;
+    const tabInt = document.getElementById('pp-sg-tab-internal');
+    const tabPub = document.getElementById('pp-sg-tab-pubmed');
+    const on  = { background: 'white', color: '#111827', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' };
+    const off = { background: 'transparent', color: '#374151', boxShadow: 'none' };
+    Object.assign(tabInt.style, tab === 'internal' ? on : off);
+    Object.assign(tabPub.style, tab === 'pubmed'   ? on : off);
+  }
+
+  async function _sgRun() {
+    const pid = (typeof getCurrentPackageId === 'function' && getCurrentPackageId())
+              || document.getElementById('editor-id-badge')?.textContent
+              || '';
+    if (!pid || pid === 'PRP-NEW') {
+      alert('Guarda primero el pack — necesita un id para buscar.');
+      return;
+    }
+    const provider = document.getElementById('pp-sg-provider').value;
+    const results  = document.getElementById('pp-sg-results');
+    const runBtn   = document.getElementById('pp-sg-run');
+    const orig     = runBtn.textContent;
+    runBtn.disabled    = true;
+    runBtn.textContent = '⏳ Buscando…';
+
+    const tab = _sgTab;
+    const endpoint = tab === 'internal'
+      ? `/prionpacks/api/packages/${encodeURIComponent(pid)}/suggest-internal`
+      : `/prionpacks/api/packages/${encodeURIComponent(pid)}/suggest-pubmed`;
+    results.innerHTML =
+      `<div style="color:#6b7280;text-align:center;padding:32px;font-size:13px;">
+         ⏳ ${tab === 'internal'
+              ? 'Embebiendo el perfil del pack con Voyage, buscando en PrionVault y pidiendo a la IA un por-qué para cada candidato…'
+              : 'Extrayendo búsquedas PubMed con la IA, ejecutándolas y filtrando lo que ya tienes…'}
+       </div>`;
+
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, top_k: tab === 'internal' ? 10 : 15 }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        results.innerHTML =
+          `<div style="color:#b91c1c;padding:14px;font-size:13px;">
+             Error: ${_sgEsc(data.error || r.status)}<br>
+             <span style="color:#6b7280;">${_sgEsc(data.detail || '')}</span>
+           </div>`;
+        return;
+      }
+      _sgRender(tab, data, pid);
+    } catch (e) {
+      results.innerHTML =
+        `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error de red: ${_sgEsc(e.message)}</div>`;
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = orig;
+    }
+  }
+
+  function _sgEsc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function _sgRender(tab, data, packId) {
+    // Profile dump (collapsed by default)
+    const prof = data.profile || {};
+    document.getElementById('pp-sg-profile-text').textContent = prof.profile_text || '';
+    document.getElementById('pp-sg-profile-meta').textContent =
+      `${prof.member_count ?? 0} miembros · ${prof.total_chars ?? 0} chars`;
+
+    const items = data.items || [];
+    const results = document.getElementById('pp-sg-results');
+    if (!items.length) {
+      const reason = data.skipped || data.error || 'sin resultados';
+      results.innerHTML =
+        `<div style="color:#9ca3af;text-align:center;padding:32px;font-size:13px;">
+           No hay candidatos. <span style="color:#6b7280;">(${_sgEsc(reason)})</span>
+         </div>`;
+      return;
+    }
+    const header = tab === 'internal'
+      ? `<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
+           ${items.length} candidatos del catálogo, ordenados por relevancia. La IA ha dado una nota 1-5 a cada uno.
+         </div>`
+      : `<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
+           ${items.length} candidatos de PubMed que <strong>no</strong> están en tu PrionVault.
+           Búsquedas usadas: ${(data.queries || []).map(q => `<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">${_sgEsc(q)}</code>`).join(' · ')}
+         </div>`;
+    results.innerHTML = header + items.map(it => _sgCardHtml(tab, it, packId)).join('');
+
+    // Wire per-card actions
+    results.querySelectorAll('.pp-sg-add-internal').forEach(b => {
+      b.addEventListener('click', () => _sgAddInternal(b.dataset.aid, b.dataset.doi, b.dataset.title, packId, b));
+    });
+    results.querySelectorAll('.pp-sg-add-pubmed').forEach(b => {
+      b.addEventListener('click', () => _sgAddPubmed(b.dataset.pmid, b.dataset.title, packId, b));
+    });
+  }
+
+  function _sgCardHtml(tab, it, packId) {
+    const note = parseInt(it.note, 10) || 0;
+    const stars = '★'.repeat(Math.max(0, note)) + '☆'.repeat(Math.max(0, 5 - note));
+    const noteColor = note >= 4 ? '#15803d' : note === 3 ? '#b45309' : note > 0 ? '#9ca3af' : '#9ca3af';
+    const authors = ((it.authors || '').split(';')[0] || '').trim();
+    const year    = it.year ? ` · ${_sgEsc(it.year)}` : '';
+    const journal = it.journal ? ` · ${_sgEsc(it.journal)}` : '';
+
+    const links = [];
+    if (it.doi) {
+      links.push(`<a href="https://doi.org/${_sgEsc(it.doi)}" target="_blank" rel="noopener" style="color:#3730a3;text-decoration:none;font-weight:600;">DOI ↗</a>`);
+    }
+    if (it.pmid || it.pubmed_id) {
+      const p = it.pmid || it.pubmed_id;
+      links.push(`<a href="https://pubmed.ncbi.nlm.nih.gov/${_sgEsc(p)}/" target="_blank" rel="noopener" style="color:#0f766e;text-decoration:none;font-weight:600;">PMID ${_sgEsc(p)} ↗</a>`);
+    }
+
+    let metric = '';
+    if (tab === 'internal') {
+      const simPct = Math.round((parseFloat(it.similarity) || 0) * 100);
+      const rrk = it.rerank_score != null ? ` · rerank ${Number(it.rerank_score).toFixed(2)}` : '';
+      metric = `<span style="font-size:11px;color:#6b7280;">${simPct}% similar${rrk}</span>`;
+    } else {
+      metric = `<span style="font-size:11px;color:#6b7280;">PubMed score ${it.score}</span>`;
+    }
+
+    const actionBtn = tab === 'internal'
+      ? `<button class="pp-sg-add-internal"
+                 data-aid="${_sgEsc(it.id)}" data-doi="${_sgEsc(it.doi || '')}" data-title="${_sgEsc(it.title || '')}"
+                 style="padding:5px 12px;border-radius:6px;border:none;background:#0F3460;color:white;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;">
+           ➕ Añadir al pack
+         </button>`
+      : `<button class="pp-sg-add-pubmed"
+                 data-pmid="${_sgEsc(it.pmid)}" data-title="${_sgEsc(it.title || '')}"
+                 style="padding:5px 12px;border-radius:6px;border:none;background:#0F3460;color:white;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;">
+           ➕ Importar + añadir
+         </button>`;
+
+    return `
+      <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#111827;line-height:1.35;">${_sgEsc(it.title || '(sin título)')}</div>
+            <div style="font-size:11.5px;color:#6b7280;margin-top:2px;">
+              ${_sgEsc(authors)}${year}${journal}
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+            ${note ? `<span style="color:${noteColor};font-size:12.5px;letter-spacing:1px;" title="Nota IA: ${note}/5">${stars}</span>` : ''}
+            ${metric}
+          </div>
+        </div>
+        ${it.why ? `<div style="margin-top:6px;font-size:12px;color:#374151;background:#f9fafb;border-left:3px solid #0F3460;padding:5px 8px;border-radius:3px;line-height:1.5;">
+                       <strong>Por qué:</strong> ${_sgEsc(it.why)}
+                     </div>` : ''}
+        <div style="margin-top:7px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:11.5px;display:flex;gap:8px;align-items:center;">${links.join(' · ')}</span>
+          ${actionBtn}
+        </div>
+      </div>
+    `;
+  }
+
+  async function _sgAddInternal(articleId, doi, title, packId, btn) {
+    // Reuse the existing import-article endpoint with what we have.
+    // It accepts either DOI or PMID free-text; we send the DOI when
+    // we have it (more reliable), else the title.
+    if (!doi && !articleId) {
+      alert('No hay DOI ni id de artículo para añadir.');
+      return;
+    }
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '⏳…';
+    try {
+      const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(packId)}/import-article`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          article: { title, doi, id: articleId },
+          target: 'general',   // default to general; admin can move later
+        }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        btn.style.background = '#15803d';
+        btn.textContent = '✓ Añadido';
+      } else {
+        btn.disabled = false;
+        btn.textContent = orig;
+        alert('No se pudo añadir: ' + (d.reason || d.error || r.status));
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = orig;
+      alert('Error: ' + e.message);
+    }
+  }
+
+  async function _sgAddPubmed(pmid, title, packId, btn) {
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '⏳…';
+    try {
+      const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(packId)}/import-article`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // import-article does its own metadata lookup if given a PMID
+          // alone — the PrionVault catalog ingestion picks it up later.
+          article: { title, pubmed_id: pmid },
+          target: 'general',
+        }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        btn.style.background = '#15803d';
+        btn.textContent = '✓ Añadido al pack';
+      } else {
+        btn.disabled = false;
+        btn.textContent = orig;
+        alert('No se pudo añadir: ' + (d.reason || d.error || r.status));
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = orig;
+      alert('Error: ' + e.message);
+    }
+  }
 })();
 
 document.addEventListener('DOMContentLoaded', PrionPacks.init);
