@@ -4654,7 +4654,8 @@ ${refsText}`;
   // hoisted function declarations near the bottom of the file, hit a
   // ReferenceError when they touch _sgTab from the TDZ. See Sentry
   // issue 2f64cbd8/d2c44e8b.
-  let _sgTab = 'internal';   // 'internal' | 'pubmed'
+  let _sgTab   = 'internal';  // 'internal' | 'pubmed'
+  let _sgScope = 'intro';     // 'intro' | 'discussion'
 
   return {
     init, showDashboard, showEditor,
@@ -4681,6 +4682,8 @@ ${refsText}`;
     const backdrop  = modal && modal.querySelector('.pp-suggest-backdrop');
     const tabInt    = document.getElementById('pp-sg-tab-internal');
     const tabPub    = document.getElementById('pp-sg-tab-pubmed');
+    const scIntro   = document.getElementById('pp-sg-scope-intro');
+    const scDisc    = document.getElementById('pp-sg-scope-discussion');
     const runBtn    = document.getElementById('pp-sg-run');
     if (!btn || !modal) return;
 
@@ -4696,6 +4699,7 @@ ${refsText}`;
       document.getElementById('pp-sg-profile-text').textContent = '';
       document.getElementById('pp-sg-profile-meta').textContent = '—';
       _sgSetTab('internal');
+      _sgSetScope('intro');
     };
     const close = () => { modal.style.display = 'none'; };
     btn.addEventListener('click', open);
@@ -4704,6 +4708,8 @@ ${refsText}`;
 
     tabInt.addEventListener('click', () => _sgSetTab('internal'));
     tabPub.addEventListener('click', () => _sgSetTab('pubmed'));
+    scIntro && scIntro.addEventListener('click', () => _sgSetScope('intro'));
+    scDisc  && scDisc .addEventListener('click', () => _sgSetScope('discussion'));
     runBtn.addEventListener('click', _sgRun);
   }
 
@@ -4715,6 +4721,17 @@ ${refsText}`;
     const off = { background: 'transparent', color: '#374151', boxShadow: 'none' };
     Object.assign(tabInt.style, tab === 'internal' ? on : off);
     Object.assign(tabPub.style, tab === 'pubmed'   ? on : off);
+  }
+
+  function _sgSetScope(scope) {
+    _sgScope = scope;
+    const scIntro = document.getElementById('pp-sg-scope-intro');
+    const scDisc  = document.getElementById('pp-sg-scope-discussion');
+    if (!scIntro || !scDisc) return;
+    const on  = { background: 'white', color: '#111827', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' };
+    const off = { background: 'transparent', color: '#374151', boxShadow: 'none' };
+    Object.assign(scIntro.style, scope === 'intro'      ? on : off);
+    Object.assign(scDisc .style, scope === 'discussion' ? on : off);
   }
 
   async function _sgRun() {
@@ -4748,7 +4765,11 @@ ${refsText}`;
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, top_k: tab === 'internal' ? 10 : 15 }),
+        body: JSON.stringify({
+          provider,
+          scope:  _sgScope,
+          top_k:  tab === 'internal' ? 10 : 15,
+        }),
       });
       const data = await r.json();
       if (!r.ok) {
@@ -4938,8 +4959,12 @@ ${refsText}`;
   // Internal tab: the candidate is already in PrionVault, so we just
   // need its UUID + the target list. import-article expects:
   //   { "article_id": "<uuid>", "targets": ["intro" | "general"] }
+  // The target follows the current Scope toggle so an "Introducción"
+  // suggestion lands in `introReferences` and a "Discusión" one in
+  // `references`.
   async function _sgAddInternal(articleId, doi, title, packId, btn) {
     if (!articleId) { alert('No hay id de artículo.'); return; }
+    const target = _sgScope === 'intro' ? 'intro' : 'general';
     btn.disabled = true;
     const orig = btn.textContent;
     btn.textContent = '⏳…';
@@ -4947,7 +4972,7 @@ ${refsText}`;
       const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(packId)}/import-article`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ article_id: articleId, targets: ['general'] }),
+        body: JSON.stringify({ article_id: articleId, targets: [target] }),
       });
       const d = await r.json();
       if (r.ok && d.ok) {
@@ -5015,10 +5040,11 @@ ${refsText}`;
 
     btn.textContent = '⏳ añadiendo…';
     try {
+      const target = _sgScope === 'intro' ? 'intro' : 'general';
       const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(packId)}/import-article`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ article_id: articleId, targets: ['general'] }),
+        body: JSON.stringify({ article_id: articleId, targets: [target] }),
       });
       const d = await r.json();
       if (r.ok && d.ok) {

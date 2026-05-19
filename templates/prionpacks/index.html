@@ -1076,7 +1076,7 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
               style="background:none;border:none;font-size:20px;color:#6b7280;cursor:pointer;line-height:1;">×</button>
     </div>
 
-    <!-- Tabs + provider selector + Run button -->
+    <!-- Tabs + scope + provider selector + Run button -->
     <div style="padding:12px 24px;border-bottom:1px solid #f3f4f6;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <div role="tablist" style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:8px;">
         <button id="pp-sg-tab-internal" role="tab"
@@ -1086,6 +1086,20 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
         <button id="pp-sg-tab-pubmed" role="tab"
                 style="padding:6px 14px;border:none;background:transparent;color:#374151;font-size:12.5px;font-weight:600;border-radius:6px;cursor:pointer;">
           🌐 PubMed
+        </button>
+      </div>
+      <!-- Scope: which section of the pack drives the search AND where
+           accepted suggestions are added. Defaults to Introducción so
+           the operator can chain "fill the intro first → then refs". -->
+      <div role="tablist" title="Ámbito: condiciona el contexto enviado a la IA y dónde se guardarán los artículos aceptados."
+           style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:8px;">
+        <button id="pp-sg-scope-intro" role="tab"
+                style="padding:6px 12px;border:none;background:white;color:#111827;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+          📝 Introducción
+        </button>
+        <button id="pp-sg-scope-discussion" role="tab"
+                style="padding:6px 12px;border:none;background:transparent;color:#374151;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;">
+          💬 Discusión
         </button>
       </div>
       <label style="font-size:12px;color:#6b7280;display:flex;align-items:center;gap:6px;">

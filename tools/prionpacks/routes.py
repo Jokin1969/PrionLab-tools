@@ -501,6 +501,7 @@ def api_suggest_internal(pkg_id):
 
     data = request.get_json(silent=True) or {}
     provider = (data.get('provider') or 'anthropic').strip().lower()
+    scope    = (data.get('scope') or 'all').strip().lower()
     try:
         top_k = max(1, min(40, int(data.get('top_k') or 10)))
     except (TypeError, ValueError):
@@ -511,7 +512,7 @@ def api_suggest_internal(pkg_id):
     try:
         result = pack_suggest.suggest_internal(
             pkg, top_k=top_k, rerank=rerank, rationale=rationale,
-            provider=provider,
+            provider=provider, scope=scope,
         )
     except NotConfigured as exc:
         return jsonify({'error': 'provider_not_configured', 'detail': str(exc)}), 503
@@ -536,6 +537,7 @@ def api_suggest_pubmed(pkg_id):
 
     data = request.get_json(silent=True) or {}
     provider = (data.get('provider') or 'anthropic').strip().lower()
+    scope    = (data.get('scope') or 'all').strip().lower()
     try:
         top_k = max(1, min(40, int(data.get('top_k') or 15)))
     except (TypeError, ValueError):
@@ -545,6 +547,7 @@ def api_suggest_pubmed(pkg_id):
     try:
         result = pack_suggest.suggest_pubmed(
             pkg, top_k=top_k, rationale=rationale, provider=provider,
+            scope=scope,
         )
     except NotConfigured as exc:
         return jsonify({'error': 'provider_not_configured', 'detail': str(exc)}), 503

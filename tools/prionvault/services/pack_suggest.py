@@ -79,12 +79,19 @@ def _extract_dois(value) -> list[str]:
     return [m.group(0).rstrip(".,;").lower() for m in _DOI_RE.finditer(value)]
 
 
-def _pack_doi_set(pack: dict) -> set[str]:
+def _pack_doi_set(pack: dict, scope: str = "all") -> set[str]:
+    """DOIs that should be treated as "already in the pack" for the
+    given scope. `intro` → only intro refs, `discussion` → only general
+    refs, anything else (or 'all') → both. The exclude list is built
+    from this so a suggestion never re-proposes a paper already cited
+    in the same section the operator is asking about."""
     dois: set[str] = set()
-    for ref in (pack.get("introReferences") or []):
-        dois.update(_extract_dois(ref))
-    for ref in (pack.get("references") or []):
-        dois.update(_extract_dois(ref))
+    if scope in ("all", "intro"):
+        for ref in (pack.get("introReferences") or []):
+            dois.update(_extract_dois(ref))
+    if scope in ("all", "discussion"):
+        for ref in (pack.get("references") or []):
+            dois.update(_extract_dois(ref))
     return dois
 
 
@@ -106,34 +113,58 @@ def _load_member_articles(dois: Iterable[str]) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def build_profile(pack: dict) -> dict:
-    """Compose the thematic profile of `pack`:
+def build_profile(pack: dict, scope: str = "all") -> dict:
+    """Compose the thematic profile of `pack`. Title and description
+    are always included because both anchor the topic; `scope` picks
+    which section drives the rest:
 
-      - title, introduction, discussion (verbatim, truncated)
-      - per-member article: 1-line header + summary_ai (or abstract
-        if no AI summary yet), truncated
+      - 'intro'      : pack title + description + introduction body +
+                       per-member summary of the articles cited in
+                       `introReferences`.
+      - 'discussion' : pack title + description + discussion body +
+                       per-member summary of articles cited in
+                       `references`.
+      - 'all' (or anything else): both sections + every cited article
+                       (legacy behaviour — used by tooling that doesn't
+                       set the field explicitly).
 
-    Returns {profile_text, member_article_ids, total_chars}.
-    member_article_ids is what suggest_internal uses to exclude the
-    pack's own papers from the recommendation pool.
+    Returns {profile_text, member_article_ids, total_chars, scope}.
+    member_article_ids drives the exclusion in suggest_internal so a
+    suggestion never re-proposes an article already cited within the
+    same scope.
     """
+    scope = (scope or "all").lower().strip()
+    if scope not in {"all", "intro", "discussion"}:
+        scope = "all"
+
     parts = []
     title = (pack.get("title") or "").strip()
     if title:
         parts.append(f"# Pack: {title}\n")
 
-    intro = (pack.get("introduction") or "").strip()
-    if intro:
-        parts.append("## Introducción\n" + intro[:6000] + "\n")
+    # The description usually carries the *objective* of the manuscript
+    # — short but high signal, so we keep it on every scope.
+    desc = (pack.get("description") or "").strip()
+    if desc:
+        parts.append("## Descripción del pack\n" + desc[:4000] + "\n")
 
-    disc = (pack.get("discussion") or "").strip()
-    if disc:
-        parts.append("## Discusión\n" + disc[:6000] + "\n")
+    if scope in ("all", "intro"):
+        intro = (pack.get("introduction") or "").strip()
+        if intro:
+            parts.append("## Introducción\n" + intro[:6000] + "\n")
+    if scope in ("all", "discussion"):
+        disc = (pack.get("discussion") or "").strip()
+        if disc:
+            parts.append("## Discusión\n" + disc[:6000] + "\n")
 
-    members = _load_member_articles(_pack_doi_set(pack))
+    members = _load_member_articles(_pack_doi_set(pack, scope=scope))
     member_ids: list[str] = []
     if members:
-        parts.append("## Artículos en el pack\n")
+        section_label = {
+            "intro":      "Artículos citados en la introducción",
+            "discussion": "Artículos citados en la discusión",
+        }.get(scope, "Artículos en el pack")
+        parts.append(f"## {section_label}\n")
         for m in members:
             member_ids.append(str(m["id"]))
             authors = (m.get("authors") or "").split(";")[0].strip()
@@ -155,6 +186,7 @@ def build_profile(pack: dict) -> dict:
         "member_article_ids": member_ids,
         "member_count":       len(members),
         "total_chars":        len(profile_text),
+        "scope":              scope,
     }
 
 
@@ -231,9 +263,12 @@ def _annotate_with_rationale(profile_text: str, candidates: list[dict],
 
 def suggest_internal(pack: dict, *, top_k: int = 10,
                      rerank: bool = True, rationale: bool = True,
-                     provider: str = "anthropic") -> dict:
-    """Search PrionVault for articles that fit this pack thematically."""
-    profile = build_profile(pack)
+                     provider: str = "anthropic",
+                     scope: str = "all") -> dict:
+    """Search PrionVault for articles that fit this pack thematically.
+    `scope` is forwarded to the profile builder so the operator can
+    target the introduction or the discussion separately."""
+    profile = build_profile(pack, scope=scope)
     if not profile["profile_text"].strip():
         return {"items": [], "profile": profile, "skipped": "empty_profile"}
 
@@ -480,10 +515,11 @@ def _already_in_prionvault(pmids: list[str]) -> set[str]:
 
 def suggest_pubmed(pack: dict, *, top_k: int = 15,
                    rationale: bool = True,
-                   provider: str = "anthropic") -> dict:
+                   provider: str = "anthropic",
+                   scope: str = "all") -> dict:
     """Search PubMed for articles relevant to this pack but NOT in
-    PrionVault yet."""
-    profile = build_profile(pack)
+    PrionVault yet. `scope` is forwarded to the profile builder."""
+    profile = build_profile(pack, scope=scope)
     if not profile["profile_text"].strip():
         return {"items": [], "profile": profile, "skipped": "empty_profile"}
 
