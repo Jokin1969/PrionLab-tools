@@ -709,7 +709,10 @@ def _run_loop() -> None:
     while not _stop.is_set():
         cfg = _config()
         if cfg["disabled"]:
-            _stop.wait(timeout=cfg["poll_seconds"])
+            # Sleep on _force so an env-flip + "Refrescar" click wakes
+            # us instead of waiting a full poll cycle.
+            _force.wait(timeout=cfg["poll_seconds"])
+            _force.clear()
             continue
 
         was_forced = _force.is_set()
@@ -728,10 +731,12 @@ def _run_loop() -> None:
             except Exception:
                 logger.exception("pubmed_inventory: harvest_once crashed")
 
-        # Short sleep on force, long sleep on poll cycle.
-        if _force.is_set():
-            continue
-        _stop.wait(timeout=cfg["poll_seconds"])
+        # Sleep on _force so the modal's "Refrescar PubMed" button
+        # wakes us immediately instead of waiting up to a full hour.
+        # threading.Event.wait returns True if the event was set,
+        # False on timeout — either way we loop, but the wake on
+        # force lets the operator drive the daemon interactively.
+        _force.wait(timeout=cfg["poll_seconds"])
 
 
 def start_inventory_daemon() -> Optional[threading.Thread]:

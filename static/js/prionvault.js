@@ -8995,17 +8995,24 @@
 
       if (s.last_run_at && !p.running) {
         const when = new Date(s.last_run_at).toLocaleString();
+        const isErr = s.last_status === 'error';
         let extra = `Último escaneo: ${when}`;
-        if (s.last_status === 'error') extra += ' (error)';
+        if (isErr) extra += ' (error)';
         const summary = s.last_summary || {};
         if (summary.pmids_inserted != null) {
           extra += ` · ${summary.pmids_inserted} nuevos, ${summary.pmids_updated} actualizados`;
         }
         progEl.style.display = 'block';
-        progEl.style.background = s.last_status === 'error' ? '#fef2f2' : '#f9fafb';
-        progEl.style.borderColor = s.last_status === 'error' ? '#fecaca' : '#e5e7eb';
-        progEl.style.color = '#6b7280';
-        progEl.textContent = extra;
+        progEl.style.background = isErr ? '#fef2f2' : '#f9fafb';
+        progEl.style.borderColor = isErr ? '#fecaca' : '#e5e7eb';
+        progEl.style.color = isErr ? '#991b1b' : '#6b7280';
+        // Show the actual error text instead of just "(error)" so the
+        // operator (and the maintainer reading Sentry) can tell at a
+        // glance whether PubMed rate-limited us, a parser blew up, or
+        // the row simply isn't valid.
+        progEl.innerHTML = isErr && s.last_error
+          ? `${esc(extra)}<div style="margin-top:4px;font-family:ui-monospace,monospace;font-size:11px;color:#7f1d1d;white-space:pre-wrap;word-break:break-word;">${esc(s.last_error)}</div>`
+          : esc(extra);
       }
     }
 

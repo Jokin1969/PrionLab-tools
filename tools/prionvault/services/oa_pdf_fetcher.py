@@ -337,12 +337,15 @@ def _run_loop() -> None:
     while not _stop.is_set():
         if os.environ.get("PRIONVAULT_OA_FETCHER_DISABLED",
                           "").strip() in ("1", "true", "True"):
-            _stop.wait(timeout=_POLL_SECONDS)
+            _force.wait(timeout=_POLL_SECONDS)
+            _force.clear()
             continue
 
-        # Wait for force OR poll cycle.
+        # Wait for force OR poll cycle. Use _force.wait so the inventory
+        # import endpoint's request_drain_now() actually wakes us up
+        # — _stop.wait only fires on shutdown.
         if not _force.is_set():
-            _stop.wait(timeout=_POLL_SECONDS)
+            _force.wait(timeout=_POLL_SECONDS)
         _force.clear()
         if _stop.is_set():
             break
