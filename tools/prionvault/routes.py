@@ -4764,6 +4764,90 @@ def api_batch_searchable_clear_events():
     return jsonify({"ok": True, "status": batch_searchable_pdf.get_status()})
 
 
+# ── PDF ↔ metadata verifier ─────────────────────────────────────────────────
+
+@prionvault_bp.route("/api/admin/verify-metadata/status", methods=["GET"])
+@admin_required
+def api_verify_metadata_status():
+    from .services import pdf_metadata_verifier
+    return jsonify(pdf_metadata_verifier.get_status())
+
+
+@prionvault_bp.route("/api/admin/verify-metadata/start", methods=["POST"])
+@admin_required
+def api_verify_metadata_start():
+    from .services import pdf_metadata_verifier
+    body     = request.get_json(silent=True) or {}
+    provider = (body.get("provider") or "openai").strip().lower() or None
+    recheck  = bool(body.get("recheck"))
+    try:
+        limit = int(body.get("limit")) if body.get("limit") else None
+    except (TypeError, ValueError):
+        limit = None
+    snap = pdf_metadata_verifier.start_batch(
+        llm_provider=provider, limit=limit, recheck=recheck,
+    )
+    if snap is None:
+        return jsonify({"ok": False, "error": "already_running",
+                        "status": pdf_metadata_verifier.get_status()}), 409
+    return jsonify({"ok": True, "status": snap})
+
+
+@prionvault_bp.route("/api/admin/verify-metadata/stop", methods=["POST"])
+@admin_required
+def api_verify_metadata_stop():
+    from .services import pdf_metadata_verifier
+    return jsonify({"ok": True, "status": pdf_metadata_verifier.stop_batch()})
+
+
+@prionvault_bp.route("/api/admin/verify-metadata/clear-events", methods=["POST"])
+@admin_required
+def api_verify_metadata_clear_events():
+    from .services import pdf_metadata_verifier
+    pdf_metadata_verifier.clear_events()
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/admin/verify-metadata/list", methods=["GET"])
+@admin_required
+def api_verify_metadata_list():
+    """Paginated listing of articles by verification status."""
+    from .services import pdf_metadata_verifier
+    status = (request.args.get("status") or "suspect").strip().lower()
+    page   = request.args.get("page", default=1, type=int)
+    size   = request.args.get("size", default=50, type=int)
+    return jsonify(pdf_metadata_verifier.list_verified(
+        status=status, page=page, size=size,
+    ))
+
+
+@prionvault_bp.route("/api/admin/verify-metadata/mark", methods=["POST"])
+@admin_required
+def api_verify_metadata_mark():
+    """Bulk-set the status of a selection. Body: {ids:[...], status:'manual_ok'|...}"""
+    from .services import pdf_metadata_verifier
+    body = request.get_json(silent=True) or {}
+    ids    = body.get("ids") or []
+    status = (body.get("status") or "manual_ok").strip().lower()
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "ids must be a non-empty list"}), 400
+    updated = pdf_metadata_verifier.mark_status(ids, status)
+    return jsonify({"ok": True, "updated": updated, "status": status})
+
+
+@prionvault_bp.route("/api/admin/verify-metadata/recheck", methods=["POST"])
+@admin_required
+def api_verify_metadata_recheck():
+    """Clear the verdict on a selection so the next batch re-evaluates."""
+    from .services import pdf_metadata_verifier
+    body = request.get_json(silent=True) or {}
+    ids  = body.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "ids must be a non-empty list"}), 400
+    updated = pdf_metadata_verifier.recheck_ids(ids)
+    return jsonify({"ok": True, "updated": updated})
+
+
 @prionvault_bp.route("/api/admin/batch-searchable/problematic", methods=["GET"])
 @admin_required
 def api_batch_searchable_problematic():

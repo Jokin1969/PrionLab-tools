@@ -5393,6 +5393,7 @@
       wireBatchOcr();
       wireBatchSearchable();
       wirePubmedInventory();
+      wireVerifyMetadata();
       wireBulkBar();
       wireBulkLookup();
       wireBulkTagModal();
@@ -9363,6 +9364,374 @@
                           style="padding:4px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
                    ✗ Descartar
                  </button>`}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── PDF ↔ metadata verifier modal ──────────────────────────────
+  function wireVerifyMetadata() {
+    const btn   = document.getElementById('btn-verify-metadata');
+    const modal = document.getElementById('pv-verify-meta-modal');
+    if (!btn || !modal) return;
+    const closeBtn  = document.getElementById('pv-vm-close');
+    const statsEl   = document.getElementById('pv-vm-stats');
+    const progEl    = document.getElementById('pv-vm-progress');
+    const startBtn  = document.getElementById('pv-vm-start');
+    const stopBtn   = document.getElementById('pv-vm-stop');
+    const providerS = document.getElementById('pv-vm-provider');
+    const recheckCb = document.getElementById('pv-vm-recheck');
+    const list      = document.getElementById('pv-vm-list');
+    const pager     = document.getElementById('pv-vm-pager');
+    const bulkBar   = document.getElementById('pv-vm-bulk-bar');
+    const bulkCnt   = document.getElementById('pv-vm-bulk-count');
+    const bulkOk    = document.getElementById('pv-vm-bulk-ok');
+    const bulkRec   = document.getElementById('pv-vm-bulk-recheck');
+    const bulkClr   = document.getElementById('pv-vm-bulk-clear');
+    const tabMis    = document.getElementById('pv-vm-tab-mismatch');
+    const tabSus    = document.getElementById('pv-vm-tab-suspect');
+    const tabOk     = document.getElementById('pv-vm-tab-ok');
+    const tabNoPdf  = document.getElementById('pv-vm-tab-no-pdf');
+    const cntMis    = document.getElementById('pv-vm-tab-mismatch-count');
+    const cntSus    = document.getElementById('pv-vm-tab-suspect-count');
+    const cntOk     = document.getElementById('pv-vm-tab-ok-count');
+    const cntNoPdf  = document.getElementById('pv-vm-tab-no-pdf-count');
+
+    const selected = new Set();
+    let _vmStatus = 'mismatch';   // default tab — riskiest stuff first
+    let page = 1;
+    const PAGE_SIZE = 50;
+    let pollHandle = null;
+
+    function open()  { modal.style.display = 'flex'; reloadStats(); reloadList(); startPoll(); }
+    function close() { modal.style.display = 'none'; stopPoll(); }
+    function startPoll() { stopPoll(); pollHandle = setInterval(reloadStats, 2500); }
+    function stopPoll()  { if (pollHandle) clearInterval(pollHandle); pollHandle = null; }
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    function statCard(label, value, color) {
+      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+                <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
+                <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
+              </div>`;
+    }
+
+    async function reloadStats() {
+      let s;
+      try { s = await api('/admin/verify-metadata/status'); }
+      catch (e) {
+        statsEl.innerHTML = `<div style="grid-column:1/-1;color:#b91c1c;">Error: ${esc(e.message)}</div>`;
+        return;
+      }
+      const t = s.totals || {};
+      statsEl.innerHTML =
+        statCard('Elegibles',     t.eligible ?? 0) +
+        statCard('Pendientes',    t.pending ?? 0, '#b45309') +
+        statCard('OK',            t.ok ?? 0, '#15803d') +
+        statCard('Sospechosos',   t.suspect ?? 0, '#b45309') +
+        statCard('Mismatches',    t.mismatch ?? 0, '#b91c1c');
+
+      if (cntMis)   cntMis.textContent   = `(${(t.mismatch ?? 0).toLocaleString()})`;
+      if (cntSus)   cntSus.textContent   = `(${(t.suspect ?? 0).toLocaleString()})`;
+      if (cntOk)    cntOk.textContent    = `(${(t.ok ?? 0).toLocaleString()})`;
+      if (cntNoPdf) cntNoPdf.textContent = `(${(t.no_pdf_text ?? 0).toLocaleString()})`;
+
+      // Progress + buttons
+      if (s.running) {
+        startBtn.style.display = 'none';
+        stopBtn.style.display  = 'inline-flex';
+        stopBtn.disabled = !!s.stop_requested;
+        progEl.style.display = 'block';
+        const cur = s.current ? ` · actual: ${esc(s.current.title)}` : '';
+        progEl.textContent =
+          `⏳ ${s.processed}/${s.eligible_total} procesados · ` +
+          `${s.ok} ok · ${s.suspect} sospechosos · ${s.mismatch} mismatches · ` +
+          `${s.llm_calls} llamadas LLM${cur}`;
+      } else {
+        startBtn.style.display = 'inline-flex';
+        stopBtn.style.display  = 'none';
+        if (s.finished_at && s.processed > 0) {
+          progEl.style.display = 'block';
+          progEl.style.background = '#f9fafb';
+          progEl.style.borderColor = '#e5e7eb';
+          progEl.style.color = '#6b7280';
+          progEl.textContent =
+            `Terminado: ${s.processed} procesados — ` +
+            `${s.ok} ok, ${s.suspect} sospechosos, ${s.mismatch} mismatches ` +
+            `(${s.llm_calls} llamadas LLM)`;
+        } else if (s.last_error) {
+          progEl.style.display = 'block';
+          progEl.style.background = '#fef2f2';
+          progEl.style.borderColor = '#fecaca';
+          progEl.style.color = '#991b1b';
+          progEl.textContent = `Error: ${s.last_error}`;
+        } else {
+          progEl.style.display = 'none';
+        }
+      }
+    }
+
+    async function reloadList() {
+      list.innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:24px;font-size:13px;">Cargando…</div>';
+      const params = new URLSearchParams({
+        status: _vmStatus,
+        page:   String(page),
+        size:   String(PAGE_SIZE),
+      });
+      let data;
+      try { data = await api('/admin/verify-metadata/list?' + params.toString()); }
+      catch (e) {
+        list.innerHTML = `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+        return;
+      }
+      if (!data.items.length) {
+        const msg = {
+          mismatch:    '✓ No hay mismatches detectados.',
+          suspect:     '✓ No hay artículos sospechosos.',
+          ok:          'Aún no has verificado ningún artículo como OK.',
+          no_pdf_text: 'No hay artículos sin texto PDF.',
+        }[_vmStatus] || '— vacío';
+        list.innerHTML =
+          `<div style="text-align:center;color:#15803d;padding:24px;font-size:13px;">${esc(msg)}</div>`;
+        pager.innerHTML = '';
+        refreshBulkBar();
+        return;
+      }
+      const head = `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
+                    background:#f3f4f6;border-bottom:1px solid #e5e7eb;
+                    font-size:11.5px;color:#374151;font-weight:600;
+                    position:sticky;top:0;z-index:1;">
+          <input type="checkbox" id="pv-vm-master" style="margin:0;cursor:pointer;width:14px;height:14px;">
+          <label for="pv-vm-master" style="cursor:pointer;">Marcar los ${data.items.length} visibles</label>
+        </div>`;
+      list.innerHTML = head + data.items.map(_vmRowHtml).join('');
+
+      list.querySelectorAll('.pv-vm-pick').forEach(cb => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) selected.add(cb.dataset.aid);
+          else            selected.delete(cb.dataset.aid);
+          syncMaster();
+          refreshBulkBar();
+        });
+      });
+      const master = document.getElementById('pv-vm-master');
+      if (master) {
+        master.addEventListener('change', () => {
+          list.querySelectorAll('.pv-vm-pick').forEach(cb => {
+            cb.checked = master.checked;
+            if (cb.checked) selected.add(cb.dataset.aid);
+            else            selected.delete(cb.dataset.aid);
+          });
+          refreshBulkBar();
+        });
+        syncMaster();
+      }
+      list.querySelectorAll('.pv-vm-edit-row').forEach(b => {
+        b.addEventListener('click', () => openEdit(b.dataset.aid));
+      });
+      list.querySelectorAll('.pv-vm-mark-ok').forEach(b => {
+        b.addEventListener('click', () => doMark([b.dataset.aid], 'manual_ok', b));
+      });
+      list.querySelectorAll('.pv-vm-recheck-one').forEach(b => {
+        b.addEventListener('click', () => doRecheck([b.dataset.aid], b));
+      });
+
+      const total = data.total || 0;
+      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      pager.innerHTML = `
+        <span>${total.toLocaleString()} resultados · página ${page} / ${pages}</span>
+        <span style="display:flex;gap:6px;">
+          <button id="pv-vm-prev" type="button" ${page <= 1 ? 'disabled' : ''}
+                  style="padding:4px 10px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;cursor:pointer;">← Anterior</button>
+          <button id="pv-vm-next" type="button" ${page >= pages ? 'disabled' : ''}
+                  style="padding:4px 10px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;cursor:pointer;">Siguiente →</button>
+        </span>`;
+      document.getElementById('pv-vm-prev')?.addEventListener('click', () => { page--; reloadList(); });
+      document.getElementById('pv-vm-next')?.addEventListener('click', () => { page++; reloadList(); });
+      refreshBulkBar();
+    }
+
+    function syncMaster() {
+      const checks = Array.from(list.querySelectorAll('.pv-vm-pick'));
+      const master = document.getElementById('pv-vm-master');
+      if (!master) return;
+      const checked = checks.filter(c => c.checked).length;
+      master.checked = checks.length > 0 && checked === checks.length;
+      master.indeterminate = checked > 0 && checked < checks.length;
+    }
+
+    function refreshBulkBar() {
+      const n = selected.size;
+      if (n === 0) { bulkBar.style.display = 'none'; return; }
+      bulkBar.style.display = 'flex';
+      bulkCnt.textContent = `${n} seleccionado${n === 1 ? '' : 's'}`;
+    }
+
+    function setTab(s) {
+      if (s === _vmStatus) return;
+      _vmStatus = s;
+      [[tabMis, 'mismatch', '#b91c1c', '#fee2e2', '#7f1d1d'],
+       [tabSus, 'suspect',  '#b45309', '#fef3c7', '#7c2d12'],
+       [tabOk,  'ok',       '#047857', '#d1fae5', '#065f46'],
+       [tabNoPdf, 'no_pdf_text', '#6b7280', '#f3f4f6', '#374151']].forEach(([el, key, hot, bgOn, fgOn]) => {
+        if (!el) return;
+        if (s === key) {
+          el.style.border = `1px solid ${hot}`;
+          el.style.background = bgOn;
+          el.style.color = fgOn;
+          el.style.fontWeight = '700';
+        } else {
+          el.style.border = '1px solid #d1d5db';
+          el.style.background = 'white';
+          el.style.color = '#374151';
+          el.style.fontWeight = '600';
+        }
+      });
+      selected.clear();
+      page = 1;
+      refreshBulkBar();
+      reloadList();
+    }
+    tabMis.addEventListener('click',   () => setTab('mismatch'));
+    tabSus.addEventListener('click',   () => setTab('suspect'));
+    tabOk.addEventListener('click',    () => setTab('ok'));
+    tabNoPdf.addEventListener('click', () => setTab('no_pdf_text'));
+
+    bulkOk.addEventListener('click', () => {
+      if (!selected.size) return;
+      if (!confirm(`Marcar ${selected.size} como OK manual? (queda registrado que tú los revisaste)`)) return;
+      doMark(Array.from(selected), 'manual_ok', bulkOk);
+    });
+    bulkRec.addEventListener('click', () => {
+      if (!selected.size) return;
+      if (!confirm(`Reverificar ${selected.size}? Se borra el veredicto y entran en la cola.`)) return;
+      doRecheck(Array.from(selected), bulkRec);
+    });
+    bulkClr.addEventListener('click', () => {
+      selected.clear();
+      list.querySelectorAll('.pv-vm-pick').forEach(cb => { cb.checked = false; });
+      syncMaster();
+      refreshBulkBar();
+    });
+
+    async function doMark(ids, status, b) {
+      const orig = b.textContent;
+      b.disabled = true; b.textContent = '⏳';
+      try {
+        await api('/admin/verify-metadata/mark', {
+          method: 'POST',
+          body: JSON.stringify({ ids, status }),
+        });
+        ids.forEach(i => selected.delete(i));
+        await reloadStats();
+        await reloadList();
+      } catch (e) { alert('Error: ' + e.message); }
+      finally { b.disabled = false; b.textContent = orig; }
+    }
+
+    async function doRecheck(ids, b) {
+      const orig = b.textContent;
+      b.disabled = true; b.textContent = '⏳';
+      try {
+        await api('/admin/verify-metadata/recheck', {
+          method: 'POST',
+          body: JSON.stringify({ ids }),
+        });
+        ids.forEach(i => selected.delete(i));
+        await reloadStats();
+        await reloadList();
+      } catch (e) { alert('Error: ' + e.message); }
+      finally { b.disabled = false; b.textContent = orig; }
+    }
+
+    function openEdit(aid) {
+      // Hand off to the existing Edit-modal wiring so the operator can
+      // fix the metadata or repoint the DOI/PMID in one place.
+      const trigger = document.querySelector(`.pv-edit-row-btn[data-aid="${CSS.escape(aid)}"]`);
+      if (trigger) { trigger.click(); return; }
+      // If the row isn't visible in the main listing right now, just
+      // open the article detail (clicking the listing's row).
+      window.open(`/prionvault/articles/${aid}`, '_blank');
+    }
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      try {
+        await api('/admin/verify-metadata/start', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider: providerS.value,
+            recheck:  recheckCb.checked,
+          }),
+        });
+        reloadStats();
+      } catch (e) {
+        alert('No se pudo iniciar: ' + e.message);
+      } finally {
+        startBtn.disabled = false;
+      }
+    });
+    stopBtn.addEventListener('click', async () => {
+      stopBtn.disabled = true;
+      try { await api('/admin/verify-metadata/stop', { method: 'POST' }); }
+      catch (e) { alert(e.message); }
+      finally { stopBtn.disabled = false; reloadStats(); }
+    });
+  }
+
+  function _vmRowHtml(it) {
+    const escAttr = (v) => esc(String(v || ''));
+    const title   = it.title || '(sin título)';
+    const yearTxt = it.year ? ` · ${it.year}` : '';
+    const journal = it.journal ? ` · ${esc(it.journal)}` : '';
+    const authors = (it.authors || '').slice(0, 100) + ((it.authors || '').length > 100 ? '…' : '');
+    const score   = it.score ?? '–';
+    const scoreColor = score === '–' ? '#9ca3af'
+                      : score < 40 ? '#b91c1c'
+                      : score < 80 ? '#b45309'
+                      : '#15803d';
+    const pdfHead = (it.pdf_head || '').replace(/\s+/g, ' ').slice(0, 220) + ((it.pdf_head || '').length > 220 ? '…' : '');
+    return `
+      <div data-vm-aid="${escAttr(it.id)}"
+           style="border-bottom:1px solid #e5e7eb;padding:8px 10px;background:white;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <input type="checkbox" class="pv-vm-pick" data-aid="${escAttr(it.id)}"
+                 style="margin-top:4px;flex-shrink:0;cursor:pointer;width:14px;height:14px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:600;color:#111827;line-height:1.35;
+                        overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+                        -webkit-line-clamp:2;-webkit-box-orient:vertical;"
+                 title="${escAttr(title)}">${esc(title)}</div>
+            <div style="font-size:11.5px;color:#6b7280;margin-top:2px;">
+              ${esc(authors)}${yearTxt}${journal}
+            </div>
+            <div style="font-size:11px;color:#374151;margin-top:5px;background:#f9fafb;border:1px solid #e5e7eb;padding:5px 7px;border-radius:4px;line-height:1.45;font-family:ui-monospace,monospace;">
+              <strong style="color:#6b7280;">PDF dice:</strong> ${esc(pdfHead) || '<em style="color:#9ca3af;">(sin texto)</em>'}
+            </div>
+            ${it.detail ? `<div style="font-size:10.5px;color:#9ca3af;margin-top:4px;font-family:ui-monospace,monospace;">${esc(it.detail)}</div>` : ''}
+          </div>
+          <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+            <span style="font-size:18px;font-weight:700;color:${scoreColor};font-variant-numeric:tabular-nums;">${score}</span>
+            <button type="button" class="pv-vm-edit-row" data-aid="${escAttr(it.id)}"
+                    title="Abre el editor del artículo para corregir metadatos."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #ddd6fe;background:white;color:#6d28d9;font-size:11px;font-weight:600;cursor:pointer;">
+              ✏ Editar
+            </button>
+            <button type="button" class="pv-vm-mark-ok" data-aid="${escAttr(it.id)}"
+                    title="Lo he revisado y está bien."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #a7f3d0;background:white;color:#047857;font-size:11px;font-weight:600;cursor:pointer;">
+              ✓ OK manual
+            </button>
+            <button type="button" class="pv-vm-recheck-one" data-aid="${escAttr(it.id)}"
+                    title="Re-evaluar este artículo en la próxima pasada."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #d1d5db;background:white;color:#374151;font-size:11px;font-weight:600;cursor:pointer;">
+              🔁 Reverificar
+            </button>
           </div>
         </div>
       </div>
