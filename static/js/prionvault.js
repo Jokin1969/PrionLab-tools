@@ -2368,6 +2368,19 @@
       a.pdf_is_scan
         ? '<span title="El PDF era una imagen escaneada; el texto se ha recuperado con OCR." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">📸 OCR</span>'
         : '',
+      // PubMed-inventory provenance + OA status. The same row can
+      // carry both badges: provenance is set at import, OA state is
+      // updated by the auto-fetcher once it tries.
+      a.source === 'pubmed_inventory'
+        ? `<span title="Importado desde Inventario PubMed${a.dropbox_path ? '' : ' — todavía sin PDF'}"
+                 style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#e0e7ff;color:#3730a3;">📥 Inventario</span>`
+        : '',
+      (a.source === 'pubmed_inventory' && !a.dropbox_path && a.pdf_oa_status === 'not_available')
+        ? '<span title="El auto-fetcher ya consultó Unpaywall y PMC; no hay copia abierta. Tienes que conseguir el PDF a mano." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;">PDF: sin OA</span>'
+        : '',
+      (a.source === 'pubmed_inventory' && !a.dropbox_path && !a.pdf_oa_status)
+        ? '<span title="Importado sin PDF. El auto-fetcher lo buscará en breve (cada 60 s)." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">⏳ PDF pendiente</span>'
+        : '',
       (!a.has_abstract && a.abstract_unavailable)
         ? '<span title="Buscado en CrossRef / PubMed: no hay abstract disponible para este artículo." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#e5e7eb;color:#6b7280;">📕 sin abstract (confirmado)</span>'
         : (!a.has_abstract && (a.doi || a.pubmed_id))
@@ -8937,7 +8950,34 @@
         statCard('Catalogados (PubMed)', s.total ?? 0) +
         statCard('Ya en PrionVault',     s.imported ?? 0, '#15803d') +
         statCard('Pendientes',           s.pending ?? 0, '#b45309') +
-        statCard('Con PDF OA',           s.pending_with_oa ?? 0, '#0F3460');
+        statCard('Con PDF OA',           s.pending_with_oa ?? 0, '#0F3460') +
+        statCard('Importados sin PDF',   s.inv_no_pdf ?? 0, '#b45309');
+
+      // OA-fetcher live status under the cards. Compact one-liner so
+      // it stays out of the way when the queue is drained.
+      const oa = s.oa_fetcher || {};
+      const oaLine = document.getElementById('pv-pinv-oa-line');
+      if (oaLine) {
+        if (oa.running && oa.current) {
+          oaLine.style.display = 'block';
+          oaLine.style.background = '#fff7ed';
+          oaLine.style.borderColor = '#fed7aa';
+          oaLine.style.color = '#9a3412';
+          oaLine.innerHTML =
+            `<i class="fas fa-cloud-arrow-down"></i> Bajando OA: <em>${esc(oa.current.title || '')}</em>` +
+            ` · ${oa.fetched ?? 0} ok · ${oa.marked_unavail ?? 0} sin OA · ${oa.failed ?? 0} fallos`;
+        } else if ((oa.pending ?? 0) > 0) {
+          oaLine.style.display = 'block';
+          oaLine.style.background = '#f9fafb';
+          oaLine.style.borderColor = '#e5e7eb';
+          oaLine.style.color = '#6b7280';
+          oaLine.innerHTML =
+            `<i class="fas fa-cloud-arrow-down"></i> ${oa.pending} pendientes de fetch OA · ` +
+            `el auto-fetcher los procesa cada 60 s o al pulsar "Refrescar PubMed".`;
+        } else {
+          oaLine.style.display = 'none';
+        }
+      }
 
       // Harvest progress strip (while a daemon run is in flight).
       const p = s.progress || {};

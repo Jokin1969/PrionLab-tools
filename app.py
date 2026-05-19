@@ -323,6 +323,16 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('PubMed inventory daemon failed to start: %s', e)
 
+        # OA-PDF auto-fetcher: wakes on a 60-second poll AND on demand
+        # whenever the inventory import endpoint creates new rows, so
+        # PDFs trickle in seconds after the metadata. Disable with
+        # PRIONVAULT_OA_FETCHER_DISABLED=1.
+        try:
+            from tools.prionvault.services.oa_pdf_fetcher import start_oa_fetcher_daemon
+            start_oa_fetcher_daemon()
+        except Exception as e:
+            app.logger.warning('OA-PDF fetcher daemon failed to start: %s', e)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()

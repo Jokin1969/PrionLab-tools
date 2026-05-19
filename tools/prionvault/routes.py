@@ -477,7 +477,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         ["pdf_md5", "pdf_pages", "pdf_is_scan",
          "extraction_status", "indexed_at",
          "summary_ai", "summary_human", "source",
-         "abstract_unavailable"]
+         "abstract_unavailable", "pdf_oa_status"]
         if c in pv_cols
     )
     select_cols = base_cols + (f", {pv_select}" if pv_select else "")

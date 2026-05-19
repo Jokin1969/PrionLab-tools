@@ -354,6 +354,25 @@ def get_stats() -> dict:
                     ) AS pending_with_oa
                 FROM prionvault_pubmed_inventory
             """)).first()
+            # Imported-but-PDF-pending: the OA fetcher hasn't grabbed
+            # them yet (or there's no OA copy at all). Counted on the
+            # `articles` side because that's where dropbox_path lives.
+            oa_row = conn.execute(sql_text("""
+                SELECT
+                    COUNT(*) FILTER (
+                      WHERE source = 'pubmed_inventory'
+                        AND dropbox_path IS NULL
+                    ) AS inv_no_pdf,
+                    COUNT(*) FILTER (
+                      WHERE source = 'pubmed_inventory'
+                        AND dropbox_path IS NOT NULL
+                    ) AS inv_with_pdf,
+                    COUNT(*) FILTER (
+                      WHERE source = 'pubmed_inventory'
+                        AND pdf_oa_status = 'not_available'
+                    ) AS inv_no_oa
+                  FROM articles
+            """)).first()
             last = conn.execute(sql_text("""
                 SELECT last_run_at, last_status, last_error,
                        last_runtime_ms, payload
@@ -366,7 +385,16 @@ def get_stats() -> dict:
             "pending":         int(row[2] or 0),
             "dismissed":       int(row[3] or 0),
             "pending_with_oa": int(row[4] or 0),
+            "inv_no_pdf":      int(oa_row[0] or 0),
+            "inv_with_pdf":    int(oa_row[1] or 0),
+            "inv_no_oa":       int(oa_row[2] or 0),
         }
+        # OA fetcher snapshot (best-effort — never fails the stats call).
+        try:
+            from .oa_pdf_fetcher import get_status as _oa_status
+            out["oa_fetcher"] = _oa_status()
+        except Exception:
+            pass
         if last:
             out["last_run_at"]     = last[0].isoformat() if last[0] else None
             out["last_status"]     = last[1]
@@ -531,6 +559,17 @@ def import_pmids(pmids: Iterable[str], *, by_user: Optional[str] = None) -> dict
         except Exception as exc:
             logger.warning("pubmed_inventory: imported_at stamp failed for %s (%s)",
                            pmid, exc)
+
+    # Wake the OA-PDF fetcher so the new rows get their PDFs as soon
+    # as the daemon can manage. Best-effort — a hot import that lands
+    # before the fetcher boots will still be picked up on the next
+    # 60-second poll cycle.
+    if summary["created"]:
+        try:
+            from .oa_pdf_fetcher import request_drain_now
+            request_drain_now()
+        except Exception as exc:
+            logger.warning("pubmed_inventory: could not wake OA fetcher (%s)", exc)
     return summary
 
 
@@ -561,10 +600,10 @@ def _create_article_from_meta(meta: dict, *, by_user: Optional[str]) -> str:
         new_id = _uuid.uuid4()
         conn.execute(sql_text("""
             INSERT INTO articles
-              (id, title, authors, year, journal, doi, pubmed_id,
+              (id, title, authors, year, journal, doi, pubmed_id, pmc_id,
                source, added_by_id, created_at, updated_at)
             VALUES
-              (:id, :title, :authors, :year, :journal, :doi, :pmid,
+              (:id, :title, :authors, :year, :journal, :doi, :pmid, :pmcid,
                'pubmed_inventory', :added_by, NOW(), NOW())
         """), {
             "id":       str(new_id),
@@ -574,6 +613,7 @@ def _create_article_from_meta(meta: dict, *, by_user: Optional[str]) -> str:
             "journal": (meta.get("journal") or "")[:500] or None,
             "doi":      doi,
             "pmid":     pmid,
+            "pmcid":    meta.get("pmcid"),
             "added_by": by_user,
         })
     return "created"
