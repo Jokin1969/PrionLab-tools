@@ -4655,6 +4655,125 @@ def api_batch_searchable_clear_events():
     return jsonify({"ok": True, "status": batch_searchable_pdf.get_status()})
 
 
+@prionvault_bp.route("/api/admin/batch-searchable/problematic", methods=["GET"])
+@admin_required
+def api_batch_searchable_problematic():
+    """Articles the operator needs to act on for the Make-PDFs-searchable
+    flow. Returns two buckets:
+
+      "failed"   — articles whose latest event in the in-memory log was
+                   outcome=failed. Dedupes by article_id so the same
+                   paper only appears once even if it failed twice.
+                   Each entry carries stage/reason so the UI can show
+                   *why* OCR died.
+      "skipped"  — articles marked `pdf_ocr_unavailable = TRUE` (the
+                   admin previously said "don't try this one again");
+                   surfaced so they can be un-flagged or hard-deleted
+                   from the same panel.
+
+    Both buckets join `articles` for current title / authors / year so
+    the panel stays informative even after the server restarts and the
+    in-memory log is gone.
+    """
+    from .services import batch_searchable_pdf
+    status = batch_searchable_pdf.get_status()
+
+    # Failed events → dedup by article_id, keep the latest occurrence.
+    by_aid: dict = {}
+    for ev in (status.get("events") or []):
+        if ev.get("outcome") != "failed":
+            continue
+        aid = ev.get("article_id")
+        if not aid or aid in by_aid:
+            continue
+        by_aid[aid] = ev
+    failed_ids = list(by_aid.keys())
+
+    s = _session()
+    try:
+        meta_by_id: dict = {}
+        if failed_ids:
+            rows = s.execute(
+                sql_text(
+                    """SELECT id::text, title, authors, year, journal,
+                              dropbox_path, pdf_ocr_unavailable
+                       FROM articles
+                       WHERE id::text = ANY(:ids)"""
+                ),
+                {"ids": failed_ids},
+            ).mappings().all()
+            for r in rows:
+                meta_by_id[r["id"]] = dict(r)
+
+        failed_items = []
+        for aid, ev in by_aid.items():
+            meta = meta_by_id.get(aid) or {}
+            failed_items.append({
+                "id":      aid,
+                "title":   meta.get("title") or ev.get("title") or "(sin título)",
+                "authors": meta.get("authors"),
+                "year":    meta.get("year"),
+                "journal": meta.get("journal"),
+                "dropbox_path": meta.get("dropbox_path"),
+                "stage":   ev.get("stage"),
+                "reason":  ev.get("reason"),
+                "at":      ev.get("at"),
+                "already_unavailable": bool(meta.get("pdf_ocr_unavailable")),
+            })
+
+        skipped_rows = s.execute(sql_text(
+            """SELECT id::text, title, authors, year, journal, dropbox_path
+               FROM articles
+               WHERE pdf_ocr_unavailable = TRUE
+               ORDER BY updated_at DESC NULLS LAST
+               LIMIT 500"""
+        )).mappings().all()
+        skipped_items = [dict(r) for r in skipped_rows]
+
+        return jsonify({
+            "failed":   failed_items,
+            "skipped":  skipped_items,
+            "counts": {
+                "failed":  len(failed_items),
+                "skipped": len(skipped_items),
+            },
+        })
+    finally:
+        db.Session.remove()
+
+
+@prionvault_bp.route("/api/admin/articles/<article_id>/ocr-unavailable",
+                     methods=["POST", "DELETE"])
+@admin_required
+def api_article_ocr_unavailable(article_id):
+    """Toggle the "no insistas más con esta PDF" flag on a single
+    article. POST sets it TRUE (batch will skip), DELETE sets it FALSE
+    (paper goes back into the eligible pool)."""
+    new_val = (request.method == "POST")
+    s = _session()
+    try:
+        row = s.execute(
+            sql_text(
+                """UPDATE articles
+                   SET pdf_ocr_unavailable = :v,
+                       updated_at = NOW()
+                   WHERE id = :aid
+                   RETURNING id::text"""
+            ),
+            {"aid": article_id, "v": new_val},
+        ).first()
+        s.commit()
+        if not row:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify({"ok": True, "id": row[0], "pdf_ocr_unavailable": new_val})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("toggle pdf_ocr_unavailable failed for %s", article_id)
+        return jsonify({"error": "internal", "detail": str(exc)[:240]}), 500
+    finally:
+        db.Session.remove()
+
+
 @prionvault_bp.route("/api/search/semantic", methods=["POST"])
 @login_required
 def api_semantic_search():

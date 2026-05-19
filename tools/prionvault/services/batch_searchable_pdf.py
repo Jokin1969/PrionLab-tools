@@ -118,20 +118,25 @@ def _library_stats() -> dict:
                        COUNT(*) FILTER (
                          WHERE dropbox_path IS NOT NULL
                            AND pdf_searchable = FALSE
+                           AND pdf_ocr_unavailable = FALSE
                            AND extracted_text IS NOT NULL
-                       ) AS eligible
+                       ) AS eligible,
+                       COUNT(*) FILTER (WHERE pdf_ocr_unavailable = TRUE)
+                         AS ocr_unavailable
                    FROM articles"""
             )).first()
             return {
-                "total":      int(row[0] or 0),
-                "with_pdf":   int(row[1] or 0),
-                "searchable": int(row[2] or 0),
-                "eligible":   int(row[3] or 0),
+                "total":            int(row[0] or 0),
+                "with_pdf":         int(row[1] or 0),
+                "searchable":       int(row[2] or 0),
+                "eligible":         int(row[3] or 0),
+                "ocr_unavailable":  int(row[4] or 0),
             }
     except Exception as exc:
         logger.warning("batch_searchable: library_stats failed: %s", exc)
         return {"total": 0, "with_pdf": 0, "searchable": 0,
-                "eligible": 0, "error": str(exc)[:300]}
+                "eligible": 0, "ocr_unavailable": 0,
+                "error": str(exc)[:300]}
 
 
 def start_batch(*, viewer_user_id=None,
@@ -288,6 +293,7 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                 """SELECT COUNT(*) FROM articles
                    WHERE dropbox_path IS NOT NULL
                      AND pdf_searchable = FALSE
+                     AND pdf_ocr_unavailable = FALSE
                      AND extracted_text IS NOT NULL"""
             )).first()
             with _lock:
@@ -324,6 +330,7 @@ def _run_batch(*, viewer_user_id=None, limit: Optional[int] = None) -> None:
                         FROM articles
                         WHERE dropbox_path IS NOT NULL
                           AND pdf_searchable = FALSE
+                          AND pdf_ocr_unavailable = FALSE
                           AND extracted_text IS NOT NULL
                           {seen_clause}
                         ORDER BY created_at DESC NULLS LAST

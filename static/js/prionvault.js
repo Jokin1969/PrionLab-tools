@@ -8430,6 +8430,10 @@
       countersEl.textContent = (s.processed || 0) > 0
         ? `Sesión: ${fmtMB(s.bytes_uploaded)} MB subidos a Dropbox`
         : '';
+
+      // Notify the problematic-PDFs panel that we just refreshed status
+      // so it can pull a fresh list without piggy-backing on poll timers.
+      document.dispatchEvent(new CustomEvent('pv-bsp-refreshed'));
     }
 
     startBtn.addEventListener('click', async () => {
@@ -8494,6 +8498,203 @@
     if (errorsToggle) errorsToggle.addEventListener('change', () => {
       _renderBspEventLog(_bspEventsCache);
     });
+
+    // ── Problematic-PDFs panel ──────────────────────────────────────
+    // Independent of the in-memory event log so it survives a server
+    // restart (re-queries the DB on every refresh). Loaded once at
+    // modal open + on every status poll (cheap — two indexed counts
+    // plus at most ~500 rows).
+    const probRefreshBtn = document.getElementById('pv-bsp-prob-refresh');
+    if (probRefreshBtn) probRefreshBtn.addEventListener('click', loadProblematic);
+
+    async function loadProblematic() {
+      const wrap = document.getElementById('pv-bsp-problematic-wrap');
+      const list = document.getElementById('pv-bsp-prob-list');
+      const cnt  = document.getElementById('pv-bsp-prob-count');
+      if (!wrap || !list) return;
+      let data;
+      try {
+        data = await api('/admin/batch-searchable/problematic');
+      } catch (e) {
+        wrap.style.display = 'block';
+        list.innerHTML = `<div style="color:#b91c1c;padding:14px;font-size:12.5px;">
+                            Error cargando: ${esc(e.message)}
+                          </div>`;
+        return;
+      }
+      const failed  = data.failed  || [];
+      const skipped = data.skipped || [];
+      if (!failed.length && !skipped.length) {
+        wrap.style.display = 'none';
+        return;
+      }
+      wrap.style.display = 'block';
+      cnt.textContent = `· ${failed.length} con error · ${skipped.length} excluidos`;
+
+      const sections = [];
+
+      if (failed.length) {
+        // Master + per-row picks for the failed bucket. Selection feeds
+        // state.selectedIds so the operator can close the modal and
+        // hit "🔍 Ver sólo seleccionados" in the main listing — same
+        // pattern as the PMID manual panel.
+        sections.push(`
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
+                      background:#fef2f2;border-bottom:1px solid #fecaca;
+                      font-size:11.5px;color:#7f1d1d;font-weight:600;
+                      position:sticky;top:0;z-index:1;">
+            <input type="checkbox" id="pv-bsp-prob-master"
+                   title="Marcar / desmarcar todos los visibles"
+                   style="margin:0;cursor:pointer;width:14px;height:14px;">
+            <label for="pv-bsp-prob-master" style="cursor:pointer;flex:1;">
+              ⚠ Errores en esta sesión (${failed.length})
+              <span style="font-weight:normal;color:#9b1c1c;">
+                — la selección queda en el bulk-bar del listado principal
+              </span>
+            </label>
+          </div>`);
+        sections.push(failed.map(_bspProblemRowHtml).join(''));
+      }
+
+      if (skipped.length) {
+        sections.push(`
+          <div style="padding:6px 10px;background:#f3f4f6;border-top:1px solid #e5e7eb;
+                      border-bottom:1px solid #e5e7eb;font-size:11.5px;
+                      color:#374151;font-weight:600;">
+            🚫 Excluidos permanentemente (${skipped.length})
+            <span style="font-weight:normal;color:#6b7280;">
+              — el batch los ignora; puedes reactivarlos uno a uno
+            </span>
+          </div>`);
+        sections.push(skipped.map(_bspSkippedRowHtml).join(''));
+      }
+
+      list.innerHTML = sections.join('');
+
+      // Wire per-row pick checkboxes (failed bucket only)
+      const syncMaster = () => {
+        const checks  = Array.from(list.querySelectorAll('.pv-bsp-prob-pick'));
+        const master  = document.getElementById('pv-bsp-prob-master');
+        if (!master) return;
+        const total   = checks.length;
+        const checked = checks.filter(c => c.checked).length;
+        master.checked = total > 0 && checked === total;
+        master.indeterminate = checked > 0 && checked < total;
+      };
+      list.querySelectorAll('.pv-bsp-prob-pick').forEach(cb => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) state.selectedIds.add(cb.dataset.aid);
+          else            state.selectedIds.delete(cb.dataset.aid);
+          updateBulkBar();
+          syncSelectAllHeader?.();
+          syncMaster();
+        });
+      });
+      const master = document.getElementById('pv-bsp-prob-master');
+      if (master) {
+        master.addEventListener('change', () => {
+          list.querySelectorAll('.pv-bsp-prob-pick').forEach(cb => {
+            cb.checked = master.checked;
+            if (cb.checked) state.selectedIds.add(cb.dataset.aid);
+            else            state.selectedIds.delete(cb.dataset.aid);
+          });
+          updateBulkBar();
+          syncSelectAllHeader?.();
+        });
+        syncMaster();
+      }
+
+      // "🚫 No procesar más" → mark pdf_ocr_unavailable = TRUE
+      list.querySelectorAll('.pv-bsp-prob-skip').forEach(b => {
+        b.addEventListener('click', () => markOcrUnavailable(b.dataset.aid));
+      });
+      // "↻ Volver a intentar" (on the skipped bucket) → unset the flag
+      list.querySelectorAll('.pv-bsp-prob-reenable').forEach(b => {
+        b.addEventListener('click', () => unmarkOcrUnavailable(b.dataset.aid));
+      });
+      // "🗑 Borrar" → DELETE /api/articles/<id> (same flow as listing)
+      list.querySelectorAll('.pv-bsp-prob-del').forEach(b => {
+        b.addEventListener('click', () => deleteProblemRow(b.dataset.aid));
+      });
+    }
+
+    async function markOcrUnavailable(aid) {
+      const row = document.querySelector(`[data-prob-aid="${CSS.escape(aid)}"]`);
+      if (!row) return;
+      const btn = row.querySelector('.pv-bsp-prob-skip');
+      if (!confirm(
+        'Marcar este PDF como "no insistas más"?\n\n' +
+        '• El batch Make-searchable lo dejará en paz.\n' +
+        '• Puedes revertirlo desde la sección "Excluidos permanentemente".\n'
+      )) return;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳';
+      try {
+        await api(`/admin/articles/${aid}/ocr-unavailable`, { method: 'POST' });
+        await loadProblematic();
+        refresh();   // pendientes count drops by one
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = orig;
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function unmarkOcrUnavailable(aid) {
+      const row = document.querySelector(`[data-prob-aid="${CSS.escape(aid)}"]`);
+      if (!row) return;
+      const btn = row.querySelector('.pv-bsp-prob-reenable');
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳';
+      try {
+        await api(`/admin/articles/${aid}/ocr-unavailable`, { method: 'DELETE' });
+        await loadProblematic();
+        refresh();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = orig;
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function deleteProblemRow(aid) {
+      const row = document.querySelector(`[data-prob-aid="${CSS.escape(aid)}"]`);
+      if (!row) return;
+      const btn = row.querySelector('.pv-bsp-prob-del');
+      if (!confirm(
+        'Borrar este artículo de PrionVault?\n\n' +
+        '• La fila se borra de la base de datos.\n' +
+        '• El PDF de Dropbox también (queda en el historial ~30 días).\n' +
+        '• Desaparece de PrionRead, PrionPacks, colecciones y ratings.\n\n' +
+        'No se puede deshacer. ¿Continuar?'
+      )) return;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳';
+      try {
+        await api(`/articles/${aid}`, { method: 'DELETE' });
+        state.selectedIds.delete(aid);
+        updateBulkBar();
+        await loadProblematic();
+        refresh();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = orig;
+        alert('Error: ' + e.message);
+      }
+    }
+
+    // Refresh the problematic panel on every status poll AND on open.
+    // open() already calls refresh(); the originally-defined refresh()
+    // ends by calling _renderBspEventLog() — we chain loadProblematic
+    // off the same poll using the modal's MutationObserver on display.
+    btn.addEventListener('click', loadProblematic);
+    // After every status refresh, also pull the problematic list so
+    // the panel reflects the very last failure / flag change without
+    // the operator hitting "Refrescar".
+    document.addEventListener('pv-bsp-refreshed', loadProblematic);
   }
 
   // Cache the most recent events list so the "Solo errores" checkbox
@@ -8555,6 +8756,100 @@
                 title="${esc((e.title || '') + reason)}">${esc(e.title || '(sin título)')}${esc(reason)}</span>
         </div>`;
     }).join('');
+  }
+
+  // Row template for the "errors in this session" bucket. Includes the
+  // failure stage + truncated reason on a second line, a pick checkbox
+  // for the bulk-bar, and three actions (PubMed lookup, skip-forever,
+  // hard delete). Matches the look of the PMID manual-panel rows.
+  function _bspProblemRowHtml(it) {
+    const esc     = (s) => String(s ?? '').replace(/[&<>"']/g,
+      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const escAttr = (v) => esc(String(v || ''));
+    const title   = it.title || '(sin título)';
+    const yearTxt = it.year ? ` · ${it.year}` : '';
+    const journal = it.journal ? ` · ${esc(it.journal)}` : '';
+    const authors = (it.authors || '').slice(0, 80) +
+                    ((it.authors || '').length > 80 ? '…' : '');
+    const checked = state.selectedIds.has(it.id) ? 'checked' : '';
+    const stage   = it.stage  ? `<span style="background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:3px;font-size:10.5px;font-weight:600;">${esc(it.stage)}</span>` : '';
+    const reason  = it.reason ? `<span style="color:#7f1d1d;">${esc(it.reason)}</span>` : '';
+    return `
+      <div data-prob-aid="${escAttr(it.id)}"
+           style="border-bottom:1px solid #e5e7eb;padding:8px 10px;background:white;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <input type="checkbox" class="pv-bsp-prob-pick" data-aid="${escAttr(it.id)}" ${checked}
+                 title="Seleccionar para encontrarlo después en el listado principal"
+                 style="margin-top:4px;flex-shrink:0;cursor:pointer;width:14px;height:14px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:600;color:#111827;line-height:1.35;
+                        overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+                        -webkit-line-clamp:2;-webkit-box-orient:vertical;"
+                 title="${escAttr(title)}">${esc(title)}</div>
+            <div style="font-size:11.5px;color:#6b7280;margin-top:2px;">
+              ${esc(authors)}${yearTxt}${journal}
+            </div>
+            <div style="margin-top:4px;font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              ${stage} ${reason}
+            </div>
+          </div>
+          <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+            <button type="button" class="pv-bsp-prob-skip" data-aid="${escAttr(it.id)}"
+                    title="Marca el PDF como 'no insistas más' — el batch lo saltará. Reversible."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #fde68a;background:white;color:#92400e;font-size:11px;font-weight:600;cursor:pointer;">
+              🚫 No procesar más
+            </button>
+            <button type="button" class="pv-bsp-prob-del" data-aid="${escAttr(it.id)}"
+                    title="Borra el artículo de PrionVault (también el PDF de Dropbox)."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #fca5a5;background:white;color:#b91c1c;font-size:11px;font-weight:600;cursor:pointer;">
+              🗑 Borrar
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Row template for the "permanently excluded" bucket. Same layout
+  // minus the stage/reason line (no error to show) and with a
+  // "↻ Volver a intentar" button instead of "🚫 No procesar más".
+  function _bspSkippedRowHtml(it) {
+    const esc     = (s) => String(s ?? '').replace(/[&<>"']/g,
+      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const escAttr = (v) => esc(String(v || ''));
+    const title   = it.title || '(sin título)';
+    const yearTxt = it.year ? ` · ${it.year}` : '';
+    const journal = it.journal ? ` · ${esc(it.journal)}` : '';
+    const authors = (it.authors || '').slice(0, 80) +
+                    ((it.authors || '').length > 80 ? '…' : '');
+    return `
+      <div data-prob-aid="${escAttr(it.id)}"
+           style="border-bottom:1px solid #f3f4f6;padding:8px 10px;background:#fafafa;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:600;color:#374151;line-height:1.35;
+                        overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+                        -webkit-line-clamp:2;-webkit-box-orient:vertical;"
+                 title="${escAttr(title)}">${esc(title)}</div>
+            <div style="font-size:11.5px;color:#9ca3af;margin-top:2px;">
+              ${esc(authors)}${yearTxt}${journal}
+            </div>
+          </div>
+          <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+            <button type="button" class="pv-bsp-prob-reenable" data-aid="${escAttr(it.id)}"
+                    title="Quita el flag 'no insistas más' — el PDF vuelve a la cola."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #a7f3d0;background:white;color:#047857;font-size:11px;font-weight:600;cursor:pointer;">
+              ↻ Volver a intentar
+            </button>
+            <button type="button" class="pv-bsp-prob-del" data-aid="${escAttr(it.id)}"
+                    title="Borra el artículo de PrionVault (también el PDF de Dropbox)."
+                    style="padding:3px 10px;border-radius:4px;border:1px solid #fca5a5;background:white;color:#b91c1c;font-size:11px;font-weight:600;cursor:pointer;">
+              🗑 Borrar
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   function _downloadBspLogCsv(events) {
