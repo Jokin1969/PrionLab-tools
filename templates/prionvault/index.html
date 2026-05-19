@@ -111,7 +111,17 @@
 <div id="prionvault-app">
 
   <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
-  <aside style="width:230px;background:#0F3460;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;">
+  <aside id="pv-sidebar"
+         style="width:230px;background:#0F3460;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;position:relative;">
+
+    <!-- Resize handle. Pointer-events on the strip drive the drag;
+         the rest of the strip just gives the user a 6 px wide target
+         to grab. Width preference is persisted in localStorage so the
+         choice survives reloads. -->
+    <div id="pv-sidebar-resize"
+         title="Arrastra para ajustar el ancho del menú"
+         style="position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;
+                z-index:50;background:transparent;transition:background 0.15s;"></div>
 
     <!-- Brand -->
     <div style="padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0;">

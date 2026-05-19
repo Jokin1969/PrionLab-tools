@@ -5394,6 +5394,7 @@
       wireBatchSearchable();
       wirePubmedInventory();
       wireVerifyMetadata();
+      wireSidebarResize();
       wireBulkBar();
       wireBulkLookup();
       wireBulkTagModal();
@@ -9736,6 +9737,74 @@
         </div>
       </div>
     `;
+  }
+
+  // ── Resizable sidebar ──────────────────────────────────────────────
+  // The aside on the left carries a tall stack of admin actions; users
+  // with longer button labels (or on smaller monitors) want a way to
+  // widen it. We expose a 6 px vertical drag-strip on the right edge,
+  // clamp the resulting width between 200-420 px (the brand block and
+  // the nav buttons start to look bad outside that range), and persist
+  // the choice in localStorage so reload doesn't lose it.
+  function wireSidebarResize() {
+    const aside  = document.getElementById('pv-sidebar');
+    const handle = document.getElementById('pv-sidebar-resize');
+    if (!aside || !handle) return;
+    const MIN = 200, MAX = 420;
+    const KEY = 'pv-sidebar-width';
+
+    // Restore saved width on boot.
+    try {
+      const saved = parseInt(localStorage.getItem(KEY) || '', 10);
+      if (saved && saved >= MIN && saved <= MAX) {
+        aside.style.width = saved + 'px';
+      }
+    } catch (_) { /* localStorage unavailable — ignore */ }
+
+    // Subtle hover affordance so the operator notices the strip is grabbable.
+    handle.addEventListener('mouseenter', () => {
+      handle.style.background = 'rgba(255,255,255,0.18)';
+    });
+    handle.addEventListener('mouseleave', () => {
+      if (!dragging) handle.style.background = 'transparent';
+    });
+
+    let dragging = false;
+    let startX = 0, startW = 0;
+
+    handle.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      startX = e.clientX;
+      startW = aside.offsetWidth;
+      handle.setPointerCapture(e.pointerId);
+      handle.style.background = 'rgba(255,255,255,0.28)';
+      document.body.style.userSelect = 'none';   // avoid text selection
+      document.body.style.cursor = 'col-resize';
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const w = Math.max(MIN, Math.min(MAX, startW + (e.clientX - startX)));
+      aside.style.width = w + 'px';
+    });
+    const endDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+      handle.style.background = 'transparent';
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      try { localStorage.setItem(KEY, String(aside.offsetWidth)); } catch (_) {}
+    };
+    handle.addEventListener('pointerup',     endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+
+    // Double-click to reset to the default width — quick escape hatch
+    // if the user dragged too far and can't find the strip.
+    handle.addEventListener('dblclick', () => {
+      aside.style.width = '230px';
+      try { localStorage.removeItem(KEY); } catch (_) {}
+    });
   }
 
   document.addEventListener('DOMContentLoaded', init);
