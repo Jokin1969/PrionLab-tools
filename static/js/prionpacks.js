@@ -4782,11 +4782,18 @@ ${refsText}`;
     document.getElementById('pp-sg-profile-meta').textContent =
       `${prof.member_count ?? 0} miembros · ${prof.total_chars ?? 0} chars`;
 
+    // Surface IA-pass diagnostics. The rationale call writes "Por qué"
+    // on each card; if it failed we want the operator to know rather
+    // than guess why the field is missing. Same for the PubMed query
+    // extractor — both can silently fall back to OpenAI / Gemini.
+    const diagBanner = _sgDiagBanner(data);
+
     const items = data.items || [];
     const results = document.getElementById('pp-sg-results');
     if (!items.length) {
       const reason = data.skipped || data.error || 'sin resultados';
       results.innerHTML =
+        diagBanner +
         `<div style="color:#9ca3af;text-align:center;padding:32px;font-size:13px;">
            No hay candidatos. <span style="color:#6b7280;">(${_sgEsc(reason)})</span>
          </div>`;
@@ -4800,7 +4807,7 @@ ${refsText}`;
            ${items.length} candidatos de PubMed que <strong>no</strong> están en tu PrionVault.
            Búsquedas usadas: ${(data.queries || []).map(q => `<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">${_sgEsc(q)}</code>`).join(' · ')}
          </div>`;
-    results.innerHTML = header + items.map(it => _sgCardHtml(tab, it, packId)).join('');
+    results.innerHTML = diagBanner + header + items.map(it => _sgCardHtml(tab, it, packId)).join('');
 
     // Stash the full record indexed by pmid so the PubMed-add path
     // can pull authors / year / journal / doi without the DOM
@@ -4819,6 +4826,50 @@ ${refsText}`;
         _sgAddPubmed(it, packId, b);
       });
     });
+  }
+
+  // Tiny "info" / "warning" strip rendered above the results list when
+  // either the rationale or query-extraction step had to fall back to
+  // another provider — or failed completely. Kept compact so it
+  // doesn't get in the way when everything went right.
+  function _sgDiagBanner(data) {
+    const parts = [];
+    const r = data.rationale || {};
+    const x = data.extract   || {};
+    const fmtAttempts = (atts) =>
+      (atts || []).map(a => `${_sgEsc(a.provider)} (${_sgEsc(a.error || 'sin detalle')})`).join(' · ');
+
+    // Rationale failed completely → "Por qué" stays empty on cards.
+    if (r.error) {
+      parts.push(
+        `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;
+                     padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:10px;">
+           ⚠ La IA no pudo escribir el <strong>"Por qué"</strong> de cada candidato:
+           <span style="color:#7f1d1d;">${_sgEsc(r.error)}</span>
+         </div>`
+      );
+    } else if (r.attempts && r.attempts.length) {
+      parts.push(
+        `<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;
+                     padding:6px 10px;border-radius:6px;font-size:11.5px;margin-bottom:10px;">
+           Justificaciones generadas por <strong>${_sgEsc(r.provider || '?')}</strong>
+           tras fallar: ${fmtAttempts(r.attempts)}
+         </div>`
+      );
+    }
+
+    // Query extractor (PubMed tab only) had to fall back.
+    if (x.attempts && x.attempts.length) {
+      parts.push(
+        `<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;
+                     padding:6px 10px;border-radius:6px;font-size:11.5px;margin-bottom:10px;">
+           Búsquedas PubMed generadas por <strong>${_sgEsc(x.provider || '?')}</strong>
+           tras fallar: ${fmtAttempts(x.attempts)}
+         </div>`
+      );
+    }
+
+    return parts.join('');
   }
 
   function _sgCardHtml(tab, it, packId) {

@@ -34,7 +34,22 @@ from ..ingestion.queue import _get_engine
 from ..ingestion.metadata_resolver import (
     _PUBMED_ESEARCH, _PUBMED_ESUMMARY, _HDRS, _TIMEOUT,
 )
-from .llm_pool import call_llm_json, NotConfigured
+from .llm_pool import call_llm_json, call_llm_json_with_fallback, NotConfigured
+
+# Default fallback order — caller-provided provider always goes first.
+_DEFAULT_PROVIDERS = ("anthropic", "openai", "gemini")
+
+
+def _provider_chain(provider: str) -> list[str]:
+    """Caller's choice first, then the remaining providers in a fixed
+    order. Keeps the chain deterministic and lets the operator pick
+    which model gets the cheap path while still falling back."""
+    p = (provider or "").strip().lower()
+    chain = [p] if p else []
+    for q in _DEFAULT_PROVIDERS:
+        if q not in chain:
+            chain.append(q)
+    return chain
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +181,10 @@ _RATIONALE_SYSTEM = (
 def _annotate_with_rationale(profile_text: str, candidates: list[dict],
                              provider: str) -> dict:
     """Run the LLM rationale pass. Mutates `candidates` in place with
-    note + why where the model provided them. Returns metadata
-    {provider, model, tokens_in, tokens_out, elapsed_ms} or empty
-    when rationale was skipped (e.g. provider not configured)."""
+    note + why where the model provided them. Tries the caller's
+    provider first and falls back to the other configured ones so a
+    single empty-response from Claude doesn't leave the user with
+    blank "Por qué" cards. Returns {provider, attempts, [error]}."""
     if not candidates:
         return {}
     payload = []
@@ -189,12 +205,13 @@ def _annotate_with_rationale(profile_text: str, candidates: list[dict],
         f"{json.dumps(payload, ensure_ascii=False)}"
     )
     try:
-        parsed = call_llm_json(provider=provider,
-                               system=_RATIONALE_SYSTEM, user=user,
-                               max_tokens=2400)
-    except (NotConfigured, RuntimeError) as exc:
+        parsed, info = call_llm_json_with_fallback(
+            providers=_provider_chain(provider),
+            system=_RATIONALE_SYSTEM, user=user, max_tokens=2400,
+        )
+    except RuntimeError as exc:
         logger.warning("pack_suggest: rationale call failed (%s)", exc)
-        return {"error": str(exc)[:200]}
+        return {"error": str(exc)[:240]}
     by_id = {it.get("id"): it for it in (parsed.get("items") or []) if isinstance(it, dict)}
     for c in candidates:
         m = by_id.get(c["id"])
@@ -209,7 +226,7 @@ def _annotate_with_rationale(profile_text: str, candidates: list[dict],
         why = (m.get("why") or "").strip()
         if why:
             c["why"] = why[:400]
-    return {"provider": provider}
+    return info
 
 
 def suggest_internal(pack: dict, *, top_k: int = 10,
@@ -372,14 +389,20 @@ _PUBMED_RATIONALE_SYSTEM = (
 )
 
 
-def _extract_queries(profile_text: str, provider: str) -> list[str]:
+def _extract_queries(profile_text: str, provider: str) -> tuple[list[str], dict]:
+    """Returns (queries, info). info carries the winning provider and
+    the per-attempt errors so the UI can show "Claude returned empty —
+    falled back to OpenAI" instead of a cryptic blank."""
     user = "## Perfil del pack\n" + profile_text
-    parsed = call_llm_json(provider=provider, system=_QUERIES_SYSTEM,
-                           user=user, max_tokens=800)
+    parsed, info = call_llm_json_with_fallback(
+        providers=_provider_chain(provider),
+        system=_QUERIES_SYSTEM, user=user, max_tokens=800,
+    )
     qs = parsed.get("queries") if isinstance(parsed, dict) else None
     if not isinstance(qs, list):
-        return []
-    return [str(q).strip() for q in qs if isinstance(q, str) and q.strip()][:6]
+        return [], info
+    cleaned = [str(q).strip() for q in qs if isinstance(q, str) and q.strip()][:6]
+    return cleaned, info
 
 
 def _esearch(query: str, retmax: int = 20) -> list[str]:
@@ -466,12 +489,13 @@ def suggest_pubmed(pack: dict, *, top_k: int = 15,
 
     # 1) Extract 4-6 E-Search queries from the profile.
     try:
-        queries = _extract_queries(profile["profile_text"], provider)
+        queries, extract_info = _extract_queries(profile["profile_text"], provider)
     except (NotConfigured, RuntimeError) as exc:
         return {"items": [], "profile": profile,
                 "error": f"query_extraction: {exc}"[:300]}
     if not queries:
-        return {"items": [], "profile": profile, "skipped": "no_queries"}
+        return {"items": [], "profile": profile, "skipped": "no_queries",
+                "extract": extract_info}
 
     # 2) Aggregate PMIDs across queries. The score is "in how many
     #    queries did this PMID appear" (rough but works as a tiebreaker
@@ -527,6 +551,7 @@ def suggest_pubmed(pack: dict, *, top_k: int = 15,
         "already_in_pv":  len(already),
         "candidates_pre": len(candidates_top),
         "rationale":      rationale_info,
+        "extract":        extract_info,
     }
 
 
@@ -544,8 +569,14 @@ def _annotate_pubmed_with_rationale(profile_text: str,
         f"## Candidatos de PubMed ({len(payload)})\n"
         f"{json.dumps(payload, ensure_ascii=False)}"
     )
-    parsed = call_llm_json(provider=provider, system=_PUBMED_RATIONALE_SYSTEM,
-                           user=user, max_tokens=2400)
+    try:
+        parsed, info = call_llm_json_with_fallback(
+            providers=_provider_chain(provider),
+            system=_PUBMED_RATIONALE_SYSTEM, user=user, max_tokens=2400,
+        )
+    except RuntimeError as exc:
+        logger.warning("pack_suggest: pubmed rationale failed (%s)", exc)
+        return {"error": str(exc)[:240]}
     by_pmid = {it.get("pmid"): it for it in (parsed.get("items") or []) if isinstance(it, dict)}
     for it in items:
         m = by_pmid.get(it["pmid"])
@@ -560,4 +591,4 @@ def _annotate_pubmed_with_rationale(profile_text: str,
         why = (m.get("why") or "").strip()
         if why:
             it["why"] = why[:400]
-    return {"provider": provider}
+    return info

@@ -118,6 +118,39 @@ def call_llm_json(*, provider: str, system: str, user: str,
         ) from exc
 
 
+def call_llm_json_with_fallback(*, providers: list[str], system: str,
+                                user: str, max_tokens: int = 2400
+                                ) -> tuple[dict, dict]:
+    """Try each provider in `providers` until one returns parseable JSON.
+    Empty responses, transient errors and JSON-decode failures all
+    cause the next provider to be tried; only an exhausted list raises.
+
+    Returns (parsed_dict, info) where info is:
+      {"provider": "<winner>", "attempts": [{"provider":..., "error":...}, ...]}
+    so the caller can show a "served by Gemini after Anthropic empty
+    response" hint in the UI.
+    """
+    attempts: list[dict] = []
+    seen: set[str] = set()
+    for p in providers:
+        p = (p or "").strip().lower()
+        if not p or p in seen:
+            continue
+        seen.add(p)
+        try:
+            parsed = call_llm_json(provider=p, system=system, user=user,
+                                   max_tokens=max_tokens)
+            return parsed, {"provider": p, "attempts": attempts}
+        except (NotConfigured, RuntimeError, ValueError) as exc:
+            attempts.append({"provider": p, "error": str(exc)[:240]})
+            logger.info("llm_pool fallback: %s failed (%s) — trying next", p, exc)
+            continue
+    raise RuntimeError(
+        "all providers failed: "
+        + "; ".join(f"{a['provider']}={a['error']}" for a in attempts)
+    )
+
+
 # ── Provider call implementations ────────────────────────────────────────────
 
 def _call_anthropic(api_key: str, system: str, user: str,
