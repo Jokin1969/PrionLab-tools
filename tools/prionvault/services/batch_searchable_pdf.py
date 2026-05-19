@@ -99,11 +99,18 @@ def get_status() -> dict:
 
 
 def clear_events() -> None:
-    """Reset the in-memory event log. Used by the modal's "Limpiar log"
-    button so the operator can start a fresh trail without restarting
-    the whole batch."""
+    """Reset the in-memory event log AND the in-flight "last error"
+    banner. Used by the modal's "Limpiar log" button so the operator
+    starts a fresh trail without restarting the whole batch.
+
+    The session counters (processed / failed / skipped / bytes) are
+    deliberately preserved — they describe what happened, not what's
+    still being shown — so a "Limpiar log" doesn't erase the result
+    of a finished batch.
+    """
     with _lock:
         _state["events"].clear()
+        _state["last_error"] = None
 
 
 def _library_stats() -> dict:
