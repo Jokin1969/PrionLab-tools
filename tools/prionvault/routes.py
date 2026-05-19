@@ -4682,10 +4682,24 @@ def api_pubmed_inventory_list():
 @prionvault_bp.route("/api/admin/pubmed-inventory/refresh", methods=["POST"])
 @admin_required
 def api_pubmed_inventory_refresh():
-    """Ask the daemon to run a harvest now (returns immediately; poll
-    /stats for progress)."""
+    """Run a harvest pass right now. We poke the daemon (in case it's
+    listening) AND spawn a fresh background thread that calls
+    harvest_once() directly — that way the button works even if the
+    daemon hasn't picked up its wake-on-force fix yet, or wasn't
+    started at all on this worker.
+    """
+    import threading
     from .services import pubmed_inventory
+
     pubmed_inventory.request_harvest_now()
+    # Don't spin up a second harvester if one is already running
+    # (harvest_once is reentrant-safe but we'd waste resources).
+    if not pubmed_inventory.get_progress().get("running"):
+        threading.Thread(
+            target=pubmed_inventory.harvest_once,
+            name="prionvault-harvest-on-demand",
+            daemon=True,
+        ).start()
     return jsonify({"ok": True, "status": pubmed_inventory.get_progress()})
 
 
