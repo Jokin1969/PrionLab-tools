@@ -9091,7 +9091,7 @@
             Marcar los ${data.items.length} visibles
           </label>
         </div>`;
-      list.innerHTML = head + data.items.map(_pinvRowHtml).join('');
+      list.innerHTML = head + data.items.map(it => _pinvRowHtml(it, _pinvStatus)).join('');
 
       // Wire row interactions
       list.querySelectorAll('.pv-pinv-pick').forEach(cb => {
@@ -9298,7 +9298,11 @@
     oaCb.addEventListener('change', () => { page = 1; reloadList(); });
   }
 
-  function _pinvRowHtml(it) {
+  // `status` is passed explicitly because this helper lives at module
+  // scope while _pinvStatus is a closure-local inside wirePubmedInventory
+  // — without the argument, the row tries to read it from the global
+  // scope and throws ReferenceError (Sentry 81eab721…).
+  function _pinvRowHtml(it, status) {
     const escAttr = (v) => esc(String(v || ''));
     const title   = it.title || '(sin título)';
     const yearTxt = it.year ? ` · ${it.year}` : '';
@@ -9348,7 +9352,7 @@
                     style="padding:4px 12px;border-radius:5px;border:none;background:#15803d;color:white;font-size:11.5px;font-weight:600;cursor:pointer;">
               ➕ Importar
             </button>
-            ${_pinvStatus === 'dismissed'
+            ${status === 'dismissed'
               ? `<button type="button" class="pv-pinv-recover-one" data-pmid="${escAttr(it.pmid)}"
                           title="Devolver a pendientes."
                           style="padding:4px 12px;border-radius:5px;border:1px solid #a7f3d0;background:white;color:#047857;font-size:11.5px;font-weight:600;cursor:pointer;">
