@@ -8916,6 +8916,10 @@
     let page = 1;
     const PAGE_SIZE = 100;
     let pollHandle = null;
+    // Tracks whether the last poll saw the harvest as running, so the
+    // running → idle transition can auto-reload the candidate list
+    // (otherwise the user keeps seeing the cached "no hay pendientes").
+    let _pinvWasRunning = false;
 
     function statCard(label, value, color) {
       return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
@@ -8983,8 +8987,11 @@
       const p = s.progress || {};
       if (p.running) {
         progEl.style.display = 'block';
+        progEl.style.background = '#fff7ed';
+        progEl.style.borderColor = '#fed7aa';
+        progEl.style.color = '#9a3412';
         const stage = ({
-          esearch:   'Consultando PubMed (esearch)',
+          esearch:   `Consultando PubMed (esearch) — ${p.pmids_seen ?? 0} PMIDs recogidos hasta ahora`,
           esummary:  `Descargando metadatos — ${p.pmids_seen ?? 0} PMIDs / ${(p.pmids_inserted ?? 0) + (p.pmids_updated ?? 0)} procesados`,
           reconcile: 'Reconciliando contra el catálogo…',
         }[p.stage] || `Trabajando (${p.stage || '…'})`);
@@ -8992,6 +8999,15 @@
       } else {
         progEl.style.display = 'none';
       }
+
+      // Detect harvest completion (running → idle) so we reload the
+      // candidate list. Without this the user still sees "No quedan
+      // pendientes" from the empty initial state after harvesting.
+      if (_pinvWasRunning && !p.running) {
+        page = 1;     // jump to first page so they land on the newest
+        reloadList();
+      }
+      _pinvWasRunning = !!p.running;
 
       if (s.last_run_at && !p.running) {
         const when = new Date(s.last_run_at).toLocaleString();

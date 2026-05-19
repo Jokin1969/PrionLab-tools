@@ -162,42 +162,104 @@ def _record_run(*, status: str, runtime_ms: int,
 
 def _esearch_all(query: str) -> list[str]:
     """Walk every page of E-Search results for `query`, returning the
-    full PMID list. Uses `retmax=9999` + `retstart` paging (the
-    documented stable strategy for retrieving large result sets)."""
+    full PMID list.
+
+    Uses PubMed's **usehistory=y** to avoid the well-known retstart
+    deep-paging quirks. The flow is:
+      1. POST the query with retmax=0 + usehistory=y → PubMed returns
+         the total count plus a WebEnv / QueryKey pair we can reuse.
+      2. Page over (WebEnv, QueryKey) with retmax=9999 — the documented
+         maximum per esearch call — until the running pmid count
+         reaches the total.
+
+    Progress is reported incrementally via _set_state(pmids_seen=…) so
+    the UI shows the counter creeping up rather than jumping from 0 to
+    the final number in one go.
+    """
+    # 1) Discovery call — gets total count + history handles.
+    try:
+        r = requests.get(_PUBMED_ESEARCH, params={
+            "db":         "pubmed",
+            "term":       query,
+            "retmode":    "json",
+            "retmax":     "0",
+            "usehistory": "y",
+        }, headers=_HDRS, timeout=_TIMEOUT)
+        r.raise_for_status()
+    except Exception as exc:
+        logger.warning("pubmed_inventory: discovery esearch failed (%s)", exc)
+        raise
+    try:
+        data = _loose_json(r) or {}
+    except Exception as exc:
+        logger.warning("pubmed_inventory: discovery JSON parse failed (%s)", exc)
+        return []
+    res = data.get("esearchresult") or {}
+    try:
+        total = int(res.get("count") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    webenv    = res.get("webenv")
+    query_key = res.get("querykey")
+    if not webenv or not query_key or total <= 0:
+        logger.warning(
+            "pubmed_inventory: discovery returned no history (count=%r webenv=%r qk=%r)",
+            total, bool(webenv), bool(query_key),
+        )
+        return []
+    logger.info("pubmed_inventory: discovery — %d PMIDs expected", total)
+    _set_state(pmids_seen=0)
+
+    # 2) Page through the history. retstart advances by the actual
+    # length of each idlist (not by retmax) so a short final page
+    # doesn't undercount the position.
     pmids: list[str] = []
     retstart = 0
-    while True:
+    while retstart < total:
         try:
             r = requests.get(_PUBMED_ESEARCH, params={
-                "db":      "pubmed",
-                "term":    query,
-                "retmax":  str(_ESEARCH_RETMAX),
-                "retstart": str(retstart),
-                "retmode": "json",
+                "db":        "pubmed",
+                "WebEnv":    webenv,
+                "query_key": query_key,
+                "retmax":    str(_ESEARCH_RETMAX),
+                "retstart":  str(retstart),
+                "retmode":   "json",
             }, headers=_HDRS, timeout=_TIMEOUT)
             r.raise_for_status()
         except Exception as exc:
-            logger.warning("pubmed_inventory: esearch failed at %d (%s)",
-                           retstart, exc)
-            raise
+            logger.warning(
+                "pubmed_inventory: esearch page failed at retstart=%d (%s)",
+                retstart, exc,
+            )
+            # Don't kill the harvest — break out and proceed with
+            # whatever we already collected. Next harvest will retry.
+            break
         try:
             data = _loose_json(r) or {}
         except Exception as exc:
-            logger.warning("pubmed_inventory: esearch JSON parse failed at %d (%s)",
-                           retstart, exc)
-            # Don't kill the whole harvest over one malformed page;
-            # treat as "no more results" and exit the loop.
+            logger.warning(
+                "pubmed_inventory: esearch JSON parse failed at retstart=%d (%s)",
+                retstart, exc,
+            )
             break
         res = data.get("esearchresult") or {}
         batch = res.get("idlist") or []
-        pmids.extend(str(p) for p in batch if str(p).isdigit())
-        try:
-            total = int(res.get("count") or 0)
-        except (TypeError, ValueError):
-            total = len(pmids)
-        if len(batch) < _ESEARCH_RETMAX or len(pmids) >= total:
+        if not batch:
+            # PubMed responded but no IDs — we're done (or PubMed
+            # changed its mind about the total).
             break
-        retstart += _ESEARCH_RETMAX
+        before = len(pmids)
+        pmids.extend(str(p) for p in batch if str(p).isdigit())
+        gained = len(pmids) - before
+        _set_state(pmids_seen=len(pmids))
+        logger.info(
+            "pubmed_inventory: page retstart=%d gained=%d total_so_far=%d/%d",
+            retstart, gained, len(pmids), total,
+        )
+        if gained == 0:
+            # Hard stop — no progress, would loop forever otherwise.
+            break
+        retstart += len(batch)
         time.sleep(_INTER_BATCH_SLEEP_S)
     return pmids
 
