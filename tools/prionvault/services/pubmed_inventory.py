@@ -160,104 +160,105 @@ def _record_run(*, status: str, runtime_ms: int,
 
 # ── PubMed calls ─────────────────────────────────────────────────────────────
 
-def _esearch_all(query: str) -> list[str]:
-    """Walk every page of E-Search results for `query`, returning the
-    full PMID list.
+def _esearch_page(query: str, retstart: int, retmax: int) -> tuple[list[str], int, Optional[str]]:
+    """One page of the esearch result set.
 
-    Uses PubMed's **usehistory=y** to avoid the well-known retstart
-    deep-paging quirks. The flow is:
-      1. POST the query with retmax=0 + usehistory=y → PubMed returns
-         the total count plus a WebEnv / QueryKey pair we can reuse.
-      2. Page over (WebEnv, QueryKey) with retmax=9999 — the documented
-         maximum per esearch call — until the running pmid count
-         reaches the total.
-
-    Progress is reported incrementally via _set_state(pmids_seen=…) so
-    the UI shows the counter creeping up rather than jumping from 0 to
-    the final number in one go.
+    Returns (idlist, total_count, error_msg). On a transient error
+    (network, timeout, 5xx, JSON parse) the caller should retry; the
+    error message is included for logging so the operator can see
+    *why* the page failed.
     """
-    # 1) Discovery call — gets total count + history handles.
     try:
         r = requests.get(_PUBMED_ESEARCH, params={
-            "db":         "pubmed",
-            "term":       query,
-            "retmode":    "json",
-            "retmax":     "0",
-            "usehistory": "y",
-        }, headers=_HDRS, timeout=_TIMEOUT)
-        r.raise_for_status()
+            "db":      "pubmed",
+            "term":    query,
+            "retmax":  str(retmax),
+            "retstart": str(retstart),
+            "retmode": "json",
+        }, headers=_HDRS, timeout=20.0)
     except Exception as exc:
-        logger.warning("pubmed_inventory: discovery esearch failed (%s)", exc)
-        raise
+        return [], 0, f"network: {exc}"
+    if r.status_code != 200:
+        body = (r.text or "")[:200].replace("\n", " ")
+        return [], 0, f"http_{r.status_code}: {body}"
     try:
         data = _loose_json(r) or {}
     except Exception as exc:
-        logger.warning("pubmed_inventory: discovery JSON parse failed (%s)", exc)
-        return []
+        body = (r.text or "")[:200].replace("\n", " ")
+        return [], 0, f"json_parse: {exc} (body head: {body!r})"
     res = data.get("esearchresult") or {}
     try:
         total = int(res.get("count") or 0)
     except (TypeError, ValueError):
         total = 0
-    webenv    = res.get("webenv")
-    query_key = res.get("querykey")
-    if not webenv or not query_key or total <= 0:
-        logger.warning(
-            "pubmed_inventory: discovery returned no history (count=%r webenv=%r qk=%r)",
-            total, bool(webenv), bool(query_key),
-        )
-        return []
-    logger.info("pubmed_inventory: discovery — %d PMIDs expected", total)
-    _set_state(pmids_seen=0)
+    batch = res.get("idlist") or []
+    if not isinstance(batch, list):
+        return [], total, f"unexpected idlist type: {type(batch).__name__}"
+    return [str(p) for p in batch if str(p).isdigit()], total, None
 
-    # 2) Page through the history. retstart advances by the actual
-    # length of each idlist (not by retmax) so a short final page
-    # doesn't undercount the position.
+
+def _esearch_all(query: str) -> list[str]:
+    """Walk every page of E-Search results for `query`. Direct
+    paginated retstart — history mode didn't reliably return pages
+    beyond the first in production.
+
+    `retmax` is 9999 (PubMed's documented per-call cap) but each page
+    is retried up to 3 times with backoff before giving up; whatever
+    PMIDs we already collected get upserted and the next harvest
+    retries the rest. Progress is reported via _set_state(pmids_seen=…)
+    so the modal counter creeps up rather than jumping at the end.
+    """
     pmids: list[str] = []
+    seen: set[str] = set()
     retstart = 0
-    while retstart < total:
-        try:
-            r = requests.get(_PUBMED_ESEARCH, params={
-                "db":        "pubmed",
-                "WebEnv":    webenv,
-                "query_key": query_key,
-                "retmax":    str(_ESEARCH_RETMAX),
-                "retstart":  str(retstart),
-                "retmode":   "json",
-            }, headers=_HDRS, timeout=_TIMEOUT)
-            r.raise_for_status()
-        except Exception as exc:
+    expected_total: Optional[int] = None
+    page_idx = 0
+
+    while True:
+        page_idx += 1
+        last_err: Optional[str] = None
+        batch: list[str] = []
+        total = 0
+        # 3 attempts per page with linear backoff so a transient 5xx
+        # from NCBI doesn't end the whole harvest.
+        for attempt in range(1, 4):
+            batch, total, last_err = _esearch_page(query, retstart, _ESEARCH_RETMAX)
+            if last_err is None:
+                break
             logger.warning(
-                "pubmed_inventory: esearch page failed at retstart=%d (%s)",
-                retstart, exc,
+                "pubmed_inventory: page %d retstart=%d attempt %d/3 failed: %s",
+                page_idx, retstart, attempt, last_err,
             )
-            # Don't kill the harvest — break out and proceed with
-            # whatever we already collected. Next harvest will retry.
-            break
-        try:
-            data = _loose_json(r) or {}
-        except Exception as exc:
+            time.sleep(2.0 * attempt)
+        if last_err:
             logger.warning(
-                "pubmed_inventory: esearch JSON parse failed at retstart=%d (%s)",
-                retstart, exc,
+                "pubmed_inventory: giving up on page %d after 3 attempts (%s) — "
+                "harvest will retry next pass",
+                page_idx, last_err,
             )
             break
-        res = data.get("esearchresult") or {}
-        batch = res.get("idlist") or []
-        if not batch:
-            # PubMed responded but no IDs — we're done (or PubMed
-            # changed its mind about the total).
-            break
-        before = len(pmids)
-        pmids.extend(str(p) for p in batch if str(p).isdigit())
-        gained = len(pmids) - before
+        if expected_total is None:
+            expected_total = total
+            logger.info(
+                "pubmed_inventory: PubMed reports %d total PMIDs for query",
+                expected_total,
+            )
+        gained = 0
+        for p in batch:
+            if p not in seen:
+                seen.add(p)
+                pmids.append(p)
+                gained += 1
         _set_state(pmids_seen=len(pmids))
         logger.info(
-            "pubmed_inventory: page retstart=%d gained=%d total_so_far=%d/%d",
-            retstart, gained, len(pmids), total,
+            "pubmed_inventory: page %d retstart=%d → batch=%d gained=%d total_so_far=%d/%d",
+            page_idx, retstart, len(batch), gained, len(pmids), expected_total,
         )
-        if gained == 0:
-            # Hard stop — no progress, would loop forever otherwise.
+        # Stop conditions:
+        #   - page empty (PubMed exhausted)
+        #   - we've covered the reported total
+        #   - page returned but contributed zero unique PMIDs (loop guard)
+        if not batch or len(pmids) >= expected_total or gained == 0:
             break
         retstart += len(batch)
         time.sleep(_INTER_BATCH_SLEEP_S)
