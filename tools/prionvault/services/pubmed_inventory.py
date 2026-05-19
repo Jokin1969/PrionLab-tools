@@ -26,6 +26,7 @@ Design knobs that drove this file:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -37,6 +38,15 @@ from typing import Iterable, Optional
 
 import requests
 from sqlalchemy import text as sql_text
+
+
+def _loose_json(resp: requests.Response) -> dict:
+    """Parse a PubMed response that may carry raw control characters in
+    its title / abstract strings (PubMed serialises some XML escapes
+    that way). `json.loads(..., strict=False)` accepts these; the
+    default strict mode raises JSONDecodeError mid-harvest.
+    """
+    return json.loads(resp.text or "{}", strict=False)
 
 from ..ingestion.metadata_resolver import (
     _PUBMED_ESEARCH, _PUBMED_ESUMMARY, _HDRS, _TIMEOUT,
@@ -170,7 +180,14 @@ def _esearch_all(query: str) -> list[str]:
             logger.warning("pubmed_inventory: esearch failed at %d (%s)",
                            retstart, exc)
             raise
-        data = r.json() or {}
+        try:
+            data = _loose_json(r) or {}
+        except Exception as exc:
+            logger.warning("pubmed_inventory: esearch JSON parse failed at %d (%s)",
+                           retstart, exc)
+            # Don't kill the whole harvest over one malformed page;
+            # treat as "no more results" and exit the loop.
+            break
         res = data.get("esearchresult") or {}
         batch = res.get("idlist") or []
         pmids.extend(str(p) for p in batch if str(p).isdigit())
@@ -200,7 +217,14 @@ def _esummary_one_batch(pmids: list[str]) -> dict[str, dict]:
     except Exception as exc:
         logger.debug("pubmed_inventory: esummary batch failed (%s)", exc)
         return {}
-    res = (r.json().get("result") or {})
+    try:
+        res = (_loose_json(r).get("result") or {})
+    except Exception as exc:
+        # PubMed occasionally serves a chunk with bare control bytes.
+        # Skip this batch so the harvest keeps moving; the next pass
+        # will retry the same PMIDs.
+        logger.warning("pubmed_inventory: esummary JSON parse failed (%s)", exc)
+        return {}
     out: dict[str, dict] = {}
     for pid in pmids:
         s = res.get(pid)
