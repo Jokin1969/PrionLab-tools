@@ -4665,17 +4665,26 @@ def api_pubmed_inventory_stats():
 @prionvault_bp.route("/api/admin/pubmed-inventory/list", methods=["GET"])
 @admin_required
 def api_pubmed_inventory_list():
-    """Paginated "pending" listing (not imported, not dismissed)."""
+    """Paginated inventory listing.
+
+    Query params:
+      status   pending (default) | dismissed | imported
+      q        substring filter on title / authors / journal
+      year_min / year_max
+      only_oa  "1" to limit to rows with a PMC ID
+      page / size
+    """
     from .services import pubmed_inventory
     q        = (request.args.get("q") or "").strip() or None
     year_min = request.args.get("year_min", type=int)
     year_max = request.args.get("year_max", type=int)
     only_oa  = request.args.get("only_oa") == "1"
+    status   = (request.args.get("status") or "pending").strip().lower()
     page     = request.args.get("page", default=1, type=int)
     size     = request.args.get("size", default=100, type=int)
     return jsonify(pubmed_inventory.list_pending(
         q=q, year_min=year_min, year_max=year_max,
-        only_oa=only_oa, page=page, size=size,
+        only_oa=only_oa, status=status, page=page, size=size,
     ))
 
 

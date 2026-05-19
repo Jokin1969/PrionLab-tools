@@ -475,12 +475,31 @@ def list_pending(*, q: Optional[str] = None,
                  year_min: Optional[int] = None,
                  year_max: Optional[int] = None,
                  only_oa: bool = False,
+                 status: str = "pending",
                  page: int = 1,
                  size: int = 100) -> dict:
-    """Listado paginado de PMIDs pendientes (ni importados ni descartados)."""
+    """Listado paginado del inventario.
+
+    `status`:
+      - "pending"   (default) — ni importados ni descartados
+      - "dismissed" — los rechazados con ✗ Descartar
+      - "imported"  — los que ya tienes en PrionVault
+    """
     page = max(1, int(page or 1))
     size = max(1, min(500, int(size or 100)))
-    conditions = ["imported_at IS NULL", "dismissed = FALSE"]
+
+    status = (status or "pending").strip().lower()
+    if status == "dismissed":
+        conditions = ["dismissed = TRUE"]
+        order_by   = "dismissed_at DESC NULLS LAST"
+    elif status == "imported":
+        conditions = ["imported_at IS NOT NULL"]
+        order_by   = "imported_at DESC NULLS LAST"
+    else:
+        status = "pending"
+        conditions = ["imported_at IS NULL", "dismissed = FALSE"]
+        order_by   = "year DESC NULLS LAST, last_seen_at DESC"
+
     params: dict = {}
     if q:
         conditions.append(
@@ -506,25 +525,26 @@ def list_pending(*, q: Optional[str] = None,
         params["off"] = (page - 1) * size
         rows = conn.execute(sql_text(f"""
             SELECT pmid, title, authors, year, journal, doi, pmcid,
-                   discovered_at, last_seen_at
+                   discovered_at, last_seen_at, dismissed_at, imported_at
               FROM prionvault_pubmed_inventory
              WHERE {where}
-             ORDER BY year DESC NULLS LAST, last_seen_at DESC
+             ORDER BY {order_by}
              LIMIT :lim OFFSET :off
         """), params).mappings().all()
     items = [dict(r) for r in rows]
     for it in items:
         # ISO strings for JSON. Postgres returns datetime, which Flask
         # will refuse to encode by default.
-        for k in ("discovered_at", "last_seen_at"):
+        for k in ("discovered_at", "last_seen_at", "dismissed_at", "imported_at"):
             v = it.get(k)
             it[k] = v.isoformat() if hasattr(v, "isoformat") else v
         it["has_oa"] = bool(it.get("pmcid"))
     return {
-        "total": int(total),
-        "page":  page,
-        "size":  size,
-        "items": items,
+        "total":  int(total),
+        "page":   page,
+        "size":   size,
+        "status": status,
+        "items":  items,
     }
 
 

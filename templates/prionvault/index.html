@@ -1472,6 +1472,20 @@
     <div id="pv-pinv-progress" style="display:none;margin-bottom:10px;font-size:12px;color:#374151;
                                        background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;padding:8px 10px;"></div>
 
+    <!-- Tabs: Pendientes vs Descartados. State lives in JS; the count
+         next to each pill comes from the same /stats poll that drives
+         the cards above. -->
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <button id="pv-pinv-tab-pending" type="button"
+              style="padding:5px 12px;border-radius:6px;border:1px solid #0F3460;background:#0F3460;color:white;font-size:12px;font-weight:600;cursor:pointer;">
+        📋 Pendientes <span id="pv-pinv-tab-pending-count" style="opacity:0.85;font-weight:400;">(–)</span>
+      </button>
+      <button id="pv-pinv-tab-dismissed" type="button"
+              style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;font-weight:600;cursor:pointer;">
+        ✗ Descartados <span id="pv-pinv-tab-dismissed-count" style="opacity:0.7;font-weight:400;">(–)</span>
+      </button>
+    </div>
+
     <!-- Bulk actions bar (sticky-ish) -->
     <div id="pv-pinv-bulk-bar" style="display:none;background:#f3f4f6;border:1px solid #e5e7eb;
                                        border-radius:7px;padding:6px 10px;margin-bottom:8px;
@@ -1485,6 +1499,10 @@
       <button id="pv-pinv-bulk-dismiss" type="button"
               style="padding:5px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:12px;font-weight:600;cursor:pointer;">
         ✗ Descartar seleccionados
+      </button>
+      <button id="pv-pinv-bulk-recover" type="button" style="display:none;
+              padding:5px 12px;border-radius:5px;border:1px solid #a7f3d0;background:white;color:#047857;font-size:12px;font-weight:600;cursor:pointer;">
+        ↻ Recuperar seleccionados
       </button>
       <button id="pv-pinv-bulk-clear" type="button"
               style="margin-left:auto;padding:4px 10px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#6b7280;font-size:11.5px;cursor:pointer;">

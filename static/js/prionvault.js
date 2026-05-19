@@ -8907,7 +8907,12 @@
     const bulkCnt  = document.getElementById('pv-pinv-bulk-count');
     const bulkImp  = document.getElementById('pv-pinv-bulk-import');
     const bulkDis  = document.getElementById('pv-pinv-bulk-dismiss');
+    const bulkRec  = document.getElementById('pv-pinv-bulk-recover');
     const bulkClr  = document.getElementById('pv-pinv-bulk-clear');
+    const tabPend  = document.getElementById('pv-pinv-tab-pending');
+    const tabDism  = document.getElementById('pv-pinv-tab-dismissed');
+    const tabPCnt  = document.getElementById('pv-pinv-tab-pending-count');
+    const tabDCnt  = document.getElementById('pv-pinv-tab-dismissed-count');
 
     // Persistent selection lives in a local Set, not state.selectedIds,
     // because these are PubMed IDs (not PrionVault UUIDs) — the bulk-bar
@@ -8920,6 +8925,11 @@
     // running → idle transition can auto-reload the candidate list
     // (otherwise the user keeps seeing the cached "no hay pendientes").
     let _pinvWasRunning = false;
+    // 'pending' (default) | 'dismissed' — toggled by the chip group
+    // above the listing. Selection is cleared when the user switches
+    // tabs so they can't accidentally bulk-Import what they just
+    // un-dismissed (or vice versa).
+    let _pinvStatus = 'pending';
 
     function statCard(label, value, color) {
       return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
@@ -8956,6 +8966,10 @@
         statCard('Pendientes',           s.pending ?? 0, '#b45309') +
         statCard('Con PDF OA',           s.pending_with_oa ?? 0, '#0F3460') +
         statCard('Importados sin PDF',   s.inv_no_pdf ?? 0, '#b45309');
+
+      // Tab counters mirror the stat cards.
+      if (tabPCnt) tabPCnt.textContent = `(${(s.pending ?? 0).toLocaleString()})`;
+      if (tabDCnt) tabDCnt.textContent = `(${(s.dismissed ?? 0).toLocaleString()})`;
 
       // OA-fetcher live status under the cards. Compact one-liner so
       // it stays out of the way when the queue is drained.
@@ -9036,8 +9050,9 @@
       list.innerHTML =
         '<div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">Cargando…</div>';
       const params = new URLSearchParams({
-        page: String(page),
-        size: String(PAGE_SIZE),
+        page:   String(page),
+        size:   String(PAGE_SIZE),
+        status: _pinvStatus,
       });
       if (qInp.value.trim())   params.set('q', qInp.value.trim());
       if (ymin.value.trim())   params.set('year_min', ymin.value.trim());
@@ -9053,9 +9068,11 @@
         return;
       }
       if (!data.items.length) {
+        const emptyMsg = _pinvStatus === 'dismissed'
+          ? '— No has descartado todavía ningún PMID.'
+          : '✓ No quedan pendientes con esos filtros.';
         list.innerHTML =
-          '<div style="text-align:center;color:#15803d;padding:30px;font-size:13px;">' +
-          '✓ No quedan pendientes con esos filtros.</div>';
+          `<div style="text-align:center;color:#15803d;padding:30px;font-size:13px;">${esc(emptyMsg)}</div>`;
         pager.innerHTML = '';
         refreshBulkBar();
         return;
@@ -9090,6 +9107,9 @@
       });
       list.querySelectorAll('.pv-pinv-dismiss-one').forEach(b => {
         b.addEventListener('click', () => doDismiss([b.dataset.pmid], b));
+      });
+      list.querySelectorAll('.pv-pinv-recover-one').forEach(b => {
+        b.addEventListener('click', () => doRecover([b.dataset.pmid], b));
       });
       const master = document.getElementById('pv-pinv-master');
       if (master) {
@@ -9153,12 +9173,38 @@
       if (!confirm(`Descartar ${selected.size} PMIDs? (reversible — quedan ocultos pero no se borran).`)) return;
       doDismiss(Array.from(selected), bulkDis);
     });
+    bulkRec.addEventListener('click', () => {
+      if (!selected.size) return;
+      if (!confirm(`Devolver a pendientes ${selected.size} PMIDs?`)) return;
+      doRecover(Array.from(selected), bulkRec);
+    });
     bulkClr.addEventListener('click', () => {
       selected.clear();
       list.querySelectorAll('.pv-pinv-pick').forEach(cb => { cb.checked = false; });
       syncMaster();
       refreshBulkBar();
     });
+
+    // Tabs: switch the listing between pending and dismissed. The
+    // bulk-bar's Descartar / Recuperar button is swapped accordingly.
+    function setTab(s) {
+      if (s === _pinvStatus) return;
+      _pinvStatus = s;
+      const on  = { background: '#0F3460', color: 'white', borderColor: '#0F3460' };
+      const off = { background: 'white', color: '#374151', borderColor: '#d1d5db' };
+      Object.assign(tabPend.style, s === 'pending'   ? on : off);
+      Object.assign(tabDism.style, s === 'dismissed' ? on : off);
+      bulkDis.style.display = s === 'pending'   ? '' : 'none';
+      bulkRec.style.display = s === 'dismissed' ? '' : 'none';
+      // Selection doesn't translate cleanly between tabs (descartar
+      // un descartado no tiene sentido), so we clear it on switch.
+      selected.clear();
+      page = 1;
+      refreshBulkBar();
+      reloadList();
+    }
+    tabPend.addEventListener('click', () => setTab('pending'));
+    tabDism.addEventListener('click', () => setTab('dismissed'));
 
     async function doImport(pmids, btn) {
       const orig = btn.textContent;
@@ -9198,6 +9244,27 @@
         await reloadList();
       } catch (e) {
         alert('Error descartando: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    // Reverse of doDismiss. Only reachable from the "Descartados" tab.
+    async function doRecover(pmids, btn) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳…';
+      try {
+        await api('/admin/pubmed-inventory/undismiss', {
+          method: 'POST',
+          body: JSON.stringify({ pmids }),
+        });
+        pmids.forEach(p => selected.delete(p));
+        await reloadStats();
+        await reloadList();
+      } catch (e) {
+        alert('Error recuperando: ' + e.message);
       } finally {
         btn.disabled = false;
         btn.textContent = orig;
@@ -9281,11 +9348,17 @@
                     style="padding:4px 12px;border-radius:5px;border:none;background:#15803d;color:white;font-size:11.5px;font-weight:600;cursor:pointer;">
               ➕ Importar
             </button>
-            <button type="button" class="pv-pinv-dismiss-one" data-pmid="${escAttr(it.pmid)}"
-                    title="No me interesa — se queda en la tabla pero deja de salir."
-                    style="padding:4px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
-              ✗ Descartar
-            </button>
+            ${_pinvStatus === 'dismissed'
+              ? `<button type="button" class="pv-pinv-recover-one" data-pmid="${escAttr(it.pmid)}"
+                          title="Devolver a pendientes."
+                          style="padding:4px 12px;border-radius:5px;border:1px solid #a7f3d0;background:white;color:#047857;font-size:11.5px;font-weight:600;cursor:pointer;">
+                   ↻ Recuperar
+                 </button>`
+              : `<button type="button" class="pv-pinv-dismiss-one" data-pmid="${escAttr(it.pmid)}"
+                          title="No me interesa — se queda en la tabla pero deja de salir."
+                          style="padding:4px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
+                   ✗ Descartar
+                 </button>`}
           </div>
         </div>
       </div>
