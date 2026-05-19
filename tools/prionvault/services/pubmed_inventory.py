@@ -160,8 +160,24 @@ def _record_run(*, status: str, runtime_ms: int,
 
 # ── PubMed calls ─────────────────────────────────────────────────────────────
 
-def _esearch_page(query: str, retstart: int, retmax: int) -> tuple[list[str], int, Optional[str]]:
-    """One page of the esearch result set.
+def _year_buckets() -> list[tuple[int, int]]:
+    """Range buckets that split the corpus into chunks small enough
+    for retstart-paging to work without falling into PubMed's 9999
+    cap. 5-year windows starting in 1960 cover every prion paper
+    ever indexed by PubMed; per-bucket size is typically <3000."""
+    from datetime import date
+    buckets: list[tuple[int, int]] = []
+    start = 1960
+    end_year = date.today().year + 1   # include current calendar year
+    while start <= end_year:
+        buckets.append((start, min(start + 4, end_year)))
+        start += 5
+    return buckets
+
+
+def _esearch_page(query: str, retstart: int, retmax: int
+                  ) -> tuple[list[str], int, Optional[str]]:
+    """One page of an esearch result set.
 
     Returns (idlist, total_count, error_msg). On a transient error
     (network, timeout, 5xx, JSON parse) the caller should retry; the
@@ -170,11 +186,11 @@ def _esearch_page(query: str, retstart: int, retmax: int) -> tuple[list[str], in
     """
     try:
         r = requests.get(_PUBMED_ESEARCH, params={
-            "db":      "pubmed",
-            "term":    query,
-            "retmax":  str(retmax),
+            "db":       "pubmed",
+            "term":     query,
+            "retmax":   str(retmax),
             "retstart": str(retstart),
-            "retmode": "json",
+            "retmode":  "json",
         }, headers=_HDRS, timeout=20.0)
     except Exception as exc:
         return [], 0, f"network: {exc}"
@@ -197,72 +213,88 @@ def _esearch_page(query: str, retstart: int, retmax: int) -> tuple[list[str], in
     return [str(p) for p in batch if str(p).isdigit()], total, None
 
 
-def _esearch_all(query: str) -> list[str]:
-    """Walk every page of E-Search results for `query`. Direct
-    paginated retstart — history mode didn't reliably return pages
-    beyond the first in production.
-
-    `retmax` is 9999 (PubMed's documented per-call cap) but each page
-    is retried up to 3 times with backoff before giving up; whatever
-    PMIDs we already collected get upserted and the next harvest
-    retries the rest. Progress is reported via _set_state(pmids_seen=…)
-    so the modal counter creeps up rather than jumping at the end.
-    """
-    pmids: list[str] = []
-    seen: set[str] = set()
-    retstart = 0
+def _esearch_one_bucket(query: str, ymin: int, ymax: int,
+                        already_seen: set[str]) -> list[str]:
+    """Paginate a single year-bucketed query. Each bucket is small
+    enough (<<9999) that simple retstart paging works reliably without
+    needing PubMed's History server."""
+    scoped = f"({query}) AND ({ymin}:{ymax}[PDAT])"
+    bucket_pmids: list[str] = []
     expected_total: Optional[int] = None
+    retstart = 0
     page_idx = 0
 
     while True:
         page_idx += 1
-        last_err: Optional[str] = None
         batch: list[str] = []
         total = 0
-        # 3 attempts per page with linear backoff so a transient 5xx
-        # from NCBI doesn't end the whole harvest.
+        last_err: Optional[str] = None
         for attempt in range(1, 4):
-            batch, total, last_err = _esearch_page(query, retstart, _ESEARCH_RETMAX)
+            batch, total, last_err = _esearch_page(scoped, retstart, _ESEARCH_RETMAX)
             if last_err is None:
                 break
             logger.warning(
-                "pubmed_inventory: page %d retstart=%d attempt %d/3 failed: %s",
-                page_idx, retstart, attempt, last_err,
+                "pubmed_inventory: bucket %d-%d page %d retstart=%d attempt %d/3: %s",
+                ymin, ymax, page_idx, retstart, attempt, last_err,
             )
             time.sleep(2.0 * attempt)
         if last_err:
             logger.warning(
-                "pubmed_inventory: giving up on page %d after 3 attempts (%s) — "
-                "harvest will retry next pass",
-                page_idx, last_err,
+                "pubmed_inventory: giving up on bucket %d-%d page %d (%s)",
+                ymin, ymax, page_idx, last_err,
             )
             break
         if expected_total is None:
             expected_total = total
-            logger.info(
-                "pubmed_inventory: PubMed reports %d total PMIDs for query",
-                expected_total,
-            )
         gained = 0
         for p in batch:
-            if p not in seen:
-                seen.add(p)
-                pmids.append(p)
-                gained += 1
-        _set_state(pmids_seen=len(pmids))
+            if p in already_seen:
+                continue
+            already_seen.add(p)
+            bucket_pmids.append(p)
+            gained += 1
         logger.info(
-            "pubmed_inventory: page %d retstart=%d → batch=%d gained=%d total_so_far=%d/%d",
-            page_idx, retstart, len(batch), gained, len(pmids), expected_total,
+            "pubmed_inventory: bucket %d-%d page %d → batch=%d gained=%d "
+            "bucket_total=%d/%d",
+            ymin, ymax, page_idx, len(batch), gained,
+            len(bucket_pmids), expected_total,
         )
-        # Stop conditions:
-        #   - page empty (PubMed exhausted)
-        #   - we've covered the reported total
-        #   - page returned but contributed zero unique PMIDs (loop guard)
-        if not batch or len(pmids) >= expected_total or gained == 0:
+        if not batch or len(bucket_pmids) >= expected_total:
             break
+        # Hard guard: don't paginate past PubMed's anonymous limit.
         retstart += len(batch)
+        if retstart >= 9999:
+            # This bucket has >9999 prion papers — shouldn't happen
+            # for 5-year windows but if it does, log loudly.
+            logger.warning(
+                "pubmed_inventory: bucket %d-%d hit the 9999 retstart cap "
+                "(consider shrinking the bucket width)",
+                ymin, ymax,
+            )
+            break
         time.sleep(_INTER_BATCH_SLEEP_S)
-    return pmids
+    return bucket_pmids
+
+
+def _esearch_all(query: str) -> list[str]:
+    """Walk every PMID for `query` by chunking the date range into
+    buckets that never exceed the 9999 retstart cap, then paging
+    each bucket normally. Progress is reported via
+    _set_state(pmids_seen=…) so the modal counter ticks up across
+    buckets rather than jumping at the end.
+    """
+    seen: set[str] = set()
+    all_pmids: list[str] = []
+    buckets = _year_buckets()
+    logger.info("pubmed_inventory: harvesting in %d year-buckets", len(buckets))
+    for ymin, ymax in buckets:
+        bucket_pmids = _esearch_one_bucket(query, ymin, ymax, seen)
+        all_pmids.extend(bucket_pmids)
+        _set_state(pmids_seen=len(all_pmids))
+        # Polite pause between buckets so we never burst NCBI faster
+        # than ~3 req/s without an API key.
+        time.sleep(_INTER_BATCH_SLEEP_S)
+    return all_pmids
 
 
 def _esummary_one_batch(pmids: list[str]) -> dict[str, dict]:
