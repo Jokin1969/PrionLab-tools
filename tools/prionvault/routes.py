@@ -4645,6 +4645,92 @@ def api_batch_searchable_stop():
     return jsonify({"ok": True, "status": batch_searchable_pdf.stop_batch()})
 
 
+# ── PubMed inventory ────────────────────────────────────────────────────────
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/stats", methods=["GET"])
+@admin_required
+def api_pubmed_inventory_stats():
+    """Counts + last harvest summary + in-memory progress."""
+    from .services import pubmed_inventory
+    # Reconcile on every stats call so the "imported" count is fresh
+    # without waiting for the next 7-day harvest. Cheap (single
+    # indexed UPDATE).
+    try:
+        pubmed_inventory.reconcile()
+    except Exception:
+        pass
+    return jsonify(pubmed_inventory.get_stats())
+
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/list", methods=["GET"])
+@admin_required
+def api_pubmed_inventory_list():
+    """Paginated "pending" listing (not imported, not dismissed)."""
+    from .services import pubmed_inventory
+    q        = (request.args.get("q") or "").strip() or None
+    year_min = request.args.get("year_min", type=int)
+    year_max = request.args.get("year_max", type=int)
+    only_oa  = request.args.get("only_oa") == "1"
+    page     = request.args.get("page", default=1, type=int)
+    size     = request.args.get("size", default=100, type=int)
+    return jsonify(pubmed_inventory.list_pending(
+        q=q, year_min=year_min, year_max=year_max,
+        only_oa=only_oa, page=page, size=size,
+    ))
+
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/refresh", methods=["POST"])
+@admin_required
+def api_pubmed_inventory_refresh():
+    """Ask the daemon to run a harvest now (returns immediately; poll
+    /stats for progress)."""
+    from .services import pubmed_inventory
+    pubmed_inventory.request_harvest_now()
+    return jsonify({"ok": True, "status": pubmed_inventory.get_progress()})
+
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/dismiss", methods=["POST"])
+@admin_required
+def api_pubmed_inventory_dismiss():
+    """Body: {pmids: [...]} → marks them as 'not interested'."""
+    from .services import pubmed_inventory
+    body  = request.get_json(silent=True) or {}
+    pmids = body.get("pmids") or []
+    if not isinstance(pmids, list):
+        return jsonify({"error": "pmids must be a list"}), 400
+    updated = pubmed_inventory.dismiss(pmids, by_user=_viewer_id())
+    return jsonify({"ok": True, "updated": updated})
+
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/undismiss", methods=["POST"])
+@admin_required
+def api_pubmed_inventory_undismiss():
+    from .services import pubmed_inventory
+    body  = request.get_json(silent=True) or {}
+    pmids = body.get("pmids") or []
+    if not isinstance(pmids, list):
+        return jsonify({"error": "pmids must be a list"}), 400
+    updated = pubmed_inventory.undismiss(pmids)
+    return jsonify({"ok": True, "updated": updated})
+
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/import", methods=["POST"])
+@admin_required
+def api_pubmed_inventory_import():
+    """Body: {pmids: [...]} → creates one `articles` row per PMID.
+    Duplicates (PMID/DOI already in `articles`) are stamped as
+    imported but not re-created."""
+    from .services import pubmed_inventory
+    body  = request.get_json(silent=True) or {}
+    pmids = body.get("pmids") or []
+    if not isinstance(pmids, list) or not pmids:
+        return jsonify({"error": "pmids must be a non-empty list"}), 400
+    if len(pmids) > 500:
+        return jsonify({"error": "too many at once (cap=500)"}), 400
+    summary = pubmed_inventory.import_pmids(pmids, by_user=_viewer_id())
+    return jsonify({"ok": True, **summary})
+
+
 @prionvault_bp.route("/api/admin/batch-searchable/clear-events", methods=["POST"])
 @admin_required
 def api_batch_searchable_clear_events():

@@ -61,6 +61,7 @@ _PRIONVAULT_MIGRATIONS = (
     "025_scheduled_runs.sql",
     "026_dismissed_duplicates.sql",
     "027_articles_pdf_ocr_unavailable.sql",
+    "028_pubmed_inventory.sql",
 )
 
 _BOOTSTRAP_SQL = """

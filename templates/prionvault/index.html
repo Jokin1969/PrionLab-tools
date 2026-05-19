@@ -230,6 +230,10 @@
       <button class="pv-nav-btn pv-admin-only" id="btn-batch-import">
         <span><i class="fas fa-layer-group" style="width:13px;margin-right:6px;opacity:0.7;"></i>Batch import (DOIs/PMIDs)</span>
       </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-pubmed-inventory"
+              title="Inventario de PubMed para 'Prion'. Muestra los PMIDs que aún no tienes; importa de uno en uno o en bulk.">
+        <span><i class="fas fa-magnifying-glass-chart" style="width:13px;margin-right:6px;opacity:0.7;"></i>Inventario PubMed</span>
+      </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-find-duplicates">
         <span><i class="fas fa-clone" style="width:13px;margin-right:6px;opacity:0.7;"></i>Find duplicates</span>
       </button>
@@ -1413,6 +1417,84 @@
         Start
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ── PubMed inventory modal ───────────────────────────────────────
+     Shows the delta between PubMed's "prion" universe and the local
+     catalogue. The pending list updates itself after every harvest +
+     after every import / dismiss, so the operator can chew the
+     backlog over multiple sessions and the number monotonically
+     decreases. -->
+<div id="pv-pubmed-inv-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:880px;">
+    <button class="pv-modal-close" id="pv-pubmed-inv-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-magnifying-glass-chart" style="color:#0F3460;margin-right:8px;"></i>Inventario PubMed
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin-bottom:12px;">
+      Query fija: <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:11.5px;">prion[Title/Abstract] OR prions[MeSH Major Topic]</code>.
+      Lo que veas aquí son PMIDs que <strong>aún no tienes</strong> en PrionVault.
+      Pulsa <strong>Refrescar PubMed</strong> para volver a escanear (auto cada 7 días).
+    </p>
+
+    <!-- Counters -->
+    <div id="pv-pinv-stats"
+         style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px;"></div>
+
+    <!-- Filters + actions row -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <input id="pv-pinv-q" type="search" placeholder="Filtrar por título / autor / revista"
+             style="flex:1;min-width:200px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+      <input id="pv-pinv-ymin" type="number" placeholder="Año desde" inputmode="numeric"
+             style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+      <input id="pv-pinv-ymax" type="number" placeholder="hasta" inputmode="numeric"
+             style="width:90px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;cursor:pointer;">
+        <input type="checkbox" id="pv-pinv-only-oa" style="margin:0;">
+        Solo con PDF OA
+      </label>
+      <button id="pv-pinv-refresh-pubmed" type="button"
+              title="Vuelve a escanear PubMed. El daemon ya lo hace cada 7 días."
+              style="padding:6px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;cursor:pointer;">
+        Refrescar PubMed
+      </button>
+    </div>
+
+    <!-- Harvest progress strip (visible while running) -->
+    <div id="pv-pinv-progress" style="display:none;margin-bottom:10px;font-size:12px;color:#374151;
+                                       background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;padding:8px 10px;"></div>
+
+    <!-- Bulk actions bar (sticky-ish) -->
+    <div id="pv-pinv-bulk-bar" style="display:none;background:#f3f4f6;border:1px solid #e5e7eb;
+                                       border-radius:7px;padding:6px 10px;margin-bottom:8px;
+                                       font-size:12px;color:#374151;
+                                       align-items:center;gap:10px;flex-wrap:wrap;">
+      <span id="pv-pinv-bulk-count">0 seleccionados</span>
+      <button id="pv-pinv-bulk-import" type="button"
+              style="padding:5px 12px;border-radius:5px;border:none;background:#15803d;color:white;font-size:12px;font-weight:600;cursor:pointer;">
+        ➕ Importar seleccionados
+      </button>
+      <button id="pv-pinv-bulk-dismiss" type="button"
+              style="padding:5px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:12px;font-weight:600;cursor:pointer;">
+        ✗ Descartar seleccionados
+      </button>
+      <button id="pv-pinv-bulk-clear" type="button"
+              style="margin-left:auto;padding:4px 10px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#6b7280;font-size:11.5px;cursor:pointer;">
+        Limpiar selección
+      </button>
+    </div>
+
+    <!-- Listing -->
+    <div id="pv-pinv-list"
+         style="max-height:48vh;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;background:white;">
+      <div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">Cargando…</div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pv-pinv-pager"
+         style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#6b7280;"></div>
   </div>
 </div>
 

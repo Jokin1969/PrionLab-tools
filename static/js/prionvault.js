@@ -5379,6 +5379,7 @@
       wireBatchExtract();
       wireBatchOcr();
       wireBatchSearchable();
+      wirePubmedInventory();
       wireBulkBar();
       wireBulkLookup();
       wireBulkTagModal();
@@ -8872,6 +8873,360 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ── PubMed inventory modal ──────────────────────────────────────
+  function wirePubmedInventory() {
+    const btn   = document.getElementById('btn-pubmed-inventory');
+    const modal = document.getElementById('pv-pubmed-inv-modal');
+    if (!btn || !modal) return;
+    const closeBtn = document.getElementById('pv-pubmed-inv-close');
+    const statsEl  = document.getElementById('pv-pinv-stats');
+    const progEl   = document.getElementById('pv-pinv-progress');
+    const list     = document.getElementById('pv-pinv-list');
+    const pager    = document.getElementById('pv-pinv-pager');
+    const qInp     = document.getElementById('pv-pinv-q');
+    const ymin     = document.getElementById('pv-pinv-ymin');
+    const ymax     = document.getElementById('pv-pinv-ymax');
+    const oaCb     = document.getElementById('pv-pinv-only-oa');
+    const refrBtn  = document.getElementById('pv-pinv-refresh-pubmed');
+    const bulkBar  = document.getElementById('pv-pinv-bulk-bar');
+    const bulkCnt  = document.getElementById('pv-pinv-bulk-count');
+    const bulkImp  = document.getElementById('pv-pinv-bulk-import');
+    const bulkDis  = document.getElementById('pv-pinv-bulk-dismiss');
+    const bulkClr  = document.getElementById('pv-pinv-bulk-clear');
+
+    // Persistent selection lives in a local Set, not state.selectedIds,
+    // because these are PubMed IDs (not PrionVault UUIDs) — the bulk-bar
+    // of the main listing wouldn't know what to do with them.
+    const selected = new Set();
+    let page = 1;
+    const PAGE_SIZE = 100;
+    let pollHandle = null;
+
+    function statCard(label, value, color) {
+      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+                <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
+                <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
+              </div>`;
+    }
+
+    function open()  { modal.style.display = 'flex'; reloadStats(); reloadList(); startPoll(); }
+    function close() { modal.style.display = 'none'; stopPoll(); }
+    function startPoll() {
+      stopPoll();
+      pollHandle = setInterval(reloadStats, 4000);
+    }
+    function stopPoll() { if (pollHandle) clearInterval(pollHandle); pollHandle = null; }
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    async function reloadStats() {
+      let s;
+      try {
+        s = await api('/admin/pubmed-inventory/stats');
+      } catch (e) {
+        statsEl.innerHTML =
+          `<div style="grid-column:1/-1;color:#b91c1c;font-size:12px;padding:10px;">
+             Error: ${esc(e.message)}
+           </div>`;
+        return;
+      }
+      statsEl.innerHTML =
+        statCard('Catalogados (PubMed)', s.total ?? 0) +
+        statCard('Ya en PrionVault',     s.imported ?? 0, '#15803d') +
+        statCard('Pendientes',           s.pending ?? 0, '#b45309') +
+        statCard('Con PDF OA',           s.pending_with_oa ?? 0, '#0F3460');
+
+      // Harvest progress strip (while a daemon run is in flight).
+      const p = s.progress || {};
+      if (p.running) {
+        progEl.style.display = 'block';
+        const stage = ({
+          esearch:   'Consultando PubMed (esearch)',
+          esummary:  `Descargando metadatos — ${p.pmids_seen ?? 0} PMIDs / ${(p.pmids_inserted ?? 0) + (p.pmids_updated ?? 0)} procesados`,
+          reconcile: 'Reconciliando contra el catálogo…',
+        }[p.stage] || `Trabajando (${p.stage || '…'})`);
+        progEl.textContent = '⏳ ' + stage;
+      } else {
+        progEl.style.display = 'none';
+      }
+
+      if (s.last_run_at && !p.running) {
+        const when = new Date(s.last_run_at).toLocaleString();
+        let extra = `Último escaneo: ${when}`;
+        if (s.last_status === 'error') extra += ' (error)';
+        const summary = s.last_summary || {};
+        if (summary.pmids_inserted != null) {
+          extra += ` · ${summary.pmids_inserted} nuevos, ${summary.pmids_updated} actualizados`;
+        }
+        progEl.style.display = 'block';
+        progEl.style.background = s.last_status === 'error' ? '#fef2f2' : '#f9fafb';
+        progEl.style.borderColor = s.last_status === 'error' ? '#fecaca' : '#e5e7eb';
+        progEl.style.color = '#6b7280';
+        progEl.textContent = extra;
+      }
+    }
+
+    async function reloadList() {
+      list.innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">Cargando…</div>';
+      const params = new URLSearchParams({
+        page: String(page),
+        size: String(PAGE_SIZE),
+      });
+      if (qInp.value.trim())   params.set('q', qInp.value.trim());
+      if (ymin.value.trim())   params.set('year_min', ymin.value.trim());
+      if (ymax.value.trim())   params.set('year_max', ymax.value.trim());
+      if (oaCb.checked)        params.set('only_oa', '1');
+
+      let data;
+      try {
+        data = await api('/admin/pubmed-inventory/list?' + params.toString());
+      } catch (e) {
+        list.innerHTML =
+          `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+        return;
+      }
+      if (!data.items.length) {
+        list.innerHTML =
+          '<div style="text-align:center;color:#15803d;padding:30px;font-size:13px;">' +
+          '✓ No quedan pendientes con esos filtros.</div>';
+        pager.innerHTML = '';
+        refreshBulkBar();
+        return;
+      }
+
+      // Header row with "marcar todos los visibles".
+      const head = `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
+                    background:#f3f4f6;border-bottom:1px solid #e5e7eb;
+                    font-size:11.5px;color:#374151;font-weight:600;
+                    position:sticky;top:0;z-index:1;">
+          <input type="checkbox" id="pv-pinv-master"
+                 title="Marcar / desmarcar todos los visibles"
+                 style="margin:0;cursor:pointer;width:14px;height:14px;">
+          <label for="pv-pinv-master" style="cursor:pointer;">
+            Marcar los ${data.items.length} visibles
+          </label>
+        </div>`;
+      list.innerHTML = head + data.items.map(_pinvRowHtml).join('');
+
+      // Wire row interactions
+      list.querySelectorAll('.pv-pinv-pick').forEach(cb => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) selected.add(cb.dataset.pmid);
+          else            selected.delete(cb.dataset.pmid);
+          syncMaster();
+          refreshBulkBar();
+        });
+      });
+      list.querySelectorAll('.pv-pinv-import-one').forEach(b => {
+        b.addEventListener('click', () => doImport([b.dataset.pmid], b));
+      });
+      list.querySelectorAll('.pv-pinv-dismiss-one').forEach(b => {
+        b.addEventListener('click', () => doDismiss([b.dataset.pmid], b));
+      });
+      const master = document.getElementById('pv-pinv-master');
+      if (master) {
+        master.addEventListener('change', () => {
+          list.querySelectorAll('.pv-pinv-pick').forEach(cb => {
+            cb.checked = master.checked;
+            if (cb.checked) selected.add(cb.dataset.pmid);
+            else            selected.delete(cb.dataset.pmid);
+          });
+          refreshBulkBar();
+        });
+        syncMaster();
+      }
+
+      // Pager
+      const total = data.total || 0;
+      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      pager.innerHTML = `
+        <span>${total.toLocaleString()} pendientes · página ${page} / ${pages}</span>
+        <span style="display:flex;gap:6px;">
+          <button id="pv-pinv-prev" type="button" ${page <= 1 ? 'disabled' : ''}
+                  style="padding:4px 10px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;cursor:pointer;">← Anterior</button>
+          <button id="pv-pinv-next" type="button" ${page >= pages ? 'disabled' : ''}
+                  style="padding:4px 10px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;cursor:pointer;">Siguiente →</button>
+        </span>`;
+      document.getElementById('pv-pinv-prev')?.addEventListener('click', () => { page--; reloadList(); });
+      document.getElementById('pv-pinv-next')?.addEventListener('click', () => { page++; reloadList(); });
+
+      refreshBulkBar();
+    }
+
+    function syncMaster() {
+      const checks = Array.from(list.querySelectorAll('.pv-pinv-pick'));
+      const master = document.getElementById('pv-pinv-master');
+      if (!master) return;
+      const checked = checks.filter(c => c.checked).length;
+      master.checked = checks.length > 0 && checked === checks.length;
+      master.indeterminate = checked > 0 && checked < checks.length;
+    }
+
+    function refreshBulkBar() {
+      const n = selected.size;
+      if (n === 0) {
+        bulkBar.style.display = 'none';
+        return;
+      }
+      bulkBar.style.display = 'flex';
+      bulkCnt.textContent = `${n} seleccionado${n === 1 ? '' : 's'}`;
+    }
+
+    bulkImp.addEventListener('click', () => {
+      if (!selected.size) return;
+      if (!confirm(`Importar ${selected.size} PMIDs a PrionVault?\n\n` +
+                   '• Crea una fila por cada uno (los duplicados se marcan sin recrear).\n' +
+                   '• Los abstracts se rellenan después con el batch "Reintentar abstracts".'))
+        return;
+      doImport(Array.from(selected), bulkImp);
+    });
+    bulkDis.addEventListener('click', () => {
+      if (!selected.size) return;
+      if (!confirm(`Descartar ${selected.size} PMIDs? (reversible — quedan ocultos pero no se borran).`)) return;
+      doDismiss(Array.from(selected), bulkDis);
+    });
+    bulkClr.addEventListener('click', () => {
+      selected.clear();
+      list.querySelectorAll('.pv-pinv-pick').forEach(cb => { cb.checked = false; });
+      syncMaster();
+      refreshBulkBar();
+    });
+
+    async function doImport(pmids, btn) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳…';
+      try {
+        const r = await api('/admin/pubmed-inventory/import', {
+          method: 'POST',
+          body: JSON.stringify({ pmids }),
+        });
+        const msg = `Importados: ${r.created} · Ya estaban: ${r.duplicates}` +
+                    (r.failed ? ` · Fallos: ${r.failed}` : '');
+        toast?.(msg);
+        pmids.forEach(p => selected.delete(p));
+        await reloadStats();
+        await reloadList();
+        refreshStats?.();
+      } catch (e) {
+        alert('Error importando: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    async function doDismiss(pmids, btn) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳…';
+      try {
+        await api('/admin/pubmed-inventory/dismiss', {
+          method: 'POST',
+          body: JSON.stringify({ pmids }),
+        });
+        pmids.forEach(p => selected.delete(p));
+        await reloadStats();
+        await reloadList();
+      } catch (e) {
+        alert('Error descartando: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    refrBtn.addEventListener('click', async () => {
+      refrBtn.disabled = true;
+      const orig = refrBtn.textContent;
+      refrBtn.textContent = '⏳ Lanzando…';
+      try {
+        await api('/admin/pubmed-inventory/refresh', { method: 'POST' });
+        // The daemon polls hourly; we asked it to wake now. Stats poll
+        // (every 4 s) will surface the progress strip within seconds.
+        await reloadStats();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      } finally {
+        refrBtn.disabled = false;
+        refrBtn.textContent = orig;
+      }
+    });
+
+    // Debounce-ish search box
+    let qTimer = null;
+    qInp.addEventListener('input', () => {
+      clearTimeout(qTimer);
+      qTimer = setTimeout(() => { page = 1; reloadList(); }, 350);
+    });
+    [ymin, ymax].forEach(inp => inp.addEventListener('change', () => { page = 1; reloadList(); }));
+    oaCb.addEventListener('change', () => { page = 1; reloadList(); });
+  }
+
+  function _pinvRowHtml(it) {
+    const escAttr = (v) => esc(String(v || ''));
+    const title   = it.title || '(sin título)';
+    const yearTxt = it.year ? ` · ${it.year}` : '';
+    const journal = it.journal ? ` · ${esc(it.journal)}` : '';
+    const authors = (it.authors || '').slice(0, 100) +
+                    ((it.authors || '').length > 100 ? '…' : '');
+    const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${escAttr(it.pmid)}/`;
+    const doiLink = it.doi
+      ? `<a href="https://doi.org/${escAttr(it.doi)}" target="_blank" rel="noopener" style="color:#3730a3;text-decoration:none;font-weight:600;">DOI ↗</a>`
+      : '';
+    const oaBadge = it.has_oa
+      ? `<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/${escAttr(it.pmcid)}/" target="_blank" rel="noopener"
+           title="Fulltext gratuito en PMC"
+           style="font-size:10.5px;padding:2px 7px;border-radius:4px;background:#d1fae5;color:#065f46;font-weight:700;text-decoration:none;">
+           ✓ PDF OA (${escAttr(it.pmcid)})
+         </a>`
+      : `<span title="No hay copia gratuita conocida (PMC)"
+                style="font-size:10.5px;padding:2px 7px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:600;">
+           Sin OA
+         </span>`;
+    return `
+      <div data-pinv-pmid="${escAttr(it.pmid)}"
+           style="border-bottom:1px solid #e5e7eb;padding:8px 10px;background:white;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <input type="checkbox" class="pv-pinv-pick" data-pmid="${escAttr(it.pmid)}"
+                 style="margin-top:4px;flex-shrink:0;cursor:pointer;width:14px;height:14px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:600;color:#111827;line-height:1.35;
+                        overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+                        -webkit-line-clamp:2;-webkit-box-orient:vertical;"
+                 title="${escAttr(title)}">${esc(title)}</div>
+            <div style="font-size:11.5px;color:#6b7280;margin-top:2px;">
+              ${esc(authors)}${yearTxt}${journal}
+            </div>
+            <div style="margin-top:5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;">
+              <a href="${escAttr(pubmedUrl)}" target="_blank" rel="noopener"
+                 style="padding:2px 7px;border-radius:4px;background:#dbeafe;color:#1d4ed8;font-weight:600;text-decoration:none;">
+                PMID ${escAttr(it.pmid)} ↗
+              </a>
+              ${doiLink ? `<span>${doiLink}</span>` : ''}
+              ${oaBadge}
+            </div>
+          </div>
+          <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+            <button type="button" class="pv-pinv-import-one" data-pmid="${escAttr(it.pmid)}"
+                    title="Crea la fila en PrionVault con estos metadatos. El abstract lo rellena el batch Reintentar."
+                    style="padding:4px 12px;border-radius:5px;border:none;background:#15803d;color:white;font-size:11.5px;font-weight:600;cursor:pointer;">
+              ➕ Importar
+            </button>
+            <button type="button" class="pv-pinv-dismiss-one" data-pmid="${escAttr(it.pmid)}"
+                    title="No me interesa — se queda en la tabla pero deja de salir."
+                    style="padding:4px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
+              ✗ Descartar
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   document.addEventListener('DOMContentLoaded', init);

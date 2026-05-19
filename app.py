@@ -313,6 +313,16 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('PrionVault auto-scan daemon failed to start: %s', e)
 
+        # PubMed inventory daemon: refreshes the catalogue-vs-PubMed
+        # delta every 7 days (and on demand via the modal's "Refrescar"
+        # button). Same lease pattern as auto-scan. Opt out with
+        # PRIONVAULT_PUBMED_INVENTORY_DISABLED=1.
+        try:
+            from tools.prionvault.services.pubmed_inventory import start_inventory_daemon
+            start_inventory_daemon()
+        except Exception as e:
+            app.logger.warning('PubMed inventory daemon failed to start: %s', e)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()
