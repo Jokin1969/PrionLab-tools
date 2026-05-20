@@ -113,6 +113,28 @@ def clear_events() -> None:
         _state["last_error"] = None
 
 
+def reset_session() -> None:
+    """Stronger reset: events, last_error AND the session counters.
+    Used by the "Limpiar log a fondo" / fresh-slate button so the
+    modal shows an empty state without restarting the worker thread.
+
+    The `running` / `started_at` fields stay put if a batch is in
+    flight — we don't want to mislead the user into thinking the
+    worker died.
+    """
+    with _lock:
+        _state["events"].clear()
+        _state["last_error"]     = None
+        _state["processed"]      = 0
+        _state["failed"]         = 0
+        _state["skipped"]        = 0
+        _state["bytes_uploaded"] = 0
+        _state["eligible_total"] = 0
+        if not _state["running"]:
+            _state["current_article"] = None
+            _state["finished_at"]     = None
+
+
 def _library_stats() -> dict:
     try:
         eng = _get_engine()

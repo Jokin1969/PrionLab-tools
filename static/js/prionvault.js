@@ -8496,6 +8496,29 @@
       }
     });
 
+    // Stronger reset: clears the log + the session counters + the
+    // "Último error" banner all at once, AND reloads the
+    // problematic-PDFs panel so resolved items disappear from the
+    // dedicated section. Doesn't touch the worker — if a batch is
+    // running it keeps running, just starts counting from zero again.
+    const resetSessionBtn = document.getElementById('pv-bsp-log-reset');
+    if (resetSessionBtn) resetSessionBtn.addEventListener('click', async () => {
+      if (!confirm(
+        'Limpiar a fondo? Se borran:\n\n' +
+        '  • El log de eventos\n' +
+        '  • El banner de "Último error"\n' +
+        '  • Los contadores de esta sesión (procesados / con error / ya searchables / MB)\n\n' +
+        'El batch en marcha (si lo hay) NO se detiene; solo se reinician los contadores visibles.'
+      )) return;
+      try {
+        await api('/admin/batch-searchable/reset-session', { method: 'POST' });
+        await refresh();
+        await loadProblematic();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    });
+
     const dlLogBtn = document.getElementById('pv-bsp-log-download');
     if (dlLogBtn) dlLogBtn.addEventListener('click', async () => {
       try {

@@ -4764,6 +4764,17 @@ def api_batch_searchable_clear_events():
     return jsonify({"ok": True, "status": batch_searchable_pdf.get_status()})
 
 
+@prionvault_bp.route("/api/admin/batch-searchable/reset-session", methods=["POST"])
+@admin_required
+def api_batch_searchable_reset_session():
+    """Stronger clear: events + last_error + session counters in one go.
+    The "Limpiar log a fondo" button hits this so the modal returns to
+    a blank-slate state without needing to restart the worker thread."""
+    from .services import batch_searchable_pdf
+    batch_searchable_pdf.reset_session()
+    return jsonify({"ok": True, "status": batch_searchable_pdf.get_status()})
+
+
 # ── PDF ↔ metadata verifier ─────────────────────────────────────────────────
 
 @prionvault_bp.route("/api/admin/verify-metadata/status", methods=["GET"])
@@ -4898,9 +4909,15 @@ def api_batch_searchable_problematic():
             for r in rows:
                 meta_by_id[r["id"]] = dict(r)
 
+        # Dedupe failed vs skipped: once the operator marked a row
+        # "🚫 No procesar más", it belongs in the "Excluidos" bucket
+        # only — keeping the historical failed event on screen too
+        # was the source of the "Refrescar no va bien" complaint.
         failed_items = []
         for aid, ev in by_aid.items():
             meta = meta_by_id.get(aid) or {}
+            if meta.get("pdf_ocr_unavailable"):
+                continue
             failed_items.append({
                 "id":      aid,
                 "title":   meta.get("title") or ev.get("title") or "(sin título)",
@@ -4911,7 +4928,6 @@ def api_batch_searchable_problematic():
                 "stage":   ev.get("stage"),
                 "reason":  ev.get("reason"),
                 "at":      ev.get("at"),
-                "already_unavailable": bool(meta.get("pdf_ocr_unavailable")),
             })
 
         skipped_rows = s.execute(sql_text(
