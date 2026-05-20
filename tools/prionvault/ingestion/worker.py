@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, DBAPIError, DisconnectionError
 
 from .deduplicator import find_duplicate, md5_of
 from .dropbox_uploader import build_path, upload_pdf
@@ -28,6 +29,13 @@ from . import queue as ingest_queue
 from .queue import _get_engine
 
 logger = logging.getLogger(__name__)
+
+# When Postgres goes away (Railway redeploy, upstream outage, etc.)
+# every DB call fails. Don't burn through MAX_ATTEMPTS on the active
+# job and don't fire a Sentry alert per attempt — wait, then probe
+# again. The worker thread stays alive; new jobs pile up on the queue
+# until the DB comes back.
+_DB_DOWN_BACKOFF_S = 30
 
 # Polling interval when the queue is empty.
 _IDLE_SLEEP = 4.0
@@ -449,6 +457,18 @@ def _run_loop() -> None:
     while not _worker_stop.is_set():
         try:
             job = ingest_queue.claim_next()
+        except (OperationalError, DBAPIError, DisconnectionError) as exc:
+            # Postgres unreachable (most likely an upstream restart).
+            # Log at warning so Sentry doesn't pile up alerts per loop
+            # tick, then back off and try again — there's nothing for
+            # the worker to do until the DB recovers.
+            logger.warning(
+                "PrionVault worker — DB unreachable on claim_next, "
+                "backing off %ds: %s",
+                _DB_DOWN_BACKOFF_S, str(exc).splitlines()[0][:200],
+            )
+            time.sleep(_DB_DOWN_BACKOFF_S)
+            continue
         except Exception as exc:
             logger.warning("PrionVault worker — claim_next failed: %s", exc)
             time.sleep(_IDLE_SLEEP)
@@ -460,6 +480,19 @@ def _run_loop() -> None:
 
         try:
             _process_job(job)
+        except (OperationalError, DBAPIError, DisconnectionError) as exc:
+            # DB died mid-job. We can't even bump_attempt_or_fail (that
+            # also writes to Postgres). Leave the job in 'uploading'
+            # status — when the DB comes back, the operator can re-queue
+            # it from the Ingest queue UI's "Retry" button. Don't fire
+            # Sentry: this is a known external condition, not a bug.
+            logger.warning(
+                "PrionVault worker — DB unreachable mid-job %d, "
+                "leaving in 'uploading' for manual retry: %s",
+                job.id, str(exc).splitlines()[0][:200],
+            )
+            time.sleep(_DB_DOWN_BACKOFF_S)
+            continue
         except Exception as exc:
             logger.exception("PrionVault worker — unexpected error on job %d", job.id)
             try:
