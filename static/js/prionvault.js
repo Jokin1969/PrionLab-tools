@@ -6381,7 +6381,7 @@
   }
 
   // ── Retry-abstracts backfill ─────────────────────────────────────────
-  // Drives /api/admin/retry-abstracts in 50-article chunks so the user
+  // Drives /api/admin/retry-abstracts in 250-article chunks so the user
   // can rescue PLoS/BMC-style papers that the old esummary-only parser
   // couldn't fetch the abstract for. Each click reports recovered /
   // still missing / remaining so it's obvious whether another round
@@ -6396,10 +6396,10 @@
       try {
         const r = await api('/admin/retry-abstracts', {
           method: 'POST',
-          body: JSON.stringify({ limit: 50 }),
+          body: JSON.stringify({ limit: 250 }),
         });
         const more = r.remaining > 0
-          ? `\n\nQuedan ${r.remaining} sin abstract. Vuelve a pulsar para procesar otros 50.`
+          ? `\n\nQuedan ${r.remaining} sin abstract. Vuelve a pulsar para procesar otros 250.`
           : '\n\n✓ Sin artículos pendientes.';
         const conflictsLine = r.pmid_conflicts
           ? `\n⚠ PMID encontrado pero ya pertenecía a otro artículo (no se asignó, abstract sí): ${r.pmid_conflicts}`

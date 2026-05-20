@@ -3403,7 +3403,7 @@ def api_admin_retry_abstracts():
     marked as 'abstract_unavailable', so a parser improvement (e.g.
     pubmed_efetch_abstract) can rescue them.
 
-    Body (optional): {"limit": 50}. Default 50, capped at 200.
+    Body (optional): {"limit": 250}. Default 250, capped at 500.
     """
     from .ingestion.metadata_resolver import (
         resolve_metadata, pubmed_by_doi, pubmed_efetch_abstract,
@@ -3411,10 +3411,10 @@ def api_admin_retry_abstracts():
 
     data  = request.get_json(silent=True) or {}
     try:
-        limit = int(data.get("limit", 50))
+        limit = int(data.get("limit", 250))
     except (TypeError, ValueError):
-        limit = 50
-    limit = max(1, min(200, limit))
+        limit = 250
+    limit = max(1, min(500, limit))
 
     s = _session()
     try:
