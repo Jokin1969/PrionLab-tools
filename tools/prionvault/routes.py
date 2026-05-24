@@ -6,6 +6,7 @@ Admin-only stubs for ingest, write operations and semantic search return
 the frontend can wire against it.
 """
 import logging
+import os
 import re
 from datetime import datetime
 from typing import Optional
@@ -3404,10 +3405,25 @@ def api_admin_retry_abstracts():
     pubmed_efetch_abstract) can rescue them.
 
     Body (optional): {"limit": 250}. Default 250, capped at 500.
+
+    Time-budgeted: each call processes as many rows as fit in
+    ~_TIME_BUDGET_S seconds, then returns. The JS already loops on
+    `remaining > 0` so the operator's single click can chew through
+    the whole backlog without hitting gunicorn's request timeout
+    (which previously killed the worker with SystemExit).
     """
+    import time as _time
     from .ingestion.metadata_resolver import (
         resolve_metadata, pubmed_by_doi, pubmed_efetch_abstract,
     )
+
+    # Leave a comfortable margin below Railway's typical 30 s HTTP
+    # timeout — 25 s lets a slow PubMed call finish + still return
+    # cleanly. Tunable via env if a future deploy uses a different
+    # gateway timeout.
+    _TIME_BUDGET_S = float(os.environ.get(
+        "PRIONVAULT_RETRY_ABSTRACTS_BUDGET_S", "25"))
+    started_at = _time.monotonic()
 
     data  = request.get_json(silent=True) or {}
     try:
@@ -3430,7 +3446,14 @@ def api_admin_retry_abstracts():
         still_missing = 0
         learned_pmids = 0
         pmid_conflicts = 0
+        time_exhausted = False
         for r in rows:
+            # Stop early if we're about to bump into gunicorn's timeout.
+            # The remaining rows go on the next click — UI loops on
+            # `remaining > 0` so the operator doesn't have to babysit.
+            if _time.monotonic() - started_at > _TIME_BUDGET_S:
+                time_exhausted = True
+                break
             aid  = str(r["id"])
             doi  = (r["doi"] or "").strip() or None
             pmid = (r["pubmed_id"] or "").strip() if r["pubmed_id"] else None
@@ -3534,14 +3557,19 @@ def api_admin_retry_abstracts():
         )).scalar() or 0
 
         s.commit()
+        # `processed` is what we ACTUALLY touched in this call, not
+        # `len(rows)` (which is the slice we asked for from the DB).
+        # Under the time budget we may have stopped early.
+        processed_this_call = recovered + still_missing
         return jsonify({
             "ok":              True,
-            "processed":       len(rows),
+            "processed":       processed_this_call,
             "recovered":       recovered,
             "still_missing":   still_missing,
             "learned_pmids":   learned_pmids,
             "pmid_conflicts":  pmid_conflicts,
             "remaining":       int(remaining),
+            "time_exhausted":  time_exhausted,
         })
     except Exception as exc:
         s.rollback()
