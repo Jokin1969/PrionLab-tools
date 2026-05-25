@@ -5379,25 +5379,32 @@ def api_admin_articles_schema():
 @prionvault_bp.route("/api/admin/migrations/force-rerun", methods=["POST"])
 @admin_required
 def api_migrations_force_rerun():
-    """Delete the applied_migrations tracking rows and re-run all migrations.
+    """Delete the applied_migrations tracking rows and re-run migrations.
 
-    Use this when a migration was recorded as applied but some statements
-    actually failed (e.g. CREATE EXTENSION needs superuser). All statements
-    use IF NOT EXISTS guards so re-running is safe.
+    All statements use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS guards,
+    so re-running is safe even when the schema is mostly already there.
 
-    By default it clears only the two early migrations whose statements
-    historically need root privileges (CREATE EXTENSION). Pass a JSON body
-    `{"names": ["015_collection_hierarchy.sql", ...]}` to clear additional
-    migrations whose recorded apply was incomplete.
+    Body options:
+      {"all": true}             → clears every migration we know about
+                                  and re-runs them. Use this when the
+                                  catalogue schema is out of sync with
+                                  the model (post-restore, post-outage).
+      {"names": ["015_…","…"]}  → clears just the listed ones.
+      (no body)                 → clears only 001+003 (the CREATE
+                                  EXTENSION pair) and re-runs everything
+                                  the tracker considers pending.
     """
-    from .migrate import run_pending_migrations
+    from .migrate import run_pending_migrations, _PRIONVAULT_MIGRATIONS
     from sqlalchemy import text as _text
     default_names = ["001_prionvault_tables.sql", "003_fix_step_column.sql"]
     body = request.get_json(silent=True) or {}
-    extra = body.get("names") or []
-    if not isinstance(extra, list) or not all(isinstance(n, str) for n in extra):
-        return jsonify({"error": "names must be a list of strings"}), 400
-    names = list({*default_names, *extra})
+    if body.get("all"):
+        names = list(_PRIONVAULT_MIGRATIONS)
+    else:
+        extra = body.get("names") or []
+        if not isinstance(extra, list) or not all(isinstance(n, str) for n in extra):
+            return jsonify({"error": "names must be a list of strings"}), 400
+        names = list({*default_names, *extra})
     try:
         with db.engine.begin() as conn:
             conn.execute(_text(
