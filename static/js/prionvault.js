@@ -5395,6 +5395,7 @@
       wirePubmedInventory();
       wireVerifyMetadata();
       wireSidebarResize();
+      wireMobileDrawer();
       wireBulkBar();
       wireBulkLookup();
       wireBulkTagModal();
@@ -9827,6 +9828,50 @@
     handle.addEventListener('dblclick', () => {
       aside.style.width = '230px';
       try { localStorage.removeItem(KEY); } catch (_) {}
+    });
+  }
+
+  // ── Mobile drawer (≤800 px) ────────────────────────────────────────
+  // On phones the sidebar lives off-screen as a slide-in drawer; the
+  // hamburger button toggles a body class that the CSS media query
+  // converts into a translateX. All the open/close affordances stay
+  // wired regardless of viewport — they're cheap and don't conflict
+  // with anything desktop. On a wide screen the drawer state is
+  // simply ignored because the sidebar's mobile rules don't fire.
+  function wireMobileDrawer() {
+    const btn     = document.getElementById('pv-mobile-menu-btn');
+    const sidebar = document.getElementById('pv-sidebar');
+    if (!btn || !sidebar) return;
+    const KLS = 'pv-mobile-drawer-open';
+
+    const open  = () => document.body.classList.add(KLS);
+    const close = () => document.body.classList.remove(KLS);
+    const toggle = () => document.body.classList.toggle(KLS);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggle();
+    });
+
+    // Tapping the dark backdrop (outside the sidebar) closes the drawer.
+    document.addEventListener('click', (e) => {
+      if (!document.body.classList.contains(KLS)) return;
+      if (e.target === btn || btn.contains(e.target))     return;
+      if (sidebar.contains(e.target))                     return;
+      close();
+    });
+
+    // Tapping any sidebar nav-button closes the drawer so navigation
+    // (e.g. opening a modal) doesn't leave the drawer hovering over
+    // the new content. Delay 80 ms so the button's own handler fires
+    // first and the drawer slide-out doesn't beat the modal opening.
+    sidebar.addEventListener('click', (e) => {
+      if (e.target.closest('.pv-nav-btn')) setTimeout(close, 80);
+    });
+
+    // ESC closes too — handy on tablets with keyboards.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains(KLS)) close();
     });
   }
 
