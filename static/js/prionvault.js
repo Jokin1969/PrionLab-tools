@@ -2580,6 +2580,14 @@
     const pdfPill = row.querySelector('.pv-pdf-pill');
     if (pdfPill) pdfPill.addEventListener('click', e => {
       e.stopPropagation();
+      // On phones the in-app PDF viewer is fiddly (zoom, search, etc.);
+      // hand off to the browser's native PDF viewer in a new tab so
+      // the operator gets the OS-level reading experience instead.
+      if (window.innerWidth <= 800) {
+        window.open(`/prionvault/api/articles/${a.id}/pdf`,
+                    '_blank', 'noopener,noreferrer');
+        return;
+      }
       openDetail(a.id, { openPdf: true });
     });
 

@@ -173,7 +173,8 @@
       grid-template-areas:
         "article checkbox"
         "article marks"
-        "article asignado";
+        "article asignado"
+        "links   links";
       gap: 6px 8px;
       background: white !important;
       border: 1px solid #e5e7eb !important;
@@ -189,18 +190,46 @@
     /* Cell order in the desktop table:
          1 checkbox, 2 Marks, 3 Article, 4 Year, 5 Pages, 6 Prio,
          7 Links, 8 Asignado.
-       On mobile we keep checkbox + Marks + Article + Asignado; hide
-       Year (already shown inside the Article cell's metadata line),
-       Pages, Prio, Links (Links are useful but already reachable from
-       the detail modal — keeping them here makes each card too dense). */
+       On mobile we keep checkbox + Marks + Article + Links + Asignado;
+       hide Year (already inside the Article cell's metadata line),
+       Pages and Prio (admin niceties not worth the space). The Links
+       row at the bottom gives the operator a thumb-sized PDF / DOI /
+       PMID with the PDF wired to open in a new tab (see the JS). */
     #pv-results-table tr.pv-article-row td:nth-child(1) { grid-area: checkbox; text-align: right; }
     #pv-results-table tr.pv-article-row td:nth-child(2) { grid-area: marks;    text-align: right; }
     #pv-results-table tr.pv-article-row td:nth-child(3) { grid-area: article; min-width: 0; }
     #pv-results-table tr.pv-article-row td:nth-child(4),
     #pv-results-table tr.pv-article-row td:nth-child(5),
-    #pv-results-table tr.pv-article-row td:nth-child(6),
-    #pv-results-table tr.pv-article-row td:nth-child(7) { display: none !important; }
+    #pv-results-table tr.pv-article-row td:nth-child(6) { display: none !important; }
+    #pv-results-table tr.pv-article-row td:nth-child(7) {
+      grid-area: links;
+      padding-top: 8px !important;
+      border-top: 1px solid #f3f4f6 !important;
+      margin-top: 4px;
+    }
+    #pv-results-table tr.pv-article-row td:nth-child(7) > div {
+      gap: 8px !important;
+    }
+    /* Touch-sized pills (PDF / DOI / PMID). */
+    #pv-results-table tr.pv-article-row td:nth-child(7) a,
+    #pv-results-table tr.pv-article-row td:nth-child(7) button {
+      font-size: 13px !important;
+      padding: 8px 14px !important;
+      min-height: 36px !important;
+    }
+    /* The "PDF" pill gets a bolder treatment on mobile so it pops as
+       the primary action of the card. */
+    #pv-results-table tr.pv-article-row td:nth-child(7) button.pv-pdf-pill {
+      background: #b91c1c !important;
+      color: white !important;
+      font-weight: 700 !important;
+    }
     #pv-results-table tr.pv-article-row td:nth-child(8) { grid-area: asignado; text-align: right; font-size: 11px; }
+
+    /* Universal "hide on mobile" hook — used on filters / IA buttons /
+       bulk-lookup input. Add the class to any element and it disappears
+       below 800 px without affecting desktop. */
+    .pv-mobile-hide { display: none !important; }
 
     /* Modals: full width AND start below the 60-px sticky navbar so
        the close X is always within reach (the navbar has z-index 900
@@ -453,7 +482,7 @@
                 data-mode="text"
                 style="display:none;"
                 aria-hidden="true"></button>
-        <div style="display:flex;gap:5px;flex-shrink:0;align-items:center;">
+        <div style="display:flex;gap:5px;flex-shrink:0;align-items:center;" class="pv-mobile-hide">
           <button class="pv-ask-btn" data-provider="anthropic" type="button"
                   title="Pregunta a Claude Sonnet 4.6 (Anthropic)"
                   aria-label="Preguntar a Claude Sonnet 4.6 de Anthropic"
@@ -476,6 +505,7 @@
         </div>
         </div>
         <div id="pv-bulk-lookup-wrap"
+             class="pv-mobile-hide"
              style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:10px;
                     padding:8px 10px;flex:1;min-width:170px;max-width:280px;
                     border:1px solid transparent;
@@ -504,18 +534,18 @@
           <input type="number" id="filter-year-max" class="pv-filter-input"
                  placeholder="to" min="1900" max="2100" style="width:68px;">
         </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Autores
           <input type="text" id="filter-authors" class="pv-filter-input"
                  placeholder="Castilla, Soto…" style="width:140px;"
                  title="Coincidencia parcial sobre el campo 'authors' del artículo">
         </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Journal
           <input type="text" id="filter-journal" class="pv-filter-input"
                  placeholder="filter…" style="width:140px;">
         </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Sort
           <select id="filter-sort" class="pv-filter-input">
             <option value="added_desc">Recently added</option>
@@ -531,6 +561,7 @@
         </label>
 
         <button id="btn-filter-prionread"
+                class="pv-mobile-hide"
                 style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
                        font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
                        gap:5px;transition:all 0.15s;white-space:nowrap;"
@@ -539,6 +570,7 @@
         </button>
 
         <button id="btn-filter-milestone"
+                class="pv-mobile-hide"
                 data-state="all"
                 style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
                        font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
@@ -548,6 +580,7 @@
         </button>
 
         <button id="btn-filter-flagged"
+                class="pv-mobile-hide"
                 data-state="all"
                 style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
                        font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
@@ -557,6 +590,7 @@
         </button>
 
         <button id="btn-filter-favorite"
+                class="pv-mobile-hide"
                 data-state="all"
                 style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
                        font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
@@ -566,6 +600,7 @@
         </button>
 
         <button id="btn-filter-read"
+                class="pv-mobile-hide"
                 data-state="all"
                 style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
                        font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
@@ -574,7 +609,7 @@
           ✓ Leídos: todos
         </button>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Color
           <select id="filter-color" class="pv-filter-input">
             <option value="">todos</option>
@@ -588,7 +623,7 @@
           </select>
         </label>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Prioridad =
           <select id="filter-priority-eq" class="pv-filter-input">
             <option value="">todas</option>
@@ -601,6 +636,7 @@
         </label>
 
         <button id="btn-filter-has-jc" type="button"
+                class="pv-mobile-hide"
                 title="Mostrar sólo los artículos con presentación en Journal Club. Pulsa otra vez para ver todos."
                 style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
                        font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
@@ -609,14 +645,14 @@
           <span>Sólo JC</span>
         </button>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Presentador
           <input type="text" id="filter-jc-presenter" class="pv-filter-input"
                  placeholder="contiene…" style="width:140px;"
                  title="Filtra por subcadena en el nombre del presentador del Journal Club (case-insensitive).">
         </label>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           JC año
           <input type="number" id="filter-jc-year" class="pv-filter-input"
                  placeholder="2024" min="1980" max="2100" style="width:80px;">
@@ -639,7 +675,7 @@
           </select>
         </label>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
                title="Estado del abstract: 'pendiente' = sin abstract y no buscado todavía; 'no disponible' = consultado y CrossRef/PubMed lo confirman como inexistente.">
           Abstract
           <select id="filter-abstract-status" class="pv-filter-input">
@@ -650,7 +686,7 @@
           </select>
         </label>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
                title="Marca 'indexed' del listado: indica si el artículo está en el índice vectorial de búsqueda semántica.">
           Indexado
           <select id="filter-indexed-status" class="pv-filter-input">
@@ -660,7 +696,7 @@
           </select>
         </label>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Estado PDF
           <select id="filter-extraction" class="pv-filter-input">
             <option value="">todos</option>
