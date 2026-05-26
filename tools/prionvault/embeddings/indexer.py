@@ -142,7 +142,13 @@ def index_article(*, article_id, title, extracted_text=None,
             """INSERT INTO article_chunk
                  (article_id, chunk_index, source_field, chunk_text, tokens,
                   embedding, created_at)
-               VALUES (:aid, :idx, :src, :text, :tok, (:vec)::vector, NOW())"""
+               VALUES (:aid, :idx, :src, :text, :tok, (:vec)::vector, NOW())
+               ON CONFLICT (article_id, chunk_index, source_field)
+               DO UPDATE SET
+                   chunk_text = EXCLUDED.chunk_text,
+                   tokens     = EXCLUDED.tokens,
+                   embedding  = EXCLUDED.embedding,
+                   created_at = NOW()"""
         ), rows)
 
         conn.execute(sql_text(
