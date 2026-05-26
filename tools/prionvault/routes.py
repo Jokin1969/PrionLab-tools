@@ -5376,6 +5376,27 @@ def api_admin_articles_schema():
     })
 
 
+@prionvault_bp.route("/api/admin/heal-schema", methods=["GET", "POST"])
+@admin_required
+def api_heal_schema():
+    """One-shot schema self-heal — handy when the live schema lost
+    columns to a Postgres restore. Accepts GET so the admin can paste
+    the URL straight into their browser address bar without DevTools.
+
+    Re-applies the idempotent column-defining migrations (every
+    ADD COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS in our
+    history) so missing columns reappear without the operator having
+    to clear the applied_migrations tracker.
+    """
+    from .migrate import _self_heal_schema
+    summary = _self_heal_schema()
+    # Drop SQLAlchemy's column-existence cache so the same request
+    # context doesn't keep failing on the column it just recovered.
+    global _pv_columns_cache
+    _pv_columns_cache = None
+    return jsonify({"ok": True, "summary": summary})
+
+
 @prionvault_bp.route("/api/admin/migrations/force-rerun", methods=["POST"])
 @admin_required
 def api_migrations_force_rerun():

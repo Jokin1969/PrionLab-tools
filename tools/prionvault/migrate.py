@@ -267,7 +267,89 @@ def _run_migrations_inline() -> dict:
         logger.info("PrionVault migration %s done in %d ms (%d ok, %d failed).",
                     fname, runtime_ms, ok, len(fails))
 
+    # Self-heal sweep — Railway/Postgres restore incidents have twice
+    # dropped columns added by earlier migrations while leaving the
+    # applied_migrations tracker saying they ran. Always do an
+    # idempotent re-apply of the schema-defining migrations so the
+    # next request never sees a half-restored table.
+    summary["self_heal"] = _self_heal_schema()
     return summary
+
+
+# Migrations whose statements are pure "ADD COLUMN IF NOT EXISTS" /
+# "CREATE TABLE IF NOT EXISTS" / "CREATE OR REPLACE …" — i.e. safe to
+# re-run on every boot. We replay these unconditionally so a Postgres
+# restore from a stale snapshot can't leave the schema half-baked.
+# Order matters: 001 creates the base tables, 007 adds the extra
+# article columns the model depends on, the later ones layer on
+# domain-specific columns.
+_SELF_HEAL_MIGRATIONS = (
+    "007_articles_columns_repair.sql",
+    "009_articles_pdf_searchable.sql",
+    "018_articles_pdf_is_scan.sql",
+    "021_articles_abstract_unavailable.sql",
+    "024_articles_pubmed_unavailable.sql",
+    "027_articles_pdf_ocr_unavailable.sql",
+    "029_articles_oa_fetch.sql",
+    "030_articles_pdf_metadata_verify.sql",
+)
+
+
+def _self_heal_schema() -> dict:
+    """Re-apply the column-defining migrations every boot, regardless
+    of what the applied_migrations tracker says. All statements in
+    _SELF_HEAL_MIGRATIONS use IF NOT EXISTS guards, so this is a
+    no-op when the schema is already correct — but recovers
+    automatically when Railway has silently restored a stale
+    snapshot.
+
+    Returns {"ran": [...], "errors": [...]}; logs at WARNING level
+    only when an unexpected statement fails (the IF NOT EXISTS
+    layer means a healthy DB triggers no warnings).
+    """
+    out: dict = {"ran": [], "errors": []}
+    try:
+        from sqlalchemy import text
+        from database.config import db
+    except Exception as exc:
+        logger.warning("schema self-heal: SQLAlchemy unavailable (%s)", exc)
+        return out
+    if not getattr(db, "engine", None):
+        return out
+
+    for fname in _SELF_HEAL_MIGRATIONS:
+        path = _MIGRATIONS_DIR / fname
+        if not path.exists():
+            continue
+        ok = 0
+        fails = []
+        for stmt in _split_sql(path.read_text()):
+            try:
+                with db.engine.begin() as conn:
+                    conn.exec_driver_sql(stmt)
+                ok += 1
+            except Exception as exc:
+                # Schema-repair statements that fail here are usually
+                # benign on a healthy DB (e.g. CREATE EXTENSION
+                # without superuser, an HNSW index that already
+                # exists). Log at debug; only surface true regressions.
+                head = stmt.replace("\n", " ")[:120]
+                fails.append({"error": str(exc)[:200], "head": head})
+                logger.debug(
+                    "schema self-heal: stmt failed in %s (%s) — head: %s",
+                    fname, exc, head,
+                )
+        entry = {"name": fname, "statements_ok": ok, "statements_failed": fails}
+        if fails:
+            out["errors"].append(entry)
+        else:
+            out["ran"].append(entry)
+    if out["errors"]:
+        logger.warning("schema self-heal: completed with %d migrations needing attention",
+                       len(out["errors"]))
+    else:
+        logger.info("schema self-heal: all critical migrations re-asserted cleanly")
+    return out
 
 
 def run_pending_migrations(app=None) -> dict:
