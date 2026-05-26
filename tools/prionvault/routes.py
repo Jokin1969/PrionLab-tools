@@ -2980,19 +2980,19 @@ def api_ingest_scan_folder():
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf-view", methods=["GET"])
 @login_required
 def api_article_pdf_view(aid):
-    """Minimal HTML wrapper around the raw /pdf endpoint.
+    """HTML wrapper that renders the article's PDF with a sticky
+    "← Volver" bar and a real scrollable viewer.
 
-    Mobile browsers render a PDF in full-screen mode and hide all
-    their own chrome, so the operator gets stuck inside the file
-    with no obvious way back to the catalogue (the only escape is
-    closing the tab — which on a PWA / "Add to home" install means
-    closing the whole app). This wrapper keeps a sticky "← Volver"
-    bar pinned to the top of the viewport at all times; the native
-    PDF viewer still runs below it inside an iframe so reading
-    quality is unchanged.
+    iOS Safari (and some Chrome builds) refuse to scroll a PDF
+    rendered inside an iframe — only the first page shows up. We
+    instead pull the PDF via PDF.js (Mozilla, CDN-hosted) and draw
+    each page into its own canvas stacked vertically inside a
+    normal scrolling div, so the browser's native momentum scroll
+    just works.
 
-    Desktop callers can keep using /pdf directly — the in-app modal
-    still has its own close affordance.
+    Pages are rendered lazily via IntersectionObserver — a 50-page
+    paper costs the memory of ~3 visible canvases at a time, not
+    the whole document.
     """
     from flask import Response
     s = _session()
@@ -3005,18 +3005,22 @@ def api_article_pdf_view(aid):
         title = (row[0] or "PDF")
     finally:
         s.close()
-    # Escape for safe HTML embedding (title is operator-supplied).
     esc = (title.replace("&", "&amp;")
                 .replace("<", "&lt;").replace(">", "&gt;")
                 .replace('"', "&quot;"))
+    pdf_url = f"/prionvault/api/articles/{aid}/pdf"
+    # NOTE: PDF.js 3.x — UMD bundle, stable, well-tested on mobile.
+    # We pin the version explicitly so a CDN-side upgrade can't break
+    # the viewer overnight.
     html = (
         '<!doctype html><html><head>'
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f'<title>{esc}</title>'
         '<style>'
-        '  html,body{margin:0;padding:0;height:100%;background:#1f2937;'
-        '            font:500 14px/1.3 -apple-system,system-ui,sans-serif;}'
+        '  html,body{margin:0;padding:0;height:100%;background:#444;'
+        '            font:500 14px/1.3 -apple-system,system-ui,sans-serif;'
+        '            -webkit-overflow-scrolling:touch;}'
         '  #pv-pdf-topbar{position:sticky;top:0;z-index:10;display:flex;'
         '    align-items:center;gap:10px;background:#0F3460;color:white;'
         '    padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,0.25);}'
@@ -3028,14 +3032,81 @@ def api_article_pdf_view(aid):
         '  #pv-pdf-title{flex:1;min-width:0;overflow:hidden;'
         '    text-overflow:ellipsis;white-space:nowrap;'
         '    color:rgba(255,255,255,0.92);}'
-        '  iframe{width:100%;height:calc(100vh - 56px);border:0;display:block;}'
+        '  #pv-pdf-pages{display:flex;flex-direction:column;align-items:center;'
+        '    gap:10px;padding:10px;}'
+        '  .pv-pdf-page{background:white;box-shadow:0 2px 10px rgba(0,0,0,0.4);'
+        '    display:block;max-width:100%;}'
+        '  #pv-pdf-status{color:rgba(255,255,255,0.85);padding:20px;text-align:center;}'
         '</style></head><body>'
         '<div id="pv-pdf-topbar">'
         '  <a id="pv-pdf-back" href="/prionvault/" '
         '     title="Volver al listado de PrionVault">← Volver</a>'
         f'  <span id="pv-pdf-title" title="{esc}">{esc}</span>'
         '</div>'
-        f'<iframe src="/prionvault/api/articles/{aid}/pdf"></iframe>'
+        '<div id="pv-pdf-pages">'
+        '  <div id="pv-pdf-status">Cargando PDF…</div>'
+        '</div>'
+        '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>'
+        '<script>'
+        '(function(){'
+        '  var lib = window["pdfjs-dist/build/pdf"] || window.pdfjsLib;'
+        '  if (!lib) {'
+        '    document.getElementById("pv-pdf-status").textContent = '
+        '      "No se pudo cargar el visor PDF (CDN no disponible)."; return;'
+        '  }'
+        '  lib.GlobalWorkerOptions.workerSrc = '
+        '    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";'
+        f'  var url = "{pdf_url}";'
+        '  var container = document.getElementById("pv-pdf-pages");'
+        '  var status    = document.getElementById("pv-pdf-status");'
+        '  var dpr = Math.min(window.devicePixelRatio || 1, 2);'
+        '  /* getDocument with credentials so the same-origin session '
+        '     cookie is sent and our @login_required passes. */'
+        '  lib.getDocument({url: url, withCredentials: true}).promise.then(function(pdf){'
+        '    status.remove();'
+        '    var width = Math.min(container.clientWidth - 20, 900);'
+        '    var observer = new IntersectionObserver(function(entries){'
+        '      entries.forEach(function(e){'
+        '        var canvas = e.target;'
+        '        if (e.isIntersecting && !canvas.dataset.rendered) {'
+        '          canvas.dataset.rendered = "1";'
+        '          canvas._page.render({'
+        '            canvasContext: canvas.getContext("2d"),'
+        '            viewport: canvas._viewport,'
+        '          });'
+        '        }'
+        '      });'
+        '    }, { rootMargin: "600px 0px 600px 0px" });'
+        '    var chain = Promise.resolve();'
+        '    for (var n = 1; n <= pdf.numPages; n++) {'
+        '      (function(pageNum){'
+        '        chain = chain.then(function(){'
+        '          return pdf.getPage(pageNum).then(function(page){'
+        '            var base = page.getViewport({scale: 1});'
+        '            var scale = (width / base.width) * dpr;'
+        '            var viewport = page.getViewport({scale: scale});'
+        '            var canvas = document.createElement("canvas");'
+        '            canvas.className = "pv-pdf-page";'
+        '            canvas.width = Math.floor(viewport.width);'
+        '            canvas.height = Math.floor(viewport.height);'
+        '            canvas.style.width = width + "px";'
+        '            canvas.style.height = (viewport.height / dpr) + "px";'
+        '            canvas._page = page;'
+        '            canvas._viewport = viewport;'
+        '            container.appendChild(canvas);'
+        '            observer.observe(canvas);'
+        '          });'
+        '        });'
+        '      })(n);'
+        '    }'
+        '  }).catch(function(err){'
+        '    status.innerHTML = "<strong>Error cargando PDF:</strong> " +'
+        '      (err && err.message ? err.message : String(err)) +'
+        '      "<br><br><a href=\\"" + url + "\\" target=\\"_blank\\"'
+        ' style=\\"color:#93c5fd;\\">Abrir directamente</a>";'
+        '  });'
+        '})();'
+        '</script>'
         '</body></html>'
     )
     return Response(html, mimetype="text/html")
