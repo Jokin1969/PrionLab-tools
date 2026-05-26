@@ -2977,6 +2977,70 @@ def api_ingest_scan_folder():
 
 
 # ── PDF streaming (inline viewer) ───────────────────────────────────────────
+@prionvault_bp.route("/api/articles/<uuid:aid>/pdf-view", methods=["GET"])
+@login_required
+def api_article_pdf_view(aid):
+    """Minimal HTML wrapper around the raw /pdf endpoint.
+
+    Mobile browsers render a PDF in full-screen mode and hide all
+    their own chrome, so the operator gets stuck inside the file
+    with no obvious way back to the catalogue (the only escape is
+    closing the tab — which on a PWA / "Add to home" install means
+    closing the whole app). This wrapper keeps a sticky "← Volver"
+    bar pinned to the top of the viewport at all times; the native
+    PDF viewer still runs below it inside an iframe so reading
+    quality is unchanged.
+
+    Desktop callers can keep using /pdf directly — the in-app modal
+    still has its own close affordance.
+    """
+    from flask import Response
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT title FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row:
+            return jsonify({"error": "article not found"}), 404
+        title = (row[0] or "PDF")
+    finally:
+        s.close()
+    # Escape for safe HTML embedding (title is operator-supplied).
+    esc = (title.replace("&", "&amp;")
+                .replace("<", "&lt;").replace(">", "&gt;")
+                .replace('"', "&quot;"))
+    html = (
+        '<!doctype html><html><head>'
+        '<meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f'<title>{esc}</title>'
+        '<style>'
+        '  html,body{margin:0;padding:0;height:100%;background:#1f2937;'
+        '            font:500 14px/1.3 -apple-system,system-ui,sans-serif;}'
+        '  #pv-pdf-topbar{position:sticky;top:0;z-index:10;display:flex;'
+        '    align-items:center;gap:10px;background:#0F3460;color:white;'
+        '    padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,0.25);}'
+        '  #pv-pdf-back{background:rgba(255,255,255,0.18);color:white;'
+        '    text-decoration:none;padding:8px 14px;border-radius:8px;'
+        '    font-weight:600;flex-shrink:0;min-height:36px;'
+        '    display:inline-flex;align-items:center;}'
+        '  #pv-pdf-back:hover,#pv-pdf-back:active{background:rgba(255,255,255,0.30);}'
+        '  #pv-pdf-title{flex:1;min-width:0;overflow:hidden;'
+        '    text-overflow:ellipsis;white-space:nowrap;'
+        '    color:rgba(255,255,255,0.92);}'
+        '  iframe{width:100%;height:calc(100vh - 56px);border:0;display:block;}'
+        '</style></head><body>'
+        '<div id="pv-pdf-topbar">'
+        '  <a id="pv-pdf-back" href="/prionvault/" '
+        '     title="Volver al listado de PrionVault">← Volver</a>'
+        f'  <span id="pv-pdf-title" title="{esc}">{esc}</span>'
+        '</div>'
+        f'<iframe src="/prionvault/api/articles/{aid}/pdf"></iframe>'
+        '</body></html>'
+    )
+    return Response(html, mimetype="text/html")
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["GET"])
 @login_required
 def api_article_pdf(aid):

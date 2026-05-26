@@ -2580,11 +2580,13 @@
     const pdfPill = row.querySelector('.pv-pdf-pill');
     if (pdfPill) pdfPill.addEventListener('click', e => {
       e.stopPropagation();
-      // On phones the in-app PDF viewer is fiddly (zoom, search, etc.);
-      // hand off to the browser's native PDF viewer in a new tab so
-      // the operator gets the OS-level reading experience instead.
+      // On phones the browser hides all its chrome around an inline
+      // PDF, which trapped the operator inside the file with no way
+      // back to PrionVault. Open our /pdf-view wrapper instead — it
+      // pins a "← Volver" bar at the top and still uses the OS's
+      // native PDF viewer inside an iframe below.
       if (window.innerWidth <= 800) {
-        window.open(`/prionvault/api/articles/${a.id}/pdf`,
+        window.open(`/prionvault/api/articles/${a.id}/pdf-view`,
                     '_blank', 'noopener,noreferrer');
         return;
       }
