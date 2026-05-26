@@ -113,9 +113,15 @@
        still reachable through the drawer but only really useful from a
        laptop. */
   @media (max-width: 800px) {
-    /* Container becomes a vertical stack so the main area gets the full
-       width. The aside is repositioned as a fixed off-screen drawer. */
-    #prionvault-app { display: block !important; height: auto !important; overflow: visible !important; }
+    /* The page navbar is sticky and z-index 900; floating widgets that
+       want to coexist with the search bar / modals would only get in
+       the way at this size. */
+    #hs-toggle { display: none !important; }
+
+    /* We keep the desktop flex layout (main scrolls, page doesn't).
+       The aside is yanked out of the flow with position: fixed below,
+       so main automatically takes the full width — no display override
+       needed and the search bar's sticky behaviour stays intact. */
 
     /* Sidebar = slide-in drawer. Default off-screen, slides in when
        body.pv-mobile-drawer-open is set by the hamburger handler. */
@@ -147,7 +153,9 @@
     /* 16 px font on the input prevents iOS Safari's auto-zoom on focus. */
     #pv-search-input { font-size: 16px !important; }
 
-    /* Filter strip: horizontal scroll instead of wrapping into a mess. */
+    /* Filter strip: horizontal scroll instead of wrapping into a mess.
+       The id was added to the markup so we can refine which filters
+       are visible on phones without touching desktop. */
     #pv-filter-strip { overflow-x: auto !important; flex-wrap: nowrap !important; }
 
     /* Listing table → card layout per row. Tables don't fit at 380 px. */
@@ -194,15 +202,19 @@
     #pv-results-table tr.pv-article-row td:nth-child(7) { display: none !important; }
     #pv-results-table tr.pv-article-row td:nth-child(8) { grid-area: asignado; text-align: right; font-size: 11px; }
 
-    /* Modals: full width, less padding, more vertical space. */
+    /* Modals: full width AND start below the 60-px sticky navbar so
+       the close X is always within reach (the navbar has z-index 900
+       which sits above the modal's z-index 50; without this padding
+       the X at top:14 of modal-inner ends up hidden under it). */
     .pv-modal {
-      padding: calc(3vh + 8px) 0 3vh !important;
+      padding: 72px 0 3vh !important;
+      align-items: flex-start !important;
     }
     .pv-modal-inner {
       width: calc(100% - 16px) !important;
       max-width: none !important;
       padding: 36px 16px 20px !important;
-      max-height: 92vh !important;
+      max-height: calc(100vh - 100px) !important;
       border-radius: 12px !important;
     }
 
@@ -483,7 +495,7 @@
           </button>
         </div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
+      <div id="pv-filter-strip" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Year
           <input type="number" id="filter-year-min" class="pv-filter-input"
