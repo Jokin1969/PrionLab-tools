@@ -13,6 +13,7 @@ worker handles the absence of metadata as a separate state.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -438,6 +439,171 @@ def pubmed_search_pmid_by_title(title: str,
         if ids:
             return ids[0]
     return None
+
+
+def pubmed_resolve_aiassisted(*, pdf_excerpt: str, title: Optional[str],
+                              authors: Optional[list] = None,
+                              journal: Optional[str] = None,
+                              year: Optional[int] = None) -> Optional[str]:
+    """Second-pass, AI-assisted PubMed PMID resolver.
+
+    Used when `pubmed_search_pmid_by_title` returns None — i.e. the
+    title is right but PubMed's parser couldn't tokenise it (OCR
+    noise, punctuation), or PubMed only indexes the paper under a
+    slightly different title.
+
+    Strategy:
+      1. Build broader candidate-generating queries from
+         (author + year), (journal + year), (multiple authors + year).
+         Each returns up to 20 candidates.
+      2. Dedup and fetch esummary metadata for the union.
+      3. Ask gpt-4o-mini to choose the candidate whose title /
+         authors / year best match the PDF's first-page text.
+      4. Return the PMID if confidence ≥ 0.6, else None.
+
+    Falls back gracefully when OpenAI is not configured (returns
+    None — the caller will then surface the copy-title-to-clipboard
+    fallback as before).
+    """
+    if not (authors or journal or year):
+        return None
+    if not pdf_excerpt:
+        return None
+
+    # Build candidate-fetching queries.
+    queries: list[str] = []
+    short_authors = [a for a in (authors or [])[:3] if a]
+    if short_authors and year:
+        for a in short_authors:
+            queries.append(f"{a}[Author] AND {year}[PDAT]")
+    if journal and year:
+        queries.append(f'"{journal}"[Journal] AND {year}[PDAT]')
+    if short_authors and journal:
+        queries.append(f"{short_authors[0]}[Author] AND \"{journal}\"[Journal]")
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for term in queries:
+        try:
+            r = requests.get(_PUBMED_ESEARCH, params={
+                "db":      "pubmed",
+                "term":    term,
+                "retmax":  "20",
+                "retmode": "json",
+                "sort":    "relevance",
+            }, headers=_HDRS, timeout=_TIMEOUT)
+            r.raise_for_status()
+        except Exception as exc:
+            logger.debug("aiassisted: esearch query failed (%s): %s", term, exc)
+            continue
+        ids = ((r.json().get("esearchresult") or {}).get("idlist")) or []
+        for pid in ids:
+            if pid not in seen:
+                seen.add(pid)
+                candidates.append(pid)
+        if len(candidates) >= 40:
+            break
+
+    if not candidates:
+        return None
+    # If the broad queries happened to converge on a single candidate
+    # across every query, trust it without burning LLM tokens.
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Fetch esummary metadata for the candidates (cap at 25 — LLM
+    # context budget is small for this lightweight prompt).
+    candidates = candidates[:25]
+    try:
+        r = requests.get(_PUBMED_ESUMMARY, params={
+            "db": "pubmed", "id": ",".join(candidates), "retmode": "json",
+        }, headers=_HDRS, timeout=_TIMEOUT)
+        r.raise_for_status()
+        res = (r.json().get("result") or {})
+    except Exception as exc:
+        logger.debug("aiassisted: esummary failed: %s", exc)
+        return None
+
+    lines = []
+    for pid in candidates:
+        s = res.get(pid) or {}
+        ttl = (s.get("title") or "").rstrip(".").strip()
+        auth_list = s.get("authors") or []
+        first_auth = (auth_list[0].get("name") if auth_list else "")
+        journ = s.get("fulljournalname") or s.get("source") or ""
+        y = ""
+        m = re.match(r"(\d{4})", s.get("pubdate") or "")
+        if m:
+            y = m.group(1)
+        lines.append(f'PMID {pid}: "{ttl}" — {first_auth} et al. — {y} — {journ}')
+    candidates_block = "\n".join(lines)
+
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        # No LLM disambiguator — return None and let the caller fall
+        # back to the manual clipboard path.
+        return None
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None
+
+    excerpt = (pdf_excerpt or "")[:4000]
+    user_prompt = (
+        "You see the first page of a scientific PDF and a shortlist of "
+        "PubMed candidates collected by a broad query. Pick the single "
+        "PMID whose title, authors and year match the PDF.\n\n"
+        f'PDF (first page, possibly OCR-noisy):\n"""\n{excerpt}\n"""\n\n'
+        f"PubMed candidates:\n{candidates_block}\n\n"
+        "Reply ONLY with this exact JSON shape:\n"
+        '{"pmid": "<the chosen PMID, or null>", "confidence": 0.0}\n'
+        "Set pmid=null if no candidate is clearly the right one. "
+        "Confidence is your own subjective 0-1 score."
+    )
+
+    try:
+        client = OpenAI(api_key=api_key, timeout=30.0)
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            max_tokens=150,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system",
+                 "content": "You match scientific PDFs to PubMed records. Reply only JSON."},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except Exception as exc:
+        logger.debug("aiassisted: openai call failed: %s", exc)
+        return None
+
+    choice = completion.choices[0] if completion.choices else None
+    raw = ((choice.message.content if choice and choice.message else "") or "").strip()
+    if not raw:
+        return None
+    try:
+        import json as _json
+        parsed = _json.loads(raw)
+    except Exception:
+        return None
+    pmid_pick = parsed.get("pmid")
+    if pmid_pick is None:
+        return None
+    pmid_pick = str(pmid_pick).strip()
+    if not pmid_pick.isdigit() or pmid_pick not in candidates:
+        return None
+    try:
+        conf = float(parsed.get("confidence") or 0)
+    except (TypeError, ValueError):
+        conf = 0.0
+    # Only commit if the LLM thinks it's a real match.
+    if conf < 0.6:
+        return None
+    logger.info("aiassisted: matched PMID %s (confidence %.2f) from %d candidates",
+                pmid_pick, conf, len(candidates))
+    return pmid_pick
 
 
 # ── Public entrypoint ───────────────────────────────────────────────────────

@@ -27,6 +27,8 @@ _MAX_INPUT_CHARS = 12_000  # title + authors live on page 1; no need to send mor
 class IdentifiedArticle(TypedDict):
     title: Optional[str]
     first_author_lastname: Optional[str]
+    authors: list
+    journal: Optional[str]
     year: Optional[int]
 
 
@@ -55,14 +57,18 @@ def _build_user_prompt(pdf_text: str) -> str:
         "{\n"
         '  "title": "the full article title, single line, no trailing period",\n'
         '  "first_author_lastname": "Surname only of the first listed author",\n'
+        '  "authors": ["surname1", "surname2", ...],\n'
+        '  "journal": "the full journal name, e.g. Nature Communications",\n'
         '  "year": 1234\n'
         "}\n\n"
         "Rules:\n"
         '- "title" must be the article\'s own title, not the journal name or running header.\n'
         '- Strip line breaks and hyphenation from PDF layout (e.g. "glyco-\\nforms" -> "glycoforms").\n'
         '- "first_author_lastname" is just the family name (e.g. "Stack", "García-López"), no initials.\n'
+        '- "authors" is a JSON array of family names ONLY, up to 5 in order of appearance.\n'
+        '- "journal" is the publishing journal as printed (no abbreviation if you can find the full name on the page).\n'
         '- "year" is the integer publication year. Use the article\'s own year, not Received/Accepted dates if both are present.\n'
-        "- If a field cannot be determined confidently, set it to null.\n\n"
+        "- If a field cannot be determined confidently, set it to null (or [] for authors).\n\n"
         f'PDF text:\n"""\n{pdf_text}\n"""'
     )
 
@@ -139,4 +145,26 @@ def identify_article_from_pdf_text(pdf_text: str) -> IdentifiedArticle:
         if 1800 < y < 2100:
             year = y
 
-    return IdentifiedArticle(title=title, first_author_lastname=author, year=year)
+    journal_raw = parsed.get("journal")
+    journal: Optional[str] = None
+    if isinstance(journal_raw, str):
+        journal = journal_raw.strip() or None
+
+    authors_raw = parsed.get("authors")
+    authors: list = []
+    if isinstance(authors_raw, list):
+        for a in authors_raw[:5]:
+            if isinstance(a, str) and a.strip():
+                authors.append(a.strip())
+    # If the AI didn't fill the list but did identify a first author,
+    # backfill it so downstream queries always have at least one name.
+    if not authors and author:
+        authors = [author]
+
+    return IdentifiedArticle(
+        title=title,
+        first_author_lastname=author,
+        authors=authors,
+        journal=journal,
+        year=year,
+    )

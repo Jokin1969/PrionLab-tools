@@ -3354,7 +3354,9 @@ def api_article_identify_pmid(aid):
     a title, 502 if Dropbox / pdfplumber failed, 503 if OpenAI is
     not configured.
     """
-    from .ingestion.metadata_resolver import pubmed_search_pmid_by_title
+    from .ingestion.metadata_resolver import (
+        pubmed_search_pmid_by_title, pubmed_resolve_aiassisted,
+    )
     from .ingestion.pdf_extractor import extract_pdf
     from .services.ai_identifier import (
         identify_article_from_pdf_text, AIIdentifierError,
@@ -3419,6 +3421,24 @@ def api_article_identify_pmid(aid):
         author=identified.get("first_author_lastname"),
         year=identified.get("year"),
     )
+    # Second pass: if the direct title query came up empty, let the AI
+    # pull a shortlist of broader candidates (by author / journal / year)
+    # and pick the matching PMID. This emulates the manual workflow the
+    # operator would otherwise have to do by hand on PubMed's website.
+    if not pmid:
+        try:
+            pmid = pubmed_resolve_aiassisted(
+                pdf_excerpt=extraction.text or "",
+                title=identified.get("title"),
+                authors=identified.get("authors") or [],
+                journal=identified.get("journal"),
+                year=identified.get("year"),
+            )
+        except Exception as exc:
+            logger.warning("identify_pmid: ai-assisted pass crashed (%s)", exc)
+            pmid = None
+        if pmid:
+            identified["resolved_via"] = "ai_assisted"
     if not pmid:
         return jsonify({
             "error":      "PubMed no encontró ningún PMID para el artículo identificado",
