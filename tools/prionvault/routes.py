@@ -5511,6 +5511,31 @@ def api_admin_articles_schema():
     })
 
 
+@prionvault_bp.route("/api/admin/ai-providers-status", methods=["GET"])
+@admin_required
+def api_ai_providers_status():
+    """Per-provider health snapshot (anthropic, openai, gemini,
+    voyage, unpaywall). Fed by record_success / record_error in the
+    respective service wrappers. Polled by the "Estado IA" modal in
+    the sidebar AND by a tiny page-top banner that fires when one of
+    them is in `quota_exhausted` / `invalid_key`."""
+    from .services import provider_status
+    return jsonify(provider_status.get_snapshot())
+
+
+@prionvault_bp.route("/api/admin/ai-providers-status/reset", methods=["POST"])
+@admin_required
+def api_ai_providers_status_reset():
+    """Clear stored state — useful right after topping up credit, so
+    the banner goes away without waiting for the next real call to
+    succeed."""
+    from .services import provider_status
+    body = request.get_json(silent=True) or {}
+    provider = body.get("provider")
+    n = provider_status.reset(provider)
+    return jsonify({"ok": True, "reset": n})
+
+
 @prionvault_bp.route("/api/admin/heal-schema", methods=["GET", "POST"])
 @admin_required
 def api_heal_schema():

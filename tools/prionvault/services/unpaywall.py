@@ -58,10 +58,27 @@ def _normalise_doi(doi: str) -> str:
     return s.lower().rstrip(".,;:)")
 
 
+def _status_ok():
+    try:
+        from . import provider_status
+        provider_status.record_success("unpaywall", action="find_open_pdf")
+    except Exception:
+        pass
+
+
+def _status_err(reason: str):
+    try:
+        from . import provider_status
+        provider_status.record_error("unpaywall", reason, action="find_open_pdf")
+    except Exception:
+        pass
+
+
 def find_open_pdf(doi: str) -> UnpaywallResult:
     """Look up `doi` in Unpaywall. Returns is_oa + best PDF URL if any."""
     email = os.getenv("UNPAYWALL_EMAIL", "").strip()
     if not email:
+        _status_err("UNPAYWALL_EMAIL env var is not set")
         raise NotConfigured("UNPAYWALL_EMAIL is not set")
     doi = _normalise_doi(doi)
     if not doi:
@@ -77,22 +94,29 @@ def find_open_pdf(doi: str) -> UnpaywallResult:
         )
     except Exception as exc:
         logger.warning("Unpaywall lookup failed for %s: %s", doi, exc)
+        _status_err(f"network: {exc}")
         return UnpaywallResult(False, None, None, None, None, None,
                                error=f"network: {exc}")
 
     if r.status_code == 404:
+        # 404 means "no record for this DOI" — that's a perfectly
+        # healthy outcome from Unpaywall's side, not an alert.
+        _status_ok()
         return UnpaywallResult(False, None, None, None, None, None,
                                error="not_in_unpaywall")
     if r.status_code != 200:
+        _status_err(f"http_{r.status_code}: {(r.text or '')[:120]}")
         return UnpaywallResult(False, None, None, None, None, None,
                                error=f"http_{r.status_code}")
 
     try:
         data = r.json() or {}
     except Exception:
+        _status_err("invalid_json")
         return UnpaywallResult(False, None, None, None, None, None,
                                error="invalid_json")
 
+    _status_ok()
     is_oa = bool(data.get("is_oa"))
     best  = data.get("best_oa_location") or {}
     return UnpaywallResult(

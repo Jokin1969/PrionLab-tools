@@ -409,6 +409,10 @@
               title="Verifica que cada PDF coincide con sus metadatos. Heurística + LLM en los dudosos. Encuentra PDFs mal asociados.">
         <span><i class="fas fa-check-double" style="width:13px;margin-right:6px;opacity:0.7;"></i>Verificar PDFs ↔ metadatos</span>
       </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-ai-status"
+              title="Estado de cada proveedor de IA / API externa: últimos éxitos / errores, detección de crédito agotado o API key inválida.">
+        <span><i class="fas fa-circle-info" style="width:13px;margin-right:6px;opacity:0.7;"></i>Estado IA</span>
+      </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-find-duplicates">
         <span><i class="fas fa-clone" style="width:13px;margin-right:6px;opacity:0.7;"></i>Find duplicates</span>
       </button>
@@ -443,6 +447,19 @@
 
   <!-- ── Main ─────────────────────────────────────────────────────────── -->
   <main style="flex:1;overflow-y:auto;background:#f9fafb;display:flex;flex-direction:column;min-width:0;">
+
+    <!-- AI provider alert banner — populated by JS when any provider
+         is in quota_exhausted / invalid_key state. Hidden by default
+         (display:none). Click to open the full Estado IA modal. -->
+    <div id="pv-ai-banner" role="alert" style="display:none;
+                background:#fef2f2;border-bottom:1px solid #fecaca;
+                color:#991b1b;font-size:13px;font-weight:600;
+                padding:10px 18px;cursor:pointer;
+                display:none;align-items:center;gap:10px;"
+         title="Pulsa para ver el detalle">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span id="pv-ai-banner-text">Algún proveedor de IA está fallando — pulsa para ver detalles.</span>
+    </div>
 
     <!-- Search bar -->
     <div style="position:sticky;top:0;z-index:10;background:white;border-bottom:1px solid #e5e7eb;
@@ -1716,6 +1733,39 @@
     <!-- Pagination -->
     <div id="pv-pinv-pager"
          style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#6b7280;"></div>
+  </div>
+</div>
+
+<!-- ── AI providers status modal ────────────────────────────────────
+     5 cards (Anthropic / OpenAI / Gemini / Voyage / Unpaywall) with
+     last success / last error / classification. Reset-state buttons
+     let the operator clear a stale alert after topping up credit. -->
+<div id="pv-ai-status-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:760px;">
+    <button class="pv-modal-close" id="pv-ai-status-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-circle-info" style="color:#0F3460;margin-right:8px;"></i>Estado IA / APIs externas
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin-bottom:14px;">
+      Una tarjeta por proveedor con el último éxito y el último error.
+      <strong>Rojo</strong> = crédito agotado o API key inválida (necesita acción tuya).
+      <strong>Amarillo</strong> = rate-limit / fallo transitorio (suele auto-recuperarse).
+    </p>
+    <div id="pv-ai-status-grid"
+         style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;"></div>
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:#6b7280;">
+      <span>Polling cada 30 s mientras este modal esté abierto.</span>
+      <button id="pv-ai-status-refresh" type="button"
+              style="margin-left:auto;padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;cursor:pointer;">
+        Refrescar ahora
+      </button>
+      <button id="pv-ai-status-reset" type="button"
+              title="Limpia todo el historial de éxitos/errores. Tras recargar crédito te quita el banner rojo sin esperar a la próxima llamada."
+              style="padding:5px 12px;border-radius:6px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:12.5px;font-weight:600;cursor:pointer;">
+        Resetear estado
+      </button>
+    </div>
   </div>
 </div>
 

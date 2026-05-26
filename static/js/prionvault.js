@@ -5404,6 +5404,7 @@
       wireBatchSearchable();
       wirePubmedInventory();
       wireVerifyMetadata();
+      wireAIStatus();
       wireSidebarResize();
       wireMobileDrawer();
       wireBulkBar();
@@ -9839,6 +9840,133 @@
       aside.style.width = '230px';
       try { localStorage.removeItem(KEY); } catch (_) {}
     });
+  }
+
+  // ── AI providers status modal + sticky banner ──────────────────────
+  // Polls /api/admin/ai-providers-status every 60 s globally; if any
+  // provider is in a definite-failure state (quota_exhausted /
+  // invalid_key) the sticky banner appears at the top of PrionVault
+  // and stays visible until the next successful call clears it.
+  // Opening the modal switches to a tighter 30 s poll so the operator
+  // can see status changes nearly in real time.
+  function wireAIStatus() {
+    const sidebarBtn = document.getElementById('btn-ai-status');
+    const modal      = document.getElementById('pv-ai-status-modal');
+    const closeBtn   = document.getElementById('pv-ai-status-close');
+    const grid       = document.getElementById('pv-ai-status-grid');
+    const refreshBtn = document.getElementById('pv-ai-status-refresh');
+    const resetBtn   = document.getElementById('pv-ai-status-reset');
+    const banner     = document.getElementById('pv-ai-banner');
+    const bannerTxt  = document.getElementById('pv-ai-banner-text');
+
+    if (!sidebarBtn || !modal || !banner) return;
+
+    const PROVIDERS = ['anthropic', 'openai', 'gemini', 'voyage', 'unpaywall'];
+    const PROVIDER_LABELS = {
+      anthropic: 'Anthropic — Claude',
+      openai:    'OpenAI — GPT',
+      gemini:    'Google — Gemini',
+      voyage:    'Voyage — Embeddings',
+      unpaywall: 'Unpaywall — Open Access',
+    };
+    const STATUS_STYLES = {
+      ok:               { bg: '#dcfce7', fg: '#166534', label: '✓ Operativo' },
+      quota_exhausted:  { bg: '#fee2e2', fg: '#991b1b', label: '✗ Crédito agotado' },
+      invalid_key:      { bg: '#fee2e2', fg: '#991b1b', label: '⛔ API key inválida' },
+      rate_limited:     { bg: '#fef3c7', fg: '#92400e', label: '⚠ Rate-limited' },
+      transient:        { bg: '#fef3c7', fg: '#92400e', label: '⚠ Error transitorio' },
+      unknown:          { bg: '#f3f4f6', fg: '#374151', label: '• Sin datos' },
+    };
+
+    let bgPoll = null;
+    let openPoll = null;
+
+    async function refresh() {
+      let snap;
+      try {
+        snap = await api('/admin/ai-providers-status');
+      } catch (e) {
+        // Not authenticated as admin, network down — don't spam.
+        return null;
+      }
+      paintBanner(snap);
+      if (modal.style.display === 'flex') paintModal(snap);
+      return snap;
+    }
+
+    function paintBanner(snap) {
+      const alerting = (snap.alerting || []);
+      if (!alerting.length) {
+        banner.style.display = 'none';
+        return;
+      }
+      banner.style.display = 'flex';
+      const names = alerting.map(p => PROVIDER_LABELS[p] || p).join(', ');
+      bannerTxt.textContent =
+        `⚠ ${names} — crédito agotado o API key inválida. Pulsa para ver detalles.`;
+    }
+
+    function paintModal(snap) {
+      const provs = snap.providers || {};
+      grid.innerHTML = PROVIDERS.map(p => {
+        const v = provs[p] || {};
+        const st = STATUS_STYLES[v.status || 'unknown'] || STATUS_STYLES.unknown;
+        const lastOk  = v.last_success_at ? new Date(v.last_success_at).toLocaleString() : '—';
+        const lastErr = v.last_error_at   ? new Date(v.last_error_at  ).toLocaleString() : '—';
+        const errMsg  = v.last_error
+          ? `<div style="margin-top:5px;font-size:11px;color:#7f1d1d;font-family:ui-monospace,monospace;
+                         max-height:60px;overflow:auto;background:#fef2f2;
+                         padding:5px 7px;border-radius:4px;border:1px solid #fecaca;">${esc(v.last_error)}</div>`
+          : '';
+        return `
+          <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px;">
+            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">
+              ${esc(PROVIDER_LABELS[p] || p)}
+            </div>
+            <div style="margin-top:4px;display:inline-flex;padding:3px 9px;border-radius:14px;
+                         font-size:11.5px;font-weight:700;background:${st.bg};color:${st.fg};">
+              ${esc(st.label)}
+            </div>
+            <div style="margin-top:8px;font-size:11.5px;color:#374151;line-height:1.5;">
+              <div><span style="color:#9ca3af;">Último OK:</span> ${esc(lastOk)}
+                ${v.success_count ? `<span style="color:#9ca3af;">(${v.success_count})</span>` : ''}</div>
+              <div><span style="color:#9ca3af;">Último error:</span> ${esc(lastErr)}
+                ${v.error_count ? `<span style="color:#9ca3af;">(${v.error_count})</span>` : ''}</div>
+            </div>
+            ${errMsg}
+          </div>`;
+      }).join('');
+    }
+
+    function openModal() {
+      modal.style.display = 'flex';
+      refresh();
+      if (openPoll) clearInterval(openPoll);
+      openPoll = setInterval(refresh, 30_000);
+    }
+    function closeModal() {
+      modal.style.display = 'none';
+      if (openPoll) { clearInterval(openPoll); openPoll = null; }
+    }
+    sidebarBtn.addEventListener('click', openModal);
+    closeBtn  .addEventListener('click', closeModal);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', closeModal);
+    banner.addEventListener('click', openModal);
+    refreshBtn.addEventListener('click', refresh);
+    resetBtn.addEventListener('click', async () => {
+      if (!confirm('Borrar el historial de éxitos/errores de todos los proveedores?')) return;
+      try {
+        await api('/admin/ai-providers-status/reset', {
+          method: 'POST', body: JSON.stringify({}),
+        });
+        await refresh();
+      } catch (e) { alert('Error: ' + e.message); }
+    });
+
+    // Background poll (always running, regardless of modal). 60 s is
+    // enough to surface a crédit-exhausted state within ~1 min.
+    refresh();
+    bgPoll = setInterval(refresh, 60_000);
   }
 
   // ── Mobile drawer (≤800 px) ────────────────────────────────────────

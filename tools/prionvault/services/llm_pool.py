@@ -61,6 +61,16 @@ def _resolve(provider: str) -> tuple[str, str]:
         )
     key = os.environ.get(_ENV_KEYS[p], "").strip()
     if not key:
+        # Surface the missing-key as an "invalid_key" in the provider
+        # status panel so the operator can spot it from the modal
+        # rather than only via Sentry.
+        try:
+            from . import provider_status
+            provider_status.record_error(
+                p, f"{_ENV_KEYS[p]} env var is not set", action="resolve_key",
+            )
+        except Exception:
+            pass
         raise NotConfigured(
             f"{_ENV_KEYS[p]} is not set (needed for provider={p})"
         )
@@ -80,16 +90,33 @@ def call_llm(*, provider: str, system: str, user: str,
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             if p == "anthropic":
-                return _call_anthropic(key, system, user, max_tokens, temperature)
-            if p == "openai":
-                return _call_openai(key, system, user, max_tokens, temperature, want_json)
-            if p == "gemini":
-                return _call_gemini(key, system, user, max_tokens, temperature, want_json)
+                result = _call_anthropic(key, system, user, max_tokens, temperature)
+            elif p == "openai":
+                result = _call_openai(key, system, user, max_tokens, temperature, want_json)
+            elif p == "gemini":
+                result = _call_gemini(key, system, user, max_tokens, temperature, want_json)
+            else:
+                raise ValueError(f"unsupported provider: {p}")
+            # Stamp success so the "Estado IA" panel and the sticky
+            # banner clear any stale failure state for this provider.
+            try:
+                from . import provider_status
+                provider_status.record_success(p, action="llm_call")
+            except Exception:
+                pass
+            return result
         except Exception as exc:
             last_error = exc
             logger.warning("llm_pool[%s] attempt %d: %s", p, attempt, exc)
             if attempt < _MAX_ATTEMPTS:
                 time.sleep(_BASE_BACKOFF ** attempt)
+    # All attempts exhausted — record the final failure so the UI
+    # can flag the provider as out of credit / down.
+    try:
+        from . import provider_status
+        provider_status.record_error(p, str(last_error), action="llm_call")
+    except Exception:
+        pass
     raise RuntimeError(
         f"{p} failed after {_MAX_ATTEMPTS} attempts: {last_error}"
     )

@@ -51,6 +51,14 @@ class NotConfigured(RuntimeError):
 def _get_client():
     api_key = os.getenv("VOYAGE_API_KEY", "").strip()
     if not api_key:
+        try:
+            from ..services import provider_status
+            provider_status.record_error(
+                "voyage", "VOYAGE_API_KEY env var is not set",
+                action="resolve_key",
+            )
+        except Exception:
+            pass
         raise NotConfigured("VOYAGE_API_KEY is not set")
     import voyageai
     return voyageai.Client(api_key=api_key)
@@ -102,6 +110,16 @@ def embed_texts(texts: List[str], *,
             except Exception as exc:
                 attempt += 1
                 if attempt >= 3:
+                    # Final failure on this batch — record it so the
+                    # "Estado IA" panel flags Voyage as down before
+                    # bubbling up.
+                    try:
+                        from ..services import provider_status
+                        provider_status.record_error(
+                            "voyage", str(exc), action="embed",
+                        )
+                    except Exception:
+                        pass
                     raise
                 # Most retriable errors are transient (rate limits, brief
                 # network blips). Exponential backoff.
@@ -112,6 +130,13 @@ def embed_texts(texts: List[str], *,
 
         all_vecs.extend(resp.embeddings)
         total_tokens += getattr(resp, "total_tokens", 0) or 0
+
+    # Whole-call success.
+    try:
+        from ..services import provider_status
+        provider_status.record_success("voyage", action="embed")
+    except Exception:
+        pass
 
     elapsed_ms = int((time.monotonic() - start) * 1000)
     cost = round(total_tokens * _PRICE_PER_M_TOKENS / 1_000_000, 6) \
