@@ -153,30 +153,66 @@ def api_list_articles():
 
     s = _session()
     try:
-        return _list_articles_impl(s, q, year_min, year_max, journal,
-                                   authors_q,
-                                   tag_id, has_summary, in_prionread,
-                                   is_flagged, is_milestone, color_label,
-                                   priority_eq, extraction,
-                                   is_favorite, is_read,
-                                   sort, page, page_size,
-                                   collection_id=collection_id,
-                                   collection_group=collection_group,
-                                   collection_subgroup=collection_subgroup,
-                                   has_jc=has_jc,
-                                   jc_presenter=jc_presenter,
-                                   jc_year=jc_year,
-                                   has_pp=has_pp,
-                                   pp_id=pp_id,
-                                   abstract_status=abstract_status,
-                                   indexed_status=indexed_status,
-                                   ids_filter=ids_filter)
+        return _list_articles_with_recovery(
+            s, q, year_min, year_max, journal,
+            authors_q, tag_id, has_summary, in_prionread,
+            is_flagged, is_milestone, color_label,
+            priority_eq, extraction, is_favorite, is_read,
+            sort, page, page_size,
+            collection_id=collection_id,
+            collection_group=collection_group,
+            collection_subgroup=collection_subgroup,
+            has_jc=has_jc, jc_presenter=jc_presenter, jc_year=jc_year,
+            has_pp=has_pp, pp_id=pp_id,
+            abstract_status=abstract_status,
+            indexed_status=indexed_status,
+            ids_filter=ids_filter,
+        )
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
         return jsonify({"error": "internal error", "detail": str(exc)}), 500
     finally:
         db.Session.remove()
+
+
+def _list_articles_with_recovery(s, *args, **kwargs):
+    """Thin wrapper around _list_articles_impl that self-heals when the
+    Postgres schema has lost a column the per-process column cache still
+    thinks exists.
+
+    Symptom this guards against: Railway / Postgres restores have twice
+    dropped `pdf_md5` (and similar) AFTER the cache was already populated.
+    The first request after a drop fires UndefinedColumn — we invalidate
+    the cache, fire the self-heal in the background to re-add the
+    column, and rebuild + retry the query without the missing field so
+    the user never sees a 500.
+    """
+    try:
+        return _list_articles_impl(s, *args, **kwargs)
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "undefinedcolumn" not in msg and "does not exist" not in msg:
+            raise
+        logger.warning(
+            "list_articles: schema drift detected (%s) — flushing cache, "
+            "scheduling self-heal, retrying once.", str(exc)[:200],
+        )
+        s.rollback()
+        global _pv_columns_cache
+        _pv_columns_cache = None
+        # Kick the self-heal asynchronously so a future request gets
+        # the column back. Don't block this request on it.
+        try:
+            import threading
+            from .migrate import _self_heal_schema
+            threading.Thread(target=_self_heal_schema,
+                             name="prionvault-list-recover-heal",
+                             daemon=True).start()
+        except Exception:
+            pass
+        # Retry with the freshly-rebuilt column set.
+        return _list_articles_impl(s, *args, **kwargs)
 
 
 _VALID_COLOR_LABELS = {"red", "orange", "yellow", "green", "blue", "purple"}
