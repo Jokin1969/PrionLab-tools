@@ -5570,6 +5570,7 @@
       wireCleanMetadata();
       wireRetryAbstracts();
       wirePmidBackfill();
+      wirePagesBackfill();
       wireBulkCollectionPicker();
       wirePrionpackSync();
       wireDuplicates();
@@ -6562,6 +6563,41 @@
         loadArticles();
       } catch (e) {
         alert('Error: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    });
+  }
+
+  // ── Recuperar páginas PDF (backfill) ─────────────────────────────────
+  // Drives /api/admin/backfill-pdf-pages in 50-article chunks. The
+  // upload-pdf endpoint already counts pages on the spot for new
+  // attachments, but rows imported through older paths (or via the
+  // pre-fix dropzone) may have pdf_pages=NULL — this button drains
+  // that backlog without having to re-process every PDF.
+  function wirePagesBackfill() {
+    const btn = document.getElementById('btn-backfill-pages');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span><i class="fas fa-spinner fa-spin" style="width:13px;margin-right:6px;opacity:0.7;"></i>Contando…</span>';
+      try {
+        const r = await api('/admin/backfill-pdf-pages', {
+          method: 'POST',
+          body: JSON.stringify({ limit: 50 }),
+        });
+        const more = r.processed >= 50
+          ? '\n\nPueden quedar más. Pulsa de nuevo para procesar otros 50.'
+          : '\n\n✓ No quedan PDFs pendientes de contar páginas.';
+        alert(
+          `Procesados: ${r.processed}\n` +
+          `Actualizados: ${r.updated}\n` +
+          `Fallos: ${r.failed}` + more
+        );
+      } catch (e) {
+        alert('Error: ' + (e.message || e));
       } finally {
         btn.disabled = false;
         btn.innerHTML = orig;

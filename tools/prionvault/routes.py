@@ -3224,6 +3224,19 @@ def api_article_upload_pdf(aid):
                         "detail": upload.error[:300]}), 502
     dropbox_path = upload.dropbox_path or target
 
+    # Count pages here too so the operator sees a "12 pages" badge
+    # without having to wait for a separate backfill pass. We already
+    # have the bytes in memory; pdfplumber is fast for the page
+    # enumeration alone (no text extraction).
+    pdf_pages = None
+    try:
+        import pdfplumber
+        import io as _io
+        with pdfplumber.open(_io.BytesIO(content)) as pdf:
+            pdf_pages = len(pdf.pages)
+    except Exception as exc:
+        logger.warning("upload_pdf: page count failed for %s (%s)", aid, exc)
+
     s = _session()
     try:
         s.execute(sql_text("""
@@ -3232,15 +3245,17 @@ def api_article_upload_pdf(aid):
                    dropbox_link   = :lnk,
                    pdf_md5        = :m,
                    pdf_size_bytes = :sz,
+                   pdf_pages      = COALESCE(:pages, pdf_pages),
                    pdf_oa_status  = COALESCE(NULLIF(pdf_oa_status, ''), 'manual_upload'),
                    updated_at     = NOW()
              WHERE id = :aid
         """), {
-            "aid": str(aid),
-            "p":   dropbox_path,
-            "lnk": upload.dropbox_link,
-            "m":   md5,
-            "sz":  len(content),
+            "aid":   str(aid),
+            "p":     dropbox_path,
+            "lnk":   upload.dropbox_link,
+            "m":     md5,
+            "sz":    len(content),
+            "pages": pdf_pages,
         })
         s.commit()
     except Exception as exc:
@@ -3255,6 +3270,7 @@ def api_article_upload_pdf(aid):
         "dropbox_path": dropbox_path,
         "pdf_md5":      md5,
         "size_bytes":   len(content),
+        "pdf_pages":    pdf_pages,
     })
 
 
