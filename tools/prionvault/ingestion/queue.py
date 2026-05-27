@@ -167,12 +167,19 @@ class Job:
     # hand-uploaded jobs (Import PDFs modal) since they're staged
     # locally on the server and never sit on Dropbox first.
     source_dropbox_path: Optional[str] = None
+    # Set by services/email_ingest.py when the job was created from an
+    # incoming email. The worker reads these on terminal status to send
+    # one final SMTP reply with the resolved metadata + PDF attached.
+    notify_email:   Optional[str] = None
+    notify_subject: Optional[str] = None
 
 
 # ── Enqueue ────────────────────────────────────────────────────────────────
 def enqueue_pdf(*, content: bytes, filename: str,
                 user_id: Optional[UUID] = None,
-                source_dropbox_path: Optional[str] = None) -> int:
+                source_dropbox_path: Optional[str] = None,
+                notify_email: Optional[str] = None,
+                notify_subject: Optional[str] = None) -> int:
     """Stage `content` to a temp file and create a queued job.
 
     `source_dropbox_path` (optional): when the PDF was pulled from a
@@ -193,13 +200,16 @@ def enqueue_pdf(*, content: bytes, filename: str,
             """
             INSERT INTO prionvault_ingest_job
               (pdf_filename, pdf_md5, status, step, created_by,
-               source_dropbox_path, created_at)
-            VALUES (:fn, :md5, 'queued', 'staged', :uid, :sp, NOW())
+               source_dropbox_path, notify_email, notify_subject,
+               created_at)
+            VALUES (:fn, :md5, 'queued', 'staged', :uid, :sp,
+                    :ne, :ns, NOW())
             RETURNING id
             """
         ), {"fn": str(staged), "md5": md5,
             "uid": str(user_id) if user_id else None,
-            "sp": source_dropbox_path}).first()
+            "sp": source_dropbox_path,
+            "ne": notify_email, "ns": notify_subject}).first()
     return int(row[0])
 
 
@@ -281,7 +291,8 @@ def claim_next() -> Optional[Job]:
         ), {"id": jid})
         full = conn.execute(text(
             "SELECT id, article_id, pdf_filename, pdf_md5, status, step,"
-            " error, attempts, created_by, source_dropbox_path "
+            " error, attempts, created_by, source_dropbox_path,"
+            " notify_email, notify_subject "
             "FROM prionvault_ingest_job WHERE id = :id"
         ), {"id": jid}).first()
 
@@ -293,6 +304,8 @@ def claim_next() -> Optional[Job]:
                      if full.pdf_filename and Path(full.pdf_filename).exists()
                      else None),
         source_dropbox_path=full.source_dropbox_path,
+        notify_email=full.notify_email,
+        notify_subject=full.notify_subject,
     )
 
 

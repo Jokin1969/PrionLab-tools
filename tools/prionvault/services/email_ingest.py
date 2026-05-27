@@ -215,12 +215,17 @@ def _pdf_parts(msg: Message) -> list[tuple[str, bytes]]:
 
 # ── Pipeline glue ───────────────────────────────────────────────────────────
 
-def _enqueue(content: bytes, filename: str) -> Optional[int]:
-    """Hand a PDF to the existing ingest queue. Returns job id or None."""
+def _enqueue(content: bytes, filename: str, *,
+             notify_email: Optional[str] = None,
+             notify_subject: Optional[str] = None) -> Optional[int]:
+    """Hand a PDF to the existing ingest queue, recording the email
+    address to notify when the job finishes. Returns job id or None."""
     try:
         from ..ingestion import queue as ingest_queue
         return ingest_queue.enqueue_pdf(
             content=content, filename=filename, user_id=None,
+            notify_email=notify_email,
+            notify_subject=notify_subject,
         )
     except Exception as exc:
         logger.exception("email_ingest: enqueue_pdf failed for %s (%s)",
@@ -366,16 +371,25 @@ def _process_one(conn: imaplib.IMAP4_SSL, msg_id: bytes, cfg: dict,
         if not content.startswith(b"%PDF"):
             failed.append((filename, "no parece un PDF (falta cabecera %PDF)"))
             continue
-        job_id = _enqueue(content, filename)
+        job_id = _enqueue(content, filename,
+                          notify_email=from_addr,
+                          notify_subject=subject)
         if job_id:
             ingested.append((filename, job_id))
             summary["enqueued"] += 1
         else:
             failed.append((filename, "encolado fallido"))
 
-    _reply(from_addr,
-           subject=f"[PrionVault] {len(ingested)} PDF encolado(s) — {subject[:80]}",
-           body=_compose_reply_body(subject, from_addr, ingested, failed))
+    # We only send an immediate SMTP reply if NOTHING was enqueued
+    # (i.e. every attachment was rejected before reaching the worker).
+    # When at least one PDF was queued the operator will get a single
+    # final email from the worker with resolved metadata and the PDF
+    # attached — sending an extra "received" message here would just
+    # be noise.
+    if not ingested:
+        _reply(from_addr,
+               subject=f"[PrionVault] No se encoló ningún PDF — {subject[:80]}",
+               body=_compose_reply_body(subject, from_addr, ingested, failed))
     _mark_handled(conn, msg_id, proc_folder)
 
 
@@ -396,26 +410,24 @@ def _mark_handled(conn: imaplib.IMAP4_SSL, msg_id: bytes,
 def _compose_reply_body(subject: str, from_addr: str,
                         ingested: list[tuple[str, int]],
                         failed: list[tuple[str, str]]) -> str:
+    """Body for the immediate-rejection reply. Only used when none of
+    the attachments made it into the queue — successful jobs send their
+    own final reply from the worker once the ingest is complete."""
     lines = [
         f"Hola,",
         "",
-        f"Recibí tu email («{subject or '(sin asunto)'}») y procesé sus adjuntos.",
+        f"Recibí tu email («{subject or '(sin asunto)'}») pero no pude",
+        "encolar ningún PDF. Detalle:",
         "",
     ]
-    if ingested:
-        lines.append("PDF(s) encolados para ingesta:")
-        for fname, jid in ingested:
-            lines.append(f"  • {fname}  — job #{jid}")
-        lines.append("")
-        lines.append("La cola los procesará en background: extracción de texto,")
-        lines.append("resolución de DOI/PMID contra CrossRef + PubMed, subida")
-        lines.append("a Dropbox, indexado para búsqueda semántica y resumen IA.")
-        lines.append(f"Puedes ver el estado en {_PUBLIC_BASE_URL}/prionvault/")
     if failed:
-        lines.append("")
-        lines.append("Fallos:")
         for fname, reason in failed:
             lines.append(f"  • {fname}  — {reason}")
+    else:
+        lines.append("  (sin adjuntos que parezcan PDFs)")
+    lines.append("")
+    lines.append("Si crees que es un error, vuelve a enviarlo o sube el PDF a mano")
+    lines.append(f"desde {_PUBLIC_BASE_URL}/prionvault/")
     lines.append("")
     lines.append("— PrionVault")
     return "\n".join(lines)

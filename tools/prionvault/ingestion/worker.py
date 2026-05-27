@@ -30,6 +30,21 @@ from .queue import _get_engine
 
 logger = logging.getLogger(__name__)
 
+
+# Public link prefix used in completion emails. Lives here (not in
+# email_ingest.py) because the worker is what actually generates the
+# notification — by the time we're here we've forgotten which path
+# enqueued the job.
+_PUBLIC_BASE_URL = os.environ.get(
+    "PRIONVAULT_PUBLIC_BASE_URL",
+    "https://web-production-5517e.up.railway.app",
+)
+# Hard cap on the PDF size we attach to the outgoing reply. Most SMTP
+# providers reject anything north of 25 MB; we stop short of that on
+# purpose. When the PDF is bigger we send the link-only variant.
+_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
+
 # When Postgres goes away (Railway redeploy, upstream outage, etc.)
 # every DB call fails. Don't burn through MAX_ATTEMPTS on the active
 # job and don't fire a Sentry alert per attempt — wait, then probe
@@ -48,6 +63,9 @@ def _process_job(job: ingest_queue.Job) -> None:
     if not job.staged_path or not Path(job.staged_path).exists():
         ingest_queue.mark_step(job.id, status="failed", step="staged_missing",
                                error="Staged PDF file is missing on disk.")
+        _notify_outcome(job, status="failed", pdf_content=None,
+                        error="No encontré el PDF en el servidor (staged_missing). "
+                              "Vuelve a enviarlo por email.")
         return
 
     staged = Path(job.staged_path)
@@ -56,6 +74,8 @@ def _process_job(job: ingest_queue.Job) -> None:
     except Exception as exc:
         ingest_queue.mark_step(job.id, status="failed", step="read_staged",
                                error=f"Cannot read staged PDF: {exc}")
+        _notify_outcome(job, status="failed", pdf_content=None,
+                        error=f"No pude leer el PDF en disco: {exc}")
         return
     md5 = md5_of(content)
 
@@ -63,8 +83,9 @@ def _process_job(job: ingest_queue.Job) -> None:
     ingest_queue.mark_step(job.id, status="extracting", step="pdfplumber")
     extraction = extract_pdf(content)
     if extraction.error and not extraction.text:
-        ingest_queue.bump_attempt_or_fail(job.id,
-            f"PDF extraction failed: {extraction.error}")
+        _bump_or_fail(job, content,
+                      error=f"PDF extraction failed: {extraction.error}",
+                      user_msg=f"No se pudo extraer texto del PDF: {extraction.error}")
         return
     doi  = extraction.doi
     pmid = extraction.pmid
@@ -94,6 +115,8 @@ def _process_job(job: ingest_queue.Job) -> None:
                                step=f"duplicate | by {reason}{doi_info}{enr_info}{move_info}",
                                article_id=dup_id,
                                error=f"Already in library (matched by {reason}).")
+        _notify_outcome(job, status="duplicate", article_id=dup_id,
+                        pdf_content=content, duplicate_reason=reason)
         ingest_queue.cleanup_source_pdf(job.id, status="duplicate")
         _cleanup_staged(staged)
         return
@@ -121,8 +144,9 @@ def _process_job(job: ingest_queue.Job) -> None:
     upload = upload_pdf(content, target_path, overwrite=False)
     if upload.error and "conflict" not in upload.error.lower():
         # Hard error — couldn't upload at all. Retry.
-        ingest_queue.bump_attempt_or_fail(job.id,
-            f"Dropbox upload failed: {upload.error}")
+        _bump_or_fail(job, content,
+                      error=f"Dropbox upload failed: {upload.error}",
+                      user_msg=f"No pude subir el PDF a Dropbox: {upload.error}")
         return
     # If a "conflict" came back it means the path already exists. That
     # can happen when an earlier job uploaded the same DOI. Treat as OK
@@ -159,12 +183,25 @@ def _process_job(job: ingest_queue.Job) -> None:
                        job.id, msg)
         ingest_queue.mark_step(job.id, status="failed",
                                step="upsert_article", error=reason)
+        _notify_outcome(job, status="failed", pdf_content=content,
+                        error=reason)
         return
 
     id_type  = "doi" if final_doi else ("pmid" if pubmed_id else "md5")
     summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}"
     ingest_queue.mark_step(job.id, status="done", step=summary,
                            article_id=article_id)
+    _notify_outcome(
+        job, status="done", article_id=article_id, pdf_content=content,
+        article_meta={
+            "title":      title,
+            "doi":        final_doi,
+            "pubmed_id":  pubmed_id,
+            "year":       year,
+            "authors":    authors,
+            "journal":    journal,
+        },
+    )
     ingest_queue.cleanup_source_pdf(job.id, status="done")
     _cleanup_staged(staged)
 
@@ -417,6 +454,234 @@ def _cleanup_staged(path: Path) -> None:
         path.unlink(missing_ok=True)
     except Exception:
         pass
+
+
+# ── Email notification on terminal job status ──────────────────────────
+
+def _bump_or_fail(job: ingest_queue.Job, content: Optional[bytes],
+                  *, error: str, user_msg: str) -> str:
+    """Wrap ingest_queue.bump_attempt_or_fail so the email-ingest path
+    gets a final notification when retries are exhausted.
+
+    Re-queue paths (status='queued') stay silent — the worker will try
+    again and the user only gets contacted on the final outcome.
+    """
+    new_status = ingest_queue.bump_attempt_or_fail(job.id, error)
+    if new_status == "failed":
+        _notify_outcome(job, status="failed", pdf_content=content,
+                        error=user_msg)
+    return new_status
+
+
+def _notify_outcome(job: ingest_queue.Job, *, status: str,
+                    pdf_content: Optional[bytes],
+                    article_id: Optional[str] = None,
+                    article_meta: Optional[dict] = None,
+                    duplicate_reason: Optional[str] = None,
+                    error: Optional[str] = None) -> None:
+    """Send the operator who emailed in a final reply with the result.
+
+    No-op when the job didn't carry a notify_email (i.e. it didn't come
+    from the email-ingest daemon — DOI-add, Import-PDFs, Dropbox scan
+    etc. fall through this silently).
+
+    `status` is the job's terminal status: done / duplicate / failed.
+    The body and subject change per status. PDF is attached when we
+    still have its bytes in memory and it's under the SMTP size cap.
+    """
+    to = (job.notify_email or "").strip()
+    if not to:
+        return
+
+    orig_subject = (job.notify_subject or "").strip() or "(sin asunto)"
+    short_subj = orig_subject[:80]
+
+    # Resolve article fields if missing (duplicate path comes here
+    # without article_meta, so look up the row).
+    meta = dict(article_meta or {})
+    if (not meta or not meta.get("title")) and article_id:
+        meta = {**_load_article_summary(article_id), **meta}
+
+    if status == "done":
+        subject = f"[PrionVault] ✓ Ingerido — {meta.get('title') or short_subj}"
+        body    = _compose_done_body(meta, article_id, orig_subject)
+    elif status == "duplicate":
+        subject = f"[PrionVault] Ya estaba en la base — {meta.get('title') or short_subj}"
+        body    = _compose_duplicate_body(meta, article_id, orig_subject,
+                                          duplicate_reason)
+    else:  # failed
+        subject = f"[PrionVault] ✗ No se pudo ingerir — {short_subj}"
+        body    = _compose_failed_body(orig_subject, error)
+
+    attachments: list[tuple[str, bytes, str]] = []
+    if pdf_content and len(pdf_content) <= _MAX_ATTACHMENT_BYTES:
+        fname = Path(job.pdf_filename or "article.pdf").name
+        # `pdf_filename` is the staging path; strip the timestamp prefix
+        # the queue prepended so the attachment looks like the user's
+        # original upload.
+        if "_" in fname and fname.split("_", 1)[0].isdigit():
+            fname = fname.split("_", 1)[1]
+        attachments.append((fname or "article.pdf",
+                            pdf_content, "application/pdf"))
+
+    try:
+        from core.smtp_client import send_email_with_attachments
+        send_email_with_attachments(to, subject, body, attachments)
+    except Exception as exc:
+        logger.warning("worker: notify-email to %s failed (%s)", to, exc)
+
+
+def _load_article_summary(article_id) -> dict:
+    """Pull (title, doi, pubmed_id, year, authors, journal, dropbox_link)
+    out of the articles row. Best-effort — returns {} on failure or
+    when the row is gone."""
+    if not article_id:
+        return {}
+    eng = _get_engine()
+    try:
+        with eng.connect() as conn:
+            row = conn.execute(text(
+                "SELECT title, doi, pubmed_id, year, authors, journal, "
+                "       dropbox_link "
+                "FROM articles WHERE id = :aid"
+            ), {"aid": str(article_id)}).first()
+    except Exception as exc:
+        logger.debug("_load_article_summary failed for %s: %s",
+                     article_id, exc)
+        return {}
+    if not row:
+        return {}
+    return {
+        "title":        row[0],
+        "doi":          row[1],
+        "pubmed_id":    row[2],
+        "year":         row[3],
+        "authors":      row[4],
+        "journal":      row[5],
+        "dropbox_link": row[6],
+    }
+
+
+def _fmt_authors(authors) -> str:
+    """authors is either a JSON list (CrossRef) or a string. Show at
+    most the first three, then 'et al'."""
+    if not authors:
+        return ""
+    if isinstance(authors, str):
+        return authors
+    if isinstance(authors, list):
+        names = []
+        for a in authors[:3]:
+            if isinstance(a, dict):
+                given = a.get("given") or a.get("first") or ""
+                family = a.get("family") or a.get("last") or ""
+                names.append((given + " " + family).strip() or
+                             a.get("name") or "")
+            else:
+                names.append(str(a))
+        names = [n for n in names if n]
+        if not names:
+            return ""
+        out = ", ".join(names)
+        if len(authors) > 3:
+            out += " et al."
+        return out
+    return str(authors)
+
+
+def _article_link(article_id) -> str:
+    if not article_id:
+        return _PUBLIC_BASE_URL + "/prionvault/"
+    return f"{_PUBLIC_BASE_URL}/prionvault/article/{article_id}"
+
+
+def _compose_done_body(meta: dict, article_id, orig_subject: str) -> str:
+    lines = [
+        "Hola,",
+        "",
+        f"Tu artículo ya está en PrionVault. Lo encontré, lo subí a Dropbox,",
+        "extraje el texto, indexé para búsqueda y lo resumí.",
+        "",
+        "DATOS DEL ARTÍCULO",
+        "──────────────────",
+    ]
+    if meta.get("title"):
+        lines.append(f"  Título    : {meta['title']}")
+    authors = _fmt_authors(meta.get("authors"))
+    if authors:
+        lines.append(f"  Autores   : {authors}")
+    if meta.get("journal"):
+        lines.append(f"  Revista   : {meta['journal']}")
+    if meta.get("year"):
+        lines.append(f"  Año       : {meta['year']}")
+    if meta.get("doi"):
+        lines.append(f"  DOI       : {meta['doi']}")
+    if meta.get("pubmed_id"):
+        lines.append(f"  PubMed    : {meta['pubmed_id']}")
+    lines += [
+        "",
+        f"Verlo en PrionVault: {_article_link(article_id)}",
+        "",
+        "(Adjunto va el PDF original que enviaste.)",
+        "",
+        f"Re: {orig_subject}",
+        "",
+        "— PrionVault",
+    ]
+    return "\n".join(lines)
+
+
+def _compose_duplicate_body(meta: dict, article_id, orig_subject: str,
+                            reason: Optional[str]) -> str:
+    lines = [
+        "Hola,",
+        "",
+        "Este artículo YA estaba en PrionVault — no lo he añadido por",
+        f"duplicado (coincidencia por {reason or 'DOI o md5'}). Aquí",
+        "tienes el registro existente:",
+        "",
+        "ARTÍCULO YA EN LA BASE",
+        "──────────────────────",
+    ]
+    if meta.get("title"):
+        lines.append(f"  Título    : {meta['title']}")
+    authors = _fmt_authors(meta.get("authors"))
+    if authors:
+        lines.append(f"  Autores   : {authors}")
+    if meta.get("journal"):
+        lines.append(f"  Revista   : {meta['journal']}")
+    if meta.get("year"):
+        lines.append(f"  Año       : {meta['year']}")
+    if meta.get("doi"):
+        lines.append(f"  DOI       : {meta['doi']}")
+    if meta.get("pubmed_id"):
+        lines.append(f"  PubMed    : {meta['pubmed_id']}")
+    lines += [
+        "",
+        f"Verlo en PrionVault: {_article_link(article_id)}",
+        "",
+        f"Re: {orig_subject}",
+        "",
+        "— PrionVault",
+    ]
+    return "\n".join(lines)
+
+
+def _compose_failed_body(orig_subject: str, error: Optional[str]) -> str:
+    return "\n".join([
+        "Hola,",
+        "",
+        "No pude procesar el PDF que enviaste. Detalle del fallo:",
+        "",
+        f"  {error or 'error desconocido'}",
+        "",
+        "El PDF original va adjunto por si quieres reintentar manualmente",
+        "desde PrionVault → Import PDFs.",
+        "",
+        f"Re: {orig_subject}",
+        "",
+        "— PrionVault",
+    ])
 
 
 # ── Public entrypoint: start a daemon worker thread ────────────────────
