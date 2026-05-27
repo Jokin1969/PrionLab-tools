@@ -4253,6 +4253,42 @@
     }
   }
 
+  // "✗ Sin PMID" button right of the PMID input — flips
+  // articles.pubmed_unavailable = TRUE so the Recuperar PMIDs batch /
+  // manual panel stop offering this paper. Same endpoint used by the
+  // PMID-manual panel's per-row button; surfaced here too because
+  // the operator often reaches the conclusion "no PubMed for this
+  // one" while editing the row, not from the bulk panel.
+  async function _editMarkNoPmid() {
+    if (!_editTarget) return;
+    if (!confirm(
+      'Marcar este artículo como confirmado-sin-PMID?\n\n' +
+      '• La búsqueda automática lo saltará en futuros lotes.\n' +
+      '• Desaparece de la lista de "Recuperar PMIDs faltantes".\n' +
+      '• Se puede deshacer luego volviendo a meter un PMID y guardar.\n\n' +
+      '¿Continuar?'
+    )) return;
+    const btn = document.getElementById('pv-edit-no-pmid');
+    const orig = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+    try {
+      await api(`/articles/${_editTarget.id}/mark-no-pmid`, {
+        method: 'POST',
+        body: JSON.stringify({ value: true }),
+      });
+      _editStatus('Marcado como "sin PMID". Las búsquedas automáticas lo dejarán en paz.', '#15803d');
+      if (btn) {
+        btn.style.background = '#d1fae5';
+        btn.style.color = '#047857';
+        btn.style.borderColor = '#a7f3d0';
+        btn.textContent = '✓ Sin PMID';
+      }
+    } catch (e) {
+      _editStatus(`Error: ${e.message}`, '#b91c1c');
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
+    }
+  }
+
   // Run "🤖 Buscar PMID con IA": ship the saved PDF off to the backend,
   // get a PMID back, and either chain into _editRefetch('pmid') to
   // refill the form, surface the duplicate warning (PDF was moved
@@ -4407,6 +4443,7 @@
     document.getElementById('pv-edit-refetch-doi') ?.addEventListener('click', () => _editRefetch('doi'));
     document.getElementById('pv-edit-refetch-pmid')?.addEventListener('click', () => _editRefetch('pmid'));
     document.getElementById('pv-edit-identify-ai') ?.addEventListener('click', _editIdentifyAI);
+    document.getElementById('pv-edit-no-pmid')     ?.addEventListener('click', _editMarkNoPmid);
 
     // Quick filler for the "no abstract" case — saves the admin from
     // copy-pasting the literal sentinel string. Doesn't auto-save;
