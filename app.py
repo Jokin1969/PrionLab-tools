@@ -366,6 +366,17 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('OA-PDF fetcher daemon failed to start: %s', e)
 
+        # Email-to-PrionVault ingest: polls a dedicated IMAP mailbox
+        # every PRIONVAULT_EMAIL_INGEST_POLL_SECONDS (default 180 s)
+        # and feeds attached PDFs into the ingest queue. No-op until
+        # the operator sets PRIONVAULT_EMAIL_INGEST_{HOST,USER,PASS,
+        # ALLOW}; disable with PRIONVAULT_EMAIL_INGEST_DISABLED=1.
+        try:
+            from tools.prionvault.services.email_ingest import start_email_ingest_daemon
+            start_email_ingest_daemon()
+        except Exception as e:
+            app.logger.warning('PrionVault email-ingest daemon failed to start: %s', e)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()

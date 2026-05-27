@@ -5693,6 +5693,25 @@ def api_admin_articles_schema():
     })
 
 
+@prionvault_bp.route("/api/admin/email-ingest/status", methods=["GET"])
+@admin_required
+def api_email_ingest_status():
+    from .services import email_ingest
+    return jsonify(email_ingest.get_status())
+
+
+@prionvault_bp.route("/api/admin/email-ingest/poll", methods=["POST"])
+@admin_required
+def api_email_ingest_poll():
+    """Force the daemon to poll the IMAP mailbox right now (instead of
+    waiting for the next interval). Useful as a smoke test after
+    configuring the credentials."""
+    from .services import email_ingest
+    summary = email_ingest.poll_once()
+    return jsonify({"ok": True, "summary": summary,
+                    "status": email_ingest.get_status()})
+
+
 @prionvault_bp.route("/api/admin/screen-references", methods=["POST"])
 @admin_required
 def api_screen_references():
