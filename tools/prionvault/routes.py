@@ -732,6 +732,7 @@ def api_article_detail(aid):
             "summary_ai", "summary_human",
             "indexed_at", "index_version",
             "source", "source_metadata", "added_by_id",
+            "abstract_unavailable", "pubmed_unavailable",
         ]
         pv_select = ", ".join(c for c in optional if c in pv_cols)
         select_cols = base_cols + (f", {pv_select}" if pv_select else "")

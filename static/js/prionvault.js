@@ -4093,6 +4093,9 @@
     if (noAbsBtn) { noAbsBtn.disabled = false; noAbsBtn.textContent = '📕 Sin abstract'; }
     _editRenderPdfPreview(a);
     _editSyncPmidLink(a.pubmed_id || '');
+    // Reset the "Sin PMID" toggle so the styling doesn't bleed across
+    // articles when the operator navigates Siguiente / Anterior.
+    _editSyncNoPmidButton(!!a.pubmed_unavailable);
     const aiBtn = document.getElementById('pv-edit-identify-ai');
     if (aiBtn) {
       const ok = !!a.has_pdf;
@@ -4253,36 +4256,65 @@
     }
   }
 
-  // "✗ Sin PMID" button right of the PMID input — flips
-  // articles.pubmed_unavailable = TRUE so the Recuperar PMIDs batch /
-  // manual panel stop offering this paper. Same endpoint used by the
-  // PMID-manual panel's per-row button; surfaced here too because
-  // the operator often reaches the conclusion "no PubMed for this
-  // one" while editing the row, not from the bulk panel.
+  // Paint the "Sin PMID" toggle based on the article's current
+  // pubmed_unavailable flag. Called both when the modal opens for a
+  // new article (reset from previous state — the styling sticks
+  // visually otherwise) and after the user toggles it.
+  function _editSyncNoPmidButton(unavailable) {
+    const btn = document.getElementById('pv-edit-no-pmid');
+    if (!btn) return;
+    btn.disabled = false;
+    if (unavailable) {
+      btn.textContent     = '✓ Sin PMID — pulsa para deshacer';
+      btn.style.background  = '#d1fae5';
+      btn.style.color       = '#047857';
+      btn.style.borderColor = '#a7f3d0';
+      btn.title = 'Marcado como confirmado-sin-PMID. Pulsa para desmarcar y volver a la cola de búsqueda.';
+    } else {
+      btn.textContent     = '✗ Sin PMID';
+      btn.style.background  = 'white';
+      btn.style.color       = '#b91c1c';
+      btn.style.borderColor = '#fecaca';
+      btn.title = 'Marca este artículo como "no tiene PMID en PubMed". Lo excluye de futuras búsquedas de PMID a mano o en bulk.';
+    }
+  }
+
+  // "✗ Sin PMID" toggle right of the PMID input. Reads the article's
+  // current pubmed_unavailable flag and flips it via the existing
+  // /articles/<id>/mark-no-pmid endpoint (same one the PMID-manual
+  // panel uses), then repaints the button to reflect the new state.
   async function _editMarkNoPmid() {
     if (!_editTarget) return;
-    if (!confirm(
-      'Marcar este artículo como confirmado-sin-PMID?\n\n' +
-      '• La búsqueda automática lo saltará en futuros lotes.\n' +
-      '• Desaparece de la lista de "Recuperar PMIDs faltantes".\n' +
-      '• Se puede deshacer luego volviendo a meter un PMID y guardar.\n\n' +
-      '¿Continuar?'
-    )) return;
+    const currently = !!_editTarget.pubmed_unavailable;
+    const goingTo   = !currently;
+    const confirmMsg = goingTo
+      ? ('Marcar este artículo como confirmado-sin-PMID?\n\n' +
+         '• La búsqueda automática lo saltará en futuros lotes.\n' +
+         '• Desaparece de la lista de "Recuperar PMIDs faltantes".\n' +
+         '¿Continuar?')
+      : ('Desmarcar "sin PMID"?\n\n' +
+         '• El artículo vuelve a la cola de búsqueda de PMID.\n' +
+         '¿Continuar?');
+    if (!confirm(confirmMsg)) return;
+
     const btn = document.getElementById('pv-edit-no-pmid');
     const orig = btn ? btn.textContent : null;
     if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
     try {
       await api(`/articles/${_editTarget.id}/mark-no-pmid`, {
         method: 'POST',
-        body: JSON.stringify({ value: true }),
+        body: JSON.stringify({ value: goingTo }),
       });
-      _editStatus('Marcado como "sin PMID". Las búsquedas automáticas lo dejarán en paz.', '#15803d');
-      if (btn) {
-        btn.style.background = '#d1fae5';
-        btn.style.color = '#047857';
-        btn.style.borderColor = '#a7f3d0';
-        btn.textContent = '✓ Sin PMID';
-      }
+      // Persist the change on the local _editTarget so navigating
+      // Siguiente / Anterior + coming back paints the right state.
+      _editTarget.pubmed_unavailable = goingTo;
+      _editSyncNoPmidButton(goingTo);
+      _editStatus(
+        goingTo
+          ? 'Marcado como "sin PMID". Las búsquedas automáticas lo dejarán en paz.'
+          : 'Desmarcado. El artículo vuelve a la cola de búsqueda de PMID.',
+        '#15803d',
+      );
     } catch (e) {
       _editStatus(`Error: ${e.message}`, '#b91c1c');
       if (btn) { btn.disabled = false; btn.textContent = orig; }
