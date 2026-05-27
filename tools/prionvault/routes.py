@@ -5568,6 +5568,30 @@ def api_admin_articles_schema():
     })
 
 
+@prionvault_bp.route("/api/admin/screen-references", methods=["POST"])
+@admin_required
+def api_screen_references():
+    """Parse a pasted reference list and tell the operator, per entry,
+    what's already in PrionVault, what's missing with OA PDF
+    available, and what's missing with metadata only. Used by the
+    "Cribar lista de referencias" modal in the sidebar.
+
+    Body: {"text": "<the bibliography>", "check_unpaywall": false}
+    """
+    from .services import reference_screener
+    body = request.get_json(silent=True) or {}
+    text = (body.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    check = bool(body.get("check_unpaywall"))
+    try:
+        result = reference_screener.screen(text, check_unpaywall=check)
+    except Exception as exc:
+        logger.exception("screen-references failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    return jsonify(result)
+
+
 @prionvault_bp.route("/api/admin/ai-providers-status", methods=["GET"])
 @admin_required
 def api_ai_providers_status():

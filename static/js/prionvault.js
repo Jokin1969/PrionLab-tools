@@ -5473,6 +5473,7 @@
       wireBatchSearchable();
       wirePubmedInventory();
       wireVerifyMetadata();
+      wireScreenRefs();
       wireAIStatus();
       wireSidebarResize();
       wireMobileDrawer();
@@ -9909,6 +9910,247 @@
       aside.style.width = '230px';
       try { localStorage.removeItem(KEY); } catch (_) {}
     });
+  }
+
+  // ── Reference-list screener ────────────────────────────────────────
+  // Sidebar button → modal with a textarea where the operator pastes a
+  // bibliography. The backend (services/reference_screener.py) parses
+  // PMID/PMCID/DOI per entry, queries CrossRef + PubMed for metadata
+  // and reports which are in PrionVault, which would import with PDF
+  // OA available and which would only land as metadata. The "Importar"
+  // buttons just create an articles row via the existing POST /api/
+  // articles endpoint; the OA fetcher daemon picks the PDF later.
+  function wireScreenRefs() {
+    const btn      = document.getElementById('btn-screen-refs');
+    const modal    = document.getElementById('pv-screen-refs-modal');
+    const closeBtn = document.getElementById('pv-screen-refs-close');
+    const runBtn   = document.getElementById('pv-screen-refs-run');
+    const txt      = document.getElementById('pv-screen-refs-text');
+    const upayCb   = document.getElementById('pv-screen-refs-unpaywall');
+    const list     = document.getElementById('pv-screen-refs-list');
+    const stats    = document.getElementById('pv-screen-refs-stats');
+    const actions  = document.getElementById('pv-screen-refs-actions');
+    const importAllBtn = document.getElementById('pv-screen-refs-import-all');
+    if (!btn || !modal) return;
+
+    let _lastResult = null;
+
+    btn.addEventListener('click', () => {
+      modal.style.display = 'flex';
+      setTimeout(() => txt.focus(), 50);
+    });
+    closeBtn.addEventListener('click', () => { modal.style.display = 'none'; });
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click',
+      () => { modal.style.display = 'none'; });
+
+    runBtn.addEventListener('click', async () => {
+      const text = (txt.value || '').trim();
+      if (!text) { alert('Pega primero un listado de referencias.'); return; }
+      const orig = runBtn.textContent;
+      runBtn.disabled = true;
+      runBtn.textContent = '⏳ Analizando…';
+      list.innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">' +
+        'Analizando ' + (upayCb.checked
+          ? '(con Unpaywall — esto puede tardar varios minutos para listas largas)…'
+          : '(solo PMC — rápido). Marca "Consultar Unpaywall" para detectar OA fuera de PMC.') +
+        '</div>';
+      stats.style.display = 'none';
+      actions.style.display = 'none';
+      try {
+        const r = await api('/admin/screen-references', {
+          method: 'POST',
+          body: JSON.stringify({ text, check_unpaywall: upayCb.checked }),
+        });
+        _lastResult = r;
+        renderResult(r);
+      } catch (e) {
+        list.innerHTML =
+          `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = orig;
+      }
+    });
+
+    importAllBtn.addEventListener('click', async () => {
+      if (!_lastResult) return;
+      const candidates = (_lastResult.items || []).filter(it =>
+        !it.in_vault && (it.pmid || it.doi || it.pmcid) && it.title
+      );
+      if (!candidates.length) return;
+      if (!confirm(
+        `Importar ${candidates.length} artículos a PrionVault?\n\n` +
+        '• Crea una fila por cada uno con los metadatos encontrados.\n' +
+        '• Los que tengan PMC ID arrancan la descarga de PDF OA en segundo plano.\n' +
+        '• Los que solo tengan metadatos quedan a la espera de PDF.\n\n' +
+        '¿Continuar?'
+      )) return;
+      importAllBtn.disabled = true;
+      importAllBtn.textContent = '⏳ Importando…';
+      let ok = 0, dup = 0, fail = 0;
+      for (const it of candidates) {
+        try {
+          const result = await _importOneRef(it);
+          if (result === 'created') ok++;
+          else if (result === 'duplicate') dup++;
+          else fail++;
+        } catch (_) { fail++; }
+      }
+      importAllBtn.disabled = false;
+      importAllBtn.textContent = '➕ Importar todos los que faltan';
+      alert(`Importados: ${ok}\nDuplicados (ya estaban): ${dup}\nFallos: ${fail}`);
+      // Re-run the analysis so already-imported rows flip to "Ya en PrionVault".
+      runBtn.click();
+    });
+
+    function renderResult(r) {
+      const items = r.items || [];
+      // Stat cards
+      stats.style.display = 'grid';
+      stats.innerHTML =
+        statCard('Entradas', r.stats.total ?? 0) +
+        statCard('Ya en PrionVault', r.stats.in_vault ?? 0, '#15803d') +
+        statCard('Faltan', r.stats.missing ?? 0, '#b45309') +
+        statCard('Con PDF OA', r.stats.with_oa ?? 0, '#0F3460') +
+        statCard('No reconocidas', r.stats.unparseable ?? 0, '#b91c1c');
+
+      if (!items.length) {
+        list.innerHTML =
+          '<div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">' +
+          'No se extrajo ninguna entrada de ese texto.</div>';
+        actions.style.display = 'none';
+        return;
+      }
+      list.innerHTML = items.map(_refCardHtml).join('');
+
+      // Wire per-row import buttons.
+      list.querySelectorAll('.pv-screen-import-one').forEach(b => {
+        b.addEventListener('click', async () => {
+          const idx = parseInt(b.dataset.idx, 10);
+          const it = items[idx];
+          if (!it) return;
+          const orig = b.textContent;
+          b.disabled = true; b.textContent = '⏳';
+          try {
+            const result = await _importOneRef(it);
+            if (result === 'created' || result === 'duplicate') {
+              b.textContent = result === 'created' ? '✓ Importado' : '✓ Ya estaba';
+              b.style.background = '#15803d';
+              b.style.color = 'white';
+              b.style.borderColor = '#15803d';
+            } else {
+              b.disabled = false;
+              b.textContent = orig;
+              alert('No se pudo importar.');
+            }
+          } catch (e) {
+            b.disabled = false;
+            b.textContent = orig;
+            alert('Error: ' + e.message);
+          }
+        });
+      });
+
+      const missing = items.some(it =>
+        !it.in_vault && (it.pmid || it.doi || it.pmcid) && it.title);
+      actions.style.display = missing ? 'flex' : 'none';
+    }
+
+    function statCard(label, value, color) {
+      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+                <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
+                <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
+              </div>`;
+    }
+  }
+
+  function _refCardHtml(it, idx) {
+    const escAttr = (v) => esc(String(v || ''));
+    const title = it.title || '(sin metadatos)';
+    const meta = [
+      it.authors ? esc(it.authors.split(';')[0]) + (it.authors.includes(';') ? ' et al.' : '') : '',
+      it.year    ? esc(it.year)    : '',
+      it.journal ? esc(it.journal) : '',
+    ].filter(Boolean).join(' · ');
+
+    const ids = [];
+    if (it.pmid)  ids.push(`<a href="https://pubmed.ncbi.nlm.nih.gov/${escAttr(it.pmid)}/" target="_blank" rel="noopener" style="color:#0f766e;text-decoration:none;font-weight:600;">PMID ${escAttr(it.pmid)} ↗</a>`);
+    if (it.doi)   ids.push(`<a href="https://doi.org/${escAttr(it.doi)}" target="_blank" rel="noopener" style="color:#3730a3;text-decoration:none;font-weight:600;">DOI ↗</a>`);
+    if (it.pmcid) ids.push(`<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/${escAttr(it.pmcid)}/" target="_blank" rel="noopener" style="color:#15803d;text-decoration:none;font-weight:600;">${escAttr(it.pmcid)} ↗</a>`);
+    const idsLine = ids.length
+      ? `<div style="font-size:11.5px;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">${ids.join('')}</div>`
+      : '';
+
+    // Status badges
+    let statusBadge, actionBtn;
+    if (it.in_vault) {
+      statusBadge = `<span style="background:#d1fae5;color:#047857;padding:3px 10px;border-radius:14px;font-size:11px;font-weight:700;">✓ Ya en PrionVault</span>`;
+      actionBtn = '';
+    } else if (it.oa_hint === 'unparseable') {
+      statusBadge = `<span style="background:#fee2e2;color:#7f1d1d;padding:3px 10px;border-radius:14px;font-size:11px;font-weight:700;">✗ Sin identificadores</span>`;
+      actionBtn = '';
+    } else if (it.oa_hint === 'pmc' || it.oa_hint === 'unpaywall') {
+      statusBadge = `<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:14px;font-size:11px;font-weight:700;">⊕ PDF OA · ${esc(it.oa_detail || '')}</span>`;
+      actionBtn = `<button type="button" class="pv-screen-import-one" data-idx="${idx}"
+                            style="padding:5px 11px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#15803d;font-size:12px;font-weight:600;cursor:pointer;">➕ Importar</button>`;
+    } else if (it.oa_hint === 'unknown') {
+      statusBadge = `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:14px;font-size:11px;font-weight:700;" title="${esc(it.oa_detail || '')}">? OA por confirmar</span>`;
+      actionBtn = `<button type="button" class="pv-screen-import-one" data-idx="${idx}"
+                            style="padding:5px 11px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;font-weight:600;cursor:pointer;">➕ Importar (metadatos)</button>`;
+    } else {
+      statusBadge = `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:14px;font-size:11px;font-weight:700;" title="${esc(it.oa_detail || '')}">◐ Solo metadatos</span>`;
+      actionBtn = `<button type="button" class="pv-screen-import-one" data-idx="${idx}"
+                            style="padding:5px 11px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;font-weight:600;cursor:pointer;">➕ Importar (sin PDF)</button>`;
+    }
+
+    return `
+      <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <div style="font-size:11px;color:#9ca3af;font-weight:700;min-width:28px;text-align:right;">${it.entry_no}.</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#111827;line-height:1.4;">
+              ${esc(title)}
+            </div>
+            <div style="font-size:11.5px;color:#6b7280;margin-top:2px;">${meta}</div>
+            ${idsLine}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;min-width:170px;">
+            ${statusBadge}
+            ${actionBtn}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function _importOneRef(it) {
+    // Use POST /api/articles with the metadata fetched by the
+    // screener. Duplicates are recognised by DOI/PMID and return 409
+    // with duplicate_of — treat as success ("ya estaba"). The OA
+    // PDF auto-fetcher daemon will then pick up the row and try to
+    // download the PDF for those with DOI/PMC ID.
+    const body = {
+      title:     it.title,
+      authors:   it.authors,
+      year:      it.year,
+      journal:   it.journal,
+      doi:       it.doi,
+      pubmed_id: it.pmid,
+      source:    'manual',
+    };
+    try {
+      const r = await fetch('/prionvault/api/articles', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (r.status === 201) return 'created';
+      if (r.status === 409) return 'duplicate';
+      return 'failed';
+    } catch (_) {
+      return 'failed';
+    }
   }
 
   // ── AI providers status modal + sticky banner ──────────────────────
