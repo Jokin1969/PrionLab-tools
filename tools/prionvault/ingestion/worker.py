@@ -82,7 +82,14 @@ def _process_job(job: ingest_queue.Job) -> None:
     # ── 1. Extract text + DOI candidate ────────────────────────────────
     ingest_queue.mark_step(job.id, status="extracting", step="pdfplumber")
     extraction = extract_pdf(content)
-    if extraction.error and not extraction.text:
+    # Distinguish "no text in the PDF" (scan, very common for pre-2000
+    # papers — Neurology, J. Virol., Brain, etc.) from "extractor blew
+    # up on a malformed file". A scan is NOT a failure: we still want
+    # the PDF in the catalogue with pdf_is_scan=true so batch_ocr can
+    # pick it up later and recover the text via Tesseract. A real
+    # crash on a corrupt file still goes through the retry/fail path.
+    is_scan = (extraction.error == "no_text_extracted" and not extraction.text)
+    if extraction.error and not extraction.text and not is_scan:
         _bump_or_fail(job, content,
                       error=f"PDF extraction failed: {extraction.error}",
                       user_msg=f"No se pudo extraer texto del PDF: {extraction.error}")
@@ -163,6 +170,7 @@ def _process_job(job: ingest_queue.Job) -> None:
             pdf_pages=extraction.pages, extracted_text=extraction.text,
             dropbox_path=upload.dropbox_path, dropbox_link=upload.dropbox_link,
             source=meta_source, added_by=job.created_by,
+            pdf_is_scan=is_scan,
         )
     except Exception as exc:
         # Most common cause in the wild: StringDataRightTruncation on
@@ -188,11 +196,13 @@ def _process_job(job: ingest_queue.Job) -> None:
         return
 
     id_type  = "doi" if final_doi else ("pmid" if pubmed_id else "md5")
-    summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}"
+    scan_tag = " | scan-pending-ocr" if is_scan else ""
+    summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}{scan_tag}"
     ingest_queue.mark_step(job.id, status="done", step=summary,
                            article_id=article_id)
     _notify_outcome(
         job, status="done", article_id=article_id, pdf_content=content,
+        is_scan=is_scan,
         article_meta={
             "title":      title,
             "doi":        final_doi,
@@ -259,7 +269,10 @@ def _enrich_duplicate(*, article_id, content: bytes, md5: str,
             if "extracted_text" in db_cols and not existing.get("extracted_text") and extraction.text:
                 candidate["extracted_text"] = extraction.text
             if "extraction_status" in db_cols and existing.get("extraction_status") in (None, "pending"):
-                candidate["extraction_status"] = "extracted" if extraction.text else "failed"
+                # Leave at 'pending' when there's no text — the article
+                # is still a valid scan, batch_ocr will lift it later.
+                if extraction.text:
+                    candidate["extraction_status"] = "extracted"
 
             # Upload PDF to Dropbox only if the existing row has no path yet.
             if "dropbox_path" in db_cols and not existing.get("dropbox_path"):
@@ -380,13 +393,24 @@ def _upsert_article(**kw) -> str:
 
     Returns the article id (UUID as str). Filters `kw` against the actual
     columns in `articles` so unknown fields never cause SQL errors.
+
+    `pdf_is_scan` (bool, optional) flags PDFs without an extractable
+    text layer. When True, the row is inserted with
+    extraction_status='pending' so batch_ocr later sees it as eligible;
+    when False, the status goes straight to 'extracted'.
     """
     # Drop the worker's `added_by` parameter (it maps to the
     # `added_by_id` SQL column, see below) before composing the SET / VALUES
     # clause so we never accidentally interpolate "added_by" into the SQL.
     added_by_id = kw.pop("added_by", None)
+    is_scan = bool(kw.pop("pdf_is_scan", False))
+    # We pop here so it's not double-applied via `fields`; we put it
+    # back into `fields` below as a real column when the schema supports it.
     fields = {k: v for k, v in kw.items() if v is not None}
+    if is_scan:
+        fields["pdf_is_scan"] = True
     doi = fields.get("doi")
+    desired_status = "pending" if is_scan else "extracted"
 
     eng = _get_engine()
     with eng.begin() as conn:
@@ -412,7 +436,15 @@ def _upsert_article(**kw) -> str:
                 set_sql = ", ".join(f"{k} = :{k}" for k in assignable)
                 extra = ""
                 if "extraction_status" in db_cols:
-                    extra = ", extraction_status = 'extracted', extraction_error = NULL"
+                    # Never downgrade an already-extracted article back
+                    # to 'pending' just because this re-ingest happens
+                    # to be a scan: a curated text layer on the row
+                    # wins. Leave extraction_status untouched in that
+                    # case (the COALESCE-ish read in _enrich_duplicate
+                    # is what handles that scenario; here we only set
+                    # the status when the worker actually has text).
+                    if not is_scan:
+                        extra = ", extraction_status = 'extracted', extraction_error = NULL"
                 conn.execute(text(
                     f"UPDATE articles SET {set_sql}{extra}, updated_at = NOW() WHERE id = :id"
                 ), {**assignable, "id": existing_id})
@@ -425,7 +457,8 @@ def _upsert_article(**kw) -> str:
             fixed_vals = ":_new_id, :added_by_id, NOW(), NOW()"
             if "extraction_status" in db_cols:
                 fixed_cols = ["id", "extraction_status", "added_by_id", "created_at", "updated_at"]
-                fixed_vals = ":_new_id, 'extracted', :added_by_id, NOW(), NOW()"
+                fixed_vals = (f":_new_id, '{desired_status}', :added_by_id, "
+                              "NOW(), NOW()")
             cols = list(fields.keys()) + fixed_cols
             placeholders = ", ".join(f":{c}" for c in fields.keys()) + f", {fixed_vals}"
             sql = (f"INSERT INTO articles ({', '.join(cols)}) "
@@ -446,6 +479,7 @@ _UPDATABLE_FIELDS = {
     "abstract",
     "pdf_md5", "pdf_size_bytes", "pdf_pages", "extracted_text",
     "dropbox_path", "dropbox_link", "source",
+    "pdf_is_scan",
 }
 
 
@@ -478,6 +512,7 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
                     article_id: Optional[str] = None,
                     article_meta: Optional[dict] = None,
                     duplicate_reason: Optional[str] = None,
+                    is_scan: bool = False,
                     error: Optional[str] = None) -> None:
     """Send the operator who emailed in a final reply with the result.
 
@@ -503,8 +538,12 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
         meta = {**_load_article_summary(article_id), **meta}
 
     if status == "done":
-        subject = f"[PrionVault] ✓ Ingerido — {meta.get('title') or short_subj}"
-        body    = _compose_done_body(meta, article_id, orig_subject)
+        if is_scan:
+            subject = f"[PrionVault] ✓ Ingerido (escaneo, OCR pendiente) — {meta.get('title') or short_subj}"
+            body    = _compose_scan_body(meta, article_id, orig_subject)
+        else:
+            subject = f"[PrionVault] ✓ Ingerido — {meta.get('title') or short_subj}"
+            body    = _compose_done_body(meta, article_id, orig_subject)
     elif status == "duplicate":
         subject = f"[PrionVault] Ya estaba en la base — {meta.get('title') or short_subj}"
         body    = _compose_duplicate_body(meta, article_id, orig_subject,
@@ -659,6 +698,36 @@ def _compose_duplicate_body(meta: dict, article_id, orig_subject: str,
     lines += [
         "",
         f"Verlo en PrionVault: {_article_link(article_id)}",
+        "",
+        f"Re: {orig_subject}",
+        "",
+        "— PrionVault",
+    ]
+    return "\n".join(lines)
+
+
+def _compose_scan_body(meta: dict, article_id, orig_subject: str) -> str:
+    lines = [
+        "Hola,",
+        "",
+        "Recibí el PDF y lo añadí al catálogo, pero NO tenía capa de texto",
+        "extraíble (es un escaneo — típico en papers anteriores al año 2000).",
+        "",
+        "El artículo ya está en PrionVault con el PDF subido a Dropbox, pero",
+        "se quedará sin texto indexado, sin DOI/PMID resueltos y sin resumen",
+        "IA hasta que se procese con OCR.",
+        "",
+        "Para extraer el texto: PrionVault → OCR → Iniciar batch (procesa",
+        "todos los artículos pendientes vía Tesseract).",
+        "",
+    ]
+    if meta.get("title"):
+        lines.append(f"  Título provisional: {meta['title']}")
+    lines += [
+        "",
+        f"Verlo en PrionVault: {_article_link(article_id)}",
+        "",
+        "(Adjunto va el PDF original que enviaste.)",
         "",
         f"Re: {orig_subject}",
         "",
