@@ -288,8 +288,15 @@ def create_app() -> Flask:
         # and gunicorn cannot answer /health if we sit here applying SQL.
         # Errors inside the thread are logged but never crash the app.
         try:
-            from tools.prionvault.migrate import schedule_pending_migrations
+            from tools.prionvault.migrate import (
+                schedule_pending_migrations, start_periodic_self_heal,
+            )
             schedule_pending_migrations(app)
+            # Run an idempotent schema-repair sweep every 5 min so any
+            # Railway / Postgres restore that drops a column gets
+            # auto-cured within minutes instead of taking the
+            # catalogue down until the next deploy.
+            start_periodic_self_heal(interval_seconds=300)
         except Exception as e:
             app.logger.warning('PrionVault migration scheduler failed: %s', e)
 

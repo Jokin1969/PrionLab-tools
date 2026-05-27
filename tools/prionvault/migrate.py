@@ -381,3 +381,49 @@ def schedule_pending_migrations(app=None) -> threading.Thread:
     th = threading.Thread(target=_runner, name="prionvault-migrate", daemon=True)
     th.start()
     return th
+
+
+def start_periodic_self_heal(interval_seconds: int = 300) -> threading.Thread:
+    """Long-running daemon that re-asserts the schema every N seconds.
+
+    Necessary because Railway / Postgres restores have repeatedly
+    dropped columns (pdf_md5, pdf_size_bytes) AFTER the migration
+    tracker said they were applied. Without periodic re-assertion the
+    catalogue stays broken until the next deploy. With this daemon
+    the worst case is `interval_seconds` of degraded service.
+
+    All statements in the self-heal migrations are IF NOT EXISTS /
+    OR REPLACE, so the cost when nothing is wrong is one
+    information_schema lookup per migration (~100 ms total). Safe to
+    run frequently.
+    """
+    def _loop():
+        # Wait one cycle before the first heal so we don't fight
+        # schedule_pending_migrations on boot.
+        time.sleep(interval_seconds)
+        while True:
+            try:
+                summary = _self_heal_schema()
+                # Only log when something actually needed repair —
+                # otherwise this fires every 5 min for no reason.
+                errors = summary.get("errors", [])
+                if errors:
+                    logger.warning(
+                        "periodic self-heal: %d migrations needed attention",
+                        len(errors),
+                    )
+                # Also invalidate the routes' column cache so the next
+                # request reflects the (potentially restored) schema.
+                try:
+                    from . import routes as _routes  # noqa: F401
+                    _routes._pv_columns_cache = None
+                except Exception:
+                    pass
+            except Exception as exc:
+                logger.exception("periodic self-heal crashed: %s", exc)
+            time.sleep(interval_seconds)
+
+    th = threading.Thread(target=_loop, name="prionvault-periodic-heal",
+                          daemon=True)
+    th.start()
+    return th
