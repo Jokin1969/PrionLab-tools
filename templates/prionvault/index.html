@@ -1045,6 +1045,26 @@
     <div id="pv-edit-pdf-preview" style="display:none;margin-bottom:10px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#1f2937;">
     </div>
 
+    <!-- Attach-a-PDF dropzone. JS shows it as "Adjuntar PDF" when the
+         article has no PDF yet, and as a smaller "Reemplazar PDF" hint
+         once one's attached. -->
+    <div id="pv-edit-pdf-attach" style="display:none;margin-bottom:10px;">
+      <label id="pv-edit-pdf-drop"
+             style="display:block;border:2px dashed #d1d5db;border-radius:8px;
+                    padding:14px;text-align:center;cursor:pointer;
+                    background:#f9fafb;font-size:13px;color:#374151;
+                    transition:background 0.15s,border-color 0.15s;">
+        <i class="fas fa-paperclip" style="margin-right:6px;color:#0F3460;"></i>
+        <span id="pv-edit-pdf-drop-text">
+          <strong>Adjuntar PDF</strong> — arrastra un archivo aquí o pulsa para seleccionar.
+        </span>
+        <input type="file" id="pv-edit-pdf-file" accept="application/pdf"
+               style="display:none;">
+      </label>
+      <div id="pv-edit-pdf-upload-status"
+           style="display:none;margin-top:6px;font-size:11.5px;"></div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
       <label style="grid-column:1/-1;font-size:11.5px;color:#6b7280;font-weight:600;">
         Title

@@ -3149,6 +3149,115 @@ def api_article_pdf_view(aid):
     return Response(html, mimetype="text/html")
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/upload-pdf", methods=["POST"])
+@admin_required
+def api_article_upload_pdf(aid):
+    """Attach a PDF file to an existing article.
+
+    Reads the multipart-uploaded file (field name "file" or "pdf"),
+    uploads it to the canonical Dropbox path via the existing
+    dropbox_uploader, and stamps dropbox_path / pdf_md5 /
+    pdf_size_bytes on the article row. The background batches
+    (extract → searchable → index → summarise) will pick it up
+    automatically afterwards.
+
+    Refuses the upload if another article in the catalogue already
+    owns this PDF (md5 match) to keep the duplicate guarantees
+    consistent with the ingest queue.
+
+    Body: multipart/form-data with a single "file" field.
+    """
+    import hashlib
+    from .ingestion.dropbox_uploader import build_path, upload_pdf
+
+    fs = request.files.get("file") or request.files.get("pdf")
+    if not fs or not fs.filename:
+        return jsonify({"error": "missing PDF file"}), 400
+    content = fs.read()
+    if not content:
+        return jsonify({"error": "empty file"}), 400
+    if not content.startswith(b"%PDF"):
+        return jsonify({"error": "el fichero no parece un PDF (falta cabecera %PDF)"}), 400
+    if len(content) > 80 * 1024 * 1024:
+        return jsonify({"error": "PDF demasiado grande (límite 80 MB)"}), 413
+
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT doi, year, dropbox_path FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row:
+            return jsonify({"error": "article not found"}), 404
+        doi, year, current_path = row[0], row[1], row[2]
+    finally:
+        s.close()
+
+    md5 = hashlib.md5(content).hexdigest()
+
+    # Dedup by md5 against the rest of the catalogue. If another row
+    # already has this exact PDF, surface it so the operator merges
+    # by hand instead of ending up with duplicate files.
+    s = _session()
+    try:
+        dup = s.execute(sql_text(
+            "SELECT id::text FROM articles WHERE pdf_md5 = :m AND id <> :aid LIMIT 1"
+        ), {"m": md5, "aid": str(aid)}).first()
+    finally:
+        s.close()
+    if dup:
+        return jsonify({
+            "error":        "duplicate_pdf",
+            "detail":       "Otro artículo de la biblioteca ya tiene este mismo PDF.",
+            "duplicate_of": dup[0],
+        }), 409
+
+    target = build_path(doi=doi, year=year, md5=md5,
+                        filename_hint=fs.filename)
+    # If a different article tried before us and already wrote the same
+    # path, overwrite is safe (deterministic path → identical content).
+    # Otherwise, autorename would be confusing here — pass overwrite=True
+    # only when current_path matches target (re-attaching).
+    overwrite = (current_path == target)
+    upload = upload_pdf(content, target, overwrite=overwrite)
+    if upload.error and "already_exists" not in (upload.error or "").lower():
+        return jsonify({"error": "dropbox_upload_failed",
+                        "detail": upload.error[:300]}), 502
+    dropbox_path = upload.dropbox_path or target
+
+    s = _session()
+    try:
+        s.execute(sql_text("""
+            UPDATE articles
+               SET dropbox_path   = :p,
+                   dropbox_link   = :lnk,
+                   pdf_md5        = :m,
+                   pdf_size_bytes = :sz,
+                   pdf_oa_status  = COALESCE(NULLIF(pdf_oa_status, ''), 'manual_upload'),
+                   updated_at     = NOW()
+             WHERE id = :aid
+        """), {
+            "aid": str(aid),
+            "p":   dropbox_path,
+            "lnk": upload.dropbox_link,
+            "m":   md5,
+            "sz":  len(content),
+        })
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("upload_pdf: persist failed for %s", aid)
+        return jsonify({"error": "persist_failed",
+                        "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+    return jsonify({
+        "ok":           True,
+        "dropbox_path": dropbox_path,
+        "pdf_md5":      md5,
+        "size_bytes":   len(content),
+    })
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["GET"])
 @login_required
 def api_article_pdf(aid):

@@ -4096,6 +4096,9 @@
     // Reset the "Sin PMID" toggle so the styling doesn't bleed across
     // articles when the operator navigates Siguiente / Anterior.
     _editSyncNoPmidButton(!!a.pubmed_unavailable);
+    // Mount the attach-PDF dropzone. Shown prominently when the article
+    // has no PDF yet, smaller "reemplazar" hint otherwise.
+    _editSyncPdfAttach(!!a.has_pdf);
     const aiBtn = document.getElementById('pv-edit-identify-ai');
     if (aiBtn) {
       const ok = !!a.has_pdf;
@@ -4253,6 +4256,110 @@
       return ok;
     } catch (_e) {
       return false;
+    }
+  }
+
+  // Show / repaint the "Adjuntar PDF" dropzone in the Edit modal.
+  // hasPdf=true means the article already has a PDF — the zone shrinks
+  // to a one-line "Reemplazar" hint. hasPdf=false → prominent attach
+  // CTA. The handlers are wired once on first call (closure flag).
+  let _pdfAttachWired = false;
+  function _editSyncPdfAttach(hasPdf) {
+    const wrap   = document.getElementById('pv-edit-pdf-attach');
+    const drop   = document.getElementById('pv-edit-pdf-drop');
+    const text   = document.getElementById('pv-edit-pdf-drop-text');
+    const file   = document.getElementById('pv-edit-pdf-file');
+    const status = document.getElementById('pv-edit-pdf-upload-status');
+    if (!wrap || !drop || !file) return;
+    wrap.style.display = '';
+    status.style.display = 'none';
+    status.innerHTML = '';
+    if (hasPdf) {
+      drop.style.padding = '8px 12px';
+      drop.style.fontSize = '12px';
+      drop.style.borderStyle = 'dashed';
+      text.innerHTML = '<strong>Reemplazar PDF</strong> — arrastra otro fichero o pulsa para seleccionar.';
+    } else {
+      drop.style.padding = '14px';
+      drop.style.fontSize = '13px';
+      drop.style.borderStyle = 'dashed';
+      text.innerHTML = '<strong>Adjuntar PDF</strong> — arrastra un archivo aquí o pulsa para seleccionar.';
+    }
+    file.value = '';
+    if (_pdfAttachWired) return;
+    _pdfAttachWired = true;
+    file.addEventListener('change', () => {
+      if (file.files && file.files[0]) _editUploadPdf(file.files[0]);
+    });
+    // Drag-and-drop affordance. The <label> already triggers the
+    // hidden <input>, but we also handle dragenter / drop so a file
+    // dropped on the box is picked up directly.
+    drop.addEventListener('dragenter', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      drop.style.background = '#dbeafe';
+      drop.style.borderColor = '#0F3460';
+    });
+    drop.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+    drop.addEventListener('dragleave', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      drop.style.background = '#f9fafb';
+      drop.style.borderColor = '#d1d5db';
+    });
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      drop.style.background = '#f9fafb';
+      drop.style.borderColor = '#d1d5db';
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) _editUploadPdf(f);
+    });
+  }
+
+  async function _editUploadPdf(file) {
+    if (!_editTarget) return;
+    if (!file || !file.name || !file.name.toLowerCase().endsWith('.pdf')) {
+      _editStatus('Solo PDFs.', '#b91c1c'); return;
+    }
+    const status = document.getElementById('pv-edit-pdf-upload-status');
+    status.style.display = 'block';
+    status.style.color = '#374151';
+    status.textContent = `⏳ Subiendo ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)…`;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await fetch(`/prionvault/api/articles/${_editTarget.id}/upload-pdf`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: fd,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.ok) {
+        status.style.color = '#15803d';
+        status.innerHTML = `✓ PDF adjuntado (${(d.size_bytes/1024/1024).toFixed(1)} MB). ` +
+          `Las pipelines de extracción / OCR / index / resumen lo recogerán en background.`;
+        // Reflect locally so the modal's preview + chips know we have a PDF.
+        _editTarget.has_pdf = true;
+        _editTarget.dropbox_path = d.dropbox_path;
+        _editRenderPdfPreview(_editTarget);
+        _editSyncPdfAttach(true);
+        // Re-enable the "🤖 Buscar PMID con IA" button — it greys
+        // out when there's no PDF.
+        const aiBtn = document.getElementById('pv-edit-identify-ai');
+        if (aiBtn) { aiBtn.disabled = false; aiBtn.style.opacity = '1';
+                     aiBtn.style.cursor = 'pointer'; }
+      } else if (r.status === 409) {
+        status.style.color = '#b91c1c';
+        status.innerHTML = `⚠ Este PDF ya está asignado a otro artículo ` +
+          (d.duplicate_of ? `(<a href="#" id="pv-edit-pdf-dup-open" style="color:#0F3460;text-decoration:underline;">ver original</a>)` : '') +
+          `. Revisa si es un duplicado antes de re-subirlo.`;
+        const a = document.getElementById('pv-edit-pdf-dup-open');
+        if (a) a.addEventListener('click', (ev) => { ev.preventDefault(); openDetail(d.duplicate_of); });
+      } else {
+        status.style.color = '#b91c1c';
+        status.textContent = `Error: ${d.detail || d.error || r.status}`;
+      }
+    } catch (e) {
+      status.style.color = '#b91c1c';
+      status.textContent = `Error de red: ${e.message}`;
     }
   }
 
