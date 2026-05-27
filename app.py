@@ -8,12 +8,38 @@ from urllib.parse import urlencode
 # SENTRY_DSN is unset, so local dev stays untouched.
 if os.environ.get("SENTRY_DSN"):
     import sentry_sdk
+
+    # Patterns inside `message` we explicitly DON'T want to alert on.
+    # Mostly QPDF / pdfminer / ocrmypdf chatter that gets logged at
+    # WARNING level when processing slightly-malformed PDFs — the
+    # tools recover and produce valid output, so a Sentry alert per
+    # input is pure noise.
+    _SENTRY_NOISE_PATTERNS = (
+        "pl_dct::decompress",
+        "error decoding stream data for object",
+        "qpdf:",
+        "jpeg data is corrupt",
+        "ocrmypdf: warning",
+    )
+
+    def _sentry_filter(event, hint):
+        try:
+            msg = (event.get("message") or "").lower()
+            if not msg and event.get("logentry"):
+                msg = (event["logentry"].get("message") or "").lower()
+            if any(p in msg for p in _SENTRY_NOISE_PATTERNS):
+                return None    # drop
+        except Exception:
+            pass
+        return event
+
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
         environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
         release=os.environ.get("RAILWAY_GIT_COMMIT_SHA"),
         send_default_pii=False,
         traces_sample_rate=0.0,
+        before_send=_sentry_filter,
     )
     sentry_sdk.set_tag("service", "prionvault")
 
