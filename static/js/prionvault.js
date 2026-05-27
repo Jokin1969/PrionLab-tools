@@ -5582,6 +5582,7 @@
       wirePubmedInventory();
       wireVerifyMetadata();
       wireScreenRefs();
+      wireSidebarGroups();
       wireAIStatus();
       wireSidebarResize();
       wireMobileDrawer();
@@ -9985,6 +9986,25 @@
         </div>
       </div>
     `;
+  }
+
+  // ── Collapsible sidebar groups ─────────────────────────────────────
+  // Each <details class="pv-sidebar-group"> with an id persists its
+  // open/closed state in localStorage so the operator's preference
+  // survives reloads. Defaults to open the first time.
+  function wireSidebarGroups() {
+    document.querySelectorAll('details.pv-sidebar-group').forEach((d) => {
+      if (!d.id) return;
+      const key = 'pv-group-open:' + d.id;
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved === '0') d.removeAttribute('open');
+        else if (saved === '1') d.setAttribute('open', '');
+      } catch (_) { /* localStorage unavailable */ }
+      d.addEventListener('toggle', () => {
+        try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (_) {}
+      });
+    });
   }
 
   // ── Resizable sidebar ──────────────────────────────────────────────

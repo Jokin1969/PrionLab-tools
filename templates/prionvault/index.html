@@ -23,6 +23,12 @@
   .pv-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: white; }
   .pv-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+  /* Collapsible sidebar group (uses <details>/<summary>). */
+  .pv-sidebar-group > summary { list-style: none; }
+  .pv-sidebar-group > summary::-webkit-details-marker { display: none; }
+  .pv-sidebar-group > summary:hover { background: rgba(255,255,255,0.08); color: white; }
+  .pv-sidebar-group[open] > summary .pv-chev { transform: rotate(90deg); }
+
   /* ── Role-based visibility ──────────────────────────────────────────── */
   .pv-role-reader .pv-admin-only { display: none !important; }
 
@@ -372,16 +378,43 @@
          style="padding:14px 10px 4px;font-size:9.5px;font-weight:700;color:rgba(255,255,255,0.32);
                 letter-spacing:0.1em;text-transform:uppercase;margin:0;">Tools</p>
 
-      <button class="pv-nav-btn pv-admin-only" id="btn-add-by-doi">
-        <span><i class="fas fa-plus" style="width:13px;margin-right:6px;opacity:0.7;"></i>Add by DOI / PMID</span>
-      </button>
-      <button class="pv-nav-btn pv-admin-only" id="btn-import-pdfs">
-        <span><i class="fas fa-upload" style="width:13px;margin-right:6px;opacity:0.7;"></i>Import PDFs</span>
-      </button>
-      <button class="pv-nav-btn pv-admin-only" id="btn-scan-folder"
-              title="Lee PDFs de /PrionLab tools/PDFs en Dropbox. Los que se importen bien (o ya estén en la biblioteca) se borran; los que fallen permanecen.">
-        <span><i class="fas fa-folder-tree" style="width:13px;margin-right:6px;opacity:0.7;"></i>Scan Dropbox folder</span>
-      </button>
+      <!-- ── "Entrada de artículos" collapsible group ────────────────
+           Wraps the five buttons that bring new papers into the
+           catalogue. JS persists the open/closed state in
+           localStorage so the operator's choice survives reloads. -->
+      <details id="pv-group-entry" class="pv-admin-only pv-sidebar-group">
+        <summary class="pv-sidebar-group-summary"
+                 style="list-style:none;cursor:pointer;
+                        padding:7px 10px;border-radius:8px;
+                        font-size:13px;color:rgba(255,255,255,0.85);
+                        display:flex;align-items:center;justify-content:space-between;gap:6px;
+                        user-select:none;">
+          <span><i class="fas fa-inbox" style="width:13px;margin-right:6px;opacity:0.7;"></i>Entrada de artículos</span>
+          <i class="fas fa-chevron-right pv-chev" style="opacity:0.55;font-size:11px;transition:transform 0.15s;"></i>
+        </summary>
+        <div style="display:flex;flex-direction:column;gap:0;padding-left:6px;
+                    border-left:2px solid rgba(255,255,255,0.08);margin-left:6px;
+                    margin-top:2px;margin-bottom:4px;">
+          <button class="pv-nav-btn pv-admin-only" id="btn-add-by-doi">
+            <span><i class="fas fa-plus" style="width:13px;margin-right:6px;opacity:0.7;"></i>Add by DOI / PMID</span>
+          </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-import-pdfs">
+            <span><i class="fas fa-upload" style="width:13px;margin-right:6px;opacity:0.7;"></i>Import PDFs</span>
+          </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-scan-folder"
+                  title="Lee PDFs de /PrionLab tools/PDFs en Dropbox. Los que se importen bien (o ya estén en la biblioteca) se borran; los que fallen permanecen.">
+            <span><i class="fas fa-folder-tree" style="width:13px;margin-right:6px;opacity:0.7;"></i>Scan Dropbox folder</span>
+          </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-batch-import">
+            <span><i class="fas fa-layer-group" style="width:13px;margin-right:6px;opacity:0.7;"></i>Batch import (DOIs/PMIDs)</span>
+          </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-pubmed-inventory"
+                  title="Inventario de PubMed para 'Prion'. Muestra los PMIDs que aún no tienes; importa de uno en uno o en bulk.">
+            <span><i class="fas fa-magnifying-glass-chart" style="width:13px;margin-right:6px;opacity:0.7;"></i>Inventario PubMed</span>
+          </button>
+        </div>
+      </details>
+
       <button class="pv-nav-btn pv-admin-only" id="btn-clean-metadata"
               title="Decodifica entidades HTML (&amp;ntilde; → ñ) y transforma sup/sub a Unicode (Ca&lt;sup&gt;2+&lt;/sup&gt; → Ca²⁺) en title / authors / journal / abstract de toda la biblioteca.">
         <span><i class="fas fa-broom" style="width:13px;margin-right:6px;opacity:0.7;"></i>Limpiar metadatos</span>
@@ -402,16 +435,9 @@
               title="Sincroniza las referencias de los PrionPacks con sus colecciones en PrionVault. Diagnóstico por pack incluido.">
         <span><i class="fas fa-link" style="width:13px;margin-right:6px;opacity:0.7;"></i>Sync PrionPacks</span>
       </button>
-      <button class="pv-nav-btn pv-admin-only" id="btn-batch-import">
-        <span><i class="fas fa-layer-group" style="width:13px;margin-right:6px;opacity:0.7;"></i>Batch import (DOIs/PMIDs)</span>
-      </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-screen-refs"
               title="Pega una bibliografía y te digo qué tienes en PrionVault, qué te falta y qué se puede bajar como PDF OA.">
         <span><i class="fas fa-list-check" style="width:13px;margin-right:6px;opacity:0.7;"></i>Cribar lista de refs</span>
-      </button>
-      <button class="pv-nav-btn pv-admin-only" id="btn-pubmed-inventory"
-              title="Inventario de PubMed para 'Prion'. Muestra los PMIDs que aún no tienes; importa de uno en uno o en bulk.">
-        <span><i class="fas fa-magnifying-glass-chart" style="width:13px;margin-right:6px;opacity:0.7;"></i>Inventario PubMed</span>
       </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-verify-metadata"
               title="Verifica que cada PDF coincide con sus metadatos. Heurística + LLM en los dudosos. Encuentra PDFs mal asociados.">
