@@ -2847,7 +2847,8 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   font-family: 'JetBrains Mono', monospace;
 }
 
-@media (max-width: 680px) {
+@media (max-width: 680px),
+       (orientation: landscape) and (max-height: 500px) {
   .pp-note-detail-modal {
     top: auto;
     bottom: 0;
@@ -2878,9 +2879,15 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   .pp-editor-layout { padding: 16px 20px; }
 }
 
-/* ── Mobile (≤680px) — complete redesign ────────────────────────────────── */
+/* ── Mobile (≤680px portrait OR short landscape on phones) — complete
+      redesign. The landscape clause is so that turning a phone
+      sideways keeps the mobile layout: iPhones in landscape are
+      844–932 px wide, well above 680 px, so without it the drawer
+      reappears and the help launcher comes back. Tablets stay out
+      of this rule because their landscape height is > 500 px. ───── */
 
-@media (max-width: 680px) {
+@media (max-width: 680px),
+       (orientation: landscape) and (max-height: 500px) {
   /* Show mobile top bar */
   .pp-mobile-topbar { display: flex; }
   .pp-sidebar-close { display: flex; }
@@ -3010,8 +3017,52 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
      cosas arriba" the user reported.
      prionpacks.css only loads on the PrionPacks page, so this
      override is page-scoped — the site-header keeps its original
-     padding everywhere else. */
-  .site-header { padding: 0; }
+     padding everywhere else.
+
+     The !important on both rules is unfortunately necessary because
+     the original site-header padding lives in main.css which loads
+     before this file but at the same selector specificity (0,1,0).
+     A previous pass without !important failed in the field — most
+     likely because Safari was caching the stale stylesheet across
+     the deploy. !important removes that whole class of regression. */
+  .site-header { padding: 0 !important; }
+  /* The :has() rule above (.site-main:has(#prionpacks-app)) is the
+     ideal way to strip site-main padding, but :has support is still
+     spotty on older Safari iOS versions. Override unconditionally
+     inside the mobile media query so the layout survives even when
+     :has fails silently. */
+  .site-main { padding: 0 !important; }
+
+  /* Force long content (URLs, DOIs, unbroken words) to wrap inside
+     the PrionPacks pane. Without this, a single long DOI or a code
+     block can stretch its parent wider than the viewport and push
+     the right edge off-screen — which is what the user described as
+     "el texto no se ajusta a los laterales". */
+  #prionpacks-app,
+  #prionpacks-app * {
+    /* min-width: 0 lets flex / grid children actually shrink instead
+       of using their intrinsic content width as a hard floor. */
+    min-width: 0;
+  }
+  #prionpacks-app p,
+  #prionpacks-app li,
+  #prionpacks-app span,
+  #prionpacks-app textarea,
+  #prionpacks-app .pp-reference-textarea,
+  #prionpacks-app .pp-method-body-textarea,
+  #prionpacks-app .pp-card-section,
+  #prionpacks-app .pp-pkg-card,
+  #prionpacks-app .pp-page-header {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  /* Belt-and-braces: prevent horizontal scroll on the PrionPacks
+     container when long content tries to escape. We scope this to
+     #prionpacks-app instead of html/body because overflow:hidden on
+     the document root is known to break position:sticky in some
+     iOS Safari versions, which would re-introduce the very header
+     overlap we just fixed. */
+  #prionpacks-app { overflow-x: hidden; }
 
   /* Hide actions that don't belong on a phone-sized screen.
      - Backup / restore are recovery flows the user only triggers on
