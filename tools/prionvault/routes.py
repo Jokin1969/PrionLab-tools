@@ -5082,6 +5082,39 @@ def api_pubmed_inventory_undismiss():
     return jsonify({"ok": True, "updated": updated})
 
 
+@prionvault_bp.route("/api/admin/pubmed-inventory/keep", methods=["POST"])
+@admin_required
+def api_pubmed_inventory_keep():
+    """Body: {pmids: [...]} → marks them as "Esta sí" (kept).
+
+    The mark survives forever — it persists across PubMed harvests
+    and across page reloads. The row keeps appearing in searches
+    until either the operator imports it (imported_at gets set) or
+    explicitly removes the mark with /unkeep.
+    """
+    from .services import pubmed_inventory
+    body  = request.get_json(silent=True) or {}
+    pmids = body.get("pmids") or []
+    if not isinstance(pmids, list):
+        return jsonify({"error": "pmids must be a list"}), 400
+    updated = pubmed_inventory.keep(pmids, by_user=_viewer_id())
+    return jsonify({"ok": True, "updated": updated})
+
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/unkeep", methods=["POST"])
+@admin_required
+def api_pubmed_inventory_unkeep():
+    """Body: {pmids: [...]} → reverses a previous "Esta sí" decision.
+    The row stays in the inventory but loses the kept_at stamp."""
+    from .services import pubmed_inventory
+    body  = request.get_json(silent=True) or {}
+    pmids = body.get("pmids") or []
+    if not isinstance(pmids, list):
+        return jsonify({"error": "pmids must be a list"}), 400
+    updated = pubmed_inventory.unkeep(pmids)
+    return jsonify({"ok": True, "updated": updated})
+
+
 @prionvault_bp.route("/api/admin/pubmed-inventory/import", methods=["POST"])
 @admin_required
 def api_pubmed_inventory_import():

@@ -9159,10 +9159,14 @@
     const bulkImp  = document.getElementById('pv-pinv-bulk-import');
     const bulkDis  = document.getElementById('pv-pinv-bulk-dismiss');
     const bulkRec  = document.getElementById('pv-pinv-bulk-recover');
+    const bulkKeep = document.getElementById('pv-pinv-bulk-keep');
+    const bulkUnkp = document.getElementById('pv-pinv-bulk-unkeep');
     const bulkClr  = document.getElementById('pv-pinv-bulk-clear');
     const tabPend  = document.getElementById('pv-pinv-tab-pending');
+    const tabKept  = document.getElementById('pv-pinv-tab-kept');
     const tabDism  = document.getElementById('pv-pinv-tab-dismissed');
     const tabPCnt  = document.getElementById('pv-pinv-tab-pending-count');
+    const tabKCnt  = document.getElementById('pv-pinv-tab-kept-count');
     const tabDCnt  = document.getElementById('pv-pinv-tab-dismissed-count');
 
     // Persistent selection lives in a local Set, not state.selectedIds,
@@ -9176,10 +9180,10 @@
     // running → idle transition can auto-reload the candidate list
     // (otherwise the user keeps seeing the cached "no hay pendientes").
     let _pinvWasRunning = false;
-    // 'pending' (default) | 'dismissed' — toggled by the chip group
-    // above the listing. Selection is cleared when the user switches
-    // tabs so they can't accidentally bulk-Import what they just
-    // un-dismissed (or vice versa).
+    // 'pending' (default) | 'kept' | 'dismissed' — toggled by the chip
+    // group above the listing. Selection is cleared when the user
+    // switches tabs so they can't accidentally bulk-Import what they
+    // just un-dismissed (or vice versa).
     let _pinvStatus = 'pending';
 
     function statCard(label, value, color) {
@@ -9215,11 +9219,13 @@
         statCard('Catalogados (PubMed)', s.total ?? 0) +
         statCard('Ya en PrionVault',     s.imported ?? 0, '#15803d') +
         statCard('Pendientes',           s.pending ?? 0, '#b45309') +
+        statCard('⭐ Marcados',           s.kept ?? 0, '#b45309') +
         statCard('Con PDF OA',           s.pending_with_oa ?? 0, '#0F3460') +
         statCard('Importados sin PDF',   s.inv_no_pdf ?? 0, '#b45309');
 
       // Tab counters mirror the stat cards.
       if (tabPCnt) tabPCnt.textContent = `(${(s.pending ?? 0).toLocaleString()})`;
+      if (tabKCnt) tabKCnt.textContent = `(${(s.kept ?? 0).toLocaleString()})`;
       if (tabDCnt) tabDCnt.textContent = `(${(s.dismissed ?? 0).toLocaleString()})`;
 
       // OA-fetcher live status under the cards. Compact one-liner so
@@ -9321,6 +9327,8 @@
       if (!data.items.length) {
         const emptyMsg = _pinvStatus === 'dismissed'
           ? '— No has descartado todavía ningún PMID.'
+          : _pinvStatus === 'kept'
+          ? '— No has marcado ningún PMID con "Esta sí" todavía.'
           : '✓ No quedan pendientes con esos filtros.';
         list.innerHTML =
           `<div style="text-align:center;color:#15803d;padding:30px;font-size:13px;">${esc(emptyMsg)}</div>`;
@@ -9361,6 +9369,12 @@
       });
       list.querySelectorAll('.pv-pinv-recover-one').forEach(b => {
         b.addEventListener('click', () => doRecover([b.dataset.pmid], b));
+      });
+      list.querySelectorAll('.pv-pinv-keep-one').forEach(b => {
+        b.addEventListener('click', () => doKeep([b.dataset.pmid], b));
+      });
+      list.querySelectorAll('.pv-pinv-unkeep-one').forEach(b => {
+        b.addEventListener('click', () => doUnkeep([b.dataset.pmid], b));
       });
       const master = document.getElementById('pv-pinv-master');
       if (master) {
@@ -9429,6 +9443,16 @@
       if (!confirm(`Devolver a pendientes ${selected.size} PMIDs?`)) return;
       doRecover(Array.from(selected), bulkRec);
     });
+    bulkKeep.addEventListener('click', () => {
+      if (!selected.size) return;
+      doKeep(Array.from(selected), bulkKeep);
+    });
+    bulkUnkp.addEventListener('click', () => {
+      if (!selected.size) return;
+      if (!confirm(`Quitar la marca "Esta sí" de ${selected.size} PMIDs?\n\n` +
+                   'Volverán a aparecer como pendientes sin marca.')) return;
+      doUnkeep(Array.from(selected), bulkUnkp);
+    });
     bulkClr.addEventListener('click', () => {
       selected.clear();
       list.querySelectorAll('.pv-pinv-pick').forEach(cb => { cb.checked = false; });
@@ -9436,25 +9460,36 @@
       refreshBulkBar();
     });
 
-    // Tabs: switch the listing between pending and dismissed. The
-    // bulk-bar's Descartar / Recuperar button is swapped accordingly.
+    // Tabs: switch the listing between pending, kept ("Esta sí") and
+    // dismissed ("Esta no"). The bulk-bar's per-state buttons are
+    // swapped so the user only ever sees the actions that make sense
+    // for the current tab.
     function setTab(s) {
       if (s === _pinvStatus) return;
       _pinvStatus = s;
       const on  = { background: '#0F3460', color: 'white', borderColor: '#0F3460' };
       const off = { background: 'white', color: '#374151', borderColor: '#d1d5db' };
       Object.assign(tabPend.style, s === 'pending'   ? on : off);
+      Object.assign(tabKept.style, s === 'kept'      ? on : off);
       Object.assign(tabDism.style, s === 'dismissed' ? on : off);
-      bulkDis.style.display = s === 'pending'   ? '' : 'none';
-      bulkRec.style.display = s === 'dismissed' ? '' : 'none';
-      // Selection doesn't translate cleanly between tabs (descartar
-      // un descartado no tiene sentido), so we clear it on switch.
+      // Bulk button visibility per tab:
+      // - pending:   Importar + Marcar (Esta sí) + Descartar (Esta no)
+      // - kept:      Importar + Quitar marca + Descartar
+      // - dismissed: Recuperar (+ keep makes sense too, since "Esta sí"
+      //                          un-dismisses the row by design)
+      bulkDis.style.display  = s === 'dismissed' ? 'none' : '';
+      bulkRec.style.display  = s === 'dismissed' ? ''     : 'none';
+      bulkKeep.style.display = s === 'kept'      ? 'none' : '';
+      bulkUnkp.style.display = s === 'kept'      ? ''     : 'none';
+      // Selection doesn't translate cleanly between tabs, so we clear
+      // it on switch to avoid surprises.
       selected.clear();
       page = 1;
       refreshBulkBar();
       reloadList();
     }
     tabPend.addEventListener('click', () => setTab('pending'));
+    tabKept.addEventListener('click', () => setTab('kept'));
     tabDism.addEventListener('click', () => setTab('dismissed'));
 
     async function doImport(pmids, btn) {
@@ -9522,6 +9557,51 @@
       }
     }
 
+    // "Esta sí" — persistent mark that survives forever until the row
+    // is imported or explicitly unkept. The backend also auto-undismisses
+    // any selection that was previously dismissed (a yes overrides a no).
+    async function doKeep(pmids, btn) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳…';
+      try {
+        await api('/admin/pubmed-inventory/keep', {
+          method: 'POST',
+          body: JSON.stringify({ pmids }),
+        });
+        pmids.forEach(p => selected.delete(p));
+        await reloadStats();
+        await reloadList();
+      } catch (e) {
+        alert('Error marcando: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    // Reverse of doKeep. Doesn't dismiss — the row just goes back to
+    // plain pending.
+    async function doUnkeep(pmids, btn) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳…';
+      try {
+        await api('/admin/pubmed-inventory/unkeep', {
+          method: 'POST',
+          body: JSON.stringify({ pmids }),
+        });
+        pmids.forEach(p => selected.delete(p));
+        await reloadStats();
+        await reloadList();
+      } catch (e) {
+        alert('Error quitando marca: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
     refrBtn.addEventListener('click', async () => {
       refrBtn.disabled = true;
       const orig = refrBtn.textContent;
@@ -9574,9 +9654,43 @@
                 style="font-size:10.5px;padding:2px 7px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:600;">
            Sin OA
          </span>`;
+    // "Esta sí" / "Esta no" toggle buttons.
+    // The keep button always appears (idempotent on the backend, so
+    // pressing it on a row that's already kept is harmless and the
+    // UI will redraw as "Quitar marca" on the next refresh).
+    const keepBtn = it.kept
+      ? `<button type="button" class="pv-pinv-unkeep-one" data-pmid="${escAttr(it.pmid)}"
+                  title="Quitar la marca 'Esta sí'."
+                  style="padding:4px 12px;border-radius:5px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;font-size:11.5px;font-weight:600;cursor:pointer;">
+           ⭐ Quitar marca
+         </button>`
+      : `<button type="button" class="pv-pinv-keep-one" data-pmid="${escAttr(it.pmid)}"
+                  title="Esta sí — la marco para importar más tarde. Persiste hasta que la meta en PrionVault."
+                  style="padding:4px 12px;border-radius:5px;border:1px solid #fde68a;background:white;color:#b45309;font-size:11.5px;font-weight:600;cursor:pointer;">
+           ⭐ Esta sí
+         </button>`;
+    const noBtn = status === 'dismissed'
+      ? `<button type="button" class="pv-pinv-recover-one" data-pmid="${escAttr(it.pmid)}"
+                  title="Devolver a pendientes."
+                  style="padding:4px 12px;border-radius:5px;border:1px solid #a7f3d0;background:white;color:#047857;font-size:11.5px;font-weight:600;cursor:pointer;">
+           ↻ Recuperar
+         </button>`
+      : `<button type="button" class="pv-pinv-dismiss-one" data-pmid="${escAttr(it.pmid)}"
+                  title="Esta no — descarta el PMID. Se queda en la tabla pero deja de salir en búsquedas."
+                  style="padding:4px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
+           ✗ Esta no
+         </button>`;
+    const keptBadge = it.kept
+      ? `<span title="Marcado con 'Esta sí'"
+              style="font-size:10.5px;padding:2px 7px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:700;">
+           ⭐ Marcado
+         </span>`
+      : '';
+    const rowBg = it.kept ? '#fffbeb' : 'white';
+    const leftBorder = it.kept ? 'border-left:3px solid #f59e0b;' : '';
     return `
       <div data-pinv-pmid="${escAttr(it.pmid)}"
-           style="border-bottom:1px solid #e5e7eb;padding:8px 10px;background:white;">
+           style="border-bottom:1px solid #e5e7eb;${leftBorder}padding:8px 10px;background:${rowBg};">
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <input type="checkbox" class="pv-pinv-pick" data-pmid="${escAttr(it.pmid)}"
                  style="margin-top:4px;flex-shrink:0;cursor:pointer;width:14px;height:14px;">
@@ -9595,6 +9709,7 @@
               </a>
               ${doiLink ? `<span>${doiLink}</span>` : ''}
               ${oaBadge}
+              ${keptBadge}
             </div>
           </div>
           <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
@@ -9603,17 +9718,8 @@
                     style="padding:4px 12px;border-radius:5px;border:none;background:#15803d;color:white;font-size:11.5px;font-weight:600;cursor:pointer;">
               ➕ Importar
             </button>
-            ${status === 'dismissed'
-              ? `<button type="button" class="pv-pinv-recover-one" data-pmid="${escAttr(it.pmid)}"
-                          title="Devolver a pendientes."
-                          style="padding:4px 12px;border-radius:5px;border:1px solid #a7f3d0;background:white;color:#047857;font-size:11.5px;font-weight:600;cursor:pointer;">
-                   ↻ Recuperar
-                 </button>`
-              : `<button type="button" class="pv-pinv-dismiss-one" data-pmid="${escAttr(it.pmid)}"
-                          title="No me interesa — se queda en la tabla pero deja de salir."
-                          style="padding:4px 12px;border-radius:5px;border:1px solid #fecaca;background:white;color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
-                   ✗ Descartar
-                 </button>`}
+            ${keepBtn}
+            ${noBtn}
           </div>
         </div>
       </div>

@@ -446,7 +446,15 @@ def get_stats() -> dict:
                     COUNT(*) FILTER (WHERE dismissed = TRUE) AS dismissed,
                     COUNT(*) FILTER (
                       WHERE imported_at IS NULL AND dismissed = FALSE AND pmcid IS NOT NULL
-                    ) AS pending_with_oa
+                    ) AS pending_with_oa,
+                    -- "kept" = the operator clicked "Esta sí" and the
+                    -- article has neither been imported nor dismissed
+                    -- yet. Drives the new "⭐ Marcados" tab counter.
+                    COUNT(*) FILTER (
+                      WHERE kept_at IS NOT NULL
+                        AND imported_at IS NULL
+                        AND dismissed = FALSE
+                    ) AS kept
                 FROM prionvault_pubmed_inventory
             """)).first()
             # Imported-but-PDF-pending: the OA fetcher hasn't grabbed
@@ -480,6 +488,7 @@ def get_stats() -> dict:
             "pending":         int(row[2] or 0),
             "dismissed":       int(row[3] or 0),
             "pending_with_oa": int(row[4] or 0),
+            "kept":            int(row[5] or 0),
             "inv_no_pdf":      int(oa_row[0] or 0),
             "inv_with_pdf":    int(oa_row[1] or 0),
             "inv_no_oa":       int(oa_row[2] or 0),
@@ -528,10 +537,24 @@ def list_pending(*, q: Optional[str] = None,
     elif status == "imported":
         conditions = ["imported_at IS NOT NULL"]
         order_by   = "imported_at DESC NULLS LAST"
+    elif status == "kept":
+        # "Esta sí" — the operator marked the row as wanted but hasn't
+        # imported it yet. Sort by most-recently-kept on top so the
+        # latest decisions are easy to find.
+        conditions = ["kept_at IS NOT NULL",
+                      "imported_at IS NULL",
+                      "dismissed = FALSE"]
+        order_by   = "kept_at DESC NULLS LAST"
     else:
         status = "pending"
+        # Pending = neither imported nor dismissed. Note that kept rows
+        # ALSO match "pending" — the operator wants them to keep showing
+        # up in normal searches; the "kept" tab is just an extra lens.
         conditions = ["imported_at IS NULL", "dismissed = FALSE"]
-        order_by   = "year DESC NULLS LAST, last_seen_at DESC"
+        # Within pending, kept rows surface first so the operator
+        # never loses sight of an explicit "Esta sí" decision.
+        order_by   = ("(kept_at IS NOT NULL) DESC, "
+                      "year DESC NULLS LAST, last_seen_at DESC")
 
     params: dict = {}
     if q:
@@ -558,7 +581,8 @@ def list_pending(*, q: Optional[str] = None,
         params["off"] = (page - 1) * size
         rows = conn.execute(sql_text(f"""
             SELECT pmid, title, authors, year, journal, doi, pmcid,
-                   discovered_at, last_seen_at, dismissed_at, imported_at
+                   discovered_at, last_seen_at, dismissed_at, imported_at,
+                   kept_at
               FROM prionvault_pubmed_inventory
              WHERE {where}
              ORDER BY {order_by}
@@ -568,10 +592,14 @@ def list_pending(*, q: Optional[str] = None,
     for it in items:
         # ISO strings for JSON. Postgres returns datetime, which Flask
         # will refuse to encode by default.
-        for k in ("discovered_at", "last_seen_at", "dismissed_at", "imported_at"):
+        for k in ("discovered_at", "last_seen_at", "dismissed_at",
+                  "imported_at", "kept_at"):
             v = it.get(k)
             it[k] = v.isoformat() if hasattr(v, "isoformat") else v
         it["has_oa"] = bool(it.get("pmcid"))
+        # Frontend convenience: a boolean is easier to switch button
+        # state on than a nullable timestamp.
+        it["kept"] = it.get("kept_at") is not None
     return {
         "total":  int(total),
         "page":   page,
@@ -611,6 +639,55 @@ def undismiss(pmids: Iterable[str]) -> int:
                    dismissed_by = NULL
              WHERE pmid = ANY(:p)
                AND dismissed = TRUE
+        """), {"p": ids})
+    return r.rowcount or 0
+
+
+def keep(pmids: Iterable[str], *, by_user: Optional[str] = None) -> int:
+    """Mark rows as "Esta sí" — the operator explicitly wants them.
+
+    Idempotent: rows that are already kept stay kept (no-op). Rows
+    that are already imported get the kept_at stamp anyway so the
+    decision is recorded, but the "kept" tab filter still hides them
+    via the imported_at != NULL check.
+
+    Side effect: a kept row that was previously dismissed is
+    un-dismissed in the same transaction. A "yes" decision overrides
+    an earlier "no" — that's the intent the user usually has when
+    re-evaluating a row.
+    """
+    ids = [str(p).strip() for p in pmids if str(p).strip()]
+    if not ids:
+        return 0
+    eng = _get_engine()
+    with eng.begin() as conn:
+        r = conn.execute(sql_text("""
+            UPDATE prionvault_pubmed_inventory
+               SET kept_at      = COALESCE(kept_at, NOW()),
+                   kept_by      = COALESCE(kept_by, :u),
+                   dismissed    = FALSE,
+                   dismissed_at = NULL,
+                   dismissed_by = NULL
+             WHERE pmid = ANY(:p)
+        """), {"p": ids, "u": by_user})
+    return r.rowcount or 0
+
+
+def unkeep(pmids: Iterable[str]) -> int:
+    """Reverse a previous "Esta sí" decision so the row goes back to
+    being a plain pending entry. Does NOT mark it dismissed — the
+    operator has to explicitly click "Esta no" for that."""
+    ids = [str(p).strip() for p in pmids if str(p).strip()]
+    if not ids:
+        return 0
+    eng = _get_engine()
+    with eng.begin() as conn:
+        r = conn.execute(sql_text("""
+            UPDATE prionvault_pubmed_inventory
+               SET kept_at = NULL,
+                   kept_by = NULL
+             WHERE pmid = ANY(:p)
+               AND kept_at IS NOT NULL
         """), {"p": ids})
     return r.rowcount or 0
 
