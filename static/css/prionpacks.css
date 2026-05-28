@@ -2411,6 +2411,12 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   background: rgba(0,0,0,0.45);
   z-index: 199;
   opacity: 0;
+  /* Critical: without this, the mobile media query below forces
+     display:block on this overlay at all times so the opacity
+     transition can animate. With display:block + opacity:0 but no
+     pointer-events override, the overlay was invisibly capturing
+     every tap on the dashboard — the package cards looked dead. */
+  pointer-events: none;
   transition: opacity 0.25s ease;
 }
 .pp-mobile-overlay.active { opacity: 1; pointer-events: auto; }
@@ -2993,6 +2999,28 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 
   /* ── Mobile polish (added later — strictly inside this @media so
         nothing leaks to desktop) ─────────────────────────────────── */
+
+  /* The global .site-header (defined in main.css + enhanced_navbar.css)
+     adds 0.875rem of vertical padding around its 60 px tall .nb-container,
+     so its real rendered height in the browser is ~88 px. But the
+     .pp-mobile-topbar below is fixed at top: 60 px and the .pp-main
+     uses padding-top: 48 px assuming a 60 px header. The two
+     mismatches together produce a visual overlap in the 60–88 px band
+     and a blank gap between 108–136 px, exactly the "el menú me tapa
+     cosas arriba" the user reported.
+     prionpacks.css only loads on the PrionPacks page, so this
+     override is page-scoped — the site-header keeps its original
+     padding everywhere else. */
+  .site-header { padding: 0; }
+
+  /* Hide actions that don't belong on a phone-sized screen.
+     - Backup / restore are recovery flows the user only triggers on
+       desktop with a stable connection.
+     - The global help launcher (.hs-toggle, bottom-left) overlapped
+       the PrionPacks FAB area. Hidden only on this page. */
+  #btn-backup-dropbox,
+  #btn-open-restore,
+  .hs-toggle { display: none !important; }
 
   /* iOS Safari auto-zooms when you focus an input whose computed
      font-size is < 16 px. The user's view jumps and feels broken.
