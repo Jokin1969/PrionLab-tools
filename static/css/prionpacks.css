@@ -2978,14 +2978,58 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 
   /* Section header: stack on narrow screens */
   .pp-section-header { flex-wrap: wrap; gap: 6px; }
-  .pp-select-responsible { max-width: 130px !important; width: 130px !important; }
+  /* The responsible-picker used to be capped at 130 px which truncated
+     names longer than ~10 chars. Let it grow up to 60 % of the viewport
+     while still keeping it from eating the full row. */
+  .pp-select-responsible { max-width: 60vw !important; width: auto !important; }
 
   /* Score card: readable in single column */
   .pp-score-circle-wrap { margin: 0 auto; }
 
   /* Prevent horizontal scroll on cards with long content */
   .pp-card-section { overflow-x: hidden; }
-  .pp-doi-chips { overflow-x: auto; }
+  /* Native momentum scrolling for horizontal chip rows on iOS. */
+  .pp-doi-chips { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ── Mobile polish (added later — strictly inside this @media so
+        nothing leaks to desktop) ─────────────────────────────────── */
+
+  /* iOS Safari auto-zooms when you focus an input whose computed
+     font-size is < 16 px. The user's view jumps and feels broken.
+     Forcing 16 px on form controls inside PrionPacks's mobile pane
+     prevents the jump without changing the desktop layout (this rule
+     only lives inside the ≤ 680 px media query). */
+  #prionpacks-app input,
+  #prionpacks-app textarea,
+  #prionpacks-app select {
+    font-size: 16px;
+  }
+
+  /* Suppress the grey tap flash iOS draws on every tappable element.
+     We already have :active styles where it matters, so this just
+     removes the visual noise without affecting accessibility. */
+  #prionpacks-app * { -webkit-tap-highlight-color: rgba(0,0,0,0); }
+
+  /* Safe-area-inset awareness for iPhones with a home indicator.
+     env(safe-area-inset-*) evaluates to 0 on devices without one, so
+     the calc() falls back to the original value cleanly. */
+  .pp-fab {
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    right:  calc(20px + env(safe-area-inset-right));
+  }
+  .pp-cards-grid    { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  .pp-editor-layout { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+
+  /* Dynamic viewport height for bottom-sheet modals: the URL bar in
+     mobile Safari grows and shrinks, and `vh` is locked to the larger
+     value, so a 85vh sheet ends up scrolled under the URL bar.
+     `dvh` tracks the visible viewport. Falls back to `vh` on engines
+     that don't yet support it (Chrome < 108, Safari < 15.4) via the
+     earlier rule still being present. */
+  @supports (max-height: 100dvh) {
+    .pp-note-detail-modal { max-height: 85dvh; }
+    .pp-notes-panel       { max-height: 85dvh; }
+  }
 }
 
 /* ── Standalone toggle row (extracted from Basic Info) ───────────────────── */

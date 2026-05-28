@@ -323,7 +323,14 @@ const PrionPacks = (() => {
       </div>`;
     }).join('');
     list.querySelectorAll('.pp-package-item').forEach(item => {
-      item.addEventListener('click', () => showEditor(item.dataset.id));
+      item.addEventListener('click', () => {
+        // The sidebar list lives inside the mobile drawer; opening
+        // the editor without closing the drawer leaves the editor
+        // hidden behind the overlay. On desktop the drawer state is
+        // never active, so _closeMobileSidebar is a clean no-op.
+        _closeMobileSidebar();
+        showEditor(item.dataset.id);
+      });
     });
   }
 
@@ -4235,6 +4242,16 @@ ${refsText}`;
     // Close sidebar when navigating to docs/members
     document.getElementById('btn-show-docs')?.addEventListener('click', _closeMobileSidebar, true);
     document.getElementById('btn-show-members')?.addEventListener('click', _closeMobileSidebar, true);
+
+    // Clean drawer state when the viewport crosses the mobile
+    // breakpoint into desktop (rotation, devtools resize, browser
+    // window resize). Without this the body keeps overflow:hidden
+    // and the sidebar keeps .pp-sidebar-open, making the desktop
+    // view non-scrollable until a hard reload.
+    const mql = window.matchMedia('(min-width: 681px)');
+    const onDesktop = (e) => { if (e.matches) _closeMobileSidebar(); };
+    if (mql.addEventListener) mql.addEventListener('change', onDesktop);
+    else if (mql.addListener) mql.addListener(onDesktop);  // Safari < 14
   }
 
   /* ── Notes helpers ──────────────────────────────────────────────────────── */
