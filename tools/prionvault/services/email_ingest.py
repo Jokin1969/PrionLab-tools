@@ -74,6 +74,16 @@ _stop = threading.Event()
 _force = threading.Event()
 _thread: Optional[threading.Thread] = None
 
+# Cluster-wide singleton: gunicorn runs the app with --workers 2, so
+# without coordination both worker processes would poll IMAP at the
+# same interval and each see the same UNSEEN message before either
+# marked it SEEN, ending up with two ingest jobs (and two reply
+# emails) per incoming PDF. We use a Postgres advisory lock as the
+# leader-election primitive — only one worker holds it at a time,
+# the other stays idle and takes over if the leader dies.
+_LEADER_LOCK_KEY = 0x7072765F656D6C  # ASCII "prv_eml" packed as a bigint
+_leader_conn = None                  # SQLAlchemy Connection holding the lock
+
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +139,7 @@ def get_status() -> dict:
     snap["target"] = cfg["target"]
     snap["allow"]  = cfg["allow"]
     snap["poll_seconds"] = cfg["poll"]
+    snap["is_leader"] = _leader_conn is not None
     return snap
 
 
@@ -393,6 +404,54 @@ def _process_one(conn: imaplib.IMAP4_SSL, msg_id: bytes, cfg: dict,
     _mark_handled(conn, msg_id, proc_folder)
 
 
+# ── Leader election ──────────────────────────────────────────────────────────
+
+def _try_become_leader() -> bool:
+    """Acquire the cluster-wide advisory lock. Returns True if we are
+    (or have just become) the leader. False means another gunicorn
+    worker holds it; back off and try again on the next tick.
+
+    The lock is held for the lifetime of the SQLAlchemy connection in
+    `_leader_conn`. Calling `_leader_conn.close()` (or losing the
+    connection) frees the lock automatically — that's how a dead
+    leader's slot opens up for a follower to take.
+    """
+    global _leader_conn
+    if _leader_conn is not None:
+        # Verify the connection is still alive. If the DB went away
+        # while we held the lock, drop the handle so the next call
+        # re-acquires.
+        try:
+            from sqlalchemy import text
+            _leader_conn.execute(text("SELECT 1"))
+            return True
+        except Exception as exc:
+            logger.warning("email_ingest: leader DB conn died (%s); will reacquire",
+                           exc)
+            try: _leader_conn.close()
+            except Exception: pass
+            _leader_conn = None
+
+    try:
+        from sqlalchemy import text
+        from ..ingestion.queue import _get_engine
+        eng = _get_engine()
+        conn = eng.connect()
+        row = conn.execute(
+            text("SELECT pg_try_advisory_lock(:k)"),
+            {"k": _LEADER_LOCK_KEY},
+        ).first()
+        if row and row[0]:
+            _leader_conn = conn
+            logger.info("email_ingest: acquired singleton leader lock")
+            return True
+        conn.close()
+        return False
+    except Exception as exc:
+        logger.warning("email_ingest: leader-lock attempt failed (%s)", exc)
+        return False
+
+
 def _mark_handled(conn: imaplib.IMAP4_SSL, msg_id: bytes,
                   proc_folder: Optional[str]) -> None:
     """Move to Processed folder when available, else just mark SEEN."""
@@ -452,6 +511,15 @@ def _run_loop() -> None:
             _force.wait(timeout=cfg["poll"])
             _force.clear()
             continue
+
+        # Only the leader gunicorn worker actually polls IMAP. The
+        # other one sits in this branch retrying until it's needed.
+        if not _try_become_leader():
+            _set_state(running=False, last_poll_status="follower")
+            _force.wait(timeout=cfg["poll"])
+            _force.clear()
+            continue
+
         from datetime import datetime, timezone
         _set_state(running=True,
                    last_poll_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))

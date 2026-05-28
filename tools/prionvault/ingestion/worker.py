@@ -631,7 +631,9 @@ def _fmt_authors(authors) -> str:
 def _article_link(article_id) -> str:
     if not article_id:
         return _PUBLIC_BASE_URL + "/prionvault/"
-    return f"{_PUBLIC_BASE_URL}/prionvault/article/{article_id}"
+    # The SPA reads ?open=<id> on load and opens the article detail
+    # modal automatically. There is no /article/<id> Flask route.
+    return f"{_PUBLIC_BASE_URL}/prionvault/?open={article_id}"
 
 
 def _compose_done_body(meta: dict, article_id, orig_subject: str) -> str:
