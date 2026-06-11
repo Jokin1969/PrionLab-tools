@@ -262,6 +262,66 @@ def aggregate_article_ids(collection_ids: List[str]) -> List[str]:
     return list(out)
 
 
+def rollup_unique_counts() -> dict:
+    """Per-group / per-subgroup deduplicated article counts.
+
+    The sidebar used to roll up by adding article_count across child
+    collections, which double-counts every paper present in more than
+    one collection under the same parent. This function deduplicates
+    via aggregate_article_ids(), so:
+
+      * group_count       = number of distinct groups
+      * groups[g].subgroup_count
+                          = number of distinct subgroups under group g
+      * groups[g].subgroups[sg].unique_articles
+                          = distinct articles across every collection
+                            that lives in (g, sg)
+      * groups[g].unique_articles
+                          = distinct articles across every collection
+                            anywhere under group g
+
+    Collections without a group_name are skipped — the sidebar
+    renders them as "Sin grupo" and the user didn't ask for that
+    bucket to be rolled up.
+    """
+    all_colls = list_all()
+
+    # Collect collection ids by their (group, subgroup) keys.
+    by_subgroup: dict[tuple[str, str], List[str]] = {}
+    by_group:    dict[str, List[str]]              = {}
+    distinct_subs_per_group: dict[str, set[str]]    = {}
+
+    for c in all_colls:
+        g  = (c.get("group_name")    or "").strip()
+        sg = (c.get("subgroup_name") or "").strip()
+        if not g:
+            continue
+        cid = c["id"]
+        by_subgroup.setdefault((g, sg), []).append(cid)
+        by_group.setdefault(g, []).append(cid)
+        if sg:
+            distinct_subs_per_group.setdefault(g, set()).add(sg)
+
+    out: dict = {"group_count": len(by_group), "groups": {}}
+    for g, cids in by_group.items():
+        # Subgroups under this group: walk the keys with matching g.
+        subs_out: dict = {}
+        for (gg, sg), sub_cids in by_subgroup.items():
+            if gg != g or not sg:
+                continue
+            subs_out[sg] = {
+                "unique_articles": len(aggregate_article_ids(sub_cids)),
+                "collections":     len(sub_cids),
+            }
+        out["groups"][g] = {
+            "subgroup_count":  len(distinct_subs_per_group.get(g, set())),
+            "collection_count": len(cids),
+            "unique_articles": len(aggregate_article_ids(cids)),
+            "subgroups":       subs_out,
+        }
+    return out
+
+
 def article_ids_in(cid) -> List[str]:
     """Return every article_id in a MANUAL collection."""
     eng = _get_engine()

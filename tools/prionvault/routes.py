@@ -2501,6 +2501,27 @@ def api_collections_list():
                         "detail": str(exc)[:300]}), 500
 
 
+@prionvault_bp.route("/api/collections/rollup", methods=["GET"])
+@login_required
+def api_collections_rollup():
+    """Per-group / per-subgroup deduplicated counts for the sidebar.
+
+    Distinct from /api/collections because that endpoint returns one
+    row per collection (with its raw article_count). The sidebar
+    rollups need DEDUPLICATED counts — an article in two collections
+    under the same parent should be counted once, not twice — and
+    those are expensive enough that we don't want every visitor to
+    pay for them when they just want the flat list.
+    """
+    from .services import collections as _coll
+    try:
+        return jsonify(_coll.rollup_unique_counts())
+    except Exception as exc:
+        logger.exception("collections rollup failed")
+        return jsonify({"error": "internal_error",
+                        "detail": str(exc)[:300]}), 500
+
+
 @prionvault_bp.route("/api/collections", methods=["POST"])
 @admin_required
 def api_collections_create():

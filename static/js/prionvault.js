@@ -246,13 +246,31 @@
     _saveCollapsedSet(key, set);
   }
 
+  // Cache of the most recent rollup so synchronous render helpers
+  // (buildGroupHeader / buildSubgroupHeader) can read the deduplicated
+  // counts without a separate fetch per row. Refreshed alongside the
+  // collection list itself in refreshCollections().
+  let _collRollup = { group_count: 0, groups: {} };
+
   async function refreshCollections() {
     const container = document.getElementById('collection-list');
     if (!container) return;
     let items = [];
     try {
-      const r = await api('/collections');
-      items = r.items || [];
+      // Fan-out: the rollup is a separate query because /collections
+      // (lightweight, per-collection) is hit by other components too,
+      // while /collections/rollup does the deduplicating aggregation.
+      // Running them in parallel keeps the sidebar load time bounded
+      // by the slower of the two, not the sum.
+      const [list, rollup] = await Promise.all([
+        api('/collections'),
+        api('/collections/rollup').catch(e => {
+          console.warn('collections rollup failed (using raw counts):', e);
+          return { group_count: 0, groups: {} };
+        }),
+      ]);
+      items = list.items || [];
+      _collRollup = rollup || { group_count: 0, groups: {} };
     } catch (e) {
       container.innerHTML = `<div style="padding:6px 10px;font-size:11px;color:#fca5a5;">
         Error: ${esc(e.message)}</div>`;
@@ -315,25 +333,35 @@
   function refreshCollectionsCount() {
     const span = document.getElementById('collection-count');
     if (!span) return;
-    span.textContent = _allCollections.length > 0
-      ? `(${_allCollections.length})` : '';
+    // The chip used to show _allCollections.length — the number of
+    // leaf collections — which felt off because the user thinks of
+    // "Colecciones" as the count of top-level groups, not folders.
+    // Now mirrors rollup.group_count (distinct groups). Ungrouped
+    // collections still appear in the list under "Sin grupo" but
+    // don't contribute to the headline number.
+    const n = _collRollup.group_count || 0;
+    span.textContent = n > 0 ? `(${n})` : '';
   }
 
   function buildGroupHeader(group, subBranch, collapsed) {
-    // Sum the article_count across every collection under this group
-    // (article positions, so the same paper present in two child
-    // collections counts twice — the tooltip says so). Replaces the
-    // earlier "number of child collections" rollup that read as the
-    // count of folders rather than the body of work behind them.
+    // Chip shows the count of DISTINCT SUBGROUPS under this group
+    // (so "PrionPacks" reports "3" — PRP-001, PRP-002, PRP-003 —
+    // not the sum of articles across them, not the number of leaf
+    // collections). The tooltip retains the deeper breakdown so the
+    // numerical context is still one hover away.
     const colls = Object.values(subBranch).flat();
-    const collCount     = colls.length;
-    const articlesTotal = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
+    const collCount = colls.length;
+    const r = (_collRollup.groups || {})[group] || {};
+    const subgroupCount  = r.subgroup_count  ?? Object.keys(subBranch).filter(k => k).length;
+    const uniqueArticles = r.unique_articles ?? 0;
+    const chipNumber = subgroupCount;   // headline number
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup = group;
-    btn.title = `Filtrar por grupo "${group}" — ${articlesTotal} artículo${articlesTotal === 1 ? '' : 's'}` +
-                ` en ${collCount} colección${collCount === 1 ? '' : 'es'}` +
-                ` (un artículo presente en N colecciones cuenta N veces).\n` +
+    btn.title = `Filtrar por grupo "${group}" — ` +
+                `${subgroupCount} subgrupo${subgroupCount === 1 ? '' : 's'}, ` +
+                `${collCount} colección${collCount === 1 ? '' : 'es'} en total, ` +
+                `${uniqueArticles} artículo${uniqueArticles === 1 ? '' : 's'} únicos.\n` +
                 `Pulsa la flecha de la izquierda para plegar / desplegar.`;
     btn.style.padding = '5px 10px';
     const chev = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
@@ -351,7 +379,7 @@
         <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:11px;
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
-      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${articlesTotal}</span>
+      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-del"
             data-group="${esc(group)}"
             title="Borrar este grupo y todas sus colecciones (${collCount})"
@@ -438,16 +466,27 @@
   }
 
   function buildSubgroupHeader(group, subgroup, colls, collapsed) {
-    // Same swap as buildGroupHeader: chip now shows the article-count
-    // rollup, not the number of child collection folders.
+    // Chip shows the count of DISTINCT ARTICLES across every leaf
+    // collection under (group, subgroup) — deduplicating the case
+    // where the same paper sits in two child folders. So a subgroup
+    // with one folder of 15 papers and another of 11 (4 shared)
+    // chips "17", not "26".
     const collCount     = colls.length;
-    const articlesTotal = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
+    const rg = (_collRollup.groups || {})[group] || {};
+    const rs = (rg.subgroups || {})[subgroup] || {};
+    // Fallback: if the rollup wasn't loaded yet (first paint), use
+    // the raw sum so the user sees *something* rather than 0.
+    const uniqueArticles = (rs.unique_articles ?? null);
+    const rawTotal       = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
+    const chipNumber     = uniqueArticles ?? rawTotal;
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup    = group;
     btn.dataset.collectionSubgroup = subgroup;
-    btn.title = `Filtrar por "${group} · ${subgroup}" — ${articlesTotal} artículo${articlesTotal === 1 ? '' : 's'}` +
-                ` en ${collCount} colección${collCount === 1 ? '' : 'es'}.\n` +
+    btn.title = `Filtrar por "${group} · ${subgroup}" — ` +
+                `${chipNumber} artículo${chipNumber === 1 ? '' : 's'} únicos ` +
+                `en ${collCount} colección${collCount === 1 ? '' : 'es'} ` +
+                `(suma bruta: ${rawTotal}).\n` +
                 `Pulsa la flecha de la izquierda para plegar / desplegar.`;
     btn.style.padding = '4px 10px 4px 22px';
     const chev = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
@@ -464,7 +503,7 @@
         <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
         <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
-      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${articlesTotal}</span>
+      <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-del"
             data-group="${esc(group)}" data-subgroup="${esc(subgroup)}"
             title="Borrar este subgrupo y sus ${collCount} colección(es)"

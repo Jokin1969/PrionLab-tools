@@ -359,3 +359,36 @@ body.pv-role-admin button.pv-admin-only { display: flex !important; }
   cursor: pointer;
 }
 .pv-queue-table .pv-btn-retry:hover { background: var(--pv-accent-strong); }
+
+/* ── Touch-device polish for the collection / group chevrons ──────────
+   On a desktop the small 16-18px arrow is fine because the mouse can
+   land on it precisely. On iPad / iPhone every tap fights for ~44px
+   of target area, and missing the chevron triggers the filter switch
+   instead of toggling the fold — which feels broken.
+
+   pointer:coarse fires on every touch-primary device (iPad, iPhone,
+   most Android tablets) and stays off on desktops with a mouse, so
+   nothing about the existing desktop layout changes. We grow the
+   chevron's hit area without moving its visual size by adding
+   transparent padding and a min target size that matches Apple's
+   44px guideline. */
+@media (pointer: coarse) {
+  #collection-list .pv-coll-chevron {
+    width: 44px !important;
+    height: 44px !important;
+    /* Center the icon inside the larger box; the original styles
+       already use flex-centering so this just inherits it. */
+    margin: -8px 0 -8px -8px;   /* claw back the extra space so the
+                                   row height doesn't grow */
+  }
+  /* Make sure the icon itself stays at its original size — the
+     bigger box is purely for tap targeting. */
+  #collection-list .pv-coll-chevron i { font-size: 13px !important; }
+
+  /* Active feedback so the user knows the tap registered, even
+     before the list re-renders. */
+  #collection-list .pv-coll-chevron:active {
+    background: rgba(255,255,255,0.20) !important;
+    color: white !important;
+  }
+}
