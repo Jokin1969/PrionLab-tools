@@ -6,6 +6,8 @@ Admin-only stubs for ingest, write operations and semantic search return
 the frontend can wire against it.
 """
 import logging
+import threading
+import time
 import os
 import re
 from datetime import datetime
@@ -233,28 +235,61 @@ def _extract_dois(ref: str) -> list[str]:
     return [m.group(0).rstrip(".,;").lower() for m in _DOI_RE.finditer(ref)]
 
 
+# DOI-index cache: rebuilding the {doi → pack_ids} map on every
+# /api/articles request was a measurable chunk of the listing time
+# (it scans every active pack and parses every reference). The map
+# only changes when a pack is created / edited / activated, none of
+# which happen often. A 60-second TTL keeps the listing latency
+# constant in the steady state without making edit→see-it-in-listing
+# feel sluggish.
+_DOI_INDEX_TTL_S = 60.0
+_doi_index_cache: tuple[float, dict, dict] | None = None
+_doi_index_lock = threading.Lock()
+
+
 def _prionpacks_doi_index() -> tuple[dict, dict]:
     """Returns ({pack_id: pack_title}, {doi_lower: [pack_id, ...]}).
-    Empty maps if the prionpacks module fails to load (best effort)."""
-    titles: dict[str, str] = {}
-    doi_to_packs: dict[str, list[str]] = {}
-    try:
-        from tools.prionpacks import models as pp_models
-        for pkg in pp_models.list_packages():
-            if not pkg.get("active", True):
-                continue
-            pid = pkg.get("id")
-            if not pid:
-                continue
-            titles[pid] = pkg.get("title") or pid
-            for ref in (pkg.get("references") or []) + (pkg.get("introReferences") or []):
-                for doi in _extract_dois(ref):
-                    bucket = doi_to_packs.setdefault(doi, [])
-                    if pid not in bucket:
-                        bucket.append(pid)
-    except Exception as exc:
-        logger.warning("prionpacks DOI index failed: %s", exc)
-    return titles, doi_to_packs
+    Empty maps if the prionpacks module fails to load (best effort).
+    Cached with a 60 s TTL — see _DOI_INDEX_TTL_S."""
+    global _doi_index_cache
+    now = time.monotonic()
+    cached = _doi_index_cache
+    if cached and (now - cached[0]) < _DOI_INDEX_TTL_S:
+        return cached[1], cached[2]
+    with _doi_index_lock:
+        # Re-check inside the lock so a thundering herd doesn't all
+        # rebuild on a cache miss.
+        cached = _doi_index_cache
+        if cached and (now - cached[0]) < _DOI_INDEX_TTL_S:
+            return cached[1], cached[2]
+        titles: dict[str, str] = {}
+        doi_to_packs: dict[str, list[str]] = {}
+        try:
+            from tools.prionpacks import models as pp_models
+            for pkg in pp_models.list_packages():
+                if not pkg.get("active", True):
+                    continue
+                pid = pkg.get("id")
+                if not pid:
+                    continue
+                titles[pid] = pkg.get("title") or pid
+                for ref in (pkg.get("references") or []) + (pkg.get("introReferences") or []):
+                    for doi in _extract_dois(ref):
+                        bucket = doi_to_packs.setdefault(doi, [])
+                        if pid not in bucket:
+                            bucket.append(pid)
+        except Exception as exc:
+            logger.warning("prionpacks DOI index failed: %s", exc)
+        _doi_index_cache = (now, titles, doi_to_packs)
+        return titles, doi_to_packs
+
+
+def _invalidate_doi_index_cache() -> None:
+    """Force the next /api/articles call to rebuild the DOI index.
+    Call this from any code path that mutates a pack so the listing
+    surfaces the new mapping immediately."""
+    global _doi_index_cache
+    _doi_index_cache = None
 
 
 @prionvault_bp.route("/api/prionpacks", methods=["GET"])
@@ -504,11 +539,14 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     order = sort_map.get(sort, "created_at DESC NULLS LAST")
 
     # Build SELECT list: always include base columns; add pv cols if present.
+    # NOTE: jc_count used to be a correlated subquery here. With 1 000+
+    # rows per page that subquery executed once per row, dominating the
+    # listing cost. We now fetch the counts in a single batched
+    # GROUP BY query below, keyed by the article ids the main SELECT
+    # actually returned — O(1) round-trip regardless of page size.
     base_cols = ("id, title, authors, year, journal, doi, pubmed_id, abstract, "
                  "tags, is_milestone, is_flagged, color_label, priority, "
-                 "dropbox_path, dropbox_link, created_at, updated_at, "
-                 "(SELECT COUNT(*) FROM prionvault_jc_presentation jp "
-                 " WHERE jp.article_id = articles.id) AS jc_count")
+                 "dropbox_path, dropbox_link, created_at, updated_at")
     pv_select = ", ".join(
         c for c in
         ["pdf_md5", "pdf_pages", "pdf_is_scan",
@@ -578,6 +616,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     rating_aggs = {}        # aid -> {"avg": float, "count": int}
     my_ratings  = {}        # aid -> int (viewer's rating, if any)
     user_states = {}        # aid -> {"is_favorite": bool, "is_read": bool, "read_at": iso}
+    # jc_count was previously a correlated subquery in the main SELECT.
+    # Now batched here as one GROUP BY scan over the JC table.
+    jc_counts: dict = {}    # aid -> int
     if rows:
         try:
             import uuid as _uuid
@@ -591,6 +632,18 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                     models.UserArticleLink.article_id.in_(item_ids)
                 ).group_by(models.UserArticleLink.article_id).all()
                 prionread_counts = {r[0]: r[1] for r in pr_rows}
+
+                # jc_count: batched GROUP BY against the JC table,
+                # indexed via 034_articles_perf_indexes.sql. Articles
+                # with no presentation simply don't appear in the
+                # result map — _row_to_dict defaults missing keys to 0.
+                jc_rows = _s2.execute(sql_text(
+                    "SELECT article_id, COUNT(*) "
+                    "  FROM prionvault_jc_presentation "
+                    " WHERE article_id = ANY(CAST(:ids AS uuid[])) "
+                    " GROUP BY article_id"
+                ), {"ids": [str(i) for i in item_ids]}).all()
+                jc_counts = {r[0]: int(r[1]) for r in jc_rows}
 
                 # Aggregate ratings: avg + count per article id
                 rating_rows = _s2.query(
@@ -660,8 +713,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "has_abstract":  bool((d.get("abstract") or "").strip()),
             "abstract_unavailable": bool(d.get("abstract_unavailable")),
             "has_pdf":       bool(d.get("dropbox_path")),
-            "jc_count":      int(d.get("jc_count") or 0),
-            "has_jc":        bool(d.get("jc_count") or 0),
+            "jc_count":      int(jc_counts.get(aid, 0)),
+            "has_jc":        bool(jc_counts.get(aid, 0)),
             "extraction_status": d.get("extraction_status") or "pending",
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,

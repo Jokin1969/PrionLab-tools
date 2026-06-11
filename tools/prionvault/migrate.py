@@ -294,6 +294,7 @@ _SELF_HEAL_MIGRATIONS = (
     "030_articles_pdf_metadata_verify.sql",
     "032_ingest_job_notify.sql",
     "033_pubmed_inventory_kept.sql",
+    "034_articles_perf_indexes.sql",
 )
 
 
