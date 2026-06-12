@@ -8028,6 +8028,74 @@
         c.year || '',
         c.journal ? esc(c.journal) : '',
       ].filter(Boolean).join(' · ');
+
+      // Direct external / internal links. The user asked for clickable
+      // PDF / DOI / PMID chips so they can jump to the source from the
+      // citation card without first opening the article modal.
+      //   • PDF  → in-app viewer (auth-aware, no Dropbox link leakage).
+      //   • DOI  → doi.org (resolves to publisher landing page).
+      //   • PMID → pubmed.ncbi.nlm.nih.gov.
+      const linkChips = [];
+      if (c.has_pdf) {
+        linkChips.push(
+          `<a href="/prionvault/api/articles/${escAttr(c.article_id)}/pdf-view"
+              target="_blank" rel="noopener"
+              title="Abrir el PDF en una pestaña nueva"
+              style="font-size:10.5px;background:#ecfdf5;color:#047857;
+                     border:1px solid #a7f3d0;padding:2px 8px;border-radius:5px;
+                     font-weight:600;text-decoration:none;">
+             📄 PDF ↗
+           </a>`
+        );
+      }
+      if (c.doi) {
+        linkChips.push(
+          `<a href="https://doi.org/${escAttr(c.doi)}"
+              target="_blank" rel="noopener"
+              title="Abrir el artículo en doi.org"
+              style="font-size:10.5px;background:#eef2ff;color:#3730a3;
+                     border:1px solid #c7d2fe;padding:2px 8px;border-radius:5px;
+                     font-weight:600;text-decoration:none;">
+             DOI ↗
+           </a>`
+        );
+      }
+      if (c.pubmed_id) {
+        linkChips.push(
+          `<a href="https://pubmed.ncbi.nlm.nih.gov/${escAttr(c.pubmed_id)}/"
+              target="_blank" rel="noopener"
+              title="Abrir en PubMed"
+              style="font-size:10.5px;background:#dbeafe;color:#1d4ed8;
+                     border:1px solid #93c5fd;padding:2px 8px;border-radius:5px;
+                     font-weight:600;text-decoration:none;">
+             PMID ${escAttr(c.pubmed_id)} ↗
+           </a>`
+        );
+      }
+      const linkRow = linkChips.length
+        ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${linkChips.join('')}</div>`
+        : '';
+
+      // Extract — the literal chunk text the model saw. Collapsed by
+      // default because the user found it indistinguishable from
+      // model reasoning and rarely needed to verify it inline. Still
+      // recoverable with one click for the cases where the operator
+      // wants to confirm where a claim came from.
+      const extractBlock = c.extract
+        ? `<details class="pv-rag-extract" style="margin-top:6px;">
+             <summary style="cursor:pointer;font-size:11px;color:#6b7280;
+                             padding:2px 0;list-style:none;display:inline-flex;
+                             align-items:center;gap:4px;user-select:none;">
+               <span class="pv-rag-extract-caret" style="display:inline-block;
+                       transition:transform 0.15s;font-size:9px;">▶</span>
+               Ver fragmento usado por la IA
+             </summary>
+             <div style="font-size:12px;color:#4b5563;background:#f9fafb;border-radius:6px;
+                         padding:6px 8px;margin-top:4px;line-height:1.55;
+                         max-height:200px;overflow-y:auto;">${esc(c.extract)}</div>
+           </details>`
+        : '';
+
       return `
         <div id="pv-rag-cite-${c.n}" data-rag-cite-card="${c.n}"
              style="display:flex;gap:10px;align-items:flex-start;
@@ -8049,12 +8117,21 @@
               ${rrChip}
             </div>
             ${headerBits ? `<div style="font-size:11.5px;color:#6b7280;margin-top:1px;">${headerBits}</div>` : ''}
-            <div style="font-size:12px;color:#4b5563;background:#f9fafb;border-radius:6px;
-                        padding:6px 8px;margin-top:5px;line-height:1.55;
-                        max-height:120px;overflow-y:auto;">${esc(c.extract)}</div>
+            ${linkRow}
+            ${extractBlock}
           </div>
         </div>`;
     }).join('');
+
+    // Rotate the caret when the user expands the fragment, so the
+    // affordance matches the open/close state. Native <details> open
+    // state changes are observable via the toggle event.
+    container.querySelectorAll('.pv-rag-extract').forEach(d => {
+      d.addEventListener('toggle', () => {
+        const caret = d.querySelector('.pv-rag-extract-caret');
+        if (caret) caret.style.transform = d.open ? 'rotate(90deg)' : '';
+      });
+    });
 
     container.querySelectorAll('.pv-rag-open').forEach(a => {
       a.addEventListener('click', e => {

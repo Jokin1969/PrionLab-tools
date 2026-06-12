@@ -69,6 +69,9 @@ class RagCitation:
     similarity:   float
     rerank_score: Optional[float]
     extract:      str        # the actual chunk text shown to the model
+    # True when the article has a Dropbox PDF the UI can link directly
+    # to via /prionvault/api/articles/<id>/pdf-view.
+    has_pdf:      bool = False
 
 
 @dataclass
@@ -121,6 +124,7 @@ def _build_context(chunks: List[RetrievedChunk],
             similarity=c.similarity,
             rerank_score=c.rerank_score,
             extract=c.chunk_text,
+            has_pdf=bool(getattr(meta, "has_pdf", False)),
         )
         citations.append(cite)
         header_bits = []

@@ -5526,6 +5526,7 @@ def api_semantic_search():
                 "rerank_score": (round(c.rerank_score, 4)
                                  if c.rerank_score is not None else None),
                 "extract":      c.extract,
+                "has_pdf":      bool(c.has_pdf),
             }
             for c in result.citations
         ],

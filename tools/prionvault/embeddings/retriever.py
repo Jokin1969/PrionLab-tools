@@ -42,6 +42,11 @@ class RetrievedArticle:
     pubmed_id: Optional[str]
     best_distance:   float
     best_similarity: float
+    # True when the article has a Dropbox-hosted PDF (dropbox_path
+    # IS NOT NULL). Surfaced to the UI so it can render a direct
+    # "Abrir PDF" link in each citation card. Defaults to False so
+    # legacy callers that don't populate it stay correct.
+    has_pdf:   bool = False
     chunks:    List[RetrievedChunk] = field(default_factory=list)
 
 
@@ -187,7 +192,8 @@ def search(query: str, *, top_k: int = 20,
                    c.chunk_text,
                    c.tokens,
                    c.embedding <=> (:qvec)::vector AS distance,
-                   a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id
+                   a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+                   (a.dropbox_path IS NOT NULL) AS has_pdf
                FROM article_chunk c
                JOIN articles a ON a.id = c.article_id
                ORDER BY c.embedding <=> (:qvec)::vector ASC
@@ -209,7 +215,8 @@ def search(query: str, *, top_k: int = 20,
                            c.tokens,
                            ts_rank_cd(c.chunk_search_vector,
                                       plainto_tsquery('simple', :q)) AS rank,
-                           a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id
+                           a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+                           (a.dropbox_path IS NOT NULL) AS has_pdf
                        FROM article_chunk c
                        JOIN articles a ON a.id = c.article_id
                        WHERE c.chunk_search_vector @@ plainto_tsquery('simple', :q)
@@ -239,6 +246,7 @@ def search(query: str, *, top_k: int = 20,
                 "journal":   r.journal,
                 "doi":       r.doi,
                 "pubmed_id": r.pubmed_id,
+                "has_pdf":   bool(getattr(r, "has_pdf", False)),
             }
         if pk in chunk_by_pk:
             return chunk_by_pk[pk]
@@ -388,6 +396,7 @@ def search(query: str, *, top_k: int = 20,
             journal=meta.get("journal"),
             doi=meta.get("doi"),
             pubmed_id=meta.get("pubmed_id"),
+            has_pdf=bool(meta.get("has_pdf", False)),
             best_distance=cs[0].distance,
             best_similarity=cs[0].similarity,
             chunks=cs,
