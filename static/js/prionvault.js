@@ -7999,6 +7999,11 @@
   }
 
   function renderRagCitations(citations, citedNumbers) {
+    // Local helper — `escAttr` is defined elsewhere in the file as a
+    // closure-local inside other render functions, so it's not in
+    // scope here. Re-declaring it locally is cheaper than threading
+    // it through and matches the pattern used by the other renderers.
+    const escAttr = (v) => esc(String(v || ''));
     const container = document.getElementById('pv-rag-citations');
     const title = document.getElementById('pv-rag-citations-title');
     if (!citations.length) {

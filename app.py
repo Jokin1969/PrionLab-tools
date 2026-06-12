@@ -443,6 +443,35 @@ def create_app() -> Flask:
             "has_prionpacks": "prionpacks.index" in app.view_functions,
         }
 
+    # ── Asset cache-busting ──────────────────────────────────────────
+    # Templates can call asset_url('js/prionvault.js') instead of
+    # url_for('static', filename='js/prionvault.js') to get a URL with
+    # ?v=<mtime> appended. The mtime changes every time we touch the
+    # file (i.e. every deploy), so browsers will fetch the fresh copy
+    # automatically — no more "I deployed the fix but the user still
+    # sees the old JS". On Railway the static folder is read-only so
+    # mtime is stable after deploy; cache hits behave normally between
+    # deploys. The first call per file computes the mtime; we cache
+    # the answer in a process-local dict so we're not stat()'ing on
+    # every request.
+    import os as _os
+    _asset_v_cache: dict[str, str] = {}
+    _static_root = _os.path.join(app.root_path, "static")
+
+    def asset_url(relative_path: str) -> str:
+        v = _asset_v_cache.get(relative_path)
+        if v is None:
+            try:
+                v = str(int(_os.path.getmtime(
+                    _os.path.join(_static_root, relative_path))))
+            except OSError:
+                v = "0"
+            _asset_v_cache[relative_path] = v
+        from flask import url_for
+        return f"{url_for('static', filename=relative_path)}?v={v}"
+
+    app.jinja_env.globals["asset_url"] = asset_url
+
     # ── Browser-side Sentry: every base.html-rendered page picks these
     # up and (when the DSN is set) loads the SDK so JS errors and
     # unhandled promise rejections in the static admin pages flow
