@@ -223,19 +223,66 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
                 getattr(usage, "completion_tokens", None) if usage else None,
                 model)
 
-    # gemini
+    # gemini — needs special handling for "thinking" budget on 2.5 Pro
     from google import genai
     from google.genai import types
     client = genai.Client(api_key=api_key)
+
+    # Gemini 2.5 Pro reasons internally before producing visible text,
+    # and those reasoning tokens count against max_output_tokens. With
+    # the shared 1 200-token cap the model would spend its whole budget
+    # thinking and finish with an empty `text`, surfacing as
+    # "Gemini 2.5 Pro returned an empty response". Triple the cap for
+    # Gemini specifically (Claude / OpenAI keep the original 1 200,
+    # which is plenty for the 3-8 sentence answer we ask for).
+    gemini_max_out = max(MAX_OUTPUT_TOKENS * 8, 8192)
+    cfg_kwargs = {
+        "system_instruction":   system,
+        "max_output_tokens":    gemini_max_out,
+        "temperature":          0.3,
+    }
+    # If the SDK exposes ThinkingConfig (google-genai ≥ 1.0), cap the
+    # thinking budget explicitly so the model always has room left for
+    # the user-facing answer. Older SDKs ignore the field — wrap the
+    # whole thing in a try so a missing class doesn't break the call.
+    try:
+        cfg_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_budget=2048,
+            include_thoughts=False,
+        )
+    except (AttributeError, TypeError):
+        pass
+
     resp = client.models.generate_content(
         model=model, contents=user,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
-            temperature=0.3,
-        ),
+        config=types.GenerateContentConfig(**cfg_kwargs),
     )
     text = (getattr(resp, "text", "") or "").strip()
+
+    # When the answer is still empty, surface the actual cause instead
+    # of a generic "empty response". Gemini exposes a finish_reason on
+    # each candidate (MAX_TOKENS, SAFETY, RECITATION, OTHER) and a
+    # block_reason on the prompt_feedback when the input itself was
+    # rejected. Operators can act on these messages directly.
+    if not text:
+        cands = getattr(resp, "candidates", None) or []
+        cand_reason = (str(cands[0].finish_reason)
+                       if cands and getattr(cands[0], "finish_reason", None)
+                       else None)
+        pf = getattr(resp, "prompt_feedback", None)
+        block_reason = (str(getattr(pf, "block_reason", "") or "")
+                        if pf else "")
+        reason_bits = []
+        if cand_reason:  reason_bits.append(f"finish_reason={cand_reason}")
+        if block_reason: reason_bits.append(f"block_reason={block_reason}")
+        if reason_bits:
+            raise RuntimeError(
+                f"Gemini 2.5 Pro returned an empty response ("
+                + ", ".join(reason_bits) + ")"
+            )
+        # No diagnostic info available — fall through to the generic
+        # error so the caller still gets a useful 502.
+
     usage = getattr(resp, "usage_metadata", None)
     return (text,
             getattr(usage, "prompt_token_count",     None) if usage else None,
