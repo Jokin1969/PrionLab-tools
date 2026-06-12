@@ -271,6 +271,17 @@
     /* Pagination links sit too close on phones — give them air. */
     #pv-pagination button { min-height: 36px; min-width: 36px; }
   }
+
+  /* RAG citation extract: the <details> element gets a native
+     disclosure triangle that Safari/Chrome/Firefox each render
+     differently. We already draw our own ▶ caret inside the
+     <summary>, so the browser-native one is a duplicate. Hide it
+     across all three engines. `list-style: none` on the summary
+     covers Firefox + modern Chrome; the two pseudo-element rules
+     cover Safari and older Chrome respectively. */
+  .pv-rag-extract summary { list-style: none; }
+  .pv-rag-extract summary::-webkit-details-marker { display: none; }
+  .pv-rag-extract summary::marker                  { display: none; content: ""; }
 </style>
 {% endblock %}
 

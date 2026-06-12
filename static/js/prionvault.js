@@ -5643,6 +5643,11 @@
     loadArticles().then(() => {
       const openId = new URLSearchParams(window.location.search).get('open');
       if (openId) openDetail(openId);
+      // Bring back the last RAG search if there's a fresh one
+      // saved (≤ 6 h old). Runs after loadArticles so the dashboard
+      // is set up before we override the visible section with the
+      // restored panel.
+      _restoreRagStateIfFresh();
     });
   }
 
@@ -8228,6 +8233,145 @@
     });
   }
 
+  // ── Last-RAG-search persistence ──────────────────────────────────
+  // Keep the most recent successful semantic-search result around so
+  // returning to PrionVault (after viewing a PDF in another tab, or
+  // navigating to another tool and back) doesn't drop the user on a
+  // blank dashboard. We persist the entire payload — the model
+  // response, not just the query — because re-issuing the call would
+  // cost tokens, take 5-15 s and could yield a different answer.
+  const _RAG_LS_KEY  = 'pv-rag-last';
+  const _RAG_TTL_MS  = 6 * 60 * 60 * 1000;   // 6 h — long enough to
+  // cover "open PDF, get distracted, come back after a meeting" but
+  // short enough that an answer from this morning won't surprise the
+  // user when they sit down tomorrow.
+
+  function _persistRagState(query, provider, topK, r) {
+    try {
+      // The response can be large with top_k = 200 (lots of citations
+      // and extracts). LocalStorage has a ~5 MB hard cap; if our
+      // payload happens to overflow we silently skip persistence
+      // rather than wipe the user's other settings.
+      const payload = {
+        v: 1, ts: Date.now(),
+        query, provider, topK,
+        result: r,
+      };
+      localStorage.setItem(_RAG_LS_KEY, JSON.stringify(payload));
+    } catch (err) {
+      // QuotaExceededError or serialization issue. Non-fatal.
+      console.warn('rag: could not persist last result', err);
+    }
+  }
+
+  function _clearRagState() {
+    try { localStorage.removeItem(_RAG_LS_KEY); } catch (_) {}
+  }
+
+  function _restoreRagStateIfFresh() {
+    let raw;
+    try { raw = localStorage.getItem(_RAG_LS_KEY); }
+    catch (_) { return; }
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); }
+    catch (_) { _clearRagState(); return; }
+    if (!payload || payload.v !== 1 || !payload.result) {
+      _clearRagState();
+      return;
+    }
+    if (Date.now() - (payload.ts || 0) > _RAG_TTL_MS) {
+      _clearRagState();
+      return;
+    }
+    // Show the RAG panel pre-populated with the stored result.
+    const panel = document.getElementById('pv-rag-panel');
+    if (!panel) return;
+    panel.style.display = 'block';
+    const resultsMeta = document.getElementById('pv-results-meta');
+    const resultsGrid = document.getElementById('pv-results-grid');
+    const pagination  = document.getElementById('pv-pagination');
+    if (resultsMeta) resultsMeta.style.display = 'none';
+    if (resultsGrid) resultsGrid.style.display = 'none';
+    if (pagination)  pagination.style.display  = 'none';
+    // Keep the provider picker in sync so the "Refrescar" button
+    // re-runs against the same model the user last picked.
+    const provEl = document.getElementById('pv-rag-provider');
+    if (provEl) provEl.value = payload.provider;
+    _renderRagResult(payload.query, payload.provider,
+                     payload.topK || 50, payload.result,
+                     /*fromCache=*/true);
+    _lastRagQuery = payload.query;
+    _lastRagTopK  = payload.topK || 50;
+  }
+
+  // Pulled out of runRagSearch so a restored result can re-use the
+  // identical rendering path, no duplication of HTML strings. The
+  // `fromCache` flag flips the status line so the user knows whether
+  // they're seeing a fresh response or a recovered one.
+  function _renderRagResult(query, provider, topK, r, fromCache) {
+    const qEl    = document.getElementById('pv-rag-query');
+    const stEl   = document.getElementById('pv-rag-status');
+    const ansEl  = document.getElementById('pv-rag-answer');
+    const metaEl = document.getElementById('pv-rag-meta');
+    if (qEl) qEl.textContent = query;
+    if (!ansEl || !stEl || !metaEl) return;
+
+    ansEl.style.color = '#1f2937';
+    ansEl.innerHTML = annotateCitations(r.answer || '', r.citations || []);
+
+    const confLabel = r.confidence ? `Confianza: <strong>${esc(r.confidence)}</strong>` : '';
+    const hybridBadge = r.hybrid_used
+      ? `<span title="Vector ${r.hybrid_vector_hits} + BM25 ${r.hybrid_bm25_hits} → ${r.hybrid_fused} fusionados"
+               style="display:inline-block;margin-left:6px;font-size:10.5px;color:#0369a1;
+                      background:#f0f9ff;border:1px solid #bae6fd;padding:1px 6px;
+                      border-radius:5px;font-weight:600;letter-spacing:0.02em;">
+          🔀 hybrid · ${r.hybrid_vector_hits}v + ${r.hybrid_bm25_hits}b → ${r.hybrid_fused}
+         </span>`
+      : '';
+    const rrBadge = r.rerank_used
+      ? `<span style="display:inline-block;margin-left:6px;font-size:10.5px;color:#7c3aed;
+                      background:#f5f3ff;border:1px solid #ddd6fe;padding:1px 6px;
+                      border-radius:5px;font-weight:600;letter-spacing:0.02em;">
+          ⚡ reranked${r.rerank_candidates ? ' · ' + r.rerank_candidates + ' cand.' : ''}
+         </span>`
+      : '';
+    const timing = `${(r.elapsed_ms/1000).toFixed(1)} s (retrieval ${r.retrieval_ms} ms)`;
+    const totalCost = (r.cost_usd || 0) + (r.rerank_cost_usd || 0);
+    const cost = totalCost > 0 ? ` · $${totalCost.toFixed(4)}` : '';
+    const tok = (r.tokens_in != null && r.tokens_out != null)
+      ? ` · ${r.tokens_in} in / ${r.tokens_out} out tokens` : '';
+    stEl.style.color = r.no_results ? '#b45309' : '#15803d';
+    if (fromCache) {
+      // Tell the user the answer is being recovered, not freshly
+      // generated, so they know to press Refrescar if they want
+      // newer evidence.
+      stEl.innerHTML = `↻ Última respuesta guardada (pulsa <em>Refrescar</em> para volver a consultar).`;
+    } else {
+      stEl.innerHTML = r.no_results
+        ? '⚠️ Retrieval no encontró fragmentos relevantes para esta pregunta.'
+        : `✓ Generado en ${timing}${cost}${tok}`;
+    }
+    metaEl.innerHTML = confLabel + hybridBadge + rrBadge;
+
+    renderRagCitations(r.citations || [], r.cited_numbers || []);
+    renderRagMoreBanner(r, query, provider);
+
+    // Wire inline [N] citation links to scroll to the corresponding card
+    ansEl.querySelectorAll('a[data-rag-cite]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const card = document.getElementById('pv-rag-cite-' + a.dataset.ragCite);
+        if (card) {
+          card.scrollIntoView({behavior: 'smooth', block: 'center'});
+          card.style.transition = 'background 0.3s ease';
+          card.style.background = '#fef3c7';
+          setTimeout(() => { card.style.background = ''; }, 1200);
+        }
+      });
+    });
+  }
+
   // Module-level memo so the "ver más" button can re-issue the same
   // query with a larger top_k without having to keep the input string
   // alive in the UI. Updated on every successful runRagSearch.
@@ -8282,53 +8426,11 @@
         method: 'POST',
         body: JSON.stringify({ query, provider, top_k: topK }),
       });
-      ansEl.style.color = '#1f2937';
-      // Render answer with inline citation hyperlinks
-      ansEl.innerHTML = annotateCitations(r.answer || '', r.citations || []);
-
-      const confLabel = r.confidence ? `Confianza: <strong>${esc(r.confidence)}</strong>` : '';
-      const hybridBadge = r.hybrid_used
-        ? `<span title="Vector ${r.hybrid_vector_hits} + BM25 ${r.hybrid_bm25_hits} → ${r.hybrid_fused} fusionados"
-                 style="display:inline-block;margin-left:6px;font-size:10.5px;color:#0369a1;
-                        background:#f0f9ff;border:1px solid #bae6fd;padding:1px 6px;
-                        border-radius:5px;font-weight:600;letter-spacing:0.02em;">
-            🔀 hybrid · ${r.hybrid_vector_hits}v + ${r.hybrid_bm25_hits}b → ${r.hybrid_fused}
-           </span>`
-        : '';
-      const rrBadge = r.rerank_used
-        ? `<span style="display:inline-block;margin-left:6px;font-size:10.5px;color:#7c3aed;
-                        background:#f5f3ff;border:1px solid #ddd6fe;padding:1px 6px;
-                        border-radius:5px;font-weight:600;letter-spacing:0.02em;">
-            ⚡ reranked${r.rerank_candidates ? ' · ' + r.rerank_candidates + ' cand.' : ''}
-           </span>`
-        : '';
-      const timing = `${(r.elapsed_ms/1000).toFixed(1)} s (retrieval ${r.retrieval_ms} ms)`;
-      const totalCost = (r.cost_usd || 0) + (r.rerank_cost_usd || 0);
-      const cost = totalCost > 0 ? ` · $${totalCost.toFixed(4)}` : '';
-      const tok = (r.tokens_in != null && r.tokens_out != null)
-        ? ` · ${r.tokens_in} in / ${r.tokens_out} out tokens` : '';
-      stEl.style.color = r.no_results ? '#b45309' : '#15803d';
-      stEl.innerHTML = r.no_results
-        ? '⚠️ Retrieval no encontró fragmentos relevantes para esta pregunta.'
-        : `✓ Generado en ${timing}${cost}${tok}`;
-      metaEl.innerHTML = confLabel + hybridBadge + rrBadge;
-
-      renderRagCitations(r.citations || [], r.cited_numbers || []);
-      renderRagMoreBanner(r, query, provider);
-
-      // Wire inline [N] citation links to scroll to the corresponding card
-      ansEl.querySelectorAll('a[data-rag-cite]').forEach(a => {
-        a.addEventListener('click', e => {
-          e.preventDefault();
-          const card = document.getElementById('pv-rag-cite-' + a.dataset.ragCite);
-          if (card) {
-            card.scrollIntoView({behavior: 'smooth', block: 'center'});
-            card.style.transition = 'background 0.3s ease';
-            card.style.background = '#fef3c7';
-            setTimeout(() => { card.style.background = ''; }, 1200);
-          }
-        });
-      });
+      _renderRagResult(query, provider, topK, r, /*fromCache=*/false);
+      // Persist the result so re-loading PrionVault (after coming back
+      // from the PDF viewer, switching tools, etc.) restores the same
+      // answer instead of dropping the user back to a blank dashboard.
+      _persistRagState(query, provider, topK, r);
     } catch (e) {
       ansEl.style.color = '#b91c1c';
       if (e.status === 503) {
@@ -8349,6 +8451,10 @@
     if (resultsMeta) resultsMeta.style.display = '';
     if (resultsGrid) resultsGrid.style.display = '';
     if (pagination)  pagination.style.display  = '';
+    // Closing the panel is the user's explicit "I'm done with this
+    // answer" signal — drop the persisted copy so it doesn't pop
+    // back up next time they reload.
+    _clearRagState();
   }
 
   // ── Batch indexing modal (Phase 4) ───────────────────────────────────
