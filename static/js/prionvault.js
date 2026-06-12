@@ -8141,7 +8141,99 @@
     });
   }
 
-  async function runRagSearch(query) {
+  // Banner shown UNDER the citations list when the retriever found
+  // more relevant articles than the current top_k surfaced. Tells
+  // the user how many were left out and offers a one-tap prompt to
+  // raise top_k and re-run the same query. The prompt accepts a
+  // custom count, capped at 200 (the server-side hard ceiling).
+  function renderRagMoreBanner(r, query, provider) {
+    const container = document.getElementById('pv-rag-citations');
+    if (!container) return;
+    // Always remove any previous banner before deciding to render
+    // a new one — otherwise consecutive "ver más" runs stack.
+    container.querySelectorAll('.pv-rag-more-banner').forEach(b => b.remove());
+
+    const used  = r.top_k_used || (r.citations || []).length;
+    const total = r.total_candidates || 0;
+    const shown = (r.citations || []).length;
+    const hardCap = 200;
+
+    // Two distinct "the answer might be incomplete" conditions:
+    //   1. The retriever truncated (total > shown).
+    //   2. The current top_k already hit the hard cap and there
+    //      could still be more beyond the candidate pool. Less
+    //      common, but worth surfacing.
+    const truncated  = r.has_more && total > shown;
+    const atHardCap  = used >= hardCap;
+
+    if (!truncated && !atHardCap) return;
+
+    const remaining = Math.max(0, total - shown);
+    const banner = document.createElement('div');
+    banner.className = 'pv-rag-more-banner';
+    banner.style.cssText =
+      'margin-top:10px;padding:10px 12px;border-radius:8px;' +
+      'background:#fffbeb;border:1px solid #fde68a;color:#92400e;' +
+      'font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+
+    if (truncated) {
+      banner.innerHTML =
+        `<span><strong>Hay ${remaining} artículo${remaining === 1 ? '' : 's'} más</strong> ` +
+        `que coinciden con tu pregunta (mostrando ${shown} de ${total}).</span>` +
+        `<button type="button" class="pv-rag-more-btn"
+                 style="padding:5px 12px;border-radius:5px;border:none;
+                        background:#b45309;color:white;font-size:12px;
+                        font-weight:600;cursor:pointer;">
+           Ver más…
+         </button>`;
+    } else {
+      // atHardCap branch: we don't know exactly how many beyond 200,
+      // so we frame it as "showing the cap" instead of a number.
+      banner.innerHTML =
+        `<span>Mostrando el máximo permitido por consulta (${hardCap} artículos). ` +
+        `Refina la pregunta para acotar resultados.</span>`;
+    }
+
+    container.appendChild(banner);
+
+    const btn = banner.querySelector('.pv-rag-more-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      // Suggested next batch = either everything remaining (if it
+      // fits in one more page) or another 50. The user can override.
+      const suggested = Math.min(remaining, 50);
+      const raw = prompt(
+        `¿Cuántos artículos más quieres ver?\n\n` +
+        `• Quedan ${remaining} más en la biblioteca.\n` +
+        `• Máximo por consulta: ${hardCap} en total.\n` +
+        `• Ya tienes ${shown} en la respuesta actual.`,
+        String(suggested)
+      );
+      if (raw == null) return;
+      const extra = parseInt(raw, 10);
+      if (!Number.isFinite(extra) || extra <= 0) {
+        alert('Número no válido. Inténtalo de nuevo.');
+        return;
+      }
+      // Re-run with a higher top_k. We don't actually fetch only the
+      // "extra" delta — the server always returns the top K at once,
+      // so we ask for shown + extra (capped at hardCap).
+      const newTopK = Math.min(hardCap, shown + extra);
+      runRagSearch(query, { topK: newTopK });
+    });
+  }
+
+  // Module-level memo so the "ver más" button can re-issue the same
+  // query with a larger top_k without having to keep the input string
+  // alive in the UI. Updated on every successful runRagSearch.
+  let _lastRagQuery   = '';
+  let _lastRagTopK    = 50;
+
+  async function runRagSearch(query, opts) {
+    opts = opts || {};
+    const topK = Number.isFinite(opts.topK) ? opts.topK : 50;
+    _lastRagQuery = query;
+    _lastRagTopK  = topK;
     const panel  = document.getElementById('pv-rag-panel');
     const qEl    = document.getElementById('pv-rag-query');
     const stEl   = document.getElementById('pv-rag-status');
@@ -8183,7 +8275,7 @@
     try {
       const r = await api('/search/semantic', {
         method: 'POST',
-        body: JSON.stringify({ query, provider }),
+        body: JSON.stringify({ query, provider, top_k: topK }),
       });
       ansEl.style.color = '#1f2937';
       // Render answer with inline citation hyperlinks
@@ -8217,6 +8309,7 @@
       metaEl.innerHTML = confLabel + hybridBadge + rrBadge;
 
       renderRagCitations(r.citations || [], r.cited_numbers || []);
+      renderRagMoreBanner(r, query, provider);
 
       // Wire inline [N] citation links to scroll to the corresponding card
       ansEl.querySelectorAll('a[data-rag-cite]').forEach(a => {

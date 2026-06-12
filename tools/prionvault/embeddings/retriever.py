@@ -76,6 +76,11 @@ class RetrievalResult:
     fetched_at_distance: float            # worst (largest) distance returned
     rerank:     Optional[RerankInfo] = None
     hybrid:     Optional[HybridInfo] = None
+    # How many DISTINCT articles the candidate pool would have yielded
+    # before the top_k + per_article_cap truncation. The UI uses this
+    # to tell the operator "showing 50 of 137 relevant articles" and
+    # offer a "ver más" prompt. 0 when no candidates were retrieved.
+    total_candidate_articles: int = 0
 
 
 def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
@@ -178,8 +183,14 @@ def search(query: str, *, top_k: int = 20,
 
     # Over-fetch from pgvector: more candidates → better material for
     # the reranker (or for the per-article cap when rerank is off).
+    # Cap raised to 400 (from 100/150) so a top_k=50 request has
+    # plausible headroom to detect whether MORE relevant articles
+    # exist beyond what we'll return — that's what powers the UI's
+    # "Hay N artículos más disponibles, ¿quieres ver más?" prompt.
+    # Cost of over-fetching is modest because the HNSW index makes
+    # pgvector's ORDER BY cheap regardless of LIMIT.
     if candidate_k is None:
-        candidate_k = min(100, max(top_k * 5, 40)) if rerank else max(top_k * 3, 30)
+        candidate_k = min(400, max(top_k * 5, 60)) if rerank else min(400, max(top_k * 3, 40))
 
     eng = _get_engine()
     with eng.connect() as conn:
@@ -363,6 +374,16 @@ def search(query: str, *, top_k: int = 20,
             # Rare: import error from reranker module itself.
             logger.warning("Rerank module unavailable: %s", exc)
 
+    # Count how many DISTINCT articles the candidate pool would have
+    # produced if top_k were unbounded — useful for the UI's "ver más"
+    # prompt. Computed before the top_k cut so it always reflects the
+    # full retrievable set at the current similarity threshold, even
+    # when the operator hasn't paginated yet.
+    candidate_article_ids: set = set()
+    for c in ordered:
+        candidate_article_ids.add(c.article_id)
+    total_candidate_articles = len(candidate_article_ids)
+
     # Apply the per-article cap on the (possibly reranked) ordered list.
     seen_per_article: dict = {}
     chunks: List[RetrievedChunk] = []
@@ -418,4 +439,5 @@ def search(query: str, *, top_k: int = 20,
         fetched_at_distance=chunks[-1].distance if chunks else 0.0,
         rerank=rerank_info,
         hybrid=hybrid_info,
+        total_candidate_articles=total_candidate_articles,
     )

@@ -5449,11 +5449,15 @@ def api_semantic_search():
     query = (data.get("query") or "").strip()
     if not query:
         return jsonify({"error": "empty query"}), 400
-    top_k = data.get("top_k", 20)
+    # Default raised from 20 to 50 and the hard cap raised from 50 to
+    # 200. The frontend now asks for 50 on the first call and bumps
+    # the request when the operator clicks "ver más"; the 200 ceiling
+    # keeps a single call's cost bounded regardless.
+    top_k = data.get("top_k", 50)
     try:
-        top_k = max(1, min(50, int(top_k)))
+        top_k = max(1, min(200, int(top_k)))
     except (TypeError, ValueError):
-        top_k = 20
+        top_k = 50
 
     provider = (data.get("provider") or DEFAULT_PROVIDER).strip().lower()
     if provider not in PROVIDERS:
@@ -5536,6 +5540,9 @@ def api_semantic_search():
         "cost_usd":          result.cost_usd,
         "elapsed_ms":        result.elapsed_ms,
         "retrieval_ms":      result.retrieval_ms,
+        "top_k_used":        result.top_k_used,
+        "total_candidates":  result.total_candidates,
+        "has_more":          result.has_more,
         "rerank_used":       result.rerank_used,
         "rerank_candidates": result.rerank_candidates,
         "rerank_cost_usd":   result.rerank_cost_usd,

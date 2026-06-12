@@ -94,6 +94,15 @@ class RagResult:
     hybrid_vector_hits: int = 0
     hybrid_bm25_hits:   int = 0
     hybrid_fused:       int = 0
+    # Pagination support for the "ver más" UI affordance:
+    #   top_k_used        — limit honoured for this call
+    #   total_candidates  — distinct articles the retriever found in
+    #                       its candidate pool. If > top_k_used the
+    #                       UI offers a prompt to fetch more.
+    #   has_more          — total_candidates > len(citations).
+    top_k_used:      int = 0
+    total_candidates: int = 0
+    has_more:        bool = False
 
 
 # Backwards-compat alias — the route used to import this name.
@@ -321,6 +330,9 @@ def ask(query: str, *, top_k: int = 20,
             elapsed_ms=int((time.monotonic() - start) * 1000),
             retrieval_ms=retrieval_ms,
             no_results=True,
+            top_k_used=top_k,
+            total_candidates=0,
+            has_more=False,
             rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
             rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
             rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
@@ -389,6 +401,9 @@ def ask(query: str, *, top_k: int = 20,
         elapsed_ms=int((time.monotonic() - start) * 1000),
         retrieval_ms=retrieval_ms,
         no_results=False,
+        top_k_used=top_k,
+        total_candidates=retrieval.total_candidate_articles,
+        has_more=(retrieval.total_candidate_articles > len(citations)),
         rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
         rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
         rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
