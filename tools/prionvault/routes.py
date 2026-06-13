@@ -4948,6 +4948,78 @@ def api_batch_index_start():
     if snap is None:
         return jsonify({"error": "already_running",
                         "status": batch_index.get_status()}), 409
+
+
+@prionvault_bp.route("/api/admin/embeddings/reset-and-reindex",
+                     methods=["POST"])
+@admin_required
+def api_embeddings_reset_and_reindex():
+    """Clean reindex: wipe every chunk + every index_version stamp,
+    then kick the batch_index daemon to rebuild from scratch.
+
+    Why this exists separately from /batch-index/start: a normal
+    "start" only re-indexes articles whose stamp differs from the
+    current MODEL. When you swap the embedding model entirely, you
+    do NOT want the in-flight period where some articles already
+    carry voyage-4 vectors and the rest still carry voyage-3 ones —
+    pgvector mixes them in the same ORDER BY <=> ... query and the
+    geometry between two different embedding spaces is meaningless.
+    Better to return zero results for the not-yet-processed
+    articles (clean miss) than wrong results from the mixed pool.
+
+    Body (optional):
+      { confirm: true }   guard so a misclicked button can't wipe
+                          the chunk table by accident. Refused
+                          without the flag.
+
+    The wipe + reindex runs inside a single DB transaction (TRUNCATE
+    + UPDATE) so the table is never in a partially-cleared state
+    visible to readers.
+    """
+    from .services import batch_index
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+
+    body = request.get_json(force=True, silent=True) or {}
+    if not body.get("confirm"):
+        return jsonify({
+            "error": "confirmation_required",
+            "detail": ("Repeat the call with {\"confirm\": true}. "
+                       "This wipes every chunk in article_chunk and "
+                       "clears articles.index_version for every row."),
+        }), 400
+
+    if batch_index.get_status().get("running"):
+        return jsonify({
+            "error": "batch_index_running",
+            "detail": "Stop the in-flight batch_index first."
+        }), 409
+
+    # Single transaction: either both succeed or neither.
+    try:
+        with _db.engine.begin() as conn:
+            conn.execute(_t("TRUNCATE article_chunk"))
+            conn.execute(_t(
+                "UPDATE articles SET index_version = NULL "
+                "WHERE index_version IS NOT NULL"
+            ))
+    except Exception as exc:
+        logger.exception("reset-and-reindex: wipe failed")
+        return jsonify({"error": "wipe_failed",
+                        "detail": str(exc)[:300]}), 500
+
+    # Now spin up the batch_index daemon — it'll see every article as
+    # un-indexed and burn through the queue using the current MODEL.
+    snap = batch_index.start_batch(viewer_user_id=_viewer_id(),
+                                   limit=None)
+    return jsonify({
+        "ok": True,
+        "wiped": True,
+        "batch_started": bool(snap),
+        "status": batch_index.get_status(),
+        "note": ("Embeddings vacíados. El batch_index ahora va a "
+                 "regenerar todo desde cero con el modelo actual."),
+    })
     return jsonify({"ok": True, "status": snap})
 
 
