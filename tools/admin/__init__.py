@@ -246,9 +246,15 @@ def database_dashboard():
     health = DatabaseHealthService.get_metrics()
     table_stats = DatabaseHealthService.get_table_stats() if health.get("connected") else []
     from database.backup import BackupManager
-    backups = BackupManager().list_backups()
+    bm = BackupManager()
+    backups = bm.list_backups()
+    dropbox_backups = bm.list_dropbox_backups()
+    dropbox_base_dir = bm._dropbox_base_dir() if bm._dropbox_configured() else None
     return render_template("admin/database.html",
-                           health=health, table_stats=table_stats, backups=backups)
+                           health=health, table_stats=table_stats,
+                           backups=backups,
+                           dropbox_backups=dropbox_backups,
+                           dropbox_base_dir=dropbox_base_dir)
 
 
 @admin_bp.route("/database/backup", methods=["POST"])

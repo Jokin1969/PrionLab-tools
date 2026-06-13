@@ -6,7 +6,7 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
-            return redirect(url_for("auth.login", next=request.path))
+            return redirect(url_for("auth.login", next=request.full_path))
         return f(*args, **kwargs)
     return decorated
 
@@ -15,7 +15,7 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
-            return redirect(url_for("auth.login", next=request.path))
+            return redirect(url_for("auth.login", next=request.full_path))
         if session.get("role") != "admin":
             flash("Unauthorized. Admin access required.", "error")
             return redirect(url_for("home"))
@@ -27,7 +27,7 @@ def editor_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
-            return redirect(url_for("auth.login", next=request.path))
+            return redirect(url_for("auth.login", next=request.full_path))
         if session.get("role") not in ("admin", "editor"):
             flash("Unauthorized. Editor access required.", "error")
             return redirect(url_for("home"))
@@ -40,6 +40,6 @@ def reader_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
-            return redirect(url_for("auth.login", next=request.path))
+            return redirect(url_for("auth.login", next=request.full_path))
         return f(*args, **kwargs)
     return decorated

@@ -26,6 +26,9 @@ DB_PATH = os.path.join(DATA_DIR, "prionlab.db")
 
 DROPBOX_REMOTE_FOLDER = "/Web-tools/PrionLab tools"
 DROPBOX_PAPERS_FOLDER = "/Web-tools/PrionLab tools/papers"
+DROPBOX_PRIONPACKS_BACKUP_FOLDER = "/PrionLab tools/PrionPacks"
+PRIONPACKS_BACKUP_RETENTION = int(os.environ.get("PRIONPACKS_BACKUP_RETENTION", "15"))
+PRIONPACKS_BACKUP_INTERVAL_HOURS = int(os.environ.get("PRIONPACKS_BACKUP_INTERVAL_HOURS", "2"))
 
 MAX_PDF_SIZE_MB = int(os.environ.get("MAX_PDF_SIZE_MB", "30"))
 
