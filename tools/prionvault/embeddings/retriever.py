@@ -81,6 +81,11 @@ class RetrievalResult:
     # to tell the operator "showing 50 of 137 relevant articles" and
     # offer a "ver más" prompt. 0 when no candidates were retrieved.
     total_candidate_articles: int = 0
+    # (term, expansions) tuples that the query expander fired on. Surfaced
+    # all the way to the UI so the user can see "I broadened your query
+    # with: GAG → glycosaminoglycan, heparan sulfate, …" — both as a
+    # confidence cue and as a debugging aid.
+    expansion_matches: List[tuple] = field(default_factory=list)
 
 
 def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
@@ -176,7 +181,25 @@ def search(query: str, *, top_k: int = 20,
         return RetrievalResult(query="", articles=[], raw_chunks=[],
                                fetched_at_distance=0.0)
 
-    qvec = embed_query(query)
+    # Biomedical query expansion: broaden the user's query with
+    # acronyms, synonyms and curated MeSH-derived hyper/hyponyms so
+    # the embedder sees both the original phrasing AND the vocabulary
+    # the corpus's authors actually used. Failures fall through
+    # silently — at worst we lose the expansion benefit, the
+    # original retrieval path still works.
+    expanded_for_embed = query
+    expanded_for_bm25  = query
+    expansion_matches: list[tuple[str, str]] = []
+    try:
+        from ..services.query_expansion import expand as _qx_expand
+        ex = _qx_expand(query)
+        expanded_for_embed = ex.text
+        expanded_for_bm25  = ex.bm25_query
+        expansion_matches = ex.matched
+    except Exception as exc:
+        logger.debug("query_expansion skipped: %s", exc)
+
+    qvec = embed_query(expanded_for_embed)
     if not qvec:
         raise RuntimeError("query embedding returned empty vector")
     vec_literal = "[" + ",".join(f"{x:.7f}" for x in qvec) + "]"
@@ -233,7 +256,7 @@ def search(query: str, *, top_k: int = 20,
                        WHERE c.chunk_search_vector @@ plainto_tsquery('simple', :q)
                        ORDER BY rank DESC
                        LIMIT :k"""
-                ), {"q": query, "k": candidate_k}).all()
+                ), {"q": expanded_for_bm25, "k": candidate_k}).all()
                 hybrid_active = True
             except Exception as exc:
                 # Column or index missing (migration 006 not applied yet?).
@@ -440,4 +463,5 @@ def search(query: str, *, top_k: int = 20,
         rerank=rerank_info,
         hybrid=hybrid_info,
         total_candidate_articles=total_candidate_articles,
+        expansion_matches=expansion_matches,
     )

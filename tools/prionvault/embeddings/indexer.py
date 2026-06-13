@@ -37,15 +37,47 @@ class IndexResult:
     error:         Optional[str] = None
 
 
+def _choose_sources(extracted_text, summary_ai, abstract) -> list[tuple[str, str]]:
+    """Return every source we want to index for this article, in
+    order of priority.
+
+    Difference vs the previous single-source picker: when both the
+    full PDF text AND an AI summary exist, we index BOTH as separate
+    chunk sets (kept apart by `source_field`). The PDF chunks carry
+    the author's exact vocabulary; the summary chunks carry a cleaner,
+    higher-level rephrasing — together they raise recall for queries
+    written in either style.
+
+    When only one richer source is available, we keep the old
+    "best-available" behaviour.
+    """
+    has_extracted = bool(extracted_text and extracted_text.strip()
+                         and len(extracted_text.strip()) > 200)
+    has_summary   = bool(summary_ai and summary_ai.strip()
+                         and len(summary_ai.strip()) > 100)
+    has_abstract  = bool(abstract and abstract.strip())
+
+    sources: list[tuple[str, str]] = []
+    if has_extracted:
+        sources.append(("extracted_text", extracted_text))
+        # Summary as a COMPLEMENTARY second source — different
+        # phrasing of the same paper. Indexing both makes "GAGs"-style
+        # queries land on the right paper whether the author wrote
+        # "heparan sulfate" or the summarizer wrote "GAGs".
+        if has_summary:
+            sources.append(("summary_ai", summary_ai))
+    elif has_summary:
+        sources.append(("summary_ai", summary_ai))
+    elif has_abstract:
+        sources.append(("abstract", abstract))
+    return sources
+
+
 def _choose_source(extracted_text, summary_ai, abstract) -> tuple[str, str]:
-    """Pick the richest text available for this article."""
-    if extracted_text and extracted_text.strip() and len(extracted_text.strip()) > 200:
-        return ("extracted_text", extracted_text)
-    if summary_ai and summary_ai.strip() and len(summary_ai.strip()) > 100:
-        return ("summary_ai", summary_ai)
-    if abstract and abstract.strip():
-        return ("abstract", abstract)
-    return ("", "")
+    """Backward-compatible wrapper around _choose_sources for callers
+    that still expect a single (source_field, text) tuple."""
+    s = _choose_sources(extracted_text, summary_ai, abstract)
+    return s[0] if s else ("", "")
 
 
 def _embedding_to_pgvector_literal(vec: List[float]) -> str:
@@ -55,76 +87,39 @@ def _embedding_to_pgvector_literal(vec: List[float]) -> str:
     return "[" + ",".join(f"{x:.7f}" for x in vec) + "]"
 
 
-def index_article(*, article_id, title, extracted_text=None,
-                  summary_ai=None, abstract=None) -> IndexResult:
-    """Chunk + embed + persist for a single article.
-
-    Replaces any previous chunks for the same article+source_field.
-    Returns an IndexResult with cost/tokens info for the caller to record.
-    """
-    start = time.monotonic()
-    source_field, source_text = _choose_source(extracted_text, summary_ai, abstract)
-    if not source_field:
-        return IndexResult(
-            article_id=str(article_id), chunks_total=0, chunks_written=0,
-            tokens=0, cost_usd=0.0,
-            elapsed_ms=int((time.monotonic() - start) * 1000),
-            used_source="", error="no_text_available",
-        )
-
+def _persist_one_source(article_id, source_field: str,
+                        source_text: str) -> tuple[int, int, int, float, Optional[str]]:
+    """Chunk → embed → DELETE+INSERT for a single (article, source).
+    Returns (chunks_total, chunks_written, tokens, cost_usd, error)
+    so the multi-source caller can aggregate stats. Errors are
+    strings, not exceptions, so a half-failed multi-source run can
+    still persist what worked."""
     chunks: List[Chunk] = chunk_text(source_text)
     if not chunks:
-        return IndexResult(
-            article_id=str(article_id), chunks_total=0, chunks_written=0,
-            tokens=0, cost_usd=0.0,
-            elapsed_ms=int((time.monotonic() - start) * 1000),
-            used_source=source_field, error="empty_after_chunking",
-        )
+        return (0, 0, 0, 0.0, f"empty_after_chunking ({source_field})")
 
     texts = [c.text for c in chunks]
     try:
         embed_result = embed_texts(texts, input_type="document")
     except NotConfigured:
-        return IndexResult(
-            article_id=str(article_id), chunks_total=len(chunks),
-            chunks_written=0, tokens=0, cost_usd=0.0,
-            elapsed_ms=int((time.monotonic() - start) * 1000),
-            used_source=source_field, error="VOYAGE_API_KEY not set",
-        )
-
+        return (len(chunks), 0, 0, 0.0, "VOYAGE_API_KEY not set")
     if len(embed_result.embeddings) != len(chunks):
-        return IndexResult(
-            article_id=str(article_id), chunks_total=len(chunks),
-            chunks_written=0, tokens=embed_result.tokens,
-            cost_usd=embed_result.cost_usd or 0.0,
-            elapsed_ms=int((time.monotonic() - start) * 1000),
-            used_source=source_field,
-            error=f"embedding count mismatch: got {len(embed_result.embeddings)} for {len(chunks)} chunks",
-        )
-
-    # Dimension guard: the article_chunk.embedding column is declared as
-    # vector(EMBEDDING_DIM). If MODEL is ever swapped for one with a
-    # different dimensionality the INSERT below would fail late with a
-    # cryptic Postgres error. Fail loud at this layer instead.
+        return (len(chunks), 0, embed_result.tokens,
+                embed_result.cost_usd or 0.0,
+                f"embedding count mismatch ({source_field}): got "
+                f"{len(embed_result.embeddings)} for {len(chunks)} chunks")
     if embed_result.embeddings and len(embed_result.embeddings[0]) != EMBEDDING_DIM:
-        return IndexResult(
-            article_id=str(article_id), chunks_total=len(chunks),
-            chunks_written=0, tokens=embed_result.tokens,
-            cost_usd=embed_result.cost_usd or 0.0,
-            elapsed_ms=int((time.monotonic() - start) * 1000),
-            used_source=source_field,
-            error=(f"embedding dim mismatch: model returned "
-                   f"{len(embed_result.embeddings[0])}-d vectors, "
-                   f"DB column is vector({EMBEDDING_DIM}). "
-                   f"Reset MODEL or migrate the column."),
-        )
+        return (len(chunks), 0, embed_result.tokens,
+                embed_result.cost_usd or 0.0,
+                f"embedding dim mismatch ({source_field}): model "
+                f"returned {len(embed_result.embeddings[0])}-d, "
+                f"DB column is vector({EMBEDDING_DIM})")
 
     eng = _get_engine()
     with eng.begin() as conn:
-        # Replace existing chunks for this article+source_field.
         conn.execute(sql_text(
-            """DELETE FROM article_chunk
-               WHERE article_id = :aid AND source_field = :src"""
+            "DELETE FROM article_chunk "
+            " WHERE article_id = :aid AND source_field = :src"
         ), {"aid": str(article_id), "src": source_field})
 
         rows = []
@@ -137,7 +132,6 @@ def index_article(*, article_id, title, extracted_text=None,
                 "tok":   c.tokens,
                 "vec":   _embedding_to_pgvector_literal(vec),
             })
-
         conn.execute(sql_text(
             """INSERT INTO article_chunk
                  (article_id, chunk_index, source_field, chunk_text, tokens,
@@ -150,7 +144,76 @@ def index_article(*, article_id, title, extracted_text=None,
                    embedding  = EXCLUDED.embedding,
                    created_at = NOW()"""
         ), rows)
+    return (len(chunks), len(chunks), embed_result.tokens,
+            embed_result.cost_usd or 0.0, None)
 
+
+def index_article(*, article_id, title, extracted_text=None,
+                  summary_ai=None, abstract=None) -> IndexResult:
+    """Chunk + embed + persist for a single article.
+
+    When the article has both an extracted PDF text AND an AI
+    summary, BOTH are indexed (kept apart by source_field). The PDF
+    chunks carry the author's vocabulary; the summary chunks carry a
+    cleaner rephrasing. Querying ranks against the union of the two,
+    raising recall for terminology-mismatched queries.
+
+    Per-source chunks are replaced (DELETE + INSERT under the same
+    article_id + source_field). Returns one IndexResult with
+    aggregated stats. `used_source` is a comma-joined string when
+    more than one source was processed.
+    """
+    start = time.monotonic()
+    sources = _choose_sources(extracted_text, summary_ai, abstract)
+    if not sources:
+        return IndexResult(
+            article_id=str(article_id), chunks_total=0, chunks_written=0,
+            tokens=0, cost_usd=0.0,
+            elapsed_ms=int((time.monotonic() - start) * 1000),
+            used_source="", error="no_text_available",
+        )
+
+    total_chunks = total_written = 0
+    total_tokens = 0
+    total_cost   = 0.0
+    sources_used: list[str] = []
+    last_error: Optional[str] = None
+
+    for source_field, source_text in sources:
+        ct, cw, tk, cu, err = _persist_one_source(
+            article_id, source_field, source_text)
+        if err and cw == 0 and not sources_used:
+            # First source failed outright and nothing was written —
+            # bubble up the error so the worker can mark the job.
+            return IndexResult(
+                article_id=str(article_id), chunks_total=ct,
+                chunks_written=0, tokens=tk, cost_usd=cu,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                used_source=source_field, error=err,
+            )
+        total_chunks  += ct
+        total_written += cw
+        total_tokens  += tk
+        total_cost    += cu
+        if cw > 0:
+            sources_used.append(source_field)
+        if err:
+            last_error = err   # remembered but not fatal
+
+    if not sources_used:
+        # All sources failed (e.g. embedder down).
+        return IndexResult(
+            article_id=str(article_id), chunks_total=total_chunks,
+            chunks_written=0, tokens=total_tokens, cost_usd=total_cost,
+            elapsed_ms=int((time.monotonic() - start) * 1000),
+            used_source=",".join(s[0] for s in sources),
+            error=last_error or "all_sources_failed",
+        )
+
+    # Stamp the article row exactly once, after every successful
+    # source has been persisted.
+    eng = _get_engine()
+    with eng.begin() as conn:
         conn.execute(sql_text(
             """UPDATE articles
                SET indexed_at    = NOW(),
@@ -161,10 +224,11 @@ def index_article(*, article_id, title, extracted_text=None,
 
     return IndexResult(
         article_id=str(article_id),
-        chunks_total=len(chunks),
-        chunks_written=len(chunks),
-        tokens=embed_result.tokens,
-        cost_usd=embed_result.cost_usd or 0.0,
+        chunks_total=total_chunks,
+        chunks_written=total_written,
+        tokens=total_tokens,
+        cost_usd=total_cost,
         elapsed_ms=int((time.monotonic() - start) * 1000),
-        used_source=source_field,
+        used_source=",".join(sources_used),
+        error=last_error,   # non-fatal partial-failure note, if any
     )

@@ -5615,6 +5615,10 @@ def api_semantic_search():
         "top_k_used":        result.top_k_used,
         "total_candidates":  result.total_candidates,
         "has_more":          result.has_more,
+        "expansion_matches": [
+            {"term": m[0], "expansions": m[1]}
+            for m in (result.expansion_matches or [])
+        ],
         "rerank_used":       result.rerank_used,
         "rerank_candidates": result.rerank_candidates,
         "rerank_cost_usd":   result.rerank_cost_usd,

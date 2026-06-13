@@ -8151,6 +8151,38 @@
     });
   }
 
+  // Banner that explains which terms the biomedical query expander
+  // broadened — printed ABOVE the citations so the user understands
+  // why a paper that doesn't literally contain their typed term may
+  // still surface. Removes itself when re-renders happen, so back-to-
+  // back queries don't stack.
+  function renderRagExpansionBanner(r) {
+    const citEl = document.getElementById('pv-rag-citations');
+    if (!citEl) return;
+    citEl.parentElement
+       ?.querySelectorAll('.pv-rag-expansion-banner')
+        .forEach(b => b.remove());
+    const matches = r.expansion_matches || [];
+    if (!matches.length) return;
+    const banner = document.createElement('div');
+    banner.className = 'pv-rag-expansion-banner';
+    banner.style.cssText =
+      'margin:8px 0 6px;padding:8px 12px;border-radius:7px;' +
+      'background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;' +
+      'font-size:12px;line-height:1.5;';
+    const pills = matches.map(m =>
+      `<span style="display:inline-block;background:white;border:1px solid #bfdbfe;
+                    padding:1px 6px;border-radius:5px;font-weight:600;
+                    margin:0 4px 2px 0;">
+         <strong>${esc(m.term)}</strong> → ${esc(m.expansions)}
+       </span>`
+    ).join('');
+    banner.innerHTML =
+      `<i class="fas fa-magnifying-glass-arrow-right" style="margin-right:5px;"></i>` +
+      `Para ampliar la búsqueda, he interpretado: ${pills}`;
+    citEl.parentElement.insertBefore(banner, citEl);
+  }
+
   // Banner shown UNDER the citations list when the retriever found
   // more relevant articles than the current top_k surfaced. Tells
   // the user how many were left out and offers a one-tap prompt to
@@ -8354,6 +8386,7 @@
     }
     metaEl.innerHTML = confLabel + hybridBadge + rrBadge;
 
+    renderRagExpansionBanner(r);
     renderRagCitations(r.citations || [], r.cited_numbers || []);
     renderRagMoreBanner(r, query, provider);
 
@@ -8465,6 +8498,7 @@
     const closeBtn   = document.getElementById('pv-batch-index-close');
     const startBtn   = document.getElementById('pv-bi-start');
     const stopBtn    = document.getElementById('pv-bi-stop');
+    const resetBtn   = document.getElementById('pv-bi-reset');
     const statsEl    = document.getElementById('pv-bi-stats');
     const progWrap   = document.getElementById('pv-bi-progress-wrap');
     const progLabel  = document.getElementById('pv-bi-progress-label');
@@ -8595,6 +8629,50 @@
         errorEl.textContent = 'No se pudo detener: ' + e.message;
       }
     });
+
+    // Full wipe + reindex. Two confirmation prompts because the
+    // operation is destructive — we'd rather make the operator
+    // explicitly type-through twice than recover from a misclick on
+    // a 4-hour-old embedding investment.
+    if (resetBtn) {
+      resetBtn.addEventListener('click', async () => {
+        const confirm1 = confirm(
+          'BORRAR todos los embeddings existentes y regenerarlos ' +
+          'desde cero con el modelo actual (voyage-4-large)?\n\n' +
+          '• Vacía la tabla article_chunk completa.\n' +
+          '• Limpia el index_version de todos los artículos.\n' +
+          '• Lanza el batch_index automáticamente al terminar.\n' +
+          '• Durante el reindex la búsqueda IA devuelve "sin ' +
+            'resultados" para los artículos aún no procesados.\n' +
+          '• Tarda ~30-60 min para 4 k artículos. Coste estimado: ' +
+            '$3-6 (Voyage).'
+        );
+        if (!confirm1) return;
+        const confirm2 = prompt(
+          'Para confirmar, escribe exactamente: RESET'
+        );
+        if (confirm2 !== 'RESET') {
+          alert('Cancelado — no se ha tocado nada.');
+          return;
+        }
+        resetBtn.disabled = true;
+        const orig = resetBtn.textContent;
+        resetBtn.textContent = '⏳ Vaciando…';
+        try {
+          await api('/admin/embeddings/reset-and-reindex', {
+            method: 'POST',
+            body: JSON.stringify({confirm: true}),
+          });
+          refresh();
+          startPolling();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          resetBtn.disabled = false;
+          resetBtn.textContent = orig;
+        }
+      });
+    }
   }
 
   // ── Batch text extraction modal (pdfplumber) ─────────────────────────

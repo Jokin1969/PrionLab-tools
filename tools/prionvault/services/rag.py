@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from ..embeddings.retriever import (
@@ -103,6 +103,9 @@ class RagResult:
     top_k_used:      int = 0
     total_candidates: int = 0
     has_more:        bool = False
+    # Each entry is (term, expansions) — what the biomedical query
+    # expander broadened your query into. Empty when nothing matched.
+    expansion_matches: list = field(default_factory=list)
 
 
 # Backwards-compat alias — the route used to import this name.
@@ -333,6 +336,7 @@ def ask(query: str, *, top_k: int = 20,
             top_k_used=top_k,
             total_candidates=0,
             has_more=False,
+            expansion_matches=list(retrieval.expansion_matches or []),
             rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
             rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
             rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
@@ -404,6 +408,7 @@ def ask(query: str, *, top_k: int = 20,
         top_k_used=top_k,
         total_candidates=retrieval.total_candidate_articles,
         has_more=(retrieval.total_candidate_articles > len(citations)),
+        expansion_matches=list(retrieval.expansion_matches or []),
         rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
         rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
         rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,

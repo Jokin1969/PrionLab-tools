@@ -377,6 +377,22 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('PrionVault email-ingest daemon failed to start: %s', e)
 
+        # Pre-populate the biomedical query-expansion dictionary so a
+        # freshly-deployed instance immediately benefits from the
+        # acronym + synonym seed. Idempotent via ON CONFLICT DO NOTHING
+        # in the SQL, so it's safe to re-run on every boot. Admin
+        # edits ('source' = 'admin') are preserved.
+        try:
+            from tools.prionvault.services.query_expansion import ensure_seeded
+            inserted = ensure_seeded()
+            if inserted:
+                app.logger.info(
+                    'PrionVault query_expansion seed: inserted %d new entries',
+                    inserted)
+        except Exception as e:
+            app.logger.warning(
+                'PrionVault query_expansion seed failed: %s', e)
+
     try:
         from tools.prionpacks.models import bootstrap_demo_data
         bootstrap_demo_data()
