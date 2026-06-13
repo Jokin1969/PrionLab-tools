@@ -117,6 +117,26 @@ _SEED_DICTIONARY: list[tuple[str, str, str]] = [
     ("wt",         "wild-type, wildtype",                              "acronym"),
     ("ngs",        "next-generation sequencing",                       "acronym"),
 
+    # ── Viral vectors / gene therapy ────────────────────────────────────
+    # Increasingly relevant to prion research: AAV-delivered shRNAs
+    # against PRNP, anti-prion antibody gene therapy, AAV models of
+    # neurodegeneration. The serotype-specific entries below let a
+    # query for "AAV9" still benefit from the broader concept fan-out;
+    # without them the exact token wouldn't fire any expansion.
+    ("aav",        "adeno-associated virus, viral vector, gene therapy vector, recombinant aav",  "acronym"),
+    ("raav",       "recombinant adeno-associated virus, recombinant aav, aav",                    "acronym"),
+    ("scaav",      "self-complementary aav, self-complementary adeno-associated virus, aav",      "acronym"),
+    ("ssaav",      "single-stranded aav, single-stranded adeno-associated virus, aav",            "acronym"),
+    ("aav1",       "adeno-associated virus serotype 1, aav serotype 1, aav",                      "acronym"),
+    ("aav2",       "adeno-associated virus serotype 2, aav serotype 2, aav",                      "acronym"),
+    ("aav5",       "adeno-associated virus serotype 5, aav serotype 5, aav",                      "acronym"),
+    ("aav6",       "adeno-associated virus serotype 6, aav serotype 6, aav",                      "acronym"),
+    ("aav8",       "adeno-associated virus serotype 8, aav serotype 8, aav",                      "acronym"),
+    ("aav9",       "adeno-associated virus serotype 9, aav serotype 9, cns-tropic aav, blood-brain barrier crossing aav", "acronym"),
+    ("aav-php.b",  "aav variant php.b, cns-tropic aav, brain-targeting aav",                      "acronym"),
+    ("aav-php.eb", "aav variant php.eb, cns-tropic aav, brain-targeting aav",                     "acronym"),
+    ("aav-php.s",  "aav variant php.s, peripheral nervous system-tropic aav",                     "acronym"),
+
     # ── Anatomy / fluids ────────────────────────────────────────────────
     ("bbb",        "blood-brain barrier",                              "acronym"),
     ("csf",        "cerebrospinal fluid",                              "acronym"),
