@@ -136,6 +136,11 @@ _SEED_DICTIONARY: list[tuple[str, str, str]] = [
     ("aav-php.b",  "aav variant php.b, cns-tropic aav, brain-targeting aav",                      "acronym"),
     ("aav-php.eb", "aav variant php.eb, cns-tropic aav, brain-targeting aav",                     "acronym"),
     ("aav-php.s",  "aav variant php.s, peripheral nervous system-tropic aav",                     "acronym"),
+    # Newer engineered capsids targeting CNS endothelium / BBB —
+    # increasingly common in prion gene-therapy papers.
+    ("aav-bi30",   "aav bi30 capsid, engineered aav capsid, brain endothelium-targeting aav, blood-brain barrier crossing aav, cns-tropic aav, aav", "acronym"),
+    ("aav-br1",    "aav br1 capsid, engineered aav capsid, brain endothelium-targeting aav, blood-brain barrier crossing aav, cns-tropic aav, aav", "acronym"),
+    ("aav-x1",     "aav x1 capsid, engineered aav capsid, cns-tropic aav, aav",                   "acronym"),
 
     # ── Anatomy / fluids ────────────────────────────────────────────────
     ("bbb",        "blood-brain barrier",                              "acronym"),
