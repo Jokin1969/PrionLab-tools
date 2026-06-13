@@ -384,11 +384,12 @@ def create_app() -> Flask:
         # edits ('source' = 'admin') are preserved.
         try:
             from tools.prionvault.services.query_expansion import ensure_seeded
-            inserted = ensure_seeded()
-            if inserted:
+            inserted, refreshed = ensure_seeded()
+            if inserted or refreshed:
                 app.logger.info(
-                    'PrionVault query_expansion seed: inserted %d new entries',
-                    inserted)
+                    'PrionVault query_expansion seed: '
+                    'inserted=%d, refreshed=%d',
+                    inserted, refreshed)
         except Exception as e:
             app.logger.warning(
                 'PrionVault query_expansion seed failed: %s', e)

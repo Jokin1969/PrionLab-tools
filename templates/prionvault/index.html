@@ -461,6 +461,10 @@
               title="Estado de cada proveedor de IA / API externa: últimos éxitos / errores, detección de crédito agotado o API key inválida.">
         <span><i class="fas fa-circle-info" style="width:13px;margin-right:6px;opacity:0.7;"></i>Estado IA</span>
       </button>
+      <button class="pv-nav-btn pv-admin-only" id="btn-query-expansion"
+              title="Diccionario de acrónimos / sinónimos / MeSH que la búsqueda IA usa para ampliar tus preguntas.">
+        <span><i class="fas fa-spell-check" style="width:13px;margin-right:6px;opacity:0.7;"></i>Expansiones de búsqueda</span>
+      </button>
       <button class="pv-nav-btn pv-admin-only" id="btn-find-duplicates">
         <span><i class="fas fa-clone" style="width:13px;margin-right:6px;opacity:0.7;"></i>Find duplicates</span>
       </button>
@@ -1717,6 +1721,57 @@
      after every import / dismiss, so the operator can chew the
      backlog over multiple sessions and the number monotonically
      decreases. -->
+
+<!-- ── Query expansion (acronyms / synonyms / MeSH) admin modal ─── -->
+<div id="pv-qx-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:900px;">
+    <button class="pv-modal-close" id="pv-qx-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-spell-check" style="color:#0F3460;margin-right:8px;"></i>Expansiones de búsqueda
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin-bottom:12px;">
+      Cuando preguntas algo a la IA, estos términos se amplían automáticamente
+      antes de buscar. Las entradas <strong>seed</strong> vienen del código y se
+      refrescan en cada deploy; las <strong>admin</strong> las has añadido tú
+      y nunca se sobrescriben.
+    </p>
+
+    <!-- New entry form -->
+    <div style="display:grid;grid-template-columns:1.2fr 3fr 1fr auto;gap:6px;
+                margin-bottom:10px;align-items:center;">
+      <input id="pv-qx-new-term" type="text" placeholder="Término (ej. dextran sulfate)"
+             style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+      <input id="pv-qx-new-expansions" type="text"
+             placeholder="Expansiones separadas por coma (ej. dextran sulphate, ds, sulfated polysaccharide)"
+             style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+      <select id="pv-qx-new-kind"
+              style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+        <option value="synonym">synonym</option>
+        <option value="acronym">acronym</option>
+        <option value="mesh">mesh</option>
+      </select>
+      <button id="pv-qx-add" type="button"
+              style="padding:6px 14px;border-radius:6px;border:none;background:#15803d;
+                     color:white;font-size:12.5px;font-weight:600;cursor:pointer;">
+        + Añadir
+      </button>
+    </div>
+
+    <!-- Filter / counts -->
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+      <input id="pv-qx-filter" type="search" placeholder="Filtrar…"
+             style="flex:1;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+      <span id="pv-qx-counts" style="font-size:11.5px;color:#6b7280;"></span>
+    </div>
+
+    <!-- Listing -->
+    <div id="pv-qx-list"
+         style="max-height:55vh;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;background:white;">
+      <div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">Cargando…</div>
+    </div>
+  </div>
+</div>
 <div id="pv-pubmed-inv-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
   <div class="pv-modal-inner" style="max-width:880px;">

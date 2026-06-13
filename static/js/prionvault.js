@@ -5623,6 +5623,7 @@
       wireScreenRefs();
       wireSidebarGroups();
       wireAIStatus();
+      wireQueryExpansion();
       wireSidebarResize();
       wireMobileDrawer();
       wireBulkBar();
@@ -10825,6 +10826,168 @@
   // provider is in a definite-failure state (quota_exhausted /
   // invalid_key) the sticky banner appears at the top of PrionVault
   // and stays visible until the next successful call clears it.
+  // ── Query expansion admin modal ─────────────────────────────────────
+  // Lets the operator inspect and edit the (term → expansions, kind)
+  // dictionary the biomedical retriever uses to broaden queries.
+  // Admin-added entries persist across deploys; seed entries refresh
+  // automatically when the code's _SEED_DICTIONARY changes.
+  function wireQueryExpansion() {
+    const escAttr = (v) => esc(String(v || ''));
+    const btn   = document.getElementById('btn-query-expansion');
+    const modal = document.getElementById('pv-qx-modal');
+    if (!btn || !modal) return;
+    const closeBtn = document.getElementById('pv-qx-close');
+    const listEl   = document.getElementById('pv-qx-list');
+    const filtEl   = document.getElementById('pv-qx-filter');
+    const cntEl    = document.getElementById('pv-qx-counts');
+    const termEl   = document.getElementById('pv-qx-new-term');
+    const expEl    = document.getElementById('pv-qx-new-expansions');
+    const kindEl   = document.getElementById('pv-qx-new-kind');
+    const addBtn   = document.getElementById('pv-qx-add');
+    let items = [];
+
+    function open()  { modal.style.display = 'flex'; refresh(); }
+    function close() { modal.style.display = 'none'; }
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    async function refresh() {
+      listEl.innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">Cargando…</div>';
+      try {
+        const r = await api('/admin/query-expansion/list');
+        items = r.items || [];
+        render();
+      } catch (e) {
+        listEl.innerHTML =
+          `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    function render() {
+      const filter = (filtEl.value || '').trim().toLowerCase();
+      const matches = items.filter(it =>
+        !filter ||
+        it.term.includes(filter) ||
+        it.expansions.includes(filter) ||
+        it.kind.includes(filter)
+      );
+      const seedN  = items.filter(it => it.source === 'seed').length;
+      const adminN = items.filter(it => it.source === 'admin').length;
+      cntEl.textContent =
+        `${items.length} entradas · ${seedN} seed · ${adminN} admin` +
+        (filter ? ` · ${matches.length} mostradas` : '');
+      if (!matches.length) {
+        listEl.innerHTML =
+          `<div style="text-align:center;color:#9ca3af;padding:24px;font-size:13px;">
+             ${filter ? 'Sin coincidencias.' : 'Diccionario vacío.'}
+           </div>`;
+        return;
+      }
+      // Single table-like grid for tight scanning.
+      listEl.innerHTML = matches.map(it => {
+        const srcChip = it.source === 'admin'
+          ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:#dcfce7;color:#166534;font-weight:600;">admin</span>`
+          : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:#e5e7eb;color:#374151;font-weight:600;">seed</span>`;
+        const kindChip =
+          `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:#eef2ff;color:#3730a3;font-weight:600;">${esc(it.kind)}</span>`;
+        return `
+          <div data-term="${escAttr(it.term)}" data-kind="${escAttr(it.kind)}"
+               style="display:grid;grid-template-columns:1.5fr 4fr auto auto auto;gap:8px;
+                      align-items:center;padding:7px 10px;border-bottom:1px solid #f3f4f6;
+                      font-size:12.5px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-weight:600;color:#111827;
+                        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${esc(it.term)}
+            </div>
+            <div style="color:#4b5563;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                 title="${escAttr(it.expansions)}">${esc(it.expansions)}</div>
+            ${kindChip}
+            ${srcChip}
+            <button class="pv-qx-row-actions" type="button"
+                    title="Editar o borrar"
+                    style="background:transparent;border:none;color:#6b7280;cursor:pointer;
+                           padding:3px 6px;border-radius:4px;font-size:12px;">⋯</button>
+          </div>`;
+      }).join('');
+      listEl.querySelectorAll('.pv-qx-row-actions').forEach(b => {
+        b.addEventListener('click', (ev) => {
+          const row = ev.target.closest('[data-term]');
+          if (!row) return;
+          openRowMenu(row);
+        });
+      });
+    }
+
+    function openRowMenu(row) {
+      const term = row.dataset.term;
+      const kind = row.dataset.kind;
+      const it = items.find(i => i.term === term && i.kind === kind);
+      if (!it) return;
+      const action = prompt(
+        `Entrada: ${term}  (${kind})\n` +
+        `Expansiones actuales:\n  ${it.expansions}\n\n` +
+        `• Escribe NUEVAS expansiones (coma) para reemplazar.\n` +
+        `• Escribe "BORRAR" para eliminar.\n` +
+        `• Vacío para cancelar.`,
+        it.expansions
+      );
+      if (action == null || action === '') return;
+      if (action.trim().toUpperCase() === 'BORRAR') {
+        doDelete(term, kind);
+        return;
+      }
+      doUpsert(term, action.trim(), kind);
+    }
+
+    async function doUpsert(term, expansions, kind) {
+      try {
+        await api('/admin/query-expansion', {
+          method: 'POST',
+          body: JSON.stringify({term, expansions, kind}),
+        });
+        refresh();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function doDelete(term, kind) {
+      if (!confirm(`Borrar "${term}" (${kind})?`)) return;
+      try {
+        await api('/admin/query-expansion', {
+          method: 'DELETE',
+          body: JSON.stringify({term, kind}),
+        });
+        refresh();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    addBtn.addEventListener('click', () => {
+      const term = termEl.value.trim();
+      const expansions = expEl.value.trim();
+      const kind = kindEl.value;
+      if (!term || !expansions) {
+        alert('Faltan término o expansiones.');
+        return;
+      }
+      doUpsert(term, expansions, kind).then(() => {
+        termEl.value = '';
+        expEl.value  = '';
+        termEl.focus();
+      });
+    });
+    [termEl, expEl].forEach(el => {
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') addBtn.click();
+      });
+    });
+    filtEl.addEventListener('input', render);
+  }
+
   // Opening the modal switches to a tighter 30 s poll so the operator
   // can see status changes nearly in real time.
   function wireAIStatus() {

@@ -5228,6 +5228,61 @@ def api_pubmed_inventory_undismiss():
     return jsonify({"ok": True, "updated": updated})
 
 
+# ── Biomedical query expansion (acronyms / synonyms / MeSH) ─────────────────
+
+@prionvault_bp.route("/api/admin/query-expansion/list", methods=["GET"])
+@admin_required
+def api_query_expansion_list():
+    """Full dictionary dump, ordered by kind then term. Includes
+    'seed' and 'admin' entries undifferentiated — the response carries
+    the `source` field so the UI can label them visually."""
+    from .services import query_expansion as _qx
+    return jsonify({"items": _qx.list_all()})
+
+
+@prionvault_bp.route("/api/admin/query-expansion", methods=["POST"])
+@admin_required
+def api_query_expansion_upsert():
+    """Body: {term, expansions, kind}. Upsert via the service's
+    add(), which marks the row as source='admin' so the seed loader
+    won't overwrite it on a future deploy."""
+    from .services import query_expansion as _qx
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        row = _qx.add(
+            term=data.get("term") or "",
+            expansions=data.get("expansions") or "",
+            kind=data.get("kind") or "synonym",
+            source="admin",
+            created_by=_viewer_id(),
+        )
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("query_expansion upsert failed")
+        return jsonify({"error": "internal",
+                        "detail": str(exc)[:240]}), 500
+    return jsonify({"ok": True, "item": row})
+
+
+@prionvault_bp.route("/api/admin/query-expansion", methods=["DELETE"])
+@admin_required
+def api_query_expansion_delete():
+    """Body: {term, kind}. Removes the entry. Equally valid for seed
+    and admin entries — the operator decides. (Seed entries that are
+    deleted will be re-added on the next ensure_seeded() boot, which
+    is fine: it's the seed code's responsibility to define what
+    "default" means.)"""
+    from .services import query_expansion as _qx
+    data = request.get_json(force=True, silent=True) or {}
+    term = (data.get("term") or "").strip()
+    kind = (data.get("kind") or "synonym").strip()
+    if not term:
+        return jsonify({"error": "term_required"}), 400
+    n = _qx.delete(term, kind)
+    return jsonify({"ok": True, "deleted": n})
+
+
 @prionvault_bp.route("/api/admin/pubmed-inventory/keep", methods=["POST"])
 @admin_required
 def api_pubmed_inventory_keep():

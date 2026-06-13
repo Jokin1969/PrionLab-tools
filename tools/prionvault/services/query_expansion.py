@@ -71,13 +71,15 @@ _SEED_DICTIONARY: list[tuple[str, str, str]] = [
     ("quic",       "quaking-induced conversion",                       "acronym"),
 
     # ── Glycosaminoglycans / proteoglycans ───────────────────────────────
-    # The motivating example from the user.
-    ("gag",        "glycosaminoglycan, heparan sulfate, chondroitin sulfate, dermatan sulfate, keratan sulfate", "synonym"),
-    ("gags",       "glycosaminoglycans, heparan sulfate, chondroitin sulfate, dermatan sulfate, keratan sulfate", "synonym"),
+    # The motivating example from the user. dextran sulfate / sulphate
+    # added per user request — same conceptual family (sulfated
+    # polysaccharide), often used in prion / amyloid binding studies.
+    ("gag",        "glycosaminoglycan, heparan sulfate, chondroitin sulfate, dermatan sulfate, keratan sulfate, dextran sulfate, dextran sulphate", "synonym"),
+    ("gags",       "glycosaminoglycans, heparan sulfate, chondroitin sulfate, dermatan sulfate, keratan sulfate, dextran sulfate, dextran sulphate", "synonym"),
     ("hs",         "heparan sulfate, heparin",                         "acronym"),
     ("hspg",       "heparan sulfate proteoglycan",                     "acronym"),
     ("cs",         "chondroitin sulfate",                              "acronym"),
-    ("ds",         "dermatan sulfate",                                 "acronym"),
+    ("ds",         "dermatan sulfate, dextran sulfate, dextran sulphate", "acronym"),
     ("ks",         "keratan sulfate",                                  "acronym"),
     ("ha",         "hyaluronic acid, hyaluronan",                      "acronym"),
 
@@ -301,24 +303,49 @@ def delete(term: str, kind: str = "synonym") -> int:
     return r.rowcount or 0
 
 
-def ensure_seeded() -> int:
-    """Populate the table from _SEED_DICTIONARY if missing entries.
-    Idempotent: ON CONFLICT DO NOTHING means re-running never touches
-    rows whose source has been changed to 'admin' from the UI."""
+def ensure_seeded() -> tuple[int, int]:
+    """Populate / refresh the table from _SEED_DICTIONARY.
+
+    Returns (inserted, refreshed):
+      * inserted  — new (term, kind) rows added on this pass.
+      * refreshed — existing source='seed' rows whose expansions
+                    changed in the code and were therefore updated.
+
+    Admin-edited rows (source='admin') are NEVER touched, even when
+    their (term, kind) collides with a seed entry — the operator's
+    edit always wins. That way pushing a new code release with a
+    refined seed updates every default but preserves the operator's
+    additions / overrides.
+    """
     eng = _get_engine()
     inserted = 0
+    refreshed = 0
     try:
         with eng.begin() as conn:
             for term, expansions, kind in _SEED_DICTIONARY:
+                # First try INSERT; the ON CONFLICT clause refreshes
+                # the row IFF it's still a 'seed' row AND its
+                # expansions actually differ. Untouched 'seed' rows
+                # produce zero rowcount, admin-overridden rows are
+                # skipped entirely thanks to the WHERE clause.
                 r = conn.execute(sql_text(
                     """
                     INSERT INTO prionvault_query_expansion
                       (term, expansions, kind, source)
                     VALUES (:t, :e, :k, 'seed')
-                    ON CONFLICT (term, kind) DO NOTHING
+                    ON CONFLICT (term, kind) DO UPDATE
+                       SET expansions = EXCLUDED.expansions
+                     WHERE prionvault_query_expansion.source = 'seed'
+                       AND prionvault_query_expansion.expansions <> EXCLUDED.expansions
+                    RETURNING (xmax = 0) AS inserted
                     """
                 ), {"t": term.lower(), "e": expansions.lower(), "k": kind})
-                inserted += r.rowcount or 0
+                row = r.first()
+                if row is not None:
+                    if row[0]:
+                        inserted += 1
+                    else:
+                        refreshed += 1
     except Exception as exc:
         logger.warning("query_expansion seed failed: %s", exc)
-    return inserted
+    return inserted, refreshed
