@@ -298,6 +298,7 @@ _SELF_HEAL_MIGRATIONS = (
     "035_query_expansion.sql",
     "036_user_selection.sql",
     "037_user_state_marks.sql",
+    "038_per_user_tags.sql",
 )
 
 

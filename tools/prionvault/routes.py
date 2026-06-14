@@ -637,9 +637,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         "      AND _pus.user_id = CAST(:_viewer_uid AS uuid)",
     ]
     if tag_id:
+        # Per-user tag filter (migration 038): only surface articles
+        # where the CURRENT VIEWER tagged them, not just anyone.
+        # Without the added_by clause readers would see articles
+        # admins tagged but they themselves didn't, which contradicts
+        # the new per-user semantics.
         join_parts.append(
             "JOIN article_tag_link ON article_tag_link.article_id = articles.id "
-            "AND article_tag_link.tag_id = :tag_id"
+            "AND article_tag_link.tag_id  = :tag_id "
+            "AND article_tag_link.added_by = CAST(:_viewer_uid AS uuid)"
         )
         params["tag_id"] = tag_id
     # Manual collection membership join — smart collections are
@@ -933,16 +939,20 @@ def api_article_detail(aid):
             out["source"]           = d.get("source")
             out["pdf_dropbox_path"] = d.get("dropbox_path")
 
-        # Tags (use separate session to avoid contaminating main one)
+        # Per-user tag chips (migration 038): show only the tags the
+        # CURRENT VIEWER has assigned to this article, not anyone
+        # else's.
         try:
             from sqlalchemy.orm import Session as _SASession
             with _SASession(db.engine) as _s2:
                 tag_rows = _s2.execute(sql_text(
                     "SELECT t.id, t.name, t.color "
-                    "FROM article_tag t "
-                    "JOIN article_tag_link l ON l.tag_id = t.id "
-                    "WHERE l.article_id = :aid"
-                ), {"aid": str(aid)}).all()
+                    "  FROM article_tag t "
+                    "  JOIN article_tag_link l ON l.tag_id = t.id "
+                    " WHERE l.article_id = :aid "
+                    "   AND l.added_by   = CAST(:vuid AS uuid)"
+                ), {"aid": str(aid),
+                    "vuid": str(_vuid) if _vuid else None}).all()
                 out["tags"] = [{"id": r.id, "name": r.name, "color": r.color}
                                for r in tag_rows]
         except Exception as exc:
@@ -1063,18 +1073,23 @@ def api_article_stats():
 @prionvault_bp.route("/api/tags", methods=["GET"])
 @login_required
 def api_list_tags():
+    """List every tag the dictionary knows about, with `count` reflecting
+    how many articles the CURRENT VIEWER has tagged with each. The
+    dictionary itself stays global (admins curate the palette) — only
+    the assignments are per-user since migration 038."""
     s = _session()
     try:
-        # Tag list with article counts
         rows = s.execute(sql_text(
             """
-            SELECT t.id, t.name, t.color, count(l.article_id) AS n_articles
-            FROM article_tag t
-            LEFT JOIN article_tag_link l ON l.tag_id = t.id
-            GROUP BY t.id
-            ORDER BY t.name
+            SELECT t.id, t.name, t.color,
+                   count(l.article_id) FILTER (WHERE l.added_by = CAST(:vuid AS uuid))
+                                       AS n_articles
+              FROM article_tag t
+         LEFT JOIN article_tag_link l ON l.tag_id = t.id
+          GROUP BY t.id
+          ORDER BY t.name
             """
-        )).all()
+        ), {"vuid": str(_viewer_id()) if _viewer_id() else None}).all()
         return jsonify([
             {"id": r.id, "name": r.name, "color": r.color, "count": r.n_articles}
             for r in rows
@@ -1106,8 +1121,11 @@ def api_delete_tag(tag_id):
 
 
 @prionvault_bp.route("/api/tags", methods=["POST"])
-@admin_required
+@login_required
 def api_create_tag():
+    """Add a tag to the shared dictionary. Open to any logged-in
+    user — the dictionary is global so the same tag name + color
+    can be reused by everyone in the lab."""
     data = request.get_json(force=True, silent=True) or {}
     name = (data.get("name") or "").strip()
     color = (data.get("color") or "").strip() or None
@@ -1115,7 +1133,18 @@ def api_create_tag():
         return jsonify({"error": "name required"}), 400
     s = _session()
     try:
-        t = models.ArticleTag(name=name, color=color)
+        # Tag names must be unique by DB constraint. Surface a 409
+        # when the user tries to re-create an existing tag so the
+        # UI can recover gracefully (most often the operator types
+        # a name that already exists and just wants to attach it).
+        existing = s.execute(sql_text(
+            "SELECT id, name, color FROM article_tag WHERE lower(name) = lower(:n)"
+        ), {"n": name}).first()
+        if existing:
+            return jsonify({"id": existing.id, "name": existing.name,
+                            "color": existing.color}), 200
+        t = models.ArticleTag(name=name, color=color,
+                              created_by=_viewer_id())
         s.add(t)
         s.commit()
         return jsonify(t.to_dict()), 201
@@ -1127,8 +1156,12 @@ def api_create_tag():
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/tags/<int:tag_id>", methods=["PUT"])
-@admin_required
+@login_required
 def api_attach_tag(aid, tag_id):
+    """Attach a tag to an article FOR THE CURRENT VIEWER. With migration
+    038 the PK includes added_by, so two operators each tagging the
+    same article with the same tag coexist as separate rows — and
+    each one only sees their own assignments."""
     s = _session()
     try:
         a = s.get(models.Article, aid)
@@ -1137,26 +1170,42 @@ def api_attach_tag(aid, tag_id):
         t = s.get(models.ArticleTag, tag_id)
         if not t:
             return jsonify({"error": "tag not found"}), 404
-        existing = s.query(models.ArticleTagLink).get((aid, tag_id))
-        if not existing:
-            link = models.ArticleTagLink(article_id=aid, tag_id=tag_id,
-                                         added_by=_viewer_id())
-            s.add(link)
-            s.commit()
+        vid = _viewer_id()
+        if not vid:
+            return jsonify({"error": "not_authenticated"}), 401
+        # Per-user composite key now: (article_id, tag_id, added_by).
+        s.execute(sql_text(
+            """
+            INSERT INTO article_tag_link (article_id, tag_id, added_by)
+            VALUES (:aid, :tid, CAST(:uid AS uuid))
+            ON CONFLICT (article_id, tag_id, added_by) DO NOTHING
+            """
+        ), {"aid": str(aid), "tid": tag_id, "uid": str(vid)})
+        s.commit()
         return jsonify({"ok": True})
     finally:
         s.close()
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/tags/<int:tag_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_detach_tag(aid, tag_id):
+    """Remove THE VIEWER'S assignment of `tag_id` on `aid`. Doesn't
+    affect anyone else's tagging of the same article."""
     s = _session()
     try:
-        link = s.query(models.ArticleTagLink).get((aid, tag_id))
-        if link:
-            s.delete(link)
-            s.commit()
+        vid = _viewer_id()
+        if not vid:
+            return jsonify({"error": "not_authenticated"}), 401
+        s.execute(sql_text(
+            """
+            DELETE FROM article_tag_link
+             WHERE article_id = :aid
+               AND tag_id     = :tid
+               AND added_by   = CAST(:uid AS uuid)
+            """
+        ), {"aid": str(aid), "tid": tag_id, "uid": str(vid)})
+        s.commit()
         return jsonify({"ok": True})
     finally:
         s.close()
@@ -1923,9 +1972,11 @@ def api_articles_bulk_user_state():
 
 
 @prionvault_bp.route("/api/articles/bulk-tags", methods=["POST"])
-@admin_required
+@login_required
 def api_articles_bulk_tags():
-    """Attach or detach tags from many articles in one call.
+    """Attach or detach tags from many articles in one call, for the
+    CURRENT VIEWER. Each user maintains their own tag assignments
+    since migration 038, so this endpoint is open to readers.
 
     Body:
       {
@@ -1957,6 +2008,10 @@ def api_articles_bulk_tags():
     if not add_tags and not remove_tags:
         return jsonify({"error": "no_tags"}), 400
 
+    vid = _viewer_id()
+    if not vid:
+        return jsonify({"error": "not_authenticated"}), 401
+
     s = _session()
     try:
         added = 0
@@ -1964,25 +2019,29 @@ def api_articles_bulk_tags():
             res = s.execute(sql_text(
                 """
                 INSERT INTO article_tag_link (article_id, tag_id, added_by)
-                SELECT a.article_id, t.tag_id, :uid
+                SELECT a.article_id, t.tag_id, CAST(:uid AS uuid)
                   FROM unnest(CAST(:ids  AS uuid[])) AS a(article_id)
                  CROSS JOIN unnest(CAST(:tags AS int[]))  AS t(tag_id)
                   JOIN articles    ar ON ar.id = a.article_id
                   JOIN article_tag tg ON tg.id = t.tag_id
-                ON CONFLICT (article_id, tag_id) DO NOTHING
+                ON CONFLICT (article_id, tag_id, added_by) DO NOTHING
                 """
-            ), {"ids": ids, "tags": add_tags, "uid": _viewer_id()})
+            ), {"ids": ids, "tags": add_tags, "uid": str(vid)})
             added = res.rowcount or 0
 
         removed = 0
         if remove_tags:
+            # Only remove THIS viewer's assignments — never anyone
+            # else's. The new (article_id, tag_id, added_by) PK
+            # composition makes the constraint air-tight.
             res = s.execute(sql_text(
                 """
                 DELETE FROM article_tag_link
                  WHERE article_id = ANY(CAST(:ids  AS uuid[]))
                    AND tag_id     = ANY(CAST(:tags AS int[]))
+                   AND added_by   = CAST(:uid AS uuid)
                 """
-            ), {"ids": ids, "tags": remove_tags})
+            ), {"ids": ids, "tags": remove_tags, "uid": str(vid)})
             removed = res.rowcount or 0
 
         s.commit()
