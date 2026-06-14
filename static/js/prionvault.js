@@ -53,7 +53,13 @@
     indexedStatus:  '',  // '' | 'yes' | 'no'
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
-    selectedIds: new Set(),  // UUIDs selected for bulk operations
+    // selectedIds: a Set that ALSO syncs every change to the server
+    // (table: prionvault_user_selection) so the operator's ticks
+    // survive refresh, browser switch and server deploys. Starts as
+    // a plain Set so any early read can't crash; gets promoted to
+    // a _TrackedSelectionSet later (preserving values, if any) once
+    // that class exists.
+    selectedIds: new Set(),
     // When true, the listing only shows articles in selectedIds — drives
     // the "🔍 Ver sólo seleccionados" toggle in the bulk bar. Persists
     // across modal opens/closes (e.g. picking articles inside the PMID
@@ -207,6 +213,142 @@
   // Cache the full set of collections so the editor's "group"/"subgroup"
   // datalists can suggest existing labels without a second fetch.
   let _allCollections = [];
+
+  // ── Per-user article selection: persisted across refresh / browser
+  // / deploy via /api/user-selection (backed by Postgres) with a
+  // localStorage fallback for the unauthenticated edge case. ──────────
+  const _SEL_LS_KEY      = 'pv-selected-ids';
+  const _SEL_DEBOUNCE_MS = 800;
+  let _selBackend        = 'server';   // 'server' | 'local' — flips
+                                       // when a /user-selection call
+                                       // returns 401/403.
+  let _selPending        = { add: new Set(), remove: new Set() };
+  let _selTimer          = null;
+
+  function _flushSelectionToLocal() {
+    try {
+      const arr = Array.from(state.selectedIds || []);
+      localStorage.setItem(_SEL_LS_KEY, JSON.stringify(arr));
+    } catch (_) { /* quota / disabled — silent */ }
+  }
+
+  async function _flushSelectionSync() {
+    _selTimer = null;
+    if (_selBackend !== 'server') { _flushSelectionToLocal(); return; }
+    const add    = Array.from(_selPending.add);
+    const remove = Array.from(_selPending.remove);
+    _selPending.add.clear();
+    _selPending.remove.clear();
+    if (!add.length && !remove.length) return;
+    try {
+      await api('/user-selection', {
+        method: 'POST',
+        body: JSON.stringify({ add, remove }),
+      });
+    } catch (e) {
+      // Auth failure → fall back to localStorage from here on so the
+      // operator's clicks still survive a refresh, even if not across
+      // browsers. Any other error is logged and the changes go back
+      // into the pending bag for the next attempt.
+      if (e && (e.status === 401 || e.status === 403)) {
+        _selBackend = 'local';
+        _flushSelectionToLocal();
+      } else {
+        add.forEach(id => _selPending.add.add(id));
+        remove.forEach(id => _selPending.remove.add(id));
+        console.warn('user-selection sync deferred:', e);
+      }
+    }
+  }
+
+  function _scheduleSelectionSync(diff) {
+    if (diff.add)    diff.add.forEach(id    => {
+      _selPending.add.add(id);
+      _selPending.remove.delete(id);
+    });
+    if (diff.remove) diff.remove.forEach(id => {
+      _selPending.remove.add(id);
+      _selPending.add.delete(id);
+    });
+    if (_selTimer) clearTimeout(_selTimer);
+    _selTimer = setTimeout(_flushSelectionSync, _SEL_DEBOUNCE_MS);
+  }
+
+  // Subclass of Set whose mutators piggyback a debounced server sync.
+  // Use `addSilently` / `clearSilently` from the hydration path so the
+  // round-trip that brought us the data doesn't bounce right back.
+  class _TrackedSelectionSet extends Set {
+    add(value) {
+      const had = this.has(value);
+      const r = super.add(value);
+      if (!had && value) _scheduleSelectionSync({ add: [value] });
+      return r;
+    }
+    delete(value) {
+      const had = this.has(value);
+      const r = super.delete(value);
+      if (had) _scheduleSelectionSync({ remove: [value] });
+      return r;
+    }
+    clear() {
+      if (this.size === 0) return super.clear();
+      super.clear();
+      // Cheaper to PUT an empty list than DELETE then queue future
+      // adds against a phantom row count. Use the dedicated endpoint.
+      if (_selBackend === 'server') {
+        api('/user-selection', { method: 'DELETE' }).catch(e => {
+          if (e && (e.status === 401 || e.status === 403)) {
+            _selBackend = 'local';
+          }
+          _flushSelectionToLocal();
+        });
+      } else {
+        _flushSelectionToLocal();
+      }
+      _selPending.add.clear();
+      _selPending.remove.clear();
+      if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
+    }
+    // Internal: populate without firing the sync — used by the
+    // initial hydrate from /api/user-selection.
+    addSilently(value) { return super.add(value); }
+    clearSilently()    { return super.clear();     }
+  }
+
+  // Promote the placeholder Set in state.selectedIds (initialised
+  // up top) to a TrackedSet now that the class exists. Anything that
+  // was already in there during early module init is preserved.
+  if (!(state.selectedIds instanceof _TrackedSelectionSet)) {
+    const _prev = state.selectedIds;
+    state.selectedIds = new _TrackedSelectionSet();
+    if (_prev && _prev.forEach) _prev.forEach(v => state.selectedIds.addSilently(v));
+  }
+
+  // Hydrate the in-memory selection from the server (or localStorage
+  // fallback) once at boot. Called from the bootstrap before
+  // loadArticles() so the first render's checkboxes paint with the
+  // correct ticked state.
+  async function _hydrateSelection() {
+    state.selectedIds.clearSilently();
+    try {
+      const r = await api('/user-selection');
+      (r.items || []).forEach(id => state.selectedIds.addSilently(id));
+      _selBackend = 'server';
+    } catch (e) {
+      if (e && (e.status === 401 || e.status === 403)) {
+        _selBackend = 'local';
+      }
+      // Whatever the failure, try localStorage so the operator's
+      // last session's ticks aren't lost on a network blip.
+      try {
+        const raw = localStorage.getItem(_SEL_LS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(arr)) {
+          arr.forEach(id => id && state.selectedIds.addSilently(id));
+        }
+      } catch (_) { /* localStorage disabled — empty selection */ }
+    }
+  }
 
   async function refreshPrionPacksDropdown() {
     const sel = document.getElementById('filter-pp-id');
@@ -5641,7 +5783,11 @@
 
     // Wire focus trapping for every modal in the page. Safe / idempotent.
     document.querySelectorAll('.pv-modal').forEach(m => wireModalFocusTrap(m));
-    loadArticles().then(() => {
+    // Pull the user's previously-ticked checkboxes from the server
+    // BEFORE the first render so loadArticles paints them correctly.
+    // _hydrateSelection never throws; the worst case is an empty
+    // working set, identical to a fresh install.
+    _hydrateSelection().then(() => loadArticles()).then(() => {
       const openId = new URLSearchParams(window.location.search).get('open');
       if (openId) openDetail(openId);
       // Bring back the last RAG search if there's a fresh one

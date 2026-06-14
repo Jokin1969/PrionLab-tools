@@ -296,6 +296,7 @@ _SELF_HEAL_MIGRATIONS = (
     "033_pubmed_inventory_kept.sql",
     "034_articles_perf_indexes.sql",
     "035_query_expansion.sql",
+    "036_user_selection.sql",
 )
 
 

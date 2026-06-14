@@ -1603,6 +1603,68 @@ def api_articles_bulk_update():
         s.close()
 
 
+# ── Per-user article selection (persisted checkboxes) ──────────────────────
+
+@prionvault_bp.route("/api/user-selection", methods=["GET"])
+@login_required
+def api_user_selection_get():
+    """Return the article ids the viewer has currently ticked.
+    Empty list for an anonymous session (shouldn't happen under
+    @login_required, but defensive)."""
+    from .services import user_selection
+    return jsonify({"items": user_selection.list_for_user(_viewer_id())})
+
+
+@prionvault_bp.route("/api/user-selection", methods=["POST"])
+@login_required
+def api_user_selection_post():
+    """Body shape: {add?: [...ids], remove?: [...ids]}.
+
+    Both arrays are optional; we apply them in (remove → add) order
+    inside their own transactions so a single click that ticks one
+    row and unticks another can be batched in one request. Useful
+    for the "Marcar todos los visibles" / "Limpiar selección"
+    bulk actions the bulk-bar drives.
+
+    Returns {added: N, removed: M, total: T} so the UI can verify
+    its in-memory state hasn't drifted from the server."""
+    from .services import user_selection
+    uid = _viewer_id()
+    body = request.get_json(silent=True) or {}
+    add_ids    = body.get("add")    or []
+    remove_ids = body.get("remove") or []
+    if not isinstance(add_ids, list) or not isinstance(remove_ids, list):
+        return jsonify({"error": "add/remove must be arrays"}), 400
+    removed = user_selection.remove(uid, remove_ids) if remove_ids else 0
+    added   = user_selection.add(uid, add_ids)       if add_ids    else 0
+    total   = len(user_selection.list_for_user(uid))
+    return jsonify({"added": added, "removed": removed, "total": total})
+
+
+@prionvault_bp.route("/api/user-selection", methods=["PUT"])
+@login_required
+def api_user_selection_put():
+    """Body: {ids: [...]}. Replace the entire selection with this
+    exact list, atomically. Used by "paste a working set" flows."""
+    from .services import user_selection
+    body = request.get_json(silent=True) or {}
+    ids = body.get("ids") or []
+    if not isinstance(ids, list):
+        return jsonify({"error": "ids must be an array"}), 400
+    out = user_selection.replace(_viewer_id(), ids)
+    out["total"] = len(user_selection.list_for_user(_viewer_id()))
+    return jsonify(out)
+
+
+@prionvault_bp.route("/api/user-selection", methods=["DELETE"])
+@login_required
+def api_user_selection_delete():
+    """Wipe the viewer's selection. Powers "Limpiar selección"."""
+    from .services import user_selection
+    n = user_selection.clear(_viewer_id())
+    return jsonify({"removed": n, "total": 0})
+
+
 @prionvault_bp.route("/api/articles/bulk-user-state", methods=["POST"])
 @login_required
 def api_articles_bulk_user_state():
