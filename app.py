@@ -382,6 +382,25 @@ def create_app() -> Flask:
         # acronym + synonym seed. Idempotent via ON CONFLICT DO NOTHING
         # in the SQL, so it's safe to re-run on every boot. Admin
         # edits ('source' = 'admin') are preserved.
+        # One-shot: copy global article marks (is_flagged /
+        # is_milestone / color_label / priority) onto the first
+        # admin's prionvault_user_state row, so the migration from
+        # global to per-user marks doesn't lose any prior work.
+        # Idempotent via a control row in prionvault_scheduled_runs.
+        try:
+            from tools.prionvault.services.marks_backfill import backfill_once
+            summary = backfill_once()
+            if summary.get("copied"):
+                app.logger.info(
+                    "PrionVault marks backfill: copied=%d → user_id=%s",
+                    summary["copied"], summary.get("user_id"))
+            elif summary.get("error"):
+                app.logger.warning(
+                    "PrionVault marks backfill error: %s", summary["error"])
+        except Exception as e:
+            app.logger.warning(
+                "PrionVault marks backfill skipped: %s", e)
+
         try:
             from tools.prionvault.services.query_expansion import ensure_seeded
             inserted, refreshed = ensure_seeded()

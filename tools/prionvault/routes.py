@@ -330,7 +330,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # seleccionados" toggle in the bulk bar). An empty list naturally
     # yields zero rows since ANY('{}') matches nothing.
     if ids_filter:
-        conditions.append("id::text = ANY(:ids_filter)")
+        conditions.append("articles.id::text = ANY(:ids_filter)")
         params["ids_filter"] = ids_filter
 
     if q:
@@ -414,15 +414,19 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "NOT EXISTS (SELECT 1 FROM user_articles ua WHERE ua.article_id = articles.id)"
         )
 
+    # Per-user marks (migration 037): is_flagged / is_milestone live on
+    # prionvault_user_state via the LEFT JOIN _pus added below the
+    # filters block. Reading from articles.is_flagged / is_milestone
+    # would surface the soon-to-be-deprecated global columns.
     if is_flagged is True:
-        conditions.append("is_flagged IS TRUE")
+        conditions.append("_pus.is_flagged IS TRUE")
     elif is_flagged is False:
-        conditions.append("(is_flagged IS FALSE OR is_flagged IS NULL)")
+        conditions.append("(_pus.is_flagged IS NOT TRUE)")   # NULL or FALSE
 
     if is_milestone is True:
-        conditions.append("is_milestone IS TRUE")
+        conditions.append("_pus.is_milestone IS TRUE")
     elif is_milestone is False:
-        conditions.append("(is_milestone IS FALSE OR is_milestone IS NULL)")
+        conditions.append("(_pus.is_milestone IS NOT TRUE)")
 
     # Journal-Club filters — single semi-join against
     # prionvault_jc_presentation rather than a JOIN to avoid row
@@ -471,14 +475,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             params["pp_all_dois"] = all_pp_dois
         # If there are no PrionPacks at all, "sin PrionPack" matches everything → no filter.
 
+    # Per-user marks: read from prionvault_user_state via _pus join.
     if color_label in _VALID_COLOR_LABELS:
-        conditions.append("color_label = :color_label")
+        conditions.append("_pus.color_label = :color_label")
         params["color_label"] = color_label
     elif color_label == "none":
-        conditions.append("color_label IS NULL")
+        conditions.append("_pus.color_label IS NULL")
 
     if priority_eq is not None:
-        conditions.append("priority = :priority_eq")
+        conditions.append("_pus.priority = :priority_eq")
         params["priority_eq"] = priority_eq
 
     if extraction and "extraction_status" in pv_cols:
@@ -490,8 +495,10 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             conditions.append("extraction_status = 'failed'")
 
     _viewer_uid = _viewer_id()
+    # NOTE: params["_viewer_uid"] is set unconditionally further down
+    # (the _pus LEFT JOIN needs it on EVERY query). This block only
+    # adds the is_favorite / is_read conditions when requested.
     if _viewer_uid and (is_favorite is not None or is_read is not None):
-        params["_viewer_uid"] = str(_viewer_uid)
         if is_favorite is True:
             conditions.append(
                 "EXISTS (SELECT 1 FROM prionvault_user_state s "
@@ -519,9 +526,13 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
+    # `created_at` is now ambiguous because the LEFT JOIN _pus
+    # also has one. Qualify with articles.* explicitly. Other
+    # columns (year, title, authors, journal) only live on
+    # articles so no disambiguation is needed.
     sort_map = {
-        "added_desc":    "created_at DESC NULLS LAST",
-        "added_asc":     "created_at ASC NULLS FIRST",
+        "added_desc":    "articles.created_at DESC NULLS LAST",
+        "added_asc":     "articles.created_at ASC NULLS FIRST",
         "year_desc":     "year DESC NULLS LAST",
         "year_asc":      "year ASC NULLS FIRST",
         "title_asc":     "lower(title) ASC",
@@ -544,9 +555,17 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # listing cost. We now fetch the counts in a single batched
     # GROUP BY query below, keyed by the article ids the main SELECT
     # actually returned — O(1) round-trip regardless of page size.
-    base_cols = ("id, title, authors, year, journal, doi, pubmed_id, abstract, "
-                 "tags, is_milestone, is_flagged, color_label, priority, "
-                 "dropbox_path, dropbox_link, created_at, updated_at")
+    # is_milestone / is_flagged / color_label / priority are now read
+    # from prionvault_user_state via the LEFT JOIN built below — they
+    # are per-user marks since migration 037. The legacy columns on
+    # `articles` are kept for one more release cycle as a rollback
+    # safety net but no longer participate in the API contract.
+    base_cols = ("articles.id, title, authors, year, journal, doi, pubmed_id, abstract, "
+                 "tags, dropbox_path, dropbox_link, articles.created_at, articles.updated_at, "
+                 "COALESCE(_pus.is_milestone, FALSE) AS is_milestone, "
+                 "COALESCE(_pus.is_flagged,   FALSE) AS is_flagged, "
+                 "_pus.color_label                  AS color_label, "
+                 "_pus.priority                     AS priority")
     pv_select = ", ".join(
         c for c in
         ["pdf_md5", "pdf_pages", "pdf_is_scan",
@@ -557,7 +576,19 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     )
     select_cols = base_cols + (f", {pv_select}" if pv_select else "")
 
-    join_parts = ["FROM articles"]
+    # The per-user state JOIN is attached unconditionally so every
+    # row carries the viewer's marks (or NULL defaults if they have
+    # no row yet for that article). _viewer_uid is captured at
+    # endpoint entry and always passed in params below.
+    _viewer_uid_str = str(_viewer_uid) if _viewer_uid else None
+    params["_viewer_uid"] = _viewer_uid_str
+
+    join_parts = [
+        "FROM articles",
+        "LEFT JOIN prionvault_user_state _pus "
+        "       ON _pus.article_id = articles.id "
+        "      AND _pus.user_id = CAST(:_viewer_uid AS uuid)",
+    ]
     if tag_id:
         join_parts.append(
             "JOIN article_tag_link ON article_tag_link.article_id = articles.id "
@@ -582,7 +613,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         try:
             from .services import collections as _coll
             cids = _coll.find_in_group(collection_group, collection_subgroup)
-            aids = _coll.aggregate_article_ids(cids) if cids else []
+            aids = _coll.aggregate_article_ids(
+                cids, viewer_id=_viewer_uid) if cids else []
         except Exception as exc:
             logger.exception("collection group filter failed")
             aids = []
@@ -771,11 +803,18 @@ def api_article_detail(aid):
     try:
         pv_cols = _get_pv_columns(s)
 
+        # Per-user marks: read from prionvault_user_state via LEFT JOIN
+        # so the detail view shows THIS user's flag / milestone / color /
+        # priority — same per-user semantics as the listing endpoint.
         # Build SELECT list dynamically so missing migration columns don't 500.
         base_cols = (
-            "id, title, authors, year, journal, doi, pubmed_id, abstract, "
-            "tags, is_milestone, is_flagged, color_label, priority, "
-            "dropbox_path, dropbox_link, created_at, updated_at, "
+            "articles.id, title, authors, year, journal, doi, pubmed_id, abstract, "
+            "tags, "
+            "COALESCE(_pus.is_milestone, FALSE) AS is_milestone, "
+            "COALESCE(_pus.is_flagged,   FALSE) AS is_flagged, "
+            "_pus.color_label                  AS color_label, "
+            "_pus.priority                     AS priority, "
+            "dropbox_path, dropbox_link, articles.created_at, articles.updated_at, "
             "(SELECT COUNT(*) FROM prionvault_jc_presentation jp "
             " WHERE jp.article_id = articles.id) AS jc_count"
         )
@@ -790,9 +829,16 @@ def api_article_detail(aid):
         pv_select = ", ".join(c for c in optional if c in pv_cols)
         select_cols = base_cols + (f", {pv_select}" if pv_select else "")
 
+        _vuid = _viewer_id()
         row = s.execute(
-            sql_text(f"SELECT {select_cols} FROM articles WHERE id = :aid"),
-            {"aid": str(aid)},
+            sql_text(
+                f"SELECT {select_cols} FROM articles "
+                f" LEFT JOIN prionvault_user_state _pus "
+                f"        ON _pus.article_id = articles.id "
+                f"       AND _pus.user_id = CAST(:_vuid AS uuid) "
+                f" WHERE articles.id = :aid"
+            ),
+            {"aid": str(aid), "_vuid": str(_vuid) if _vuid else None},
         ).first()
 
         if row is None:
@@ -1437,6 +1483,15 @@ def api_article_update(aid):
             and updates["abstract"].strip():
         updates["abstract_unavailable"] = False
 
+    # Per-user marks (migration 037): peel these four off the updates
+    # dict — they do NOT touch articles.* anymore; they upsert into
+    # prionvault_user_state for the current viewer. Validation above
+    # already normalised them, so we just need to route them.
+    _per_user_marks = {}
+    for _k in ("is_flagged", "is_milestone", "color_label", "priority"):
+        if _k in updates:
+            _per_user_marks[_k] = updates.pop(_k)
+
     s = _session()
     try:
         a = s.get(models.Article, aid)
@@ -1469,6 +1524,28 @@ def api_article_update(aid):
 
         for k, v in updates.items():
             setattr(a, k, v)
+
+        # Upsert per-user marks for the current viewer. We do this
+        # inside the same session so a downstream commit error rolls
+        # both pieces back together (the user shouldn't see a
+        # partial save).
+        if _per_user_marks:
+            _uid = _viewer_id()
+            if _uid:
+                _cols = list(_per_user_marks.keys())
+                _set  = ", ".join(f"{c} = EXCLUDED.{c}" for c in _cols)
+                _vals = ", ".join(f":{c}" for c in _cols)
+                _params = {"u": str(_uid), "a": str(aid), **_per_user_marks}
+                s.execute(sql_text(
+                    f"""
+                    INSERT INTO prionvault_user_state
+                      (user_id, article_id, {', '.join(_cols)})
+                    VALUES (CAST(:u AS uuid), CAST(:a AS uuid), {_vals})
+                    ON CONFLICT (user_id, article_id) DO UPDATE
+                       SET {_set}
+                    """
+                ), _params)
+
         try:
             s.commit()
         except IntegrityError as exc:
@@ -1576,20 +1653,37 @@ def api_articles_bulk_update():
         if k in safe:
             safe[k] = bool(safe[k])
 
-    set_clauses = ", ".join(f"{k} = :{k}" for k in safe)
+    # All four allowed columns are per-user marks since migration 037,
+    # so the bulk UPDATE switches from updating articles.* to upserting
+    # prionvault_user_state for the current viewer. We INSERT a row
+    # per article in one round-trip via unnest(), ON CONFLICT updating
+    # only the keys the caller actually sent (so a "set priority=4"
+    # bulk call doesn't blank out the user's color_label).
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "not_authenticated"}), 401
+
+    cols = list(safe.keys())
+    col_list   = ", ".join(cols)
+    excl_set   = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
+    # Constant per-call value tuple: every target row gets the same
+    # marks. `SELECT :u, x::uuid, :col1, :col2, ... FROM unnest(:ids)`.
+    select_consts = ", ".join(f":{c}" for c in cols)
     params = dict(safe)
+    params["u"]   = str(_uid)
     params["ids"] = ids
 
     s = _session()
     try:
-        # SQLAlchemy's parameter binding parses `:name`, so the
-        # Postgres `:: ` cast syntax confuses it ("LINE 1: …WHERE
-        # id = ANY(:ids::uuid…"). Use CAST(:ids AS uuid[]) instead so
-        # the parameter ends cleanly at `:ids` and the cast lives
-        # inside a normal function call.
         res = s.execute(sql_text(
-            f"UPDATE articles SET {set_clauses}, updated_at = NOW() "
-            f"WHERE id = ANY(CAST(:ids AS uuid[]))"
+            f"""
+            INSERT INTO prionvault_user_state
+              (user_id, article_id, {col_list})
+            SELECT CAST(:u AS uuid), x::uuid, {select_consts}
+              FROM unnest(CAST(:ids AS text[])) AS x
+            ON CONFLICT (user_id, article_id) DO UPDATE
+               SET {excl_set}
+            """
         ), params)
         s.commit()
         return jsonify({"ok": True, "updated": res.rowcount or 0,
@@ -1887,22 +1981,35 @@ def api_articles_lookup_bulk():
     try:
         doi_rows  = {}
         pmid_rows = {}
-        cols = ("SELECT id, title, doi, pubmed_id, year, authors, journal, "
+        # Per-user marks (migration 037): join prionvault_user_state
+        # for the current viewer so priority / flag / milestone /
+        # color reflect THEIR view of these articles, not the legacy
+        # global columns.
+        _vuid = _viewer_id()
+        cols = ("SELECT articles.id, title, doi, pubmed_id, year, authors, journal, "
                 "       (dropbox_path IS NOT NULL) AS has_pdf, "
                 "       (summary_ai IS NOT NULL)   AS has_summary, "
-                "       priority, is_flagged, is_milestone, color_label "
-                "FROM articles ")
+                "       _pus.priority                     AS priority, "
+                "       COALESCE(_pus.is_flagged,   FALSE) AS is_flagged, "
+                "       COALESCE(_pus.is_milestone, FALSE) AS is_milestone, "
+                "       _pus.color_label                  AS color_label "
+                "FROM articles "
+                "LEFT JOIN prionvault_user_state _pus "
+                "       ON _pus.article_id = articles.id "
+                "      AND _pus.user_id = CAST(:_vuid AS uuid) ")
         if dois:
             rows = s.execute(sql_text(
                 cols + "WHERE lower(doi) = ANY(:vals)"
-            ), {"vals": list(set(dois))}).mappings().all()
+            ), {"vals": list(set(dois)),
+                "_vuid": str(_vuid) if _vuid else None}).mappings().all()
             for r in rows:
                 if r["doi"]:
                     doi_rows[r["doi"].lower()] = r
         if pmids:
             rows = s.execute(sql_text(
                 cols + "WHERE pubmed_id = ANY(:vals)"
-            ), {"vals": list(set(pmids))}).mappings().all()
+            ), {"vals": list(set(pmids)),
+                "_vuid": str(_vuid) if _vuid else None}).mappings().all()
             for r in rows:
                 if r["pubmed_id"]:
                     pmid_rows[str(r["pubmed_id"])] = r
@@ -2658,7 +2765,7 @@ def api_collections_article_ids(cid):
     "send to PrionPack" shortcut."""
     from .services import collections as _coll
     try:
-        ids = _coll.resolve_article_ids(cid)
+        ids = _coll.resolve_article_ids(cid, viewer_id=_viewer_id())
     except LookupError:
         return jsonify({"error": "not_found"}), 404
     except Exception as exc:

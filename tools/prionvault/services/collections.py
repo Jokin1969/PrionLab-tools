@@ -248,14 +248,15 @@ def find_in_group(group_name: str,
     return [str(r[0]) for r in rows]
 
 
-def aggregate_article_ids(collection_ids: List[str]) -> List[str]:
+def aggregate_article_ids(collection_ids: List[str], viewer_id=None) -> List[str]:
     """Union the article-id sets of many collections (manual or smart).
     Returns a deduplicated list. Cap is per-collection inside
-    resolve_article_ids."""
+    resolve_article_ids. Pass viewer_id so smart collections that
+    filter by per-user marks evaluate against the right operator."""
     out: set = set()
     for cid in collection_ids:
         try:
-            for aid in resolve_article_ids(cid):
+            for aid in resolve_article_ids(cid, viewer_id=viewer_id):
                 out.add(aid)
         except Exception as exc:
             logger.warning("aggregate: collection %s failed: %s", cid, exc)
@@ -333,7 +334,7 @@ def article_ids_in(cid) -> List[str]:
     return [str(r[0]) for r in rows]
 
 
-def resolve_article_ids(cid, limit: int = 10_000) -> List[str]:
+def resolve_article_ids(cid, limit: int = 10_000, viewer_id=None) -> List[str]:
     """Return every article_id this collection currently contains —
     works for both manual and smart collections.
 
@@ -350,7 +351,7 @@ def resolve_article_ids(cid, limit: int = 10_000) -> List[str]:
     rules = c.get("rules") or {}
     eng = _get_engine()
     with eng.connect() as conn:
-        where, params = _smart_where(rules)
+        where, params = _smart_where(rules, viewer_id=viewer_id)
         sql = "SELECT id FROM articles"
         if where:
             sql += " WHERE " + " AND ".join(where)
@@ -371,10 +372,18 @@ def _count_smart(conn, rules: dict) -> int:
     return int(conn.execute(sql_text(sql), params).scalar() or 0)
 
 
-def _smart_where(rules: dict) -> tuple[list, dict]:
+def _smart_where(rules: dict, viewer_id=None) -> tuple[list, dict]:
     """Build a (where_clauses, params) tuple from a rule dict for the
     `articles` table. Used by both the live count and the
-    resolve-ids path so they always match."""
+    resolve-ids path so they always match.
+
+    `viewer_id` is the operator whose per-user marks should drive
+    the is_flagged / is_milestone / color_label / priority filters
+    (migration 037 moved those off the global articles table). When
+    no viewer is available (e.g. the per-group rollup that runs
+    without a request context), the mark-related rules are silently
+    OMITTED rather than blanket-evaluated against an arbitrary
+    user, so the count stays a sensible upper bound."""
     where: list = []
     params: dict = {}
 
@@ -398,21 +407,67 @@ def _smart_where(rules: dict) -> tuple[list, dict]:
             params["year_max"] = int(rules["year_max"])
             where.append("year <= :year_max")
         except (TypeError, ValueError): pass
-    if rules.get("priority_eq") not in (None, ""):
-        try:
-            params["priority_eq"] = int(rules["priority_eq"])
-            where.append("priority = :priority_eq")
-        except (TypeError, ValueError): pass
-    cl = (rules.get("color_label") or "").strip().lower() or None
-    if cl == "none":
-        where.append("color_label IS NULL")
-    elif cl:
-        where.append("lower(color_label) = :color_label")
-        params["color_label"] = cl
-    if rules.get("is_flagged") is True:    where.append("is_flagged IS TRUE")
-    if rules.get("is_flagged") is False:   where.append("(is_flagged IS FALSE OR is_flagged IS NULL)")
-    if rules.get("is_milestone") is True:  where.append("is_milestone IS TRUE")
-    if rules.get("is_milestone") is False: where.append("(is_milestone IS FALSE OR is_milestone IS NULL)")
+    # Per-user marks (migration 037): predicate against
+    # prionvault_user_state for `viewer_id`. Without a viewer, omit
+    # the rule entirely (see docstring).
+    _vuid = str(viewer_id) if viewer_id else None
+    if _vuid:
+        params["_smart_vuid"] = _vuid
+        if rules.get("priority_eq") not in (None, ""):
+            try:
+                params["priority_eq"] = int(rules["priority_eq"])
+                where.append(
+                    "EXISTS (SELECT 1 FROM prionvault_user_state ps "
+                    "  WHERE ps.article_id = articles.id "
+                    "    AND ps.user_id = CAST(:_smart_vuid AS uuid) "
+                    "    AND ps.priority = :priority_eq)"
+                )
+            except (TypeError, ValueError): pass
+        cl = (rules.get("color_label") or "").strip().lower() or None
+        if cl == "none":
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM prionvault_user_state ps "
+                "  WHERE ps.article_id = articles.id "
+                "    AND ps.user_id = CAST(:_smart_vuid AS uuid) "
+                "    AND ps.color_label IS NOT NULL)"
+            )
+        elif cl:
+            params["color_label"] = cl
+            where.append(
+                "EXISTS (SELECT 1 FROM prionvault_user_state ps "
+                "  WHERE ps.article_id = articles.id "
+                "    AND ps.user_id = CAST(:_smart_vuid AS uuid) "
+                "    AND lower(ps.color_label) = :color_label)"
+            )
+        if rules.get("is_flagged") is True:
+            where.append(
+                "EXISTS (SELECT 1 FROM prionvault_user_state ps "
+                "  WHERE ps.article_id = articles.id "
+                "    AND ps.user_id = CAST(:_smart_vuid AS uuid) "
+                "    AND ps.is_flagged IS TRUE)"
+            )
+        if rules.get("is_flagged") is False:
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM prionvault_user_state ps "
+                "  WHERE ps.article_id = articles.id "
+                "    AND ps.user_id = CAST(:_smart_vuid AS uuid) "
+                "    AND ps.is_flagged IS TRUE)"
+            )
+        if rules.get("is_milestone") is True:
+            where.append(
+                "EXISTS (SELECT 1 FROM prionvault_user_state ps "
+                "  WHERE ps.article_id = articles.id "
+                "    AND ps.user_id = CAST(:_smart_vuid AS uuid) "
+                "    AND ps.is_milestone IS TRUE)"
+            )
+        if rules.get("is_milestone") is False:
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM prionvault_user_state ps "
+                "  WHERE ps.article_id = articles.id "
+                "    AND ps.user_id = CAST(:_smart_vuid AS uuid) "
+                "    AND ps.is_milestone IS TRUE)"
+            )
+    # else: per-user rule keys are silently ignored without a viewer.
     if rules.get("has_summary") == "ai":      where.append("summary_ai IS NOT NULL")
     elif rules.get("has_summary") == "human": where.append("summary_human IS NOT NULL")
     elif rules.get("has_summary") == "none":  where.append("summary_ai IS NULL AND summary_human IS NULL")
