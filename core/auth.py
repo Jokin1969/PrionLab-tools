@@ -255,12 +255,12 @@ def _try_insert_user(conn, cols: set[str], new_id: str, *,
 
 
 def _authenticate(username: str, password: str) -> dict | None:
-    from core.users import load_users
+    from core.users import get_user_by_username_or_email
 
-    users = load_users()
-    matched = next(
-        (u for u in users if u.get("username", "").lower() == username.lower()), None
-    )
+    # Lookup by username OR email — operators trained on email addresses
+    # don't expect to also memorise a username, and conversely the
+    # admin's "admin" alias keeps working unchanged.
+    matched = get_user_by_username_or_email(username)
 
     # Regular CSV auth
     if matched and matched.get("active", "true").lower() == "true":
@@ -319,8 +319,17 @@ def login():
                     logger.warning("Failed to update last_login: %s", e)
 
             lang = user.get("language", "es")
-            next_url = request.args.get("next") or url_for("home")
-            resp = make_response(redirect(next_url))
+            # Force password change on first login: when the seeded
+            # account still has the starter password, every page
+            # should redirect to /change-password until they pick a
+            # new one. The session flag lets the before_request
+            # middleware enforce this even on background API calls.
+            if (user.get("must_change_pw") or "").lower() == "true":
+                session["must_change_pw"] = True
+                resp = make_response(redirect(url_for("auth.change_password")))
+            else:
+                next_url = request.args.get("next") or url_for("home")
+                resp = make_response(redirect(next_url))
             resp.set_cookie("prionlab_lang", lang, max_age=365 * 24 * 3600, samesite="Lax")
             return resp
         else:
@@ -419,3 +428,183 @@ def profile():
             flash(_("Profile updated successfully."), "success")
             return redirect(url_for("auth.profile"))
     return render_template("auth/profile.html", user=user, error=error)
+
+
+# ── Force-change-password (first login) ──────────────────────────────────────
+
+# Minimum length for any operator-chosen password. We refuse the
+# starter "12345678" specifically so a user who hits this screen
+# can't just re-confirm the seeded credential.
+_MIN_PW_LEN     = 8
+_FORBIDDEN_PWS  = {"12345678", "00000000", "password", "qwertyui"}
+
+
+def _password_quality_error(new_password: str) -> str | None:
+    if len(new_password) < _MIN_PW_LEN:
+        return _("Password must be at least %(n)d characters.",
+                 n=_MIN_PW_LEN)
+    if new_password in _FORBIDDEN_PWS:
+        return _("This password is too common. Pick something else.")
+    return None
+
+
+@auth_bp.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    """Page the user lands on after first login (must_change_pw=true).
+    Also reachable voluntarily from the navbar."""
+    from core.users import get_user, update_user
+    username = session.get("username", "")
+    user = get_user(username) or {}
+    error = None
+    if request.method == "POST":
+        current = request.form.get("current_password", "")
+        new_pw  = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        # When forced (first login) the user does NOT need to type the
+        # starter password again — the session flag means we already
+        # know it's the starter. Voluntary changes (navbar entry) DO
+        # require it as a defence against session hijack.
+        forced = bool(session.get("must_change_pw"))
+        if not forced:
+            if not verify_password(current, user.get("password_hash", "")):
+                error = _("Current password is incorrect.")
+        if not error:
+            if new_pw != confirm:
+                error = _("The new password and its confirmation don't match.")
+            else:
+                error = _password_quality_error(new_pw)
+        if not error:
+            update_user(username, {
+                "password_hash":  hash_password(new_pw),
+                "must_change_pw": "false",
+            }, sync=False)
+            session.pop("must_change_pw", None)
+            flash(_("Password updated. Welcome aboard."), "success")
+            return redirect(url_for("home"))
+    return render_template("auth/change_password.html",
+                           forced=bool(session.get("must_change_pw")),
+                           error=error)
+
+
+# ── Password recovery via email link ─────────────────────────────────────────
+
+# Reset tokens are short-lived and single-use. 1 h is the standard
+# trade-off between "user has time to act on the email" and "stolen
+# token doesn't grant indefinite access".
+_RESET_TOKEN_TTL_HOURS = 1
+
+
+@auth_bp.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    """Email the operator a reset link. To avoid leaking which emails
+    are registered, we ALWAYS return a generic "If that address
+    exists, we've sent a link" success message — even when the
+    address isn't on file or SMTP fails."""
+    from datetime import timedelta
+    import secrets
+    from core.users import get_user_by_email, update_user
+
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        if email:
+            user = get_user_by_email(email)
+            if user and user.get("active", "true").lower() == "true":
+                token = secrets.token_urlsafe(32)
+                expires = (datetime.utcnow()
+                           + timedelta(hours=_RESET_TOKEN_TTL_HOURS))
+                try:
+                    update_user(user["username"], {
+                        "reset_token":         token,
+                        "reset_token_expires": expires.isoformat(),
+                    }, sync=False)
+                    _send_reset_email(user, token)
+                except Exception as exc:
+                    logger.warning("forgot_password write/send failed for "
+                                   "%s: %s", email, exc)
+        # Always show the same flash so an attacker can't enumerate
+        # registered emails by watching the response.
+        flash(_("If that address is registered, a reset link is on "
+                "its way. Check your inbox in a couple of minutes."),
+              "info")
+        return redirect(url_for("auth.login"))
+    return render_template("auth/forgot_password.html")
+
+
+def _send_reset_email(user: dict, token: str) -> None:
+    """Best-effort: log+swallow on failure. Caller already wraps in
+    try/except for the user-facing flow."""
+    from core.smtp_client import send_email
+    name = user.get("full_name") or user.get("username")
+    reset_url = url_for("auth.reset_password", token=token, _external=True)
+    body = (
+        f"Hola {name},\n\n"
+        f"Has solicitado restablecer tu contraseña en PrionLab Tools.\n"
+        f"Sigue este enlace dentro de la próxima hora para elegir una nueva:\n\n"
+        f"    {reset_url}\n\n"
+        f"Si no has pedido este restablecimiento, ignora este correo "
+        f"y tu contraseña actual seguirá funcionando.\n\n"
+        f"— PrionLab Tools"
+    )
+    html = (
+        f"<p>Hola <strong>{name}</strong>,</p>"
+        f"<p>Has solicitado restablecer tu contraseña en PrionLab Tools.</p>"
+        f"<p>Pulsa el enlace dentro de la próxima hora para elegir una nueva:</p>"
+        f"<p><a href=\"{reset_url}\">{reset_url}</a></p>"
+        f"<p style=\"color:#666;font-size:13px;\">Si no has pedido "
+        f"este restablecimiento, ignora este correo y tu contraseña "
+        f"actual seguirá funcionando.</p>"
+        f"<p>— PrionLab Tools</p>"
+    )
+    send_email(user.get("email"),
+               "Restablecer contraseña — PrionLab Tools",
+               body, html=html)
+
+
+@auth_bp.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    """Validate the token + expiration, accept a new password.
+    Token is single-use: cleared atomically with the password set."""
+    from core.users import load_users, update_user
+
+    # Walk the user list looking for a row that carries this token.
+    # Linear scan over a small CSV is fine; the lookup happens once
+    # per password reset attempt.
+    matched = None
+    for u in load_users():
+        if u.get("reset_token") == token:
+            matched = u
+            break
+    error = None
+    expired = False
+    if not matched:
+        error = _("This reset link is invalid or has already been used.")
+    else:
+        try:
+            exp = datetime.fromisoformat(matched.get("reset_token_expires") or "")
+            if exp < datetime.utcnow():
+                expired = True
+                error = _("This reset link has expired. Request a new one.")
+        except ValueError:
+            error = _("This reset link is invalid or has already been used.")
+
+    if request.method == "POST" and matched and not expired and not error:
+        new_pw  = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        if new_pw != confirm:
+            error = _("The new password and its confirmation don't match.")
+        else:
+            error = _password_quality_error(new_pw)
+        if not error:
+            update_user(matched["username"], {
+                "password_hash":       hash_password(new_pw),
+                "must_change_pw":      "false",
+                "reset_token":         "",
+                "reset_token_expires": "",
+            }, sync=False)
+            flash(_("Password updated. You can log in now."), "success")
+            return redirect(url_for("auth.login"))
+    return render_template("auth/reset_password.html",
+                           token=token, error=error,
+                           expired=expired,
+                           valid=bool(matched and not expired and not error))

@@ -43,7 +43,7 @@ if os.environ.get("SENTRY_DSN"):
     )
     sentry_sdk.set_tag("service", "prionvault")
 
-from flask import Flask, jsonify, redirect, render_template, request, session
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from flask_babel import Babel
 
 import config
@@ -191,6 +191,16 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("Demo users bootstrap failed: %s", e)
 
+    # Seed the prion-lab team accounts (Jun 2026) with the shared
+    # starter password "12345678" + must_change_pw=true so each user
+    # picks their own on first login. Idempotent — skips emails
+    # already present.
+    try:
+        from core.users import bootstrap_team_users
+        bootstrap_team_users()
+    except Exception as e:
+        app.logger.warning("Team users bootstrap failed: %s", e)
+
     # PostgreSQL initialisation — graceful fallback to CSV if unavailable
     _init_postgresql(app)
 
@@ -206,6 +216,36 @@ def create_app() -> Flask:
         return config.DEFAULT_LANGUAGE
 
     Babel(app, locale_selector=get_locale)
+
+    @app.before_request
+    def force_password_change():
+        """When a user logs in with the starter password and hasn't
+        chosen their own yet (session['must_change_pw'] is True),
+        every request gets redirected to /change-password — except
+        the change-password endpoint itself, the logout link, and
+        static assets. Without this, a savvy user could click around
+        the navbar while still authenticated with the shared
+        starter credential."""
+        if not session.get("must_change_pw"):
+            return None
+        endpoint = (request.endpoint or "")
+        # Whitelist of endpoints / path prefixes the user MUST be able
+        # to reach even when their password change is pending.
+        if endpoint in ("auth.change_password", "auth.logout", "static"):
+            return None
+        if request.path.startswith("/static/"):
+            return None
+        # AJAX / fetch calls (e.g. JS-driven endpoints) get a 403
+        # with a hint instead of a redirect, so a stray /api/* call
+        # while still on the change-password page doesn't trip a
+        # confusing JSON-shaped login redirect chain.
+        if request.path.startswith("/api/") \
+           or request.path.startswith("/prionvault/api/") \
+           or request.path.startswith("/prionpacks/api/"):
+            from flask import jsonify
+            return jsonify({"error": "password_change_required",
+                            "redirect": url_for("auth.change_password")}), 403
+        return redirect(url_for("auth.change_password"))
 
     @app.before_request
     def handle_lang_param():
