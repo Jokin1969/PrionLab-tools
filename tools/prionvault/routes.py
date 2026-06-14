@@ -53,6 +53,53 @@ def _session():
     return db.Session()
 
 
+def _ensure_can_modify(table_name: str, owner_col: str, row_id):
+    """Return a Flask (response, status_code) tuple — or None to
+    proceed — depending on whether the current viewer may modify the
+    addressed row.
+
+    Used by JC presentation and supplementary endpoints that PATCH or
+    DELETE a row created by someone else. Rule:
+      - Admins always pass.
+      - Any other authenticated user only passes when the row's
+        owner_col (e.g. created_by / added_by) matches their user id.
+      - Anonymous → 401.
+      - Missing row → 404.
+      - Otherwise → 403 with a clear reason.
+
+    Best-effort: lookup failures are logged and surface as a 500 so a
+    transient DB error doesn't let an unauthorised modification slip
+    through silently.
+    """
+    if _viewer_role() == "admin":
+        return None
+    vid = _viewer_id()
+    if not vid:
+        return jsonify({"error": "not_authenticated"}), 401
+    try:
+        s = _session()
+        try:
+            row = s.execute(sql_text(
+                f"SELECT {owner_col} FROM {table_name} WHERE id = :id"
+            ), {"id": str(row_id)}).first()
+        finally:
+            s.close()
+    except Exception as exc:
+        logger.exception("ownership lookup failed on %s.%s",
+                         table_name, owner_col)
+        return jsonify({"error": "internal",
+                        "detail": str(exc)[:200]}), 500
+    if row is None:
+        return jsonify({"error": "not_found"}), 404
+    owner = row[0]
+    if owner is None or str(owner) != str(vid):
+        return jsonify({
+            "error":  "forbidden",
+            "detail": "Solo el creador o un admin puede modificar este recurso.",
+        }), 403
+    return None
+
+
 # ── Index page ──────────────────────────────────────────────────────────────
 @prionvault_bp.route("/")
 @prionvault_bp.route("/index")
@@ -1437,21 +1484,46 @@ def api_remove_from_prionread(aid):
         s.close()
 
 
-# ── Admin write endpoints (article metadata) ────────────────────────────────
+# ── Article write endpoints (metadata admin-only, per-user marks open) ──────
 _EDITABLE_FIELDS = {
     "title", "authors", "year", "journal", "doi", "pubmed_id",
     "abstract", "summary_ai", "summary_human", "is_milestone",
     "is_flagged", "color_label", "priority",
 }
+# Subset of _EDITABLE_FIELDS that became per-user in migration 037.
+# A regular reader is allowed to PATCH these; everything else stays
+# behind the admin gate (article metadata is shared so misedits
+# would affect everyone).
+_PER_USER_MARKS = {"is_flagged", "is_milestone", "color_label", "priority"}
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>", methods=["PATCH"])
-@admin_required
+@login_required
 def api_article_update(aid):
+    # Gate: metadata edits remain admin-only; per-user marks (is_flagged,
+    # is_milestone, color_label, priority) are open to any logged-in
+    # user since migration 037 moved them off the global articles row.
+    # We split here in-endpoint rather than via a separate URL so the
+    # frontend keeps using one PATCH call for the common
+    # "flip color + edit title" mixed payload — the server tells the
+    # client exactly which fields, if any, it rejected.
     data = request.get_json(force=True, silent=True) or {}
     updates = {k: v for k, v in data.items() if k in _EDITABLE_FIELDS}
     if not updates:
         return jsonify({"error": "no editable fields in payload"}), 400
+
+    # Per-user gate: a reader can only PATCH _PER_USER_MARKS.
+    # Anything else needs admin role. Tell the caller exactly which
+    # fields were rejected so the UI can recover gracefully.
+    is_admin = (_viewer_role() == "admin")
+    if not is_admin:
+        metadata_requested = set(updates) - _PER_USER_MARKS
+        if metadata_requested:
+            return jsonify({
+                "error":            "admin_required",
+                "detail":           "Only admins can edit article metadata.",
+                "rejected_fields":  sorted(metadata_requested),
+            }), 403
 
     if "color_label" in updates:
         v = updates["color_label"]
@@ -1601,9 +1673,14 @@ _BULK_MAX_IDS = 10_000
 
 
 @prionvault_bp.route("/api/articles/bulk", methods=["PATCH"])
-@admin_required
+@login_required
 def api_articles_bulk_update():
     """Apply the same set of edits to many articles in a single UPDATE.
+
+    Per-user marks only (the four columns moved off `articles` in
+    migration 037) — every field in _BULK_ALLOWED is now per-user.
+    No metadata fields are bulk-editable, so login_required is the
+    correct gate for the whole endpoint.
 
     Body:
       {
@@ -4583,11 +4660,15 @@ def api_supplementary_list(aid):
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/supplementary", methods=["POST"])
-@admin_required
+@login_required
 def api_supplementary_upload(aid):
     """Upload one supplementary file. multipart/form-data:
        file=<binary>, caption=<optional string>.
-    Returns the created row metadata."""
+    Returns the created row metadata.
+
+    Any logged-in user may add supplementary material — the
+    `added_by` column records the creator so PATCH and DELETE can
+    enforce a creator-or-admin gate downstream."""
     from .services import supplementary
     f = request.files.get("file")
     if not f or not f.filename:
@@ -4617,8 +4698,11 @@ def api_supplementary_upload(aid):
 @prionvault_bp.route(
     "/api/articles/<uuid:aid>/supplementary/<uuid:sid>",
     methods=["PATCH"])
-@admin_required
+@login_required
 def api_supplementary_update(aid, sid):
+    # Creator-or-admin gate (added_by stores the uploader's user_id).
+    err = _ensure_can_modify("article_supplementary", "added_by", sid)
+    if err: return err
     from .services import supplementary
     data = request.get_json(force=True, silent=True) or {}
     if "caption" not in data:
@@ -4640,8 +4724,10 @@ def api_supplementary_update(aid, sid):
 @prionvault_bp.route(
     "/api/articles/<uuid:aid>/supplementary/<uuid:sid>",
     methods=["DELETE"])
-@admin_required
+@login_required
 def api_supplementary_delete(aid, sid):
+    err = _ensure_can_modify("article_supplementary", "added_by", sid)
+    if err: return err
     from .services import supplementary
     try:
         ok = supplementary.delete(sid)
@@ -4745,12 +4831,16 @@ def _parse_iso_date(s):
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/jc", methods=["POST"])
-@admin_required
+@login_required
 def api_jc_create(aid):
     """Create a JC presentation row + optionally attach files in the
     same multipart request. Body fields:
        presented_at (YYYY-MM-DD), presenter_name, presenter_id?,
        file (one or many, optional).
+
+    Open to any logged-in user — `created_by` records who registered
+    the presentation so PATCH and DELETE can enforce a creator-or-
+    admin gate downstream.
     """
     from .services import jc as _jc
     data = request.form if request.form else (request.get_json(silent=True) or {})
@@ -4798,8 +4888,10 @@ def api_jc_create(aid):
 
 
 @prionvault_bp.route("/api/jc/<uuid:pid>", methods=["PATCH"])
-@admin_required
+@login_required
 def api_jc_update(pid):
+    err = _ensure_can_modify("prionvault_jc_presentation", "created_by", pid)
+    if err: return err
     from .services import jc as _jc
     data = request.get_json(force=True, silent=True) or {}
     kwargs = {}
@@ -4828,8 +4920,10 @@ def api_jc_update(pid):
 
 
 @prionvault_bp.route("/api/jc/<uuid:pid>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_jc_delete(pid):
+    err = _ensure_can_modify("prionvault_jc_presentation", "created_by", pid)
+    if err: return err
     from .services import jc as _jc
     try:
         ok = _jc.delete(pid)
@@ -4843,9 +4937,12 @@ def api_jc_delete(pid):
 
 
 @prionvault_bp.route("/api/jc/<uuid:pid>/files", methods=["POST"])
-@admin_required
+@login_required
 def api_jc_add_files(pid):
-    """Attach extra files to an existing presentation."""
+    """Attach extra files to an existing presentation. Same ownership
+    rule as PATCH: creator or admin only."""
+    err = _ensure_can_modify("prionvault_jc_presentation", "created_by", pid)
+    if err: return err
     from .services import jc as _jc
     files = (request.files.getlist("file") +
              request.files.getlist("files"))
@@ -4867,8 +4964,24 @@ def api_jc_add_files(pid):
 
 
 @prionvault_bp.route("/api/jc/files/<uuid:fid>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_jc_delete_file(fid):
+    # JC file rows don't carry their own owner — ownership lives on
+    # the parent presentation. Resolve presentation_id from the file
+    # first, then apply the standard creator-or-admin gate.
+    if _viewer_role() != "admin":
+        s = _session()
+        try:
+            row = s.execute(sql_text(
+                "SELECT presentation_id FROM prionvault_jc_file WHERE id = :fid"
+            ), {"fid": str(fid)}).first()
+        finally:
+            s.close()
+        if not row:
+            return jsonify({"error": "not_found"}), 404
+        err = _ensure_can_modify(
+            "prionvault_jc_presentation", "created_by", row[0])
+        if err: return err
     from .services import jc as _jc
     if not _jc.delete_file(fid):
         return jsonify({"error": "not_found"}), 404
