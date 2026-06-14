@@ -3677,20 +3677,23 @@
     if (!sec) return;
     const admin = IS_ADMIN;
 
+    // Supplementary uploads are open to any logged-in user since the
+    // permission audit — the server tags each row with added_by and
+    // only allows the creator (or an admin) to PATCH / DELETE later.
     const heading = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
         <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
                    text-transform:uppercase;letter-spacing:0.05em;">Material suplementario</h3>
-        ${admin ? `<button id="pv-supp-add-btn" type="button"
-                      style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #d1d5db;
-                             background:white;color:#0F3460;font-weight:600;cursor:pointer;">
-                      <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir
-                    </button>` : ''}
+        <button id="pv-supp-add-btn" type="button"
+                style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #d1d5db;
+                       background:white;color:#0F3460;font-weight:600;cursor:pointer;">
+          <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir
+        </button>
       </div>`;
     sec.innerHTML = heading +
       `<div id="pv-supp-list" style="font-size:12.5px;color:#9ca3af;">Cargando…</div>`;
 
-    if (admin) wireSupplementaryUpload(a);
+    wireSupplementaryUpload(a);
 
     let data;
     try {
@@ -3710,7 +3713,7 @@
       list.innerHTML = `
         <div style="font-size:12.5px;color:#9ca3af;font-style:italic;
                     background:#f9fafb;border-radius:8px;padding:10px 12px;">
-          Sin material suplementario.${admin ? ' Pulsa "Añadir" para subir un archivo.' : ''}
+          Sin material suplementario. Pulsa "Añadir" para subir un archivo.
         </div>`;
       return;
     }
@@ -3744,7 +3747,7 @@
                      </div>`
                 : ''}
           </div>
-          ${admin ? `
+          ${(admin || (it.added_by && it.added_by === USER_ID)) ? `
             <div style="display:flex;gap:4px;flex-shrink:0;">
               <button type="button" data-action="edit" data-sid="${esc(it.id)}"
                       title="Editar descripción"
@@ -3889,17 +3892,19 @@
                        vertical-align:middle;margin-right:6px;">JC</span>
           Journal Club
         </h3>
-        ${IS_ADMIN ? `<button id="pv-jc-add-btn" type="button"
-                      style="padding:4px 10px;font-size:12px;border-radius:6px;
-                             border:1px solid #fce7f3;background:white;color:#be185d;
-                             font-weight:600;cursor:pointer;">
-                      <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir presentación
-                    </button>` : ''}
+        <button id="pv-jc-add-btn" type="button"
+                style="padding:4px 10px;font-size:12px;border-radius:6px;
+                       border:1px solid #fce7f3;background:white;color:#be185d;
+                       font-weight:600;cursor:pointer;">
+          <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir presentación
+        </button>
       </div>`;
     sec.innerHTML = heading +
       `<div id="pv-jc-list" style="font-size:12.5px;color:#9ca3af;">Cargando…</div>`;
 
-    if (IS_ADMIN) wireJcAddButton(a);
+    // JC presentations are open to any logged-in user; the server's
+    // creator-or-admin gate handles per-row edit / delete safety.
+    wireJcAddButton(a);
 
     let data;
     try {
@@ -3943,7 +3948,12 @@
             ${esc(f.filename)}
           </button>`;
       }).join('');
-      const adminActions = IS_ADMIN ? `
+      // Show edit / delete for the user who created the presentation,
+      // and for admins (who can curate). Other readers see the row
+      // but no action buttons — matches the server-side _ensure_can_modify
+      // rule on PATCH and DELETE.
+      const canEdit = IS_ADMIN || (p.created_by && p.created_by === USER_ID);
+      const adminActions = canEdit ? `
         <div style="display:flex;gap:4px;flex-shrink:0;">
           <button type="button" class="pv-jc-add-file" data-pid="${esc(p.id)}"
                   title="Añadir otro fichero a esta presentación"

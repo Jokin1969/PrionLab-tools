@@ -107,6 +107,10 @@ def list_for_article(article_id) -> List[dict]:
         "presenter_name":  p["presenter_name"],
         "presenter_id":    str(p["presenter_id"]) if p["presenter_id"] else None,
         "created_at":      p["created_at"].isoformat() if p["created_at"] else None,
+        # Surfaced so the frontend can decide whether to render the
+        # edit / delete buttons (creator-or-admin gate; matches the
+        # server-side _ensure_can_modify rule).
+        "created_by":      str(p["created_by"]) if p["created_by"] else None,
         "files":           files_by_pres.get(str(p["id"]), []),
     } for p in pres_rows]
 
