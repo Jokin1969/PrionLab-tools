@@ -203,13 +203,51 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
     if provider == "anthropic":
         import anthropic
         client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
+        # Output budget: 4096 instead of the shared MAX_OUTPUT_TOKENS
+        # (1 200). 1 200 is enough for the 3-8 sentence target, but
+        # when the model decides the question warrants a longer
+        # answer and runs out of room mid-sentence the SDK returns
+        # an empty text block + stop_reason="max_tokens". Quadrupling
+        # the cap costs nothing per call (Claude bills only emitted
+        # tokens) and eliminates that failure mode for free.
+        anthropic_max_out = max(MAX_OUTPUT_TOKENS * 4, 4096)
         msg = client.messages.create(
-            model=model, max_tokens=MAX_OUTPUT_TOKENS,
+            model=model, max_tokens=anthropic_max_out,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
         text = "".join(b.text for b in msg.content
                        if getattr(b, "type", None) == "text").strip()
+
+        # When the answer is still empty, surface the actual cause
+        # instead of a generic "empty response" — same diagnostic
+        # treatment as the Gemini branch below.
+        # Claude's stop_reason values: end_turn, max_tokens,
+        # stop_sequence, tool_use, pause_turn, refusal.
+        if not text:
+            stop_reason = getattr(msg, "stop_reason", None)
+            content_types = sorted({
+                getattr(b, "type", "unknown") for b in (msg.content or [])
+            })
+            bits = []
+            if stop_reason:
+                bits.append(f"stop_reason={stop_reason}")
+            if content_types and content_types != ["text"]:
+                bits.append(f"content_types={','.join(content_types)}")
+            if stop_reason == "max_tokens":
+                bits.append(
+                    "the model ran out of output budget before "
+                    "writing visible text — retry the same query")
+            elif stop_reason == "refusal":
+                bits.append(
+                    "Claude declined to answer this question — "
+                    "try rephrasing or switch provider")
+            if bits:
+                raise RuntimeError(
+                    "Claude Sonnet 4.6 returned an empty response ("
+                    + "; ".join(bits) + ")"
+                )
+
         usage = getattr(msg, "usage", None)
         return (text,
                 getattr(usage, "input_tokens",  None) if usage else None,
