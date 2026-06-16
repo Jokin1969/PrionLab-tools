@@ -8309,6 +8309,78 @@
   }
 
   // Banner that explains which terms the biomedical query expander
+  // Friendly explainer that surfaces ABOVE the answer whenever the
+  // backend's fallback chain kicked in (the operator's chosen
+  // provider couldn't respond, so we retried with the next one).
+  // Self-removes on every re-render so consecutive queries don't
+  // stack banners.
+  function renderRagFallbackBanner(r) {
+    const ansEl = document.getElementById('pv-rag-answer');
+    if (!ansEl || !ansEl.parentElement) return;
+    ansEl.parentElement
+       .querySelectorAll('.pv-rag-fallback-banner')
+       .forEach(b => b.remove());
+    const attempts = r.fallback_attempts || [];
+    if (!attempts.length) return;
+    const requested = r.requested_provider || '';
+    const actual    = r.actual_provider    || '';
+    // No fallback needed → only one attempt and that's also `actual`.
+    // Render iff the actual provider differs from the requested OR
+    // if the first attempt failed (i.e. attempts has > 1 entry, OR a
+    // single entry whose provider != actual, which means the chain
+    // exhausted).
+    if (actual === requested && attempts.length <= 1
+        && attempts[0].provider === actual && actual !== '') return;
+
+    const labelMap = {
+      anthropic: 'Claude Sonnet 4.6',
+      openai:    'GPT-4.1',
+      gemini:    'Gemini 2.5 Pro',
+    };
+    const human = (p) => labelMap[p] || p || 'el proveedor';
+    const banner = document.createElement('div');
+    banner.className = 'pv-rag-fallback-banner';
+    banner.style.cssText =
+      'margin:0 0 10px;padding:10px 12px;border-radius:8px;' +
+      'background:#fffbeb;border:1px solid #fde68a;color:#92400e;' +
+      'font-size:12.5px;line-height:1.55;';
+    const lines = [];
+    // Per-attempt explanation, in the order they were tried.
+    attempts.forEach((a, idx) => {
+      const isLast = idx === attempts.length - 1;
+      // The last attempt is the one that succeeded IFF actual matches
+      // it. If it doesn't, all attempts failed.
+      if (isLast && a.provider === actual) {
+        // Skip "we tried this and it worked" — covered by the closing
+        // sentence below. Showing it just adds noise.
+        return;
+      }
+      lines.push(
+        `<div><strong>${esc(human(a.provider))}</strong> no pudo responder: ` +
+        `${esc(a.reason || a.kind)}.</div>`
+      );
+    });
+    if (actual && actual !== requested) {
+      lines.push(
+        `<div style="margin-top:4px;">` +
+        `↳ Te respondí con <strong>${esc(human(actual))}</strong> en su lugar.` +
+        `</div>`
+      );
+    } else if (!actual) {
+      // Edge case: backend exhausted the chain. Should already be a
+      // 502 in this path, but guard anyway.
+      lines.push(
+        `<div style="margin-top:4px;color:#b91c1c;">` +
+        `Ningún proveedor pudo responder. Revisa créditos / cuotas en ` +
+        `<em>Estado IA</em>.</div>`
+      );
+    }
+    banner.innerHTML =
+      `<i class="fas fa-circle-info" style="margin-right:6px;"></i>` +
+      lines.join('');
+    ansEl.parentElement.insertBefore(banner, ansEl);
+  }
+
   // broadened — printed ABOVE the citations so the user understands
   // why a paper that doesn't literally contain their typed term may
   // still surface. Removes itself when re-renders happen, so back-to-
@@ -8543,6 +8615,7 @@
     }
     metaEl.innerHTML = confLabel + hybridBadge + rrBadge;
 
+    renderRagFallbackBanner(r);
     renderRagExpansionBanner(r);
     renderRagCitations(r.citations || [], r.cited_numbers || []);
     renderRagMoreBanner(r, query, provider);

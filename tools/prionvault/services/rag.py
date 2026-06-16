@@ -106,6 +106,19 @@ class RagResult:
     # Each entry is (term, expansions) — what the biomedical query
     # expander broadened your query into. Empty when nothing matched.
     expansion_matches: list = field(default_factory=list)
+    # Provider fallback chain: the provider that ACTUALLY answered may
+    # not be the one the operator picked. When the first choice fails
+    # with a recoverable cause (safety refusal, rate-limit, empty
+    # response), we retry against the next fallback in line and record
+    # what happened, so the UI can render an amber banner like
+    # "Pediste Claude pero rechazó por filtro de seguridad. Te respondí
+    #  con Gemini en su lugar."
+    requested_provider: str = ""
+    actual_provider:    str = ""
+    fallback_attempts:  list = field(default_factory=list)
+    #   list[ {provider, kind, reason} ]
+    # kind ∈ {refusal, rate_limit, max_tokens, empty, not_configured,
+    #         other}.
 
 
 # Backwards-compat alias — the route used to import this name.
@@ -175,6 +188,51 @@ def _parse_confidence(text: str) -> Optional[str]:
 def _parse_cited_numbers(text: str) -> List[int]:
     import re
     return sorted({int(m) for m in re.findall(r"\[(\d{1,3})\]", text)})
+
+
+# ── Fallback chain: when the user-chosen provider can't deliver, try ───
+# the next one in the row. Chosen so the alternate always belongs to
+# a DIFFERENT vendor — that way a vendor-wide outage / safety filter
+# / rate-limit doesn't double-fail. Two fallback steps max.
+_FALLBACK_CHAIN: dict[str, list[str]] = {
+    "anthropic": ["gemini",    "openai"],
+    "openai":    ["gemini",    "anthropic"],
+    "gemini":    ["anthropic", "openai"],
+}
+
+# Failure kinds that trigger a fallback. "other" does NOT — it usually
+# means a code bug we want to surface as a 502, not silently retry.
+_FALLBACK_KINDS = frozenset({
+    "refusal", "rate_limit", "max_tokens", "empty", "not_configured",
+})
+
+
+def _classify_failure(exc: Exception) -> tuple[str, str]:
+    """Bucket a chat-call failure into a (kind, human-readable reason)
+    tuple. Wraps NotConfigured + every RuntimeError we know how to
+    raise from _chat() plus generic SDK error shapes. The reason is
+    what the UI banner shows the operator — keep it short and Spanish.
+    """
+    if isinstance(exc, NotConfigured):
+        return ("not_configured",
+                "API key del proveedor no configurada")
+    msg = str(exc).lower()
+    if "refusal" in msg or "declined" in msg or "block_reason=safety" in msg:
+        return ("refusal",
+                "Filtro de seguridad del proveedor rechazó la consulta")
+    if ("429" in msg or "rate limit" in msg or "rate_limit" in msg
+            or "quota" in msg or "tpm" in msg
+            or "tokens per min" in msg or "resource_exhausted" in msg):
+        return ("rate_limit",
+                "Rate limit del proveedor alcanzado")
+    if ("max_tokens" in msg or "max_output_tokens" in msg
+            or "max tokens" in msg):
+        return ("max_tokens",
+                "El proveedor agotó su presupuesto de tokens sin terminar")
+    if "empty response" in msg or "empty answer" in msg:
+        return ("empty",
+                "El proveedor devolvió una respuesta vacía sin razón clara")
+    return ("other", str(exc)[:200])
 
 
 def _estimate_cost(provider: str, tokens_in: Optional[int],
@@ -375,6 +433,9 @@ def ask(query: str, *, top_k: int = 20,
             total_candidates=0,
             has_more=False,
             expansion_matches=list(retrieval.expansion_matches or []),
+            requested_provider=provider,
+            actual_provider=provider,
+            fallback_attempts=[],
             rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
             rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
             rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,
@@ -419,14 +480,56 @@ def ask(query: str, *, top_k: int = 20,
         f"'Nivel de confianza: alto|medio|bajo'."
     )
 
-    answer, tokens_in, tokens_out, model_used = _chat(
-        provider=provider,
-        system=_SYSTEM_PROMPT,
-        user=user_prompt,
-    )
-    if not answer:
-        raise RuntimeError(
-            f"{PROVIDERS[provider]['label']} returned an empty response")
+    # Provider fallback chain: try the requested provider first; if it
+    # fails with a recoverable cause, fall through to the next vendor.
+    # The chain is short (2 steps) and the alternate always belongs to
+    # a different vendor so a single vendor's outage / safety policy /
+    # rate-limit can't double-fail.
+    fallback_attempts: list[dict] = []
+    chain = [provider] + _FALLBACK_CHAIN.get(provider, [])
+    answer = ""
+    tokens_in = tokens_out = None
+    model_used = PROVIDERS[provider]["model"]
+    actual_provider = provider
+    last_exc: Optional[Exception] = None
+
+    for attempt_provider in chain:
+        try:
+            answer, tokens_in, tokens_out, model_used = _chat(
+                provider=attempt_provider,
+                system=_SYSTEM_PROMPT,
+                user=user_prompt,
+            )
+            if not answer:
+                raise RuntimeError(
+                    f"{PROVIDERS[attempt_provider]['label']} returned an "
+                    f"empty response")
+            actual_provider = attempt_provider
+            break    # got a usable answer
+        except Exception as exc:
+            kind, reason = _classify_failure(exc)
+            fallback_attempts.append({
+                "provider": attempt_provider,
+                "kind":     kind,
+                "reason":   reason,
+            })
+            last_exc = exc
+            if kind not in _FALLBACK_KINDS:
+                # Don't retry an unexpected error class — could be a
+                # code bug the operator needs to see.
+                raise
+            # Try the next provider in line. If we exhaust the chain
+            # the outer raise below carries the last failure up.
+            logger.info(
+                "rag fallback: %s failed (%s — %s); trying next",
+                attempt_provider, kind, reason)
+            continue
+    else:
+        # Chain exhausted with no successful answer — bubble the last
+        # failure so the route returns its 502 with the original error
+        # text. The UI then shows the full attempt list.
+        if last_exc is not None:
+            raise last_exc
 
     cited_nums = _parse_cited_numbers(answer)
     confidence = _parse_confidence(answer)
@@ -439,7 +542,7 @@ def ask(query: str, *, top_k: int = 20,
         cited_numbers=cited_nums,
         tokens_in=tokens_in,
         tokens_out=tokens_out,
-        cost_usd=_estimate_cost(provider, tokens_in, tokens_out),
+        cost_usd=_estimate_cost(actual_provider, tokens_in, tokens_out),
         elapsed_ms=int((time.monotonic() - start) * 1000),
         retrieval_ms=retrieval_ms,
         no_results=False,
@@ -447,6 +550,9 @@ def ask(query: str, *, top_k: int = 20,
         total_candidates=retrieval.total_candidate_articles,
         has_more=(retrieval.total_candidate_articles > len(citations)),
         expansion_matches=list(retrieval.expansion_matches or []),
+        requested_provider=provider,
+        actual_provider=actual_provider,
+        fallback_attempts=fallback_attempts,
         rerank_used=bool(retrieval.rerank and retrieval.rerank.used),
         rerank_candidates=retrieval.rerank.candidates if retrieval.rerank else 0,
         rerank_cost_usd=retrieval.rerank.cost_usd if retrieval.rerank else None,

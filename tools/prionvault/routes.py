@@ -6015,6 +6015,9 @@ def api_semantic_search():
             {"term": m[0], "expansions": m[1]}
             for m in (result.expansion_matches or [])
         ],
+        "requested_provider": result.requested_provider,
+        "actual_provider":    result.actual_provider,
+        "fallback_attempts":  result.fallback_attempts,
         "rerank_used":       result.rerank_used,
         "rerank_candidates": result.rerank_candidates,
         "rerank_cost_usd":   result.rerank_cost_usd,
