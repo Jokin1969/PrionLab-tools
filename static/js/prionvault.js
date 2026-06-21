@@ -5891,6 +5891,29 @@
       wireBulkTagModal();
     }
 
+    // Register the global IDs-filter helper here so it is always available
+    // from page load, regardless of whether the health or verifier modals
+    // have been opened first.
+    window._pvApplyIdsFilter = function(ids) {
+      Object.assign(state, {
+        q: '', yearMin: null, yearMax: null, journal: '', authors: '',
+        tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
+        isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
+        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
+        collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
+        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '',
+        _healthExtra: null, page: 1,
+        filterSelectedOnly: true,
+      });
+      if (state.selectedIds && typeof state.selectedIds.clearSilently === 'function') {
+        state.selectedIds.clearSilently();
+        ids.forEach(id => state.selectedIds.addSilently(id));
+      } else {
+        state.selectedIds = new Set(ids);
+      }
+      loadArticles();
+    };
+
     refreshStats();
     wireNewTagButton();
     refreshTags();
@@ -10890,6 +10913,7 @@
       if (n === 0) { bulkBar.style.display = 'none'; return; }
       bulkBar.style.display = 'flex';
       bulkCnt.textContent = `${n} seleccionado${n === 1 ? '' : 's'}`;
+      if (bulkView) bulkView.textContent = `↗ Ver selección en listado (${n})`;
     }
 
     function setTab(s) {
@@ -10914,6 +10938,7 @@
       });
       selected.clear();
       page = 1;
+      _updateTabViewAllLabel();
       refreshBulkBar();
       reloadList();
     }
@@ -10959,6 +10984,17 @@
         openInMainList(Array.from(selected));
       });
     }
+
+    const _tabViewAllLabels = {
+      mismatch:    '↗ Ver todos los Mismatches en listado',
+      suspect:     '↗ Ver todos los Sospechosos en listado',
+      ok:          '↗ Ver todos los OK en listado',
+      no_pdf_text: '↗ Ver todos "Sin texto PDF" en listado',
+    };
+    function _updateTabViewAllLabel() {
+      if (tabViewAll) tabViewAll.textContent = _tabViewAllLabels[_vmStatus] || '↗ Ver todos en listado';
+    }
+    _updateTabViewAllLabel();
 
     if (tabViewAll) {
       tabViewAll.addEventListener('click', async () => {
@@ -11896,27 +11932,6 @@
       loadArticles();
     };
 
-    window._pvApplyIdsFilter = function(ids) {
-      // Reset all filters, then show exactly these article IDs in the main list
-      Object.assign(state, {
-        q: '', yearMin: null, yearMax: null, journal: '', authors: '',
-        tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
-        isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
-        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
-        collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
-        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '',
-        _healthExtra: null, page: 1,
-        filterSelectedOnly: true,
-      });
-      // Populate selectedIds using the proper tracked set interface
-      if (state.selectedIds && typeof state.selectedIds.clearSilently === 'function') {
-        state.selectedIds.clearSilently();
-        ids.forEach(id => state.selectedIds.addSilently(id));
-      } else {
-        state.selectedIds = new Set(ids);
-      }
-      loadArticles();
-    };
   };
 
   document.addEventListener('DOMContentLoaded', init);
