@@ -65,6 +65,15 @@ _PRIONVAULT_MIGRATIONS = (
     "029_articles_oa_fetch.sql",
     "030_articles_pdf_metadata_verify.sql",
     "031_articles_text_via_trigger_drop.sql",
+    "032_ingest_job_notify.sql",
+    "033_pubmed_inventory_kept.sql",
+    "034_articles_perf_indexes.sql",
+    "035_query_expansion.sql",
+    "036_user_selection.sql",
+    "037_user_state_marks.sql",
+    "038_per_user_tags.sql",
+    "039_articles_summary_ai_notes.sql",
+    "040_articles_summary_ai_provider.sql",
 )
 
 _BOOTSTRAP_SQL = """
