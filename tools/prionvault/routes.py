@@ -1031,7 +1031,7 @@ def api_article_detail(aid):
             "abstract":      d.get("abstract"),
             "summary_ai":    d.get("summary_ai"),
             "summary_human": d.get("summary_human"),
-            "summary_ai_notes": d.get("summary_ai_notes") if "summary_ai_notes" in d else None,
+            "summary_ai_notes": d.get("summary_ai_notes"),
             "summary_ai_provider":  d.get("summary_ai_provider") if bool(d.get("summary_ai")) else None,
             "summary_tokens_in":    int(d["summary_tokens_in"]) if d.get("summary_tokens_in") else None,
             "summary_tokens_out":   int(d["summary_tokens_out"]) if d.get("summary_tokens_out") else None,

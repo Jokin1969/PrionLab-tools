@@ -284,6 +284,13 @@ def _run_migrations_inline() -> dict:
     # idempotent re-apply of the schema-defining migrations so the
     # next request never sees a half-restored table.
     summary["self_heal"] = _self_heal_schema()
+    # Invalidate the column cache so the next API request re-introspects
+    # the schema (picks up any newly added columns from this run).
+    try:
+        from . import routes as _routes
+        _routes._pv_columns_cache = None
+    except Exception:
+        pass
     return summary
 
 
@@ -310,6 +317,9 @@ _SELF_HEAL_MIGRATIONS = (
     "036_user_selection.sql",
     "037_user_state_marks.sql",
     "038_per_user_tags.sql",
+    "039_articles_summary_ai_notes.sql",
+    "040_articles_summary_ai_provider.sql",
+    "042_articles_summary_tokens.sql",
 )
 
 

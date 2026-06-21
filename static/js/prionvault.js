@@ -4356,8 +4356,8 @@
   function _editRenderTokensBlock(a) {
     const block = document.getElementById('pv-edit-tokens-block');
     if (!block) return;
-    const hasSummary = a.has_summary_ai || a.summary_ai;
-    const hasNotes   = a.summary_ai_notes && a.summary_ai_notes.trim();
+    const hasSummary = a.has_summary_ai || !!(a.summary_ai || '').trim();
+    const hasNotes   = !!(a.summary_ai_notes || '').trim();
     if (!hasSummary && !hasNotes) { block.style.display = 'none'; return; }
     block.style.display = 'block';
 
