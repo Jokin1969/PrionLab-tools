@@ -4306,8 +4306,62 @@
         ? 'La IA lee el PDF, identifica el artículo y busca su PMID en PubMed. Si no encuentra el PMID, copia el título al portapapeles para buscarlo a mano.'
         : 'Este artículo no tiene PDF guardado';
     }
+    // PDF verification block
+    _editRenderVerifyBlock(a);
+
     modal.style.display = 'flex';
     setTimeout(() => document.getElementById('pv-edit-doi').focus(), 50);
+  }
+
+  function _editRenderVerifyBlock(a) {
+    const block  = document.getElementById('pv-edit-verify-block');
+    if (!block) return;
+    const v = a.pdf_verify;
+    if (!v || !v.status) { block.style.display = 'none'; return; }
+
+    block.style.display = 'block';
+    const badge  = document.getElementById('pv-edit-verify-badge');
+    const score  = document.getElementById('pv-edit-verify-score');
+    const detail = document.getElementById('pv-edit-verify-detail');
+
+    const cfg = {
+      mismatch:  { label: '✗ Mismatch',    bg: '#fee2e2', color: '#7f1d1d' },
+      suspect:   { label: '⚠ Sospechoso',  bg: '#fef3c7', color: '#7c2d12' },
+      ok:        { label: '✓ OK',           bg: '#d1fae5', color: '#065f46' },
+      manual_ok: { label: '✓ OK manual',   bg: '#d1fae5', color: '#065f46' },
+      no_pdf_text: { label: '◐ Sin texto', bg: '#f3f4f6', color: '#374151' },
+    }[v.status] || { label: v.status, bg: '#f3f4f6', color: '#374151' };
+
+    badge.textContent = cfg.label;
+    badge.style.background = cfg.bg;
+    badge.style.color = cfg.color;
+    badge.style.padding = '2px 8px';
+    badge.style.borderRadius = '99px';
+
+    score.textContent = v.score != null ? `(score: ${Number(v.score).toFixed(2)})` : '';
+
+    let detailTxt = '';
+    if (v.detail) {
+      try {
+        const d = typeof v.detail === 'string' ? JSON.parse(v.detail) : v.detail;
+        const lines = [];
+        if (d.title_ok   === false) lines.push('• Título: discrepancia detectada');
+        if (d.year_ok    === false) lines.push('• Año: discrepancia detectada');
+        if (d.journal_ok === false) lines.push('• Revista: discrepancia detectada');
+        if (d.authors_ok === false) lines.push('• Autores: discrepancia detectada');
+        if (d.verdict)              lines.push(`Veredicto IA: ${d.verdict}`);
+        if (d.reasoning)            lines.push(`Razonamiento: ${d.reasoning}`);
+        detailTxt = lines.join('\n');
+      } catch (_) {
+        detailTxt = String(v.detail);
+      }
+    }
+    detail.textContent = detailTxt;
+    if (v.checked_at) {
+      const dt = new Date(v.checked_at);
+      detail.textContent += (detailTxt ? '\n' : '') +
+        `Verificado: ${dt.toLocaleDateString('es-ES')} ${dt.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'})}`;
+    }
   }
 
   function _editStatus(msg, color) {
@@ -4883,6 +4937,49 @@
       }
       loadArticles();
       _editStatus('Artículo eliminado. No hay más artículos.', '#15803d');
+    });
+
+    // PDF verification quick-actions
+    document.getElementById('pv-edit-verify-ok')?.addEventListener('click', async () => {
+      if (!_editTarget) return;
+      const btn = document.getElementById('pv-edit-verify-ok');
+      const orig = btn.textContent;
+      btn.disabled = true; btn.textContent = '⏳';
+      try {
+        await api('/admin/verify-metadata/mark', {
+          method: 'POST',
+          body: JSON.stringify({ ids: [_editTarget.id], status: 'manual_ok' }),
+        });
+        // Refresh the block with the new status
+        if (_editTarget.pdf_verify) _editTarget.pdf_verify.status = 'manual_ok';
+        _editRenderVerifyBlock(_editTarget);
+        _editStatus('Marcado como OK manual.', '#15803d');
+      } catch (e) {
+        _editStatus('Error: ' + e.message, '#b91c1c');
+      } finally {
+        btn.disabled = false; btn.textContent = orig;
+      }
+    });
+
+    document.getElementById('pv-edit-verify-recheck')?.addEventListener('click', async () => {
+      if (!_editTarget) return;
+      const btn = document.getElementById('pv-edit-verify-recheck');
+      const orig = btn.textContent;
+      btn.disabled = true; btn.textContent = '⏳';
+      try {
+        await api('/admin/verify-metadata/recheck', {
+          method: 'POST',
+          body: JSON.stringify({ ids: [_editTarget.id] }),
+        });
+        // Clear the verification block — will be set on next verifier run
+        if (_editTarget.pdf_verify) _editTarget.pdf_verify.status = null;
+        _editRenderVerifyBlock(_editTarget);
+        _editStatus('Marcado para reverificación. Se analizará en el próximo ciclo.', '#6b7280');
+      } catch (e) {
+        _editStatus('Error: ' + e.message, '#b91c1c');
+      } finally {
+        btn.disabled = false; btn.textContent = orig;
+      }
     });
   }
 

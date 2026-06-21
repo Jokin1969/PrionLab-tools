@@ -948,6 +948,8 @@ def api_article_detail(aid):
             "indexed_at", "index_version",
             "source", "source_metadata", "added_by_id",
             "abstract_unavailable", "pubmed_unavailable",
+            "pdf_metadata_match_status", "pdf_metadata_match_score",
+            "pdf_metadata_match_detail", "pdf_metadata_match_checked_at",
         ]
         pv_select = ", ".join(c for c in optional if c in pv_cols)
         select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -1006,6 +1008,17 @@ def api_article_detail(aid):
             "has_summary_human": bool(d.get("summary_human")),
             "in_prionread":  False,  # enriched below
         }
+        # PDF metadata verification (admin-only, only when verification has run)
+        _pmms = d.get("pdf_metadata_match_status")
+        if is_admin and _pmms:
+            _ca = d.get("pdf_metadata_match_checked_at")
+            out["pdf_verify"] = {
+                "status":     _pmms,
+                "score":      d.get("pdf_metadata_match_score"),
+                "detail":     d.get("pdf_metadata_match_detail"),
+                "checked_at": _ca.isoformat() if hasattr(_ca, "isoformat") else _ca,
+            }
+
         if is_admin:
             out["pdf_md5"]          = d.get("pdf_md5")
             out["pdf_size_bytes"]   = d.get("pdf_size_bytes")
