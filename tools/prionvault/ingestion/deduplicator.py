@@ -1,9 +1,14 @@
 """Detect whether a paper we are about to ingest is already in the DB.
 
-Two checks, in order of strength:
-  1. By DOI (case-insensitive). Most reliable.
-  2. By MD5 hash of the PDF binary. Catches duplicates of papers with
-     no DOI, identical scans of the same article, etc.
+Three checks, in order of strength:
+  1. By DOI (case-insensitive). Most reliable when present.
+  2. By PMID. Critical for the PubMed-inventory-import flow: those
+     rows arrive with a PMID and sometimes no DOI, so a later
+     "Import PDFs" upload of the matching PDF must rejoin them by
+     PMID — otherwise we create a duplicate article and the
+     inventory-imported row stays stranded on "⏳ PDF pendiente".
+  3. By MD5 hash of the PDF binary. Catches duplicates of papers
+     with no DOI / PMID, identical scans of the same article, etc.
 """
 from __future__ import annotations
 
@@ -26,12 +31,13 @@ def md5_of(content: bytes) -> str:
 def find_duplicate(
     *,
     doi: Optional[str] = None,
+    pmid: Optional[str] = None,
     pdf_md5: Optional[str] = None,
 ) -> Tuple[Optional[UUID], Optional[str]]:
-    """Look for an existing article matching DOI or MD5.
+    """Look for an existing article matching DOI, PMID or MD5.
 
     Returns (article_id, reason) on hit, or (None, None) on miss.
-    `reason` is one of: 'doi', 'md5'.
+    `reason` is one of: 'doi', 'pmid', 'md5'.
     """
     try:
         eng = _get_engine()
@@ -46,6 +52,20 @@ def find_duplicate(
             ).first()
             if row:
                 return row[0], "doi"
+        if pmid:
+            # PMIDs are stored as strings (NCBI uses 1-8 digits, no
+            # leading zeros). Cast both sides to text to dodge
+            # accidental int/varchar mismatches on legacy rows.
+            try:
+                row = conn.execute(
+                    text("SELECT id FROM articles "
+                         " WHERE pubmed_id::text = :p::text LIMIT 1"),
+                    {"p": str(pmid).strip()},
+                ).first()
+                if row:
+                    return row[0], "pmid"
+            except Exception as exc:
+                logger.warning("PMID dedup query failed: %s", exc)
         if pdf_md5:
             # pdf_md5 column is added by migration 001. Skip the MD5 check
             # gracefully if the column doesn't exist yet.

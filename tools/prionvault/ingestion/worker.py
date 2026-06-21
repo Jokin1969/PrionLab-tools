@@ -98,7 +98,12 @@ def _process_job(job: ingest_queue.Job) -> None:
     pmid = extraction.pmid
 
     # ── 2. Dedup BEFORE we hit Dropbox or CrossRef ─────────────────────
-    dup_id, reason = find_duplicate(doi=doi, pdf_md5=md5)
+    # Pass PMID too: a paper imported from the PubMed inventory often
+    # arrives with a PMID but no DOI, so a subsequent "Import PDFs"
+    # upload must rejoin them by PMID. Without this branch we'd
+    # create a duplicate article and leave the inventory row
+    # stranded on "⏳ PDF pendiente". See deduplicator.find_duplicate.
+    dup_id, reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=md5)
     if dup_id is not None:
         logger.info("Job %d duplicate of article %s (%s) — enriching missing PDF metadata",
                     job.id, dup_id, reason)
