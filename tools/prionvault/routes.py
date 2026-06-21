@@ -5520,6 +5520,37 @@ def api_pubmed_inventory_list():
     ))
 
 
+# ── OA-PDF fetcher diagnostics ──────────────────────────────────────────────
+
+@prionvault_bp.route("/api/admin/oa-fetcher/status", methods=["GET"])
+@admin_required
+def api_oa_fetcher_status():
+    """Live snapshot of the OA-PDF fetcher daemon: running flag, the
+    article it's currently processing (if any), session counters
+    (fetched / marked_unavail / failed), last_error, and the rolling
+    event log with per-source failure reasons. Used by the
+    "Forzar descarga OA" panel in the Inventario PubMed modal so the
+    operator can tell at a glance whether the daemon is alive and
+    why specific articles weren't downloaded."""
+    from .services import oa_pdf_fetcher
+    return jsonify(oa_pdf_fetcher.get_status())
+
+
+@prionvault_bp.route("/api/admin/oa-fetcher/run", methods=["POST"])
+@admin_required
+def api_oa_fetcher_run():
+    """Wake the OA-PDF fetcher and have it drain the current queue
+    immediately, instead of waiting for the next 60-second poll. The
+    response includes the post-wake status snapshot so the UI can
+    update its panel without a separate GET."""
+    from .services import oa_pdf_fetcher
+    oa_pdf_fetcher.request_drain_now()
+    return jsonify({
+        "ok":     True,
+        "status": oa_pdf_fetcher.get_status(),
+    })
+
+
 @prionvault_bp.route("/api/admin/pubmed-inventory/refresh", methods=["POST"])
 @admin_required
 def api_pubmed_inventory_refresh():

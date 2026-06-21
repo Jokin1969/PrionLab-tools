@@ -10253,6 +10253,132 @@
       }
     });
 
+    // OA-PDF fetcher: force-drain + diagnostic panel.
+    // The force-drain button wakes the daemon so it processes the
+    // pending queue immediately. The collapsible panel below it
+    // pulls the rolling event log on demand so the operator can see
+    // WHY specific articles couldn't be fetched (pmc_html /
+    // pmc_http_404 / unpaywall_no_oa / …).
+    const oaForceBtn = document.getElementById('pv-pinv-force-oa');
+    if (oaForceBtn) {
+      oaForceBtn.addEventListener('click', async () => {
+        oaForceBtn.disabled = true;
+        const oaOrig = oaForceBtn.textContent;
+        oaForceBtn.textContent = '⏳ Lanzando…';
+        try {
+          await api('/admin/oa-fetcher/run', { method: 'POST' });
+          await reloadStats();
+          // If the detail panel is open, refresh it too so the
+          // operator sees the immediate change.
+          const det = document.getElementById('pv-pinv-oa-detail');
+          if (det && det.open) await reloadOaDetail();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          oaForceBtn.disabled = false;
+          oaForceBtn.textContent = oaOrig;
+        }
+      });
+    }
+
+    // Lazy-load the OA detail panel only when the operator opens it,
+    // and again on every subsequent open so the data doesn't go stale.
+    const oaDetailEl = document.getElementById('pv-pinv-oa-detail');
+    if (oaDetailEl) {
+      oaDetailEl.addEventListener('toggle', () => {
+        if (oaDetailEl.open) reloadOaDetail();
+      });
+    }
+
+    async function reloadOaDetail() {
+      const body = document.getElementById('pv-pinv-oa-detail-body');
+      if (!body) return;
+      body.innerHTML =
+        '<div style="color:#9ca3af;">Cargando…</div>';
+      let s;
+      try {
+        s = await api('/admin/oa-fetcher/status');
+      } catch (e) {
+        body.innerHTML =
+          `<div style="color:#b91c1c;">Error: ${esc(e.message)}</div>`;
+        return;
+      }
+      // Headline state.
+      const running = s.running
+        ? '<span style="color:#15803d;font-weight:600;">⚙ corriendo</span>'
+        : '<span style="color:#6b7280;">idle</span>';
+      const current = s.current
+        ? `, procesando <em>${esc(s.current.title || '(sin título)')}</em>`
+        : '';
+      const counters =
+        `<span style="margin-right:10px;">✓ ${s.fetched ?? 0} OK</span>` +
+        `<span style="margin-right:10px;">⊘ ${s.marked_unavail ?? 0} sin OA</span>` +
+        `<span>✗ ${s.failed ?? 0} fallos</span>`;
+      const pending = (s.pending != null)
+        ? `<div>Cola pendiente: <strong>${s.pending.toLocaleString()}</strong> artículos.</div>`
+        : '';
+      const lastErr = s.last_error
+        ? `<div style="color:#b91c1c;margin-top:4px;">Último error: ${esc(s.last_error)}</div>`
+        : '';
+
+      // Event log: most-recent-first, render up to 30.
+      const events = (s.events || []).slice(0, 30);
+      const reasonLabels = {
+        pmc_html:                'PMC devolvió HTML (no OA todavía)',
+        pmc_not_pdf:             'PMC: respuesta no es un PDF',
+        pmc_too_large:           'PMC: PDF mayor que 60 MB',
+        pmc_timeout:             'PMC: timeout',
+        pmc_no_id:               'PMC: sin identificador',
+        pmc_fetch_failed:        'PMC: fallo de red',
+        unpaywall_not_configured:'Unpaywall: falta UNPAYWALL_EMAIL',
+        unpaywall_lookup_failed: 'Unpaywall: error de API',
+        unpaywall_no_oa:         'Unpaywall: no hay copia OA',
+        unpaywall_no_pdf_url:    'Unpaywall: marcado OA pero sin URL',
+        unpaywall_download_failed:'Unpaywall: fallo de descarga',
+        unknown:                 'Causa desconocida',
+      };
+      const explain = (reasonRaw) => {
+        if (!reasonRaw) return '';
+        // pmc_http_<code> → "PMC HTTP <code>"
+        const m = String(reasonRaw).match(/^pmc_http_(\d+|err)$/);
+        if (m) return `PMC HTTP ${m[1]}`;
+        return reasonLabels[reasonRaw] || reasonRaw;
+      };
+      const eventsHtml = events.length
+        ? events.map(e => {
+            const at = e.at
+              ? new Date(e.at).toLocaleString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+              : '';
+            let badge = '';
+            if (e.outcome === 'fetched') {
+              badge = `<span style="color:#15803d;font-weight:600;">✓ descargado</span>`;
+            } else if (e.outcome === 'not_available') {
+              badge = `<span style="color:#b45309;font-weight:600;">⊘ sin OA</span>`;
+            } else {
+              badge = `<span style="color:#b91c1c;font-weight:600;">✗ ${esc(e.outcome || 'fallo')}</span>`;
+            }
+            const via = e.via ? ` <span style="color:#6b7280;">via ${esc(e.via)}</span>` : '';
+            const reason = e.reason
+              ? ` <span style="color:#6b7280;">— ${esc(explain(e.reason))}</span>`
+              : '';
+            return `
+              <div style="padding:3px 0;border-bottom:1px solid #f3f4f6;">
+                <span style="color:#9ca3af;font-family:'JetBrains Mono',monospace;font-size:10.5px;">${esc(at)}</span>
+                · ${badge}${via}${reason}
+                <div style="color:#374151;margin-left:8px;font-size:11px;">${esc(e.title || '')}</div>
+              </div>`;
+          }).join('')
+        : '<div style="color:#9ca3af;">Sin eventos todavía.</div>';
+
+      body.innerHTML =
+        `<div style="margin-bottom:6px;">${running}${current} · ${counters}</div>` +
+        pending + lastErr +
+        `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #e5e7eb;">` +
+        `<div style="font-weight:600;color:#374151;margin-bottom:4px;">Últimos eventos</div>` +
+        eventsHtml +
+        `</div>`;
+    }
+
     // Debounce-ish search box
     let qTimer = null;
     qInp.addEventListener('input', () => {

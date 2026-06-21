@@ -117,31 +117,60 @@ def _count_pending() -> int:
 
 # ── Fetch one paper ──────────────────────────────────────────────────────────
 
-def _try_unpaywall(doi: str) -> tuple[Optional[bytes], Optional[str]]:
-    """Returns (pdf_bytes, source_url) or (None, None) if no OA via Unpaywall."""
+def _try_unpaywall(doi: str) -> tuple[Optional[bytes], Optional[str], Optional[str]]:
+    """Returns (pdf_bytes, source_url, fail_reason).
+
+    Exactly one of pdf_bytes and fail_reason is set: when the download
+    succeeds, fail_reason is None and source_url points at the PDF.
+    When something goes wrong, pdf_bytes is None and fail_reason is a
+    short stable string the UI can map to a human label:
+
+        unpaywall_not_configured  UNPAYWALL_EMAIL env var missing
+        unpaywall_lookup_failed   API call to Unpaywall errored
+        unpaywall_no_oa           Unpaywall says no OA copy exists
+        unpaywall_no_pdf_url      OA flag set but no pdf_url
+        unpaywall_download_failed downloading from pdf_url crashed
+    """
     try:
         info = unpaywall.find_open_pdf(doi)
     except unpaywall.NotConfigured:
-        return None, None
+        return None, None, "unpaywall_not_configured"
     except Exception as exc:
         logger.debug("oa_pdf_fetcher: unpaywall lookup failed for %s (%s)", doi, exc)
-        return None, None
-    if not info.is_oa or not info.pdf_url:
-        return None, None
+        return None, None, "unpaywall_lookup_failed"
+    if not info.is_oa:
+        return None, None, "unpaywall_no_oa"
+    if not info.pdf_url:
+        return None, None, "unpaywall_no_pdf_url"
     try:
         data = unpaywall.download_pdf(info.pdf_url)
-        return data, info.pdf_url
+        return data, info.pdf_url, None
     except Exception as exc:
         logger.debug("oa_pdf_fetcher: unpaywall download failed (%s)", exc)
-        return None, None
+        return None, None, "unpaywall_download_failed"
 
 
-def _try_pmc(pmc_id: str) -> tuple[Optional[bytes], Optional[str]]:
+def _try_pmc(pmc_id: str) -> tuple[Optional[bytes], Optional[str], Optional[str]]:
     """Europe PMC serves a stable `/articles/<pmcid>/pdf` redirect for
     every archived paper. Use it as a fallback when Unpaywall didn't
-    deliver (or there's no DOI)."""
+    deliver (or there's no DOI).
+
+    Same return contract as _try_unpaywall(): (bytes, url, reason).
+    Reason strings:
+
+        pmc_no_id          no PMC id was supplied
+        pmc_http_<code>    server responded with an HTTP error
+        pmc_too_large      content-length above the size cap
+        pmc_html           server returned HTML (PMC registered but
+                           the article isn't OA-released yet — the
+                           single most common failure for new
+                           inventory imports)
+        pmc_not_pdf        body didn't start with %PDF magic
+        pmc_timeout        request timed out
+        pmc_fetch_failed   any other request exception
+    """
     if not pmc_id:
-        return None, None
+        return None, None, "pmc_no_id"
     pmc_id = pmc_id.upper()
     if not pmc_id.startswith("PMC"):
         pmc_id = "PMC" + pmc_id
@@ -150,13 +179,17 @@ def _try_pmc(pmc_id: str) -> tuple[Optional[bytes], Optional[str]]:
     try:
         with requests.get(url, headers=headers, timeout=_TIMEOUT,
                           stream=True, allow_redirects=True) as r:
-            r.raise_for_status()
+            try:
+                r.raise_for_status()
+            except requests.HTTPError as http_exc:
+                code = getattr(http_exc.response, "status_code", 0)
+                return None, None, f"pmc_http_{code or 'err'}"
             declared = r.headers.get("content-length")
             if declared and declared.isdigit() and int(declared) > _MAX_PDF_BYTES:
-                return None, None
+                return None, None, "pmc_too_large"
             ctype = (r.headers.get("content-type") or "").lower()
             if "text/html" in ctype:
-                return None, None
+                return None, None, "pmc_html"
             chunks: list[bytes] = []
             total = 0
             for chunk in r.iter_content(chunk_size=64 * 1024):
@@ -164,15 +197,17 @@ def _try_pmc(pmc_id: str) -> tuple[Optional[bytes], Optional[str]]:
                     continue
                 total += len(chunk)
                 if total > _MAX_PDF_BYTES:
-                    return None, None
+                    return None, None, "pmc_too_large"
                 chunks.append(chunk)
         body = b"".join(chunks)
         if not body.startswith(b"%PDF"):
-            return None, None
-        return body, url
+            return None, None, "pmc_not_pdf"
+        return body, url, None
+    except requests.Timeout:
+        return None, None, "pmc_timeout"
     except Exception as exc:
         logger.debug("oa_pdf_fetcher: PMC fetch failed for %s (%s)", pmc_id, exc)
-        return None, None
+        return None, None, "pmc_fetch_failed"
 
 
 def _process_one(row: dict) -> str:
@@ -185,20 +220,33 @@ def _process_one(row: dict) -> str:
 
     _set(current={"id": str(aid), "title": title[:160]})
 
+    # Track the per-source failure reason so the event log can tell
+    # the operator WHY each attempt didn't deliver (e.g. "PMC
+    # returned HTML" vs "Unpaywall says no OA copy"). Both reasons
+    # are surfaced in the event log even when one of them eventually
+    # succeeds, so an operator inspecting the panel can see the full
+    # trail.
     body, via = (None, None)
+    unpaywall_reason: Optional[str] = None
+    pmc_reason: Optional[str] = None
     if doi:
-        body, _ = _try_unpaywall(doi)
+        body, _src, unpaywall_reason = _try_unpaywall(doi)
         if body:
             via = "unpaywall"
     if not body and pmc_id:
-        body, _ = _try_pmc(pmc_id)
+        body, _src, pmc_reason = _try_pmc(pmc_id)
         if body:
             via = "pmc"
 
     if not body:
+        # Pick the most informative reason for the event log: prefer
+        # the PMC reason when both legs ran (PMC tends to give more
+        # specific signals — html vs http_404 vs not_pdf — than
+        # Unpaywall's coarser categories).
+        reason = pmc_reason or unpaywall_reason or "unknown"
         # Negative cache — don't try this article again on the next
         # daemon tick. The operator can still force a retry from the
-        # main listing's "Retry OA fetch" action (if/when added).
+        # "Forzar descarga OA" admin button.
         try:
             with _get_engine().begin() as conn:
                 conn.execute(sql_text("""
@@ -211,7 +259,10 @@ def _process_one(row: dict) -> str:
             logger.warning("oa_pdf_fetcher: mark-unavail failed for %s (%s)", aid, exc)
         with _lock:
             _state["marked_unavail"] += 1
-        _log_event(aid, title, "not_available")
+        _log_event(aid, title, "not_available",
+                   via=("unpaywall+pmc" if (doi and pmc_id)
+                        else ("unpaywall" if doi else "pmc")),
+                   reason=reason)
         return "not_available"
 
     # Got bytes — upload + persist.
