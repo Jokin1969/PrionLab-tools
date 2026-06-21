@@ -52,7 +52,7 @@ PROVIDERS = {
     },
 }
 DEFAULT_PROVIDER = "anthropic"
-MAX_OUTPUT_TOKENS = 2400
+MAX_OUTPUT_TOKENS = 4000
 EXTRACTED_TEXT_CHAR_LIMIT = 50_000
 
 # Retry an empty / transient-error response this many times before
