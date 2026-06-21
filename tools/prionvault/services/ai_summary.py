@@ -30,29 +30,31 @@ logger = logging.getLogger(__name__)
 # ── Provider catalogue ───────────────────────────────────────────────────────
 PROVIDERS = {
     "anthropic": {
-        "label":    "Claude Sonnet 4.6",
-        "model":    "claude-sonnet-4-6",
-        "env":      "ANTHROPIC_API_KEY",
-        "price_in":  3.0,
-        "price_out": 15.0,
+        "label":      "Claude Sonnet 4.6",
+        "model":      "claude-sonnet-4-6",
+        "env":        "ANTHROPIC_API_KEY",
+        "price_in":   3.0,
+        "price_out":  15.0,
+        "max_tokens": 8000,   # hard limit of the model is 8192
     },
     "openai": {
-        "label":    "GPT-4.1",
-        "model":    "gpt-4.1",
-        "env":      "OPENAI_API_KEY",
-        "price_in":  2.5,
-        "price_out": 10.0,
+        "label":      "GPT-4.1",
+        "model":      "gpt-4.1",
+        "env":        "OPENAI_API_KEY",
+        "price_in":   2.5,
+        "price_out":  10.0,
+        "max_tokens": 16000,
     },
     "gemini": {
-        "label":    "Gemini 2.5 Pro",
-        "model":    "gemini-2.5-pro",
-        "env":      "GEMINI_API_KEY",
-        "price_in":  1.25,
-        "price_out": 10.0,
+        "label":      "Gemini 2.5 Pro",
+        "model":      "gemini-2.5-pro",
+        "env":        "GEMINI_API_KEY",
+        "price_in":   1.25,
+        "price_out":  10.0,
+        "max_tokens": 20000,
     },
 }
 DEFAULT_PROVIDER = "anthropic"
-MAX_OUTPUT_TOKENS = 4000
 EXTRACTED_TEXT_CHAR_LIMIT = 50_000
 
 # Retry an empty / transient-error response this many times before
@@ -286,11 +288,12 @@ def _call_anthropic(api_key: str, user_prompt: str,
         timeout=httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=5.0),
     )
     model = PROVIDERS["anthropic"]["model"]
+    max_tokens = PROVIDERS["anthropic"]["max_tokens"]
 
     start = time.monotonic()
     message = client.messages.create(
         model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_tokens=max_tokens,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
@@ -324,11 +327,12 @@ def _call_openai(api_key: str, user_prompt: str,
     from openai import OpenAI
     client = OpenAI(api_key=api_key, timeout=60.0)
     model = PROVIDERS["openai"]["model"]
+    max_tokens = PROVIDERS["openai"]["max_tokens"]
 
     start = time.monotonic()
     completion = client.chat.completions.create(
         model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_tokens=max_tokens,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user",   "content": user_prompt},
@@ -366,6 +370,7 @@ def _call_gemini(api_key: str, user_prompt: str,
     from google.genai import types
     client = genai.Client(api_key=api_key)
     model = PROVIDERS["gemini"]["model"]
+    max_tokens = PROVIDERS["gemini"]["max_tokens"]
 
     start = time.monotonic()
     resp = client.models.generate_content(
@@ -373,7 +378,7 @@ def _call_gemini(api_key: str, user_prompt: str,
         contents=user_prompt,
         config=types.GenerateContentConfig(
             system_instruction=_SYSTEM_PROMPT,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
+            max_output_tokens=max_tokens,
             temperature=0.4,
         ),
     )
