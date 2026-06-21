@@ -2674,6 +2674,19 @@
         </div>
       </td>`;
 
+    // ── Thumbnail cell (first PDF page, shown only when PDF exists) ──────
+    const thumbCell = (a.has_pdf || a.pdf_dropbox_path)
+      ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
+           <img class="pv-thumb"
+                src="/prionvault/api/articles/${esc(a.id)}/thumbnail"
+                loading="lazy"
+                alt=""
+                style="display:block;width:34px;height:44px;object-fit:cover;object-position:top center;
+                       border-radius:3px;border:1px solid #e5e7eb;cursor:zoom-in;"
+                onerror="this.style.display='none'">
+         </td>`
+      : `<td style="padding:4px 4px;width:38px;"></td>`;
+
     // ── Article cell: title, authors+journal, tags+badges ────────────────
     const titleTooltip = [
       a.title,
@@ -2771,7 +2784,7 @@
         </div>
       </td>`;
 
-    row.innerHTML = selectCell + marksCell + articleCell + yearCell + pagesCell +
+    row.innerHTML = selectCell + marksCell + thumbCell + articleCell + yearCell + pagesCell +
                     priorityCell + linksCell + prionreadCell;
 
     // Wire the row-level checkbox
@@ -6052,6 +6065,62 @@
       }
       loadArticles();
     };
+
+    // ── Thumbnail hover popup ──────────────────────────────────────────────
+    // A single floating <div> reused for all rows. Follows the thumbnail
+    // position and disappears when the mouse leaves the image.
+    (function wireThumbnailPopup() {
+      const popup = document.createElement('div');
+      popup.style.cssText = [
+        'position:fixed;z-index:9999;pointer-events:none;',
+        'display:none;box-shadow:0 8px 32px rgba(0,0,0,0.28);',
+        'border-radius:6px;overflow:hidden;border:1px solid #d1d5db;',
+        'background:#fff;',
+      ].join('');
+      document.body.appendChild(popup);
+
+      const popupImg = document.createElement('img');
+      popupImg.alt = '';
+      popupImg.style.cssText = 'display:block;width:260px;height:auto;';
+      popup.appendChild(popupImg);
+
+      let hideTimer = null;
+
+      function show(img, src) {
+        clearTimeout(hideTimer);
+        popupImg.src = src;
+        popup.style.display = 'block';
+        position(img);
+      }
+
+      function hide() {
+        hideTimer = setTimeout(() => { popup.style.display = 'none'; }, 80);
+      }
+
+      function position(img) {
+        const r = img.getBoundingClientRect();
+        const pw = 262;
+        const left = r.right + 10 + pw > window.innerWidth
+          ? r.left - pw - 6
+          : r.right + 6;
+        const top = Math.min(r.top, window.innerHeight - 380);
+        popup.style.left = left + 'px';
+        popup.style.top  = Math.max(4, top) + 'px';
+      }
+
+      // Event delegation on the article list container
+      const tbody = document.getElementById('pv-list');
+      if (tbody) {
+        tbody.addEventListener('mouseover', (e) => {
+          const img = e.target.closest('.pv-thumb');
+          if (!img || !img.complete || !img.naturalWidth) return;
+          show(img, img.src);
+        });
+        tbody.addEventListener('mouseout', (e) => {
+          if (e.target.closest('.pv-thumb')) hide();
+        });
+      }
+    })();
 
     refreshStats();
     wireNewTagButton();

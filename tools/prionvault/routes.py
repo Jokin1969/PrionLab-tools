@@ -4014,6 +4014,64 @@ def api_article_pdf(aid):
     )
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/thumbnail", methods=["GET"])
+@login_required
+def api_article_thumbnail(aid):
+    """Return a JPEG thumbnail of the first PDF page.
+
+    Uses PyMuPDF (already a dependency for OCR) to render page 0 at
+    low resolution. Aggressive browser caching (7 days) means each
+    article thumbnail is fetched at most once per browser per week.
+    """
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT dropbox_path FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row or not row[0]:
+            return Response(status=404)
+        dropbox_path = row[0]
+    finally:
+        s.close()
+
+    try:
+        from core.dropbox_client import get_client
+        import fitz  # PyMuPDF
+        import io
+    except Exception as exc:
+        logger.warning("api_article_thumbnail: import failed: %s", exc)
+        return Response(status=503)
+
+    client = get_client()
+    if client is None:
+        return Response(status=503)
+
+    try:
+        _meta, response = client.files_download(dropbox_path)
+        pdf_bytes = response.content
+    except Exception as exc:
+        logger.warning("api_article_thumbnail(%s): download failed: %s", dropbox_path, exc)
+        return Response(status=502)
+
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page = doc[0]
+        # ~150 DPI gives a 900×1170 px image for A4; scale to ~width 240px
+        mat = fitz.Matrix(1.0, 1.0)   # 72 dpi — fast, enough for a thumbnail
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        jpeg_bytes = pix.tobytes("jpeg", jpg_quality=75)
+        doc.close()
+    except Exception as exc:
+        logger.warning("api_article_thumbnail: render failed: %s", exc)
+        return Response(status=500)
+
+    return Response(
+        jpeg_bytes,
+        mimetype="image/jpeg",
+        headers={"Cache-Control": "private, max-age=604800"},  # 7 days
+    )
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/chunks", methods=["GET"])
 @admin_required
 def api_article_chunks(aid):
