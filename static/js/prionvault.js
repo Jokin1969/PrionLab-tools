@@ -5560,7 +5560,9 @@
             body: JSON.stringify({ summary_ai_notes: null }),
           });
           a.summary_ai_notes = null;
-          renderAiSummary(a);
+          // Remove only the notes div — don't rebuild the whole block
+          // so the green success status line stays visible.
+          clearNotesBtn.closest('div[style]').remove();
         } catch (err) {
           clearNotesBtn.disabled = false;
           clearNotesBtn.textContent = '✕ Limpiar';
