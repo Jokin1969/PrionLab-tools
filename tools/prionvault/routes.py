@@ -1948,8 +1948,12 @@ def api_article_update(aid):
                     "matched_on":   col,
                 }), 409
 
-        for k, v in updates.items():
-            setattr(a, k, v)
+        # Use raw SQL to bypass any ORM mapper column-declaration gaps.
+        if updates:
+            _set_clauses = ", ".join(f"{k} = :{k}" for k in updates)
+            s.execute(sql_text(
+                f"UPDATE articles SET {_set_clauses}, updated_at = NOW() WHERE id = CAST(:_aid AS uuid)"
+            ), {**updates, "_aid": str(aid)})
 
         # Upsert per-user marks for the current viewer. We do this
         # inside the same session so a downstream commit error rolls
