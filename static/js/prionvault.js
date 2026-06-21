@@ -2541,6 +2541,16 @@
             return '<span title="Resumen IA (proveedor desconocido)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#f3f4f6;color:#374151;">AI ✓</span>';
           })()
         : '',
+      (IS_ADMIN && a.has_summary_ai && (a.summary_tokens_in || a.summary_tokens_out))
+        ? (() => {
+            const tin  = a.summary_tokens_in  || 0;
+            const tout = a.summary_tokens_out || 0;
+            const total = tin + tout;
+            const label = total >= 1000 ? (total / 1000).toFixed(1) + 'k tk' : total + ' tk';
+            return `<span title="Tokens resumen: ${tin.toLocaleString()} entrada / ${tout.toLocaleString()} salida"
+                          style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:500;background:#f3f4f6;color:#6b7280;">${label}</span>`;
+          })()
+        : '',
       a.indexed_at
         ? (IS_ADMIN
             ? `<button type="button" class="pv-indexed-chip" data-aid="${esc(a.id)}"
@@ -4335,11 +4345,33 @@
         ? 'La IA lee el PDF, identifica el artículo y busca su PMID en PubMed. Si no encuentra el PMID, copia el título al portapapeles para buscarlo a mano.'
         : 'Este artículo no tiene PDF guardado';
     }
-    // PDF verification block
+    // AI summary token info + PDF verification block
+    _editRenderTokensBlock(a);
     _editRenderVerifyBlock(a);
 
     modal.style.display = 'flex';
     setTimeout(() => document.getElementById('pv-edit-doi').focus(), 50);
+  }
+
+  function _editRenderTokensBlock(a) {
+    const block = document.getElementById('pv-edit-tokens-block');
+    if (!block) return;
+    const hasSummary = a.has_summary_ai || a.summary_ai;
+    if (!hasSummary) { block.style.display = 'none'; return; }
+    block.style.display = 'block';
+    const provEl   = document.getElementById('pv-edit-tokens-provider');
+    const countEl  = document.getElementById('pv-edit-tokens-counts');
+    const provMap  = { anthropic: '✦ Claude', openai: '⬡ GPT', gemini: '◈ Gemini' };
+    if (provEl) provEl.textContent = provMap[a.summary_ai_provider] || '(proveedor no registrado)';
+    if (countEl) {
+      const tin  = a.summary_tokens_in;
+      const tout = a.summary_tokens_out;
+      if (tin != null || tout != null) {
+        countEl.textContent = `${(tin || 0).toLocaleString('es-ES')} entrada / ${(tout || 0).toLocaleString('es-ES')} salida`;
+      } else {
+        countEl.textContent = '';
+      }
+    }
   }
 
   function _editRenderVerifyBlock(a) {

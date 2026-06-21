@@ -75,6 +75,7 @@ _PRIONVAULT_MIGRATIONS = (
     "039_articles_summary_ai_notes.sql",
     "040_articles_summary_ai_provider.sql",
     "041_backfill_summary_ai_provider.sql",
+    "042_articles_summary_tokens.sql",
 )
 
 _BOOTSTRAP_SQL = """

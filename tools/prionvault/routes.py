@@ -709,7 +709,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
          "extraction_status", "indexed_at",
          "summary_ai", "summary_human", "source",
          "abstract_unavailable", "pdf_oa_status",
-         "pdf_metadata_match_status", "summary_ai_provider"]
+         "pdf_metadata_match_status", "summary_ai_provider",
+         "summary_tokens_in", "summary_tokens_out"]
         if c in pv_cols
     )
     select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -898,6 +899,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
             "has_summary_ai":       bool(d.get("summary_ai")),
             "summary_ai_provider":  d.get("summary_ai_provider") if bool(d.get("summary_ai")) else None,
+            "summary_tokens_in":    int(d["summary_tokens_in"]) if d.get("summary_tokens_in") else None,
+            "summary_tokens_out":   int(d["summary_tokens_out"]) if d.get("summary_tokens_out") else None,
             "has_summary_human": False,
             "in_prionread":  in_pr,
             "prionread_count": prionread_counts.get(aid, 0),
@@ -974,6 +977,7 @@ def api_article_detail(aid):
             "abstract_unavailable", "pubmed_unavailable",
             "pdf_metadata_match_status", "pdf_metadata_match_score",
             "pdf_metadata_match_detail", "pdf_metadata_match_checked_at",
+            "summary_ai_provider", "summary_tokens_in", "summary_tokens_out",
         ]
         pv_select = ", ".join(c for c in optional if c in pv_cols)
         select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -1028,6 +1032,9 @@ def api_article_detail(aid):
             "summary_ai":    d.get("summary_ai"),
             "summary_human": d.get("summary_human"),
             "summary_ai_notes": d.get("summary_ai_notes") if "summary_ai_notes" in d else None,
+            "summary_ai_provider":  d.get("summary_ai_provider") if bool(d.get("summary_ai")) else None,
+            "summary_tokens_in":    int(d["summary_tokens_in"]) if d.get("summary_tokens_in") else None,
+            "summary_tokens_out":   int(d["summary_tokens_out"]) if d.get("summary_tokens_out") else None,
             "has_summary_ai":    bool(d.get("summary_ai")),
             "has_summary_human": bool(d.get("summary_human")),
             "in_prionread":  False,  # enriched below

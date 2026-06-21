@@ -253,15 +253,19 @@ def _run_batch(*, viewer_user_id=None,
             with _lock:
                 _state["failed"] += 1
                 _state["last_error"] = f"{title[:80]} — {str(exc)[:160]}"
-            # Persist error note to DB (defensive — column may not exist yet)
+            # Persist error note to DB so the operator can see what went wrong
+            # per-article in Salud de la biblioteca → "Con errores/notas".
             try:
+                import traceback as _tb
+                detail = _tb.format_exc()[-800:]  # last 800 chars of traceback
+                note = f"Error al generar resumen ({type(exc).__name__}): {str(exc)[:400]}\n\n{detail}"
                 with eng.begin() as conn:
                     conn.execute(sql_text(
                         """UPDATE articles
                            SET summary_ai_notes = :note,
                                updated_at = NOW()
                          WHERE id = :aid"""
-                    ), {"note": f"Error al generar resumen: {str(exc)[:500]}", "aid": article_id})
+                    ), {"note": note, "aid": article_id})
             except Exception:
                 pass  # don't let a note-write failure cascade
             time.sleep(_BETWEEN_CALLS_SLEEP_S)
@@ -275,12 +279,15 @@ def _run_batch(*, viewer_user_id=None,
             with eng.begin() as conn:
                 conn.execute(sql_text(
                     """UPDATE articles
-                       SET summary_ai          = :summary,
-                           summary_ai_notes    = NULL,
-                           summary_ai_provider = :prov,
-                           updated_at          = NOW()
+                       SET summary_ai           = :summary,
+                           summary_ai_notes     = NULL,
+                           summary_ai_provider  = :prov,
+                           summary_tokens_in    = :tin,
+                           summary_tokens_out   = :tout,
+                           updated_at           = NOW()
                        WHERE id = :aid"""
-                ), {"summary": result.text, "aid": article_id, "prov": provider})
+                ), {"summary": result.text, "aid": article_id, "prov": provider,
+                    "tin": int(result.tokens_in or 0), "tout": int(result.tokens_out or 0)})
         except Exception as exc:
             logger.exception("batch_summary: persisting summary for %s failed", article_id)
             with _lock:
