@@ -1227,11 +1227,28 @@
 
     <div id="pv-edit-status" style="font-size:12.5px;color:#6b7280;margin-bottom:10px;min-height:18px;"></div>
 
-    <!-- AI summary token info (shown only when token data exists) -->
+    <!-- AI summary token info + error clear (shown when a summary or error note exists) -->
     <div id="pv-edit-tokens-block" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;margin-bottom:10px;background:#f9fafb;">
-      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ca3af;">Resumen IA</span>
-      <span id="pv-edit-tokens-provider" style="margin-left:8px;font-size:11.5px;font-weight:600;"></span>
-      <span id="pv-edit-tokens-counts" style="margin-left:10px;font-size:11.5px;color:#6b7280;"></span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <div>
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ca3af;">Resumen IA</span>
+          <select id="pv-edit-summary-provider"
+                  title="Proveedor que generó este resumen"
+                  style="margin-left:8px;font-size:11.5px;font-weight:600;border:1px solid #d1d5db;border-radius:5px;padding:1px 5px;background:white;cursor:pointer;">
+            <option value="">— sin proveedor —</option>
+            <option value="anthropic">✦ Claude (Anthropic)</option>
+            <option value="openai">⬡ GPT (OpenAI)</option>
+            <option value="gemini">◈ Gemini (Google)</option>
+          </select>
+          <span id="pv-edit-tokens-counts" style="margin-left:10px;font-size:11.5px;color:#6b7280;"></span>
+        </div>
+        <button id="pv-edit-clear-notes" type="button"
+                style="display:none;padding:3px 9px;border-radius:5px;border:1px solid #fca5a5;background:white;color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;"
+                title="Borra la nota de error guardada en este artículo. El resumen queda intacto.">
+          ✕ Limpiar error
+        </button>
+      </div>
+      <div id="pv-edit-notes-preview" style="display:none;margin-top:5px;font-size:11px;color:#b91c1c;white-space:pre-wrap;max-height:60px;overflow:auto;line-height:1.4;"></div>
     </div>
 
     <!-- PDF verification status (shown only when verification data exists) -->

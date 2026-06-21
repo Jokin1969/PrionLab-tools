@@ -1803,7 +1803,8 @@ def api_remove_from_prionread(aid):
 # ── Article write endpoints (metadata admin-only, per-user marks open) ──────
 _EDITABLE_FIELDS = {
     "title", "authors", "year", "journal", "doi", "pubmed_id",
-    "abstract", "summary_ai", "summary_human", "is_milestone",
+    "abstract", "summary_ai", "summary_human", "summary_ai_provider",
+    "summary_ai_notes", "is_milestone",
     "is_flagged", "color_label", "priority",
 }
 # Subset of _EDITABLE_FIELDS that became per-user in migration 037.
@@ -1863,6 +1864,19 @@ def api_article_update(aid):
     for k in ("is_flagged", "is_milestone"):
         if k in updates:
             updates[k] = bool(updates[k])
+
+    if "summary_ai_provider" in updates:
+        v = updates["summary_ai_provider"]
+        if v in ("", None):
+            updates["summary_ai_provider"] = None
+        elif v not in ("anthropic", "openai", "gemini"):
+            return jsonify({"error": "invalid summary_ai_provider",
+                            "allowed": ["anthropic", "openai", "gemini", None]}), 400
+
+    # Allow explicitly clearing summary_ai_notes (pass null/empty string)
+    if "summary_ai_notes" in updates:
+        v = updates["summary_ai_notes"]
+        updates["summary_ai_notes"] = v if (v and str(v).strip()) else None
 
     # If the admin is filling in an abstract by hand, clear the
     # "confirmed unavailable" flag so the row stops showing under

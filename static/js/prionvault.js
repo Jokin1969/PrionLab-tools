@@ -4357,19 +4357,37 @@
     const block = document.getElementById('pv-edit-tokens-block');
     if (!block) return;
     const hasSummary = a.has_summary_ai || a.summary_ai;
-    if (!hasSummary) { block.style.display = 'none'; return; }
+    const hasNotes   = a.summary_ai_notes && a.summary_ai_notes.trim();
+    if (!hasSummary && !hasNotes) { block.style.display = 'none'; return; }
     block.style.display = 'block';
-    const provEl   = document.getElementById('pv-edit-tokens-provider');
-    const countEl  = document.getElementById('pv-edit-tokens-counts');
-    const provMap  = { anthropic: '✦ Claude', openai: '⬡ GPT', gemini: '◈ Gemini' };
-    if (provEl) provEl.textContent = provMap[a.summary_ai_provider] || '(proveedor no registrado)';
+
+    // Provider selector
+    const provSel  = document.getElementById('pv-edit-summary-provider');
+    if (provSel) provSel.value = a.summary_ai_provider || '';
+
+    // Token counts
+    const countEl = document.getElementById('pv-edit-tokens-counts');
     if (countEl) {
       const tin  = a.summary_tokens_in;
       const tout = a.summary_tokens_out;
-      if (tin != null || tout != null) {
-        countEl.textContent = `${(tin || 0).toLocaleString('es-ES')} entrada / ${(tout || 0).toLocaleString('es-ES')} salida`;
+      countEl.textContent = (tin != null || tout != null)
+        ? `${(tin || 0).toLocaleString('es-ES')} ent / ${(tout || 0).toLocaleString('es-ES')} sal tk`
+        : '';
+    }
+
+    // Error note preview + clear button
+    const clearBtn    = document.getElementById('pv-edit-clear-notes');
+    const notesPreview = document.getElementById('pv-edit-notes-preview');
+    if (clearBtn && notesPreview) {
+      if (hasNotes) {
+        clearBtn.style.display = 'inline-flex';
+        notesPreview.style.display = 'block';
+        // Show just the first line (type + message) to keep it compact
+        notesPreview.textContent = a.summary_ai_notes.split('\n')[0];
       } else {
-        countEl.textContent = '';
+        clearBtn.style.display = 'none';
+        notesPreview.style.display = 'none';
+        notesPreview.textContent = '';
       }
     }
   }
@@ -4998,6 +5016,46 @@
       }
       loadArticles();
       _editStatus('Artículo eliminado. No hay más artículos.', '#15803d');
+    });
+
+    // Provider selector — saves immediately on change
+    document.getElementById('pv-edit-summary-provider')?.addEventListener('change', async (e) => {
+      if (!_editTarget) return;
+      const val = e.target.value || null;
+      try {
+        await api(`/articles/${_editTarget.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ summary_ai_provider: val }),
+        });
+        _editTarget.summary_ai_provider = val;
+        _editStatus('Proveedor actualizado.', '#15803d');
+        // Refresh the row badge in the list without a full reload
+        const row = document.querySelector(`[data-aid="${_editTarget.id}"]`)?.closest('tr,li,.pv-row');
+        if (row) loadArticles();
+      } catch (err) {
+        _editStatus('Error al guardar proveedor: ' + err.message, '#b91c1c');
+      }
+    });
+
+    // Clear error note button
+    document.getElementById('pv-edit-clear-notes')?.addEventListener('click', async () => {
+      if (!_editTarget) return;
+      const btn = document.getElementById('pv-edit-clear-notes');
+      const orig = btn.textContent;
+      btn.disabled = true; btn.textContent = '⏳';
+      try {
+        await api(`/articles/${_editTarget.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ summary_ai_notes: null }),
+        });
+        _editTarget.summary_ai_notes = null;
+        _editRenderTokensBlock(_editTarget);
+        _editStatus('Nota de error eliminada.', '#15803d');
+      } catch (err) {
+        _editStatus('Error: ' + err.message, '#b91c1c');
+      } finally {
+        btn.disabled = false; btn.textContent = orig;
+      }
     });
 
     // PDF verification quick-actions
