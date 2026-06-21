@@ -237,6 +237,481 @@ _BUILTIN_ARTICLES = {
         'category': {'name': 'Export', 'icon': '📤'},
         'slug': 'export-formats',
     },
+
+    # ── PrionVault ────────────────────────────────────────────────────────────
+
+    'prionvault-intro': {
+        'title_es': 'Introducción a PrionVault',
+        'title_en': 'Introduction to PrionVault',
+        'excerpt_es': 'PrionVault es la biblioteca científica inteligente del laboratorio.',
+        'excerpt_en': 'PrionVault is the lab\'s intelligent scientific library.',
+        'content_es': (
+            '**PrionVault** es la biblioteca de literatura científica del laboratorio, '
+            'diseñada para almacenar, organizar y explorar artículos sobre priones y neurodegeneración.\n\n'
+            '**Qué puedes hacer:**\n'
+            '- Subir PDFs de artículos y extraer su texto automáticamente\n'
+            '- Generar resúmenes con IA (Claude, GPT o Gemini)\n'
+            '- Buscar por título, autor, año, revista o texto libre\n'
+            '- Hacer preguntas sobre la biblioteca entera con el asistente RAG\n'
+            '- Organizar artículos en colecciones y etiquetas personales\n'
+            '- Ver el estado de salud de la biblioteca de un vistazo\n\n'
+            '**Acceso:** ve a _PrionVault_ desde el menú lateral. '
+            'Los investigadores ven la biblioteca; los administradores además gestionan el contenido.'
+        ),
+        'content_en': (
+            '**PrionVault** is the lab\'s scientific literature library, '
+            'designed to store, organize and explore articles on prions and neurodegeneration.\n\n'
+            '**What you can do:**\n'
+            '- Upload article PDFs and extract text automatically\n'
+            '- Generate AI summaries (Claude, GPT or Gemini)\n'
+            '- Search by title, author, year, journal or free text\n'
+            '- Ask questions about the whole library with the RAG assistant\n'
+            '- Organize articles in personal collections and tags\n'
+            '- See the library health at a glance\n\n'
+            '**Access:** go to _PrionVault_ from the sidebar. '
+            'Researchers see the library; admins also manage its content.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-intro',
+    },
+
+    'prionvault-search': {
+        'title_es': 'Buscar y filtrar artículos',
+        'title_en': 'Search and filter articles',
+        'excerpt_es': 'Cómo encontrar artículos por texto, año, revista, etiqueta o estado.',
+        'excerpt_en': 'How to find articles by text, year, journal, tag or status.',
+        'content_es': (
+            '**Búsqueda y filtros en PrionVault**\n\n'
+            '**Barra de búsqueda:** escribe cualquier término para buscar en título, autores, '
+            'abstract y DOI. La búsqueda es instantánea.\n\n'
+            '**Filtros disponibles:**\n'
+            '- _Año_: rango de fechas de publicación\n'
+            '- _Revista_: filtra por nombre de revista\n'
+            '- _Etiqueta_: tus etiquetas personales\n'
+            '- _Colección_: colecciones manuales o inteligentes\n'
+            '- _Estado PDF_: con PDF, sin PDF, escaneado (OCR)\n'
+            '- _Proveedor IA_: resúmenes de Claude, GPT, Gemini o sin proveedor\n'
+            '- _Verificación PDF_: artículos con Mismatch, Sospechosos o verificados OK\n\n'
+            '**Ordenación:** haz clic en las cabeceras de columna (Año, Título, Añadido) '
+            'para reordenar la lista ascendente o descendente.\n\n'
+            '**Selección múltiple:** marca varios artículos con las casillas para aplicar '
+            'acciones en bloque (mover a colección, etiquetar, generar resúmenes).'
+        ),
+        'content_en': (
+            '**Search and filters in PrionVault**\n\n'
+            '**Search bar:** type any term to search in title, authors, abstract and DOI. '
+            'Search is instant.\n\n'
+            '**Available filters:**\n'
+            '- _Year_: publication date range\n'
+            '- _Journal_: filter by journal name\n'
+            '- _Tag_: your personal tags\n'
+            '- _Collection_: manual or smart collections\n'
+            '- _PDF status_: with PDF, without PDF, scanned (OCR)\n'
+            '- _AI provider_: summaries by Claude, GPT, Gemini or unknown\n'
+            '- _PDF verification_: articles with Mismatch, Suspect or verified OK\n\n'
+            '**Sorting:** click column headers (Year, Title, Added) to sort ascending or descending.\n\n'
+            '**Multi-select:** check several articles to apply bulk actions '
+            '(move to collection, tag, generate summaries).'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-search',
+    },
+
+    'prionvault-upload': {
+        'title_es': 'Subir artículos y procesar PDFs',
+        'title_en': 'Upload articles and process PDFs',
+        'excerpt_es': 'Cómo añadir artículos, extraer texto y activar el OCR.',
+        'excerpt_en': 'How to add articles, extract text and activate OCR.',
+        'content_es': (
+            '**Añadir artículos a PrionVault**\n\n'
+            '**Desde el menú _Procesado de artículos_:**\n'
+            '- _Subir PDF_: sube uno o varios PDFs. PrionVault extrae el texto automáticamente.\n'
+            '- _Importar por DOI o PMID_: introduce el identificador y se rellenan los metadatos '
+            'automáticamente desde PubMed / CrossRef.\n'
+            '- _Inventario PubMed_: importa lotes de artículos desde una búsqueda PubMed (XML).\n\n'
+            '**Extracción de texto:**\n'
+            'Al subir un PDF, el sistema intenta extraer el texto directamente. '
+            'Si el PDF es una imagen escaneada, se activa OCR automáticamente y el artículo '
+            'queda marcado con la etiqueta 📸 OCR.\n\n'
+            '**Auto-fetcher OA:** para artículos del inventario PubMed sin PDF, el sistema '
+            'busca automáticamente en Unpaywall y PMC una copia en acceso abierto. '
+            'Si no la encuentra, aparece la etiqueta _PDF: sin OA_.\n\n'
+            '**Comprobar veracidad del PDF:** al final del menú _Procesado_, '
+            'puedes lanzar un análisis IA que compara los metadatos del artículo '
+            '(título, año, revista, autores) con el contenido real del PDF '
+            'para detectar PDFs incorrectos o intercambiados.'
+        ),
+        'content_en': (
+            '**Adding articles to PrionVault**\n\n'
+            '**From the _Article processing_ menu:**\n'
+            '- _Upload PDF_: upload one or several PDFs. PrionVault extracts text automatically.\n'
+            '- _Import by DOI or PMID_: enter the identifier and metadata are auto-filled '
+            'from PubMed / CrossRef.\n'
+            '- _PubMed Inventory_: import batches of articles from a PubMed search (XML).\n\n'
+            '**Text extraction:**\n'
+            'When uploading a PDF, the system tries to extract text directly. '
+            'If the PDF is a scanned image, OCR activates automatically and the article '
+            'is marked with the 📸 OCR tag.\n\n'
+            '**OA auto-fetcher:** for inventory articles without a PDF, the system '
+            'automatically searches Unpaywall and PMC for an open access copy. '
+            'If not found, the _PDF: no OA_ tag appears.\n\n'
+            '**PDF authenticity check:** at the end of the _Processing_ menu, '
+            'you can run an AI analysis that compares article metadata '
+            '(title, year, journal, authors) with the actual PDF content '
+            'to detect incorrect or swapped PDFs.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-upload',
+    },
+
+    'prionvault-summaries': {
+        'title_es': 'Resúmenes IA: generar, gestionar y corregir',
+        'title_en': 'AI summaries: generate, manage and fix',
+        'excerpt_es': 'Cómo generar resúmenes con Claude, GPT o Gemini y gestionar errores.',
+        'excerpt_en': 'How to generate summaries with Claude, GPT or Gemini and manage errors.',
+        'content_es': (
+            '**Resúmenes IA en PrionVault**\n\n'
+            '**Generar resúmenes en lote:**\n'
+            'Ve a _Miscelánea → Estado IA_ y pulsa **Iniciar batch**. '
+            'El sistema procesará todos los artículos que tienen texto extraído pero aún no tienen resumen. '
+            'Puedes elegir el proveedor (Claude, GPT o Gemini) antes de empezar. '
+            'El proceso es reanudable: si lo detienes o el servidor se reinicia, '
+            'continúa desde donde lo dejó.\n\n'
+            '**Badges en la lista:**\n'
+            '- ✦ Claude — resumen de Anthropic\n'
+            '- ⬡ GPT — resumen de OpenAI\n'
+            '- ◈ Gemini — resumen de Google\n'
+            '- _1.2k tk_ — tokens usados (entrada + salida); indica la longitud del resumen\n\n'
+            '**Si un resumen da error:**\n'
+            'El artículo queda marcado en _Salud de la biblioteca → Con errores/notas_. '
+            'Abre el artículo en **Editar** para ver el tipo de error y el detalle del fallo. '
+            'Usa **✕ Limpiar error** para borrar la nota una vez resuelto. '
+            'El batch lo reintentará en la próxima ejecución si `summary_ai` sigue siendo NULL.\n\n'
+            '**Corregir el proveedor:**\n'
+            'Si un resumen se guardó sin proveedor registrado (aparece "IA" sin nombre), '
+            'abre el artículo en Editar → sección _Resumen IA_ → desplegable → selecciona el proveedor correcto. '
+            'Se guarda al instante.'
+        ),
+        'content_en': (
+            '**AI summaries in PrionVault**\n\n'
+            '**Batch summary generation:**\n'
+            'Go to _Miscellaneous → AI Status_ and press **Start batch**. '
+            'The system will process all articles that have extracted text but no summary yet. '
+            'You can choose the provider (Claude, GPT or Gemini) before starting. '
+            'The process is resumable: if you stop it or the server restarts, '
+            'it continues from where it left off.\n\n'
+            '**List badges:**\n'
+            '- ✦ Claude — Anthropic summary\n'
+            '- ⬡ GPT — OpenAI summary\n'
+            '- ◈ Gemini — Google summary\n'
+            '- _1.2k tk_ — tokens used (in + out); indicates summary length\n\n'
+            '**If a summary fails:**\n'
+            'The article is flagged under _Library health → With errors/notes_. '
+            'Open the article in **Edit** to see the error type and failure detail. '
+            'Use **✕ Clear error** to remove the note once resolved. '
+            'The batch will retry it in the next run if `summary_ai` is still NULL.\n\n'
+            '**Fix the provider:**\n'
+            'If a summary was saved without a registered provider (shows "AI" with no name), '
+            'open the article in Edit → _AI Summary_ section → dropdown → select the correct provider. '
+            'Saves instantly.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-summaries',
+    },
+
+    'prionvault-rag': {
+        'title_es': 'Preguntas sobre la biblioteca (RAG)',
+        'title_en': 'Ask questions about the library (RAG)',
+        'excerpt_es': 'Cómo hacer preguntas científicas y obtener respuestas con citas de la biblioteca.',
+        'excerpt_en': 'How to ask scientific questions and get cited answers from the library.',
+        'content_es': (
+            '**Asistente RAG de PrionVault**\n\n'
+            'El asistente RAG (_Retrieval-Augmented Generation_) te permite hacer preguntas '
+            'en lenguaje natural sobre todos los artículos de la biblioteca.\n\n'
+            '**Cómo funciona:**\n'
+            '1. Tu pregunta se convierte en un vector semántico (Voyage AI)\n'
+            '2. Se recuperan los fragmentos más relevantes de los PDFs indexados\n'
+            '3. Para cada artículo citado, se añade además su resumen IA si existe\n'
+            '4. El modelo seleccionado (Claude, GPT o Gemini) genera una respuesta '
+            'basada ÚNICAMENTE en esos fragmentos, citando cada afirmación con [N]\n'
+            '5. Se indica el nivel de confianza: alto / medio / bajo\n\n'
+            '**Expansión de consulta:** el sistema reconoce términos biomédicos y los expande '
+            'automáticamente (p. ej. "prion" incluye PrPSc, PrPC, prión, etc.).\n\n'
+            '**Fallback de proveedor:** si el proveedor elegido rechaza la consulta o falla, '
+            'el sistema intenta automáticamente con el siguiente proveedor disponible '
+            'y te informa del cambio.\n\n'
+            '**Ver más resultados:** si hay más artículos relevantes de los mostrados, '
+            'aparece un botón _"Ver más"_ para ampliar la búsqueda.\n\n'
+            '**Importante:** el RAG responde solo con lo que está en la biblioteca. '
+            'Si no hay evidencia suficiente, lo dice explícitamente.'
+        ),
+        'content_en': (
+            '**PrionVault RAG assistant**\n\n'
+            'The RAG (_Retrieval-Augmented Generation_) assistant lets you ask questions '
+            'in natural language about all articles in the library.\n\n'
+            '**How it works:**\n'
+            '1. Your question is converted into a semantic vector (Voyage AI)\n'
+            '2. The most relevant fragments from indexed PDFs are retrieved\n'
+            '3. For each cited article, its AI summary is also added if available\n'
+            '4. The selected model (Claude, GPT or Gemini) generates an answer '
+            'based ONLY on those fragments, citing each claim with [N]\n'
+            '5. A confidence level is indicated: high / medium / low\n\n'
+            '**Query expansion:** the system recognises biomedical terms and expands them '
+            'automatically (e.g. "prion" includes PrPSc, PrPC, prion, etc.).\n\n'
+            '**Provider fallback:** if the chosen provider rejects the query or fails, '
+            'the system automatically tries the next available provider and notifies you.\n\n'
+            '**See more results:** if there are more relevant articles than shown, '
+            'a _"See more"_ button appears to expand the search.\n\n'
+            '**Important:** RAG only answers with what is in the library. '
+            'If there is insufficient evidence, it says so explicitly.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-rag',
+    },
+
+    'prionvault-health': {
+        'title_es': 'Salud de la biblioteca',
+        'title_en': 'Library health',
+        'excerpt_es': 'El panel de salud muestra el estado completo de la biblioteca de un vistazo.',
+        'excerpt_en': 'The health panel shows the complete library status at a glance.',
+        'content_es': (
+            '**Salud de la biblioteca**\n\n'
+            'Accede desde _Miscelánea → Salud de la biblioteca_. '
+            'Muestra el estado real y actualizado de todos los artículos.\n\n'
+            '**Secciones del panel:**\n\n'
+            '_Biblioteca_: total de artículos, con texto extraído, con abstract, con PDF, indexados.\n\n'
+            '_Resúmenes IA_: cuántos tienen resumen, desglose por proveedor (Claude / GPT / Gemini / sin proveedor), '
+            'cuántos tienen notas de error. Cada tarjeta es clicable y filtra la lista de artículos.\n\n'
+            '_Verificación PDF_: artículos con Mismatch (discrepancia detectada), '
+            'Sospechosos, Match OK, y sin verificar. Clica para ver solo ese grupo.\n\n'
+            '_Inventario PubMed_: artículos importados desde inventario, '
+            'con PDF conseguido, en espera o sin acceso abierto.\n\n'
+            '**Artículos con errores/notas:** los artículos donde la IA intentó generar un resumen '
+            'y falló aparecen aquí. Abre cada artículo en Editar para ver el error y limpiarlo.'
+        ),
+        'content_en': (
+            '**Library health**\n\n'
+            'Access from _Miscellaneous → Library health_. '
+            'Shows the real, live status of all articles.\n\n'
+            '**Panel sections:**\n\n'
+            '_Library_: total articles, with extracted text, with abstract, with PDF, indexed.\n\n'
+            '_AI Summaries_: how many have a summary, breakdown by provider (Claude / GPT / Gemini / unknown), '
+            'how many have error notes. Each card is clickable and filters the article list.\n\n'
+            '_PDF verification_: articles with Mismatch (detected discrepancy), '
+            'Suspect, Match OK, and unverified. Click to see only that group.\n\n'
+            '_PubMed inventory_: articles imported from inventory, '
+            'with PDF found, waiting or with no open access.\n\n'
+            '**Articles with errors/notes:** articles where the AI tried to generate a summary '
+            'and failed appear here. Open each article in Edit to see the error and clear it.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-health',
+    },
+
+    'prionvault-edit': {
+        'title_es': 'Editar artículos y gestionar metadatos',
+        'title_en': 'Edit articles and manage metadata',
+        'excerpt_es': 'Cómo editar metadatos, corregir verificaciones PDF y gestionar el proveedor del resumen.',
+        'excerpt_en': 'How to edit metadata, fix PDF verifications and manage the summary provider.',
+        'content_es': (
+            '**Modal de edición de artículos**\n\n'
+            'Pulsa **✏ Editar** en cualquier artículo para abrir el modal de edición.\n\n'
+            '**Metadatos editables:** título, autores, año, revista, DOI, PMID, abstract.\n\n'
+            '**Buscar metadatos automáticamente:**\n'
+            '- _Por DOI_: consulta CrossRef / PubMed y rellena los campos\n'
+            '- _Por PMID_: consulta PubMed directamente\n'
+            '- _🤖 Buscar PMID con IA_: la IA lee el PDF e identifica el artículo\n\n'
+            '**Sección Resumen IA** (si existe resumen o error):\n'
+            '- Muestra el proveedor actual con un desplegable para corregirlo\n'
+            '- Muestra los tokens usados (entrada / salida) — indicativo del coste y longitud\n'
+            '- Si hay una nota de error, muestra la primera línea en rojo con el botón **✕ Limpiar error**\n\n'
+            '**Sección Verificación PDF** (si se ha verificado):\n'
+            '- Badge de estado: ✗ Mismatch / ⚠ Sospechoso / ✓ OK\n'
+            '- Score de confianza y detalle de qué campos discrepan\n'
+            '- **✓ Marcar OK**: marca el artículo como verificado manualmente\n'
+            '- **🔁 Reverificar**: lo pone en cola para una nueva verificación IA\n\n'
+            '**Acciones adicionales:** eliminar artículo, marcar sin abstract, '
+            'navegar al artículo anterior/siguiente sin cerrar el modal.'
+        ),
+        'content_en': (
+            '**Article edit modal**\n\n'
+            'Press **✏ Edit** on any article to open the edit modal.\n\n'
+            '**Editable metadata:** title, authors, year, journal, DOI, PMID, abstract.\n\n'
+            '**Auto-fetch metadata:**\n'
+            '- _By DOI_: queries CrossRef / PubMed and fills in the fields\n'
+            '- _By PMID_: queries PubMed directly\n'
+            '- _🤖 Find PMID with AI_: the AI reads the PDF and identifies the article\n\n'
+            '**AI Summary section** (if a summary or error exists):\n'
+            '- Shows the current provider with a dropdown to correct it\n'
+            '- Shows tokens used (input / output) — indicative of cost and length\n'
+            '- If there is an error note, shows the first line in red with **✕ Clear error** button\n\n'
+            '**PDF Verification section** (if verified):\n'
+            '- Status badge: ✗ Mismatch / ⚠ Suspect / ✓ OK\n'
+            '- Confidence score and detail of which fields differ\n'
+            '- **✓ Mark OK**: marks the article as manually verified\n'
+            '- **🔁 Re-verify**: queues it for a new AI verification\n\n'
+            '**Additional actions:** delete article, mark as no abstract, '
+            'navigate to previous/next article without closing the modal.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-edit',
+    },
+
+    'prionvault-collections': {
+        'title_es': 'Colecciones y etiquetas',
+        'title_en': 'Collections and tags',
+        'excerpt_es': 'Organiza artículos en colecciones manuales o inteligentes y etiquetas personales.',
+        'excerpt_en': 'Organize articles in manual or smart collections and personal tags.',
+        'content_es': (
+            '**Colecciones en PrionVault**\n\n'
+            '**Colecciones manuales:** agrupa artículos de forma libre. '
+            'Crea una colección desde el panel lateral → _Colecciones_ → +. '
+            'Añade artículos seleccionándolos en la lista y usando el menú de acciones en bloque.\n\n'
+            '**Colecciones inteligentes:** se definen con reglas (p. ej. "todos los artículos de 2020-2024 '
+            'con resumen IA"). El contenido se actualiza automáticamente sin intervención manual.\n\n'
+            '**Jerarquía:** las colecciones pueden tener subcolecciones. '
+            'En el panel lateral, las colecciones padre muestran el recuento total incluyendo hijos.\n\n'
+            '**Etiquetas personales:**\n'
+            'Las etiquetas son por usuario — cada investigador tiene las suyas sin interferir con los demás. '
+            'Crea y asigna etiquetas desde el menú lateral o desde la lista de artículos. '
+            'Filtra por etiqueta usando el desplegable de filtros.\n\n'
+            '**Marcas personales:**\n'
+            '- ⭐ Favorito / 📌 Hito / 🚩 Marcado — solo visibles para ti\n'
+            '- Prioridad (1-5) y etiqueta de color — también por usuario'
+        ),
+        'content_en': (
+            '**Collections in PrionVault**\n\n'
+            '**Manual collections:** group articles freely. '
+            'Create a collection from the sidebar → _Collections_ → +. '
+            'Add articles by selecting them in the list and using the bulk actions menu.\n\n'
+            '**Smart collections:** defined with rules (e.g. "all articles from 2020-2024 '
+            'with AI summary"). Content updates automatically without manual intervention.\n\n'
+            '**Hierarchy:** collections can have subcollections. '
+            'In the sidebar, parent collections show the total count including children.\n\n'
+            '**Personal tags:**\n'
+            'Tags are per-user — each researcher has their own without interfering with others. '
+            'Create and assign tags from the sidebar or from the article list. '
+            'Filter by tag using the filters dropdown.\n\n'
+            '**Personal marks:**\n'
+            '- ⭐ Favourite / 📌 Milestone / 🚩 Flagged — visible only to you\n'
+            '- Priority (1-5) and colour label — also per user'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-collections',
+    },
+
+    'prionvault-pdf-verify': {
+        'title_es': 'Verificación de veracidad de PDFs',
+        'title_en': 'PDF authenticity verification',
+        'excerpt_es': 'La IA compara metadatos y contenido PDF para detectar artículos mal asignados.',
+        'excerpt_en': 'AI compares metadata and PDF content to detect misassigned articles.',
+        'content_es': (
+            '**Verificación de veracidad de PDFs**\n\n'
+            'Accede desde _Procesado de artículos → Comprobar veracidad PDFs_.\n\n'
+            '**Qué hace:** la IA analiza el PDF de cada artículo y compara título, año, '
+            'revista y autores con los metadatos registrados en la base de datos. '
+            'Detecta PDFs incorrectos, intercambiados o mal enlazados.\n\n'
+            '**Estados de verificación:**\n'
+            '- ✗ **Mismatch** (rojo): discrepancia clara detectada — revisa el PDF\n'
+            '- ⚠ **Sospechoso** (naranja): la IA tiene dudas — revisa manualmente\n'
+            '- ✓ **Match OK** (verde): PDF coincide con los metadatos\n'
+            '- ✓ **OK manual** (verde): verificado manualmente por un administrador\n\n'
+            '**Badges en la lista:** los artículos verificados muestran un badge clicable. '
+            'Pulsar en Mismatch o Sospechoso abre directamente el modal de edición.\n\n'
+            '**Transferir al listado:** en el modal de verificación, '
+            'usa _"Ver en listado"_ para trasladar los artículos de una pestaña (o tu selección) '
+            'al listado principal y trabajar con ellos.\n\n'
+            '**Acciones rápidas en Editar:**\n'
+            '- _✓ Marcar OK_: fuerza el estado a OK manual sin reverificar\n'
+            '- _🔁 Reverificar_: pone el artículo en cola para un nuevo análisis IA'
+        ),
+        'content_en': (
+            '**PDF authenticity verification**\n\n'
+            'Access from _Article processing → Check PDF authenticity_.\n\n'
+            '**What it does:** AI analyses each article\'s PDF and compares title, year, '
+            'journal and authors against the metadata in the database. '
+            'Detects incorrect, swapped or mislinked PDFs.\n\n'
+            '**Verification states:**\n'
+            '- ✗ **Mismatch** (red): clear discrepancy detected — review the PDF\n'
+            '- ⚠ **Suspect** (orange): AI has doubts — review manually\n'
+            '- ✓ **Match OK** (green): PDF matches the metadata\n'
+            '- ✓ **Manual OK** (green): manually verified by an administrator\n\n'
+            '**List badges:** verified articles show a clickable badge. '
+            'Clicking Mismatch or Suspect opens the edit modal directly.\n\n'
+            '**Transfer to list:** in the verification modal, '
+            'use _"View in list"_ to move articles from a tab (or your selection) '
+            'to the main list to work with them.\n\n'
+            '**Quick actions in Edit:**\n'
+            '- _✓ Mark OK_: forces the status to manual OK without re-verifying\n'
+            '- _🔁 Re-verify_: queues the article for a new AI analysis'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-pdf-verify',
+    },
+
+    'prionvault-indexing': {
+        'title_es': 'Indexado semántico (Voyage AI)',
+        'title_en': 'Semantic indexing (Voyage AI)',
+        'excerpt_es': 'Cómo funciona el indexado vectorial que alimenta el buscador semántico y el RAG.',
+        'excerpt_en': 'How vector indexing works to power semantic search and RAG.',
+        'content_es': (
+            '**Indexado semántico en PrionVault**\n\n'
+            'El indexado convierte el texto de los artículos en vectores numéricos '
+            '(embeddings) almacenados en PostgreSQL con pgvector. '
+            'Esto permite búsquedas semánticas y el asistente RAG.\n\n'
+            '**Motor:** Voyage AI con el modelo _voyage-4-large_, especializado en texto científico. '
+            'El texto se divide en fragmentos (_chunks_) de tamaño controlado.\n\n'
+            '**Dos fuentes de texto:** el sistema indexa tanto el texto completo del PDF '
+            'como el abstract, de forma independiente.\n\n'
+            '**Cuándo se indexa:** automáticamente tras extraer el texto de un PDF. '
+            'El badge _indexed_ en verde en la lista del artículo confirma que está listo.\n\n'
+            '**Reindexado:** desde _Procesado de artículos_ hay un botón de reindexado limpio '
+            'que borra los chunks existentes y los regenera. Útil si el modelo de embeddings '
+            'se actualiza o si el texto se ha re-extraído con mejor calidad.\n\n'
+            '**Búsqueda híbrida:** la recuperación combina búsqueda vectorial (semántica) '
+            'con BM25 (léxica) mediante Reciprocal Rank Fusion para mejores resultados.'
+        ),
+        'content_en': (
+            '**Semantic indexing in PrionVault**\n\n'
+            'Indexing converts article text into numerical vectors '
+            '(embeddings) stored in PostgreSQL with pgvector. '
+            'This enables semantic search and the RAG assistant.\n\n'
+            '**Engine:** Voyage AI with the _voyage-4-large_ model, specialised for scientific text. '
+            'Text is split into controlled-size fragments (_chunks_).\n\n'
+            '**Two text sources:** the system indexes both the full PDF text '
+            'and the abstract, independently.\n\n'
+            '**When it indexes:** automatically after extracting text from a PDF. '
+            'The green _indexed_ badge in the article list confirms it\'s ready.\n\n'
+            '**Re-indexing:** from _Article processing_ there is a clean re-index button '
+            'that deletes existing chunks and regenerates them. Useful if the embeddings model '
+            'is updated or if text has been re-extracted with better quality.\n\n'
+            '**Hybrid search:** retrieval combines vector search (semantic) '
+            'with BM25 (lexical) via Reciprocal Rank Fusion for better results.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'advanced',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-indexing',
+    },
+
 }
 
 # ── Quick tips per page context ───────────────────────────────────────────────
@@ -271,6 +746,14 @@ _QUICK_TIPS = {
             '📈 Compara tu evolución anual usando el selector de rango de fechas.',
             '🌐 Los datos de citas se actualizan cada 24h desde CrossRef y ORCID.',
         ],
+        'prionvault': [
+            '🔍 El RAG responde solo con evidencia de tu biblioteca — si dice "no sé", es que el tema no está cubierto todavía.',
+            '✦ Los badges de color en cada artículo indican qué IA generó el resumen (Claude violeta, GPT verde, Gemini azul).',
+            '📊 Abre _Salud de la biblioteca_ para ver de un vistazo cuántos artículos faltan de indexar, resumir o verificar.',
+            '✗ Si ves un badge _Mismatch_ rojo, clícalo para abrir el editor y resolver la discrepancia del PDF.',
+            '💡 Los resúmenes IA se usan también en las búsquedas RAG, no solo para leer — más resúmenes = mejores respuestas.',
+            '🔁 El batch de resúmenes es reanudable: si lo paras o el servidor se reinicia, continúa desde donde lo dejó.',
+        ],
     },
     'en': {
         'dashboard': [
@@ -300,6 +783,14 @@ _QUICK_TIPS = {
         'analytics': [
             '📈 Compare your annual evolution using the date range selector.',
             '🌐 Citation data updates every 24h from CrossRef and ORCID.',
+        ],
+        'prionvault': [
+            '🔍 RAG only answers from your library — if it says "I don\'t know", the topic isn\'t covered yet.',
+            '✦ Colour badges on each article show which AI generated the summary (Claude purple, GPT green, Gemini blue).',
+            '📊 Open _Library health_ to see at a glance how many articles still need indexing, summarising or verifying.',
+            '✗ If you see a red _Mismatch_ badge, click it to open the editor and resolve the PDF discrepancy.',
+            '💡 AI summaries are also used in RAG searches, not just for reading — more summaries = better answers.',
+            '🔁 The summary batch is resumable: if you stop it or the server restarts, it continues from where it left off.',
         ],
     },
 }
