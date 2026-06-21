@@ -472,6 +472,10 @@
           <button class="pv-nav-btn pv-admin-only" id="btn-batch-ocr">
             <span><i class="fas fa-eye" style="width:13px;margin-right:6px;opacity:0.7;"></i>Escanear PDFs por OCR</span>
           </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-verify-metadata"
+                  title="Verifica que cada PDF coincide con sus metadatos. Heurística + LLM en los dudosos. Encuentra PDFs mal asociados.">
+            <span><i class="fas fa-check-double" style="width:13px;margin-right:6px;opacity:0.7;"></i>Comprobar veracidad PDFs</span>
+          </button>
         </div>
       </details>
 
@@ -531,20 +535,12 @@
           <button class="pv-nav-btn pv-admin-only" id="btn-find-duplicates">
             <span><i class="fas fa-clone" style="width:13px;margin-right:6px;opacity:0.7;"></i>Encontrar duplicados</span>
           </button>
-          <button class="pv-nav-btn pv-admin-only" id="btn-verify-metadata"
-                  title="Verifica que cada PDF coincide con sus metadatos. Heurística + LLM en los dudosos. Encuentra PDFs mal asociados.">
-            <span><i class="fas fa-check-double" style="width:13px;margin-right:6px;opacity:0.7;"></i>Comprobar veracidad PDFs</span>
+          <button class="pv-nav-btn pv-admin-only" id="btn-ai-status"
+                  title="Estado de cada proveedor de IA / API externa: últimos éxitos / errores, detección de crédito agotado o API key inválida.">
+            <span><i class="fas fa-circle-info" style="width:13px;margin-right:6px;opacity:0.7;"></i>Estado IA</span>
           </button>
         </div>
       </details>
-
-      <!-- "Estado IA" stays outside any group: it's an at-a-glance
-           diagnostic the operator may want to glance at without first
-           expanding a section. -->
-      <button class="pv-nav-btn pv-admin-only" id="btn-ai-status"
-              title="Estado de cada proveedor de IA / API externa: últimos éxitos / errores, detección de crédito agotado o API key inválida.">
-        <span><i class="fas fa-circle-info" style="width:13px;margin-right:6px;opacity:0.7;"></i>Estado IA</span>
-      </button>
 
       <button class="pv-nav-btn" id="btn-library-health" onclick="openLibraryHealth()"
               title="Vista general del estado de la biblioteca: PDFs, metadatos, extracción, indexación y resúmenes.">
