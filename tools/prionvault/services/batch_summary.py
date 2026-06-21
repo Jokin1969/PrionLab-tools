@@ -156,7 +156,31 @@ def _run_batch(*, viewer_user_id=None,
                limit: Optional[int] = None,
                provider: str = "anthropic",
                ids: Optional[list] = None) -> None:
+    try:
+        _run_batch_inner(viewer_user_id=viewer_user_id, limit=limit,
+                         provider=provider, ids=ids)
+    except Exception as exc:
+        logger.exception("batch_summary: _run_batch crashed unexpectedly: %s", exc)
+        with _lock:
+            _state["running"]       = False
+            _state["finished_at"]   = datetime.utcnow().isoformat()
+            _state["last_error"]    = f"crash: {exc}"
+
+
+def _run_batch_inner(*, viewer_user_id=None,
+               limit: Optional[int] = None,
+               provider: str = "anthropic",
+               ids: Optional[list] = None) -> None:
+    logger.info("batch_summary: starting — provider=%s limit=%s ids_count=%s",
+                provider, limit, len(ids) if ids else 0)
     eng = _get_engine()
+    if eng is None:
+        logger.error("batch_summary: no DB engine available — aborting")
+        with _lock:
+            _state["running"]     = False
+            _state["finished_at"] = datetime.utcnow().isoformat()
+            _state["last_error"]  = "no DB engine (DATABASE_URL not set?)"
+        return
 
     # The eligibility filter depends on whether the caller pinned a
     # specific selection or wants the default "missing-summary" set.
