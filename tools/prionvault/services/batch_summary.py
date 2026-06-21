@@ -131,6 +131,7 @@ def start_batch(*, viewer_user_id=None,
             "provider":          provider,
             "model":             PROVIDERS[provider]["model"],
             "selected_count":    len(ids_clean) if ids_clean else 0,
+            "phase":             "starting",
         })
 
     _thread = threading.Thread(
@@ -216,6 +217,8 @@ def _run_batch_inner(*, viewer_user_id=None,
             _state["last_error"] = f"count failed: {exc}"
         return
 
+    with _lock:
+        _state["phase"] = "querying"
     seen_ids: set = set()
     while True:
         with _lock:
@@ -257,7 +260,9 @@ def _run_batch_inner(*, viewer_user_id=None,
             _state["current_article"] = {
                 "id":    str(article_id),
                 "title": title[:160],
+                "started_at": datetime.utcnow().isoformat(),
             }
+            _state["phase"] = "calling_ai"
 
         try:
             result = generate_summary(

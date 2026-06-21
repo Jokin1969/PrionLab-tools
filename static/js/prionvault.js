@@ -8455,14 +8455,24 @@
         progPct.textContent = pct + '%';
         const runMeta = providerMeta[s.provider];
         const runLabel = runMeta ? runMeta.label : (s.provider || '');
+        const phaseHint = s.phase === 'calling_ai' ? '— esperando IA…'
+                        : s.phase === 'starting'   ? '— iniciando…'
+                        : s.phase === 'querying'   ? '— consultando BD…'
+                        : s.stop_requested         ? '— deteniendo…'
+                        : '— corriendo…';
         progLabel.textContent =
           (runLabel ? `[${runLabel}] ` : '') +
           `${done} / ${total} procesados ` +
           (s.failed ? `(${s.failed} con error) ` : '') +
-          (s.stop_requested ? '— deteniendo…' : '— corriendo…');
+          phaseHint;
         if (s.current_article) {
           currentEl.style.display = 'block';
-          currentEl.innerHTML = `<strong>Actual:</strong> ${esc(s.current_article.title)}`;
+          let elapsed = '';
+          if (s.current_article.started_at) {
+            const secs = Math.round((Date.now() - new Date(s.current_article.started_at + 'Z').getTime()) / 1000);
+            if (secs >= 5) elapsed = ` <span style="color:#9ca3af">(${secs}s)</span>`;
+          }
+          currentEl.innerHTML = `<strong>Actual:</strong> ${esc(s.current_article.title)}${elapsed}`;
         } else {
           currentEl.style.display = 'none';
         }
