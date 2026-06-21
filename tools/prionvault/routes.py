@@ -4829,6 +4829,23 @@ def api_generate_summary(aid):
         a.summary_ai = result.text
         a.updated_at = datetime.utcnow()
 
+        # Persist provider + token counts via raw SQL to bypass any ORM
+        # mapper gaps (the ORM path is kept above for summary_ai itself).
+        try:
+            s.execute(sql_text(
+                """UPDATE articles
+                   SET summary_ai_provider = :prov,
+                       summary_ai_notes    = NULL,
+                       summary_tokens_in   = :tin,
+                       summary_tokens_out  = :tout
+                   WHERE id = CAST(:aid AS uuid)"""
+            ), {"prov": result.provider,
+                "tin":  result.tokens_in,
+                "tout": result.tokens_out,
+                "aid":  str(aid)})
+        except Exception as exc:
+            logger.warning("api_generate_summary: could not save provider/tokens: %s", exc)
+
         # Usage row is best-effort. Skip the INSERT entirely if we
         # can't pin it to a user (the prionvault_usage.user_id
         # constraint is being relaxed via migration 011, but on
@@ -4859,14 +4876,17 @@ def api_generate_summary(aid):
 
         s.commit()
         return jsonify({
-            "ok":          True,
-            "summary_ai":  result.text,
-            "model":       result.model,
-            "tokens_in":   result.tokens_in,
-            "tokens_out":  result.tokens_out,
-            "cost_usd":    result.cost_usd,
-            "elapsed_ms":  result.elapsed_ms,
-            "used_full_text": result.used_full_text,
+            "ok":                 True,
+            "summary_ai":         result.text,
+            "summary_ai_provider": result.provider,
+            "summary_tokens_in":  result.tokens_in,
+            "summary_tokens_out": result.tokens_out,
+            "model":              result.model,
+            "tokens_in":          result.tokens_in,
+            "tokens_out":         result.tokens_out,
+            "cost_usd":           result.cost_usd,
+            "elapsed_ms":         result.elapsed_ms,
+            "used_full_text":     result.used_full_text,
         })
     except Exception as exc:
         s.rollback()

@@ -5580,7 +5580,10 @@
           method: 'POST',
           body: JSON.stringify({ provider, title_hint: titleHint }),
         });
-        a.summary_ai = r.summary_ai;
+        a.summary_ai          = r.summary_ai;
+        a.summary_ai_provider = r.summary_ai_provider || null;
+        a.summary_tokens_in   = r.summary_tokens_in  || null;
+        a.summary_tokens_out  = r.summary_tokens_out || null;
         renderAiSummary(a);
         const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
         const tin  = r.tokens_in  != null ? ` · ${r.tokens_in} in` : '';
