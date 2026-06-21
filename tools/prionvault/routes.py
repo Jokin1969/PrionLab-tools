@@ -12,7 +12,7 @@ import os
 import re
 from datetime import datetime
 from typing import Optional
-from flask import jsonify, render_template, request, session, Response
+from flask import jsonify, render_template, request, session, Response, current_app
 from sqlalchemy import or_, func, text as sql_text
 from sqlalchemy.exc import IntegrityError, DataError
 
@@ -5562,11 +5562,23 @@ def api_inventory_relink_orphans():
     cleaned by hand. This endpoint automates that.
 
     Body: {"dry_run": bool}  — default False.
+
+    We catch every exception and return it as JSON instead of letting
+    Flask render a mute 500, so the operator sees the actual cause
+    (most relink crashes are schema-shape mismatches that look
+    identical from the outside).
     """
     from .services import inventory_relink
     body = request.get_json(silent=True) or {}
-    return jsonify(inventory_relink.relink_orphans(
-        dry_run=bool(body.get("dry_run"))))
+    try:
+        return jsonify(inventory_relink.relink_orphans(
+            dry_run=bool(body.get("dry_run"))))
+    except Exception as exc:
+        current_app.logger.exception("relink-orphans failed")
+        return jsonify({
+            "error":  "relink_failed",
+            "detail": str(exc)[:400],
+        }), 500
 
 
 @prionvault_bp.route("/api/admin/pubmed-inventory/refresh", methods=["POST"])

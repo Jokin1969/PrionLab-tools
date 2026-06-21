@@ -10389,12 +10389,21 @@
         unpaywall_download_failed:'Unpaywall: fallo de descarga',
         unknown:                 'Causa desconocida',
       };
+      const explainOne = (raw) => {
+        if (!raw) return '';
+        // pmc_http_<code> → "PMC HTTP <code>"
+        const m = String(raw).match(/^pmc_http_(\d+|err)$/);
+        if (m) return `PMC HTTP ${m[1]}`;
+        return reasonLabels[raw] || raw;
+      };
+      // The backend joins multiple reasons with " · " when both legs
+      // (Unpaywall + PMC) failed, so the operator sees the full
+      // diagnosis. Split, translate each side, rejoin.
       const explain = (reasonRaw) => {
         if (!reasonRaw) return '';
-        // pmc_http_<code> → "PMC HTTP <code>"
-        const m = String(reasonRaw).match(/^pmc_http_(\d+|err)$/);
-        if (m) return `PMC HTTP ${m[1]}`;
-        return reasonLabels[reasonRaw] || reasonRaw;
+        return String(reasonRaw).split(' · ')
+                                .map(s => explainOne(s.trim()))
+                                .join(' · ');
       };
       const eventsHtml = events.length
         ? events.map(e => {

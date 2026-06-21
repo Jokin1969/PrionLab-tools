@@ -150,10 +150,53 @@ def _try_unpaywall(doi: str) -> tuple[Optional[bytes], Optional[str], Optional[s
         return None, None, "unpaywall_download_failed"
 
 
+def _fetch_pmc_url(url: str) -> tuple[Optional[bytes], Optional[str]]:
+    """Single-URL PMC fetch helper. Returns (bytes, fail_reason) — the
+    same per-try contract used by _try_pmc, hoisted out so we can try
+    Europe PMC first and the canonical NCBI mirror as a fallback when
+    Europe PMC's copy isn't there yet.
+    """
+    headers = {"User-Agent": _USER_AGENT, "Accept": "application/pdf,*/*"}
+    try:
+        with requests.get(url, headers=headers, timeout=_TIMEOUT,
+                          stream=True, allow_redirects=True) as r:
+            try:
+                r.raise_for_status()
+            except requests.HTTPError as http_exc:
+                code = getattr(http_exc.response, "status_code", 0)
+                return None, f"pmc_http_{code or 'err'}"
+            declared = r.headers.get("content-length")
+            if declared and declared.isdigit() and int(declared) > _MAX_PDF_BYTES:
+                return None, "pmc_too_large"
+            ctype = (r.headers.get("content-type") or "").lower()
+            if "text/html" in ctype:
+                return None, "pmc_html"
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in r.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > _MAX_PDF_BYTES:
+                    return None, "pmc_too_large"
+                chunks.append(chunk)
+        body = b"".join(chunks)
+        if not body.startswith(b"%PDF"):
+            return None, "pmc_not_pdf"
+        return body, None
+    except requests.Timeout:
+        return None, "pmc_timeout"
+    except Exception as exc:
+        logger.debug("oa_pdf_fetcher: PMC fetch failed for %s (%s)", url, exc)
+        return None, "pmc_fetch_failed"
+
+
 def _try_pmc(pmc_id: str) -> tuple[Optional[bytes], Optional[str], Optional[str]]:
-    """Europe PMC serves a stable `/articles/<pmcid>/pdf` redirect for
-    every archived paper. Use it as a fallback when Unpaywall didn't
-    deliver (or there's no DOI).
+    """Try the Europe PMC mirror first (stable redirect, no UA games)
+    and the canonical NCBI mirror as fallback when Europe PMC returns
+    404 / HTML. Europe PMC's mirror lags by hours-to-days for new
+    articles; NCBI's hostname `pmc.ncbi.nlm.nih.gov` is the primary
+    archive, so a 404 over there really does mean "not in PMC".
 
     Same return contract as _try_unpaywall(): (bytes, url, reason).
     Reason strings:
@@ -174,40 +217,30 @@ def _try_pmc(pmc_id: str) -> tuple[Optional[bytes], Optional[str], Optional[str]
     pmc_id = pmc_id.upper()
     if not pmc_id.startswith("PMC"):
         pmc_id = "PMC" + pmc_id
-    url = f"https://europepmc.org/articles/{pmc_id}/pdf"
-    headers = {"User-Agent": _USER_AGENT, "Accept": "application/pdf,*/*"}
-    try:
-        with requests.get(url, headers=headers, timeout=_TIMEOUT,
-                          stream=True, allow_redirects=True) as r:
-            try:
-                r.raise_for_status()
-            except requests.HTTPError as http_exc:
-                code = getattr(http_exc.response, "status_code", 0)
-                return None, None, f"pmc_http_{code or 'err'}"
-            declared = r.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > _MAX_PDF_BYTES:
-                return None, None, "pmc_too_large"
-            ctype = (r.headers.get("content-type") or "").lower()
-            if "text/html" in ctype:
-                return None, None, "pmc_html"
-            chunks: list[bytes] = []
-            total = 0
-            for chunk in r.iter_content(chunk_size=64 * 1024):
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > _MAX_PDF_BYTES:
-                    return None, None, "pmc_too_large"
-                chunks.append(chunk)
-        body = b"".join(chunks)
-        if not body.startswith(b"%PDF"):
-            return None, None, "pmc_not_pdf"
-        return body, url, None
-    except requests.Timeout:
-        return None, None, "pmc_timeout"
-    except Exception as exc:
-        logger.debug("oa_pdf_fetcher: PMC fetch failed for %s (%s)", pmc_id, exc)
-        return None, None, "pmc_fetch_failed"
+
+    # 1st: Europe PMC. Cheap, no UA dance.
+    eu_url = f"https://europepmc.org/articles/{pmc_id}/pdf"
+    body, reason = _fetch_pmc_url(eu_url)
+    if body:
+        return body, eu_url, None
+
+    # 2nd: canonical NCBI mirror. Only worth retrying when Europe PMC
+    # signalled "not here / not yet released" — for size cap / scan
+    # detection / timeout we don't expect NCBI to behave differently
+    # and we'd just waste the round-trip.
+    if reason in ("pmc_http_404", "pmc_html", "pmc_not_pdf"):
+        ncbi_url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmc_id}/pdf/"
+        body2, reason2 = _fetch_pmc_url(ncbi_url)
+        if body2:
+            return body2, ncbi_url, None
+        # NCBI also said no — keep the Europe PMC reason since it
+        # tends to be more specific (html vs http_404), unless NCBI
+        # produced a non-404 HTTP error that's worth knowing.
+        if reason2 and reason2.startswith("pmc_http_") \
+                and not reason2.endswith("_404"):
+            return None, None, reason2
+
+    return None, None, reason
 
 
 def _process_one(row: dict) -> str:
@@ -239,11 +272,15 @@ def _process_one(row: dict) -> str:
             via = "pmc"
 
     if not body:
-        # Pick the most informative reason for the event log: prefer
-        # the PMC reason when both legs ran (PMC tends to give more
-        # specific signals — html vs http_404 vs not_pdf — than
-        # Unpaywall's coarser categories).
-        reason = pmc_reason or unpaywall_reason or "unknown"
+        # When both legs ran, show BOTH reasons separated by " · " so
+        # the operator sees the full picture (e.g. "Unpaywall: no hay
+        # copia OA · PMC HTTP 404" makes it instantly obvious this is
+        # a paywalled paper, not a transient PMC outage). When only
+        # one leg ran, show just that reason.
+        if unpaywall_reason and pmc_reason:
+            reason = f"{unpaywall_reason} · {pmc_reason}"
+        else:
+            reason = pmc_reason or unpaywall_reason or "unknown"
         # Negative cache — don't try this article again on the next
         # daemon tick. The operator can still force a retry from the
         # "Forzar descarga OA" admin button.

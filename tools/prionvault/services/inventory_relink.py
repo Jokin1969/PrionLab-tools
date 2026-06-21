@@ -80,9 +80,12 @@ _PDF_COLS = [
     "extracted_text", "extraction_status",
     "abstract", "abstract_unavailable",
     "summary_ai", "summary_human",
-    "indexed_at", "index_version",
-    "search_vector",
 ]
+# Note: tsvector / vector / indexing-stamp columns (search_vector,
+# indexed_at, index_version) are deliberately excluded — psycopg2 has
+# no default adapter for tsvector when rebinding it as a parameter,
+# and the per-content state has to be recomputed against the orphan's
+# DOI/title anyway. The next batch_index pass picks it up.
 
 
 def _find_pairs(conn) -> tuple[list[dict], list[dict]]:
@@ -266,16 +269,26 @@ def relink_orphans(dry_run: bool = False) -> dict:
         "ambiguous": [],   # multi-donor cases left alone
         "errors":    [],
     }
-    with eng.begin() as conn:
+    # Use connect() + per-pair savepoints instead of one big begin()
+    # transaction. If one merge crashes, the rest still run — and the
+    # crashed one doesn't poison the connection state. Dry-run never
+    # writes, so it stays in a single read transaction.
+    if dry_run:
+        with eng.connect() as conn:
+            pairs, ambiguous = _find_pairs(conn)
+        summary["pairs"]     = pairs
+        summary["ambiguous"] = ambiguous
+        return summary
+
+    with eng.connect() as conn:
         pairs, ambiguous = _find_pairs(conn)
         summary["pairs"]     = pairs
         summary["ambiguous"] = ambiguous
-        if dry_run:
-            return summary
 
         for p in pairs:
             try:
-                _merge_pair(conn, p["orphan_id"], p["donor_id"])
+                with conn.begin():    # SAVEPOINT-style per-pair tx
+                    _merge_pair(conn, p["orphan_id"], p["donor_id"])
                 summary["merged"] += 1
             except Exception as exc:
                 logger.exception(
