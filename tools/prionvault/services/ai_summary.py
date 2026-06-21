@@ -61,8 +61,8 @@ EXTRACTED_TEXT_CHAR_LIMIT = 50_000
 # clear before we bubble the failure up to the caller. That keeps
 # sync per-article calls responsive while still covering most
 # real-world rate-limit / overload blips.
-_MAX_ATTEMPTS = 4
-_BASE_BACKOFF_S = 2.0
+_MAX_ATTEMPTS = 2
+_BASE_BACKOFF_S = 3.0
 
 
 _SYSTEM_PROMPT = """Eres un asistente científico especializado en biología \
@@ -280,7 +280,11 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
 def _call_anthropic(api_key: str, user_prompt: str,
                     extracted_text) -> SummaryResult:
     import anthropic
-    client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
+    import httpx
+    client = anthropic.Anthropic(
+        api_key=api_key,
+        timeout=httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=5.0),
+    )
     model = PROVIDERS["anthropic"]["model"]
 
     start = time.monotonic()

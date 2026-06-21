@@ -263,7 +263,9 @@ def _run_batch_inner(*, viewer_user_id=None,
                 "started_at": datetime.utcnow().isoformat(),
             }
             _state["phase"] = "calling_ai"
+            _state["last_error"] = None  # clear previous so UI shows "esperando IA" cleanly
 
+        logger.info("batch_summary: calling %s for article %s", provider, article_id)
         try:
             result = generate_summary(
                 title=title,
