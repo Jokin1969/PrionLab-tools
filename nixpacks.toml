@@ -1,0 +1,21 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "python312", "python312Packages.pip", "tesseract", "ghostscript", "qpdf"]
+
+[phases.install]
+cmds = [
+  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt",
+  "printf '\\nPATH=/opt/venv/bin:$PATH' >> /root/.profile",
+  "cd prionread/frontend && npm install"
+]
+
+[phases.build]
+# RAILWAY_GIT_COMMIT_SHA is exposed by Railway during build. Inlining
+# it as VITE_SENTRY_RELEASE here means the user only has to set
+# VITE_SENTRY_DSN in the dashboard — the release tag (which lets
+# Sentry tie browser events to a specific deploy) is wired
+# automatically. Empty when run outside Railway → Sentry treats the
+# release as undefined, which is fine for local builds.
+cmds = ["cd prionread/frontend && VITE_SENTRY_RELEASE=$RAILWAY_GIT_COMMIT_SHA npm run build"]
+
+[start]
+cmd = "/opt/venv/bin/gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
