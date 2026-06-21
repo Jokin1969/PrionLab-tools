@@ -5551,6 +5551,24 @@ def api_oa_fetcher_run():
     })
 
 
+@prionvault_bp.route("/api/admin/inventory/relink-orphans", methods=["POST"])
+@admin_required
+def api_inventory_relink_orphans():
+    """Sweep PubMed-inventory orphan rows (source='pubmed_inventory'
+    AND dropbox_path IS NULL) and merge them with the duplicate row
+    that has the PDF — same PMID, or the same DOI as a fallback.
+    The bug that created these orphans is fixed (deduplicator now
+    matches PMID), but the rows already in the wild have to be
+    cleaned by hand. This endpoint automates that.
+
+    Body: {"dry_run": bool}  — default False.
+    """
+    from .services import inventory_relink
+    body = request.get_json(silent=True) or {}
+    return jsonify(inventory_relink.relink_orphans(
+        dry_run=bool(body.get("dry_run"))))
+
+
 @prionvault_bp.route("/api/admin/pubmed-inventory/refresh", methods=["POST"])
 @admin_required
 def api_pubmed_inventory_refresh():
