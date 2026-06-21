@@ -127,10 +127,34 @@ class RagResult:
 AnthropicNotConfigured = NotConfigured
 
 
+def _fetch_summaries(article_ids: list[str]) -> dict[str, str]:
+    """Return {article_id: summary_ai} for the given ids, skipping
+    articles without a summary. One round-trip, no re-indexing needed."""
+    if not article_ids:
+        return {}
+    try:
+        from ..ingestion.queue import _get_engine
+        from sqlalchemy import text as _sql
+        eng = _get_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(_sql(
+                "SELECT id::text, summary_ai FROM articles "
+                "WHERE id = ANY(CAST(:ids AS uuid[])) "
+                "  AND summary_ai IS NOT NULL AND summary_ai <> ''"
+            ), {"ids": article_ids}).all()
+        return {r[0]: r[1] for r in rows}
+    except Exception as exc:
+        logger.warning("rag: could not fetch summaries: %s", exc)
+        return {}
+
+
 def _build_context(chunks: List[RetrievedChunk],
                    articles: List[RetrievedArticle]
                    ) -> tuple[str, List[RagCitation]]:
     by_id = {a.id: a for a in articles}
+    article_ids = list(by_id.keys())
+    summaries = _fetch_summaries(article_ids)
+
     citations: List[RagCitation] = []
     parts: List[str] = []
     for i, c in enumerate(chunks, start=1):
@@ -158,11 +182,17 @@ def _build_context(chunks: List[RetrievedChunk],
         if meta.journal: header_bits.append(meta.journal[:80])
         if meta.doi:     header_bits.append(f"DOI:{meta.doi}")
         header = " · ".join(header_bits)
-        parts.append(
+        block = (
             f"[{i}] {meta.title}\n"
             f"    {header}\n"
             f"    Extracto: {c.chunk_text}"
         )
+        summary = summaries.get(meta.id)
+        if summary:
+            # Cap at 800 chars so a very long summary doesn't dominate
+            # the context at the expense of other chunks.
+            block += f"\n    Resumen IA: {summary[:800]}"
+        parts.append(block)
     return "\n\n".join(parts), citations
 
 
