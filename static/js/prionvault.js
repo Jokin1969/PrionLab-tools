@@ -4285,7 +4285,18 @@
   // refill with the (hopefully correct) metadata, and saves.
   function wireEditArticleButton(a) {
     const btn = document.getElementById('pv-edit-article-btn');
-    if (btn) btn.addEventListener('click', () => openEditModal(a));
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const fresh = await api(`/articles/${a.id}`);
+        openEditModal(fresh);
+      } catch (err) {
+        alert('No se pudo abrir el editor: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
   }
 
   let _editTarget = null;
