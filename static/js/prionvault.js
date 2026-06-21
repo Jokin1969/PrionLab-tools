@@ -2556,10 +2556,10 @@
         ? `<span title="Importado desde Inventario PubMed${a.dropbox_path ? '' : ' — todavía sin PDF'}"
                  style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#e0e7ff;color:#3730a3;">📥 Inventario</span>`
         : '',
-      (a.source === 'pubmed_inventory' && !a.dropbox_path && a.pdf_oa_status === 'not_available')
+      (a.source === 'pubmed_inventory' && !a.has_pdf && a.pdf_oa_status === 'not_available')
         ? '<span title="El auto-fetcher ya consultó Unpaywall y PMC; no hay copia abierta. Tienes que conseguir el PDF a mano." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;">PDF: sin OA</span>'
         : '',
-      (a.source === 'pubmed_inventory' && !a.dropbox_path && !a.pdf_oa_status)
+      (a.source === 'pubmed_inventory' && !a.has_pdf && !a.pdf_oa_status)
         ? '<span title="Importado sin PDF. El auto-fetcher lo buscará en breve (cada 60 s)." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">⏳ PDF pendiente</span>'
         : '',
       (!a.has_abstract && a.abstract_unavailable)
