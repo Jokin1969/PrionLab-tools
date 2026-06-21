@@ -533,6 +533,18 @@ def list_verified(*, status: str = "suspect",
             "status": status, "items": items}
 
 
+def list_ids_by_status(*, status: str) -> list[str]:
+    """Return all article IDs with the given verification status (for main-list transfer)."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(sql_text("""
+            SELECT id::text FROM articles
+             WHERE pdf_metadata_match_status = :s
+             ORDER BY pdf_metadata_match_score ASC NULLS LAST
+        """), {"s": status}).fetchall()
+    return [r[0] for r in rows]
+
+
 def mark_status(ids: list[str], status: str) -> int:
     """Bulk update status. Use 'manual_ok' to greenlight false-flags."""
     if not ids or status not in {"manual_ok", "ok", "suspect",

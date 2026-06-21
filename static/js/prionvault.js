@@ -10610,6 +10610,8 @@
     const bulkOk    = document.getElementById('pv-vm-bulk-ok');
     const bulkRec   = document.getElementById('pv-vm-bulk-recheck');
     const bulkClr   = document.getElementById('pv-vm-bulk-clear');
+    const bulkView  = document.getElementById('pv-vm-bulk-view');
+    const tabViewAll = document.getElementById('pv-vm-tab-view-all');
     const tabMis    = document.getElementById('pv-vm-tab-mismatch');
     const tabSus    = document.getElementById('pv-vm-tab-suspect');
     const tabOk     = document.getElementById('pv-vm-tab-ok');
@@ -10839,6 +10841,43 @@
       syncMaster();
       refreshBulkBar();
     });
+
+    function openInMainList(ids) {
+      if (!ids || !ids.length) { alert('No hay artículos que mostrar.'); return; }
+      close();
+      // Use the global ids filter: close modal, reset filters, apply ids
+      if (typeof window._pvApplyIdsFilter === 'function') {
+        window._pvApplyIdsFilter(ids);
+      } else {
+        // fallback: reload with ?ids= param (triggers a page load keeps state)
+        const url = new URL(location.href);
+        url.searchParams.set('ids', ids.join(','));
+        location.href = url.toString();
+      }
+    }
+
+    if (bulkView) {
+      bulkView.addEventListener('click', () => {
+        if (!selected.size) return;
+        openInMainList(Array.from(selected));
+      });
+    }
+
+    if (tabViewAll) {
+      tabViewAll.addEventListener('click', async () => {
+        tabViewAll.disabled = true;
+        tabViewAll.textContent = '⏳ Cargando…';
+        try {
+          const data = await api(`/admin/verify-metadata/ids?status=${encodeURIComponent(_vmStatus)}`);
+          openInMainList(data.ids || []);
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          tabViewAll.disabled = false;
+          tabViewAll.textContent = '↗ Ver todos en listado';
+        }
+      });
+    }
 
     async function doMark(ids, status, b) {
       const orig = b.textContent;
@@ -11757,6 +11796,28 @@
       }
       state._healthExtra = Object.keys(extra).length ? extra : null;
 
+      loadArticles();
+    };
+
+    window._pvApplyIdsFilter = function(ids) {
+      // Reset all filters, then show exactly these article IDs in the main list
+      Object.assign(state, {
+        q: '', yearMin: null, yearMax: null, journal: '', authors: '',
+        tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
+        isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
+        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
+        collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
+        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '',
+        _healthExtra: null, page: 1,
+        filterSelectedOnly: true,
+      });
+      // Populate selectedIds using the proper tracked set interface
+      if (state.selectedIds && typeof state.selectedIds.clearSilently === 'function') {
+        state.selectedIds.clearSilently();
+        ids.forEach(id => state.selectedIds.addSilently(id));
+      } else {
+        state.selectedIds = new Set(ids);
+      }
       loadArticles();
     };
   };

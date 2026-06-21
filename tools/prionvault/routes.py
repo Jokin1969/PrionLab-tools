@@ -6010,6 +6010,16 @@ def api_verify_metadata_list():
     ))
 
 
+@prionvault_bp.route("/api/admin/verify-metadata/ids", methods=["GET"])
+@admin_required
+def api_verify_metadata_ids():
+    """Return all article IDs for a given verification status (used to transfer selection to main list)."""
+    from .services import pdf_metadata_verifier
+    status = (request.args.get("status") or "mismatch").strip().lower()
+    ids = pdf_metadata_verifier.list_ids_by_status(status=status)
+    return jsonify({"ids": ids})
+
+
 @prionvault_bp.route("/api/admin/verify-metadata/mark", methods=["POST"])
 @admin_required
 def api_verify_metadata_mark():
