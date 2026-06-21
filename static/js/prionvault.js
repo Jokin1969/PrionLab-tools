@@ -10131,11 +10131,17 @@
         });
         const msg = `Importados: ${r.created} · Ya estaban: ${r.duplicates}` +
                     (r.failed ? ` · Fallos: ${r.failed}` : '');
-        toast?.(msg);
+        // `toast?.(msg)` would *still* ReferenceError when `toast` is
+        // undeclared (the ?. only guards null/undefined values of an
+        // EXISTING binding). Guard with typeof so the import path
+        // succeeds even when there's no toast helper in scope —
+        // the user already sees the updated counters when the modal
+        // re-renders below.
+        if (typeof toast === 'function') toast(msg);
         pmids.forEach(p => selected.delete(p));
         await reloadStats();
         await reloadList();
-        refreshStats?.();
+        if (typeof refreshStats === 'function') refreshStats();
       } catch (e) {
         alert('Error importando: ' + e.message);
       } finally {
