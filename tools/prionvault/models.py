@@ -90,6 +90,13 @@ class PrionVaultArticle(Base):
     extraction_error   = Column(Text)
     summary_ai         = Column(Text)
     summary_human      = Column(Text)
+    # Migration 039: per-article notes on the AI summary (errors, quality flags)
+    summary_ai_notes   = Column(Text)
+    # Migration 040: which AI provider generated the summary
+    summary_ai_provider = Column(String(20))
+    # Migration 042: token counts for cost tracking
+    summary_tokens_in  = Column(Integer)
+    summary_tokens_out = Column(Integer)
     indexed_at         = Column(DateTime(timezone=True))
     index_version      = Column(String(40))
     source             = Column(String(40), default="manual")
