@@ -231,6 +231,12 @@ def api_list_articles():
             abstract_status=abstract_status,
             indexed_status=indexed_status,
             ids_filter=ids_filter,
+            has_pdf=has_pdf, has_doi=has_doi, has_pmid=has_pmid,
+            pdf_source_filter=pdf_source_filter,
+            pdf_searchable_filter=pdf_searchable_filter,
+            pdf_is_scan_filter=pdf_is_scan_filter,
+            needs_indexing=needs_indexing,
+            has_summary_ai=has_summary_ai,
         )
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
@@ -377,7 +383,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         has_pp=None, pp_id=None,
                         abstract_status=None,
                         indexed_status=None,
-                        ids_filter=None):
+                        ids_filter=None,
+                        has_pdf=None, has_doi=None, has_pmid=None,
+                        pdf_source_filter=None, pdf_searchable_filter=None,
+                        pdf_is_scan_filter=None, needs_indexing=None,
+                        has_summary_ai=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
