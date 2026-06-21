@@ -8490,6 +8490,7 @@
               selBtn.textContent = `${selectionN} seleccionado${selectionN === 1 ? '' : 's'}`;
               selBtn.style.cssText = 'padding:8px 16px;border-radius:8px;border:none;background:#0F3460;' +
                 'color:white;font-size:13px;font-weight:700;cursor:pointer;';
+              selBtn.addEventListener('click', () => startBatch(null));
               limitBtnsEl.appendChild(selBtn);
               selBtn.disabled = btnsDisabled;
             }
@@ -8540,39 +8541,40 @@
         : '';
     }
 
-    modal.querySelectorAll('.pv-bs-limit-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!selectedProvider) {
-          errorEl.style.display = 'block';
-          errorEl.textContent = 'Elige un proveedor de IA antes de empezar.';
-          return;
-        }
-        modal.querySelectorAll('.pv-bs-limit-btn').forEach(b => { b.disabled = true; });
-        const limitVal = btn.dataset.limit ? parseInt(btn.dataset.limit, 10) : null;
-        const selectionIds = window.PV_SUMMARY_SELECTION || null;
-        try {
-          const body = { provider: selectedProvider };
-          if (limitVal) body.limit = limitVal;
-          if (selectionIds && selectionIds.length) body.ids = selectionIds;
-          await api('/admin/batch-summary/start', {
-            method: 'POST',
-            body: JSON.stringify(body),
-          });
-          // Selection is consumed by Start — clear it so closing/reopening
-          // the modal goes back to the default "all pending" behaviour.
-          window.PV_SUMMARY_SELECTION = null;
+    async function startBatch(limitVal) {
+      if (!selectedProvider) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Elige un proveedor de IA antes de empezar.';
+        return;
+      }
+      modal.querySelectorAll('.pv-bs-limit-btn').forEach(b => { b.disabled = true; });
+      const selectionIds = window.PV_SUMMARY_SELECTION || null;
+      try {
+        const body = { provider: selectedProvider };
+        if (limitVal) body.limit = limitVal;
+        if (selectionIds && selectionIds.length) body.ids = selectionIds;
+        await api('/admin/batch-summary/start', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        window.PV_SUMMARY_SELECTION = null;
+        refresh();
+        startPolling();
+      } catch (e) {
+        modal.querySelectorAll('.pv-bs-limit-btn').forEach(b => { b.disabled = false; });
+        if (e.status === 409) {
           refresh();
-          startPolling();
-        } catch (e) {
-          modal.querySelectorAll('.pv-bs-limit-btn').forEach(b => { b.disabled = false; });
-          if (e.status === 409) {
-            // Already running — just refresh
-            refresh();
-          } else {
-            errorEl.style.display = 'block';
-            errorEl.textContent = 'No se pudo iniciar: ' + e.message;
-          }
+        } else {
+          errorEl.style.display = 'block';
+          errorEl.textContent = 'No se pudo iniciar: ' + e.message;
         }
+      }
+    }
+
+    modal.querySelectorAll('.pv-bs-limit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const limitVal = btn.dataset.limit ? parseInt(btn.dataset.limit, 10) : null;
+        startBatch(limitVal);
       });
     });
 
