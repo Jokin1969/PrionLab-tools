@@ -2478,6 +2478,11 @@
     if (state.ppId)                params.set('pp_id', state.ppId);
     if (state.abstractStatus)      params.set('abstract_status', state.abstractStatus);
     if (state.indexedStatus)       params.set('indexed_status', state.indexedStatus);
+    // Health-dashboard extra filters (transient, consumed once)
+    if (state._healthExtra) {
+      for (const [k, v] of Object.entries(state._healthExtra)) params.set(k, v);
+      state._healthExtra = null;
+    }
     if (state.sort)                params.set('sort', state.sort);
     params.set('page', state.page);
     params.set('size', state.size);
@@ -11575,6 +11580,142 @@
       if (e.key === 'Escape' && document.body.classList.contains(KLS)) close();
     });
   }
+
+  // ── Library Health ──────────────────────────────────────────────────────
+  // Global so the sidebar button's inline onclick can call it.
+  window.openLibraryHealth = async function openLibraryHealth() {
+    const modal = document.getElementById('pv-health-modal');
+    const body  = document.getElementById('pv-health-body');
+    if (!modal || !body) return;
+    modal.style.display = 'flex';
+    body.innerHTML = '<p style="color:#6b7280;text-align:center;padding:2rem;">Cargando…</p>';
+
+    let d;
+    try {
+      const res = await fetch('/prionvault/api/articles/health');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      d = await res.json();
+    } catch (err) {
+      body.innerHTML = `<p style="color:#ef4444;text-align:center;padding:2rem;">Error al cargar: ${esc(String(err))}</p>`;
+      return;
+    }
+
+    const total = d.total || 0;
+    const pct   = (n) => total > 0 ? ` (${Math.round(n / total * 100)}%)` : '';
+
+    // Close modal and apply filter to main listing
+    function applyHealthFilter(params) {
+      modal.style.display = 'none';
+      // Reset state to avoid stale filters from previous searches
+      state.q = ''; state.yearMin = null; state.yearMax = null;
+      state.journal = ''; state.authors = ''; state.tagId = null;
+      state.hasSummary = null; state.inPrionread = null;
+      state.isFlagged = null; state.isMilestone = null;
+      state.colorLabel = null; state.priorityEq = null;
+      state.extraction = null; state.isFavorite = null; state.isRead = null;
+      state.collectionId = null; state.collectionGroup = null; state.collectionSubgroup = null;
+      state.hasJc = null; state.jcPresenter = ''; state.jcYear = null;
+      state.hasPp = null; state.ppId = ''; state.abstractStatus = ''; state.indexedStatus = '';
+      state.page = 1;
+      // Apply health-specific params by temporarily augmenting buildListParams
+      // We do this by storing them in state as _health_ properties (cleaned after fetch).
+      state._healthParams = params;
+      loadArticles();
+    }
+
+    // Card builder: label, value, pct?, filter params, accent colour
+    function card(label, value, showPct, filterParams, accent) {
+      const num = value ?? 0;
+      const pctStr = showPct ? `<span style="font-size:11px;color:#6b7280;">${pct(num)}</span>` : '';
+      const clickable = filterParams ? `style="cursor:pointer;" onclick='window._pvHealthFilter(${JSON.stringify(filterParams)})'` : '';
+      const bg = accent === 'good' ? '#f0fdf4' : accent === 'warn' ? '#fff7ed' : accent === 'bad' ? '#fef2f2' : '#f9fafb';
+      const numColor = accent === 'good' ? '#15803d' : accent === 'warn' ? '#c2410c' : accent === 'bad' ? '#dc2626' : '#111827';
+      return `
+        <div ${clickable}
+             style="background:${bg};border:1px solid #e5e7eb;border-radius:10px;
+                    padding:12px 14px;display:flex;flex-direction:column;gap:2px;
+                    transition:box-shadow 0.1s;${filterParams ? 'cursor:pointer;' : ''}"
+             ${filterParams ? `onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'" onmouseleave="this.style.boxShadow=''"` : ''}>
+          <span style="font-size:22px;font-weight:700;color:${numColor};">${num.toLocaleString()} ${pctStr}</span>
+          <span style="font-size:12px;color:#6b7280;">${label}</span>
+        </div>`;
+    }
+
+    function section(title, cards) {
+      return `
+        <div style="margin-bottom:20px;">
+          <h3 style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                     color:#9ca3af;margin:0 0 10px;">${title}</h3>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+            ${cards.join('')}
+          </div>
+        </div>`;
+    }
+
+    body.innerHTML = `
+      ${section('Contenido', [
+        card('Total artículos', d.total, false, null, ''),
+        card('Con PDF',    d.with_pdf,    true, {has_pdf:'true'},  'good'),
+        card('Sin PDF',    d.without_pdf, true, {has_pdf:'false'}, 'warn'),
+        card('Con DOI',    d.with_doi,    true, {has_doi:'true'},  'good'),
+        card('Sin DOI',    d.without_doi, true, {has_doi:'false'}, 'warn'),
+        card('Con PMID',   d.with_pmid,   true, {has_pmid:'true'}, 'good'),
+        card('Sin PMID',   d.without_pmid,true, {has_pmid:'false'},'warn'),
+        card('Con abstract',    d.with_abstract,    true, {abstract_status:'has'},       'good'),
+        card('Sin abstract',    d.without_abstract, true, {abstract_status:'pending'},   'warn'),
+      ])}
+      ${section('PDF & OCR', [
+        card('PDFs escaneados (OCR)',  d.pdf_ocr,           true, {pdf_is_scan:'true'},    ''),
+        card('PDFs buscables',         d.pdf_searchable,    true, {pdf_searchable:'true'}, 'good'),
+        card('PDFs necesitan buscable',d.pdf_needs_searchable, true, {pdf_searchable:'false'}, 'warn'),
+        card('Fuente: inventario PubMed', d.from_inventory, true, {source:'pubmed_inventory'}, ''),
+        card('Fuente: manual',         d.from_manual,       true, {source:'manual'}, ''),
+      ])}
+      ${section('Procesamiento', [
+        card('Texto extraído',   d.text_extracted,    true, {extraction_status:'extracted'}, 'good'),
+        card('Extracción pendiente', d.text_pending,  true, {extraction_status:'pending'},   'warn'),
+        card('Extracción fallida',  d.text_failed,    true, {extraction_status:'failed'},    'bad'),
+        card('Indexados (IA)',   d.indexed,           true, {indexed_status:'yes'}, 'good'),
+        card('Necesitan indexación', d.needs_indexing,true, {needs_indexing:'true'}, 'warn'),
+        card('Con nº de páginas',    d.with_page_count,  true, null, ''),
+        card('Sin nº de páginas',    d.missing_page_count, true, null, 'warn'),
+      ])}
+      ${section('Resúmenes', [
+        card('Con resumen IA',     d.with_summary_ai,    true, {has_summary:'ai'},    'good'),
+        card('Con resumen humano', d.with_summary_human, true, {has_summary:'human'}, 'good'),
+      ])}`;
+
+    // Wire up click handler for health filters
+    window._pvHealthFilter = function(params) {
+      modal.style.display = 'none';
+      // Reset state
+      Object.assign(state, {
+        q: '', yearMin: null, yearMax: null, journal: '', authors: '',
+        tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
+        isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
+        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
+        collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
+        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', page: 1,
+      });
+
+      // Apply known filter params that map to state fields
+      if (params.has_summary)       state.hasSummary    = params.has_summary;
+      if (params.abstract_status)   state.abstractStatus = params.abstract_status;
+      if (params.indexed_status)    state.indexedStatus  = params.indexed_status;
+      if (params.extraction_status) state.extraction     = params.extraction_status;
+
+      // For params the state doesn't have native slots for, store as _healthExtra
+      // and patch buildListParams temporarily
+      const extra = {};
+      for (const k of ['has_pdf','has_doi','has_pmid','pdf_is_scan','pdf_searchable',
+                        'source','needs_indexing','has_summary_ai']) {
+        if (params[k] !== undefined) extra[k] = params[k];
+      }
+      state._healthExtra = Object.keys(extra).length ? extra : null;
+
+      loadArticles();
+    };
+  };
 
   document.addEventListener('DOMContentLoaded', init);
 })();

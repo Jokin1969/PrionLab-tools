@@ -157,6 +157,21 @@ def api_list_articles():
     is_favorite = True if is_favorite_raw == "1" else (False if is_favorite_raw == "0" else None)
     is_read_raw = request.args.get("is_read")
     is_read = True if is_read_raw == "1" else (False if is_read_raw == "0" else None)
+    has_pdf_raw = request.args.get("has_pdf")
+    has_pdf = True if has_pdf_raw == "true" else (False if has_pdf_raw == "false" else None)
+    has_doi_raw = request.args.get("has_doi")
+    has_doi = True if has_doi_raw == "true" else (False if has_doi_raw == "false" else None)
+    has_pmid_raw = request.args.get("has_pmid")
+    has_pmid = True if has_pmid_raw == "true" else (False if has_pmid_raw == "false" else None)
+    pdf_source_filter = (request.args.get("source") or "").strip() or None
+    pdf_searchable_raw = request.args.get("pdf_searchable")
+    pdf_searchable_filter = True if pdf_searchable_raw == "true" else (False if pdf_searchable_raw == "false" else None)
+    pdf_is_scan_raw = request.args.get("pdf_is_scan")
+    pdf_is_scan_filter = True if pdf_is_scan_raw == "true" else (False if pdf_is_scan_raw == "false" else None)
+    needs_indexing_raw = request.args.get("needs_indexing")
+    needs_indexing = True if needs_indexing_raw == "true" else None
+    has_summary_ai_raw = request.args.get("has_summary_ai")
+    has_summary_ai = True if has_summary_ai_raw == "true" else (False if has_summary_ai_raw == "false" else None)
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
@@ -540,6 +555,44 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             conditions.append("(extraction_status IS NULL OR extraction_status = 'pending')")
         elif extraction == "failed":
             conditions.append("extraction_status = 'failed'")
+
+    # ── Health-dashboard filters ─────────────────────────────────────────────
+    if has_pdf is True:
+        conditions.append("dropbox_path IS NOT NULL")
+    elif has_pdf is False:
+        conditions.append("dropbox_path IS NULL")
+
+    if has_doi is True:
+        conditions.append("doi IS NOT NULL AND doi <> ''")
+    elif has_doi is False:
+        conditions.append("(doi IS NULL OR doi = '')")
+
+    if has_pmid is True:
+        conditions.append("pubmed_id IS NOT NULL AND pubmed_id <> ''")
+    elif has_pmid is False:
+        conditions.append("(pubmed_id IS NULL OR pubmed_id = '')")
+
+    if pdf_source_filter:
+        conditions.append("source = :source_filter")
+        params["source_filter"] = pdf_source_filter
+
+    if pdf_searchable_filter is True and "pdf_searchable" in pv_cols:
+        conditions.append("pdf_searchable = TRUE")
+    elif pdf_searchable_filter is False and "pdf_searchable" in pv_cols:
+        conditions.append("pdf_searchable = FALSE")
+
+    if pdf_is_scan_filter is True and "pdf_is_scan" in pv_cols:
+        conditions.append("pdf_is_scan = TRUE")
+    elif pdf_is_scan_filter is False and "pdf_is_scan" in pv_cols:
+        conditions.append("pdf_is_scan = FALSE")
+
+    if needs_indexing is True and "indexed_at" in pv_cols:
+        conditions.append("indexed_at IS NULL AND extraction_status = 'extracted'")
+
+    if has_summary_ai is True and "summary_ai" in pv_cols:
+        conditions.append("summary_ai IS NOT NULL AND summary_ai <> ''")
+    elif has_summary_ai is False and "summary_ai" in pv_cols:
+        conditions.append("(summary_ai IS NULL OR summary_ai = '')")
 
     _viewer_uid = _viewer_id()
     # NOTE: params["_viewer_uid"] is set unconditionally further down
@@ -1065,6 +1118,94 @@ def api_article_stats():
             })
     except Exception as exc:
         logger.exception("PrionVault api_article_stats failed")
+        s.rollback()
+        return jsonify({"error": "internal error", "detail": str(exc)}), 500
+    finally:
+        db.Session.remove()
+
+
+@prionvault_bp.route("/api/articles/health", methods=["GET"])
+@login_required
+def api_article_health():
+    """Aggregate counts for the Library Health dashboard."""
+    s = _session()
+    try:
+        pv_cols = _get_pv_columns(s)
+
+        def _col(col, expr_true, expr_false="0"):
+            if col in pv_cols:
+                return expr_true
+            return expr_false
+
+        pdf_needs_searchable_expr = (
+            "COUNT(*) FILTER (WHERE dropbox_path IS NOT NULL"
+            + (" AND pdf_searchable = FALSE" if "pdf_searchable" in pv_cols else "")
+            + (" AND pdf_ocr_unavailable = FALSE" if "pdf_ocr_unavailable" in pv_cols else "")
+            + ")"
+        )
+        needs_indexing_expr = (
+            "COUNT(*) FILTER (WHERE indexed_at IS NULL"
+            + (" AND extraction_status = 'extracted'" if "extraction_status" in pv_cols else "")
+            + ")"
+        )
+
+        query = f"""
+            SELECT
+              COUNT(*)                                                            AS total,
+              COUNT(*) FILTER (WHERE dropbox_path IS NOT NULL)                   AS with_pdf,
+              COUNT(*) FILTER (WHERE dropbox_path IS NULL)                       AS without_pdf,
+              COUNT(*) FILTER (WHERE doi IS NOT NULL AND doi <> '')              AS with_doi,
+              COUNT(*) FILTER (WHERE doi IS NULL OR doi = '')                    AS without_doi,
+              COUNT(*) FILTER (WHERE pubmed_id IS NOT NULL AND pubmed_id <> '')  AS with_pmid,
+              COUNT(*) FILTER (WHERE pubmed_id IS NULL OR pubmed_id = '')        AS without_pmid,
+              COUNT(*) FILTER (WHERE abstract IS NOT NULL AND abstract <> '')    AS with_abstract,
+              COUNT(*) FILTER (WHERE abstract IS NULL OR abstract = '')          AS without_abstract,
+              {_col("pdf_is_scan",
+                    "COUNT(*) FILTER (WHERE pdf_is_scan = TRUE)")}               AS pdf_ocr,
+              {_col("pdf_searchable",
+                    "COUNT(*) FILTER (WHERE pdf_searchable = TRUE)")}            AS pdf_searchable,
+              {_col("pdf_searchable", pdf_needs_searchable_expr)}                AS pdf_needs_searchable,
+              {_col("extraction_status",
+                    "COUNT(*) FILTER (WHERE extraction_status = 'extracted')")}  AS text_extracted,
+              {_col("extraction_status",
+                    "COUNT(*) FILTER (WHERE extraction_status = 'pending' OR extraction_status IS NULL)")} AS text_pending,
+              {_col("extraction_status",
+                    "COUNT(*) FILTER (WHERE extraction_status = 'failed')")}     AS text_failed,
+              {_col("indexed_at",
+                    "COUNT(*) FILTER (WHERE indexed_at IS NOT NULL)")}           AS indexed,
+              {_col("indexed_at", needs_indexing_expr)}                          AS needs_indexing,
+              {_col("summary_ai",
+                    "COUNT(*) FILTER (WHERE summary_ai IS NOT NULL AND summary_ai <> '')")} AS with_summary_ai,
+              {_col("summary_human",
+                    "COUNT(*) FILTER (WHERE summary_human IS NOT NULL AND summary_human <> '')")} AS with_summary_human,
+              {_col("source",
+                    "COUNT(*) FILTER (WHERE source = 'pubmed_inventory')")}      AS from_inventory,
+              {_col("source",
+                    "COUNT(*) FILTER (WHERE source = 'manual')")}                AS from_manual,
+              {_col("pdf_pages",
+                    "COUNT(*) FILTER (WHERE pdf_pages IS NOT NULL)")}            AS with_page_count,
+              {_col("pdf_pages",
+                    "COUNT(*) FILTER (WHERE pdf_pages IS NULL AND dropbox_path IS NOT NULL)")} AS missing_page_count
+            FROM articles
+        """
+        row = s.execute(sql_text(query)).first()
+        keys = [
+            "total", "with_pdf", "without_pdf",
+            "with_doi", "without_doi",
+            "with_pmid", "without_pmid",
+            "with_abstract", "without_abstract",
+            "pdf_ocr", "pdf_searchable", "pdf_needs_searchable",
+            "text_extracted", "text_pending", "text_failed",
+            "indexed", "needs_indexing",
+            "with_summary_ai", "with_summary_human",
+            "from_inventory", "from_manual",
+            "with_page_count", "missing_page_count",
+        ]
+        result = {k: int(row[i]) if row and row[i] is not None else 0
+                  for i, k in enumerate(keys)}
+        return jsonify(result)
+    except Exception as exc:
+        logger.exception("PrionVault api_article_health failed")
         s.rollback()
         return jsonify({"error": "internal error", "detail": str(exc)}), 500
     finally:
