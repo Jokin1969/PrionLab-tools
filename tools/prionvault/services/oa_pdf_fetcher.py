@@ -228,22 +228,64 @@ def _process_one(row: dict) -> str:
         return "failed"
 
     new_status = "fetched_unpaywall" if via == "unpaywall" else "fetched_pmc"
+
+    # Extract text + count pages inline so an inventory import lands
+    # fully usable, instead of leaving the article on the "PDF
+    # pendiente" / pdf_pages-NULL / extraction_status-pending plateau
+    # until an admin remembers to run the batch extractors. Best-
+    # effort: a failure here doesn't undo the upload — we still write
+    # the dropbox_path so the PDF stays linked, and let the existing
+    # batch_extract / batch_ocr daemons rescue the text layer later.
+    try:
+        from ..ingestion.pdf_extractor import extract_pdf
+        ext = extract_pdf(body)
+    except Exception as exc:
+        logger.warning("oa_pdf_fetcher: pdfplumber failed for %s (%s)", aid, exc)
+        ext = None
+
+    has_text = bool(ext and ext.text and ext.text.strip())
+    pdf_pages = (ext.pages if ext and ext.pages else None)
+    if ext and ext.error == "no_text_extracted":
+        # Same scan-detection branch the ingest worker uses (commit
+        # 11fdeb7): the PDF opens but the text layer is empty. Mark
+        # pdf_is_scan + leave extraction_status='pending' so batch_ocr
+        # picks it up.
+        extraction_status = "pending"
+        pdf_is_scan = True
+        extracted_text = None
+    elif has_text:
+        extraction_status = "extracted"
+        pdf_is_scan = False
+        extracted_text = ext.text
+    else:
+        extraction_status = "pending"
+        pdf_is_scan = False
+        extracted_text = None
+
     try:
         with _get_engine().begin() as conn:
             conn.execute(sql_text("""
                 UPDATE articles
-                   SET dropbox_path   = :p,
-                       pdf_md5        = :m,
-                       pdf_size_bytes = :sz,
-                       pdf_oa_status  = :st,
-                       updated_at     = NOW()
+                   SET dropbox_path      = :p,
+                       pdf_md5           = :m,
+                       pdf_size_bytes    = :sz,
+                       pdf_oa_status     = :st,
+                       pdf_pages         = COALESCE(:pages,      pdf_pages),
+                       pdf_is_scan       = COALESCE(:is_scan,    pdf_is_scan),
+                       extracted_text    = COALESCE(:text,       extracted_text),
+                       extraction_status = COALESCE(:ext_status, extraction_status),
+                       updated_at        = NOW()
                  WHERE id = :aid
             """), {
-                "aid": str(aid),
-                "p":   up.dropbox_path,
-                "m":   md5,
-                "sz":  len(body),
-                "st":  new_status,
+                "aid":        str(aid),
+                "p":          up.dropbox_path,
+                "m":          md5,
+                "sz":         len(body),
+                "st":         new_status,
+                "pages":      pdf_pages,
+                "is_scan":    pdf_is_scan if (pdf_is_scan or has_text) else None,
+                "text":       extracted_text,
+                "ext_status": extraction_status if (has_text or pdf_is_scan) else None,
             })
     except Exception as exc:
         # The bytes are in Dropbox; the DB lost. Leave pdf_oa_status NULL
