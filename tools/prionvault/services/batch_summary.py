@@ -275,11 +275,12 @@ def _run_batch(*, viewer_user_id=None,
             with eng.begin() as conn:
                 conn.execute(sql_text(
                     """UPDATE articles
-                       SET summary_ai = :summary,
-                           summary_ai_notes = NULL,
-                           updated_at = NOW()
+                       SET summary_ai          = :summary,
+                           summary_ai_notes    = NULL,
+                           summary_ai_provider = :prov,
+                           updated_at          = NOW()
                        WHERE id = :aid"""
-                ), {"summary": result.text, "aid": article_id})
+                ), {"summary": result.text, "aid": article_id, "prov": provider})
         except Exception as exc:
             logger.exception("batch_summary: persisting summary for %s failed", article_id)
             with _lock:

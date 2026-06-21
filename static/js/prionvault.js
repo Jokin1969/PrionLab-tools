@@ -2533,7 +2533,13 @@
                            border:none;cursor:pointer;line-height:1.2;">✏ Editar</button>`
         : '',
       a.has_summary_ai
-        ? '<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">AI ✓</span>'
+        ? (() => {
+            const p = a.summary_ai_provider;
+            if (p === 'anthropic') return '<span title="Resumen generado por Claude (Anthropic)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#5b21b6;">✦ Claude</span>';
+            if (p === 'openai')    return '<span title="Resumen generado por GPT (OpenAI)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">⬡ GPT</span>';
+            if (p === 'gemini')    return '<span title="Resumen generado por Gemini (Google)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">◈ Gemini</span>';
+            return '<span title="Resumen IA (proveedor desconocido)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#f3f4f6;color:#374151;">AI ✓</span>';
+          })()
         : '',
       a.indexed_at
         ? (IS_ADMIN
@@ -11857,78 +11863,151 @@
       loadArticles();
     }
 
-    // Card builder: label, value, pct?, filter params, accent colour
+    // ── Health modal layout helpers ────────────────────────────────────────
+    // card(): single stat tile
     function card(label, value, showPct, filterParams, accent) {
       const num = value ?? 0;
-      const pctStr = showPct ? `<span style="font-size:11px;color:#6b7280;">${pct(num)}</span>` : '';
-      const clickable = filterParams ? `style="cursor:pointer;" onclick='window._pvHealthFilter(${JSON.stringify(filterParams)})'` : '';
-      const bg = accent === 'good' ? '#f0fdf4' : accent === 'warn' ? '#fff7ed' : accent === 'bad' ? '#fef2f2' : '#f9fafb';
-      const numColor = accent === 'good' ? '#15803d' : accent === 'warn' ? '#c2410c' : accent === 'bad' ? '#dc2626' : '#111827';
-      return `
-        <div ${clickable}
-             style="background:${bg};border:1px solid #e5e7eb;border-radius:10px;
-                    padding:12px 14px;display:flex;flex-direction:column;gap:2px;
-                    transition:box-shadow 0.1s;${filterParams ? 'cursor:pointer;' : ''}"
-             ${filterParams ? `onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'" onmouseleave="this.style.boxShadow=''"` : ''}>
-          <span style="font-size:22px;font-weight:700;color:${numColor};">${num.toLocaleString()} ${pctStr}</span>
-          <span style="font-size:12px;color:#6b7280;">${label}</span>
-        </div>`;
+      const pctStr = showPct ? ` <span style="font-size:11px;color:#9ca3af;">${pct(num)}</span>` : '';
+      const fp = filterParams ? JSON.stringify(filterParams) : null;
+      const bg = accent === 'good' ? '#f0fdf4'
+               : accent === 'warn' ? '#fff7ed'
+               : accent === 'bad'  ? '#fef2f2'
+               : '#f9fafb';
+      const numColor = accent === 'good' ? '#15803d'
+                     : accent === 'warn' ? '#c2410c'
+                     : accent === 'bad'  ? '#dc2626'
+                     : '#111827';
+      const border = accent === 'good' ? '#bbf7d0'
+                   : accent === 'warn' ? '#fde68a'
+                   : accent === 'bad'  ? '#fecaca'
+                   : '#e5e7eb';
+      const interactive = fp ? `onclick='window._pvHealthFilter(${fp})'
+        onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'"
+        onmouseleave="this.style.boxShadow='none';this.style.transform=''"` : '';
+      return `<div ${interactive}
+               style="background:${bg};border:1px solid ${border};border-radius:10px;
+                      padding:12px 14px;display:flex;flex-direction:column;gap:3px;
+                      transition:box-shadow 0.15s,transform 0.15s;
+                      ${fp ? 'cursor:pointer;' : ''}">
+        <span style="font-size:21px;font-weight:700;color:${numColor};line-height:1.1;">${num.toLocaleString()}${pctStr}</span>
+        <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">${label}</span>
+      </div>`;
     }
 
-    function section(title, cards) {
-      return `
-        <div style="margin-bottom:20px;">
-          <h3 style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
-                     color:#9ca3af;margin:0 0 10px;">${title}</h3>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-            ${cards.join('')}
-          </div>
-        </div>`;
+    // row(cols): a grid row with a fixed number of columns
+    function row(cols, items) {
+      return `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;margin-bottom:8px;">${items.join('')}</div>`;
     }
 
-    body.innerHTML = `
-      ${section('Contenido', [
-        card('Total artículos', d.total, false, null, ''),
-        card('Con PDF',    d.with_pdf,    true, {has_pdf:'true'},  'good'),
-        card('Sin PDF',    d.without_pdf, true, {has_pdf:'false'}, 'warn'),
-        card('Con DOI',    d.with_doi,    true, {has_doi:'true'},  'good'),
-        card('Sin DOI',    d.without_doi, true, {has_doi:'false'}, 'warn'),
-        card('Con PMID',   d.with_pmid,   true, {has_pmid:'true'}, 'good'),
-        card('Sin PMID',   d.without_pmid,true, {has_pmid:'false'},'warn'),
-        card('Con abstract',    d.with_abstract,    true, {abstract_status:'has'},       'good'),
-        card('Sin abstract',    d.without_abstract, true, {abstract_status:'pending'},   'warn'),
-      ])}
-      ${section('PDF & OCR', [
-        card('PDFs escaneados (OCR)',  d.pdf_ocr,           true, {pdf_is_scan:'true'},    ''),
-        card('PDFs buscables',         d.pdf_searchable,    true, {pdf_searchable:'true'}, 'good'),
-        card('PDFs necesitan buscable',d.pdf_needs_searchable, true, {pdf_searchable:'false'}, 'warn'),
-        card('Fuente: inventario PubMed', d.from_inventory, true, {source:'pubmed_inventory'}, ''),
-        card('Fuente: manual',         d.from_manual,       true, {source:'manual'}, ''),
-      ])}
-      ${section('Procesamiento', [
-        card('Texto extraído',   d.text_extracted,    true, {extraction_status:'extracted'}, 'good'),
-        card('Extracción pendiente', d.text_pending,  true, {extraction_status:'pending'},   'warn'),
-        card('Extracción fallida',  d.text_failed,    true, {extraction_status:'failed'},    'bad'),
-        card(`Indexados (${d.embed_model || 'IA'})`, d.indexed, true, {indexed_status:'yes'}, 'good'),
-        card('Necesitan indexación', d.needs_indexing,true, {needs_indexing:'true'}, 'warn'),
-      ])}
-      ${section('Páginas PDF', [
-        card('Con nº de páginas',    d.with_page_count,    true, null, ''),
-        card('Sin nº de páginas',    d.missing_page_count, true, null, 'warn'),
-      ])}
-      ${section('Resúmenes', [
-        card('Con resumen IA',     d.with_summary_ai,    true, {has_summary:'ai'},    'good'),
-        card('Con resumen humano', d.with_summary_human, true, {has_summary:'human'}, 'good'),
-      ])}
-      ${(d.with_summary_notes > 0) ? section('⚠ Calidad de resúmenes', [
-        card('Con errores/notas', d.with_summary_notes, true, {has_summary_notes:'true'}, 'bad'),
-      ]) : ''}
-      ${section('🔍 Verificación PDF ↔ metadatos', [
-        card('Mismatches',              d.verify_mismatch, true, {pdf_verify_status:'mismatch'},    'bad'),
-        card('Sospechosos',             d.verify_suspect,  true, {pdf_verify_status:'suspect'},     'warn'),
-        card('Match OK',                d.verify_ok,       true, {pdf_verify_status:'ok_any'},      'good'),
-        card('Sin verificar (con PDF)', d.verify_pending,  true, {pdf_verify_status:'unverified'},  ''),
-      ])}`;
+    // section(): titled block, no forced column count (caller uses row())
+    function section(title, inner) {
+      return `<div style="margin-bottom:20px;">
+        <h3 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;
+                   color:#9ca3af;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid #f3f4f6;">${title}</h3>
+        ${inner}
+      </div>`;
+    }
+
+    // Total hero
+    const heroCard = `<div style="text-align:center;background:#f0f4ff;border:1px solid #c7d2fe;
+                          border-radius:12px;padding:16px 24px;margin-bottom:20px;">
+      <div style="font-size:36px;font-weight:800;color:#3730a3;line-height:1;">${(d.total??0).toLocaleString()}</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:4px;">artículos en la biblioteca</div>
+    </div>`;
+
+    // Provider badge helper for summary section labels
+    const provLabels = {
+      anthropic: '✦ Claude',
+      openai:    '⬡ GPT',
+      gemini:    '◈ Gemini',
+    };
+    const provColors = {
+      anthropic: { bg:'#ede9fe', color:'#5b21b6', border:'#ddd6fe' },
+      openai:    { bg:'#dcfce7', color:'#15803d', border:'#bbf7d0' },
+      gemini:    { bg:'#dbeafe', color:'#1d4ed8', border:'#bfdbfe' },
+    };
+    function provCard(prov, count, filterVal) {
+      const c = provColors[prov] || { bg:'#f3f4f6', color:'#374151', border:'#e5e7eb' };
+      const lbl = provLabels[prov] || prov;
+      const fp = JSON.stringify({ summary_ai_provider: filterVal });
+      const pctStr = `<span style="font-size:11px;color:#9ca3af;"> ${pct(count)}</span>`;
+      return `<div onclick='window._pvHealthFilter(${fp})'
+               onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'"
+               onmouseleave="this.style.boxShadow='none';this.style.transform=''"
+               style="background:${c.bg};border:1px solid ${c.border};border-radius:10px;
+                      padding:12px 14px;cursor:pointer;transition:box-shadow 0.15s,transform 0.15s;
+                      display:flex;flex-direction:column;gap:3px;">
+        <span style="font-size:21px;font-weight:700;color:${c.color};line-height:1.1;">${(count??0).toLocaleString()}${pctStr}</span>
+        <span style="font-size:11.5px;color:${c.color};font-weight:600;">${lbl}</span>
+      </div>`;
+    }
+
+    body.innerHTML =
+      heroCard +
+
+      section('Contenido', [
+        row(2, [card('Con PDF',    d.with_pdf,    true, {has_pdf:'true'},  'good'),
+                card('Sin PDF',    d.without_pdf, true, {has_pdf:'false'}, 'warn')]),
+        row(2, [card('Con DOI',    d.with_doi,    true, {has_doi:'true'},  'good'),
+                card('Sin DOI',    d.without_doi, true, {has_doi:'false'}, 'warn')]),
+        row(2, [card('Con PMID',   d.with_pmid,   true, {has_pmid:'true'}, 'good'),
+                card('Sin PMID',   d.without_pmid,true, {has_pmid:'false'},'warn')]),
+        row(2, [card('Con abstract',    d.with_abstract,    true, {abstract_status:'has'},     'good'),
+                card('Sin abstract',    d.without_abstract, true, {abstract_status:'pending'}, 'warn')]),
+      ].join('')) +
+
+      section('PDF & OCR', [
+        row(3, [card('PDFs escaneados (OCR)',  d.pdf_ocr,              true, {pdf_is_scan:'true'},    ''),
+                card('PDFs buscables',         d.pdf_searchable,       true, {pdf_searchable:'true'}, 'good'),
+                card('Necesitan buscable',     d.pdf_needs_searchable, true, {pdf_searchable:'false'},'warn')]),
+        row(2, [card('Con nº de páginas', d.with_page_count,    true, null, ''),
+                card('Sin nº de páginas', d.missing_page_count, true, null, 'warn')]),
+        row(2, [card('Fuente: PubMed Inventory', d.from_inventory, true, {source:'pubmed_inventory'}, ''),
+                card('Fuente: manual',           d.from_manual,    true, {source:'manual'}, '')]),
+      ].join('')) +
+
+      section('Procesamiento & Indexación', [
+        row(3, [card('Texto extraído',       d.text_extracted, true, {extraction_status:'extracted'}, 'good'),
+                card('Extracción pendiente', d.text_pending,   true, {extraction_status:'pending'},   'warn'),
+                card('Extracción fallida',   d.text_failed,    true, {extraction_status:'failed'},    'bad')]),
+        row(2, [card(`Indexados (${d.embed_model || 'IA'})`, d.indexed,       true, {indexed_status:'yes'},  'good'),
+                card('Necesitan indexación',                  d.needs_indexing,true, {needs_indexing:'true'}, 'warn')]),
+      ].join('')) +
+
+      section('Resúmenes IA', (() => {
+        // Always show total pair
+        let html = row(2, [card('Con resumen IA',     d.with_summary_ai,    true, {has_summary:'ai'},    'good'),
+                           card('Con resumen humano', d.with_summary_human, true, {has_summary:'human'}, 'good')]);
+        // Per-provider breakdown (only if at least one has data)
+        const provRows = [];
+        if (d.summary_by_claude > 0) provRows.push(provCard('anthropic', d.summary_by_claude, 'anthropic'));
+        if (d.summary_by_gpt    > 0) provRows.push(provCard('openai',    d.summary_by_gpt,    'openai'));
+        if (d.summary_by_gemini > 0) provRows.push(provCard('gemini',    d.summary_by_gemini, 'gemini'));
+        if (d.summary_by_unknown > 0) {
+          const fp = JSON.stringify({ summary_ai_provider: 'unknown' });
+          provRows.push(`<div onclick='window._pvHealthFilter(${fp})'
+            onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)'"
+            onmouseleave="this.style.boxShadow='none'"
+            style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;
+                   padding:12px 14px;cursor:pointer;transition:box-shadow 0.15s;
+                   display:flex;flex-direction:column;gap:3px;">
+            <span style="font-size:21px;font-weight:700;color:#374151;line-height:1.1;">${(d.summary_by_unknown??0).toLocaleString()}</span>
+            <span style="font-size:11.5px;color:#6b7280;">Sin proveedor registrado</span>
+          </div>`);
+        }
+        if (provRows.length) html += row(Math.min(provRows.length, 3), provRows);
+        if (d.with_summary_notes > 0) {
+          html += row(1, [card('⚠ Con errores/notas en resumen', d.with_summary_notes, true, {has_summary_notes:'true'}, 'bad')]);
+        }
+        return html;
+      })()) +
+
+      section('🔍 Verificación PDF ↔ metadatos', [
+        row(2, [card('✗ Mismatches',  d.verify_mismatch, true, {pdf_verify_status:'mismatch'}, 'bad'),
+                card('⚠ Sospechosos', d.verify_suspect,  true, {pdf_verify_status:'suspect'},  'warn')]),
+        row(2, [card('✓ Match OK',                d.verify_ok,      true, {pdf_verify_status:'ok_any'},     'good'),
+                card('Sin verificar (con PDF)',    d.verify_pending, true, {pdf_verify_status:'unverified'}, '')]),
+      ].join(''));
 
     // Wire up click handler for health filters
     window._pvHealthFilter = function(params) {
@@ -11954,7 +12033,7 @@
       const extra = {};
       for (const k of ['has_pdf','has_doi','has_pmid','pdf_is_scan','pdf_searchable',
                         'source','needs_indexing','has_summary_ai','has_summary_notes',
-                        'pdf_verify_status']) {
+                        'pdf_verify_status','summary_ai_provider']) {
         if (params[k] !== undefined) extra[k] = params[k];
       }
       state._healthExtra = Object.keys(extra).length ? extra : null;

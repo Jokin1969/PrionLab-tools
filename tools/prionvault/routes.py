@@ -175,6 +175,7 @@ def api_list_articles():
     has_summary_notes_raw = request.args.get("has_summary_notes")
     has_summary_notes = True if has_summary_notes_raw == "true" else None
     pdf_verify_status = (request.args.get("pdf_verify_status") or "").strip() or None
+    summary_ai_provider = (request.args.get("summary_ai_provider") or "").strip() or None
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
@@ -242,6 +243,7 @@ def api_list_articles():
             has_summary_ai=has_summary_ai,
             has_summary_notes=has_summary_notes,
             pdf_verify_status=pdf_verify_status,
+            summary_ai_provider=summary_ai_provider,
         )
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
@@ -393,7 +395,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         pdf_source_filter=None, pdf_searchable_filter=None,
                         pdf_is_scan_filter=None, needs_indexing=None,
                         has_summary_ai=None, has_summary_notes=None,
-                        pdf_verify_status=None):
+                        pdf_verify_status=None, summary_ai_provider=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -622,6 +624,13 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             conditions.append("pdf_metadata_match_status = :pdf_verify_status")
             params["pdf_verify_status"] = pdf_verify_status
 
+    if summary_ai_provider and "summary_ai_provider" in pv_cols:
+        if summary_ai_provider == "unknown":
+            conditions.append("(summary_ai IS NOT NULL AND summary_ai <> '' AND (summary_ai_provider IS NULL OR summary_ai_provider = ''))")
+        else:
+            conditions.append("summary_ai_provider = :summary_ai_provider")
+            params["summary_ai_provider"] = summary_ai_provider
+
     _viewer_uid = _viewer_id()
     # NOTE: params["_viewer_uid"] is set unconditionally further down
     # (the _pus LEFT JOIN needs it on EVERY query). This block only
@@ -700,7 +709,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
          "extraction_status", "indexed_at",
          "summary_ai", "summary_human", "source",
          "abstract_unavailable", "pdf_oa_status",
-         "pdf_metadata_match_status"]
+         "pdf_metadata_match_status", "summary_ai_provider"]
         if c in pv_cols
     )
     select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -887,7 +896,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "extraction_status": d.get("extraction_status") or "pending",
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
-            "has_summary_ai":    bool(d.get("summary_ai")),
+            "has_summary_ai":       bool(d.get("summary_ai")),
+            "summary_ai_provider":  d.get("summary_ai_provider") if bool(d.get("summary_ai")) else None,
             "has_summary_human": False,
             "in_prionread":  in_pr,
             "prionread_count": prionread_counts.get(aid, 0),
@@ -1273,7 +1283,19 @@ def api_article_health():
                     "0")}                                                           AS verify_ok,
               {_col("pdf_metadata_match_status",
                     "COUNT(*) FILTER (WHERE pdf_metadata_match_status IS NULL AND dropbox_path IS NOT NULL)",
-                    "0")}                                                           AS verify_pending
+                    "0")}                                                           AS verify_pending,
+              {_col("summary_ai_provider",
+                    "COUNT(*) FILTER (WHERE summary_ai_provider = 'anthropic')",
+                    "0")}                                                           AS summary_by_claude,
+              {_col("summary_ai_provider",
+                    "COUNT(*) FILTER (WHERE summary_ai_provider = 'openai')",
+                    "0")}                                                           AS summary_by_gpt,
+              {_col("summary_ai_provider",
+                    "COUNT(*) FILTER (WHERE summary_ai_provider = 'gemini')",
+                    "0")}                                                           AS summary_by_gemini,
+              {_col("summary_ai_provider",
+                    "COUNT(*) FILTER (WHERE summary_ai IS NOT NULL AND summary_ai <> '' AND (summary_ai_provider IS NULL OR summary_ai_provider = ''))",
+                    "0")}                                                           AS summary_by_unknown
             FROM articles
         """
         query_params = {}
@@ -1293,6 +1315,7 @@ def api_article_health():
             "with_page_count", "missing_page_count",
             "with_summary_notes",
             "verify_mismatch", "verify_suspect", "verify_ok", "verify_pending",
+            "summary_by_claude", "summary_by_gpt", "summary_by_gemini", "summary_by_unknown",
         ]
         result = {k: int(row[i]) if row and row[i] is not None else 0
                   for i, k in enumerate(keys)}
