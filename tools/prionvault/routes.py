@@ -1153,11 +1153,41 @@ def api_article_health():
             + (" AND pdf_ocr_unavailable = FALSE" if "pdf_ocr_unavailable" in pv_cols else "")
             + ")"
         )
-        needs_indexing_expr = (
-            "COUNT(*) FILTER (WHERE indexed_at IS NULL"
-            + (" AND extraction_status = 'extracted'" if "extraction_status" in pv_cols else "")
-            + ")"
-        )
+
+        # Resolve the active embedding model — needed to distinguish
+        # "indexed with current model" from "indexed with old model".
+        # We import lazily so a missing voyager key doesn't crash the page.
+        current_embed_model = None
+        if "index_version" in pv_cols:
+            try:
+                from .embeddings.embedder import MODEL as _EMBED_MODEL
+                current_embed_model = _EMBED_MODEL
+            except Exception:
+                pass
+
+        if current_embed_model and "index_version" in pv_cols:
+            indexed_expr = (
+                f"COUNT(*) FILTER (WHERE indexed_at IS NOT NULL "
+                f"AND index_version = :embed_model)"
+            )
+            needs_indexing_expr = (
+                "COUNT(*) FILTER (WHERE "
+                + ("((extracted_text IS NOT NULL AND length(extracted_text) > 200) "
+                   "OR (summary_ai IS NOT NULL AND length(summary_ai) > 100) "
+                   "OR (abstract IS NOT NULL AND length(abstract) > 100)) AND " if "extraction_status" in pv_cols else "")
+                + "(indexed_at IS NULL OR index_version IS DISTINCT FROM :embed_model))"
+            )
+        else:
+            indexed_expr = (
+                "COUNT(*) FILTER (WHERE indexed_at IS NOT NULL)"
+                if "indexed_at" in pv_cols else "0"
+            )
+            needs_indexing_expr = (
+                "COUNT(*) FILTER (WHERE indexed_at IS NULL"
+                + (" AND extraction_status = 'extracted'" if "extraction_status" in pv_cols else "")
+                + ")"
+                if "indexed_at" in pv_cols else "0"
+            )
 
         query = f"""
             SELECT
@@ -1181,9 +1211,8 @@ def api_article_health():
                     "COUNT(*) FILTER (WHERE extraction_status = 'pending' OR extraction_status IS NULL)")} AS text_pending,
               {_col("extraction_status",
                     "COUNT(*) FILTER (WHERE extraction_status = 'failed')")}     AS text_failed,
-              {_col("indexed_at",
-                    "COUNT(*) FILTER (WHERE indexed_at IS NOT NULL)")}           AS indexed,
-              {_col("indexed_at", needs_indexing_expr)}                          AS needs_indexing,
+              {indexed_expr}                                                     AS indexed,
+              {needs_indexing_expr}                                               AS needs_indexing,
               {_col("summary_ai",
                     "COUNT(*) FILTER (WHERE summary_ai IS NOT NULL AND summary_ai <> '')")} AS with_summary_ai,
               {_col("summary_human",
@@ -1198,7 +1227,10 @@ def api_article_health():
                     "COUNT(*) FILTER (WHERE pdf_pages IS NULL AND dropbox_path IS NOT NULL)")} AS missing_page_count
             FROM articles
         """
-        row = s.execute(sql_text(query)).first()
+        query_params = {}
+        if current_embed_model:
+            query_params["embed_model"] = current_embed_model
+        row = s.execute(sql_text(query), query_params).first()
         keys = [
             "total", "with_pdf", "without_pdf",
             "with_doi", "without_doi",
@@ -1213,6 +1245,7 @@ def api_article_health():
         ]
         result = {k: int(row[i]) if row and row[i] is not None else 0
                   for i, k in enumerate(keys)}
+        result["embed_model"] = current_embed_model or "unknown"
         return jsonify(result)
     except Exception as exc:
         logger.exception("PrionVault api_article_health failed")

@@ -11675,7 +11675,7 @@
         card('Texto extraído',   d.text_extracted,    true, {extraction_status:'extracted'}, 'good'),
         card('Extracción pendiente', d.text_pending,  true, {extraction_status:'pending'},   'warn'),
         card('Extracción fallida',  d.text_failed,    true, {extraction_status:'failed'},    'bad'),
-        card('Indexados (IA)',   d.indexed,           true, {indexed_status:'yes'}, 'good'),
+        card(`Indexados (${d.embed_model || 'IA'})`, d.indexed, true, {indexed_status:'yes'}, 'good'),
         card('Necesitan indexación', d.needs_indexing,true, {needs_indexing:'true'}, 'warn'),
         card('Con nº de páginas',    d.with_page_count,  true, null, ''),
         card('Sin nº de páginas',    d.missing_page_count, true, null, 'warn'),
