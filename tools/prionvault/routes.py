@@ -798,6 +798,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "has_abstract":  bool((d.get("abstract") or "").strip()),
             "abstract_unavailable": bool(d.get("abstract_unavailable")),
             "has_pdf":       bool(d.get("dropbox_path")),
+            "source":        d.get("source"),
+            "pdf_oa_status": d.get("pdf_oa_status"),
             "jc_count":      int(jc_counts.get(aid, 0)),
             "has_jc":        bool(jc_counts.get(aid, 0)),
             "extraction_status": d.get("extraction_status") or "pending",
@@ -817,7 +819,6 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         }
         if is_admin:
             out["pdf_md5"]          = d.get("pdf_md5")
-            out["source"]           = d.get("source")
             out["pdf_dropbox_path"] = d.get("dropbox_path")
         return out
 
@@ -920,6 +921,8 @@ def api_article_detail(aid):
             "has_abstract":  bool((d.get("abstract") or "").strip()),
             "abstract_unavailable": bool(d.get("abstract_unavailable")),
             "has_pdf":       bool(d.get("dropbox_path")),
+            "source":        d.get("source"),
+            "pdf_oa_status": d.get("pdf_oa_status"),
             "jc_count":      int(d.get("jc_count") or 0),
             "has_jc":        bool(d.get("jc_count") or 0),
             "extraction_status": d.get("extraction_status") or "pending",
@@ -936,7 +939,6 @@ def api_article_detail(aid):
         if is_admin:
             out["pdf_md5"]          = d.get("pdf_md5")
             out["pdf_size_bytes"]   = d.get("pdf_size_bytes")
-            out["source"]           = d.get("source")
             out["pdf_dropbox_path"] = d.get("dropbox_path")
 
         # Per-user tag chips (migration 038): show only the tags the
