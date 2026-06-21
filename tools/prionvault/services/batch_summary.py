@@ -161,14 +161,17 @@ def _run_batch(*, viewer_user_id=None,
     # The eligibility filter depends on whether the caller pinned a
     # specific selection or wants the default "missing-summary" set.
     if ids:
-        base_where = ("WHERE extracted_text IS NOT NULL "
-                      "  AND length(extracted_text) > 100 "
-                      "  AND id = ANY(CAST(:ids AS uuid[]))")
-        base_params: dict = {"ids": ids}
+        # ids is a list of UUID strings. Build an IN clause with explicit
+        # string literals so there is no driver type-casting ambiguity.
+        id_literals = ", ".join(f"'{str(i)}'" for i in ids)
+        base_where  = (f"WHERE extracted_text IS NOT NULL "
+                       f"  AND length(extracted_text) > 100 "
+                       f"  AND id IN ({id_literals})")
+        base_params: dict = {}
     else:
-        base_where = ("WHERE extracted_text IS NOT NULL "
-                      "  AND length(extracted_text) > 100 "
-                      "  AND summary_ai IS NULL")
+        base_where  = ("WHERE extracted_text IS NOT NULL "
+                       "  AND length(extracted_text) > 100 "
+                       "  AND summary_ai IS NULL")
         base_params = {}
 
     try:
@@ -199,11 +202,10 @@ def _run_batch(*, viewer_user_id=None,
 
         try:
             with eng.connect() as conn:
-                params = dict(base_params)
                 seen_clause = ""
                 if seen_ids:
-                    params["seen"] = list(seen_ids)
-                    seen_clause = " AND id <> ALL(:seen)"
+                    seen_literals = ", ".join(f"'{str(i)}'" for i in seen_ids)
+                    seen_clause = f" AND id NOT IN ({seen_literals})"
                 row = conn.execute(sql_text(
                     f"""SELECT id, title, authors, year, journal, abstract,
                               doi, pubmed_id, extracted_text
@@ -212,7 +214,7 @@ def _run_batch(*, viewer_user_id=None,
                        {seen_clause}
                        ORDER BY year DESC NULLS LAST, created_at DESC NULLS LAST
                        LIMIT 1"""
-                ), params).first()
+                ), base_params).first()
         except Exception as exc:
             logger.exception("batch_summary: query for next article failed")
             with _lock:
