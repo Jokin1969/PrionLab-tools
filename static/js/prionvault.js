@@ -5467,13 +5467,20 @@
         <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
                    text-transform:uppercase;letter-spacing:0.05em;">AI summary</h3>
         ${IS_ADMIN ? `
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <select id="pv-ai-provider" title="Modelo de IA a usar"
                     style="font-size:11.5px;padding:3px 6px;border-radius:6px;
                            border:1px solid #d1d5db;background:white;color:#374151;
                            max-width:170px;">
               <option value="">Cargando…</option>
             </select>
+            <label title="Si el PDF contiene texto de otro artículo, activa esto para que la IA se centre solo en el artículo cuyo título figura en la ficha."
+                   style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;
+                          color:#374151;cursor:pointer;white-space:nowrap;">
+              <input type="checkbox" id="pv-ai-title-hint"
+                     style="accent-color:#0F3460;cursor:pointer;">
+              Usar título como filtro
+            </label>
             <button id="pv-ai-generate"
                     style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;background:white;
                            font-size:11.5px;font-weight:600;color:#0F3460;cursor:pointer;">
@@ -5548,6 +5555,8 @@
       const provider = (provEl && provEl.value) ||
                        localStorage.getItem('pv-summary-provider') ||
                        'anthropic';
+      const titleHintEl = document.getElementById('pv-ai-title-hint');
+      const titleHint = titleHintEl ? titleHintEl.checked : false;
       genBtn.disabled = true;
       const original = genBtn.textContent;
       genBtn.textContent = '⏳ Generando…';
@@ -5556,7 +5565,7 @@
       try {
         const r = await api(`/articles/${a.id}/summary`, {
           method: 'POST',
-          body: JSON.stringify({ provider }),
+          body: JSON.stringify({ provider, title_hint: titleHint }),
         });
         a.summary_ai = r.summary_ai;
         renderAiSummary(a);

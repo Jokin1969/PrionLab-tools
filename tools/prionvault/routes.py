@@ -4739,6 +4739,7 @@ def api_generate_summary(aid):
     if provider not in PROVIDERS:
         return jsonify({"error": "unknown_provider",
                         "detail": f"Valid: {sorted(PROVIDERS)}"}), 400
+    title_hint = bool(data.get("title_hint", False))
 
     s = _session()
     try:
@@ -4757,6 +4758,7 @@ def api_generate_summary(aid):
                 pubmed_id=a.pubmed_id,
                 extracted_text=a.extracted_text,
                 provider=provider,
+                title_hint=title_hint,
             )
         except NotConfigured as exc:
             return jsonify({"error": "ai_unavailable",

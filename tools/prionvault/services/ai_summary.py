@@ -90,7 +90,8 @@ muchos y enumerables."""
 
 
 def _build_user_prompt(*, title, authors, year, journal, abstract,
-                       doi, pubmed_id, extracted_text) -> str:
+                       doi, pubmed_id, extracted_text,
+                       title_hint: bool = False) -> str:
     """Build a provider-agnostic user prompt.
 
     Layout:
@@ -135,7 +136,14 @@ def _build_user_prompt(*, title, authors, year, journal, abstract,
 
     pmid_line = f"\nPMID: {pmid_s}" if pmid_s else ""
 
-    return f"""Genera un resumen completo del siguiente artículo científico \
+    title_hint_block = (
+        f"IMPORTANTE: el PDF puede contener texto de más de un artículo. "
+        f"Resume ÚNICAMENTE el artículo cuyo título es exactamente: «{title_s}». "
+        f"Ignora cualquier otro contenido del PDF que no corresponda a ese artículo.\n\n"
+        if title_hint else ""
+    )
+
+    return f"""{title_hint_block}Genera un resumen completo del siguiente artículo científico \
 en español. La salida debe empezar SIEMPRE con esta cabecera bibliográfica \
 exactamente en este formato y orden, sin viñetas y sin comillas, \
 y a continuación un resumen estructurado en cinco secciones con \
@@ -218,7 +226,8 @@ def _estimate_cost(provider: str, tokens_in: Optional[int],
 def generate_summary(*, title, authors=None, year=None, journal=None,
                      abstract=None, doi=None, pubmed_id=None,
                      extracted_text=None,
-                     provider: str = DEFAULT_PROVIDER) -> SummaryResult:
+                     provider: str = DEFAULT_PROVIDER,
+                     title_hint: bool = False) -> SummaryResult:
     """Generate a summary using the requested provider. Retries up to
     _MAX_ATTEMPTS times on empty / transient errors before giving up."""
     if provider not in PROVIDERS:
@@ -236,6 +245,7 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
         title=title, authors=authors, year=year, journal=journal,
         abstract=abstract, doi=doi, pubmed_id=pubmed_id,
         extracted_text=extracted_text,
+        title_hint=title_hint,
     )
 
     last_error: Optional[Exception] = None
