@@ -5269,7 +5269,13 @@
           Sin resumen IA todavía${IS_ADMIN ? ' — clic en ✨ Generate para crearlo.' : '.'}
          </div>`;
 
-    block.innerHTML = header + body +
+    const notesHtml = a.summary_ai_notes
+      ? `<div style="margin-top:6px;font-size:12px;color:#b91c1c;background:#fef2f2;
+                     border:1px solid #fecaca;border-radius:7px;padding:8px 10px;">
+           ⚠ <strong>Notas resumen:</strong> ${esc(a.summary_ai_notes)}
+         </div>`
+      : '';
+    block.innerHTML = header + body + notesHtml +
       `<div id="pv-ai-status" style="margin-top:6px;font-size:11.5px;color:#9ca3af;"></div>`;
 
     if (!IS_ADMIN) return;
@@ -7895,7 +7901,8 @@
     const modal = document.getElementById('pv-batch-summary-modal');
     if (!btn || !modal) return;
     const closeBtn   = document.getElementById('pv-batch-summary-close');
-    const startBtn   = document.getElementById('pv-bs-start');
+    const limitBtnsEl = document.getElementById('pv-bs-limit-btns');
+    const startLabelEl = document.getElementById('pv-bs-start-label');
     const stopBtn    = document.getElementById('pv-bs-stop');
     const statsEl    = document.getElementById('pv-bs-stats');
     const progWrap   = document.getElementById('pv-bs-progress-wrap');
@@ -7996,11 +8003,32 @@
     closeBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
 
-    function statCard(label, value, color) {
-      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+    function statCard(label, value, color, onclick) {
+      const clickStyle = onclick ? 'cursor:pointer;' : '';
+      const hoverAttr  = onclick ? `onmouseenter="this.style.boxShadow='0 0 0 2px #0F3460'" onmouseleave="this.style.boxShadow=''"` : '';
+      const clickAttr  = onclick ? `onclick="${onclick}"` : '';
+      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;${clickStyle}" ${hoverAttr} ${clickAttr}>
                 <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
                 <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
               </div>`;
+    }
+    window._pvBatchSummaryFilter = function(hasSummaryVal) {
+      modal.style.display = 'none';
+      Object.assign(state, {
+        q: '', yearMin: null, yearMax: null, journal: '', authors: '',
+        tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
+        isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
+        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
+        collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
+        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', page: 1,
+        _healthExtra: { has_summary_ai: hasSummaryVal },
+      });
+      loadArticles();
+    };
+    function statCardFilter(label, value, color, hasSummaryVal) {
+      return statCard(label, value, color,
+        `window._pvBatchSummaryFilter('${hasSummaryVal}')`
+      );
     }
 
     async function refresh() {
@@ -8016,8 +8044,8 @@
       statsEl.innerHTML =
         statCard('Total',          lib.total ?? 0) +
         statCard('Con texto',      lib.with_text ?? 0) +
-        statCard('Con resumen',    lib.with_summary ?? 0, '#15803d') +
-        statCard('Pendientes',     lib.eligible ?? 0, '#b45309');
+        statCardFilter('Con resumen', lib.with_summary ?? 0, '#15803d', 'true') +
+        statCardFilter('Pendientes',  lib.eligible ?? 0, '#b45309', 'false');
 
       // Selection-mode banner: only visible when caller seeded ids
       // and the batch isn't running yet.
@@ -8056,11 +8084,11 @@
         } else {
           currentEl.style.display = 'none';
         }
-        startBtn.style.display = 'none';
+        if (limitBtnsEl) limitBtnsEl.style.display = 'none';
         stopBtn.style.display = 'inline-flex';
         stopBtn.disabled = !!s.stop_requested;
       } else {
-        startBtn.style.display = 'inline-flex';
+        if (limitBtnsEl) limitBtnsEl.style.display = 'flex';
         stopBtn.style.display = 'none';
         currentEl.style.display = 'none';
         const eligible    = lib.eligible || 0;
@@ -8068,16 +8096,23 @@
         const provMeta    = providerMeta[selectedProvider];
         const provReady   = !!(provMeta && provMeta.configured);
         const effective   = selectionN > 0 ? selectionN : eligible;
-        startBtn.disabled = effective === 0 || !provReady;
-        startBtn.style.opacity = startBtn.disabled ? '0.5' : '1';
-        if (!provReady) {
-          startBtn.textContent = 'Elige un proveedor';
-        } else if (selectionN > 0) {
-          startBtn.textContent = `Resumir ${selectionN} seleccionado${selectionN === 1 ? '' : 's'} con ${provMeta.label}`;
-        } else {
-          startBtn.textContent = eligible > 0
-            ? `Start con ${provMeta.label} (${eligible} pendiente${eligible === 1 ? '' : 's'})`
-            : 'Start';
+        const btnsDisabled = effective === 0 || !provReady;
+        if (limitBtnsEl) {
+          limitBtnsEl.querySelectorAll('.pv-bs-limit-btn').forEach(b => {
+            b.disabled = btnsDisabled;
+            b.style.opacity = btnsDisabled ? '0.5' : '1';
+          });
+        }
+        if (startLabelEl) {
+          if (!provReady) {
+            startLabelEl.textContent = 'Elige un proveedor de IA';
+          } else if (selectionN > 0) {
+            startLabelEl.textContent = `Resumir ${selectionN} seleccionado${selectionN === 1 ? '' : 's'} con ${provMeta.label}`;
+          } else {
+            startLabelEl.textContent = eligible > 0
+              ? `${provMeta.label} · ${eligible} pendiente${eligible === 1 ? '' : 's'}`
+              : provMeta.label;
+          }
         }
         if (s.finished_at && (s.processed || s.failed)) {
           progWrap.style.display = 'block';
@@ -8105,36 +8140,40 @@
         : '';
     }
 
-    startBtn.addEventListener('click', async () => {
-      if (!selectedProvider) {
-        errorEl.style.display = 'block';
-        errorEl.textContent = 'Elige un proveedor de IA antes de empezar.';
-        return;
-      }
-      startBtn.disabled = true;
-      const selectionIds = window.PV_SUMMARY_SELECTION || null;
-      try {
-        const body = { provider: selectedProvider };
-        if (selectionIds && selectionIds.length) body.ids = selectionIds;
-        await api('/admin/batch-summary/start', {
-          method: 'POST',
-          body: JSON.stringify(body),
-        });
-        // Selection is consumed by Start — clear it so closing/reopening
-        // the modal goes back to the default "all pending" behaviour.
-        window.PV_SUMMARY_SELECTION = null;
-        refresh();
-        startPolling();
-      } catch (e) {
-        startBtn.disabled = false;
-        if (e.status === 409) {
-          // Already running — just refresh
-          refresh();
-        } else {
+    modal.querySelectorAll('.pv-bs-limit-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!selectedProvider) {
           errorEl.style.display = 'block';
-          errorEl.textContent = 'No se pudo iniciar: ' + e.message;
+          errorEl.textContent = 'Elige un proveedor de IA antes de empezar.';
+          return;
         }
-      }
+        modal.querySelectorAll('.pv-bs-limit-btn').forEach(b => { b.disabled = true; });
+        const limitVal = btn.dataset.limit ? parseInt(btn.dataset.limit, 10) : null;
+        const selectionIds = window.PV_SUMMARY_SELECTION || null;
+        try {
+          const body = { provider: selectedProvider };
+          if (limitVal) body.limit = limitVal;
+          if (selectionIds && selectionIds.length) body.ids = selectionIds;
+          await api('/admin/batch-summary/start', {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+          // Selection is consumed by Start — clear it so closing/reopening
+          // the modal goes back to the default "all pending" behaviour.
+          window.PV_SUMMARY_SELECTION = null;
+          refresh();
+          startPolling();
+        } catch (e) {
+          modal.querySelectorAll('.pv-bs-limit-btn').forEach(b => { b.disabled = false; });
+          if (e.status === 409) {
+            // Already running — just refresh
+            refresh();
+          } else {
+            errorEl.style.display = 'block';
+            errorEl.textContent = 'No se pudo iniciar: ' + e.message;
+          }
+        }
+      });
     });
 
     stopBtn.addEventListener('click', async () => {
@@ -11677,13 +11716,18 @@
         card('Extracción fallida',  d.text_failed,    true, {extraction_status:'failed'},    'bad'),
         card(`Indexados (${d.embed_model || 'IA'})`, d.indexed, true, {indexed_status:'yes'}, 'good'),
         card('Necesitan indexación', d.needs_indexing,true, {needs_indexing:'true'}, 'warn'),
-        card('Con nº de páginas',    d.with_page_count,  true, null, ''),
+      ])}
+      ${section('Páginas PDF', [
+        card('Con nº de páginas',    d.with_page_count,    true, null, ''),
         card('Sin nº de páginas',    d.missing_page_count, true, null, 'warn'),
       ])}
       ${section('Resúmenes', [
         card('Con resumen IA',     d.with_summary_ai,    true, {has_summary:'ai'},    'good'),
         card('Con resumen humano', d.with_summary_human, true, {has_summary:'human'}, 'good'),
-      ])}`;
+      ])}
+      ${(d.with_summary_notes > 0) ? section('⚠ Calidad de resúmenes', [
+        card('Con errores/notas', d.with_summary_notes, true, {has_summary_notes:'true'}, 'bad'),
+      ]) : ''}`;
 
     // Wire up click handler for health filters
     window._pvHealthFilter = function(params) {
@@ -11708,7 +11752,7 @@
       // and patch buildListParams temporarily
       const extra = {};
       for (const k of ['has_pdf','has_doi','has_pmid','pdf_is_scan','pdf_searchable',
-                        'source','needs_indexing','has_summary_ai']) {
+                        'source','needs_indexing','has_summary_ai','has_summary_notes']) {
         if (params[k] !== undefined) extra[k] = params[k];
       }
       state._healthExtra = Object.keys(extra).length ? extra : null;

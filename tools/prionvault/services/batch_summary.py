@@ -253,6 +253,17 @@ def _run_batch(*, viewer_user_id=None,
             with _lock:
                 _state["failed"] += 1
                 _state["last_error"] = f"{title[:80]} — {str(exc)[:160]}"
+            # Persist error note to DB (defensive — column may not exist yet)
+            try:
+                with eng.begin() as conn:
+                    conn.execute(sql_text(
+                        """UPDATE articles
+                           SET summary_ai_notes = :note,
+                               updated_at = NOW()
+                         WHERE id = :aid"""
+                    ), {"note": f"Error al generar resumen: {str(exc)[:500]}", "aid": article_id})
+            except Exception:
+                pass  # don't let a note-write failure cascade
             time.sleep(_BETWEEN_CALLS_SLEEP_S)
             continue
 
@@ -265,6 +276,7 @@ def _run_batch(*, viewer_user_id=None,
                 conn.execute(sql_text(
                     """UPDATE articles
                        SET summary_ai = :summary,
+                           summary_ai_notes = NULL,
                            updated_at = NOW()
                        WHERE id = :aid"""
                 ), {"summary": result.text, "aid": article_id})

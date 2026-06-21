@@ -1501,10 +1501,23 @@
                                       background:white;color:#b91c1c;font-size:13px;font-weight:600;cursor:pointer;">
         Stop
       </button>
-      <button id="pv-bs-start" style="padding:8px 16px;border-radius:8px;border:none;background:#0F3460;
-                                       color:white;font-size:13px;font-weight:600;cursor:pointer;">
-        Start
-      </button>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+        <div id="pv-bs-start-label" style="font-size:11.5px;color:#6b7280;"></div>
+        <div id="pv-bs-limit-btns" style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="pv-bs-limit-btn" data-limit="100"
+                  style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#f3f4f6;
+                         color:#374151;font-size:13px;font-weight:600;cursor:pointer;">100</button>
+          <button class="pv-bs-limit-btn" data-limit="500"
+                  style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#f3f4f6;
+                         color:#374151;font-size:13px;font-weight:600;cursor:pointer;">500</button>
+          <button class="pv-bs-limit-btn" data-limit="1000"
+                  style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#f3f4f6;
+                         color:#374151;font-size:13px;font-weight:600;cursor:pointer;">1000</button>
+          <button class="pv-bs-limit-btn" data-limit=""
+                  style="padding:8px 16px;border-radius:8px;border:none;background:#0F3460;
+                         color:white;font-size:13px;font-weight:600;cursor:pointer;">Todos</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>

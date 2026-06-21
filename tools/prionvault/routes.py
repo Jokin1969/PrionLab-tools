@@ -172,6 +172,8 @@ def api_list_articles():
     needs_indexing = True if needs_indexing_raw == "true" else None
     has_summary_ai_raw = request.args.get("has_summary_ai")
     has_summary_ai = True if has_summary_ai_raw == "true" else (False if has_summary_ai_raw == "false" else None)
+    has_summary_notes_raw = request.args.get("has_summary_notes")
+    has_summary_notes = True if has_summary_notes_raw == "true" else None
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
@@ -237,6 +239,7 @@ def api_list_articles():
             pdf_is_scan_filter=pdf_is_scan_filter,
             needs_indexing=needs_indexing,
             has_summary_ai=has_summary_ai,
+            has_summary_notes=has_summary_notes,
         )
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
@@ -387,7 +390,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         has_pdf=None, has_doi=None, has_pmid=None,
                         pdf_source_filter=None, pdf_searchable_filter=None,
                         pdf_is_scan_filter=None, needs_indexing=None,
-                        has_summary_ai=None):
+                        has_summary_ai=None, has_summary_notes=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -603,6 +606,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("summary_ai IS NOT NULL AND summary_ai <> ''")
     elif has_summary_ai is False and "summary_ai" in pv_cols:
         conditions.append("(summary_ai IS NULL OR summary_ai = '')")
+
+    if has_summary_notes is True and "summary_ai_notes" in pv_cols:
+        conditions.append("summary_ai_notes IS NOT NULL AND summary_ai_notes <> ''")
 
     _viewer_uid = _viewer_id()
     # NOTE: params["_viewer_uid"] is set unconditionally further down
@@ -938,7 +944,7 @@ def api_article_detail(aid):
         optional = [
             "pdf_md5", "pdf_size_bytes", "pdf_pages", "pdf_is_scan",
             "extraction_status", "extraction_error",
-            "summary_ai", "summary_human",
+            "summary_ai", "summary_human", "summary_ai_notes",
             "indexed_at", "index_version",
             "source", "source_metadata", "added_by_id",
             "abstract_unavailable", "pubmed_unavailable",
@@ -995,6 +1001,7 @@ def api_article_detail(aid):
             "abstract":      d.get("abstract"),
             "summary_ai":    d.get("summary_ai"),
             "summary_human": d.get("summary_human"),
+            "summary_ai_notes": d.get("summary_ai_notes") if "summary_ai_notes" in d else None,
             "has_summary_ai":    bool(d.get("summary_ai")),
             "has_summary_human": bool(d.get("summary_human")),
             "in_prionread":  False,  # enriched below
@@ -1224,7 +1231,10 @@ def api_article_health():
               {_col("pdf_pages",
                     "COUNT(*) FILTER (WHERE pdf_pages IS NOT NULL)")}            AS with_page_count,
               {_col("pdf_pages",
-                    "COUNT(*) FILTER (WHERE pdf_pages IS NULL AND dropbox_path IS NOT NULL)")} AS missing_page_count
+                    "COUNT(*) FILTER (WHERE pdf_pages IS NULL AND dropbox_path IS NOT NULL)")} AS missing_page_count,
+              {_col("summary_ai_notes",
+                    "COUNT(*) FILTER (WHERE summary_ai_notes IS NOT NULL AND summary_ai_notes <> '')",
+                    "0")}                                                           AS with_summary_notes
             FROM articles
         """
         query_params = {}
@@ -1242,6 +1252,7 @@ def api_article_health():
             "with_summary_ai", "with_summary_human",
             "from_inventory", "from_manual",
             "with_page_count", "missing_page_count",
+            "with_summary_notes",
         ]
         result = {k: int(row[i]) if row and row[i] is not None else 0
                   for i, k in enumerate(keys)}
