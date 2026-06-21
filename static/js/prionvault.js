@@ -1855,6 +1855,8 @@
   }
 
   // ── render: article list ───────────────────────────────────────────────
+  let _listIds = [];   // IDs in current page order — used for detail modal nav
+
   async function loadArticles() {
     const params = buildListParams();
 
@@ -1886,6 +1888,7 @@
         return;
       }
       showTable();
+      _listIds = r.items.map(a => a.id);
       tbody.innerHTML = '';
       r.items.forEach(a => tbody.appendChild(renderRow(a)));
       state.lastTotal = r.total || 0;
@@ -3101,6 +3104,17 @@
   }
 
   // ── article detail modal ───────────────────────────────────────────────
+  let _detailCurrentId = null;
+
+  function _detailUpdateNav(aid) {
+    _detailCurrentId = aid;
+    const idx  = _listIds.indexOf(aid);
+    const prev = document.getElementById('pv-detail-prev');
+    const next = document.getElementById('pv-detail-next');
+    if (prev) prev.disabled = idx <= 0;
+    if (next) next.disabled = idx < 0 || idx >= _listIds.length - 1;
+  }
+
   async function openDetail(aid, options = {}) {
     const modal   = document.getElementById('pv-detail-modal');
     const content = document.getElementById('pv-detail-content');
@@ -3108,6 +3122,7 @@
     const inner = modal.querySelector('.pv-modal-inner');
     if (inner) inner.style.maxWidth = '';
     modal.style.display = 'flex';
+    _detailUpdateNav(aid);
     content.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;">Cargando…</div>';
     try {
       const a = await api('/articles/' + aid);
@@ -6039,6 +6054,14 @@
 
     document.getElementById('pv-detail-close').addEventListener('click', closeDetail);
     document.querySelector('#pv-detail-modal .pv-modal-backdrop').addEventListener('click', closeDetail);
+    document.getElementById('pv-detail-prev')?.addEventListener('click', () => {
+      const idx = _listIds.indexOf(_detailCurrentId);
+      if (idx > 0) openDetail(_listIds[idx - 1]);
+    });
+    document.getElementById('pv-detail-next')?.addEventListener('click', () => {
+      const idx = _listIds.indexOf(_detailCurrentId);
+      if (idx >= 0 && idx < _listIds.length - 1) openDetail(_listIds[idx + 1]);
+    });
 
     if (IS_ADMIN) {
       wireImport();
@@ -6138,7 +6161,7 @@
       }
 
       // Event delegation on the article list container
-      const tbody = document.getElementById('pv-list');
+      const tbody = document.getElementById('pv-results-tbody');
       if (tbody) {
         tbody.addEventListener('mouseover', (e) => {
           const img = e.target.closest('.pv-thumb');
