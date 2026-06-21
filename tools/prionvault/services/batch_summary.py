@@ -315,11 +315,13 @@ def _run_batch_inner(*, viewer_user_id=None,
                        SET summary_ai           = :summary,
                            summary_ai_notes     = NULL,
                            summary_ai_provider  = :prov,
+                           summary_ai_model     = :model,
                            summary_tokens_in    = :tin,
                            summary_tokens_out   = :tout,
                            updated_at           = NOW()
                        WHERE id = :aid"""
                 ), {"summary": result.text, "aid": article_id, "prov": provider,
+                    "model": result.model,
                     "tin": int(result.tokens_in or 0), "tout": int(result.tokens_out or 0)})
         except Exception as exc:
             logger.exception("batch_summary: persisting summary for %s failed", article_id)

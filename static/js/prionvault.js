@@ -5543,7 +5543,10 @@
                  </button>` : ''}
          </div>`
       : '';
-    block.innerHTML = header + body + notesHtml +
+    const modelLine = (a.summary_ai && a.summary_ai_model)
+      ? `<div style="margin-top:4px;font-size:11px;color:#9ca3af;">Modelo: ${esc(a.summary_ai_model)}</div>`
+      : '';
+    block.innerHTML = header + body + notesHtml + modelLine +
       `<div id="pv-ai-status" style="margin-top:6px;font-size:11.5px;color:#9ca3af;"></div>`;
 
     if (!IS_ADMIN) return;
@@ -5625,6 +5628,7 @@
         });
         a.summary_ai          = r.summary_ai;
         a.summary_ai_provider = r.summary_ai_provider || null;
+        a.summary_ai_model    = r.model || null;
         a.summary_tokens_in   = r.summary_tokens_in  || null;
         a.summary_tokens_out  = r.summary_tokens_out || null;
         renderAiSummary(a);

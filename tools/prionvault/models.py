@@ -94,6 +94,8 @@ class PrionVaultArticle(Base):
     summary_ai_notes   = Column(Text)
     # Migration 040: which AI provider generated the summary
     summary_ai_provider = Column(String(20))
+    # Migration 043: exact model name used (e.g. claude-haiku-4-5-20251001)
+    summary_ai_model    = Column(String(60))
     # Migration 042: token counts for cost tracking
     summary_tokens_in  = Column(Integer)
     summary_tokens_out = Column(Integer)

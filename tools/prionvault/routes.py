@@ -710,6 +710,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
          "summary_ai", "summary_human", "source",
          "abstract_unavailable", "pdf_oa_status",
          "pdf_metadata_match_status", "summary_ai_provider",
+         "summary_ai_model",
          "summary_tokens_in", "summary_tokens_out"]
         if c in pv_cols
     )
@@ -899,6 +900,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
             "has_summary_ai":       bool(d.get("summary_ai")),
             "summary_ai_provider":  d.get("summary_ai_provider") if bool(d.get("summary_ai")) else None,
+            "summary_ai_model":     d.get("summary_ai_model") if bool(d.get("summary_ai")) else None,
             "summary_tokens_in":    int(d["summary_tokens_in"]) if d.get("summary_tokens_in") else None,
             "summary_tokens_out":   int(d["summary_tokens_out"]) if d.get("summary_tokens_out") else None,
             "has_summary_human": False,
@@ -984,7 +986,8 @@ def api_article_detail(aid):
             "abstract_unavailable", "pubmed_unavailable",
             "pdf_metadata_match_status", "pdf_metadata_match_score",
             "pdf_metadata_match_detail", "pdf_metadata_match_checked_at",
-            "summary_ai_provider", "summary_tokens_in", "summary_tokens_out",
+            "summary_ai_provider", "summary_ai_model",
+            "summary_tokens_in", "summary_tokens_out",
         ]
         pv_select = ", ".join(c for c in optional if c in pv_cols)
         select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -1057,6 +1060,7 @@ def api_article_detail(aid):
             "summary_human": d.get("summary_human"),
             "summary_ai_notes": d.get("summary_ai_notes"),
             "summary_ai_provider":  d.get("summary_ai_provider") if bool(d.get("summary_ai")) else None,
+            "summary_ai_model":     d.get("summary_ai_model") if bool(d.get("summary_ai")) else None,
             "summary_tokens_in":    int(d["summary_tokens_in"]) if d.get("summary_tokens_in") else None,
             "summary_tokens_out":   int(d["summary_tokens_out"]) if d.get("summary_tokens_out") else None,
             "has_summary_ai":    bool(d.get("summary_ai")),
@@ -4856,14 +4860,16 @@ def api_generate_summary(aid):
             s.execute(sql_text(
                 """UPDATE articles
                    SET summary_ai_provider = :prov,
+                       summary_ai_model    = :model,
                        summary_ai_notes    = NULL,
                        summary_tokens_in   = :tin,
                        summary_tokens_out  = :tout
                    WHERE id = CAST(:aid AS uuid)"""
-            ), {"prov": result.provider,
-                "tin":  result.tokens_in,
-                "tout": result.tokens_out,
-                "aid":  str(aid)})
+            ), {"prov":  result.provider,
+                "model": result.model,
+                "tin":   result.tokens_in,
+                "tout":  result.tokens_out,
+                "aid":   str(aid)})
         except Exception as exc:
             logger.warning("api_generate_summary: could not save provider/tokens: %s", exc)
 
