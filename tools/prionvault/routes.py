@@ -5008,6 +5008,20 @@ def api_batch_summary_stop():
     return jsonify({"ok": True, "status": batch_summary.stop_batch()})
 
 
+@prionvault_bp.route("/api/admin/batch-summary/reset", methods=["POST"])
+@admin_required
+def api_batch_summary_reset():
+    """Force-reset the batch state. Use when a run is stuck."""
+    from .services import batch_summary
+    from datetime import datetime
+    with batch_summary._lock:
+        batch_summary._state["running"]        = False
+        batch_summary._state["stop_requested"] = False
+        batch_summary._state["finished_at"]    = datetime.utcnow().isoformat()
+        batch_summary._state["last_error"]     = "Reset manual por administrador"
+    return jsonify({"ok": True, "status": batch_summary.get_status()})
+
+
 @prionvault_bp.route("/api/admin/ai-providers", methods=["GET"])
 @admin_required
 def api_ai_providers():

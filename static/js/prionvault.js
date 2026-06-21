@@ -8527,9 +8527,12 @@
       }
 
       if (s.last_error) {
-        errorEl.style.display = 'block';
-        errorEl.textContent = 'Último error: ' + s.last_error;
-      } else {
+        // Don't overwrite if we've injected reset-button HTML
+        if (!errorEl.querySelector('button')) {
+          errorEl.style.display = 'block';
+          errorEl.textContent = 'Último error: ' + s.last_error;
+        }
+      } else if (!errorEl.querySelector('button')) {
         errorEl.style.display = 'none';
       }
 
@@ -8563,6 +8566,27 @@
       } catch (e) {
         modal.querySelectorAll('.pv-bs-limit-btn').forEach(b => { b.disabled = false; });
         if (e.status === 409) {
+          // Show a reset button so the user can unblock a stuck run
+          errorEl.style.display = 'block';
+          errorEl.innerHTML = '';
+          const msg = document.createElement('span');
+          msg.textContent = 'Ya hay un proceso corriendo (o quedó bloqueado). ';
+          const resetBtn = document.createElement('button');
+          resetBtn.textContent = 'Forzar reset';
+          resetBtn.style.cssText = 'margin-left:8px;padding:2px 10px;cursor:pointer;';
+          resetBtn.addEventListener('click', async () => {
+            resetBtn.disabled = true;
+            try {
+              await api('/admin/batch-summary/reset', { method: 'POST' });
+              errorEl.style.display = 'none';
+              errorEl.innerHTML = '';
+              refresh();
+            } catch (re) {
+              msg.textContent = 'No se pudo resetear: ' + re.message;
+            }
+          });
+          errorEl.appendChild(msg);
+          errorEl.appendChild(resetBtn);
           refresh();
         } else {
           errorEl.style.display = 'block';
