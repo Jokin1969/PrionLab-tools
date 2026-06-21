@@ -928,11 +928,16 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
 
 
 _pv_columns_cache: set | None = None
+_pv_columns_cache_time: float = 0.0
+_PV_COLUMNS_TTL_S = 120.0   # re-introspect every 2 min so new columns are picked up after deploy
 
 def _get_pv_columns(s) -> set:
-    """Return the set of column names that exist in `articles`. Cached."""
-    global _pv_columns_cache
-    if _pv_columns_cache is not None:
+    """Return the set of column names that exist in `articles`.
+    Cached with a TTL so newly added columns (from migrations that ran after
+    the process started) are picked up within _PV_COLUMNS_TTL_S seconds."""
+    global _pv_columns_cache, _pv_columns_cache_time
+    import time as _time
+    if _pv_columns_cache is not None and (_time.monotonic() - _pv_columns_cache_time) < _PV_COLUMNS_TTL_S:
         return _pv_columns_cache
     try:
         rows = s.execute(sql_text(
@@ -940,9 +945,11 @@ def _get_pv_columns(s) -> set:
             "WHERE table_name = 'articles'"
         )).all()
         _pv_columns_cache = {r[0] for r in rows}
+        _pv_columns_cache_time = _time.monotonic()
     except Exception as exc:
         logger.warning("Could not introspect articles columns: %s", exc)
         _pv_columns_cache = set()
+        _pv_columns_cache_time = _time.monotonic()
     return _pv_columns_cache
 
 
@@ -998,6 +1005,23 @@ def api_article_detail(aid):
             return jsonify({"error": "not found"}), 404
 
         d = dict(zip(row._fields, row))
+
+        # Fetch summary-related columns directly, bypassing the pv_cols cache.
+        # These columns may have been added after the cache was populated, so
+        # they could be absent from pv_select even though they exist in the DB.
+        # Each column is fetched individually so a missing column causes only
+        # that key to be skipped, not the whole request.
+        for _col in ("summary_ai_notes", "summary_ai_provider",
+                     "summary_tokens_in", "summary_tokens_out"):
+            if _col not in d:
+                try:
+                    _r = s.execute(
+                        sql_text(f"SELECT {_col} FROM articles WHERE id = :aid"),
+                        {"aid": str(aid)},
+                    ).first()
+                    d[_col] = _r[0] if _r else None
+                except Exception:
+                    d.setdefault(_col, None)
         role = _viewer_role()
         is_admin = (role == "admin")
 

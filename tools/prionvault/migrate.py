@@ -289,6 +289,7 @@ def _run_migrations_inline() -> dict:
     try:
         from . import routes as _routes
         _routes._pv_columns_cache = None
+        _routes._pv_columns_cache_time = 0.0
     except Exception:
         pass
     return summary
