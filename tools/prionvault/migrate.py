@@ -74,6 +74,7 @@ _PRIONVAULT_MIGRATIONS = (
     "038_per_user_tags.sql",
     "039_articles_summary_ai_notes.sql",
     "040_articles_summary_ai_provider.sql",
+    "041_backfill_summary_ai_provider.sql",
 )
 
 _BOOTSTRAP_SQL = """
