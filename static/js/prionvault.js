@@ -4410,7 +4410,7 @@
       const tin  = a.summary_tokens_in;
       const tout = a.summary_tokens_out;
       countEl.textContent = (tin != null || tout != null)
-        ? `${(tin || 0).toLocaleString('es-ES')} ent / ${(tout || 0).toLocaleString('es-ES')} sal tk`
+        ? `${(tin || 0).toLocaleString('es-ES')} in / ${(tout || 0).toLocaleString('es-ES')} out tk`
         : '';
     }
 
