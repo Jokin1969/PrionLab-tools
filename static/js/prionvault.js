@@ -8478,10 +8478,28 @@
         const effective   = selectionN > 0 ? selectionN : eligible;
         const btnsDisabled = effective === 0 || !provReady;
         if (limitBtnsEl) {
-          limitBtnsEl.querySelectorAll('.pv-bs-limit-btn').forEach(b => {
-            b.disabled = btnsDisabled;
-            b.style.opacity = btnsDisabled ? '0.5' : '1';
-          });
+          if (selectionN > 0) {
+            // Replace limit buttons with a single "N seleccionados" button
+            if (!limitBtnsEl.querySelector('.pv-bs-sel-btn')) {
+              limitBtnsEl.querySelectorAll('.pv-bs-limit-btn').forEach(b => b.style.display = 'none');
+              const selBtn = document.createElement('button');
+              selBtn.className = 'pv-bs-limit-btn pv-bs-sel-btn';
+              selBtn.dataset.limit = '';
+              selBtn.textContent = `${selectionN} seleccionado${selectionN === 1 ? '' : 's'}`;
+              selBtn.style.cssText = 'padding:8px 16px;border-radius:8px;border:none;background:#0F3460;' +
+                'color:white;font-size:13px;font-weight:700;cursor:pointer;';
+              limitBtnsEl.appendChild(selBtn);
+              selBtn.disabled = btnsDisabled;
+            }
+          } else {
+            // Restore normal buttons and remove selection button if present
+            limitBtnsEl.querySelectorAll('.pv-bs-sel-btn').forEach(b => b.remove());
+            limitBtnsEl.querySelectorAll('.pv-bs-limit-btn').forEach(b => {
+              b.style.display = '';
+              b.disabled = btnsDisabled;
+              b.style.opacity = btnsDisabled ? '0.5' : '1';
+            });
+          }
         }
         if (startLabelEl) {
           if (!provReady) {
