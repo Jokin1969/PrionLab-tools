@@ -2554,6 +2554,20 @@
       a.pdf_is_scan
         ? '<span title="El PDF era una imagen escaneada; el texto se ha recuperado con OCR." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;">📸 OCR</span>'
         : '',
+      (IS_ADMIN && a.pdf_verify_status === 'mismatch')
+        ? `<button type="button" class="pv-verify-chip" data-aid="${esc(a.id)}" data-status="mismatch"
+                   title="La IA detectó una discrepancia entre los metadatos del artículo y el contenido del PDF"
+                   style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;border:none;cursor:pointer;">✗ Mismatch</button>`
+        : '',
+      (IS_ADMIN && a.pdf_verify_status === 'suspect')
+        ? `<button type="button" class="pv-verify-chip" data-aid="${esc(a.id)}" data-status="suspect"
+                   title="La IA tiene dudas sobre si el PDF corresponde a este artículo"
+                   style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;border:none;cursor:pointer;">⚠ Sospechoso</button>`
+        : '',
+      (IS_ADMIN && (a.pdf_verify_status === 'ok' || a.pdf_verify_status === 'manual_ok'))
+        ? `<span title="${a.pdf_verify_status === 'manual_ok' ? 'Verificado manualmente como OK' : 'Verificado por IA: PDF coincide con los metadatos'}"
+                  style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#d1fae5;color:#065f46;">✓ Match OK</span>`
+        : '',
       // PubMed-inventory provenance + OA status. The same row can
       // carry both badges: provenance is set at import, OA state is
       // updated by the auto-fetcher once it tries.
@@ -2879,6 +2893,15 @@
       if (indexedChip) indexedChip.addEventListener('click', (e) => {
         e.stopPropagation();
         openChunksInspector(a.id, a.title);
+      });
+
+      const verifyChip = row.querySelector('.pv-verify-chip');
+      if (verifyChip) verifyChip.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        // Open the edit modal focused on this article — the verify block
+        // inside the edit modal lets the user mark OK or recheck in-place.
+        const fresh = await api(`/articles/${a.id}`);
+        openEditModal(fresh);
       });
 
       const editBtn = row.querySelector('.pv-edit-row-btn');
@@ -11899,7 +11922,13 @@
       ])}
       ${(d.with_summary_notes > 0) ? section('⚠ Calidad de resúmenes', [
         card('Con errores/notas', d.with_summary_notes, true, {has_summary_notes:'true'}, 'bad'),
-      ]) : ''}`;
+      ]) : ''}
+      ${section('🔍 Verificación PDF ↔ metadatos', [
+        card('Mismatches',              d.verify_mismatch, true, {pdf_verify_status:'mismatch'},    'bad'),
+        card('Sospechosos',             d.verify_suspect,  true, {pdf_verify_status:'suspect'},     'warn'),
+        card('Match OK',                d.verify_ok,       true, {pdf_verify_status:'ok_any'},      'good'),
+        card('Sin verificar (con PDF)', d.verify_pending,  true, {pdf_verify_status:'unverified'},  ''),
+      ])}`;
 
     // Wire up click handler for health filters
     window._pvHealthFilter = function(params) {
@@ -11924,7 +11953,8 @@
       // and patch buildListParams temporarily
       const extra = {};
       for (const k of ['has_pdf','has_doi','has_pmid','pdf_is_scan','pdf_searchable',
-                        'source','needs_indexing','has_summary_ai','has_summary_notes']) {
+                        'source','needs_indexing','has_summary_ai','has_summary_notes',
+                        'pdf_verify_status']) {
         if (params[k] !== undefined) extra[k] = params[k];
       }
       state._healthExtra = Object.keys(extra).length ? extra : null;

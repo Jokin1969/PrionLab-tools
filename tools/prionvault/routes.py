@@ -174,6 +174,7 @@ def api_list_articles():
     has_summary_ai = True if has_summary_ai_raw == "true" else (False if has_summary_ai_raw == "false" else None)
     has_summary_notes_raw = request.args.get("has_summary_notes")
     has_summary_notes = True if has_summary_notes_raw == "true" else None
+    pdf_verify_status = (request.args.get("pdf_verify_status") or "").strip() or None
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
@@ -240,6 +241,7 @@ def api_list_articles():
             needs_indexing=needs_indexing,
             has_summary_ai=has_summary_ai,
             has_summary_notes=has_summary_notes,
+            pdf_verify_status=pdf_verify_status,
         )
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
@@ -390,7 +392,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         has_pdf=None, has_doi=None, has_pmid=None,
                         pdf_source_filter=None, pdf_searchable_filter=None,
                         pdf_is_scan_filter=None, needs_indexing=None,
-                        has_summary_ai=None, has_summary_notes=None):
+                        has_summary_ai=None, has_summary_notes=None,
+                        pdf_verify_status=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
 
@@ -610,6 +613,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     if has_summary_notes is True and "summary_ai_notes" in pv_cols:
         conditions.append("summary_ai_notes IS NOT NULL AND summary_ai_notes <> ''")
 
+    if pdf_verify_status and "pdf_metadata_match_status" in pv_cols:
+        if pdf_verify_status == "ok_any":
+            conditions.append("pdf_metadata_match_status IN ('ok', 'manual_ok')")
+        elif pdf_verify_status == "unverified":
+            conditions.append("pdf_metadata_match_status IS NULL")
+        else:
+            conditions.append("pdf_metadata_match_status = :pdf_verify_status")
+            params["pdf_verify_status"] = pdf_verify_status
+
     _viewer_uid = _viewer_id()
     # NOTE: params["_viewer_uid"] is set unconditionally further down
     # (the _pus LEFT JOIN needs it on EVERY query). This block only
@@ -687,7 +699,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         ["pdf_md5", "pdf_pages", "pdf_is_scan",
          "extraction_status", "indexed_at",
          "summary_ai", "summary_human", "source",
-         "abstract_unavailable", "pdf_oa_status"]
+         "abstract_unavailable", "pdf_oa_status",
+         "pdf_metadata_match_status"]
         if c in pv_cols
     )
     select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -887,8 +900,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "prionpacks":     [{"id": p, "title": pp_titles.get(p, p)} for p in pp_ids],
         }
         if is_admin:
-            out["pdf_md5"]          = d.get("pdf_md5")
-            out["pdf_dropbox_path"] = d.get("dropbox_path")
+            out["pdf_md5"]               = d.get("pdf_md5")
+            out["pdf_dropbox_path"]      = d.get("dropbox_path")
+            out["pdf_verify_status"]     = d.get("pdf_metadata_match_status")
         return out
 
     import uuid as _uuid
@@ -1247,7 +1261,19 @@ def api_article_health():
                     "COUNT(*) FILTER (WHERE pdf_pages IS NULL AND dropbox_path IS NOT NULL)")} AS missing_page_count,
               {_col("summary_ai_notes",
                     "COUNT(*) FILTER (WHERE summary_ai_notes IS NOT NULL AND summary_ai_notes <> '')",
-                    "0")}                                                           AS with_summary_notes
+                    "0")}                                                           AS with_summary_notes,
+              {_col("pdf_metadata_match_status",
+                    "COUNT(*) FILTER (WHERE pdf_metadata_match_status = 'mismatch')",
+                    "0")}                                                           AS verify_mismatch,
+              {_col("pdf_metadata_match_status",
+                    "COUNT(*) FILTER (WHERE pdf_metadata_match_status = 'suspect')",
+                    "0")}                                                           AS verify_suspect,
+              {_col("pdf_metadata_match_status",
+                    "COUNT(*) FILTER (WHERE pdf_metadata_match_status IN ('ok','manual_ok'))",
+                    "0")}                                                           AS verify_ok,
+              {_col("pdf_metadata_match_status",
+                    "COUNT(*) FILTER (WHERE pdf_metadata_match_status IS NULL AND dropbox_path IS NOT NULL)",
+                    "0")}                                                           AS verify_pending
             FROM articles
         """
         query_params = {}
@@ -1266,6 +1292,7 @@ def api_article_health():
             "from_inventory", "from_manual",
             "with_page_count", "missing_page_count",
             "with_summary_notes",
+            "verify_mismatch", "verify_suspect", "verify_ok", "verify_pending",
         ]
         result = {k: int(row[i]) if row and row[i] is not None else 0
                   for i, k in enumerate(keys)}
