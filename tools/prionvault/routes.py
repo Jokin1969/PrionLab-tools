@@ -1326,7 +1326,25 @@ def api_article_health():
                     "0")}                                                           AS summary_by_gemini,
               {_col("summary_ai_provider",
                     "COUNT(*) FILTER (WHERE summary_ai IS NOT NULL AND summary_ai <> '' AND (summary_ai_provider IS NULL OR summary_ai_provider = ''))",
-                    "0")}                                                           AS summary_by_unknown
+                    "0")}                                                           AS summary_by_unknown,
+              {_col("summary_tokens_in",
+                    "COALESCE(SUM(summary_tokens_in)  FILTER (WHERE summary_ai_provider = 'anthropic'), 0)",
+                    "0")}                                                           AS tokens_claude_in,
+              {_col("summary_tokens_out",
+                    "COALESCE(SUM(summary_tokens_out) FILTER (WHERE summary_ai_provider = 'anthropic'), 0)",
+                    "0")}                                                           AS tokens_claude_out,
+              {_col("summary_tokens_in",
+                    "COALESCE(SUM(summary_tokens_in)  FILTER (WHERE summary_ai_provider = 'openai'), 0)",
+                    "0")}                                                           AS tokens_gpt_in,
+              {_col("summary_tokens_out",
+                    "COALESCE(SUM(summary_tokens_out) FILTER (WHERE summary_ai_provider = 'openai'), 0)",
+                    "0")}                                                           AS tokens_gpt_out,
+              {_col("summary_tokens_in",
+                    "COALESCE(SUM(summary_tokens_in)  FILTER (WHERE summary_ai_provider = 'gemini'), 0)",
+                    "0")}                                                           AS tokens_gemini_in,
+              {_col("summary_tokens_out",
+                    "COALESCE(SUM(summary_tokens_out) FILTER (WHERE summary_ai_provider = 'gemini'), 0)",
+                    "0")}                                                           AS tokens_gemini_out
             FROM articles
         """
         query_params = {}
@@ -1347,6 +1365,9 @@ def api_article_health():
             "with_summary_notes",
             "verify_mismatch", "verify_suspect", "verify_ok", "verify_pending",
             "summary_by_claude", "summary_by_gpt", "summary_by_gemini", "summary_by_unknown",
+            "tokens_claude_in", "tokens_claude_out",
+            "tokens_gpt_in", "tokens_gpt_out",
+            "tokens_gemini_in", "tokens_gemini_out",
         ]
         result = {k: int(row[i]) if row and row[i] is not None else 0
                   for i, k in enumerate(keys)}

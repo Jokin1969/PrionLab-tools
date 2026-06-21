@@ -5518,14 +5518,40 @@
 
     const notesHtml = a.summary_ai_notes
       ? `<div style="margin-top:6px;font-size:12px;color:#b91c1c;background:#fef2f2;
-                     border:1px solid #fecaca;border-radius:7px;padding:8px 10px;">
-           ⚠ <strong>Notas resumen:</strong> ${esc(a.summary_ai_notes)}
+                     border:1px solid #fecaca;border-radius:7px;padding:8px 10px;
+                     display:flex;align-items:flex-start;gap:8px;">
+           <span style="flex:1;">⚠ <strong>Notas resumen:</strong> ${esc(a.summary_ai_notes)}</span>
+           ${IS_ADMIN ? `<button id="pv-detail-clear-notes"
+                   style="flex-shrink:0;padding:2px 8px;border-radius:5px;border:1px solid #fecaca;
+                          background:white;color:#b91c1c;font-size:11px;cursor:pointer;white-space:nowrap;">
+                   ✕ Limpiar
+                 </button>` : ''}
          </div>`
       : '';
     block.innerHTML = header + body + notesHtml +
       `<div id="pv-ai-status" style="margin-top:6px;font-size:11.5px;color:#9ca3af;"></div>`;
 
     if (!IS_ADMIN) return;
+
+    // "Limpiar error" button inside the notes warning box
+    const clearNotesBtn = document.getElementById('pv-detail-clear-notes');
+    if (clearNotesBtn) {
+      clearNotesBtn.addEventListener('click', async () => {
+        clearNotesBtn.disabled = true;
+        clearNotesBtn.textContent = '⏳';
+        try {
+          await api(`/articles/${a.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ summary_ai_notes: null }),
+          });
+          a.summary_ai_notes = null;
+          renderAiSummary(a);
+        } catch (err) {
+          clearNotesBtn.disabled = false;
+          clearNotesBtn.textContent = '✕ Limpiar';
+        }
+      });
+    }
 
     const genBtn   = document.getElementById('pv-ai-generate');
     const clearBtn = document.getElementById('pv-ai-clear');
@@ -12108,11 +12134,42 @@
       openai:    { bg:'#dcfce7', color:'#15803d', border:'#bbf7d0' },
       gemini:    { bg:'#dbeafe', color:'#1d4ed8', border:'#bfdbfe' },
     };
+    // Pricing per 1M tokens (input / output) in USD
+    const provPricing = {
+      anthropic: { in: 3.0,  out: 15.0  },
+      openai:    { in: 2.0,  out: 8.0   },
+      gemini:    { in: 1.25, out: 10.0  },
+    };
+    const provTokenKeys = {
+      anthropic: ['tokens_claude_in',  'tokens_claude_out'],
+      openai:    ['tokens_gpt_in',     'tokens_gpt_out'],
+      gemini:    ['tokens_gemini_in',  'tokens_gemini_out'],
+    };
     function provCard(prov, count, filterVal) {
       const c = provColors[prov] || { bg:'#f3f4f6', color:'#374151', border:'#e5e7eb' };
       const lbl = provLabels[prov] || prov;
       const fp = JSON.stringify({ summary_ai_provider: filterVal });
       const pctStr = `<span style="font-size:11px;color:#9ca3af;"> ${pct(count)}</span>`;
+
+      let tokenLine = '';
+      const tk = provTokenKeys[prov];
+      const pr = provPricing[prov];
+      if (tk && pr) {
+        const tin  = d[tk[0]] || 0;
+        const tout = d[tk[1]] || 0;
+        if (tin || tout) {
+          const total = tin + tout;
+          const cost  = (tin * pr.in + tout * pr.out) / 1_000_000;
+          const fmtTk = total >= 1_000_000
+            ? (total / 1_000_000).toFixed(2) + 'M tk'
+            : total >= 1000
+              ? (total / 1000).toFixed(1) + 'k tk'
+              : total + ' tk';
+          tokenLine = `<span style="font-size:10.5px;color:${c.color};opacity:0.75;margin-top:1px;">
+            ${fmtTk} · $${cost.toFixed(3)}</span>`;
+        }
+      }
+
       return `<div onclick='window._pvHealthFilter(${fp})'
                onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'"
                onmouseleave="this.style.boxShadow='none';this.style.transform=''"
@@ -12121,6 +12178,7 @@
                       display:flex;flex-direction:column;gap:3px;">
         <span style="font-size:21px;font-weight:700;color:${c.color};line-height:1.1;">${(count??0).toLocaleString()}${pctStr}</span>
         <span style="font-size:11.5px;color:${c.color};font-weight:600;">${lbl}</span>
+        ${tokenLine}
       </div>`;
     }
 
