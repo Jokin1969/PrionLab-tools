@@ -697,7 +697,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # are per-user marks since migration 037. The legacy columns on
     # `articles` are kept for one more release cycle as a rollback
     # safety net but no longer participate in the API contract.
-    base_cols = ("articles.id, title, authors, year, journal, doi, pubmed_id, abstract, "
+    base_cols = ("articles.id, title, authors, year, journal, doi, pubmed_id, "
                  "tags, dropbox_path, dropbox_link, articles.created_at, articles.updated_at, "
                  "COALESCE(_pus.is_milestone, FALSE) AS is_milestone, "
                  "COALESCE(_pus.is_flagged,   FALSE) AS is_flagged, "
@@ -707,14 +707,27 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         c for c in
         ["pdf_md5", "pdf_pages", "pdf_is_scan",
          "extraction_status", "indexed_at",
-         "summary_ai", "summary_human", "source",
+         # summary_ai / summary_human / abstract intentionally excluded from the
+         # list query — they are large TEXT fields only needed in the detail
+         # view (fetched by GET /api/articles/<id>). The list only needs the
+         # boolean flags below.
+         "source",
          "abstract_unavailable", "pdf_oa_status",
          "pdf_metadata_match_status", "summary_ai_provider",
          "summary_ai_model",
          "summary_tokens_in", "summary_tokens_out"]
         if c in pv_cols
     )
-    select_cols = base_cols + (f", {pv_select}" if pv_select else "")
+    # has_summary_* are computed booleans — cheaper than transferring full text.
+    has_flags = ", ".join(
+        f"(({c}) IS NOT NULL AND ({c}) <> '') AS has_{c}"
+        for c in ["summary_ai", "summary_human", "abstract"]
+        if c in pv_cols
+    )
+    if has_flags:
+        select_cols = base_cols + (f", {pv_select}" if pv_select else "") + f", {has_flags}"
+    else:
+        select_cols = base_cols + (f", {pv_select}" if pv_select else "")
 
     # The per-user state JOIN is attached unconditionally so every
     # row carries the viewer's marks (or NULL defaults if they have
@@ -777,16 +790,16 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
 
     from_clause = " ".join(join_parts)
 
-    count_sql = sql_text(f"SELECT COUNT(*) {from_clause} {where}")
-    total = s.execute(count_sql, params).scalar() or 0
-
+    # Single query: window COUNT(*) avoids a second round-trip to the DB.
     offset = (page - 1) * page_size
     params["limit"] = page_size
     params["offset"] = offset
     list_sql = sql_text(
-        f"SELECT {select_cols} {from_clause} {where} ORDER BY {order} LIMIT :limit OFFSET :offset"
+        f"SELECT {select_cols}, COUNT(*) OVER() AS _total_count "
+        f"{from_clause} {where} ORDER BY {order} LIMIT :limit OFFSET :offset"
     )
     rows = s.execute(list_sql, params).all()
+    total = int(rows[0]._mapping["_total_count"]) if rows else 0
     col_names = list(rows[0]._fields) if rows else []
 
     # ── PrionRead counts (separate session) ─────────────────────────────────
@@ -888,7 +901,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "color_label":   d.get("color_label"),
             "pdf_pages":     d.get("pdf_pages"),
             "pdf_is_scan":   bool(d.get("pdf_is_scan")),
-            "has_abstract":  bool((d.get("abstract") or "").strip()),
+            "has_abstract":  bool(d.get("has_abstract")),
             "abstract_unavailable": bool(d.get("abstract_unavailable")),
             "has_pdf":       bool(d.get("dropbox_path")),
             "source":        d.get("source"),
@@ -898,12 +911,12 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "extraction_status": d.get("extraction_status") or "pending",
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
-            "has_summary_ai":       bool(d.get("summary_ai")),
-            "summary_ai_provider":  d.get("summary_ai_provider") if bool(d.get("summary_ai")) else None,
-            "summary_ai_model":     d.get("summary_ai_model") if bool(d.get("summary_ai")) else None,
+            "has_summary_ai":       bool(d.get("has_summary_ai")),
+            "summary_ai_provider":  d.get("summary_ai_provider") if d.get("has_summary_ai") else None,
+            "summary_ai_model":     d.get("summary_ai_model")    if d.get("has_summary_ai") else None,
             "summary_tokens_in":    int(d["summary_tokens_in"]) if d.get("summary_tokens_in") else None,
             "summary_tokens_out":   int(d["summary_tokens_out"]) if d.get("summary_tokens_out") else None,
-            "has_summary_human": False,
+            "has_summary_human": bool(d.get("has_summary_human")),
             "in_prionread":  in_pr,
             "prionread_count": prionread_counts.get(aid, 0),
             "avg_rating":     (rating_aggs.get(aid) or {}).get("avg"),
