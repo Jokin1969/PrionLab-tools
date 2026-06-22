@@ -1173,6 +1173,21 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
   </div>
 </div>
 
+<!-- Similar articles modal -->
+<div id="pp-similar-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-similar-modal-title">
+  <div class="pp-modal-backdrop" id="pp-similar-backdrop"></div>
+  <div class="pp-similar-modal-card">
+    <div class="pp-similar-modal-header">
+      <span class="pp-similar-modal-title" id="pp-similar-modal-title">Artículos recomendados</span>
+      <button id="pp-similar-modal-close" class="pp-btn-icon" aria-label="Cerrar"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="pp-similar-modal-subtitle" id="pp-similar-modal-subtitle"></div>
+    <div class="pp-similar-modal-body" id="pp-similar-modal-list">
+      <div class="pp-similar-loading"><i class="fas fa-spinner fa-spin"></i> Buscando artículos similares…</div>
+    </div>
+  </div>
+</div>
+
 <script src="{{ asset_url('js/prionpacks-storage.js') }}"></script>
 <script src="{{ asset_url('js/prionpacks-api.js') }}"></script>
 <script src="{{ asset_url('js/prionpacks.js') }}"></script>

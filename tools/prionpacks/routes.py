@@ -139,6 +139,31 @@ def _resolve_refs_for_pack(pkg: dict) -> dict:
     return out
 
 
+def _resolve_refs_rich(pkg: dict) -> dict:
+    """Return a copy of the pack with refs resolved as enriched objects.
+
+    Each ref becomes:
+      - linked ref  → {"text": "<resolved text>", "article_id": "<uuid>"}
+      - plain string → {"text": "<plain string>", "article_id": null}
+
+    Used by the frontend editor so it can show the lightbulb button on
+    linked refs and open the similar-articles modal.
+    """
+    import copy
+    def _enrich(ref):
+        if models._is_linked_ref(ref):
+            text = _resolve_ref(ref)
+            return {"text": text, "article_id": str(ref['article_id'])}
+        text = str(ref) if ref else ''
+        return {"text": text, "article_id": None}
+
+    out = copy.deepcopy(pkg)
+    for field in ('references', 'introReferences'):
+        raw = out.get(field) or []
+        out[field] = [_enrich(r) for r in raw]
+    return out
+
+
 @prionpacks_bp.route('/api/packages/<pkg_id>/import-article', methods=['POST'])
 @login_required
 def api_import_article(pkg_id):
@@ -381,11 +406,15 @@ def api_create():
 @prionpacks_bp.route('/api/packages/<pkg_id>', methods=['GET'])
 @login_required
 def api_get(pkg_id):
-    """Return a single pack with all linked refs resolved to display strings."""
+    """Return a single pack with refs resolved as enriched objects.
+
+    Each reference is returned as {"text": "...", "article_id": "<uuid>|null"}
+    so the frontend can render the lightbulb button for linked refs.
+    """
     pkg = models.get_package(pkg_id)
     if not pkg:
         return jsonify({'error': 'not found'}), 404
-    return jsonify(_resolve_refs_for_pack(pkg))
+    return jsonify(_resolve_refs_rich(pkg))
 
 
 @prionpacks_bp.route('/api/packages/<pkg_id>', methods=['PUT'])

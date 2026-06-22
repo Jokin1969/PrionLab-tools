@@ -3857,3 +3857,106 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   box-shadow: 0 0 0 3px rgba(0,0,0,.3);
   transform: scale(1.1);
 }
+
+/* ── Similar articles modal ──────────────────────────────────────────────── */
+.pp-similar-modal-card {
+  background: var(--pp-card, #fff);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  max-width: 680px;
+  width: 96%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1001;
+}
+.pp-similar-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem 0.5rem;
+  border-bottom: 1px solid var(--pp-border, #e5e7eb);
+}
+.pp-similar-modal-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.pp-similar-modal-subtitle {
+  padding: 0.4rem 1.25rem;
+  font-size: 0.82rem;
+  color: var(--pp-text-muted, #6b7280);
+}
+.pp-similar-modal-body {
+  padding: 0.75rem 1.25rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+}
+.pp-similar-loading {
+  padding: 2rem;
+  text-align: center;
+  color: var(--pp-text-muted, #6b7280);
+}
+.pp-similar-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border: 1px solid var(--pp-border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.6rem;
+  background: var(--pp-bg, #fafafa);
+}
+.pp-similar-card.pp-similar-in-pack {
+  border-left: 3px solid #10b981;
+  background: #f0fdf4;
+}
+.pp-similar-similarity {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--pp-text-muted, #6b7280);
+  min-width: 3rem;
+  text-align: center;
+  padding-top: 0.1rem;
+}
+.pp-similar-meta {
+  flex: 1;
+  min-width: 0;
+}
+.pp-similar-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+.pp-similar-authors {
+  font-size: 0.8rem;
+  color: var(--pp-text-muted, #6b7280);
+  margin-top: 0.2rem;
+}
+.pp-similar-ids {
+  font-size: 0.78rem;
+  color: var(--pp-text-muted, #6b7280);
+  margin-top: 0.15rem;
+}
+.pp-similar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-end;
+  min-width: 6rem;
+}
+.pp-similar-badge-inpack {
+  font-size: 0.75rem;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 9999px;
+  padding: 0.2rem 0.6rem;
+  white-space: nowrap;
+}
+.pp-btn-sm {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+.btn-similar-articles {
+  color: var(--pp-accent, #f59e0b);
+}
