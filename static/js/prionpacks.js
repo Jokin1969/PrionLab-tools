@@ -141,6 +141,7 @@ const PrionPacks = (() => {
           _renderReferencesList(resolved.references || []);
           _renderIntroReferencesList(resolved.introReferences || []);
           _updateCollapseIndicators();
+          _refreshSharedDois();
           _refreshVaultMap(resolved);
         }
       } catch (e) {
