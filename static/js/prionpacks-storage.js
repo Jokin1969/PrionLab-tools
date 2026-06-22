@@ -28,6 +28,10 @@ const PPStorage = (() => {
     return all.find(p => p.id === id) || null;
   }
 
+  async function getById(id) {
+    return _req('GET', '/' + id);
+  }
+
   async function create(data) {
     return _req('POST', '', data);
   }
@@ -48,5 +52,5 @@ const PPStorage = (() => {
     localStorage.setItem(API_KEY_KEY, key.trim());
   }
 
-  return { loadAll, get, create, update, remove, getApiKey, saveApiKey };
+  return { loadAll, get, getById, create, update, remove, getApiKey, saveApiKey };
 })();

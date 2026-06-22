@@ -3,7 +3,7 @@ from datetime import datetime
 
 from flask import Response, jsonify, render_template, request
 
-from core.decorators import login_required
+from core.decorators import login_required, admin_required
 from . import prionpacks_bp
 from . import models
 from . import members as members_module
@@ -139,6 +139,31 @@ def _resolve_refs_for_pack(pkg: dict) -> dict:
     return out
 
 
+def _resolve_refs_rich(pkg: dict) -> dict:
+    """Return a copy of the pack with refs resolved as enriched objects.
+
+    Each ref becomes:
+      - linked ref  → {"text": "<resolved text>", "article_id": "<uuid>"}
+      - plain string → {"text": "<plain string>", "article_id": null}
+
+    Used by the frontend editor so it can show the lightbulb button on
+    linked refs and open the similar-articles modal.
+    """
+    import copy
+    def _enrich(ref):
+        if models._is_linked_ref(ref):
+            text = _resolve_ref(ref)
+            return {"text": text, "article_id": str(ref['article_id'])}
+        text = str(ref) if ref else ''
+        return {"text": text, "article_id": None}
+
+    out = copy.deepcopy(pkg)
+    for field in ('references', 'introReferences'):
+        raw = out.get(field) or []
+        out[field] = [_enrich(r) for r in raw]
+    return out
+
+
 @prionpacks_bp.route('/api/packages/<pkg_id>/import-article', methods=['POST'])
 @login_required
 def api_import_article(pkg_id):
@@ -233,7 +258,6 @@ def api_import_articles(pkg_id):
     new ones too. Returns per-target counts of additions / skips and
     a not_found count for articles that couldn't be resolved.
     """
-    import re as _re
     data = request.get_json(force=True, silent=True) or {}
     article_ids = data.get('article_ids') or []
     raw_targets = data.get('targets') or []
@@ -253,41 +277,52 @@ def api_import_articles(pkg_id):
     intro_list = list(pkg.get('introReferences') or [])
     gen_list   = list(pkg.get('references') or [])
 
-    _doi_re = _re.compile(r'10\.\d{4,}/\S+', _re.IGNORECASE)
-    def _dois_in_list(lst):
-        out = set()
+    def _existing_keys(lst):
+        """Return (set_of_doi_strings, set_of_linked_article_ids) for a ref list."""
+        dois, linked_ids = set(), set()
         for ref in lst:
-            for m in _doi_re.findall(ref or ''):
-                out.add(m.strip().lower().rstrip('.,;:)'))
-        return out
-    intro_dois = _dois_in_list(intro_list) if 'intro' in targets else set()
-    gen_dois   = _dois_in_list(gen_list)   if 'general' in targets else set()
+            if models._is_linked_ref(ref):
+                linked_ids.add(str(ref['article_id']))
+            else:
+                for m in models._RE_DOI.findall(ref or ''):
+                    dois.add(m.strip().lower().rstrip('.,;:)'))
+        return dois, linked_ids
+
+    intro_dois, intro_ids = _existing_keys(intro_list) if 'intro' in targets else (set(), set())
+    gen_dois,   gen_ids   = _existing_keys(gen_list)   if 'general' in targets else (set(), set())
 
     added   = {'intro': 0, 'general': 0}
     skipped = {'intro': 0, 'general': 0}
     not_found = 0
 
     for aid in article_ids:
-        article = _fetch_prionvault_article(str(aid))
+        aid_str = str(aid)
+        article = _fetch_prionvault_article(aid_str)
         if not article:
             not_found += 1
             continue
-        ref_text = _format_article_reference(article)
+        new_ref = {
+            "type":       "linked",
+            "article_id": str(article['id']),
+            "added_at":   datetime.utcnow().isoformat(),
+        }
         doi = (article.get('doi') or '').strip().lower()
         for tgt in targets:
             if tgt == 'intro':
-                if doi and doi in intro_dois:
+                if str(article['id']) in intro_ids or (doi and doi in intro_dois):
                     skipped['intro'] += 1
                     continue
-                intro_list.append(ref_text)
+                intro_list.append(new_ref)
+                intro_ids.add(str(article['id']))
                 if doi:
                     intro_dois.add(doi)
                 added['intro'] += 1
             else:
-                if doi and doi in gen_dois:
+                if str(article['id']) in gen_ids or (doi and doi in gen_dois):
                     skipped['general'] += 1
                     continue
-                gen_list.append(ref_text)
+                gen_list.append(new_ref)
+                gen_ids.add(str(article['id']))
                 if doi:
                     gen_dois.add(doi)
                 added['general'] += 1
@@ -371,11 +406,15 @@ def api_create():
 @prionpacks_bp.route('/api/packages/<pkg_id>', methods=['GET'])
 @login_required
 def api_get(pkg_id):
-    """Return a single pack with all linked refs resolved to display strings."""
+    """Return a single pack with refs resolved as enriched objects.
+
+    Each reference is returned as {"text": "...", "article_id": "<uuid>|null"}
+    so the frontend can render the lightbulb button for linked refs.
+    """
     pkg = models.get_package(pkg_id)
     if not pkg:
         return jsonify({'error': 'not found'}), 404
-    return jsonify(_resolve_refs_for_pack(pkg))
+    return jsonify(_resolve_refs_rich(pkg))
 
 
 @prionpacks_bp.route('/api/packages/<pkg_id>', methods=['PUT'])
@@ -670,14 +709,13 @@ def api_members_delete(member_id):
 
 
 @prionpacks_bp.route('/api/admin/migrate-refs', methods=['POST'])
-@login_required
+@admin_required
 def api_migrate_refs():
     """Scan free-text references in all packs (or one pack) and convert
     those that match a PrionVault article by DOI/PMID to linked refs.
 
     Body (optional): {"pkg_id": "PRP-001"}  — limit to one pack.
     """
-    from core.decorators import admin_required as _ar
     data = request.get_json(force=True, silent=True) or {}
     pkg_id = (data.get('pkg_id') or '').strip() or None
     result = models.migrate_free_refs_to_linked(pkg_id)

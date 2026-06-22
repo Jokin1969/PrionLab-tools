@@ -116,21 +116,34 @@ const PrionPacks = (() => {
     showView('dashboard');
   }
 
-  function showEditor(id) {
+  async function showEditor(id) {
     state.currentId = id;
-    const pkg = id ? _packages.find(p => p.id === id) : null;
-    _populateEditor(pkg);
+    // Use the cached pack immediately for instant render, then fetch the
+    // resolved version (linked refs → display strings, fresh summary_ai)
+    // and re-populate if anything changed.
+    const cached = id ? _packages.find(p => p.id === id) : null;
+    _populateEditor(cached);
     showView('editor');
     _highlightSidebarItem(id);
-    // Ask PrionVault which of this pack's reference DOIs are in the
-    // library so we can decorate each reference with a "🗄 PrionVault"
-    // chip linking to the article. Fire-and-forget — the chips appear
-    // a moment after the editor renders.
-    _refreshVaultMap(pkg);
-    // Reset scroll so the first card is fully visible below the sticky toolbar
+    _refreshVaultMap(cached);
     const main = document.querySelector('.pp-main');
     if (main) main.scrollTop = 0;
     window.scrollTo({ top: 0, behavior: 'instant' });
+
+    if (id) {
+      try {
+        const resolved = await PPStorage.getById(id);
+        // Only re-populate if we're still viewing the same pack
+        if (state.currentId === id) {
+          const idx = _packages.findIndex(p => p.id === id);
+          if (idx >= 0) _packages[idx] = resolved;
+          _populateEditor(resolved);
+          _refreshVaultMap(resolved);
+        }
+      } catch (e) {
+        // Non-fatal: cached version already shown
+      }
+    }
   }
 
   /* ── Dashboard ─────────────────────────────────────────────────────────── */
@@ -676,8 +689,7 @@ const PrionPacks = (() => {
       badge.textContent = `v${version} enviada`;
       badge.style.display = '';
     }
-    const pkg = PPStorage.get(state.currentId);
-    if (pkg) PPStorage.update(state.currentId, { docxVersion: version });
+    if (state.currentId) PPStorage.update(state.currentId, { docxVersion: version });
   }
 
   function _populateEditor(pkg) {
@@ -783,9 +795,10 @@ const PrionPacks = (() => {
 
     // References — multi-field. Backward compat: legacy single-string value
     // is wrapped into a 1-element array so it still loads cleanly.
+    // Each element may be a plain string OR an enriched {text, article_id} object.
     const rawRefs = pkg?.references;
     let refs = [];
-    if (Array.isArray(rawRefs)) refs = rawRefs.filter(r => r && String(r).trim());
+    if (Array.isArray(rawRefs)) refs = rawRefs.filter(r => r && (typeof r === 'object' ? (r.text || '').trim() : String(r).trim()));
     else if (typeof rawRefs === 'string' && rawRefs.trim()) refs = [rawRefs.trim()];
     _renderReferencesList(refs);
     const refsVisible = refs.length > 0;
@@ -795,7 +808,7 @@ const PrionPacks = (() => {
     // Introduction References (Ri-XX)
     const rawIntroRefs = pkg?.introReferences;
     let introRefs = [];
-    if (Array.isArray(rawIntroRefs)) introRefs = rawIntroRefs.filter(r => r && String(r).trim());
+    if (Array.isArray(rawIntroRefs)) introRefs = rawIntroRefs.filter(r => r && (typeof r === 'object' ? (r.text || '').trim() : String(r).trim()));
     else if (typeof rawIntroRefs === 'string' && rawIntroRefs.trim()) introRefs = [rawIntroRefs.trim()];
     _renderIntroReferencesList(introRefs);
     _refreshMigrateBtns();
@@ -999,11 +1012,17 @@ const PrionPacks = (() => {
     _refreshAllJumpButtons();
   }
 
-  function _createReferenceItem(text, idx) {
+  function _createReferenceItem(ref, idx) {
+    const text       = (typeof ref === 'string') ? ref : (ref?.text || '');
+    const article_id = (typeof ref === 'object' && ref !== null) ? (ref.article_id || null) : null;
     const id      = `field-reference-${idx}`;
     const chipsId = `reference-doi-chips-${idx}`;
     const div = document.createElement('div');
     div.className = 'pp-reference-item';
+    if (article_id) div.dataset.articleId = article_id;
+    const lightbulbBtn = article_id
+      ? `<button type="button" class="pp-btn-icon btn-similar-articles" data-article-id="${article_id}" title="Artículos recomendados (similares en PrionVault)"><i class="fas fa-lightbulb"></i></button>`
+      : '';
     div.innerHTML = `
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
@@ -1012,6 +1031,7 @@ const PrionPacks = (() => {
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Referencia ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
+        ${lightbulbBtn}
         <button type="button" class="pp-btn-icon btn-remove" title="Eliminar referencia"><i class="fas fa-trash"></i></button>
       </div>
       <div class="pp-reference-body">
@@ -1023,6 +1043,16 @@ const PrionPacks = (() => {
     const headerDoi = div.querySelector('.pp-reference-header-doi');
     const preview   = div.querySelector('.pp-reference-preview');
     ta.value = text || '';
+    if (article_id) {
+      const simBtn = div.querySelector('.btn-similar-articles');
+      if (simBtn) {
+        simBtn.addEventListener('click', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          _openSimilarModal(article_id, 'general');
+        });
+      }
+    }
     const refreshPreview = () => {
       const first = (ta.value || '').split('\n').find(l => l.trim()) || '';
       const clipped = first.length > 90 ? first.slice(0, 90) + '…' : first;
@@ -1173,7 +1203,7 @@ const PrionPacks = (() => {
       .map(ta => ta.value.trim()).filter(Boolean);
     if (!refs.length) { toast('No hay referencias para analizar.', 'error'); return; }
 
-    const pkg      = state.currentId ? PPStorage.get(state.currentId) : null;
+    const pkg      = state.currentId ? _packages.find(p => p.id === state.currentId) : null;
     const pkgTitle = pkg?.title || document.getElementById('title-display')?.textContent?.trim() || 'este manuscrito';
     const refsText = refs.map((r, i) => `[R-${String(i + 1).padStart(2, '0')}] ${r}`).join('\n\n---\n\n');
 
@@ -1241,8 +1271,15 @@ ${refsText}`;
   }
 
   function _collectReferences() {
-    return Array.from(document.querySelectorAll('#references-list .pp-reference-textarea'))
-      .map(t => (t.value || '').trim())
+    return Array.from(document.querySelectorAll('#references-list .pp-reference-item'))
+      .map(item => {
+        const ta = item.querySelector('.pp-reference-textarea');
+        const text = (ta?.value || '').trim();
+        if (!text) return null;
+        const aid = item.dataset.articleId;
+        if (aid) return { type: 'linked', article_id: aid };
+        return text;
+      })
       .filter(Boolean);
   }
 
@@ -1265,11 +1302,17 @@ ${refsText}`;
     _refreshAllJumpButtons();
   }
 
-  function _createIntroReferenceItem(text, idx) {
+  function _createIntroReferenceItem(ref, idx) {
+    const text       = (typeof ref === 'string') ? ref : (ref?.text || '');
+    const article_id = (typeof ref === 'object' && ref !== null) ? (ref.article_id || null) : null;
     const id      = `field-intro-reference-${idx}`;
     const chipsId = `intro-reference-doi-chips-${idx}`;
     const div = document.createElement('div');
     div.className = 'pp-reference-item pp-intro-reference-item';
+    if (article_id) div.dataset.articleId = article_id;
+    const lightbulbBtn = article_id
+      ? `<button type="button" class="pp-btn-icon btn-similar-articles" data-article-id="${article_id}" title="Artículos recomendados (similares en PrionVault)"><i class="fas fa-lightbulb"></i></button>`
+      : '';
     div.innerHTML = `
       <div class="pp-reference-header">
         <button type="button" class="pp-collapse-btn pp-collapse-btn--inline" title="Collapse / expand reference"></button>
@@ -1278,6 +1321,7 @@ ${refsText}`;
         <span class="pp-reference-preview"></span>
         <span class="pp-reference-header-doi"></span>
         <button type="button" class="pp-ai-btn" data-field-id="${id}" data-ai-label="Ref. Intro ${idx + 1}" title="Incluir como contexto para Claude">AI</button>
+        ${lightbulbBtn}
         <button type="button" class="pp-btn-icon btn-remove" title="Eliminar referencia"><i class="fas fa-trash"></i></button>
       </div>
       <div class="pp-reference-body">
@@ -1289,6 +1333,16 @@ ${refsText}`;
     const headerDoi = div.querySelector('.pp-reference-header-doi');
     const preview   = div.querySelector('.pp-reference-preview');
     ta.value = text || '';
+    if (article_id) {
+      const simBtn = div.querySelector('.btn-similar-articles');
+      if (simBtn) {
+        simBtn.addEventListener('click', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          _openSimilarModal(article_id, 'intro');
+        });
+      }
+    }
     const refreshPreview = () => {
       const first = (ta.value || '').split('\n').find(l => l.trim()) || '';
       const clipped = first.length > 90 ? first.slice(0, 90) + '…' : first;
@@ -1460,8 +1514,15 @@ ${refsText}`;
   }
 
   function _collectIntroReferences() {
-    return Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
-      .map(t => (t.value || '').trim())
+    return Array.from(document.querySelectorAll('#intro-references-list .pp-reference-item'))
+      .map(item => {
+        const ta = item.querySelector('.pp-intro-reference-textarea');
+        const text = (ta?.value || '').trim();
+        if (!text) return null;
+        const aid = item.dataset.articleId;
+        if (aid) return { type: 'linked', article_id: aid };
+        return text;
+      })
       .filter(Boolean);
   }
 
@@ -1473,6 +1534,10 @@ ${refsText}`;
     return String(s ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  function _escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function _wirePrionVaultPicker() {
@@ -1656,6 +1721,104 @@ ${refsText}`;
     }
     _refreshAllJumpButtons?.();
     _scheduleAutosave?.();
+  }
+
+  // ── Similar articles modal ────────────────────────────────────────────────
+
+  async function _openSimilarModal(articleId, defaultTarget) {
+    const modal    = document.getElementById('pp-similar-modal');
+    const list     = document.getElementById('pp-similar-modal-list');
+    const subtitle = document.getElementById('pp-similar-modal-subtitle');
+
+    // Show modal with spinner
+    list.innerHTML = '<div class="pp-similar-loading"><i class="fas fa-spinner fa-spin"></i> Buscando artículos similares…</div>';
+    subtitle.textContent = '';
+    modal.style.display = '';
+
+    // Close button
+    document.getElementById('pp-similar-modal-close').onclick = () => { modal.style.display = 'none'; };
+    document.getElementById('pp-similar-backdrop').onclick    = () => { modal.style.display = 'none'; };
+
+    try {
+      const resp = await fetch(`/prionvault/api/articles/${articleId}/similar?limit=15`);
+      if (!resp.ok) throw new Error('Error fetching similar articles');
+      const data  = await resp.json();
+      const items = data.items || [];
+      subtitle.textContent = `${items.length} artículo(s) similares encontrados`;
+
+      // Collect existing article_ids in pack
+      const inPackIds = new Set();
+      document.querySelectorAll('#references-list .pp-reference-item[data-article-id]').forEach(el => inPackIds.add(el.dataset.articleId));
+      document.querySelectorAll('#intro-references-list .pp-reference-item[data-article-id]').forEach(el => inPackIds.add(el.dataset.articleId));
+
+      if (items.length === 0) {
+        list.innerHTML = '<p style="padding:1rem;color:var(--muted)">No se encontraron artículos similares.</p>';
+        return;
+      }
+
+      list.innerHTML = '';
+      items.forEach(item => {
+        const inPack = inPackIds.has(item.id);
+        const pct    = item.similarity != null ? Math.round(item.similarity * 100) + '%' : '';
+        const card   = document.createElement('div');
+        card.className = 'pp-similar-card' + (inPack ? ' pp-similar-in-pack' : '');
+        card.dataset.aid = item.id;
+
+        const ids = [item.doi ? `DOI: ${item.doi}` : null, item.pubmed_id ? `PMID: ${item.pubmed_id}` : null].filter(Boolean).join('  ');
+
+        card.innerHTML = `
+          <div class="pp-similar-similarity">${pct}</div>
+          <div class="pp-similar-meta">
+            <div class="pp-similar-title">${_escHtml(item.title || '')}</div>
+            <div class="pp-similar-authors">${_escHtml([item.authors, item.year, item.journal].filter(Boolean).join(' · '))}</div>
+            ${ids ? `<div class="pp-similar-ids">${_escHtml(ids)}</div>` : ''}
+          </div>
+          <div class="pp-similar-actions">
+            ${inPack
+              ? '<span class="pp-similar-badge-inpack">Ya en el pack</span>'
+              : `<button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${item.id}" data-target="general">+ General</button>
+                 <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${item.id}" data-target="intro">+ Intro</button>`
+            }
+          </div>`;
+        list.appendChild(card);
+      });
+
+      // Wire add buttons
+      list.querySelectorAll('.pp-btn-add-similar').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const aid    = btn.dataset.aid;
+          const target = btn.dataset.target;
+          btn.disabled = true;
+          try {
+            const r = await fetch(`/prionpacks/api/packages/${state.currentId}/import-article`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ article_id: aid, targets: [target] })
+            });
+            if (!r.ok) throw new Error('Failed to add article');
+            // Re-fetch pack and re-populate refs
+            const pkgResp = await fetch(`/prionpacks/api/packages/${state.currentId}`);
+            if (pkgResp.ok) {
+              const pkg = await pkgResp.json();
+              _renderReferencesList(pkg.references || []);
+              _renderIntroReferencesList(pkg.introReferences || []);
+            }
+            // Update card to show "Ya en el pack"
+            const card = list.querySelector(`.pp-similar-card[data-aid="${aid}"]`);
+            if (card) {
+              card.classList.add('pp-similar-in-pack');
+              card.querySelector('.pp-similar-actions').innerHTML = '<span class="pp-similar-badge-inpack">Ya en el pack</span>';
+            }
+            inPackIds.add(aid);
+          } catch(err) {
+            btn.disabled = false;
+            alert('Error al añadir el artículo: ' + err.message);
+          }
+        });
+      });
+    } catch (err) {
+      list.innerHTML = `<p style="padding:1rem;color:var(--danger)">Error: ${err.message}</p>`;
+    }
   }
 
   function _syncIntroReferenceDois() {
