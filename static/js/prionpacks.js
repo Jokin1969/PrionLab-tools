@@ -1436,9 +1436,11 @@ ${refsText}`;
   }
 
   function _refreshSharedDois() {
+    // Extract one entry per (textarea, doi) pair — deduplicate within each textarea
+    // so a DOI mentioned twice in one reference text doesn't count as a duplicate.
     const extract = selector =>
       Array.from(document.querySelectorAll(selector))
-        .flatMap(ta => (ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || []));
+        .flatMap(ta => [...new Set(ta.value.match(new RegExp(_DOI_RE.source, _DOI_RE.flags)) || [])]);
 
     const genDois   = extract('#references-list .pp-reference-textarea');
     const introDois = extract('#intro-references-list .pp-intro-reference-textarea');
