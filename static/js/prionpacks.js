@@ -116,21 +116,34 @@ const PrionPacks = (() => {
     showView('dashboard');
   }
 
-  function showEditor(id) {
+  async function showEditor(id) {
     state.currentId = id;
-    const pkg = id ? _packages.find(p => p.id === id) : null;
-    _populateEditor(pkg);
+    // Use the cached pack immediately for instant render, then fetch the
+    // resolved version (linked refs → display strings, fresh summary_ai)
+    // and re-populate if anything changed.
+    const cached = id ? _packages.find(p => p.id === id) : null;
+    _populateEditor(cached);
     showView('editor');
     _highlightSidebarItem(id);
-    // Ask PrionVault which of this pack's reference DOIs are in the
-    // library so we can decorate each reference with a "🗄 PrionVault"
-    // chip linking to the article. Fire-and-forget — the chips appear
-    // a moment after the editor renders.
-    _refreshVaultMap(pkg);
-    // Reset scroll so the first card is fully visible below the sticky toolbar
+    _refreshVaultMap(cached);
     const main = document.querySelector('.pp-main');
     if (main) main.scrollTop = 0;
     window.scrollTo({ top: 0, behavior: 'instant' });
+
+    if (id) {
+      try {
+        const resolved = await PPStorage.getById(id);
+        // Only re-populate if we're still viewing the same pack
+        if (state.currentId === id) {
+          const idx = _packages.findIndex(p => p.id === id);
+          if (idx >= 0) _packages[idx] = resolved;
+          _populateEditor(resolved);
+          _refreshVaultMap(resolved);
+        }
+      } catch (e) {
+        // Non-fatal: cached version already shown
+      }
+    }
   }
 
   /* ── Dashboard ─────────────────────────────────────────────────────────── */
