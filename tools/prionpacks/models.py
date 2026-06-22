@@ -239,6 +239,7 @@ def create_package(data: dict) -> dict:
         'funding': (data.get('funding') or ''),
         'conflictsOfInterest': (data.get('conflictsOfInterest') or ''),
         'references': _normalise_references(data.get('references')),
+        'introReferences': _normalise_references(data.get('introReferences')),
         'credit': (data.get('credit') or ''),
         'investigations': data.get('investigations', {'text': '', 'files': []}),
         'findings': data.get('findings', []),

@@ -689,8 +689,7 @@ const PrionPacks = (() => {
       badge.textContent = `v${version} enviada`;
       badge.style.display = '';
     }
-    const pkg = PPStorage.get(state.currentId);
-    if (pkg) PPStorage.update(state.currentId, { docxVersion: version });
+    if (state.currentId) PPStorage.update(state.currentId, { docxVersion: version });
   }
 
   function _populateEditor(pkg) {
@@ -1186,7 +1185,7 @@ const PrionPacks = (() => {
       .map(ta => ta.value.trim()).filter(Boolean);
     if (!refs.length) { toast('No hay referencias para analizar.', 'error'); return; }
 
-    const pkg      = state.currentId ? PPStorage.get(state.currentId) : null;
+    const pkg      = state.currentId ? _packages.find(p => p.id === state.currentId) : null;
     const pkgTitle = pkg?.title || document.getElementById('title-display')?.textContent?.trim() || 'este manuscrito';
     const refsText = refs.map((r, i) => `[R-${String(i + 1).padStart(2, '0')}] ${r}`).join('\n\n---\n\n');
 
