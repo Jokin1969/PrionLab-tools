@@ -140,6 +140,7 @@ const PrionPacks = (() => {
           // editor (findings, gaps, fields…) which causes a visible flash.
           _renderReferencesList(resolved.references || []);
           _renderIntroReferencesList(resolved.introReferences || []);
+          _updateCollapseIndicators();
           _refreshVaultMap(resolved);
         }
       } catch (e) {
@@ -2483,6 +2484,10 @@ ${refsText}`;
     }
     for (const list of card.querySelectorAll('.pp-findings-list, .pp-dynamic-list, .pp-inv-files-list')) {
       if (list.children.length > 0) return true;
+    }
+    // Reference / method / gap item lists
+    for (const list of card.querySelectorAll('.pp-references-list, .pp-methods-list, .pp-gaps-list')) {
+      if (list.querySelectorAll('.pp-reference-item, .pp-method-item, .pp-gap-item').length > 0) return true;
     }
     return false;
   }

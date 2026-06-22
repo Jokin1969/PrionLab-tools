@@ -4013,11 +4013,13 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   background: #fff;
 }
 /* clickable DOI/PMID */
-.pp-similar-id-link {
-  color: var(--pp-accent, #f59e0b);
+.pp-similar-ids a.pp-similar-id-link,
+a.pp-similar-id-link {
+  color: var(--pp-accent, #f59e0b) !important;
   text-decoration: none;
 }
-.pp-similar-id-link:hover {
+.pp-similar-ids a.pp-similar-id-link:hover,
+a.pp-similar-id-link:hover {
   text-decoration: underline;
 }
 .pp-similar-id-sep {
