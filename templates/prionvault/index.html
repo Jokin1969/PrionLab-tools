@@ -1919,14 +1919,50 @@
       <i class="fas fa-magnifying-glass-chart" style="color:#0F3460;margin-right:8px;"></i>Inventario PubMed
     </h2>
     <p style="color:#6b7280;font-size:12.5px;margin-bottom:12px;">
-      Query fija: <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:11.5px;">prion[Title/Abstract] OR prions[MeSH Major Topic]</code>.
       Lo que veas aquí son PMIDs que <strong>aún no tienes</strong> en PrionVault.
-      Pulsa <strong>Refrescar PubMed</strong> para volver a escanear (auto cada 7 días).
+      Elige una búsqueda y pulsa <strong>Ejecutar búsqueda</strong> para escanear PubMed (auto cada 7 días).
     </p>
+
+    <!-- Preset selector + refresh button -->
+    <div class="pv-pinv-refresh-section" style="margin-bottom:12px;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <label style="font-size:13px;font-weight:600;color:#374151;">Búsqueda a ejecutar:</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;" id="pv-pinv-preset-radios">
+          <label class="pv-pinv-preset-label" style="font-size:12.5px;cursor:pointer;">
+            <input type="radio" name="pv-pinv-preset" value="all" checked> Todas
+          </label>
+          <label class="pv-pinv-preset-label" style="font-size:12.5px;cursor:pointer;">
+            <input type="radio" name="pv-pinv-preset" value="prion"> Prion
+          </label>
+          <label class="pv-pinv-preset-label" style="font-size:12.5px;cursor:pointer;">
+            <input type="radio" name="pv-pinv-preset" value="prion_like"> Prion-like
+          </label>
+          <label class="pv-pinv-preset-label" style="font-size:12.5px;cursor:pointer;">
+            <input type="radio" name="pv-pinv-preset" value="aav"> AAV
+          </label>
+          <label class="pv-pinv-preset-label" style="font-size:12.5px;cursor:pointer;">
+            <input type="radio" name="pv-pinv-preset" value="custom"> Personalizada
+          </label>
+        </div>
+        <textarea id="pv-pinv-custom-query" rows="2"
+                  placeholder='Ej: "tau protein"[Title/Abstract] OR taupathy[Title/Abstract]'
+                  style="display:none;width:100%;border:1px solid #d1d5db;border-radius:6px;
+                         padding:6px 10px;font-size:12px;font-family:monospace;resize:vertical;
+                         box-sizing:border-box;"></textarea>
+        <button id="pv-pinv-refresh-pubmed" type="button"
+                title="Ejecuta la búsqueda seleccionada contra PubMed. El daemon ya lo hace cada 7 días."
+                style="align-self:flex-start;padding:6px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;cursor:pointer;">
+          <i class="fas fa-sync-alt"></i> Ejecutar búsqueda
+        </button>
+      </div>
+    </div>
 
     <!-- Counters (now 6 columns to fit the new "kept" / Esta sí card) -->
     <div id="pv-pinv-stats"
-         style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:8px;"></div>
+         style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:4px;"></div>
+
+    <!-- Per-preset pending counts -->
+    <div id="pv-pinv-per-preset" style="margin-top:4px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;"></div>
 
     <!-- OA-fetcher live strip (visible while it's working OR there's
          pending OA fetch work). Updates from the same /stats poll. -->
@@ -1946,11 +1982,6 @@
         <input type="checkbox" id="pv-pinv-only-oa" style="margin:0;">
         Solo con PDF OA
       </label>
-      <button id="pv-pinv-refresh-pubmed" type="button"
-              title="Vuelve a escanear PubMed. El daemon ya lo hace cada 7 días."
-              style="padding:6px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;cursor:pointer;">
-        Refrescar PubMed
-      </button>
       <button id="pv-pinv-force-oa" type="button"
               title="Despierta al fetcher de PDFs OA para que procese la cola pendiente ahora mismo. Pulsa "Ver detalle" abajo para inspeccionar el log."
               style="padding:6px 12px;border-radius:6px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;font-size:12.5px;cursor:pointer;">

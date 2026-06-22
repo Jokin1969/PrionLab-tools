@@ -56,11 +56,24 @@ from ..ingestion.queue import _get_engine
 logger = logging.getLogger(__name__)
 
 # ── Configuration ────────────────────────────────────────────────────────────
-# The umbrella query the operator settled on. We use a fixed query so
-# reruns are reproducible and the "X PMIDs catalogados" counter is
-# meaningful; if it ever needs to change, a follow-up migration can
-# trigger a full re-harvest by truncating the table.
-PUBMED_QUERY  = "prion[Title/Abstract] OR prions[MeSH Major Topic]"
+# Named preset queries. Each preset is harvested independently so per-preset
+# counts are meaningful and new presets don't disturb existing inventory rows.
+PRESET_QUERIES: dict[str, str] = {
+    "prion": (
+        'prion[Title/Abstract] OR prions[MeSH Major Topic] OR '
+        '"prion protein"[Title/Abstract] OR PrPSc[Title/Abstract]'
+    ),
+    "prion_like": (
+        '"prion-like"[Title/Abstract] OR prionoid[Title/Abstract] OR '
+        '"prion domain"[Title/Abstract]'
+    ),
+    "aav": (
+        'AAV[Title/Abstract] OR "adeno-associated virus"[Title/Abstract]'
+    ),
+}
+
+# Keep backward-compat alias used by legacy code / tests.
+PUBMED_QUERY = PRESET_QUERIES["prion"]
 
 # Lease key (same row pattern as auto-scan).
 LEASE_NAME    = "pubmed_inventory_harvest"
@@ -358,19 +371,25 @@ def _esummary_one_batch(pmids: list[str]) -> dict[str, dict]:
 
 # ── Upsert ───────────────────────────────────────────────────────────────────
 
-def _upsert_batch(meta_by_pmid: dict[str, dict]) -> tuple[int, int]:
-    """UPSERT a metadata batch. Returns (inserted, updated)."""
+def _upsert_batch(meta_by_pmid: dict[str, dict],
+                  query_name: str = "prion") -> tuple[int, int]:
+    """UPSERT a metadata batch. Returns (inserted, updated).
+
+    `query_name` is stored on INSERT; on conflict it is NOT overwritten
+    so the first preset that discovered a PMID retains ownership.
+    """
     if not meta_by_pmid:
         return 0, 0
     rows = [
         {
-            "pmid":    pmid,
-            "title":   (m.get("title") or "")[:2000] or None,
-            "authors": m.get("authors"),
-            "year":    m.get("year"),
-            "journal": (m.get("journal") or "")[:500] or None,
-            "doi":     m.get("doi"),
-            "pmcid":   m.get("pmcid"),
+            "pmid":       pmid,
+            "title":      (m.get("title") or "")[:2000] or None,
+            "authors":    m.get("authors"),
+            "year":       m.get("year"),
+            "journal":    (m.get("journal") or "")[:500] or None,
+            "doi":        m.get("doi"),
+            "pmcid":      m.get("pmcid"),
+            "query_name": query_name,
         }
         for pmid, m in meta_by_pmid.items()
     ]
@@ -384,9 +403,9 @@ def _upsert_batch(meta_by_pmid: dict[str, dict]) -> tuple[int, int]:
             res = conn.execute(sql_text("""
                 INSERT INTO prionvault_pubmed_inventory
                   (pmid, title, authors, year, journal, doi, pmcid,
-                   discovered_at, last_seen_at)
+                   query_name, discovered_at, last_seen_at)
                 VALUES (:pmid, :title, :authors, :year, :journal, :doi, :pmcid,
-                        NOW(), NOW())
+                        :query_name, NOW(), NOW())
                 ON CONFLICT (pmid) DO UPDATE
                   SET title        = COALESCE(EXCLUDED.title, prionvault_pubmed_inventory.title),
                       authors      = COALESCE(EXCLUDED.authors, prionvault_pubmed_inventory.authors),
@@ -505,8 +524,23 @@ def get_stats() -> dict:
             out["last_error"]      = last[2]
             out["last_runtime_ms"] = last[3]
             out["last_summary"]    = last[4]
+        # Per-preset pending counts.
+        try:
+            preset_rows = conn.execute(sql_text("""
+                SELECT query_name, COUNT(*) AS count
+                  FROM prionvault_pubmed_inventory
+                 WHERE imported_at IS NULL AND dismissed = FALSE
+                 GROUP BY query_name
+            """)).mappings().all()
+            out["per_preset"] = [
+                {"query_name": r["query_name"], "count": int(r["count"])}
+                for r in preset_rows
+            ]
+        except Exception:
+            out["per_preset"] = []
         out["progress"] = get_progress()
         out["query"]    = PUBMED_QUERY
+        out["presets"]  = list(PRESET_QUERIES.keys())
         return out
     except Exception as exc:
         logger.warning("pubmed_inventory: stats failed (%s)", exc)
@@ -581,8 +615,8 @@ def list_pending(*, q: Optional[str] = None,
         params["off"] = (page - 1) * size
         rows = conn.execute(sql_text(f"""
             SELECT pmid, title, authors, year, journal, doi, pmcid,
-                   discovered_at, last_seen_at, dismissed_at, imported_at,
-                   kept_at
+                   query_name, discovered_at, last_seen_at, dismissed_at,
+                   imported_at, kept_at
               FROM prionvault_pubmed_inventory
              WHERE {where}
              ORDER BY {order_by}
@@ -593,7 +627,7 @@ def list_pending(*, q: Optional[str] = None,
         # ISO strings for JSON. Postgres returns datetime, which Flask
         # will refuse to encode by default.
         for k in ("discovered_at", "last_seen_at", "dismissed_at",
-                  "imported_at", "kept_at"):
+                  "imported_at", "kept_at"):  # type: ignore[assignment]
             v = it.get(k)
             it[k] = v.isoformat() if hasattr(v, "isoformat") else v
         it["has_oa"] = bool(it.get("pmcid"))
@@ -813,10 +847,19 @@ def _create_article_from_meta(meta: dict, *, by_user: Optional[str]) -> str:
 
 # ── Harvest orchestration ────────────────────────────────────────────────────
 
-def harvest_once() -> dict:
-    """Run a single harvest pass. Returns summary {pmids_seen, inserted,
-    updated, reconciled, runtime_ms}. Safe to call from any thread; the
-    in-memory progress state is mutex-protected."""
+def harvest_once(query: Optional[str] = None,
+                 query_name: Optional[str] = None) -> dict:
+    """Run a single harvest pass for one query.
+
+    If called with no args, uses the default "prion" preset.
+    Returns summary {pmids_seen, inserted, updated, reconciled, runtime_ms}.
+    Safe to call from any thread; the in-memory progress state is mutex-protected.
+    """
+    if query is None:
+        query = PUBMED_QUERY
+    if query_name is None:
+        query_name = "prion"
+
     if _state["running"]:
         return {"skipped": "already_running", "progress": get_progress()}
     _set_state(running=True, started_at=datetime.now(timezone.utc).isoformat(),
@@ -828,7 +871,7 @@ def harvest_once() -> dict:
     error: Optional[str] = None
 
     try:
-        all_pmids = _esearch_all(PUBMED_QUERY)
+        all_pmids = _esearch_all(query)
         _set_state(stage="esummary", pmids_seen=len(all_pmids))
 
         # Batched esummary + UPSERT. Each batch upserts itself; we
@@ -836,7 +879,7 @@ def harvest_once() -> dict:
         for i in range(0, len(all_pmids), _ESUMMARY_BATCH):
             batch = all_pmids[i:i + _ESUMMARY_BATCH]
             meta = _esummary_one_batch(batch)
-            ins, upd = _upsert_batch(meta)
+            ins, upd = _upsert_batch(meta, query_name=query_name)
             inserted += ins
             updated  += upd
             with _lock:
@@ -859,12 +902,30 @@ def harvest_once() -> dict:
         "pmids_updated":   updated,
         "reconciled":      reconciled,
         "runtime_ms":      runtime_ms,
+        "query_name":      query_name,
     }
     _record_run(status=("ok" if error is None else "error"),
                 runtime_ms=runtime_ms, summary=summary, error=error)
     _set_state(running=False,
                finished_at=datetime.now(timezone.utc).isoformat())
     return summary
+
+
+def harvest(query: Optional[str] = None,
+            query_name: Optional[str] = None) -> dict:
+    """Convenience alias for harvest_once with explicit query/query_name."""
+    return harvest_once(query=query, query_name=query_name)
+
+
+def harvest_all() -> list[dict]:
+    """Run harvest_once() for every preset in PRESET_QUERIES in sequence.
+    Returns a list of per-preset summaries. Used by the daemon and the
+    refresh endpoint when preset='all'."""
+    summaries = []
+    for name, q in PRESET_QUERIES.items():
+        summary = harvest_once(query=q, query_name=name)
+        summaries.append(summary)
+    return summaries
 
 
 # ── Background daemon ────────────────────────────────────────────────────────
@@ -919,9 +980,9 @@ def _run_loop() -> None:
 
         if claimed:
             try:
-                harvest_once()
+                harvest_all()
             except Exception:
-                logger.exception("pubmed_inventory: harvest_once crashed")
+                logger.exception("pubmed_inventory: harvest_all crashed")
 
         # Sleep on _force so the modal's "Refrescar PubMed" button
         # wakes us immediately instead of waiting up to a full hour.

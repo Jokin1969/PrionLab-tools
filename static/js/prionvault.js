@@ -10356,6 +10356,18 @@
       if (tabKCnt) tabKCnt.textContent = `(${(s.kept ?? 0).toLocaleString()})`;
       if (tabDCnt) tabDCnt.textContent = `(${(s.dismissed ?? 0).toLocaleString()})`;
 
+      // Per-preset pending counts.
+      const perPreset = s.per_preset || [];
+      const perPresetEl = document.getElementById('pv-pinv-per-preset');
+      if (perPresetEl) {
+        const labels = { prion: 'Prion', prion_like: 'Prion-like', aav: 'AAV', custom: 'Personalizada' };
+        perPresetEl.innerHTML = perPreset.map(p =>
+          `<span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:500;">` +
+          `${esc(labels[p.query_name] || p.query_name)}: <strong>${p.count}</strong> pendientes` +
+          `</span>`
+        ).join('');
+      }
+
       // OA-fetcher live status under the cards. Compact one-liner so
       // it stays out of the way when the queue is drained.
       const oa = s.oa_fetcher || {};
@@ -10736,12 +10748,26 @@
       }
     }
 
+    // Show/hide custom query textarea when "Personalizada" radio is selected.
+    document.querySelectorAll('input[name="pv-pinv-preset"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const ta = document.getElementById('pv-pinv-custom-query');
+        if (ta) ta.style.display = radio.value === 'custom' ? '' : 'none';
+      });
+    });
+
     refrBtn.addEventListener('click', async () => {
       refrBtn.disabled = true;
-      const orig = refrBtn.textContent;
-      refrBtn.textContent = '⏳ Lanzando…';
+      const orig = refrBtn.innerHTML;
+      refrBtn.innerHTML = '⏳ Lanzando…';
+      const preset = document.querySelector('input[name="pv-pinv-preset"]:checked')?.value || 'all';
+      const customQuery = document.getElementById('pv-pinv-custom-query')?.value?.trim() || '';
       try {
-        await api('/admin/pubmed-inventory/refresh', { method: 'POST' });
+        await api('/admin/pubmed-inventory/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preset, custom_query: customQuery }),
+        });
         // The daemon polls hourly; we asked it to wake now. Stats poll
         // (every 4 s) will surface the progress strip within seconds.
         await reloadStats();
@@ -10749,7 +10775,7 @@
         alert('Error: ' + e.message);
       } finally {
         refrBtn.disabled = false;
-        refrBtn.textContent = orig;
+        refrBtn.innerHTML = orig;
       }
     });
 
@@ -11007,6 +11033,10 @@
            ⭐ Marcado
          </span>`
       : '';
+    const qLabel = { prion: '🔬 Prion', prion_like: '🧬 Prion-like', aav: '🧫 AAV', custom: '🔍 Custom' };
+    const qBadge = it.query_name
+      ? `<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 5px;border-radius:4px;">${esc(qLabel[it.query_name] || it.query_name)}</span>`
+      : '';
     const rowBg = it.kept ? '#fffbeb' : 'white';
     const leftBorder = it.kept ? 'border-left:3px solid #f59e0b;' : '';
     return `
@@ -11031,6 +11061,7 @@
               ${doiLink ? `<span>${doiLink}</span>` : ''}
               ${oaBadge}
               ${keptBadge}
+              ${qBadge}
             </div>
           </div>
           <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">

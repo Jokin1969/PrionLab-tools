@@ -6185,25 +6185,58 @@ def api_inventory_relink_orphans():
 @prionvault_bp.route("/api/admin/pubmed-inventory/refresh", methods=["POST"])
 @admin_required
 def api_pubmed_inventory_refresh():
-    """Run a harvest pass right now. We poke the daemon (in case it's
-    listening) AND spawn a fresh background thread that calls
-    harvest_once() directly — that way the button works even if the
-    daemon hasn't picked up its wake-on-force fix yet, or wasn't
-    started at all on this worker.
+    """Run a harvest pass right now. Accepts an optional JSON body:
+      {
+        "preset":       "all" | "<preset_name>" | "custom",   (default: "all")
+        "custom_query": "<pubmed query string>"               (only when preset="custom")
+      }
+    We poke the daemon (in case it's listening) AND spawn a fresh
+    background thread so the button works even if the daemon wasn't
+    started on this worker.
     """
     import threading
     from .services import pubmed_inventory
 
+    data         = request.get_json(silent=True) or {}
+    preset       = (data.get("preset") or "all").strip()
+    custom_query = (data.get("custom_query") or "").strip()
+
     pubmed_inventory.request_harvest_now()
+
     # Don't spin up a second harvester if one is already running
     # (harvest_once is reentrant-safe but we'd waste resources).
     if not pubmed_inventory.get_progress().get("running"):
+        if preset == "all":
+            target = pubmed_inventory.harvest_all
+            kwargs: dict = {}
+        elif preset == "custom" and custom_query:
+            target = pubmed_inventory.harvest_once
+            kwargs = {"query": custom_query, "query_name": "custom"}
+        elif preset in pubmed_inventory.PRESET_QUERIES:
+            target = pubmed_inventory.harvest_once
+            kwargs = {
+                "query":      pubmed_inventory.PRESET_QUERIES[preset],
+                "query_name": preset,
+            }
+        else:
+            # Unknown preset: fall back to running all presets.
+            target = pubmed_inventory.harvest_all
+            kwargs = {}
+
+        def _run():
+            target(**kwargs)
+
         threading.Thread(
-            target=pubmed_inventory.harvest_once,
+            target=_run,
             name="prionvault-harvest-on-demand",
             daemon=True,
         ).start()
-    return jsonify({"ok": True, "status": pubmed_inventory.get_progress()})
+
+    return jsonify({
+        "ok":    True,
+        "preset": preset,
+        "status": pubmed_inventory.get_progress(),
+    })
 
 
 @prionvault_bp.route("/api/admin/pubmed-inventory/dismiss", methods=["POST"])
