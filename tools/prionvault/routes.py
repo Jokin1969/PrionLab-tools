@@ -4054,6 +4054,135 @@ def api_article_pdf(aid):
     )
 
 
+@prionvault_bp.route("/api/articles/search-by-idea", methods=["POST"])
+@login_required
+def api_articles_search_by_idea():
+    """Semantic search for articles that support or contradict a given idea."""
+    data = request.get_json(silent=True) or {}
+    idea_text = (data.get("idea") or "").strip()
+    mode = (data.get("mode") or "support").strip().lower()
+    limit = int(data.get("limit") or 15)
+
+    if not idea_text:
+        return jsonify({"error": "idea is required"}), 400
+    if mode not in ("support", "contradict"):
+        return jsonify({"error": "mode must be 'support' or 'contradict'"}), 400
+    limit = max(1, min(50, limit))
+
+    # Generate embedding for the idea
+    try:
+        from .embeddings.embedder import embed_query, NotConfigured as VoyageNotConfigured
+        qvec = embed_query(idea_text)
+    except VoyageNotConfigured as exc:
+        return jsonify({"error": "embedder not configured", "detail": str(exc)[:200]}), 503
+    except Exception as exc:
+        logger.exception("search-by-idea: embed_query failed")
+        return jsonify({"error": "embedding failed", "detail": str(exc)[:200]}), 500
+
+    if not qvec:
+        return jsonify({"error": "empty embedding returned"}), 500
+
+    vec_str = "[" + ",".join(str(v) for v in qvec) + "]"
+    k = 30 if mode == "contradict" else limit
+
+    sql = sql_text("""
+        SELECT a.id, a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+               (a.dropbox_path IS NOT NULL) AS has_pdf,
+               a.summary_ai,
+               MIN(c.embedding <=> (:vec)::vector) AS distance
+        FROM article_chunk c
+        JOIN articles a ON a.id = c.article_id
+        WHERE c.embedding IS NOT NULL
+        GROUP BY a.id, a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+                 a.dropbox_path, a.summary_ai
+        ORDER BY distance ASC
+        LIMIT :k
+    """)
+
+    s = _session()
+    try:
+        rows = s.execute(sql, {"vec": vec_str, "k": k}).fetchall()
+    except Exception as exc:
+        logger.exception("search-by-idea: pgvector query failed")
+        return jsonify({"error": "database query failed", "detail": str(exc)[:200]}), 500
+    finally:
+        s.close()
+
+    candidates = [
+        {
+            "id":         str(r[0]),
+            "title":      r[1] or "",
+            "authors":    r[2] or "",
+            "year":       r[3],
+            "journal":    r[4] or "",
+            "doi":        r[5] or "",
+            "pubmed_id":  r[6] or "",
+            "has_pdf":    bool(r[7]),
+            "summary_ai": r[8] or "",
+            "similarity": round(1 - float(r[9]), 4) if r[9] is not None else None,
+        }
+        for r in rows
+    ]
+
+    if mode == "support":
+        items = candidates[:limit]
+        for it in items:
+            it.pop("summary_ai", None)
+        return jsonify({"items": items, "mode": "support"})
+
+    # contradict mode — ask Claude to pick articles that challenge/refute the idea
+    try:
+        from .services.llm_pool import call_llm_json_with_fallback
+    except ImportError as exc:
+        return jsonify({"error": "llm_pool unavailable", "detail": str(exc)[:200]}), 503
+
+    candidate_lines = "\n".join(
+        f"{c['id']} | {c['title']} | {c['summary_ai'][:400] if c['summary_ai'] else '(sin resumen)'}"
+        for c in candidates
+    )
+    system_prompt = (
+        "Eres un científico experto evaluando artículos científicos. "
+        "Tu tarea es identificar qué artículos contradicen, refutan o cuestionan "
+        "significativamente una idea dada.\n"
+        'Responde ÚNICAMENTE con JSON: {"contradicting": [{"id": "...", "reason": "..."}]}'
+    )
+    user_msg = (
+        f"Idea: {idea_text}\n\n"
+        f"Artículos candidatos (id | título | resumen):\n{candidate_lines}"
+    )
+    try:
+        parsed, _info = call_llm_json_with_fallback(
+            providers=["anthropic", "openai", "gemini"],
+            system=system_prompt,
+            user=user_msg,
+            max_tokens=1500,
+        )
+    except Exception as exc:
+        logger.warning("search-by-idea: contradict LLM call failed: %s", exc)
+        return jsonify({"error": "LLM call failed", "detail": str(exc)[:200]}), 502
+
+    contradicting_list = parsed.get("contradicting") or []
+    reason_by_id = {
+        item.get("id"): item.get("reason", "")
+        for item in contradicting_list
+        if isinstance(item, dict) and item.get("id")
+    }
+    cand_by_id = {c["id"]: c for c in candidates}
+
+    items = []
+    for cid, reason in reason_by_id.items():
+        c = cand_by_id.get(str(cid))
+        if not c:
+            continue
+        entry = {k: v for k, v in c.items() if k != "summary_ai"}
+        entry["reason"] = reason
+        items.append(entry)
+        if len(items) >= limit:
+            break
+
+    return jsonify({"items": items, "mode": "contradict"})
+
+
 _thumb_cache: OrderedDict = OrderedDict()   # aid → jpeg_bytes
 _thumb_cache_lock = threading.Lock()
 _THUMB_CACHE_MAX = 200                       # max entries (~5 MB at ~25 KB each)

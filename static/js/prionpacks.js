@@ -1732,6 +1732,109 @@ ${refsText}`;
 
   // ── Similar articles modal ────────────────────────────────────────────────
 
+  function _openIdeaSearchModal() {
+    const modal    = document.getElementById('pp-idea-search-modal');
+    const input    = document.getElementById('pp-idea-input');
+    const subtitle = document.getElementById('pp-idea-modal-subtitle');
+    const list     = document.getElementById('pp-idea-modal-list');
+
+    subtitle.textContent = '';
+    list.innerHTML = '';
+    modal.style.display = 'flex';
+    input.focus();
+
+    document.getElementById('pp-idea-modal-close').onclick = () => { modal.style.display = 'none'; };
+    document.getElementById('pp-idea-backdrop').onclick    = () => { modal.style.display = 'none'; };
+
+    const doSearch = async (mode) => {
+      const idea = (input.value || '').trim();
+      if (!idea) { input.focus(); return; }
+      list.innerHTML = '<div class="pp-similar-loading"><i class="fas fa-spinner fa-spin"></i> Buscando…</div>';
+      subtitle.textContent = '';
+      try {
+        const r = await fetch('/prionvault/api/articles/search-by-idea', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ idea, mode, limit: 15 }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        const items = data.items || [];
+        if (!items.length) {
+          list.innerHTML = '<div class="pp-similar-empty">No se encontraron artículos.</div>';
+          return;
+        }
+        subtitle.textContent = `${items.length} artículos ${mode === 'support' ? 'a favor' : 'en contra'} encontrados`;
+        list.innerHTML = '';
+        items.forEach(item => {
+          const pct = item.similarity != null ? Math.round(item.similarity * 100) + '%' : '';
+          const idsHtml = [
+            item.doi ? `<a class="pp-similar-id-link" href="https://doi.org/${_escHtml(item.doi)}" target="_blank" rel="noopener">DOI: ${_escHtml(item.doi)}</a>` : '',
+            item.pubmed_id ? `<a class="pp-similar-id-link" href="https://pubmed.ncbi.nlm.nih.gov/${_escHtml(item.pubmed_id)}/" target="_blank" rel="noopener">PMID: ${_escHtml(item.pubmed_id)}</a>` : '',
+          ].filter(Boolean).join('<span class="pp-similar-id-sep">·</span>');
+          const thumbHtml = item.has_pdf
+            ? `<a class="pp-similar-thumb-wrap" href="/prionvault/api/articles/${_escHtml(item.id)}/pdf" target="_blank" rel="noopener" title="Abrir PDF"><img class="pp-similar-thumb" src="/prionvault/api/articles/${_escHtml(item.id)}/thumbnail" loading="lazy" alt=""></a>`
+            : '<div class="pp-similar-thumb-placeholder"></div>';
+          const reasonHtml = item.reason ? `<div class="pp-idea-reason"><i class="fas fa-comment-alt"></i> ${_escHtml(item.reason)}</div>` : '';
+          const card = document.createElement('div');
+          card.className = 'pp-similar-card';
+          card.innerHTML = `
+            ${thumbHtml}
+            <div class="pp-similar-sim">${pct}</div>
+            <div class="pp-similar-meta">
+              <div class="pp-similar-title">${_escHtml(item.title || '')}</div>
+              <div class="pp-similar-authors">${_escHtml([item.authors, item.year, item.journal].filter(Boolean).join(' · '))}</div>
+              ${idsHtml ? `<div class="pp-similar-ids">${idsHtml}</div>` : ''}
+              ${reasonHtml}
+            </div>
+            <div class="pp-similar-actions">
+              <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
+              <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>
+            </div>`;
+          list.appendChild(card);
+        });
+        // Wire add buttons
+        list.querySelectorAll('.pp-btn-add-similar').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!state.currentId) return;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            const aid    = btn.dataset.aid;
+            const target = btn.dataset.target;
+            try {
+              const res = await fetch(`/prionpacks/api/packages/${encodeURIComponent(state.currentId)}/import-articles`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ article_ids: [aid], target }),
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              btn.innerHTML = '<i class="fas fa-check"></i> Añadido';
+              btn.classList.add('pp-btn-success');
+              const pkg = await PPStorage.getById(state.currentId);
+              _renderReferencesList(pkg.references || []);
+              _renderIntroReferencesList(pkg.introReferences || []);
+              _updateCollapseIndicators();
+              _refreshSharedDois();
+              _refreshVaultMap(pkg);
+            } catch (e) {
+              btn.disabled = false;
+              btn.innerHTML = '+ ' + (target === 'general' ? 'General' : 'Intro');
+              toast('Error al añadir: ' + e.message, 'error');
+            }
+          });
+        });
+        _wireSimilarThumbs(list);
+      } catch (e) {
+        list.innerHTML = `<div class="pp-similar-error">Error: ${_escHtml(e.message)}</div>`;
+      }
+    };
+
+    document.getElementById('pp-idea-btn-support').onclick   = () => doSearch('support');
+    document.getElementById('pp-idea-btn-contradict').onclick = () => doSearch('contradict');
+  }
+
   async function _openSimilarModal(articleId, sourceSection) {
     const modal    = document.getElementById('pp-similar-modal');
     const listEl   = document.getElementById('pp-similar-modal-list');
@@ -3934,6 +4037,8 @@ ${refsText}`;
     // PrionVault import pickers (intro + general)
     document.getElementById('btn-pv-import-intro')?.addEventListener('click', () => _openPrionVaultPicker('intro'));
     document.getElementById('btn-pv-import-general')?.addEventListener('click', () => _openPrionVaultPicker('general'));
+    document.getElementById('btn-idea-search')?.addEventListener('click', _openIdeaSearchModal);
+    document.getElementById('btn-idea-search-intro')?.addEventListener('click', _openIdeaSearchModal);
     _wirePrionVaultPicker();
 
     // Intro References sub-section collapse triangle (left of the label)
