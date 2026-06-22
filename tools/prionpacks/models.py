@@ -131,13 +131,52 @@ def _gen_id(packages: list) -> str:
     return f'PRP-{(max(nums) + 1 if nums else 1):03d}'
 
 
+def _is_linked_ref(v) -> bool:
+    """True if v is a linked-reference dict (type == "linked")."""
+    return isinstance(v, dict) and v.get("type") == "linked" and bool(v.get("article_id"))
+
+
 def _normalise_references(value):
-    """Accept a list, a string, or None — always return a list of clean strings."""
+    """Accept a list, a string, or None.
+
+    Each element may be:
+      - a plain string  (legacy free text, kept as-is)
+      - {"type": "linked", "article_id": "<uuid>", "added_at": "…"}
+        (new dynamic reference — kept as dict)
+
+    Always returns a list; empty / invalid items are dropped.
+    """
     if isinstance(value, list):
-        return [str(v).strip() for v in value if isinstance(v, str) and v.strip()]
+        out = []
+        for v in value:
+            if _is_linked_ref(v):
+                out.append({
+                    "type":       "linked",
+                    "article_id": str(v["article_id"]).strip(),
+                    "added_at":   v.get("added_at") or _now(),
+                })
+            elif isinstance(v, str) and v.strip():
+                out.append(v.strip())
+        return out
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+# ── DOI / PMID extraction helpers ────────────────────────────────────────────
+
+_RE_DOI  = re.compile(r'\b(10\.\d{4,}(?:\.\d+)*/\S+)', re.IGNORECASE)
+_RE_PMID = re.compile(r'\bPMID[:\s]+(\d{5,8})\b', re.IGNORECASE)
+
+
+def extract_doi(text: str) -> str | None:
+    m = _RE_DOI.search(text or "")
+    return m.group(1).rstrip('.,;)') if m else None
+
+
+def extract_pmid(text: str) -> str | None:
+    m = _RE_PMID.search(text or "")
+    return m.group(1) if m else None
 
 
 def _normalise_methods(value):
@@ -246,3 +285,89 @@ def increment_docx_version(pkg_id: str) -> int:
     pkg['lastModified'] = _now()
     _save(packages)
     return new_ver
+
+
+# ── Auto-migration: link free-text references to PrionVault articles ─────────
+
+def _lookup_article_by_doi_pmid(doi: str | None, pmid: str | None) -> str | None:
+    """Return the article UUID (str) if found in the articles table, else None."""
+    if not doi and not pmid:
+        return None
+    try:
+        from database.config import db
+        from sqlalchemy import text as sql_text
+        with db.engine.connect() as conn:
+            if doi:
+                row = conn.execute(sql_text(
+                    "SELECT id FROM articles WHERE LOWER(doi) = LOWER(:doi) LIMIT 1"
+                ), {"doi": doi.strip()}).first()
+                if row:
+                    return str(row[0])
+            if pmid:
+                row = conn.execute(sql_text(
+                    "SELECT id FROM articles WHERE pubmed_id = :pmid LIMIT 1"
+                ), {"pmid": str(pmid).strip()}).first()
+                if row:
+                    return str(row[0])
+    except Exception as exc:
+        logger.warning("_lookup_article_by_doi_pmid failed: %s", exc)
+    return None
+
+
+def migrate_free_refs_to_linked(pkg_id: str | None = None) -> dict:
+    """Scan free-text references in all packs (or just pkg_id) and convert
+    any that can be matched to a PrionVault article by DOI or PMID into
+    linked references.
+
+    Returns {"converted": int, "unchanged": int, "packs_updated": [ids]}.
+    """
+    packages = _load()
+    targets = [p for p in packages if pkg_id is None or p.get("id") == pkg_id]
+    total_converted = 0
+    total_unchanged = 0
+    packs_updated   = []
+    changed_any     = False
+
+    for pkg in targets:
+        pkg_changed = False
+        for field in ("references", "introReferences"):
+            refs = pkg.get(field) or []
+            new_refs = []
+            for ref in refs:
+                if _is_linked_ref(ref):
+                    new_refs.append(ref)
+                    continue
+                if not isinstance(ref, str):
+                    total_unchanged += 1
+                    continue
+                doi  = extract_doi(ref)
+                pmid = extract_pmid(ref)
+                aid  = _lookup_article_by_doi_pmid(doi, pmid)
+                if aid:
+                    new_refs.append({
+                        "type":       "linked",
+                        "article_id": aid,
+                        "added_at":   _now(),
+                    })
+                    total_converted += 1
+                    pkg_changed = True
+                else:
+                    new_refs.append(ref)
+                    total_unchanged += 1
+            pkg[field] = new_refs
+        if pkg_changed:
+            pkg["lastModified"] = _now()
+            packs_updated.append(pkg["id"])
+            changed_any = True
+
+    if changed_any:
+        _save(packages)
+    logger.info(
+        "migrate_free_refs_to_linked: converted=%d unchanged=%d packs=%s",
+        total_converted, total_unchanged, packs_updated,
+    )
+    return {
+        "converted":    total_converted,
+        "unchanged":    total_unchanged,
+        "packs_updated": packs_updated,
+    }

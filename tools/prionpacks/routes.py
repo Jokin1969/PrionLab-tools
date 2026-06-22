@@ -141,7 +141,12 @@ def api_import_article(pkg_id):
     if not article:
         return jsonify({'error': 'article not found'}), 404
 
-    reference_text = _format_article_reference(article)
+    # New imports are stored as linked references (dict), not embedded text.
+    new_ref = {
+        "type":       "linked",
+        "article_id": str(article['id']),
+        "added_at":   datetime.utcnow().isoformat(),
+    }
     doi = (article.get('doi') or '').strip().lower()
 
     update_data = {}
@@ -152,17 +157,18 @@ def api_import_article(pkg_id):
         field = 'introReferences' if tgt == 'intro' else 'references'
         existing_list = list(pkg.get(field) or [])
         is_dup = False
-        if doi:
-            for existing in existing_list:
-                if doi in (existing or '').lower():
+        for existing in existing_list:
+            if models._is_linked_ref(existing):
+                if str(existing['article_id']) == str(article['id']):
                     is_dup = True
                     break
-        else:
-            is_dup = reference_text in existing_list
+            elif doi and doi in (existing or '').lower():
+                is_dup = True
+                break
         if is_dup:
             skipped.append(tgt)
             continue
-        existing_list.append(reference_text)
+        existing_list.append(new_ref)
         update_data[field] = existing_list
         added_to.append(tgt)
 
@@ -180,7 +186,7 @@ def api_import_article(pkg_id):
         'ok': True,
         'added_to': added_to,
         'skipped': skipped,
-        'reference': reference_text,
+        'article_id': str(article['id']),
         'package': updated_pkg,
     })
 
@@ -622,3 +628,18 @@ def api_members_update(member_id):
 def api_members_delete(member_id):
     members_module.delete_member(member_id)
     return jsonify({'ok': True})
+
+
+@prionpacks_bp.route('/api/admin/migrate-refs', methods=['POST'])
+@login_required
+def api_migrate_refs():
+    """Scan free-text references in all packs (or one pack) and convert
+    those that match a PrionVault article by DOI/PMID to linked refs.
+
+    Body (optional): {"pkg_id": "PRP-001"}  — limit to one pack.
+    """
+    from core.decorators import admin_required as _ar
+    data = request.get_json(force=True, silent=True) or {}
+    pkg_id = (data.get('pkg_id') or '').strip() or None
+    result = models.migrate_free_refs_to_linked(pkg_id)
+    return jsonify({'ok': True, **result})
