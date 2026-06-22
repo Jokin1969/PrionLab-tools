@@ -894,8 +894,9 @@ const PrionPacks = (() => {
   async function _refreshVaultMap(pkg) {
     _vaultByDoi = {};
     if (!pkg) return;
+    const getText = s => typeof s === 'string' ? s : (s?.text || '');
     const collect = (arr) => Array.isArray(arr)
-      ? arr.flatMap(s => (typeof s === 'string' ? (s.match(_DOI_RE) || []) : []))
+      ? arr.flatMap(s => (getText(s).match(_DOI_RE) || []))
       : [];
     const dois = [
       ...collect(pkg.references),
