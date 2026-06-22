@@ -4189,3 +4189,10 @@ a.pp-similar-id-link:hover {
   border-color: var(--pp-accent, #f59e0b);
   box-shadow: 0 0 0 2px rgba(245,158,11,.2);
 }
+
+.pp-cart-in-section {
+  font-size: 0.72rem;
+  color: #065f46;
+  font-weight: 600;
+  white-space: nowrap;
+}

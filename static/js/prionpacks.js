@@ -1791,6 +1791,7 @@ ${refsText}`;
             <div class="pp-similar-actions">
               <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
               <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>
+              <button class="pp-btn pp-btn-sm pp-btn-add-to-cart${window.PPCart?.has(item.id) ? ' pp-btn-success' : ''}" data-cart-id="${_escHtml(item.id)}" title="${window.PPCart?.has(item.id) ? 'Ya en el carrito' : 'Añadir al carrito'}"><i class="fas fa-shopping-cart"></i>${window.PPCart?.has(item.id) ? ' ✓' : ''}</button>
             </div>`;
           list.appendChild(card);
         });
@@ -1825,6 +1826,16 @@ ${refsText}`;
             }
           });
         });
+        list.querySelectorAll('.pp-btn-add-to-cart').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id  = btn.dataset.cartId;
+            const art = items.find(a => String(a.id) === id);
+            if (!art) return;
+            window.PPCart?.add(art);
+            btn.innerHTML = '<i class="fas fa-shopping-cart"></i> ✓';
+            btn.classList.add('pp-btn-success');
+          });
+        });
         _wireSimilarThumbs(list);
       } catch (e) {
         list.innerHTML = `<div class="pp-similar-error">Error: ${_escHtml(e.message)}</div>`;
@@ -1855,10 +1866,26 @@ ${refsText}`;
     const render = () => {
       const items = window.PPCart?.getAll() || [];
       label.textContent = items.length
-        ? `${items.length} artículo${items.length !== 1 ? 's' : ''}`
+        ? `${items.length} artículo${items.length !== 1 ? 's' : ''}${state.currentId ? ' — pack abierto: ' + state.currentId : ''}`
         : 'El carrito está vacío';
+
+      // Collect article_ids already in the currently open pack by section
+      const inGeneral = new Set(
+        Array.from(document.querySelectorAll('#references-list .pp-reference-item[data-article-id]'))
+          .map(el => el.dataset.articleId)
+      );
+      const inIntro = new Set(
+        Array.from(document.querySelectorAll('#intro-references-list .pp-reference-item[data-article-id]'))
+          .map(el => el.dataset.articleId)
+      );
+
       list.innerHTML = '';
       items.forEach(item => {
+        const inG = inGeneral.has(item.id);
+        const inI = inIntro.has(item.id);
+        const inPack = inG || inI;
+        const packLabel = inG && inI ? 'General + Intro' : inG ? 'General' : inI ? 'Intro' : '';
+
         const thumbHtml = item.has_pdf
           ? `<a class="pp-similar-thumb-wrap" href="/prionvault/api/articles/${_escHtml(item.id)}/pdf" target="_blank" rel="noopener" title="Abrir PDF"><img class="pp-similar-thumb" src="/prionvault/api/articles/${_escHtml(item.id)}/thumbnail" loading="lazy" alt=""></a>`
           : '<div class="pp-similar-thumb-placeholder"></div>';
@@ -1866,18 +1893,22 @@ ${refsText}`;
           item.doi       ? `<a class="pp-similar-id-link" href="https://doi.org/${_escHtml(item.doi)}" target="_blank" rel="noopener">DOI: ${_escHtml(item.doi)}</a>` : '',
           item.pubmed_id ? `<a class="pp-similar-id-link" href="https://pubmed.ncbi.nlm.nih.gov/${_escHtml(item.pubmed_id)}/" target="_blank" rel="noopener">PMID: ${_escHtml(item.pubmed_id)}</a>` : '',
         ].filter(Boolean).join('<span class="pp-similar-id-sep">·</span>');
+        const packBadge = inPack
+          ? `<span class="pp-similar-badge-inpack" style="font-size:0.7rem"><i class="fas fa-check"></i> Ya en ${_escHtml(packLabel)}</span>`
+          : '';
         const card = document.createElement('div');
-        card.className = 'pp-similar-card pp-cart-item';
+        card.className = 'pp-similar-card pp-cart-item' + (inPack ? ' pp-similar-in-pack' : '');
         card.innerHTML = `
           ${thumbHtml}
           <div class="pp-similar-meta" style="flex:1">
             <div class="pp-similar-title">${_escHtml(item.title)}</div>
             <div class="pp-similar-authors">${_escHtml([item.authors, item.year, item.journal].filter(Boolean).join(' · '))}</div>
             ${idsHtml ? `<div class="pp-similar-ids">${idsHtml}</div>` : ''}
+            ${packBadge ? `<div style="margin-top:0.2rem">${packBadge}</div>` : ''}
           </div>
           <div class="pp-similar-actions">
-            <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
-            <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>
+            ${!inG ? `<button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>` : '<span class="pp-cart-in-section">✓ General</span>'}
+            ${!inI ? `<button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>` : '<span class="pp-cart-in-section">✓ Intro</span>'}
             <button class="pp-btn pp-btn-sm pp-btn-cart-remove" data-id="${_escHtml(item.id)}" title="Quitar del carrito" style="color:#dc2626;min-width:2rem"><i class="fas fa-times"></i></button>
           </div>`;
         list.appendChild(card);
@@ -2126,6 +2157,8 @@ ${refsText}`;
           actionsHtml = `<button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
             <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>`;
         }
+        const _simInCart = window.PPCart?.has(item.id);
+        actionsHtml += `<button class="pp-btn pp-btn-sm pp-btn-add-to-cart${_simInCart ? ' pp-btn-success' : ''}" data-cart-id="${_escHtml(item.id)}" title="${_simInCart ? 'Ya en el carrito' : 'Añadir al carrito'}"><i class="fas fa-shopping-cart"></i>${_simInCart ? ' ✓' : ''}</button>`;
 
         const card = document.createElement('div');
         card.className = 'pp-similar-card' + (inSource ? ' pp-similar-in-pack' : inOther ? ' pp-similar-in-other' : '');
@@ -2178,6 +2211,18 @@ ${refsText}`;
             btn.innerHTML = '+ Reintentar';
             toast('Error al añadir: ' + e.message, 'error');
           }
+        });
+      });
+
+      // Cart buttons in similar modal
+      listEl.querySelectorAll('.pp-btn-add-to-cart').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id  = btn.dataset.cartId;
+          const art = items.find(a => a.id === id);
+          if (!art) return;
+          window.PPCart?.add(art);
+          btn.innerHTML = '<i class="fas fa-shopping-cart"></i> ✓';
+          btn.classList.add('pp-btn-success');
         });
       });
 
