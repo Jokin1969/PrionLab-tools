@@ -10,6 +10,8 @@ import threading
 import time
 import os
 import re
+import hashlib
+from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
 from flask import jsonify, render_template, request, session, Response, current_app
@@ -4052,6 +4054,11 @@ def api_article_pdf(aid):
     )
 
 
+_thumb_cache: OrderedDict = OrderedDict()   # aid → jpeg_bytes
+_thumb_cache_lock = threading.Lock()
+_THUMB_CACHE_MAX = 200                       # max entries (~5 MB at ~25 KB each)
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/thumbnail", methods=["GET"])
 @login_required
 def api_article_thumbnail(aid):
@@ -4061,11 +4068,27 @@ def api_article_thumbnail(aid):
     low resolution. Aggressive browser caching (7 days) means each
     article thumbnail is fetched at most once per browser per week.
     """
+    aid_str = str(aid)
+
+    # Serve from in-process cache when available
+    with _thumb_cache_lock:
+        if aid_str in _thumb_cache:
+            _thumb_cache.move_to_end(aid_str)
+            jpeg_bytes = _thumb_cache[aid_str]
+            etag = hashlib.md5(jpeg_bytes).hexdigest()
+            if request.headers.get("If-None-Match") == etag:
+                return Response(status=304)
+            return Response(
+                jpeg_bytes,
+                mimetype="image/jpeg",
+                headers={"Cache-Control": "private, max-age=604800", "ETag": etag},
+            )
+
     s = _session()
     try:
         row = s.execute(sql_text(
             "SELECT dropbox_path FROM articles WHERE id = :aid"
-        ), {"aid": str(aid)}).first()
+        ), {"aid": aid_str}).first()
         if not row or not row[0]:
             return Response(status=404)
         dropbox_path = row[0]
@@ -4075,7 +4098,6 @@ def api_article_thumbnail(aid):
     try:
         from core.dropbox_client import get_client
         import fitz  # PyMuPDF
-        import io
     except Exception as exc:
         logger.warning("api_article_thumbnail: import failed: %s", exc)
         return Response(status=503)
@@ -4094,7 +4116,6 @@ def api_article_thumbnail(aid):
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         page = doc[0]
-        # ~150 DPI gives a 900×1170 px image for A4; scale to ~width 240px
         mat = fitz.Matrix(1.0, 1.0)   # 72 dpi — fast, enough for a thumbnail
         pix = page.get_pixmap(matrix=mat, alpha=False)
         jpeg_bytes = pix.tobytes("jpeg", jpg_quality=75)
@@ -4103,10 +4124,18 @@ def api_article_thumbnail(aid):
         logger.warning("api_article_thumbnail: render failed: %s", exc)
         return Response(status=500)
 
+    # Store in in-process LRU cache
+    with _thumb_cache_lock:
+        _thumb_cache[aid_str] = jpeg_bytes
+        _thumb_cache.move_to_end(aid_str)
+        if len(_thumb_cache) > _THUMB_CACHE_MAX:
+            _thumb_cache.popitem(last=False)
+
+    etag = hashlib.md5(jpeg_bytes).hexdigest()
     return Response(
         jpeg_bytes,
         mimetype="image/jpeg",
-        headers={"Cache-Control": "private, max-age=604800"},  # 7 days
+        headers={"Cache-Control": "private, max-age=604800", "ETag": etag},  # 7 days
     )
 
 
