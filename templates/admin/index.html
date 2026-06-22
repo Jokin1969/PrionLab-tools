@@ -136,7 +136,60 @@
   </div>
 </section>
 
-{# ── Section C: Logs ─────────────────────────────────────────────────────── #}
+{# ── Section C: PrionPacks ───────────────────────────────────────────────── #}
+<section class="admin-section">
+  <div class="admin-section__header">
+    <h2>PrionPacks</h2>
+  </div>
+  <div class="system-cards">
+    <div class="system-card" style="flex-direction:column;align-items:flex-start;gap:8px;min-width:280px">
+      <div class="system-card__label">Migrar referencias a vinculadas</div>
+      <div style="font-size:12px;color:#6b7280;line-height:1.4">
+        Escanea todas las referencias de texto libre en todos los packs y las convierte
+        a referencias vinculadas cuando reconoce un DOI o PMID en PrionVault.
+        Activa el botón <strong>💡 Artículos recomendados</strong> en esas referencias.
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+        <button id="btn-migrate-refs" class="btn btn--sm btn--primary" onclick="migrateRefs()">
+          Vincular referencias por DOI/PMID
+        </button>
+        <span id="migrate-refs-status" style="font-size:12px;color:#6b7280"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+async function migrateRefs() {
+  const btn = document.getElementById('btn-migrate-refs');
+  const status = document.getElementById('migrate-refs-status');
+  btn.disabled = true;
+  btn.textContent = 'Ejecutando…';
+  status.textContent = '';
+  try {
+    const r = await fetch('/prionpacks/api/admin/migrate-refs', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({}),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    const converted = d.converted ?? 0;
+    const packs     = (d.packs_updated || []).length;
+    status.style.color = '#16a34a';
+    status.textContent = `✓ ${converted} ref${converted !== 1 ? 's' : ''} vinculadas en ${packs} pack${packs !== 1 ? 's' : ''}`;
+  } catch (e) {
+    status.style.color = '#dc2626';
+    status.textContent = '✗ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Vincular referencias por DOI/PMID';
+  }
+}
+</script>
+
+{# ── Section D: Logs ─────────────────────────────────────────────────────── #}
 <section class="admin-section">
   <div class="admin-section__header">
     <h2>{{ _('Recent logs') }}</h2>
