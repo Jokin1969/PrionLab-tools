@@ -1835,6 +1835,201 @@ ${refsText}`;
     document.getElementById('pp-idea-btn-contradict').onclick = () => doSearch('contradict');
   }
 
+  // ── Cart badge ────────────────────────────────────────────────────────────
+  function _updateCartBadge() {
+    const n = window.PPCart?.count() ?? 0;
+    document.querySelectorAll('.pp-cart-badge').forEach(el => {
+      el.textContent = n;
+      el.style.display = n > 0 ? '' : 'none';
+    });
+  }
+  window.addEventListener('pp-cart-changed', _updateCartBadge);
+
+  // ── Cart panel ────────────────────────────────────────────────────────────
+  function _openCartPanel() {
+    const panel = document.getElementById('pp-cart-panel');
+    const list  = document.getElementById('pp-cart-list');
+    const label = document.getElementById('pp-cart-count-label');
+    if (!panel) return;
+
+    const render = () => {
+      const items = window.PPCart?.getAll() || [];
+      label.textContent = items.length
+        ? `${items.length} artículo${items.length !== 1 ? 's' : ''}`
+        : 'El carrito está vacío';
+      list.innerHTML = '';
+      items.forEach(item => {
+        const thumbHtml = item.has_pdf
+          ? `<a class="pp-similar-thumb-wrap" href="/prionvault/api/articles/${_escHtml(item.id)}/pdf" target="_blank" rel="noopener" title="Abrir PDF"><img class="pp-similar-thumb" src="/prionvault/api/articles/${_escHtml(item.id)}/thumbnail" loading="lazy" alt=""></a>`
+          : '<div class="pp-similar-thumb-placeholder"></div>';
+        const idsHtml = [
+          item.doi       ? `<a class="pp-similar-id-link" href="https://doi.org/${_escHtml(item.doi)}" target="_blank" rel="noopener">DOI: ${_escHtml(item.doi)}</a>` : '',
+          item.pubmed_id ? `<a class="pp-similar-id-link" href="https://pubmed.ncbi.nlm.nih.gov/${_escHtml(item.pubmed_id)}/" target="_blank" rel="noopener">PMID: ${_escHtml(item.pubmed_id)}</a>` : '',
+        ].filter(Boolean).join('<span class="pp-similar-id-sep">·</span>');
+        const card = document.createElement('div');
+        card.className = 'pp-similar-card pp-cart-item';
+        card.innerHTML = `
+          ${thumbHtml}
+          <div class="pp-similar-meta" style="flex:1">
+            <div class="pp-similar-title">${_escHtml(item.title)}</div>
+            <div class="pp-similar-authors">${_escHtml([item.authors, item.year, item.journal].filter(Boolean).join(' · '))}</div>
+            ${idsHtml ? `<div class="pp-similar-ids">${idsHtml}</div>` : ''}
+          </div>
+          <div class="pp-similar-actions">
+            <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
+            <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>
+            <button class="pp-btn pp-btn-sm pp-btn-cart-remove" data-id="${_escHtml(item.id)}" title="Quitar del carrito" style="color:#dc2626;min-width:2rem"><i class="fas fa-times"></i></button>
+          </div>`;
+        list.appendChild(card);
+      });
+
+      list.querySelectorAll('.pp-btn-cart-remove').forEach(btn => {
+        btn.addEventListener('click', () => { window.PPCart?.remove(btn.dataset.id); render(); });
+      });
+
+      list.querySelectorAll('.pp-btn-add-similar').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!state.currentId) { toast('Abre un PrionPack primero', 'warning'); return; }
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+          const aid    = btn.dataset.aid;
+          const target = btn.dataset.target;
+          try {
+            const res = await fetch(`/prionpacks/api/packages/${encodeURIComponent(state.currentId)}/import-articles`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ article_ids: [aid], target }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            btn.innerHTML = '<i class="fas fa-check"></i> Añadido';
+            btn.classList.add('pp-btn-success');
+            const pkg = await PPStorage.getById(state.currentId);
+            _renderReferencesList(pkg.references || []);
+            _renderIntroReferencesList(pkg.introReferences || []);
+            _updateCollapseIndicators(); _refreshSharedDois(); _refreshVaultMap(pkg);
+          } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = '+ ' + (target === 'general' ? 'General' : 'Intro');
+            toast('Error al añadir: ' + e.message, 'error');
+          }
+        });
+      });
+      _wireSimilarThumbs(list);
+    };
+
+    render();
+    panel.style.display = 'flex';
+    document.getElementById('pp-cart-panel-close').onclick = () => { panel.style.display = 'none'; };
+    document.getElementById('pp-cart-backdrop').onclick    = () => { panel.style.display = 'none'; };
+    document.getElementById('pp-cart-clear-btn').onclick   = () => { window.PPCart?.clear(); render(); };
+  }
+
+  // ── PrionVault search modal ───────────────────────────────────────────────
+  function _openPVSearchModal() {
+    const modal    = document.getElementById('pp-pv-search-modal');
+    const input    = document.getElementById('pp-pv-search-input');
+    const subtitle = document.getElementById('pp-pv-search-subtitle');
+    const list     = document.getElementById('pp-pv-search-list');
+    if (!modal) return;
+
+    subtitle.textContent = '';
+    list.innerHTML = '';
+    modal.style.display = 'flex';
+    setTimeout(() => input.focus(), 50);
+
+    document.getElementById('pp-pv-search-modal-close').onclick = () => { modal.style.display = 'none'; };
+    document.getElementById('pp-pv-search-backdrop').onclick    = () => { modal.style.display = 'none'; };
+
+    // Map for safe article data storage (avoids JSON-in-attribute encoding issues)
+    const _artMap = new Map();
+
+    const doSearch = async () => {
+      const q = (input.value || '').trim();
+      if (!q) return;
+      list.innerHTML = '<div class="pp-similar-loading"><i class="fas fa-spinner fa-spin"></i> Buscando en PrionVault…</div>';
+      subtitle.textContent = '';
+      try {
+        const r = await fetch(`/prionvault/api/articles?q=${encodeURIComponent(q)}&size=20`, { credentials: 'same-origin' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const items = await r.json();
+        if (!Array.isArray(items) || !items.length) {
+          list.innerHTML = '<div class="pp-similar-empty">Sin resultados.</div>';
+          return;
+        }
+        subtitle.textContent = `${items.length} artículo${items.length !== 1 ? 's' : ''} encontrado${items.length !== 1 ? 's' : ''}`;
+        list.innerHTML = '';
+        _artMap.clear();
+        items.forEach(item => {
+          _artMap.set(item.id, item);
+          const inCart   = window.PPCart?.has(item.id);
+          const thumbHtml = item.has_pdf
+            ? `<a class="pp-similar-thumb-wrap" href="/prionvault/api/articles/${_escHtml(item.id)}/pdf" target="_blank" rel="noopener"><img class="pp-similar-thumb" src="/prionvault/api/articles/${_escHtml(item.id)}/thumbnail" loading="lazy" alt=""></a>`
+            : '<div class="pp-similar-thumb-placeholder"></div>';
+          const idsHtml = [
+            item.doi       ? `<a class="pp-similar-id-link" href="https://doi.org/${_escHtml(item.doi)}" target="_blank" rel="noopener">DOI: ${_escHtml(item.doi)}</a>` : '',
+            item.pubmed_id ? `<a class="pp-similar-id-link" href="https://pubmed.ncbi.nlm.nih.gov/${_escHtml(item.pubmed_id)}/" target="_blank" rel="noopener">PMID: ${_escHtml(item.pubmed_id)}</a>` : '',
+          ].filter(Boolean).join('<span class="pp-similar-id-sep">·</span>');
+          const card = document.createElement('div');
+          card.className = 'pp-similar-card';
+          card.innerHTML = `
+            ${thumbHtml}
+            <div class="pp-similar-meta" style="flex:1">
+              <div class="pp-similar-title">${_escHtml(item.title || '')}</div>
+              <div class="pp-similar-authors">${_escHtml([item.authors, item.year, item.journal].filter(Boolean).join(' · '))}</div>
+              ${idsHtml ? `<div class="pp-similar-ids">${idsHtml}</div>` : ''}
+            </div>
+            <div class="pp-similar-actions">
+              <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
+              <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>
+              <button class="pp-btn pp-btn-sm pp-btn-add-to-cart ${inCart ? 'pp-btn-success' : ''}" data-cart-id="${_escHtml(item.id)}" title="${inCart ? 'Ya en el carrito' : 'Añadir al carrito'}">
+                <i class="fas fa-shopping-cart"></i>${inCart ? ' ✓' : ''}
+              </button>
+            </div>`;
+          list.appendChild(card);
+        });
+
+        list.querySelectorAll('.pp-btn-add-similar').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!state.currentId) { toast('Abre un PrionPack primero', 'warning'); return; }
+            btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+              const res = await fetch(`/prionpacks/api/packages/${encodeURIComponent(state.currentId)}/import-articles`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ article_ids: [btn.dataset.aid], target: btn.dataset.target }),
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              btn.innerHTML = '<i class="fas fa-check"></i> Añadido'; btn.classList.add('pp-btn-success');
+              const pkg = await PPStorage.getById(state.currentId);
+              _renderReferencesList(pkg.references || []); _renderIntroReferencesList(pkg.introReferences || []);
+              _updateCollapseIndicators(); _refreshSharedDois(); _refreshVaultMap(pkg);
+            } catch (e) {
+              btn.disabled = false;
+              btn.innerHTML = '+ ' + (btn.dataset.target === 'general' ? 'General' : 'Intro');
+              toast('Error: ' + e.message, 'error');
+            }
+          });
+        });
+
+        list.querySelectorAll('.pp-btn-add-to-cart').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const art = _artMap.get(btn.dataset.cartId);
+            if (!art) return;
+            window.PPCart?.add(art);
+            btn.innerHTML = '<i class="fas fa-shopping-cart"></i> ✓';
+            btn.classList.add('pp-btn-success');
+          });
+        });
+        _wireSimilarThumbs(list);
+      } catch (e) {
+        list.innerHTML = `<div class="pp-similar-error">Error: ${_escHtml(e.message)}</div>`;
+      }
+    };
+
+    document.getElementById('pp-pv-search-btn').onclick = doSearch;
+    input.onkeydown = e => { if (e.key === 'Enter') doSearch(); };
+  }
+
   async function _openSimilarModal(articleId, sourceSection) {
     const modal    = document.getElementById('pp-similar-modal');
     const listEl   = document.getElementById('pp-similar-modal-list');
@@ -4039,6 +4234,11 @@ ${refsText}`;
     document.getElementById('btn-pv-import-general')?.addEventListener('click', () => _openPrionVaultPicker('general'));
     document.getElementById('btn-idea-search')?.addEventListener('click', _openIdeaSearchModal);
     document.getElementById('btn-idea-search-intro')?.addEventListener('click', _openIdeaSearchModal);
+    document.getElementById('btn-pv-search')?.addEventListener('click', _openPVSearchModal);
+    document.getElementById('btn-pv-search-dash')?.addEventListener('click', _openPVSearchModal);
+    document.getElementById('btn-open-cart')?.addEventListener('click', _openCartPanel);
+    document.getElementById('btn-open-cart-dash')?.addEventListener('click', _openCartPanel);
+    _updateCartBadge();
     _wirePrionVaultPicker();
 
     // Intro References sub-section collapse triangle (left of the label)

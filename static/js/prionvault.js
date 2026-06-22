@@ -2621,6 +2621,22 @@
               style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;text-decoration:none;">📦 ${esc(a.prionpacks[0].id)}${a.prionpacks.length > 1 ? ' +' + (a.prionpacks.length - 1) : ''}</a>`
         : '',
       ratingChip,
+      // Cart button — adds article to PrionPacks cart (localStorage)
+      (() => {
+        const inCart = window.PPCart?.has(a.id);
+        return `<button type="button" class="pv-cart-btn ${inCart ? 'pv-cart-btn--in' : ''}"
+                        data-aid="${esc(a.id)}"
+                        onclick="event.stopPropagation();(function(btn,art){
+                          if(!window.PPCart)return;
+                          window.PPCart.add(art);
+                          btn.classList.add('pv-cart-btn--in');
+                          btn.title='En el carrito';
+                        })(this,${JSON.stringify({id:a.id,title:a.title||'',authors:a.authors||'',year:a.year||null,journal:a.journal||'',doi:a.doi||'',pubmed_id:a.pubmed_id||'',has_pdf:!!a.has_pdf}).replace(/'/g,'&#39;')})"
+                        title="${inCart ? 'En el carrito' : 'Añadir al carrito de PrionPacks'}"
+                        style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;
+                               font-size:10.5px;font-weight:600;border:none;cursor:pointer;
+                               ${inCart ? 'background:#d1fae5;color:#065f46;' : 'background:#f3f4f6;color:#6b7280;'}">🛒${inCart ? ' ✓' : ''}</button>`;
+      })(),
     ].filter(Boolean).join('');
 
     const authors = a.authors ? esc(a.authors) : '—';
@@ -12367,4 +12383,15 @@
   };
 
   document.addEventListener('DOMContentLoaded', init);
+})();
+
+// Cart badge for PrionVault (pp-cart.js loaded before this script)
+(function () {
+  const updateBadge = () => {
+    const n = window.PPCart?.count() ?? 0;
+    const badge = document.getElementById('pv-cart-badge');
+    if (badge) { badge.textContent = n; badge.style.display = n > 0 ? '' : 'none'; }
+  };
+  window.addEventListener('pp-cart-changed', updateBadge);
+  document.addEventListener('DOMContentLoaded', updateBadge);
 })();

@@ -626,6 +626,20 @@
                          transition:transform 0.12s ease, border-color 0.15s;"></button>
         </div>
         </div>
+        <!-- Cart icon — opens PrionPacks in new tab, badge shows cart count -->
+        <button id="pv-cart-btn" type="button"
+                onclick="window.open('/prionpacks','_blank')"
+                title="Carrito de artículos — abre PrionPacks"
+                style="position:relative;display:flex;align-items:center;justify-content:center;
+                       width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;
+                       background:#fff;cursor:pointer;flex-shrink:0;font-size:15px;
+                       transition:background 0.12s;">🛒
+          <span id="pv-cart-badge"
+                style="display:none;position:absolute;top:-5px;right:-5px;
+                       background:#dc2626;color:#fff;font-size:10px;font-weight:700;
+                       border-radius:9999px;padding:1px 4px;min-width:16px;text-align:center;
+                       pointer-events:none;">0</span>
+        </button>
         <div id="pv-bulk-lookup-wrap"
              class="pv-mobile-hide"
              style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:10px;
@@ -2681,5 +2695,6 @@
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/pp-cart.js') }}"></script>
 <script src="{{ asset_url('js/prionvault.js') }}"></script>
 {% endblock %}

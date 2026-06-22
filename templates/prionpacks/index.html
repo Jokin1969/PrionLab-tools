@@ -115,6 +115,13 @@
           <a class="pp-btn pp-btn-secondary" id="btn-list-packages-docx" href="/prionpacks/api/packages/list-docx">
             <i class="fas fa-file-word"></i> Lista PrionPacks
           </a>
+          <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-pv-search-dash" type="button" title="Buscar artículos en PrionVault con IA">
+            <i class="fas fa-search"></i> PrionVault
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-ghost pp-cart-btn" id="btn-open-cart-dash" type="button" title="Carrito de artículos">
+            <i class="fas fa-shopping-cart"></i>
+            <span class="pp-cart-badge" id="pp-cart-badge-dash" style="display:none">0</span>
+          </button>
           <button class="pp-btn pp-btn-primary" id="btn-new-package-main">
             <i class="fas fa-plus"></i> New Package
           </button>
@@ -194,6 +201,13 @@
           <button class="pp-btn pp-btn-sm" id="btn-suggest-articles" style="display:none;"
                   title="La IA busca artículos relacionados con este pack — primero dentro de PrionVault, luego en PubMed">
             <i class="fas fa-magic"></i> Sugerir más artículos
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-pv-search" type="button" title="Buscar artículos en PrionVault con IA">
+            <i class="fas fa-search"></i> PrionVault
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-ghost pp-cart-btn" id="btn-open-cart" type="button" title="Carrito de artículos">
+            <i class="fas fa-shopping-cart"></i>
+            <span class="pp-cart-badge" id="pp-cart-badge" style="display:none">0</span>
           </button>
           <button class="pp-btn pp-btn-sm pp-btn-primary" id="btn-save-package">
             <i class="fas fa-save"></i> Guardar
@@ -1181,6 +1195,43 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
   </div>
 </div>
 
+<!-- Cart panel -->
+<div id="pp-cart-panel" style="display:none;" class="pp-modal-overlay" role="dialog" aria-modal="true">
+  <div id="pp-cart-backdrop" class="pp-modal-backdrop"></div>
+  <div class="pp-modal-card pp-cart-panel-card">
+    <div class="pp-modal-header">
+      <h3><i class="fas fa-shopping-cart"></i> Carrito de artículos</h3>
+      <button id="pp-cart-panel-close" class="pp-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="pp-cart-panel-toolbar">
+      <span id="pp-cart-count-label" class="pp-idea-subtitle"></span>
+      <button id="pp-cart-clear-btn" class="btn btn--sm btn--danger" style="margin-left:auto">
+        <i class="fas fa-trash"></i> Vaciar carrito
+      </button>
+    </div>
+    <div id="pp-cart-list" class="pp-cart-list"></div>
+  </div>
+</div>
+
+<!-- PrionVault Search modal -->
+<div id="pp-pv-search-modal" style="display:none;" class="pp-modal-overlay" role="dialog" aria-modal="true">
+  <div id="pp-pv-search-backdrop" class="pp-modal-backdrop"></div>
+  <div class="pp-modal-card pp-pv-search-modal-card">
+    <div class="pp-modal-header">
+      <h3>Buscar en PrionVault</h3>
+      <button id="pp-pv-search-modal-close" class="pp-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="pp-pv-search-body">
+      <div class="pp-pv-search-row">
+        <input id="pp-pv-search-input" type="search" class="pp-pv-search-field" placeholder="Busca artículos por título, autores, concepto…" autocomplete="off">
+        <button id="pp-pv-search-btn" class="btn btn--primary"><i class="fas fa-search"></i> Buscar</button>
+      </div>
+      <p id="pp-pv-search-subtitle" class="pp-idea-subtitle"></p>
+    </div>
+    <div id="pp-pv-search-list" class="pp-similar-modal-list pp-idea-modal-list"></div>
+  </div>
+</div>
+
 <!-- Idea search modal -->
 <div id="pp-idea-search-modal" style="display:none;" class="pp-modal-overlay" role="dialog" aria-modal="true">
   <div id="pp-idea-backdrop" class="pp-modal-backdrop"></div>
@@ -1223,5 +1274,6 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
 
 <script src="{{ asset_url('js/prionpacks-storage.js') }}"></script>
 <script src="{{ asset_url('js/prionpacks-api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pp-cart.js') }}"></script>
 <script src="{{ asset_url('js/prionpacks.js') }}"></script>
 {% endblock %}
