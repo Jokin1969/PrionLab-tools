@@ -133,11 +133,13 @@ const PrionPacks = (() => {
     if (id) {
       try {
         const resolved = await PPStorage.getById(id);
-        // Only re-populate if we're still viewing the same pack
         if (state.currentId === id) {
           const idx = _packages.findIndex(p => p.id === id);
           if (idx >= 0) _packages[idx] = resolved;
-          _populateEditor(resolved);
+          // Only re-render the two refs lists — avoids re-drawing the whole
+          // editor (findings, gaps, fields…) which causes a visible flash.
+          _renderReferencesList(resolved.references || []);
+          _renderIntroReferencesList(resolved.introReferences || []);
           _refreshVaultMap(resolved);
         }
       } catch (e) {
@@ -1725,100 +1727,194 @@ ${refsText}`;
 
   // ── Similar articles modal ────────────────────────────────────────────────
 
-  async function _openSimilarModal(articleId, defaultTarget) {
+  async function _openSimilarModal(articleId, sourceSection) {
     const modal    = document.getElementById('pp-similar-modal');
-    const list     = document.getElementById('pp-similar-modal-list');
+    const listEl   = document.getElementById('pp-similar-modal-list');
     const subtitle = document.getElementById('pp-similar-modal-subtitle');
 
-    // Show modal with spinner
-    list.innerHTML = '<div class="pp-similar-loading"><i class="fas fa-spinner fa-spin"></i> Buscando artículos similares…</div>';
+    listEl.innerHTML = '<div class="pp-similar-loading"><i class="fas fa-spinner fa-spin"></i> Buscando artículos similares…</div>';
     subtitle.textContent = '';
-    modal.style.display = '';
+    modal.style.display = 'flex';
 
-    // Close button
     document.getElementById('pp-similar-modal-close').onclick = () => { modal.style.display = 'none'; };
     document.getElementById('pp-similar-backdrop').onclick    = () => { modal.style.display = 'none'; };
 
+    // Collect article_ids already in this pack by section
+    const inPackBySection = { general: new Set(), intro: new Set() };
+    document.querySelectorAll('#references-list .pp-reference-item[data-article-id]')
+      .forEach(el => inPackBySection.general.add(el.dataset.articleId));
+    document.querySelectorAll('#intro-references-list .pp-reference-item[data-article-id]')
+      .forEach(el => inPackBySection.intro.add(el.dataset.articleId));
+    const inPackAll = new Set([...inPackBySection.general, ...inPackBySection.intro]);
+
+    let items, membership;
     try {
-      const resp = await fetch(`/prionvault/api/articles/${articleId}/similar?limit=15`);
-      if (!resp.ok) throw new Error('Error fetching similar articles');
-      const data  = await resp.json();
-      const items = data.items || [];
-      subtitle.textContent = `${items.length} artículo(s) similares encontrados`;
+      const [simResp, memResp] = await Promise.all([
+        fetch(`/prionvault/api/articles/${encodeURIComponent(articleId)}/similar?limit=15`),
+        Promise.resolve(null), // placeholder — we fetch membership once we have ids
+      ]);
+      if (!simResp.ok) throw new Error(`HTTP ${simResp.status}`);
+      ({ items } = await simResp.json());
+      items = items || [];
 
-      // Collect existing article_ids in pack
-      const inPackIds = new Set();
-      document.querySelectorAll('#references-list .pp-reference-item[data-article-id]').forEach(el => inPackIds.add(el.dataset.articleId));
-      document.querySelectorAll('#intro-references-list .pp-reference-item[data-article-id]').forEach(el => inPackIds.add(el.dataset.articleId));
-
-      if (items.length === 0) {
-        list.innerHTML = '<p style="padding:1rem;color:var(--muted)">No se encontraron artículos similares.</p>';
+      if (!items.length) {
+        listEl.innerHTML = '<div class="pp-similar-empty">No se encontraron artículos similares (¿tiene embeddings este artículo?).</div>';
         return;
       }
 
-      list.innerHTML = '';
+      // Fetch pack membership for all result ids in one call
+      const memR = await fetch('/prionpacks/api/articles/pack-membership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          article_ids: items.map(a => a.id),
+          current_pack_id: state.currentId || null,
+        }),
+      });
+      membership = memR.ok ? await memR.json() : {};
+    } catch (e) {
+      listEl.innerHTML = `<div class="pp-similar-error">Error al cargar: ${_escHtml(e.message)}</div>`;
+      return;
+    }
+
+    subtitle.textContent = `${items.length} artículos más similares en PrionVault`;
+
+    // Render cards
+    const renderCards = () => {
+      listEl.innerHTML = '';
       items.forEach(item => {
-        const inPack = inPackIds.has(item.id);
-        const pct    = item.similarity != null ? Math.round(item.similarity * 100) + '%' : '';
-        const card   = document.createElement('div');
-        card.className = 'pp-similar-card' + (inPack ? ' pp-similar-in-pack' : '');
+        const inGeneral = inPackBySection.general.has(item.id);
+        const inIntro   = inPackBySection.intro.has(item.id);
+        const inSource  = sourceSection === 'general' ? inGeneral : inIntro;
+        const inOther   = sourceSection === 'general' ? inIntro   : inGeneral;
+        const pct       = item.similarity != null ? Math.round(item.similarity * 100) + '%' : '';
+
+        // DOI / PMID as clickable links
+        const idsHtml = [
+          item.doi      ? `<a class="pp-similar-id-link" href="https://doi.org/${_escHtml(item.doi)}" target="_blank" rel="noopener">DOI: ${_escHtml(item.doi)}</a>` : '',
+          item.pubmed_id ? `<a class="pp-similar-id-link" href="https://pubmed.ncbi.nlm.nih.gov/${_escHtml(item.pubmed_id)}/" target="_blank" rel="noopener">PMID: ${_escHtml(item.pubmed_id)}</a>` : '',
+        ].filter(Boolean).join('<span class="pp-similar-id-sep">·</span>');
+
+        // Thumbnail (only if has_pdf)
+        const thumbHtml = item.has_pdf
+          ? `<a class="pp-similar-thumb-wrap" href="/prionvault/api/articles/${_escHtml(item.id)}/pdf" target="_blank" rel="noopener" title="Abrir PDF">
+               <img class="pp-similar-thumb" src="/prionvault/api/articles/${_escHtml(item.id)}/thumbnail" loading="lazy" alt="">
+             </a>`
+          : '<div class="pp-similar-thumb-placeholder"></div>';
+
+        // Pack membership badges for other packs
+        const otherPackEntries = (membership[item.id] || []).filter(m => !m.is_current);
+        const otherPackBadges = otherPackEntries.length
+          ? otherPackEntries.map(m =>
+              `<span class="pp-similar-badge-otherpack" title="${_escHtml(m.pack_title)} — ${m.section === 'intro' ? 'Intro' : 'General'}">${_escHtml(m.pack_id)}</span>`
+            ).join('')
+          : '';
+
+        // Action area
+        let actionsHtml;
+        if (inSource) {
+          actionsHtml = '<span class="pp-similar-badge-inpack"><i class="fas fa-check"></i> Ya en este grupo</span>';
+        } else if (inOther) {
+          const otherLabel = sourceSection === 'general' ? 'Intro' : 'General';
+          actionsHtml = `<span class="pp-similar-badge-othersection"><i class="fas fa-layer-group"></i> En ${otherLabel} de este pack</span>
+            <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="${sourceSection}">+ ${sourceSection === 'general' ? 'General' : 'Intro'}</button>`;
+        } else {
+          actionsHtml = `<button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
+            <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>`;
+        }
+
+        const card = document.createElement('div');
+        card.className = 'pp-similar-card' + (inSource ? ' pp-similar-in-pack' : inOther ? ' pp-similar-in-other' : '');
         card.dataset.aid = item.id;
-
-        const ids = [item.doi ? `DOI: ${item.doi}` : null, item.pubmed_id ? `PMID: ${item.pubmed_id}` : null].filter(Boolean).join('  ');
-
         card.innerHTML = `
-          <div class="pp-similar-similarity">${pct}</div>
+          ${thumbHtml}
+          <div class="pp-similar-sim">${pct}</div>
           <div class="pp-similar-meta">
             <div class="pp-similar-title">${_escHtml(item.title || '')}</div>
             <div class="pp-similar-authors">${_escHtml([item.authors, item.year, item.journal].filter(Boolean).join(' · '))}</div>
-            ${ids ? `<div class="pp-similar-ids">${_escHtml(ids)}</div>` : ''}
+            ${idsHtml ? `<div class="pp-similar-ids">${idsHtml}</div>` : ''}
+            ${otherPackBadges ? `<div class="pp-similar-otherpacks">${otherPackBadges}</div>` : ''}
           </div>
-          <div class="pp-similar-actions">
-            ${inPack
-              ? '<span class="pp-similar-badge-inpack">Ya en el pack</span>'
-              : `<button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${item.id}" data-target="general">+ General</button>
-                 <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${item.id}" data-target="intro">+ Intro</button>`
-            }
-          </div>`;
-        list.appendChild(card);
+          <div class="pp-similar-actions">${actionsHtml}</div>`;
+        listEl.appendChild(card);
       });
 
       // Wire add buttons
-      list.querySelectorAll('.pp-btn-add-similar').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-          const aid    = btn.dataset.aid;
-          const target = btn.dataset.target;
+      listEl.querySelectorAll('.pp-btn-add-similar').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!state.currentId) return;
           btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+          const aid = btn.dataset.aid;
+          const tgt = btn.dataset.target;
           try {
-            const r = await fetch(`/prionpacks/api/packages/${state.currentId}/import-article`, {
+            const r = await fetch(`/prionpacks/api/packages/${encodeURIComponent(state.currentId)}/import-article`, {
               method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ article_id: aid, targets: [target] })
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ article_id: aid, targets: [tgt] }),
             });
-            if (!r.ok) throw new Error('Failed to add article');
-            // Re-fetch pack and re-populate refs
-            const pkgResp = await fetch(`/prionpacks/api/packages/${state.currentId}`);
-            if (pkgResp.ok) {
-              const pkg = await pkgResp.json();
-              _renderReferencesList(pkg.references || []);
-              _renderIntroReferencesList(pkg.introReferences || []);
-            }
-            // Update card to show "Ya en el pack"
-            const card = list.querySelector(`.pp-similar-card[data-aid="${aid}"]`);
-            if (card) {
-              card.classList.add('pp-similar-in-pack');
-              card.querySelector('.pp-similar-actions').innerHTML = '<span class="pp-similar-badge-inpack">Ya en el pack</span>';
-            }
-            inPackIds.add(aid);
-          } catch(err) {
+            const d = await r.json();
+            if (!r.ok && !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            // Update local in-pack tracking
+            inPackBySection[tgt].add(aid);
+            // Re-fetch and re-render only the refs section
+            try {
+              const resolved = await PPStorage.getById(state.currentId);
+              const idx = _packages.findIndex(p => p.id === state.currentId);
+              if (idx >= 0) _packages[idx] = resolved;
+              _renderReferencesList(resolved.references || []);
+              _renderIntroReferencesList(resolved.introReferences || []);
+              _refreshVaultMap(resolved);
+            } catch { /* non-fatal */ }
+            renderCards(); // redraw all cards with updated state
+            toast('Artículo añadido al pack ✓', 'success');
+          } catch (e) {
             btn.disabled = false;
-            alert('Error al añadir el artículo: ' + err.message);
+            btn.innerHTML = '+ Reintentar';
+            toast('Error al añadir: ' + e.message, 'error');
           }
         });
       });
-    } catch (err) {
-      list.innerHTML = `<p style="padding:1rem;color:var(--danger)">Error: ${err.message}</p>`;
+
+      // Thumbnail hover popup
+      _wireSimilarThumbs(listEl);
+    };
+    renderCards();
+  }
+
+  // Floating popup on thumbnail hover — reuses the same pattern as PrionVault list
+  function _wireSimilarThumbs(container) {
+    let popup = document.getElementById('pp-similar-thumb-popup');
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.id = 'pp-similar-thumb-popup';
+      popup.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;display:none;' +
+        'box-shadow:0 8px 32px rgba(0,0,0,.28);border-radius:6px;overflow:hidden;' +
+        'border:1px solid #d1d5db;background:#fff;';
+      const pi = document.createElement('img');
+      pi.alt = '';
+      pi.style.cssText = 'display:block;width:240px;height:auto;';
+      popup.appendChild(pi);
+      document.body.appendChild(popup);
     }
+    const pi = popup.firstChild;
+    let hideT;
+    container.addEventListener('mouseover', e => {
+      const img = e.target.closest('.pp-similar-thumb');
+      if (!img || !img.complete || !img.naturalWidth) return;
+      clearTimeout(hideT);
+      pi.src = img.src;
+      popup.style.display = 'block';
+      const r = img.getBoundingClientRect();
+      const left = r.right + 10 + 242 > window.innerWidth ? r.left - 246 : r.right + 6;
+      popup.style.left = left + 'px';
+      popup.style.top  = Math.max(4, Math.min(r.top, window.innerHeight - 360)) + 'px';
+    });
+    container.addEventListener('mouseout', e => {
+      if (e.target.closest('.pp-similar-thumb')) hideT = setTimeout(() => { popup.style.display = 'none'; }, 80);
+    });
   }
 
   function _syncIntroReferenceDois() {

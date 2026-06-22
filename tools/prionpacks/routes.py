@@ -53,6 +53,42 @@ def api_list():
     return jsonify(pkgs)
 
 
+@prionpacks_bp.route('/api/articles/pack-membership', methods=['POST'])
+@login_required
+def api_pack_membership():
+    """Given a list of article_ids, return which packs contain each one
+    and in which section (general / intro).
+
+    Body: {"article_ids": ["<uuid>", …], "current_pack_id": "PRP-001"}
+    Response: {"<uuid>": [{"pack_id": "PRP-001", "pack_title": "…",
+                            "section": "general"|"intro",
+                            "is_current": true|false}], …}
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    article_ids = set(str(x) for x in (data.get('article_ids') or []))
+    current_pack_id = (data.get('current_pack_id') or '').strip() or None
+    if not article_ids:
+        return jsonify({})
+
+    result = {aid: [] for aid in article_ids}
+    for pkg in models.list_packages():
+        pkg_id    = pkg.get('id', '')
+        pkg_title = (pkg.get('title') or pkg_id)
+        for section, field in (('general', 'references'), ('intro', 'introReferences')):
+            for ref in (pkg.get(field) or []):
+                if not models._is_linked_ref(ref):
+                    continue
+                aid = str(ref.get('article_id', ''))
+                if aid in result:
+                    result[aid].append({
+                        'pack_id':    pkg_id,
+                        'pack_title': pkg_title,
+                        'section':    section,
+                        'is_current': pkg_id == current_pack_id,
+                    })
+    return jsonify(result)
+
+
 def _fetch_prionvault_article(article_id: str):
     """Pull one row from the shared `articles` table.
 
