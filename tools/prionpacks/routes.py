@@ -110,6 +110,35 @@ def _format_article_reference(article: dict) -> str:
     return block
 
 
+def _resolve_ref(ref) -> str:
+    """Return a displayable reference string for either format.
+
+    - Linked dict  → fetch article from DB, format with current summary_ai.
+                     Falls back to a stub if the article has been deleted.
+    - Plain string → returned as-is.
+    """
+    if not models._is_linked_ref(ref):
+        return str(ref) if ref else ''
+    article = _fetch_prionvault_article(ref['article_id'])
+    if not article:
+        return f'[Artículo vinculado no encontrado — id: {ref["article_id"]}]'
+    return _format_article_reference(article)
+
+
+def _resolve_refs_for_pack(pkg: dict) -> dict:
+    """Return a copy of the pack with all linked refs resolved to strings.
+
+    Used before DOCX generation and when serving the pack to the frontend,
+    so consumers always see plain text regardless of storage format.
+    """
+    import copy
+    out = copy.deepcopy(pkg)
+    for field in ('references', 'introReferences'):
+        raw = out.get(field) or []
+        out[field] = [_resolve_ref(r) for r in raw]
+    return out
+
+
 @prionpacks_bp.route('/api/packages/<pkg_id>/import-article', methods=['POST'])
 @login_required
 def api_import_article(pkg_id):
@@ -187,7 +216,7 @@ def api_import_article(pkg_id):
         'added_to': added_to,
         'skipped': skipped,
         'article_id': str(article['id']),
-        'package': updated_pkg,
+        'package': _resolve_refs_for_pack(updated_pkg),
     })
 
 
@@ -279,7 +308,7 @@ def api_import_articles(pkg_id):
         'not_found': not_found,
         'added':     added,
         'skipped':   skipped,
-        'package':   pkg,
+        'package':   _resolve_refs_for_pack(pkg),
     })
 
 
@@ -339,6 +368,16 @@ def api_create():
     return jsonify(pkg), 201
 
 
+@prionpacks_bp.route('/api/packages/<pkg_id>', methods=['GET'])
+@login_required
+def api_get(pkg_id):
+    """Return a single pack with all linked refs resolved to display strings."""
+    pkg = models.get_package(pkg_id)
+    if not pkg:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify(_resolve_refs_for_pack(pkg))
+
+
 @prionpacks_bp.route('/api/packages/<pkg_id>', methods=['PUT'])
 @login_required
 def api_update(pkg_id):
@@ -347,7 +386,7 @@ def api_update(pkg_id):
     if pkg is None:
         return jsonify({'error': 'not found'}), 404
     _post_save_sync(pkg)
-    return jsonify(pkg)
+    return jsonify(_resolve_refs_for_pack(pkg))
 
 
 @prionpacks_bp.route('/api/packages/<pkg_id>', methods=['DELETE'])
@@ -370,7 +409,7 @@ def api_download_docx(pkg_id):
 
     version = max(1, pkg.get('docxVersion', 0))
     try:
-        docx_bytes = generate_package_docx(pkg, version, datetime.now())
+        docx_bytes = generate_package_docx(_resolve_refs_for_pack(pkg), version, datetime.now())
     except Exception as exc:
         logger.exception('DOCX generation error for %s', pkg_id)
         return jsonify({'error': str(exc)}), 500
@@ -438,7 +477,7 @@ def api_send_review(pkg_id):
     pkg = models.get_package(pkg_id)
 
     try:
-        docx_bytes = generate_package_docx(pkg, version, datetime.now())
+        docx_bytes = generate_package_docx(_resolve_refs_for_pack(pkg), version, datetime.now())
     except Exception as exc:
         logger.exception('DOCX generation error for %s', pkg_id)
         return jsonify({'error': f'Error generando el documento: {exc}', 'version': version}), 500
