@@ -375,6 +375,10 @@
                         title="Buscar y traer un artículo desde PrionVault">
                   <i class="fas fa-database"></i> From PrionVault
                 </button>
+                <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-idea-search-intro" type="button"
+                        title="Buscar artículos en PrionVault que apoyen o contradigan una idea">
+                  <i class="fas fa-lightbulb"></i> Idea search
+                </button>
                 <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-intro-reference" type="button">
                   <i class="fas fa-plus"></i> Add Reference
                 </button>
@@ -516,6 +520,10 @@
               <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-pv-import-general" type="button"
                       title="Buscar y traer un artículo desde PrionVault">
                 <i class="fas fa-database"></i> From PrionVault
+              </button>
+              <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-idea-search" type="button"
+                      title="Buscar artículos en PrionVault que apoyen o contradigan una idea">
+                <i class="fas fa-lightbulb"></i> Idea search
               </button>
               <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-reference" type="button">
                 <i class="fas fa-plus"></i> Add Reference
@@ -1170,6 +1178,31 @@ Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, Pr
     <div id="pp-pv-picker-results" style="flex:1;overflow-y:auto;padding:8px 14px;"></div>
     <div id="pp-pv-picker-status" style="font-size:12px;color:#6b7280;padding:6px 18px;border-top:1px solid #e5e7eb;
                                           background:#fafafa;min-height:24px;"></div>
+  </div>
+</div>
+
+<!-- Idea search modal -->
+<div id="pp-idea-search-modal" style="display:none;" class="pp-modal-overlay" role="dialog" aria-modal="true">
+  <div id="pp-idea-backdrop" class="pp-modal-backdrop"></div>
+  <div class="pp-modal-card pp-idea-modal-card">
+    <div class="pp-modal-header">
+      <h3 id="pp-idea-modal-title">Buscar en PrionVault</h3>
+      <button id="pp-idea-modal-close" class="pp-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="pp-idea-modal-body">
+      <label class="pp-idea-label">Describe la idea que quieres contrastar:</label>
+      <textarea id="pp-idea-input" class="pp-idea-textarea" rows="4" placeholder="Escribe aquí la idea, hipótesis o afirmación que quieres buscar en PrionVault…"></textarea>
+      <div class="pp-idea-actions">
+        <button id="pp-idea-btn-support" class="btn btn--primary">
+          <i class="fas fa-thumbs-up"></i> Artículos a favor
+        </button>
+        <button id="pp-idea-btn-contradict" class="btn btn--secondary">
+          <i class="fas fa-thumbs-down"></i> Artículos en contra
+        </button>
+      </div>
+      <p id="pp-idea-modal-subtitle" class="pp-idea-subtitle"></p>
+    </div>
+    <div id="pp-idea-modal-list" class="pp-similar-modal-list pp-idea-modal-list"></div>
   </div>
 </div>
 
