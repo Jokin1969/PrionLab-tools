@@ -3033,7 +3033,13 @@
                   style="background:none;border:none;padding:2px 4px;cursor:pointer;
                          font-size:13px;color:#6b7280;line-height:1;border-radius:4px;"
                   onmouseover="this.style.background='#f3f4f6';this.style.color='#0F3460';"
-                  onmouseout="this.style.background='none';this.style.color='#6b7280';">↗</button>
+                  onmouseout="this.style.background='none';this.style.color='#6b7280';">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                  </svg>
+                </button>
         </div>
       </td>`;
 
