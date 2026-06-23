@@ -11151,6 +11151,18 @@
     // pulls the rolling event log on demand so the operator can see
     // WHY specific articles couldn't be fetched (pmc_html /
     // pmc_http_404 / unpaywall_no_oa / …).
+    const clearSearchBtn = document.getElementById('pv-pinv-clear-search');
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener('click', () => {
+        qInp.value = '';
+        ymin.value = '';
+        ymax.value = '';
+        oaCb.checked = false;
+        page = 1;
+        reloadList();
+      });
+    }
+
     const oaForceBtn = document.getElementById('pv-pinv-force-oa');
     if (oaForceBtn) {
       oaForceBtn.addEventListener('click', async () => {
