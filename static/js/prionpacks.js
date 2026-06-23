@@ -5706,37 +5706,42 @@ ${refsText}`;
 
   function _pkgToPlainText(pkg) {
     /* Build a structured plain-text representation of the package —
-       mirrors what the Word export shows, without binary format. */
+       mirrors what the Word export shows, without binary format.
+       Field names match the camelCase keys returned by the API. */
     const lines = [];
-    const nl = (n = 1) => { for (let i = 0; i < n; i++) lines.push(''); };
-    const h = (t) => { lines.push(t); lines.push('='.repeat(t.length)); };
-    const h2 = (t) => { lines.push(''); lines.push('## ' + t); };
-    const field = (label, val) => {
-      if (!val || !val.trim()) return;
-      lines.push(`${label}: ${val.trim()}`);
-    };
+    const nl = () => lines.push('');
+    const h  = (t) => { lines.push(t); lines.push('='.repeat(t.length)); };
+    const h2 = (t) => { nl(); lines.push('## ' + t); };
+    const str = (v) => (typeof v === 'string' ? v : (v && typeof v === 'object' && v.text ? v.text : '')).trim();
+    const sec = (label, v) => { const s = str(v); if (s) { h2(label); lines.push(s); } };
 
     h(`[${pkg.id || 'SIN ID'}] ${_sup2text(pkg.title || '(sin título)')}`);
     nl();
-    field('Estado', pkg.active ? 'Activo' : 'Inactivo');
-    field('Prioridad', pkg.priority || 'none');
-    field('Tipo', pkg.type || '—');
-    field('Versión', pkg.version ? `v${pkg.version}` : '');
+    lines.push(`Estado: ${pkg.active ? 'Activo' : 'Inactivo'}`);
+    lines.push(`Prioridad: ${pkg.priority || 'none'}`);
+    lines.push(`Tipo: ${pkg.type || '—'}`);
+    if (pkg.version) lines.push(`Versión: v${pkg.version}`);
     nl();
 
-    if (pkg.description) { h2('Descripción'); lines.push(pkg.description.trim()); }
-    if (pkg.investigations) { h2('Investigations'); lines.push(pkg.investigations.trim()); }
+    sec('Descripción', pkg.description);
 
-    // Manuscript fields
-    ['coauthors','affiliations','abstract','author_summary','introduction','methods'].forEach(f => {
-      const v = pkg[f];
-      if (!v || !v.trim()) return;
-      const labels = {
-        coauthors:'Co-authors', affiliations:'Affiliations', abstract:'Abstract',
-        author_summary:'Author Summary', introduction:'Introduction', methods:'Methods',
-      };
-      h2(labels[f]); lines.push(v.trim());
-    });
+    // investigations is {text, files}
+    const invText = str(pkg.investigations);
+    if (invText) { h2('Investigations'); lines.push(invText); }
+    const invFiles = (pkg.investigations && pkg.investigations.files) || [];
+    if (invFiles.length) {
+      lines.push(`  Archivos adjuntos: ${invFiles.map(f => f.name || f).join(', ')}`);
+    }
+
+    // Manuscript fields (camelCase keys)
+    [
+      ['coAuthors',          'Co-authors'],
+      ['affiliations',       'Affiliations'],
+      ['abstract',           'Abstract'],
+      ['authorSummary',      'Author Summary'],
+      ['introduction',       'Introduction'],
+      ['methods',            'Methods'],
+    ].forEach(([key, label]) => sec(label, pkg[key]));
 
     // Findings
     const findings = pkg.findings || [];
@@ -5745,20 +5750,13 @@ ${refsText}`;
       findings.forEach((fn, i) => {
         nl();
         lines.push(`Finding ${i + 1}: ${_sup2text(fn.title || '')}`);
-        if (fn.description) lines.push(fn.description.trim());
-        const figs = fn.figures || [];
-        if (figs.length) {
-          lines.push('  Figuras:');
-          figs.forEach((fig, j) => {
-            lines.push(`    Fig ${j + 1}: ${fig.description || ''}`);
-            if (fig.caption) lines.push(`    Pie: ${fig.caption}`);
-          });
-        }
-        const tabs = fn.tables || [];
-        if (tabs.length) {
-          lines.push('  Tablas:');
-          tabs.forEach((tb, j) => lines.push(`    Tabla ${j + 1}: ${tb.description || ''}`));
-        }
+        const fd = str(fn.description); if (fd) lines.push(fd);
+        (fn.figures || []).forEach((fig, j) => {
+          lines.push(`  Fig ${j + 1}: ${fig.description || ''}`);
+          if (fig.caption) lines.push(`  Pie: ${fig.caption}`);
+        });
+        (fn.tables || []).forEach((tb, j) =>
+          lines.push(`  Tabla ${j + 1}: ${tb.description || ''}`));
       });
     }
 
@@ -5768,22 +5766,21 @@ ${refsText}`;
       h2('Gaps & Next Steps');
       gaps.forEach((g, i) => {
         nl();
-        lines.push(`Gap ${i + 1}: ${g.missing_info || ''}`);
-        if (g.needed_experiment) lines.push(`  Experimento propuesto: ${g.needed_experiment}`);
+        lines.push(`Gap ${i + 1}: ${g.missingInfo || g.missing_info || ''}`);
+        const exp = g.neededExperiment || g.needed_experiment || '';
+        if (exp) lines.push(`  Experimento propuesto: ${exp}`);
       });
     }
 
-    // Closing fields
-    ['discussion','credit','references','conflicts_of_interest','funding','acknowledgments'].forEach(f => {
-      const v = pkg[f];
-      if (!v || !v.trim()) return;
-      const labels = {
-        discussion:'Discussion', credit:'CReDiT', references:'References',
-        conflicts_of_interest:'Conflicts of Interest', funding:'Funding',
-        acknowledgments:'Acknowledgments',
-      };
-      h2(labels[f]); lines.push(v.trim());
-    });
+    // Closing fields (camelCase)
+    [
+      ['discussion',          'Discussion'],
+      ['credit',              'CReDiT'],
+      ['references',          'References'],
+      ['conflictsOfInterest', 'Conflicts of Interest'],
+      ['funding',             'Funding'],
+      ['acknowledgments',     'Acknowledgments'],
+    ].forEach(([key, label]) => sec(label, pkg[key]));
 
     return lines.join('\n');
   }
@@ -5802,7 +5799,8 @@ ${refsText}`;
   function _buildAiProjectTexts(pkg) {
     const title = _sup2text(pkg.title || '').trim() || '(sin título)';
     const id    = pkg.id || '';
-    const desc  = (pkg.description || '').trim();
+    const _str  = (v) => (typeof v === 'string' ? v : (v && typeof v === 'object' && v.text ? v.text : '')).trim();
+    const desc  = _str(pkg.description);
     const typeMap = { research: 'investigación', review: 'revisión', case: 'caso clínico', methods: 'métodos' };
     const typeTxt = typeMap[pkg.type] || pkg.type || 'investigación';
 
@@ -5827,7 +5825,7 @@ ${refsText}`;
       '',
     ];
     if (desc) {
-      text3Lines.push('Descripción del trabajo:', desc, '');
+      text3Lines.push('Descripción del trabajo:', _str(pkg.description), '');
     }
     const findings = pkg.findings || [];
     if (findings.length) {
