@@ -5876,6 +5876,56 @@ def api_article_fetch_pdf(aid):
     })
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/fetch-oa-pdf", methods=["POST"])
+@admin_required
+def api_article_fetch_oa_pdf(aid):
+    """Synchronously attempt OA PDF fetch for one article (Unpaywall + PMC).
+    Returns {ok, status, dropbox_path?} where status is the new pdf_oa_status.
+    Used by the per-row OA download button in the article list.
+    """
+    from .services import oa_pdf_fetcher
+    from sqlalchemy import text as sql_text
+
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not_found"}), 404
+        if getattr(a, "dropbox_path", None):
+            return jsonify({"error": "already_has_pdf"}), 409
+        row = {
+            "id":      str(aid),
+            "title":   a.title or "(sin título)",
+            "doi":     (a.doi or "").strip().lower() or None,
+            "pmc_id":  getattr(a, "pmc_id", None),
+            "year":    a.year,
+        }
+    finally:
+        s.close()
+
+    if not row["doi"] and not row["pmc_id"]:
+        return jsonify({"ok": False, "reason": "no_doi_no_pmc"}), 400
+
+    status = oa_pdf_fetcher._process_one(row)
+    ok = status not in ("not_available", "failed")
+
+    # Read back dropbox_path so the frontend can confirm the file is linked.
+    dropbox_path = None
+    if ok:
+        try:
+            eng = oa_pdf_fetcher._get_engine()
+            with eng.connect() as conn:
+                r = conn.execute(sql_text(
+                    "SELECT dropbox_path FROM articles WHERE id = :aid"
+                ), {"aid": str(aid)}).first()
+                if r:
+                    dropbox_path = r[0]
+        except Exception:
+            pass
+
+    return jsonify({"ok": ok, "status": status, "dropbox_path": dropbox_path})
+
+
 # ── Batch embedding indexing (Phase 4) ──────────────────────────────────────
 @prionvault_bp.route("/api/admin/batch-index/status", methods=["GET"])
 @admin_required

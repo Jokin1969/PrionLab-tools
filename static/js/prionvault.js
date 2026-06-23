@@ -2693,6 +2693,9 @@
       </td>`;
 
     // ── Thumbnail cell (first PDF page, shown only when PDF exists) ──────
+    const _canFetchOA = !a.has_pdf && !a.pdf_dropbox_path
+                        && a.pdf_oa_status !== 'not_available'
+                        && (a.doi || a.pmc_id);
     const thumbCell = (a.has_pdf || a.pdf_dropbox_path)
       ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
            <img class="pv-thumb"
@@ -2703,7 +2706,18 @@
                        border-radius:3px;border:1px solid #e5e7eb;cursor:zoom-in;"
                 onerror="this.style.display='none'">
          </td>`
-      : `<td style="padding:4px 4px;width:38px;"></td>`;
+      : _canFetchOA
+        ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
+             <button class="pv-oa-fetch-btn" data-aid="${esc(a.id)}"
+                     title="Descargar PDF en acceso abierto (Unpaywall + PMC)"
+                     style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                            width:34px;height:44px;border-radius:3px;border:1px solid #bfdbfe;
+                            background:#eff6ff;color:#1d4ed8;cursor:pointer;padding:0;gap:1px;
+                            font-size:9px;font-weight:600;line-height:1.1;">
+               <span style="font-size:14px;line-height:1;">⬇</span>OA
+             </button>
+           </td>`
+        : `<td style="padding:4px 4px;width:38px;"></td>`;
 
     // ── Article cell: title, authors+journal, tags+badges ────────────────
     const titleTooltip = [
@@ -2972,6 +2986,43 @@
           alert('No se pudo abrir el editor: ' + err.message);
         } finally {
           editBtn.disabled = false;
+        }
+      });
+
+      const oaFetchBtn = row.querySelector('.pv-oa-fetch-btn');
+      if (oaFetchBtn) oaFetchBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        oaFetchBtn.disabled = true;
+        oaFetchBtn.innerHTML = '<span style="font-size:11px;line-height:1.2;">⏳</span>';
+        oaFetchBtn.title = 'Descargando…';
+        try {
+          const r = await api(`/articles/${a.id}/fetch-oa-pdf`, { method: 'POST' });
+          if (r.ok) {
+            // PDF now exists — swap button for real thumbnail
+            const td = oaFetchBtn.closest('td');
+            td.innerHTML = `<img class="pv-thumb"
+              src="/prionvault/api/articles/${esc(a.id)}/thumbnail?_=${Date.now()}"
+              loading="lazy" alt=""
+              style="display:block;width:34px;height:44px;object-fit:cover;object-position:top center;
+                     border-radius:3px;border:1px solid #e5e7eb;cursor:zoom-in;"
+              onerror="this.style.display='none'">`;
+            a.has_pdf = true;
+            a.pdf_dropbox_path = r.dropbox_path || true;
+          } else {
+            oaFetchBtn.disabled = false;
+            oaFetchBtn.innerHTML = '<span style="font-size:14px;line-height:1;">✕</span><span style="font-size:8px;">OA</span>';
+            oaFetchBtn.style.borderColor = '#fca5a5';
+            oaFetchBtn.style.background  = '#fef2f2';
+            oaFetchBtn.style.color       = '#b91c1c';
+            oaFetchBtn.title = 'No disponible en OA: ' + (r.status || r.reason || '');
+          }
+        } catch (err) {
+          oaFetchBtn.disabled = false;
+          oaFetchBtn.innerHTML = '<span style="font-size:14px;line-height:1;">✕</span><span style="font-size:8px;">OA</span>';
+          oaFetchBtn.style.borderColor = '#fca5a5';
+          oaFetchBtn.style.background  = '#fef2f2';
+          oaFetchBtn.style.color       = '#b91c1c';
+          oaFetchBtn.title = 'Error: ' + err.message;
         }
       });
 
