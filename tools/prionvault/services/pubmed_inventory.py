@@ -68,7 +68,8 @@ PRESET_QUERIES: dict[str, str] = {
         '"prion domain"[Title/Abstract]'
     ),
     "aav": (
-        'AAV[Title/Abstract] OR "adeno-associated virus"[Title/Abstract]'
+        'AAV[Title/Abstract] OR "adeno-associated virus"[Title/Abstract] OR '
+        '"AAV gene therapy"[Title/Abstract] OR "adeno-associated virus gene therapy"[Title/Abstract]'
     ),
 }
 
@@ -369,6 +370,48 @@ def _esummary_one_batch(pmids: list[str]) -> dict[str, dict]:
     return out
 
 
+# ── PMC OA verification ───────────────────────────────────────────────────────
+
+_PMC_OA_API = "https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi"
+
+
+def _check_pmc_oa_batch(pmcids: list[str]) -> set[str]:
+    """Query the NCBI PMC OA web service for a batch of PMCIDs.
+    Returns the subset that have a freely downloadable full text.
+    Empty set on any error (fail-open: caller treats as unverified).
+    """
+    if not pmcids:
+        return set()
+    # API accepts comma-separated IDs, limit ~200 per call.
+    try:
+        r = requests.get(
+            _PMC_OA_API,
+            params={"id": ",".join(pmcids)},
+            headers=_HDRS,
+            timeout=15.0,
+        )
+        r.raise_for_status()
+    except Exception as exc:
+        logger.debug("pmc_oa_check: request failed (%s)", exc)
+        return set()
+    # Response is XML: <OA><records offset="0" limit="...">
+    #   <record id="PMCxxxxxxx" ...><link format="pdf" href="..."/></record>
+    # An absent <record> means not in OA subset.
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(r.text)
+    except ET.ParseError as exc:
+        logger.debug("pmc_oa_check: XML parse failed (%s)", exc)
+        return set()
+    verified: set[str] = set()
+    for rec in root.iter("record"):
+        pmcid = rec.get("id", "")
+        # Only count records that have at least one downloadable link
+        if list(rec.iter("link")):
+            verified.add(pmcid.upper())
+    return verified
+
+
 # ── Upsert ───────────────────────────────────────────────────────────────────
 
 def _upsert_batch(meta_by_pmid: dict[str, dict],
@@ -393,6 +436,17 @@ def _upsert_batch(meta_by_pmid: dict[str, dict],
         }
         for pmid, m in meta_by_pmid.items()
     ]
+
+    # Verify OA availability via PMC OA web service for rows with a PMCID.
+    pmcids_to_check = [r["pmcid"] for r in rows if r.get("pmcid")]
+    oa_verified_set: set[str] = set()
+    if pmcids_to_check:
+        oa_verified_set = _check_pmc_oa_batch(pmcids_to_check)
+
+    for r in rows:
+        pmcid = (r.get("pmcid") or "").upper()
+        r["oa_verified"] = pmcid in oa_verified_set if pmcid else False
+
     eng = _get_engine()
     inserted = updated = 0
     # Run the upserts in one transaction; xmax = 0 on the result row
@@ -403,9 +457,9 @@ def _upsert_batch(meta_by_pmid: dict[str, dict],
             res = conn.execute(sql_text("""
                 INSERT INTO prionvault_pubmed_inventory
                   (pmid, title, authors, year, journal, doi, pmcid,
-                   query_name, discovered_at, last_seen_at)
+                   query_name, oa_verified, discovered_at, last_seen_at)
                 VALUES (:pmid, :title, :authors, :year, :journal, :doi, :pmcid,
-                        :query_name, NOW(), NOW())
+                        :query_name, :oa_verified, NOW(), NOW())
                 ON CONFLICT (pmid) DO UPDATE
                   SET title        = COALESCE(EXCLUDED.title, prionvault_pubmed_inventory.title),
                       authors      = COALESCE(EXCLUDED.authors, prionvault_pubmed_inventory.authors),
@@ -413,6 +467,7 @@ def _upsert_batch(meta_by_pmid: dict[str, dict],
                       journal      = COALESCE(EXCLUDED.journal, prionvault_pubmed_inventory.journal),
                       doi          = COALESCE(EXCLUDED.doi, prionvault_pubmed_inventory.doi),
                       pmcid        = COALESCE(EXCLUDED.pmcid, prionvault_pubmed_inventory.pmcid),
+                      oa_verified  = EXCLUDED.oa_verified OR prionvault_pubmed_inventory.oa_verified,
                       last_seen_at = NOW()
                 RETURNING (xmax = 0) AS was_inserted
             """), row).first()
@@ -616,7 +671,7 @@ def list_pending(*, q: Optional[str] = None,
         rows = conn.execute(sql_text(f"""
             SELECT pmid, title, authors, year, journal, doi, pmcid,
                    query_name, discovered_at, last_seen_at, dismissed_at,
-                   imported_at, kept_at
+                   imported_at, kept_at, oa_verified
               FROM prionvault_pubmed_inventory
              WHERE {where}
              ORDER BY {order_by}
@@ -630,7 +685,7 @@ def list_pending(*, q: Optional[str] = None,
                   "imported_at", "kept_at"):  # type: ignore[assignment]
             v = it.get(k)
             it[k] = v.isoformat() if hasattr(v, "isoformat") else v
-        it["has_oa"] = bool(it.get("pmcid"))
+        it["has_oa"] = bool(it.get("oa_verified"))
         # Frontend convenience: a boolean is easier to switch button
         # state on than a nullable timestamp.
         it["kept"] = it.get("kept_at") is not None
@@ -848,7 +903,8 @@ def _create_article_from_meta(meta: dict, *, by_user: Optional[str]) -> str:
 # ── Harvest orchestration ────────────────────────────────────────────────────
 
 def harvest_once(query: Optional[str] = None,
-                 query_name: Optional[str] = None) -> dict:
+                 query_name: Optional[str] = None,
+                 min_year: Optional[int] = None) -> dict:
     """Run a single harvest pass for one query.
 
     If called with no args, uses the default "prion" preset.
@@ -859,6 +915,10 @@ def harvest_once(query: Optional[str] = None,
         query = PUBMED_QUERY
     if query_name is None:
         query_name = "prion"
+
+    # Apply year filter if requested.
+    if min_year is not None:
+        query = f"({query}) AND {min_year}:3000[DP]"
 
     if _state["running"]:
         return {"skipped": "already_running", "progress": get_progress()}
@@ -874,9 +934,14 @@ def harvest_once(query: Optional[str] = None,
         all_pmids = _esearch_all(query)
         _set_state(stage="esummary", pmids_seen=len(all_pmids))
 
+        stopped = False
         # Batched esummary + UPSERT. Each batch upserts itself; we
         # don't accumulate everything in memory.
         for i in range(0, len(all_pmids), _ESUMMARY_BATCH):
+            if _stop.is_set():
+                _stop.clear()
+                stopped = True
+                break
             batch = all_pmids[i:i + _ESUMMARY_BATCH]
             meta = _esummary_one_batch(batch)
             ins, upd = _upsert_batch(meta, query_name=query_name)
@@ -887,9 +952,12 @@ def harvest_once(query: Optional[str] = None,
                 _state["pmids_updated"]  = updated
             time.sleep(_INTER_BATCH_SLEEP_S)
 
-        _set_state(stage="reconcile")
-        reconciled = reconcile()
-        _set_state(stage="done")
+        if not stopped:
+            _set_state(stage="reconcile")
+            reconciled = reconcile()
+        _set_state(stage="stopped" if stopped else "done")
+        if stopped:
+            error = "stopped_by_user"
     except Exception as exc:
         logger.exception("pubmed_inventory: harvest crashed")
         error = str(exc)[:600]
@@ -912,18 +980,19 @@ def harvest_once(query: Optional[str] = None,
 
 
 def harvest(query: Optional[str] = None,
-            query_name: Optional[str] = None) -> dict:
+            query_name: Optional[str] = None,
+            min_year: Optional[int] = None) -> dict:
     """Convenience alias for harvest_once with explicit query/query_name."""
-    return harvest_once(query=query, query_name=query_name)
+    return harvest_once(query=query, query_name=query_name, min_year=min_year)
 
 
-def harvest_all() -> list[dict]:
+def harvest_all(min_year: Optional[int] = None) -> list[dict]:
     """Run harvest_once() for every preset in PRESET_QUERIES in sequence.
     Returns a list of per-preset summaries. Used by the daemon and the
     refresh endpoint when preset='all'."""
     summaries = []
     for name, q in PRESET_QUERIES.items():
-        summary = harvest_once(query=q, query_name=name)
+        summary = harvest_once(query=q, query_name=name, min_year=min_year)
         summaries.append(summary)
     return summaries
 
@@ -934,6 +1003,12 @@ def request_harvest_now() -> None:
     """Asks the daemon to run a harvest immediately (bypassing the
     7-day interval). Safe to call from any thread."""
     _force.set()
+
+
+def request_stop_harvest() -> None:
+    """Ask the running harvest to stop after the current batch."""
+    _stop.set()
+    _force.clear()
 
 
 def _config() -> dict:

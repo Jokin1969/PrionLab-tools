@@ -1938,22 +1938,34 @@
             <input type="radio" name="pv-pinv-preset" value="prion_like"> Prion-like
           </label>
           <label class="pv-pinv-preset-label" style="font-size:12.5px;cursor:pointer;">
-            <input type="radio" name="pv-pinv-preset" value="aav"> AAV
+            <input type="radio" name="pv-pinv-preset" value="aav"> AAV gene therapy
           </label>
           <label class="pv-pinv-preset-label" style="font-size:12.5px;cursor:pointer;">
             <input type="radio" name="pv-pinv-preset" value="custom"> Personalizada
           </label>
+        </div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+          <label style="font-size:12.5px;color:#374151;white-space:nowrap;">Desde el año:</label>
+          <input type="number" id="pv-pinv-harvest-year" placeholder="ej. 2020" min="1960" max="2030"
+                 style="width:90px;padding:3px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:12.5px;">
+          <span style="font-size:11px;color:#9ca3af;">(vacío = todos los años)</span>
         </div>
         <textarea id="pv-pinv-custom-query" rows="2"
                   placeholder='Ej: "tau protein"[Title/Abstract] OR taupathy[Title/Abstract]'
                   style="display:none;width:100%;border:1px solid #d1d5db;border-radius:6px;
                          padding:6px 10px;font-size:12px;font-family:monospace;resize:vertical;
                          box-sizing:border-box;"></textarea>
-        <button id="pv-pinv-refresh-pubmed" type="button"
-                title="Ejecuta la búsqueda seleccionada contra PubMed. El daemon ya lo hace cada 7 días."
-                style="align-self:flex-start;padding:6px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;cursor:pointer;">
-          <i class="fas fa-sync-alt"></i> Ejecutar búsqueda
-        </button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button id="pv-pinv-refresh-pubmed" type="button"
+                  title="Ejecuta la búsqueda seleccionada contra PubMed. El daemon ya lo hace cada 7 días."
+                  style="align-self:flex-start;padding:6px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;cursor:pointer;">
+            <i class="fas fa-sync-alt"></i> Ejecutar búsqueda
+          </button>
+          <button id="pv-pinv-stop-harvest" type="button"
+                  style="display:none;padding:5px 14px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;">
+            ⏹ STOP
+          </button>
+        </div>
       </div>
     </div>
 

@@ -10282,6 +10282,7 @@
     const ymax     = document.getElementById('pv-pinv-ymax');
     const oaCb     = document.getElementById('pv-pinv-only-oa');
     const refrBtn  = document.getElementById('pv-pinv-refresh-pubmed');
+    const stopBtn  = document.getElementById('pv-pinv-stop-harvest');
     const bulkBar  = document.getElementById('pv-pinv-bulk-bar');
     const bulkCnt  = document.getElementById('pv-pinv-bulk-count');
     const bulkImp  = document.getElementById('pv-pinv-bulk-import');
@@ -10360,7 +10361,7 @@
       const perPreset = s.per_preset || [];
       const perPresetEl = document.getElementById('pv-pinv-per-preset');
       if (perPresetEl) {
-        const labels = { prion: 'Prion', prion_like: 'Prion-like', aav: 'AAV', custom: 'Personalizada' };
+        const labels = { prion: 'Prion', prion_like: 'Prion-like', aav: 'AAV gene therapy', custom: 'Personalizada' };
         perPresetEl.innerHTML = perPreset.map(p =>
           `<span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:500;">` +
           `${esc(labels[p.query_name] || p.query_name)}: <strong>${p.count}</strong> pendientes` +
@@ -10410,6 +10411,7 @@
       } else {
         progEl.style.display = 'none';
       }
+      if (stopBtn) stopBtn.style.display = p.running ? '' : 'none';
 
       // Detect harvest completion (running → idle) so we reload the
       // candidate list. Without this the user still sees "No quedan
@@ -10762,11 +10764,13 @@
       refrBtn.innerHTML = '⏳ Lanzando…';
       const preset = document.querySelector('input[name="pv-pinv-preset"]:checked')?.value || 'all';
       const customQuery = document.getElementById('pv-pinv-custom-query')?.value?.trim() || '';
+      const minYearVal = document.getElementById('pv-pinv-harvest-year')?.value?.trim();
+      const minYear = minYearVal && /^\d{4}$/.test(minYearVal) ? parseInt(minYearVal) : null;
       try {
         await api('/admin/pubmed-inventory/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ preset, custom_query: customQuery }),
+          body: JSON.stringify({ preset, custom_query: customQuery, ...(minYear ? { min_year: minYear } : {}) }),
         });
         // The daemon polls hourly; we asked it to wake now. Stats poll
         // (every 4 s) will surface the progress strip within seconds.
@@ -10778,6 +10782,17 @@
         refrBtn.innerHTML = orig;
       }
     });
+
+    if (stopBtn) {
+      stopBtn.addEventListener('click', async () => {
+        stopBtn.disabled = true;
+        try {
+          await api('/admin/pubmed-inventory/stop', { method: 'POST' });
+          await reloadStats();
+        } catch(e) { alert('Error: ' + e.message); }
+        finally { stopBtn.disabled = false; }
+      });
+    }
 
     // OA-PDF fetcher: force-drain + diagnostic panel.
     // The force-drain button wakes the daemon so it processes the

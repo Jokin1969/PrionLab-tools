@@ -6200,6 +6200,13 @@ def api_pubmed_inventory_refresh():
     data         = request.get_json(silent=True) or {}
     preset       = (data.get("preset") or "all").strip()
     custom_query = (data.get("custom_query") or "").strip()
+    min_year: Optional[int] = None
+    try:
+        _my_raw = data.get("min_year")
+        if _my_raw is not None:
+            min_year = int(_my_raw)
+    except (TypeError, ValueError):
+        min_year = None
 
     pubmed_inventory.request_harvest_now()
 
@@ -6208,20 +6215,24 @@ def api_pubmed_inventory_refresh():
     if not pubmed_inventory.get_progress().get("running"):
         if preset == "all":
             target = pubmed_inventory.harvest_all
-            kwargs: dict = {}
+            kwargs: dict = {"min_year": min_year} if min_year is not None else {}
         elif preset == "custom" and custom_query:
             target = pubmed_inventory.harvest_once
             kwargs = {"query": custom_query, "query_name": "custom"}
+            if min_year is not None:
+                kwargs["min_year"] = min_year
         elif preset in pubmed_inventory.PRESET_QUERIES:
             target = pubmed_inventory.harvest_once
             kwargs = {
                 "query":      pubmed_inventory.PRESET_QUERIES[preset],
                 "query_name": preset,
             }
+            if min_year is not None:
+                kwargs["min_year"] = min_year
         else:
             # Unknown preset: fall back to running all presets.
             target = pubmed_inventory.harvest_all
-            kwargs = {}
+            kwargs = {"min_year": min_year} if min_year is not None else {}
 
         def _run():
             target(**kwargs)
@@ -6237,6 +6248,14 @@ def api_pubmed_inventory_refresh():
         "preset": preset,
         "status": pubmed_inventory.get_progress(),
     })
+
+
+@prionvault_bp.route("/api/admin/pubmed-inventory/stop", methods=["POST"])
+@admin_required
+def api_pubmed_inventory_stop():
+    from .services import pubmed_inventory
+    pubmed_inventory.request_stop_harvest()
+    return jsonify({"ok": True, "status": pubmed_inventory.get_progress()})
 
 
 @prionvault_bp.route("/api/admin/pubmed-inventory/dismiss", methods=["POST"])
