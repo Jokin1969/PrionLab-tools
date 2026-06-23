@@ -1102,18 +1102,29 @@ const PrionPacks = (() => {
       e.preventDefault();
       e.stopPropagation();
       const text = ta.value.trim();
-      if (!text) { toast('La referencia está vacía.', 'error'); return; }
-      const existing = Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
-        .map(t => t.value.trim());
+      if (!text && !article_id) { toast('La referencia está vacía.', 'error'); return; }
+      // Duplicate check: by article_id for linked refs, by text for plain ones
+      const introList = document.getElementById('intro-references-list');
+      const alreadyLinked = article_id && Array.from(introList?.querySelectorAll('.pp-intro-reference-item[data-article-id]') || [])
+        .some(el => el.dataset.articleId === article_id);
+      const alreadyText = !article_id && Array.from(document.querySelectorAll('#intro-references-list .pp-intro-reference-textarea'))
+        .some(t => t.value.trim() === text);
       const btn = e.currentTarget;
-      if (existing.includes(text)) {
+      if (alreadyLinked || alreadyText) {
         btn.classList.add('migrated');
         toast('Ya incluida en Referencias de Introducción.', 'info');
         return;
       }
-      const introRefs = _collectIntroReferences();
-      introRefs.push(article_id ? { type: 'linked', article_id } : text);
-      _renderIntroReferencesList(introRefs);
+      // Append directly without re-rendering the whole list
+      if (introList) {
+        const ref = article_id ? { type: 'linked', article_id, text } : text;
+        const newItem = _createIntroReferenceItem(ref, introList.children.length);
+        introList.appendChild(newItem);
+        _setupAnchorButtons(newItem);
+        _setupSupPreviews(newItem);
+      }
+      _updateIntroReferencesCount?.();
+      _refreshAllJumpButtons?.();
       _refreshSharedDois();
       _scheduleAutosave();
       btn.classList.add('migrated');
@@ -1280,11 +1291,11 @@ ${refsText}`;
   function _collectReferences() {
     return Array.from(document.querySelectorAll('#references-list .pp-reference-item'))
       .map(item => {
+        const aid = item.dataset.articleId;
+        if (aid) return { type: 'linked', article_id: aid };
         const ta = item.querySelector('.pp-reference-textarea');
         const text = (ta?.value || '').trim();
         if (!text) return null;
-        const aid = item.dataset.articleId;
-        if (aid) return { type: 'linked', article_id: aid };
         return text;
       })
       .filter(Boolean);
@@ -1402,10 +1413,18 @@ ${refsText}`;
         toast('Ya incluida en Referencias generales.', 'info');
         return;
       }
-      const refs = _collectReferences();
-      refs.push(article_id ? { type: 'linked', article_id } : text);
-      _renderReferencesList(refs);
+      // Append directly without re-rendering the whole list
+      const refList = document.getElementById('references-list');
+      if (refList) {
+        const ref = article_id ? { type: 'linked', article_id, text } : text;
+        const newItem = _createReferenceItem(ref, refList.children.length);
+        refList.appendChild(newItem);
+        _setupAnchorButtons(newItem);
+        _setupSupPreviews(newItem);
+      }
+      _updateReferencesCount?.();
       _refreshMigrateBtns();
+      _refreshAllJumpButtons?.();
       _refreshSharedDois();
       _scheduleAutosave();
       btn.classList.add('migrated');
@@ -1525,11 +1544,11 @@ ${refsText}`;
   function _collectIntroReferences() {
     return Array.from(document.querySelectorAll('#intro-references-list .pp-reference-item'))
       .map(item => {
+        const aid = item.dataset.articleId;
+        if (aid) return { type: 'linked', article_id: aid };
         const ta = item.querySelector('.pp-intro-reference-textarea');
         const text = (ta?.value || '').trim();
         if (!text) return null;
-        const aid = item.dataset.articleId;
-        if (aid) return { type: 'linked', article_id: aid };
         return text;
       })
       .filter(Boolean);
