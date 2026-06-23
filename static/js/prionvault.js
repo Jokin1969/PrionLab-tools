@@ -51,6 +51,7 @@
     ppId: '',            // specific PrionPack id (e.g. "PRP-001") or ''
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     indexedStatus:  '',  // '' | 'yes' | 'no'
+    searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
     page: 1,
     size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
     // selectedIds: a Set that ALSO syncs every change to the server
@@ -2481,6 +2482,8 @@
     if (state.ppId)                params.set('pp_id', state.ppId);
     if (state.abstractStatus)      params.set('abstract_status', state.abstractStatus);
     if (state.indexedStatus)       params.set('indexed_status', state.indexedStatus);
+    if (state.searchFields && state.searchFields.length)
+                                   params.set('search_fields', state.searchFields.join(','));
     // Health-dashboard extra filters (transient, consumed once)
     if (state._healthExtra) {
       for (const [k, v] of Object.entries(state._healthExtra)) params.set(k, v);
@@ -5810,6 +5813,28 @@
       loadArticles();
     };
     if (clearBtn) clearBtn.addEventListener('click', clearSearch);
+
+    // ── Field-filter microbuttons (T / Au / A) ────────────────────────────
+    const FIELD_COLORS = { title: '#2563eb', authors: '#7c3aed', abstract: '#059669' };
+    document.querySelectorAll('.pv-field-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const field = btn.dataset.field;
+        const idx   = state.searchFields.indexOf(field);
+        if (idx === -1) {
+          state.searchFields.push(field);
+          btn.style.background   = FIELD_COLORS[field];
+          btn.style.color        = '#fff';
+          btn.style.borderColor  = FIELD_COLORS[field];
+        } else {
+          state.searchFields.splice(idx, 1);
+          btn.style.background  = '#f3f4f6';
+          btn.style.color       = '#9ca3af';
+          btn.style.borderColor = '#d1d5db';
+        }
+        state.page = 1;
+        loadArticles();
+      });
+    });
 
     searchInput.addEventListener('input', e => {
       syncClearBtn();

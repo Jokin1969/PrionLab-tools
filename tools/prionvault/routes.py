@@ -178,6 +178,8 @@ def api_list_articles():
     has_summary_notes = True if has_summary_notes_raw == "true" else None
     pdf_verify_status = (request.args.get("pdf_verify_status") or "").strip() or None
     summary_ai_provider = (request.args.get("summary_ai_provider") or "").strip() or None
+    _sf_raw     = (request.args.get("search_fields") or "").strip()
+    search_fields = [f.strip() for f in _sf_raw.split(",") if f.strip() in ("title", "authors", "abstract")] if _sf_raw else []
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
@@ -225,10 +227,12 @@ def api_list_articles():
     try:
         return _list_articles_with_recovery(
             s, q, year_min, year_max, journal,
-            authors_q, tag_id, has_summary, in_prionread,
+            authors_q,
             is_flagged, is_milestone, color_label,
             priority_eq, extraction, is_favorite, is_read,
             sort, page, page_size,
+            search_fields=search_fields,
+            tag_id=tag_id, has_summary=has_summary, in_prionread=in_prionread,
             collection_id=collection_id,
             collection_group=collection_group,
             collection_subgroup=collection_subgroup,
@@ -381,12 +385,12 @@ def api_prionpacks_list():
 
 def _list_articles_impl(s, q, year_min, year_max, journal,
                         authors_q,
-                        tag_id, has_summary, in_prionread,
                         is_flagged, is_milestone, color_label,
                         priority_eq, extraction,
                         is_favorite, is_read,
                         sort, page, page_size,
-                        *, collection_id=None,
+                        *, search_fields=None,
+                        collection_id=None,
                         collection_group=None, collection_subgroup=None,
                         has_jc=None, jc_presenter=None, jc_year=None,
                         has_pp=None, pp_id=None,
@@ -425,18 +429,26 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         # plainto_tsquery is kept as a fallback for clusters where
         # websearch is unavailable (very old Postgres).
         #
-        # We OR the FTS predicate with a plain ILIKE substring match
-        # on title / abstract so the user can type incomplete words
-        # ("a marker ass" → "…a marker associated…") without losing
-        # the FTS syntax above. ILIKE is a sequential scan but at
-        # current catalog size (~thousands) the cost is invisible.
-        conditions.append(
-            "(search_vector @@ websearch_to_tsquery('simple', :q) "
-            "   OR title ILIKE :q_like "
-            "   OR coalesce(abstract,'') ILIKE :q_like)"
-            if "search_vector" in pv_cols
-            else "(title ILIKE :q_like OR coalesce(abstract,'') ILIKE :q_like)"
-        )
+        # `search_fields` restricts which columns are matched.
+        # [] / None means all fields (title + abstract + FTS).
+        _sf = set(search_fields or []) & {"title", "authors", "abstract"}
+        if not _sf:
+            # Default: FTS on search_vector OR ILIKE on title/abstract
+            conditions.append(
+                "(search_vector @@ websearch_to_tsquery('simple', :q) "
+                "   OR title ILIKE :q_like "
+                "   OR coalesce(authors,'') ILIKE :q_like "
+                "   OR coalesce(abstract,'') ILIKE :q_like)"
+                if "search_vector" in pv_cols
+                else "(title ILIKE :q_like OR coalesce(authors,'') ILIKE :q_like "
+                     "OR coalesce(abstract,'') ILIKE :q_like)"
+            )
+        else:
+            parts = []
+            if "title"    in _sf: parts.append("title ILIKE :q_like")
+            if "authors"  in _sf: parts.append("coalesce(authors,'') ILIKE :q_like")
+            if "abstract" in _sf: parts.append("coalesce(abstract,'') ILIKE :q_like")
+            conditions.append("(" + " OR ".join(parts) + ")")
         params["q"] = q
         params["q_like"] = f"%{q}%"
 

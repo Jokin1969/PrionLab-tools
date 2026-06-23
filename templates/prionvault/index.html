@@ -600,6 +600,25 @@
                        transition:background 0.12s ease;"
                 onmouseover="this.style.background='#9ca3af';"
                 onmouseout="this.style.background='#d1d5db';">×</button>
+        <div id="pv-search-field-btns"
+             style="display:flex;gap:3px;flex-shrink:0;align-items:center;"
+             title="Limitar búsqueda a campos concretos. Sin selección = busca en todos.">
+          <button type="button" class="pv-field-btn" data-field="title"
+                  title="Buscar solo en Título"
+                  style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                         border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                         transition:background 0.12s,color 0.12s,border-color 0.12s;">T</button>
+          <button type="button" class="pv-field-btn" data-field="authors"
+                  title="Buscar solo en Autores"
+                  style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                         border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                         transition:background 0.12s,color 0.12s,border-color 0.12s;">Au</button>
+          <button type="button" class="pv-field-btn" data-field="abstract"
+                  title="Buscar solo en Abstract"
+                  style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                         border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                         transition:background 0.12s,color 0.12s,border-color 0.12s;">A</button>
+        </div>
         <button id="btn-search-mode"
                 data-mode="text"
                 style="display:none;"
