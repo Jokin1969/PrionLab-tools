@@ -3444,6 +3444,30 @@
     try {
       const a = await api('/articles/' + aid);
 
+      // Wire cart button in detail modal nav bar
+      const detailCartBtn = document.getElementById('pv-detail-cart-btn');
+      if (detailCartBtn) {
+        const inCart = window.PPCart?.has(a.id);
+        detailCartBtn.innerHTML = inCart ? '🛒 ✓' : '🛒';
+        detailCartBtn.style.background   = inCart ? '#d1fae5' : 'white';
+        detailCartBtn.style.color        = inCart ? '#065f46' : '#374151';
+        detailCartBtn.style.borderColor  = inCart ? '#6ee7b7' : '#d1d5db';
+        detailCartBtn.title = inCart ? 'En el carrito' : 'Añadir al carrito de PrionPacks';
+        detailCartBtn.onclick = () => {
+          if (!window.PPCart) return;
+          window.PPCart.add({
+            id: a.id, title: a.title || '', authors: a.authors || '',
+            year: a.year || null, journal: a.journal || '',
+            doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
+          });
+          detailCartBtn.innerHTML = '🛒 ✓';
+          detailCartBtn.style.background  = '#d1fae5';
+          detailCartBtn.style.color       = '#065f46';
+          detailCartBtn.style.borderColor = '#6ee7b7';
+          detailCartBtn.title = 'En el carrito';
+        };
+      }
+
       const tagHtml = (a.tags && a.tags.length)
         ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;">
             ${a.tags.map(t =>
