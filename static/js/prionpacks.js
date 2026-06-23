@@ -523,14 +523,112 @@ const PrionPacks = (() => {
     toast((errorPrefix || 'Error') + ': ' + err.message, 'error');
   }
 
+  // ── AI Confirm Modal ────────────────────────────────────────────────────────
+  // Shows the pre-execution confirmation modal. Returns the chosen model string
+  // ('claude', 'chatgpt', 'gemini') or null if the user cancelled.
+  function _showAIConfirmModal(heading, description) {
+    return new Promise(resolve => {
+      const modal    = document.getElementById('pp-ai-confirm-modal');
+      const headEl   = document.getElementById('pp-ai-confirm-heading');
+      const descEl   = document.getElementById('pp-ai-confirm-desc');
+      const okBtn    = document.getElementById('pp-ai-confirm-ok');
+      const cancelBtn = document.getElementById('pp-ai-confirm-cancel');
+      const closeBtn = document.getElementById('pp-ai-confirm-close');
+      const backdrop = document.getElementById('pp-ai-confirm-backdrop');
+
+      headEl.textContent = heading;
+      descEl.textContent = description;
+
+      // Reset model selector to Claude
+      const radios = modal.querySelectorAll('input[name="pp-ai-model"]');
+      radios.forEach(r => { r.checked = r.value === 'claude'; });
+
+      const close = (model) => {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        closeBtn.removeEventListener('click', onCancel);
+        backdrop.removeEventListener('click', onCancel);
+        resolve(model);
+      };
+      const onOk = () => {
+        const chosen = modal.querySelector('input[name="pp-ai-model"]:checked')?.value || 'claude';
+        close(chosen);
+      };
+      const onCancel = () => close(null);
+
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      closeBtn.addEventListener('click', onCancel);
+      backdrop.addEventListener('click', onCancel);
+
+      modal.style.display = '';
+    });
+  }
+
+  // Opens a prompt in an external AI (ChatGPT/Gemini): copies to clipboard then opens tab.
+  async function _openExternalAI(model, promptText) {
+    let url;
+    if (model === 'chatgpt') url = 'https://chatgpt.com/';
+    else url = 'https://gemini.google.com/';
+
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(promptText);
+      copied = true;
+    } catch {
+      try {
+        const tmp = document.createElement('textarea');
+        tmp.value = promptText;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand('copy');
+        tmp.remove();
+        copied = true;
+      } catch { /* give up */ }
+    }
+
+    window.open(url, '_blank', 'noopener');
+    const name = model === 'chatgpt' ? 'ChatGPT' : 'Gemini';
+    toast(
+      copied
+        ? `Prompt copiado al portapapeles. ${name} se ha abierto en una nueva pestaña — pégalo allí.`
+        : `Se ha abierto ${name}. (No se pudo copiar el prompt automáticamente.)`,
+      'success'
+    );
+  }
+
   async function _askClaudeField(sourceId, sourceLabel) {
     const sourceEl = document.getElementById(sourceId);
     if (!sourceEl) return;
     const sourceText = sourceEl.value.trim();
     if (!sourceText) { toast('El campo está vacío.', 'error'); return; }
 
+    const isMethod  = sourceLabel.startsWith('Método');
+    const isFinding = sourceLabel.startsWith('Finding');
+    const heading   = isMethod  ? `Consultar IA: ${sourceLabel}`
+                    : isFinding ? `Consultar IA: ${sourceLabel}`
+                    : `Consultar IA: ${sourceLabel}`;
+    const desc = isMethod
+      ? `La IA analizará el texto del método ("${sourceLabel}") y sugerirá mejoras, aclaraciones o puntos a desarrollar. La respuesta aparecerá en el panel de respuesta y podrás aplicarla al campo con un clic.`
+      : isFinding
+      ? `La IA analizará la descripción del finding ("${sourceLabel}"), evaluará su relevancia, claridad y posibles implicaciones. La respuesta aparecerá en el panel y podrás aplicarla al campo.`
+      : `La IA recibirá el contenido del campo "${sourceLabel}" junto con el contexto activo del paquete y responderá con sugerencias de mejora o análisis. La respuesta aparecerá en el panel de respuesta.`;
+
+    const model = await _showAIConfirmModal(heading, desc);
+    if (!model) return;
+
     const context   = _getAIContext().filter(c => !(c.label === sourceLabel && c.text === sourceText));
     const documents = _getAIDocuments();
+
+    if (model !== 'claude') {
+      const contextBlock = context.length > 0
+        ? `Contexto del paquete:\n${context.map(c => `- ${c.label}: ${c.text}`).join('\n')}\n\n`
+        : '';
+      const promptText = `${contextBlock}Campo: ${sourceLabel}\n\n${sourceText}`;
+      await _openExternalAI(model, promptText);
+      return;
+    }
 
     _showClaudeModal(null, null, null);
     try {
@@ -538,7 +636,7 @@ const PrionPacks = (() => {
       _showClaudeModal(response, sourceEl, sourceLabel);
     } catch (e) {
       _closeClaudeModal();
-      await _handleClaudeError(e, 'Error llamando a Claude');
+      await _handleClaudeError(e, 'Error llamando a la IA');
     }
   }
 
@@ -548,16 +646,29 @@ const PrionPacks = (() => {
       toast('Añade una descripción o imagen primero.', 'error'); return;
     }
 
+    const model = await _showAIConfirmModal(
+      'IA: redactar pie de figura',
+      'La IA recibirá la descripción de la figura (y la imagen si está marcada como contexto) y redactará un pie de figura en estilo de manuscrito científico. La respuesta aparecerá en el panel y podrás aplicarla al campo con un clic.'
+    );
+    if (!model) return;
+
     const context = _getAIContext();
     const imageDataUrl = (figDiv.dataset.imageAsContext === '1' && figDiv.dataset.imageUrl)
       ? figDiv.dataset.imageUrl
       : null;
 
+    if (model !== 'claude') {
+      const contextBlock = context.length > 0
+        ? `Contexto del paquete:\n${context.map(c => `- ${c.label}: ${c.text}`).join('\n')}\n\n`
+        : '';
+      const promptText = `${contextBlock}Escribe un pie de figura científico para:\n\n${capText || '(sin descripción)'}`;
+      await _openExternalAI(model, promptText);
+      return;
+    }
+
     _showClaudeModal(null, null, null);
-    // Override callback to set capTextarea value
     try {
       const response = await PPApi.askClaude(context, 'Pie de figura', capText || '(describe this figure)', imageDataUrl);
-      // Show modal with custom callback
       const modal       = document.getElementById('pp-claude-modal');
       const loading     = document.getElementById('pp-claude-loading');
       const responseEl  = document.getElementById('pp-claude-response-text');
@@ -576,7 +687,7 @@ const PrionPacks = (() => {
       modal.style.display = '';
     } catch (e) {
       _closeClaudeModal();
-      await _handleClaudeError(e, 'Error llamando a Claude');
+      await _handleClaudeError(e, 'Error llamando a la IA');
     }
   }
 
@@ -1221,6 +1332,12 @@ const PrionPacks = (() => {
       .map(ta => ta.value.trim()).filter(Boolean);
     if (!refs.length) { toast('No hay referencias para analizar.', 'error'); return; }
 
+    const model = await _showAIConfirmModal(
+      'IA: temas de Discusión',
+      `La IA analizará las ${refs.length} referencias generales del paquete y generará un listado estructurado de temas para la sección de Discusión del manuscrito. Para cada tema incluirá las referencias que lo sustentan y por qué sería relevante discutirlo. La respuesta aparecerá en el panel de respuesta.`
+    );
+    if (!model) return;
+
     const pkg      = state.currentId ? _packages.find(p => p.id === state.currentId) : null;
     const pkgTitle = pkg?.title || document.getElementById('title-display')?.textContent?.trim() || 'este manuscrito';
     const refsText = refs.map((r, i) => `[R-${String(i + 1).padStart(2, '0')}] ${r}`).join('\n\n---\n\n');
@@ -1232,6 +1349,11 @@ Analiza cuidadosamente el contenido de cada referencia y genera un listado estru
 Referencias:
 
 ${refsText}`;
+
+    if (model !== 'claude') {
+      await _openExternalAI(model, prompt);
+      return;
+    }
 
     const btn = document.getElementById('btn-discuss-claude');
     if (btn) btn.classList.add('loading');
@@ -1252,7 +1374,7 @@ ${refsText}`;
       modal.style.display      = '';
     } catch (e) {
       _closeClaudeModal();
-      await _handleClaudeError(e, 'Error llamando a Claude');
+      await _handleClaudeError(e, 'Error llamando a la IA');
     } finally {
       if (btn) btn.classList.remove('loading');
     }
@@ -2494,8 +2616,8 @@ ${refsText}`;
           <label class="pp-label pp-label-sm">Desarrollo</label>
           <div class="pp-field-ai-actions">
             <button type="button" class="pp-ai-btn" data-field-id="${bodyId}" data-ai-label="Método ${idx + 1} — desarrollo" title="Incluir el desarrollo como contexto para Claude">AI</button>
-            <button type="button" class="pp-claude-ask-btn pp-method-claude-btn" data-source-id="${bodyId}" data-source-label="Método ${idx + 1}" title="Preguntar a Claude sobre este método">
-              <i class="fas fa-robot"></i> Claude
+            <button type="button" class="pp-claude-ask-btn pp-method-claude-btn" data-source-id="${bodyId}" data-source-label="Método ${idx + 1}" title="Consultar IA sobre este método">
+              <i class="fas fa-robot"></i> IA
             </button>
           </div>
         </div>
@@ -3197,7 +3319,7 @@ ${refsText}`;
         <span class="pp-finding-number">F-${String(num).padStart(2,'0')}</span>
         <input type="text" id="ftitle-${finding.id}" class="pp-finding-title-input" placeholder="Finding title…" value="${_esc(finding.title||'')}" />
         <button class="pp-ai-btn" data-field-id="ftitle-${finding.id}" data-ai-label="Finding título: ${_esc(finding.title||'(sin título)')}" title="Incluir título como contexto para Claude">AI</button>
-        <button class="pp-btn-icon btn-claude" title="Translate with Claude" onclick="PrionPacks.translateFinding(this)">
+        <button class="pp-btn-icon btn-claude" title="Traducir título al inglés con IA" onclick="PrionPacks.translateFinding(this)">
           <i class="fas fa-robot"></i>
         </button>
         <button class="pp-btn-icon btn-remove" title="Remove finding" onclick="PrionPacks.removeFinding(this)">
@@ -3209,8 +3331,8 @@ ${refsText}`;
         <textarea id="fdesc-${finding.id}" class="pp-textarea" rows="3" placeholder="Describe the main result…">${_esc(finding.description||'')}</textarea>
         <div class="pp-field-ai-row">
           <button class="pp-ai-btn" data-field-id="fdesc-${finding.id}" data-ai-label="Finding descripción: ${_esc(finding.title||'(sin título)')}" title="Incluir descripción como contexto para Claude">AI</button>
-          <button class="pp-claude-ask-btn pp-claude-finding-btn" data-source-id="fdesc-${finding.id}" data-source-label="Finding: ${_esc(finding.title||'(sin título)')}" title="Preguntar a Claude sobre este finding">
-            <i class="fas fa-robot"></i> Claude
+          <button class="pp-claude-ask-btn pp-claude-finding-btn" data-source-id="fdesc-${finding.id}" data-source-label="Finding: ${_esc(finding.title||'(sin título)')}" title="Consultar IA sobre este finding">
+            <i class="fas fa-robot"></i> IA
           </button>
         </div>
         <div class="pp-figs-tables-section">
@@ -3283,7 +3405,7 @@ ${refsText}`;
         <div class="pp-field-ai-row">
           <button class="pp-ai-btn pp-ai-btn-xs pp-fig-img-ai-btn" title="Incluir imagen como contexto visual para Claude">AI img</button>
           <button class="pp-ai-btn pp-ai-btn-xs pp-fig-cap-ai-btn" data-field-id="${capTextareaId}" data-ai-label="Pie de figura ${num}" title="Incluir pie de figura como contexto para Claude">AI</button>
-          <button class="pp-claude-ask-btn pp-fig-cap-claude-btn" title="Pedir a Claude que escriba el pie de figura"><i class="fas fa-robot"></i> Claude</button>
+          <button class="pp-claude-ask-btn pp-fig-cap-claude-btn" title="Pedir a la IA que escriba el pie de figura"><i class="fas fa-robot"></i> IA</button>
         </div>
         <div class="pp-fig-cap-actions">
           <button class="pp-btn pp-btn-sm pp-btn-ghost pp-fig-cap-cancel">Cancel</button>
@@ -3503,7 +3625,20 @@ ${refsText}`;
   async function translateFinding(btn) {
     const block = btn.closest('.pp-finding-block');
     const text = block.querySelector('.pp-finding-title-input').value.trim();
-    if (!text) { toast('Enter a finding title first.', 'error'); return; }
+    if (!text) { toast('Escribe el título del finding primero.', 'error'); return; }
+
+    const model = await _showAIConfirmModal(
+      'IA: traducir título al inglés',
+      `La IA traducirá el título del finding al inglés para el manuscrito. El resultado aparecerá como una etiqueta debajo del título; podrás aplicarlo al campo con un clic.\n\nTexto: "${text}"`
+    );
+    if (!model) return;
+
+    if (model !== 'claude') {
+      const promptText = `Traduce al inglés (devuelve solo la traducción, sin explicaciones):\n\n${text}`;
+      await _openExternalAI(model, promptText);
+      return;
+    }
+
     btn.classList.add('loading');
     btn.querySelector('i').className = 'fas fa-spinner';
     try {
@@ -3515,9 +3650,9 @@ ${refsText}`;
       } else {
         block.querySelector('.pp-finding-header').insertAdjacentHTML('afterend', html);
       }
-      toast('Translation complete!', 'success');
+      toast('¡Traducción completada!', 'success');
     } catch (e) {
-      await _handleClaudeError(e, 'Translation error');
+      await _handleClaudeError(e, 'Error al traducir');
     } finally {
       btn.classList.remove('loading');
       btn.querySelector('i').className = 'fas fa-robot';
