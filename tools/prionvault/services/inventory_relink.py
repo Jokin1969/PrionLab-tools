@@ -112,7 +112,7 @@ def _find_pairs(conn) -> tuple[list[dict], list[dict]]:
             donors = conn.execute(sql_text(
                 """SELECT id::text AS id, title
                      FROM articles
-                    WHERE pubmed_id::text = :p::text
+                    WHERE pubmed_id::text = CAST(:p AS text)
                       AND id <> CAST(:oid AS uuid)
                       AND dropbox_path IS NOT NULL"""
             ), {"p": pmid, "oid": o["id"]}).mappings().all()
