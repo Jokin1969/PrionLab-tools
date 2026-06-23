@@ -1112,7 +1112,7 @@ const PrionPacks = (() => {
         return;
       }
       const introRefs = _collectIntroReferences();
-      introRefs.push(text);
+      introRefs.push(article_id ? { type: 'linked', article_id } : text);
       _renderIntroReferencesList(introRefs);
       _refreshSharedDois();
       _scheduleAutosave();
@@ -1403,7 +1403,7 @@ ${refsText}`;
         return;
       }
       const refs = _collectReferences();
-      refs.push(text);
+      refs.push(article_id ? { type: 'linked', article_id } : text);
       _renderReferencesList(refs);
       _refreshMigrateBtns();
       _refreshSharedDois();
