@@ -2675,12 +2675,19 @@
           }
           setTimeout(close, 1400);
         } else if (d.error === 'duplicate_pdf') {
-          const detail = d.detail || '';
-          const dupId  = d.duplicate_of || '';
+          const dupId = d.duplicate_of || '';
+          const dupLink = dupId
+            ? `<br><a href="?open=${encodeURIComponent(dupId)}" target="_blank"
+                  style="display:inline-block;margin-top:8px;padding:5px 14px;
+                         border-radius:6px;border:1px solid #d97706;background:#fffbeb;
+                         color:#92400e;font-size:12px;font-weight:600;text-decoration:none;">
+                 🔍 Ver el artículo que ya lo tiene
+               </a>`
+            : '';
           statusDiv.innerHTML =
             `<span style="color:#b45309;">⚠️ Este PDF ya existe en la biblioteca.</span><br>
-             <span style="font-size:12px;color:#6b7280;">${esc(detail)}</span>` +
-            (dupId ? `<br><span style="font-size:12px;color:#6b7280;">Artículo duplicado: <code>${esc(dupId)}</code></span>` : '');
+             <span style="font-size:12px;color:#6b7280;">Otro artículo ya tiene este mismo PDF.</span>` +
+            dupLink;
           submitBtn.disabled = false;
           submitBtn.textContent = 'Subir PDF';
           cancelBtn.disabled = false;
