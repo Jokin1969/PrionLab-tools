@@ -659,7 +659,7 @@ def list_pending(*, q: Optional[str] = None,
         conditions.append("year <= :ymax")
         params["ymax"] = year_max
     if only_oa:
-        conditions.append("oa_verified = TRUE")
+        conditions.append("pmcid IS NOT NULL")
     if days is not None and days > 0:
         conditions.append("discovered_at >= NOW() - (:days * INTERVAL '1 day')")
         params["days"] = int(days)
@@ -689,7 +689,7 @@ def list_pending(*, q: Optional[str] = None,
                   "imported_at", "kept_at"):  # type: ignore[assignment]
             v = it.get(k)
             it[k] = v.isoformat() if hasattr(v, "isoformat") else v
-        it["has_oa"] = bool(it.get("oa_verified"))
+        it["has_oa"] = bool(it.get("pmcid"))
         # Frontend convenience: a boolean is easier to switch button
         # state on than a nullable timestamp.
         it["kept"] = it.get("kept_at") is not None
