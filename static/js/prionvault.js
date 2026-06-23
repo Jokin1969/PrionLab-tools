@@ -6667,9 +6667,23 @@
         }
       } catch (_e) { /* transient — try again next tick */ }
     };
-    tick();  // first tick now, don't wait 4s
-    _importPolling = setInterval(tick, 4000);
+    tick();  // first tick now, don't wait
+    _importPolling = setInterval(tick, 2000);
   }
+
+  // Human-readable label for each ingest step.
+  const _STEP_LABELS = {
+    staged:      '⏳ En cola',
+    queued:      '⏳ En cola',
+    extracting:  '📄 Extrayendo texto…',
+    resolving:   '🔍 Buscando metadatos…',
+    uploading:   '☁️ Subiendo a Dropbox…',
+    indexing:    '🔢 Indexando…',
+    done:        '✓ Listo',
+    duplicate:   '⟳ Duplicado',
+    failed:      '✗ Fallido',
+    staged_missing: '✗ PDF perdido',
+  };
 
   // Live header counts while jobs are in-flight.
   function _renderSessionProgress(jobs) {
@@ -6686,6 +6700,16 @@
     if (counts.done)      bits.push(`<span style="color:#15803d;">✓ ${counts.done}</span>`);
     if (counts.duplicate) bits.push(`<span style="color:#b45309;">⟳ ${counts.duplicate}</span>`);
     if (counts.failed)    bits.push(`<span style="color:#b91c1c;">✗ ${counts.failed}</span>`);
+
+    // Show the current step for any in-flight jobs
+    const inFlightJobs = jobs.filter(j =>
+      j.status !== 'done' && j.status !== 'duplicate' && j.status !== 'failed');
+    if (inFlightJobs.length > 0) {
+      const stepKey = inFlightJobs[0].step || inFlightJobs[0].status || 'queued';
+      const stepLabel = _STEP_LABELS[stepKey] || stepKey;
+      bits.push(`<span style="color:#6b7280;font-weight:400;">${stepLabel}</span>`);
+    }
+
     const progress = document.getElementById('pv-import-progress');
     let header = progress.querySelector('.pv-import-header');
     if (!header) {
