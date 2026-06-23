@@ -1646,12 +1646,48 @@ ${refsText}`;
         const summaryFlag = a.has_summary_ai
           ? `<span style="display:inline-block;font-size:10.5px;color:#1d4ed8;background:#dbeafe;padding:1px 6px;border-radius:5px;font-weight:600;margin-left:6px;">AI ✓</span>`
           : '';
+        const doiChip = a.doi
+          ? `<a href="https://doi.org/${_ppEsc(a.doi)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+               style="font-size:10.5px;padding:1px 6px;border-radius:4px;background:#ede9fe;color:#5b21b6;font-weight:600;text-decoration:none;white-space:nowrap;">
+               DOI ↗
+             </a>`
+          : '';
+        const pmidChip = a.pubmed_id
+          ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${_ppEsc(a.pubmed_id)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+               style="font-size:10.5px;padding:1px 6px;border-radius:4px;background:#dbeafe;color:#1d4ed8;font-weight:600;text-decoration:none;white-space:nowrap;">
+               PMID ${_ppEsc(a.pubmed_id)} ↗
+             </a>`
+          : '';
+        const ppBadges = (a.prionpacks || []).map(pp =>
+          `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:#e0f2fe;color:#0369a1;font-weight:700;white-space:nowrap;"
+                 title="${_ppEsc(pp.title || pp.id)}">${_ppEsc(pp.id)}</span>`
+        ).join('');
+        // Article type tooltip from source / extraction_status
+        const typeLabel = a.source === 'pubmed_inventory' ? 'PubMed' : a.source === 'manual' ? 'Manual' : a.source || '';
+        const typeHint = [
+          typeLabel,
+          a.pdf_pages ? `${a.pdf_pages} págs.` : '',
+          a.extraction_status === 'extracted' ? 'texto extraído' : '',
+        ].filter(Boolean).join(' · ');
+        const thumb = a.has_pdf
+          ? `<div style="flex-shrink:0;position:relative;width:38px;height:50px;cursor:pointer;"
+                  title="${_ppEsc(typeHint || 'Ver PDF')}">
+               <img src="/prionvault/api/articles/${_ppEsc(a.id)}/thumbnail"
+                    loading="lazy" alt=""
+                    style="width:38px;height:50px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb;">
+             </div>`
+          : `<div style="flex-shrink:0;width:38px;height:50px;border-radius:4px;border:1px dashed #d1d5db;
+                         background:#f9fafb;display:flex;align-items:center;justify-content:center;"
+                  title="${_ppEsc(typeHint || 'Sin PDF')}">
+               <span style="font-size:16px;color:#d1d5db;">📄</span>
+             </div>`;
         return `
           <div class="pp-pv-picker-row" data-aid="${_ppEsc(a.id)}"
                data-title="${_ppEsc(a.title || '')}"
-               style="display:flex;justify-content:space-between;gap:10px;align-items:center;
+               style="display:flex;gap:10px;align-items:center;
                       padding:9px 10px;border:1px solid #e5e7eb;border-radius:7px;background:white;
                       margin-bottom:6px;cursor:pointer;transition:background 0.1s;">
+            ${thumb}
             <div style="flex:1;min-width:0;">
               <div style="font-size:13px;font-weight:600;color:#111827;
                           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -1661,8 +1697,8 @@ ${refsText}`;
                           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                 ${headerBits || '—'}
               </div>
-              <div style="font-size:10.5px;color:#9ca3af;margin-top:2px;font-family:ui-monospace,monospace;">
-                ${a.doi ? 'DOI ' + _ppEsc(a.doi) : ''}${a.doi && a.pubmed_id ? ' · ' : ''}${a.pubmed_id ? 'PMID ' + _ppEsc(a.pubmed_id) : ''}
+              <div style="margin-top:4px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                ${doiChip}${pmidChip}${ppBadges}
               </div>
             </div>
             <button class="pp-btn pp-btn-sm pp-btn-secondary pp-pv-pick-btn" type="button"
