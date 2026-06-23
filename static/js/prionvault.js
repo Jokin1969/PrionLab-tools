@@ -2621,17 +2621,13 @@
               style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;text-decoration:none;">📦 ${esc(a.prionpacks[0].id)}${a.prionpacks.length > 1 ? ' +' + (a.prionpacks.length - 1) : ''}</a>`
         : '',
       ratingChip,
-      // Cart button — adds article to PrionPacks cart (localStorage)
+      // Cart button — adds article to PrionPacks cart (localStorage).
+      // No inline onclick: JSON double-quotes would break the HTML attribute.
+      // Wired via addEventListener below (has access to `a` via closure).
       (() => {
         const inCart = window.PPCart?.has(a.id);
         return `<button type="button" class="pv-cart-btn ${inCart ? 'pv-cart-btn--in' : ''}"
                         data-aid="${esc(a.id)}"
-                        onclick="event.stopPropagation();(function(btn,art){
-                          if(!window.PPCart)return;
-                          window.PPCart.add(art);
-                          btn.classList.add('pv-cart-btn--in');
-                          btn.title='En el carrito';
-                        })(this,${JSON.stringify({id:a.id,title:a.title||'',authors:a.authors||'',year:a.year||null,journal:a.journal||'',doi:a.doi||'',pubmed_id:a.pubmed_id||'',has_pdf:!!a.has_pdf}).replace(/'/g,'&#39;')})"
                         title="${inCart ? 'En el carrito' : 'Añadir al carrito de PrionPacks'}"
                         style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;
                                font-size:10.5px;font-weight:600;border:none;cursor:pointer;
@@ -2974,6 +2970,22 @@
         } finally {
           editBtn.disabled = false;
         }
+      });
+
+      const cartBtn = row.querySelector('.pv-cart-btn');
+      if (cartBtn) cartBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!window.PPCart) return;
+        window.PPCart.add({
+          id: a.id, title: a.title || '', authors: a.authors || '',
+          year: a.year || null, journal: a.journal || '',
+          doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
+        });
+        cartBtn.classList.add('pv-cart-btn--in');
+        cartBtn.style.background = '#d1fae5';
+        cartBtn.style.color = '#065f46';
+        cartBtn.title = 'En el carrito';
+        cartBtn.innerHTML = '🛒 ✓';
       });
     }
 
