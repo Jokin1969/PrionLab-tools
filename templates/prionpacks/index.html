@@ -639,7 +639,7 @@
             </button>
           </div>
           <p class="pp-doc-block-desc">Descripción completa de PrionPacks (campos, flujos, salidas) para dar contexto a una IA antes de pedirle ayuda.</p>
-          <pre class="pp-docs-content" id="doc-prionpacks-overview"># PrionPacks — Manual de contexto para asistentes de IA
+          <pre class=”pp-docs-content” id=”doc-prionpacks-overview”># PrionPacks — Manual de contexto para asistentes de IA
 
 ## Qué es
 
@@ -712,27 +712,48 @@ El sistema usa la API de Anthropic (clave que el usuario configura). Hay dos tip
 
 El resultado se muestra en un modal para copiarlo al campo si interesa.
 
+## Integración con PrionVault
+
+PrionVault es la biblioteca de artículos científicos del laboratorio. Desde PrionPacks se puede acceder a ella de dos formas:
+
+1. Botón “PrionVault” (en la barra del editor y en el Dashboard): abre un modal de búsqueda semántica sobre la biblioteca. Los resultados muestran artículo, autores, año, resumen y disponibilidad de PDF. Cada artículo se puede añadir directamente a la sección General o Introduction del paquete abierto, o al carrito.
+
+2. Botón “Sugerir más artículos”: aparece en la barra del editor cuando el paquete ya está guardado. Usa IA para sugerir artículos de PrionVault que sean relevantes para el paquete actual, basándose en su título, descripción y referencias ya añadidas. Los resultados muestran el grado de similitud y permiten añadir el artículo a General, a Introduction o al carrito.
+
+### Carrito de artículos
+El icono de carrito (barra del editor y Dashboard) acumula artículos de PrionVault seleccionados durante la sesión. Desde el panel de carrito se puede ver el listado, comprobar si cada artículo ya está en alguna sección del paquete abierto, añadirlo a General o Introduction, o eliminarlo del carrito. El contador del icono muestra cuántos artículos hay acumulados.
+
+## Notas y tareas del paquete
+
+El botón “nota(s)” (barra del editor, visible cuando hay al menos una nota) abre un panel de notas y tareas pendientes asociadas al paquete. Permite registrar recordatorios, pendientes experimentales o cualquier información que no encaje en los campos estructurados. La presencia de notas se indica con un contador en el botón.
+
 ## Score y estado activo
 
-- Score: puntuación 0-100 calculada como findings (60%) + figures (25%) + gaps (15%). Sirve como indicador del grado de completitud.
+- Score: puntuación 0-100 calculada a partir del grado de completitud de findings, figuras y gaps. Sirve como indicador de madurez del paquete.
 - Active/Inactive toggle: paquete inactivo se bloquea visualmente (opaco, no editable). Útil para archivar trabajos concluidos sin perderlos.
 
 ## Salidas
 
 - Word (.docx): genera el documento completo del paquete con todas las secciones, figuras embebidas con sus pies, tablas, gaps formateados, etc. Versionado automático (v1, v2…) cada vez que se envía para revisión.
 - Email para revisión: envío del Word generado por SMTP a uno o varios “colegas” predefinidos (Hasier Eraña, Carlos Díaz, Jorge Moreno).
+- Lista PrionPacks (.docx): botón en el Dashboard que genera un Word con la lista de todos los paquetes activos — útil para reuniones de seguimiento o informes de progreso.
 - Export ManuscriptForge → PrionPack: la herramienta hermana ManuscriptForge genera secciones administrativas estandarizadas (Author Order, Funding, Acknowledgments, Competing Interests, CReDiT, Introduction, Methods) a partir del directorio de miembros y grants, y permite exportarlas directamente a un campo del paquete vía botón “📦 Exportar a PrionPacks”.
+
+## Backup y restauración
+
+Desde el Dashboard se puede lanzar un backup manual a Dropbox (botón “Backup Dropbox”) y restaurar datos desde un backup previo (botón “Restaurar”). Los backups se guardan en la carpeta configurada de Dropbox con retención automática (diaria + mensual).
 
 ## Para qué se usa
 
 El usuario es investigador en biología de priones / neurodegeneración (CIC bioGUNE). Usa PrionPacks para:
 
 1. Capturar ideas en bruto en Investigations (papers leídos, notas).
-2. Estructurar findings a medida que se generan datos experimentales, asociando les figuras (gels, IHC, imágenes de microscopía, gráficos).
+2. Estructurar findings a medida que se generan datos experimentales, asociándoles figuras (gels, IHC, imágenes de microscopía, gráficos).
 3. Identificar gaps que requieren más experimentos antes de poder publicar.
-4. Redactar cada sección del manuscrito con apoyo de Claude (Abstract, Introduction, Methods, Discussion…), usando como contexto los findings y la información de partida.
-5. Iterar con coautores generando Word con versionado, recibiendo comentarios, y reincorporándolos.
-6. Cerrar el paquete con CReDiT, References (con DOIs auto-detectados), Funding y Acknowledgments antes de la submission.
+4. Buscar artículos relevantes de la biblioteca PrionVault para enriquecer el contexto del paquete.
+5. Redactar cada sección del manuscrito con apoyo de Claude (Abstract, Introduction, Methods, Discussion…), usando como contexto los findings y la información de partida.
+6. Iterar con coautores generando Word con versionado, recibiendo comentarios, y reincorporándolos.
+7. Cerrar el paquete con CReDiT, References (con DOIs auto-detectados), Funding y Acknowledgments antes de la submission.
 
 El asistente debe asumir que el contenido suele estar en español o inglés científico, que los temas son técnicos (α-synuclein, tau, PrPsc, ECJ, RT-QuIC, modelos transgénicos, IHC, EM…) y que el tono buscado es el de un manuscrito científico en revistas de neurociencia/neurodegeneración.</pre>
         </div>
