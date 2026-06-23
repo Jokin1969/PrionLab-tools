@@ -6735,6 +6735,12 @@ def api_semantic_search():
     except VoyageNotConfigured:
         return jsonify({"error": "embed_unavailable",
                         "detail": "VOYAGE_API_KEY not set"}), 503
+    except RuntimeError as exc:
+        # Provider refusals (stop_reason=refusal) or empty-response errors
+        # are expected edge cases, not internal failures.
+        logger.warning("semantic search provider error [%s]: %s", provider, exc)
+        return jsonify({"error": "rag_failed",
+                        "detail": f"[{provider}] {str(exc)[:280]}"}), 502
     except Exception as exc:
         logger.exception("semantic search failed for provider=%s", provider)
         return jsonify({"error": "rag_failed",
