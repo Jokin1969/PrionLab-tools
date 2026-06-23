@@ -305,15 +305,15 @@ def poll_once() -> dict:
     try:
         proc_folder = _ensure_processed_folder(conn, cfg["processed_folder"])
         conn.select(cfg["folder"])
-        typ, data = conn.search(None, "UNSEEN")
+        typ, data = conn.uid("SEARCH", None, "UNSEEN")
         if typ != "OK":
             summary["errors"].append("search failed")
             return summary
         ids = (data[0] or b"").split()
         summary["checked"] = len(ids)
-        for msg_id in ids:
+        for msg_uid in ids:
             try:
-                _process_one(conn, msg_id, cfg, proc_folder, summary)
+                _process_one(conn, msg_uid, cfg, proc_folder, summary)
             except Exception as exc:
                 logger.exception("email_ingest: per-message handler crashed")
                 summary["errors"].append(str(exc)[:200])
@@ -332,7 +332,7 @@ def poll_once() -> dict:
 
 def _process_one(conn: imaplib.IMAP4_SSL, msg_id: bytes, cfg: dict,
                  proc_folder: Optional[str], summary: dict) -> None:
-    typ, msg_data = conn.fetch(msg_id, "(RFC822)")
+    typ, msg_data = conn.uid("FETCH", msg_id, "(RFC822)")
     if typ != "OK" or not msg_data:
         summary["errors"].append(f"fetch failed for {msg_id!r}")
         return
@@ -457,11 +457,11 @@ def _mark_handled(conn: imaplib.IMAP4_SSL, msg_id: bytes,
     """Move to Processed folder when available, else just mark SEEN."""
     try:
         if proc_folder:
-            conn.copy(msg_id, proc_folder)
-            conn.store(msg_id, "+FLAGS", r"(\Deleted)")
+            conn.uid("COPY", msg_id, proc_folder)
+            conn.uid("STORE", msg_id, "+FLAGS", r"(\Deleted)")
             conn.expunge()
         else:
-            conn.store(msg_id, "+FLAGS", r"(\Seen)")
+            conn.uid("STORE", msg_id, "+FLAGS", r"(\Seen)")
     except Exception as exc:
         logger.warning("email_ingest: mark-handled failed (%s)", exc)
 
