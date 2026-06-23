@@ -305,7 +305,12 @@ def _call_anthropic(api_key: str, user_prompt: str,
         if getattr(block, "type", None) == "text"
     ).strip()
     if not text:
-        raise RuntimeError("Claude returned an empty response")
+        stop_reason = getattr(message, "stop_reason", "unknown")
+        block_types = [getattr(b, "type", "?") for b in message.content]
+        raise RuntimeError(
+            f"Claude returned no text (stop_reason={stop_reason!r}, "
+            f"block_types={block_types!r})"
+        )
 
     usage = getattr(message, "usage", None)
     tokens_in  = getattr(usage, "input_tokens",  None) if usage else None
