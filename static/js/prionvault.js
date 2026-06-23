@@ -2504,6 +2504,123 @@
       <path d="M1.5 1 L9 3.5 L1.5 7 Z"></path>
     </svg>`;
 
+  // ── Manual PDF upload (for articles where OA fetch failed) ─────────────
+  function _wireManualUploadBtn(btn, a) {
+    if (!btn) return;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _openManualPdfUpload(a.id, a.title || '(sin título)', btn);
+    });
+  }
+
+  function _openManualPdfUpload(aid, title, triggerBtn) {
+    const existing = document.getElementById('pv-manual-pdf-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'pv-manual-pdf-modal';
+    overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.45);
+      z-index:9999;display:flex;align-items:center;justify-content:center;`;
+
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:10px;padding:28px 28px 24px;
+                  max-width:460px;width:calc(100% - 32px);box-shadow:0 8px 32px rgba(0,0,0,0.22);">
+        <div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:6px;">
+          Subir PDF manualmente
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:18px;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+             title="${esc(title)}">${esc(title.slice(0, 80))}${title.length > 80 ? '…' : ''}</div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;">
+          Selecciona el archivo PDF:
+        </label>
+        <input type="file" id="pv-manual-pdf-input" accept=".pdf,application/pdf"
+               style="display:block;width:100%;font-size:13px;margin-bottom:18px;
+                      border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;">
+        <div id="pv-manual-pdf-status" style="font-size:12px;min-height:18px;margin-bottom:14px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="pv-manual-pdf-cancel"
+                  style="padding:7px 16px;border-radius:6px;border:1px solid #d1d5db;
+                         background:#fff;color:#374151;font-size:13px;cursor:pointer;">
+            Cancelar
+          </button>
+          <button id="pv-manual-pdf-submit"
+                  style="padding:7px 18px;border-radius:6px;border:none;
+                         background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+            Subir PDF
+          </button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    const fileInput  = overlay.querySelector('#pv-manual-pdf-input');
+    const statusDiv  = overlay.querySelector('#pv-manual-pdf-status');
+    const submitBtn  = overlay.querySelector('#pv-manual-pdf-submit');
+    const cancelBtn  = overlay.querySelector('#pv-manual-pdf-cancel');
+
+    const close = () => overlay.remove();
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    submitBtn.addEventListener('click', async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        statusDiv.textContent = 'Selecciona un archivo PDF primero.';
+        statusDiv.style.color = '#b91c1c';
+        return;
+      }
+      if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+        statusDiv.textContent = 'El archivo debe ser un PDF.';
+        statusDiv.style.color = '#b91c1c';
+        return;
+      }
+      submitBtn.disabled = true;
+      submitBtn.textContent = '⏳ Subiendo…';
+      statusDiv.textContent = '';
+
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const r = await fetch(`/prionvault/api/articles/${encodeURIComponent(aid)}/upload-pdf`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: fd,
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) {
+          statusDiv.textContent = '✓ PDF subido correctamente.';
+          statusDiv.style.color = '#15803d';
+          submitBtn.textContent = '✓ Listo';
+          // Swap the trigger button for a thumbnail
+          if (triggerBtn) {
+            const td = triggerBtn.closest('td');
+            if (td) {
+              td.innerHTML = `<img class="pv-thumb"
+                src="/prionvault/api/articles/${encodeURIComponent(aid)}/thumbnail?_=${Date.now()}"
+                loading="lazy" alt=""
+                style="display:block;width:34px;height:44px;object-fit:cover;
+                       object-position:top center;border-radius:3px;
+                       border:1px solid #e5e7eb;cursor:zoom-in;"
+                onerror="this.style.display='none'">`;
+            }
+          }
+          setTimeout(close, 1200);
+        } else {
+          statusDiv.textContent = 'Error: ' + (d.error || d.detail || r.status);
+          statusDiv.style.color = '#b91c1c';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Subir PDF';
+        }
+      } catch (err) {
+        statusDiv.textContent = 'Error de red: ' + err.message;
+        statusDiv.style.color = '#b91c1c';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Subir PDF';
+      }
+    });
+  }
+
   function renderRow(a) {
     const row = document.createElement('tr');
     row.className = 'pv-article-row';
@@ -2696,6 +2813,8 @@
     const _canFetchOA = !a.has_pdf && !a.pdf_dropbox_path
                         && a.pdf_oa_status !== 'not_available'
                         && (a.doi || a.pmc_id);
+    const _oaFailed  = !a.has_pdf && !a.pdf_dropbox_path
+                        && a.pdf_oa_status === 'not_available';
     const thumbCell = (a.has_pdf || a.pdf_dropbox_path)
       ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
            <img class="pv-thumb"
@@ -2717,7 +2836,18 @@
                <span style="font-size:14px;line-height:1;">⬇</span>OA
              </button>
            </td>`
-        : `<td style="padding:4px 4px;width:38px;"></td>`;
+        : _oaFailed
+          ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
+               <button class="pv-oa-manual-btn" data-aid="${esc(a.id)}" data-title="${esc(a.title||'')}"
+                       title="OA no disponible — clic para subir PDF manualmente"
+                       style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                              width:34px;height:44px;border-radius:3px;border:1px solid #d1d5db;
+                              background:#f9fafb;color:#6b7280;cursor:pointer;padding:0;gap:1px;
+                              font-size:9px;font-weight:600;line-height:1.1;">
+                 <span style="font-size:13px;line-height:1;">📤</span>PDF
+               </button>
+             </td>`
+          : `<td style="padding:4px 4px;width:38px;"></td>`;
 
     // ── Article cell: title, authors+journal, tags+badges ────────────────
     const titleTooltip = [
@@ -3009,22 +3139,36 @@
             a.has_pdf = true;
             a.pdf_dropbox_path = r.dropbox_path || true;
           } else {
-            oaFetchBtn.disabled = false;
-            oaFetchBtn.innerHTML = '<span style="font-size:14px;line-height:1;">✕</span><span style="font-size:8px;">OA</span>';
-            oaFetchBtn.style.borderColor = '#fca5a5';
-            oaFetchBtn.style.background  = '#fef2f2';
-            oaFetchBtn.style.color       = '#b91c1c';
-            oaFetchBtn.title = 'No disponible en OA: ' + (r.status || r.reason || '');
+            // OA not available — swap to manual upload button (persistent state)
+            const td = oaFetchBtn.closest('td');
+            td.innerHTML = `<button class="pv-oa-manual-btn"
+              data-aid="${esc(a.id)}" data-title="${esc(a.title||'')}"
+              title="OA no disponible — clic para subir PDF manualmente"
+              style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                     width:34px;height:44px;border-radius:3px;border:1px solid #d1d5db;
+                     background:#f9fafb;color:#6b7280;cursor:pointer;padding:0;gap:1px;
+                     font-size:9px;font-weight:600;line-height:1.1;">
+              <span style="font-size:13px;line-height:1;">📤</span>PDF
+            </button>`;
+            _wireManualUploadBtn(td.querySelector('.pv-oa-manual-btn'), a);
           }
         } catch (err) {
-          oaFetchBtn.disabled = false;
-          oaFetchBtn.innerHTML = '<span style="font-size:14px;line-height:1;">✕</span><span style="font-size:8px;">OA</span>';
-          oaFetchBtn.style.borderColor = '#fca5a5';
-          oaFetchBtn.style.background  = '#fef2f2';
-          oaFetchBtn.style.color       = '#b91c1c';
-          oaFetchBtn.title = 'Error: ' + err.message;
+          const td = oaFetchBtn.closest('td');
+          td.innerHTML = `<button class="pv-oa-manual-btn"
+            data-aid="${esc(a.id)}" data-title="${esc(a.title||'')}"
+            title="Error al descargar — clic para subir PDF manualmente"
+            style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                   width:34px;height:44px;border-radius:3px;border:1px solid #d1d5db;
+                   background:#f9fafb;color:#6b7280;cursor:pointer;padding:0;gap:1px;
+                   font-size:9px;font-weight:600;line-height:1.1;">
+            <span style="font-size:13px;line-height:1;">📤</span>PDF
+          </button>`;
+          _wireManualUploadBtn(td.querySelector('.pv-oa-manual-btn'), a);
         }
       });
+
+      const manualUploadBtn = row.querySelector('.pv-oa-manual-btn');
+      if (manualUploadBtn) _wireManualUploadBtn(manualUploadBtn, a);
 
       const cartBtn = row.querySelector('.pv-cart-btn');
       if (cartBtn) cartBtn.addEventListener('click', (e) => {
