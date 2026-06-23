@@ -68,8 +68,8 @@ PRESET_QUERIES: dict[str, str] = {
         '"prion domain"[Title/Abstract]'
     ),
     "aav": (
-        'AAV[Title/Abstract] OR "adeno-associated virus"[Title/Abstract] OR '
-        '"AAV gene therapy"[Title/Abstract] OR "adeno-associated virus gene therapy"[Title/Abstract]'
+        '(AAV[Title/Abstract] OR "adeno-associated virus"[Title/Abstract]) '
+        'AND "gene therapy"[Title/Abstract]'
     ),
 }
 
