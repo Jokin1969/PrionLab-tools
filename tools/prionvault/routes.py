@@ -4348,8 +4348,8 @@ def api_article_chunks(aid):
         "missing":       total - indexed,
         "total_tokens":  total_tokens,
         "total_chars":   total_chars,
-        "embedding_dim": 1024,           # voyage-3-large
-        "model":         "voyage-3-large",
+        "embedding_dim": 1024,           # voyage-4-large
+        "model":         "voyage-4-large",
         "chunks":        chunks,
     })
 
