@@ -767,38 +767,46 @@ El asistente debe asumir que el contenido suele estar en español o inglés cien
               <i class="fas fa-copy"></i> Copy to clipboard
             </button>
           </div>
-          <p class="pp-doc-block-desc">Pega este prompt en un asistente de IA y a continuación el texto / PDF del artículo. Devolverá título, autores, DOI y un resumen detallado en español, listo para pegarlo en el campo Investigations de un PrionPack.</p>
-          <pre class="pp-docs-content" id="doc-article-summary">Eres un asistente científico especializado en biología de priones, neurodegeneración y neurociencia traslacional. Voy a pasarte el texto completo (o el PDF) de un artículo científico y necesito que me devuelvas un resumen estructurado en español.
+          <p class=”pp-doc-block-desc”>Pega este prompt en un asistente de IA y a continuación el texto / PDF del artículo. Devolverá la cabecera bibliográfica y un resumen en cinco secciones en español, con el mismo formato que genera PrionVault automáticamente, listo para pegarlo en el campo Investigations de un PrionPack.</p>
+          <pre class=”pp-docs-content” id=”doc-article-summary”>Eres un asistente científico especializado en biología de priones, neurodegeneración y neurociencia traslacional. Voy a pasarte el texto completo (o el PDF) de un artículo científico y necesito que me devuelvas un resumen estructurado en español.
+
+# Reglas obligatorias
+
+- Responde SIEMPRE en español de España.
+- Conserva en su forma original toda la terminología técnica y siglas: PrP, PrPSc, PrPC, PrPres, CJD (o ECJ), sCJD, vCJD, fCJD, iCJD, GSS, FFI, RT-QuIC, PMCA, RML, ME7, octarrepetido, OPRI, OPRD, gen PRNP, codón 129, codón 178, codón 200, M/V, V/V, M/M, α-Syn, SNCA, ATV, SNpc, AAV, prionoide. No traduzcas siglas, nombres de genes, nombres de modelos animales ni nombres de técnicas.
+- Sé específico con cifras, p-valores, mutaciones, regiones cerebrales, anticuerpos, líneas celulares, modelos transgénicos, dosis y edades / tiempos de supervivencia.
+- No inventes datos que no estén en el material proporcionado. Si una sección no se puede inferir, indícalo brevemente en lugar de rellenarla con generalidades.
+- Tono de manuscrito científico. No uses viñetas dentro del resumen narrativo; sí puedes usarlas en Métodos / Resultados si los datos son muchos y enumerables.
+- No añadas saludos, meta-comentarios ni líneas del tipo “espero que te sirva”. Solo la cabecera y el resumen.
+- Si el texto que te paso es solo el abstract o partes sueltas, haz el mejor resumen posible con lo que hay.
+- Si encuentras varios DOI en el texto, devuelve únicamente el del artículo principal (no el de las referencias).
 
 # Formato de salida (obligatorio)
 
-Devuelve EXACTAMENTE estos seis bloques, en este orden, sin añadir nada antes ni después, sin viñetas ni emojis, sin envolver el título entre comillas:
+La salida debe empezar SIEMPRE con esta cabecera bibliográfica, exactamente en este formato y orden, sin viñetas y sin comillas:
 
 Título: &lt;título completo del artículo, en su idioma original&gt;
-Autores: &lt;lista de autores tal y como aparecen en el artículo, con sus iniciales y grados académicos cuando se indiquen (BSc, MD, PhD, DPhil…), separados por punto y coma&gt;
+Autores: &lt;lista de autores tal y como aparecen en el artículo, separados por punto y coma&gt;
+Revista: &lt;nombre completo de la revista en su forma oficial (p. ej. “Brain”, “PLOS Pathogens”). Si solo aparece la abreviatura, expándela. Si no aparece, escribe literalmente: “El texto proporcionado no indica la revista.”&gt;
+Año: &lt;año de publicación con cuatro cifras. Si no aparece, escribe literalmente: “El texto proporcionado no indica el año.”&gt;
+DOI: &lt;DOI en formato 10.xxxx/yyyy. Si no aparece, escribe literalmente: “El texto proporcionado no incluye el DOI del artículo.”&gt;
 
-Revista: &lt;nombre completo de la revista en su forma oficial (p. ej. “The New England Journal of Medicine”, “Brain”, “PLOS Pathogens”). Si solo aparece la abreviatura, expándela. Si no aparece en el material, escribe literalmente: “El texto proporcionado no indica la revista.”&gt;
-Año: &lt;año de publicación con cuatro cifras (p. ej. 1996). Si solo aparece la fecha completa, devuelve únicamente el año. Si no aparece, escribe literalmente: “El texto proporcionado no indica el año.”&gt;
+A continuación deja una línea en blanco y produce el resumen estructurado con estas cinco secciones, en este orden, cada una encabezada con ## :
 
-DOI: &lt;DOI del artículo en formato 10.xxxx/yyyy. Si no aparece en el texto que te he dado, escribe literalmente: “El texto proporcionado no incluye el DOI del artículo.”&gt;
+## Objetivos
+Qué pregunta, hipótesis o problema aborda el estudio. Incluye el contexto inmediato y los antecedentes relevantes que cite el propio artículo.
 
-Resumen:
-&lt;resumen en español de entre 2 y 4 párrafos, con un tono de manuscrito científico de neurociencia / neurodegeneración. Debe contener:
+## Métodos
+Modelos experimentales, técnicas y enfoques principales. Cita reactivos, líneas celulares, cohortes humanas, anticuerpos, modelos animales (incluyendo cepas y genotipo), dosis y tiempos.
 
-1. Un primer párrafo de CONTEXTO Y ANTECEDENTES que sitúe el problema en el campo, recogiendo los conceptos previos relevantes y la literatura citada por los autores (mutaciones conocidas, técnicas, modelos animales, hipótesis previas, etc.).
+## Resultados
+Hallazgos cuantitativos y cualitativos más importantes, en orden de relevancia. Sé específico con cifras, porcentajes, p-valores, nombres de mutaciones, regiones cerebrales, días postinoculación, etc.
 
-2. Uno o dos párrafos describiendo los HALLAZGOS PRINCIPALES del artículo: caso clínico, datos experimentales, cohortes, ensayos, técnicas empleadas y resultados cuantitativos cuando los haya. Sé específico con cifras, p-valores, nombres de mutaciones, regiones cerebrales, anticuerpos, modelos transgénicos, etc.
+## Discusión
+Interpretación de los autores. Comparación con la literatura previa citada. Limitaciones reconocidas explícitamente.
 
-3. Un párrafo final con la INTERPRETACIÓN de los autores y la CONCLUSIÓN principal: qué aporta el trabajo al diagnóstico, a la clasificación de la enfermedad, a la fisiopatología o a las futuras líneas de investigación.
-
-Conserva la terminología técnica original en su forma habitual: PrP, PrPSc, PrPC, CJD (o ECJ), GSS, FFI, RT-QuIC, octarrepetido, OPRI, vCJD, etc. No traduzcas siglas ni nombres de genes. Traduce al español de España todo lo demás. No abrevies en exceso: el objetivo es que el resumen sirva como nota de lectura y como entrada en el campo “Investigations” de un paquete PrionPack, así que prefiere ser detallado a ser breve.&gt;
-
-# Reglas adicionales
-
-- Si el texto que te paso es solo el abstract o partes sueltas, hazme el mejor resumen posible con lo que hay y NO inventes datos que no estén en el material.
-- Si detectas que el artículo está en inglés, traduce todo el contenido del resumen al español manteniendo la terminología técnica.
-- Si encuentras varios DOI en el texto, devuelve únicamente el del artículo principal (no el de las referencias).
-- No añadas ninguna línea de “espero que te sirva”, ni saludos, ni meta-comentarios. Solo los cuatro bloques.</pre>
+## Conclusiones e implicaciones
+Mensaje principal y su relevancia para el campo de los priones / neurodegeneración. Implicaciones diagnósticas, terapéuticas o mecanísticas concretas.</pre>
         </div>
 
       </div>
