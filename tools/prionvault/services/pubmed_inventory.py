@@ -781,6 +781,28 @@ def unkeep(pmids: Iterable[str]) -> int:
     return r.rowcount or 0
 
 
+
+# ── Purge pending ─────────────────────────────────────────────────────────────
+
+def purge_pending() -> int:
+    """Delete all rows that are still pending (not dismissed, not kept,
+    not imported). Returns the number of rows deleted.
+
+    This lets the operator reset the search history without having to
+    decide anything about the articles — they simply vanish as if the
+    search had never happened. Kept (★) and dismissed rows are untouched.
+    """
+    eng = _get_engine()
+    with eng.begin() as conn:
+        r = conn.execute(sql_text("""
+            DELETE FROM prionvault_pubmed_inventory
+             WHERE dismissed = FALSE
+               AND imported_at IS NULL
+               AND kept_at    IS NULL
+        """))
+        return r.rowcount or 0
+
+
 # ── Import: inventory row → articles row ─────────────────────────────────────
 
 def import_pmids(pmids: Iterable[str], *, by_user: Optional[str] = None) -> dict:

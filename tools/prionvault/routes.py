@@ -6411,6 +6411,18 @@ def api_query_expansion_delete():
     return jsonify({"ok": True, "deleted": n})
 
 
+@prionvault_bp.route("/api/admin/pubmed-inventory/purge-pending", methods=["DELETE"])
+@admin_required
+def api_pubmed_inventory_purge_pending():
+    """Delete all pending rows (not dismissed, not kept, not imported).
+    Resets the search history so future harvests start from a clean slate.
+    Kept (★) and dismissed rows are untouched.
+    """
+    from .services import pubmed_inventory
+    n = pubmed_inventory.purge_pending()
+    return jsonify({"ok": True, "deleted": n})
+
+
 @prionvault_bp.route("/api/admin/pubmed-inventory/keep", methods=["POST"])
 @admin_required
 def api_pubmed_inventory_keep():

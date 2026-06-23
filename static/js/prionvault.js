@@ -11303,6 +11303,35 @@
       });
     }
 
+    const purgePendingBtn = document.getElementById('pv-pinv-purge-pending');
+    if (purgePendingBtn) {
+      purgePendingBtn.addEventListener('click', async () => {
+        if (!confirm(
+          '¿Borrar todos los pendientes?\n\n' +
+          'Se eliminarán del inventario como si nunca se hubieran buscado.\n' +
+          'Los artículos marcados con ★ y los descartados no se tocan.\n\n' +
+          'Las próximas búsquedas en PubMed volverán a encontrarlos si siguen publicados.'
+        )) return;
+        purgePendingBtn.disabled = true;
+        purgePendingBtn.textContent = '⏳ Borrando…';
+        try {
+          const r = await api('/admin/pubmed-inventory/purge-pending', { method: 'DELETE' });
+          purgePendingBtn.textContent = `✓ ${(r.deleted || 0).toLocaleString()} borrados`;
+          setTimeout(() => {
+            purgePendingBtn.disabled = false;
+            purgePendingBtn.textContent = '🗑 Vaciar pendientes';
+          }, 3000);
+          page = 1;
+          reloadList();
+          reloadStats();
+        } catch (e) {
+          purgePendingBtn.disabled = false;
+          purgePendingBtn.textContent = '🗑 Vaciar pendientes';
+          alert('Error: ' + e.message);
+        }
+      });
+    }
+
     const oaForceBtn = document.getElementById('pv-pinv-force-oa');
     if (oaForceBtn) {
       oaForceBtn.addEventListener('click', async () => {
