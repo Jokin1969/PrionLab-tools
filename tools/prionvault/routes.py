@@ -5101,6 +5101,13 @@ def api_generate_summary(aid):
         })
     except Exception as exc:
         s.rollback()
+        try:
+            from anthropic import APITimeoutError as _AnthropicTimeout
+            if isinstance(exc, _AnthropicTimeout):
+                logger.warning("api_generate_summary: Anthropic timeout")
+                return jsonify({"error": "timeout", "detail": "La API de IA tardó demasiado. Inténtalo de nuevo."}), 504
+        except ImportError:
+            pass
         logger.exception("api_generate_summary failed")
         return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
     finally:

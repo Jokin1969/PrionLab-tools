@@ -286,6 +286,7 @@ def _call_anthropic(api_key: str, user_prompt: str,
     client = anthropic.Anthropic(
         api_key=api_key,
         timeout=httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=5.0),
+        max_retries=0,
     )
     model = PROVIDERS["anthropic"]["model"]
     max_tokens = PROVIDERS["anthropic"]["max_tokens"]
