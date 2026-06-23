@@ -5092,10 +5092,12 @@
     // to the next page automatically and open its first visible row.
     document.getElementById('pv-edit-delete')?.addEventListener('click', async () => {
       if (!_editTarget) return;
-      const stub = (_editTarget.title || '').slice(0, 80);
+      // Capture now — modal close can null _editTarget while await is pending.
+      const target = _editTarget;
+      const stub = (target.title || '').slice(0, 80);
       const ok = confirm(
         'Vas a eliminar este artículo de la biblioteca:\n\n' +
-        `"${stub}${(_editTarget.title || '').length > 80 ? '…' : ''}"\n\n` +
+        `"${stub}${(target.title || '').length > 80 ? '…' : ''}"\n\n` +
         '• La fila se borra de la base de datos.\n' +
         '• El PDF se borra de Dropbox (queda en el historial ~30 días).\n' +
         '• Desaparece de PrionRead, PrionPacks, asignaciones y ratings.\n\n' +
@@ -5109,14 +5111,14 @@
       const orig = btn ? btn.textContent : null;
       if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
       try {
-        await api(`/articles/${_editTarget.id}`, { method: 'DELETE' });
+        await api(`/articles/${target.id}`, { method: 'DELETE' });
       } catch (e) {
         if (btn) { btn.disabled = false; btn.textContent = orig; }
         _editStatus('Error al eliminar: ' + e.message, '#b91c1c');
         return;
       }
-      if (state.selectedIds && state.selectedIds.has(_editTarget.id)) {
-        state.selectedIds.delete(_editTarget.id);
+      if (state.selectedIds && state.selectedIds.has(target.id)) {
+        state.selectedIds.delete(target.id);
         if (typeof updateBulkBar === 'function') updateBulkBar();
       }
       refreshStats();
