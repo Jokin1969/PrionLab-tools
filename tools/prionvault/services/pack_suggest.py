@@ -86,10 +86,10 @@ def _pack_doi_set(pack: dict, scope: str = "all") -> set[str]:
     from this so a suggestion never re-proposes a paper already cited
     in the same section the operator is asking about."""
     dois: set[str] = set()
-    if scope in ("all", "intro"):
+    if scope in ("all", "intro", "title"):
         for ref in (pack.get("introReferences") or []):
             dois.update(_extract_dois(ref))
-    if scope in ("all", "discussion"):
+    if scope in ("all", "discussion", "title"):
         for ref in (pack.get("references") or []):
             dois.update(_extract_dois(ref))
     return dois
@@ -134,7 +134,7 @@ def build_profile(pack: dict, scope: str = "all") -> dict:
     same scope.
     """
     scope = (scope or "all").lower().strip()
-    if scope not in {"all", "intro", "discussion"}:
+    if scope not in {"all", "intro", "discussion", "title"}:
         scope = "all"
 
     parts = []
@@ -148,6 +148,11 @@ def build_profile(pack: dict, scope: str = "all") -> dict:
     if desc:
         parts.append("## Descripción del pack\n" + desc[:4000] + "\n")
 
+    if scope == "title":
+        # Title scope: only pack title + alt titles — no section text, no article body
+        alt_titles = [t for t in (pack.get("altTitles") or []) if t and isinstance(t, str)]
+        if alt_titles:
+            parts.append("## Títulos alternativos\n" + "\n".join(f"- {t}" for t in alt_titles) + "\n")
     if scope in ("all", "intro"):
         intro = (pack.get("introduction") or "").strip()
         if intro:
@@ -159,7 +164,7 @@ def build_profile(pack: dict, scope: str = "all") -> dict:
 
     members = _load_member_articles(_pack_doi_set(pack, scope=scope))
     member_ids: list[str] = []
-    if members:
+    if members and scope != "title":
         section_label = {
             "intro":      "Artículos citados en la introducción",
             "discussion": "Artículos citados en la discusión",

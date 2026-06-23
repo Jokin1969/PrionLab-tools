@@ -1153,12 +1153,19 @@ Mensaje principal y su relevancia para el campo de los priones / neurodegeneraci
            the operator can chain "fill the intro first → then refs". -->
       <div role="tablist" title="Ámbito: condiciona el contexto enviado a la IA y dónde se guardarán los artículos aceptados."
            style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:8px;">
+        <button id="pp-sg-scope-title" role="tab"
+                style="padding:6px 12px;border:none;background:white;color:#111827;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);"
+                title="Busca artículos relacionados con el título y los títulos alternativos del pack">
+          🏷️ Título
+        </button>
         <button id="pp-sg-scope-intro" role="tab"
-                style="padding:6px 12px;border:none;background:white;color:#111827;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+                style="padding:6px 12px;border:none;background:transparent;color:#374151;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;"
+                title="Busca artículos que encajen en la Introducción, teniendo en cuenta los que ya están en ella">
           📝 Introducción
         </button>
         <button id="pp-sg-scope-discussion" role="tab"
-                style="padding:6px 12px;border:none;background:transparent;color:#374151;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;">
+                style="padding:6px 12px;border:none;background:transparent;color:#374151;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;"
+                title="Busca artículos para la Discusión, teniendo en cuenta los que ya están en ella">
           💬 Discusión
         </button>
       </div>

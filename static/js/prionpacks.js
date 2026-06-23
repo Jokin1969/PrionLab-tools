@@ -2005,12 +2005,14 @@ ${refsText}`;
       try {
         const r = await fetch(`/prionvault/api/articles?q=${encodeURIComponent(q)}&size=20`, { credentials: 'same-origin' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const items = await r.json();
-        if (!Array.isArray(items) || !items.length) {
+        const data = await r.json();
+        const items = data.items || (Array.isArray(data) ? data : []);
+        if (!items.length) {
           list.innerHTML = '<div class="pp-similar-empty">Sin resultados.</div>';
           return;
         }
-        subtitle.textContent = `${items.length} artículo${items.length !== 1 ? 's' : ''} encontrado${items.length !== 1 ? 's' : ''}`;
+        subtitle.textContent = `${items.length} artículo${items.length !== 1 ? 's' : ''} encontrado${items.length !== 1 ? 's' : ''}` +
+          (data.total > items.length ? ` (de ${data.total} totales)` : '');
         list.innerHTML = '';
         _artMap.clear();
         items.forEach(item => {
@@ -5364,6 +5366,7 @@ ${refsText}`;
     const backdrop  = modal && modal.querySelector('.pp-suggest-backdrop');
     const tabInt    = document.getElementById('pp-sg-tab-internal');
     const tabPub    = document.getElementById('pp-sg-tab-pubmed');
+    const scTitle   = document.getElementById('pp-sg-scope-title');
     const scIntro   = document.getElementById('pp-sg-scope-intro');
     const scDisc    = document.getElementById('pp-sg-scope-discussion');
     const runBtn    = document.getElementById('pp-sg-run');
@@ -5381,7 +5384,7 @@ ${refsText}`;
       document.getElementById('pp-sg-profile-text').textContent = '';
       document.getElementById('pp-sg-profile-meta').textContent = '—';
       _sgSetTab('internal');
-      _sgSetScope('intro');
+      _sgSetScope('title');
     };
     const close = () => { modal.style.display = 'none'; };
     btn.addEventListener('click', open);
@@ -5390,6 +5393,7 @@ ${refsText}`;
 
     tabInt.addEventListener('click', () => _sgSetTab('internal'));
     tabPub.addEventListener('click', () => _sgSetTab('pubmed'));
+    scTitle && scTitle.addEventListener('click', () => _sgSetScope('title'));
     scIntro && scIntro.addEventListener('click', () => _sgSetScope('intro'));
     scDisc  && scDisc .addEventListener('click', () => _sgSetScope('discussion'));
     runBtn.addEventListener('click', _sgRun);
@@ -5407,13 +5411,14 @@ ${refsText}`;
 
   function _sgSetScope(scope) {
     _sgScope = scope;
+    const scTitle = document.getElementById('pp-sg-scope-title');
     const scIntro = document.getElementById('pp-sg-scope-intro');
     const scDisc  = document.getElementById('pp-sg-scope-discussion');
-    if (!scIntro || !scDisc) return;
     const on  = { background: 'white', color: '#111827', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' };
     const off = { background: 'transparent', color: '#374151', boxShadow: 'none' };
-    Object.assign(scIntro.style, scope === 'intro'      ? on : off);
-    Object.assign(scDisc .style, scope === 'discussion' ? on : off);
+    if (scTitle) Object.assign(scTitle.style, scope === 'title'      ? on : off);
+    if (scIntro) Object.assign(scIntro.style, scope === 'intro'      ? on : off);
+    if (scDisc)  Object.assign(scDisc .style, scope === 'discussion' ? on : off);
   }
 
   async function _sgRun() {
