@@ -2044,7 +2044,10 @@ ${refsText}`;
         const data = await r.json();
         const items = data.items || (Array.isArray(data) ? data : []);
         if (!items.length) {
-          list.innerHTML = '<div class="pp-similar-empty">Sin resultados.</div>';
+          list.innerHTML = `<div class="pp-similar-empty">
+            Sin resultados para «${_escHtml(q)}».<br>
+            <span style="font-size:12px;color:#9ca3af;">La búsqueda es por palabras exactas en título, autores y abstract (en inglés). Prueba con términos más cortos o en inglés.</span>
+          </div>`;
           return;
         }
         subtitle.textContent = `${items.length} artículo${items.length !== 1 ? 's' : ''} encontrado${items.length !== 1 ? 's' : ''}` +
