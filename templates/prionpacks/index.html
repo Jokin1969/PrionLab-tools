@@ -245,7 +245,7 @@
                 <div class="pp-field-ai-actions">
                   <button class="pp-ai-btn" data-field-id="field-title" data-ai-label="Título del paquete" title="Incluir como contexto para Claude">AI</button>
                   <button class="pp-claude-ask-btn" data-source-id="field-title" data-source-label="Título del paquete" title="Preguntar a Claude">
-                    <i class="fas fa-robot"></i> Claude
+                    <i class="fas fa-robot"></i> IA
                   </button>
                 </div>
               </div>
@@ -538,7 +538,7 @@
                 <i class="fas fa-compress-alt"></i> Collapse all
               </button>
               <button class="pp-btn pp-btn-sm pp-claude-ask-btn" id="btn-discuss-claude" type="button" title="Ask Claude to suggest Discussion topics based on the references">
-                <i class="fas fa-robot"></i> Claude Discussion
+                <i class="fas fa-robot"></i> IA Discusión
               </button>
               <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-pv-import-general" type="button"
                       title="Buscar y traer un artículo desde PrionVault">
@@ -609,7 +609,7 @@
 
           <div class="pp-card pp-api-card">
             <h3 class="pp-api-title"><i class="fas fa-robot"></i> Claude API</h3>
-            <p class="pp-api-desc">Necesaria para traducciones y consultas con Claude.</p>
+            <p class="pp-api-desc">Necesaria para usar Claude como modelo de IA. (ChatGPT y Gemini no requieren clave — abren su web directamente.)</p>
             <div class="pp-form-group">
               <input type="password" id="field-api-key" class="pp-input pp-input-sm" placeholder="sk-ant-…" autocomplete="off" />
             </div>
@@ -845,13 +845,48 @@ Mensaje principal y su relevancia para el campo de los priones / neurodegeneraci
   </main>
 </div>
 
+<!-- AI Confirm Modal -->
+<div id="pp-ai-confirm-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-ai-confirm-title">
+  <div class="pp-modal-backdrop" id="pp-ai-confirm-backdrop"></div>
+  <div class="pp-claude-modal-card" style="max-width:480px">
+    <div class="pp-claude-modal-header">
+      <span class="pp-claude-modal-title" id="pp-ai-confirm-title">
+        <i class="fas fa-robot"></i> <span id="pp-ai-confirm-heading">Consultar IA</span>
+      </span>
+      <button id="pp-ai-confirm-close" class="pp-btn-icon" aria-label="Cerrar"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;">
+      <p id="pp-ai-confirm-desc" style="margin:0;font-size:0.92rem;line-height:1.5;color:var(--pp-text-secondary)"></p>
+      <div>
+        <label style="font-size:0.82rem;font-weight:600;color:var(--pp-text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block;">Modelo</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <label class="pp-ai-model-opt" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border:1.5px solid var(--pp-border);border-radius:6px;font-size:0.88rem;">
+            <input type="radio" name="pp-ai-model" value="claude" checked style="accent-color:#c07000;"> Claude
+          </label>
+          <label class="pp-ai-model-opt" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border:1.5px solid var(--pp-border);border-radius:6px;font-size:0.88rem;">
+            <input type="radio" name="pp-ai-model" value="chatgpt" style="accent-color:#10a37f;"> ChatGPT
+          </label>
+          <label class="pp-ai-model-opt" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border:1.5px solid var(--pp-border);border-radius:6px;font-size:0.88rem;">
+            <input type="radio" name="pp-ai-model" value="gemini" style="accent-color:#1a73e8;"> Gemini
+          </label>
+        </div>
+      </div>
+      <p style="margin:0;font-size:0.8rem;color:var(--pp-text-secondary);opacity:.75;">ChatGPT y Gemini copiarán el prompt al portapapeles y abrirán la web del modelo.</p>
+    </div>
+    <div class="pp-claude-modal-footer" style="display:flex!important;justify-content:flex-end;gap:8px;padding:12px 20px;">
+      <button id="pp-ai-confirm-cancel" class="pp-btn pp-btn-ghost" type="button">Cancelar</button>
+      <button id="pp-ai-confirm-ok" class="pp-btn pp-btn-primary" type="button"><i class="fas fa-paper-plane"></i> Enviar consulta</button>
+    </div>
+  </div>
+</div>
+
 <!-- Claude Response Modal -->
 <div id="pp-claude-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-claude-modal-title">
   <div class="pp-modal-backdrop" id="pp-claude-modal-backdrop"></div>
   <div class="pp-claude-modal-card">
     <div class="pp-claude-modal-header">
       <span class="pp-claude-modal-title" id="pp-claude-modal-title">
-        <i class="fas fa-robot"></i> Respuesta de Claude
+        <i class="fas fa-robot"></i> Respuesta de la IA
       </span>
       <button id="pp-claude-modal-close" class="pp-btn-icon" aria-label="Cerrar">
         <i class="fas fa-times"></i>
@@ -859,7 +894,7 @@ Mensaje principal y su relevancia para el campo de los priones / neurodegeneraci
     </div>
     <div id="pp-claude-response-body" class="pp-claude-response-body">
       <div class="pp-claude-loading" id="pp-claude-loading">
-        <i class="fas fa-spinner fa-spin"></i> Claude está pensando…
+        <i class="fas fa-spinner fa-spin"></i> La IA está pensando…
       </div>
       <div id="pp-claude-response-text" class="pp-claude-response-text" style="display:none"></div>
     </div>
