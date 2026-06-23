@@ -6225,12 +6225,13 @@ def api_pubmed_inventory_list():
     year_min = request.args.get("year_min", type=int)
     year_max = request.args.get("year_max", type=int)
     only_oa  = request.args.get("only_oa") == "1"
+    days     = request.args.get("days", type=int)
     status   = (request.args.get("status") or "pending").strip().lower()
     page     = request.args.get("page", default=1, type=int)
     size     = request.args.get("size", default=100, type=int)
     return jsonify(pubmed_inventory.list_pending(
         q=q, year_min=year_min, year_max=year_max,
-        only_oa=only_oa, status=status, page=page, size=size,
+        only_oa=only_oa, days=days, status=status, page=page, size=size,
     ))
 
 

@@ -10771,7 +10771,8 @@
     const qInp     = document.getElementById('pv-pinv-q');
     const ymin     = document.getElementById('pv-pinv-ymin');
     const ymax     = document.getElementById('pv-pinv-ymax');
-    const oaCb     = document.getElementById('pv-pinv-only-oa');
+    const oaCb        = document.getElementById('pv-pinv-only-oa');
+    const lastMonthCb = document.getElementById('pv-pinv-last-month');
     const refrBtn  = document.getElementById('pv-pinv-refresh-pubmed');
     const stopBtn  = document.getElementById('pv-pinv-stop-harvest');
     const bulkBar  = document.getElementById('pv-pinv-bulk-bar');
@@ -10806,8 +10807,12 @@
     // just un-dismissed (or vice versa).
     let _pinvStatus = 'pending';
 
-    function statCard(label, value, color) {
-      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+    function statCard(label, value, color, clickId) {
+      const clickStyle = clickId
+        ? 'cursor:pointer;transition:box-shadow 0.15s;'
+        : '';
+      const clickAttr = clickId ? ` id="${clickId}" title="Filtrar por este criterio"` : '';
+      return `<div${clickAttr} style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;${clickStyle}">
                 <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
                 <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
               </div>`;
@@ -10840,8 +10845,21 @@
         statCard('Ya en PrionVault',     s.imported ?? 0, '#15803d') +
         statCard('Pendientes',           s.pending ?? 0, '#b45309') +
         statCard('⭐ Marcados',           s.kept ?? 0, '#b45309') +
-        statCard('Con PDF OA',           s.pending_with_oa ?? 0, '#0F3460') +
+        statCard('Con PDF OA',           s.pending_with_oa ?? 0, '#0F3460', 'pv-pinv-stat-oa') +
         statCard('Importados sin PDF',   s.inv_no_pdf ?? 0, '#b45309');
+
+      // Make the OA card act as a filter shortcut.
+      const oaStatCard = document.getElementById('pv-pinv-stat-oa');
+      if (oaStatCard) {
+        oaStatCard.style.border = oaCb.checked ? '2px solid #0F3460' : '1px solid #e5e7eb';
+        oaStatCard.addEventListener('click', () => {
+          oaCb.checked = !oaCb.checked;
+          if (lastMonthCb) lastMonthCb.checked = false;
+          oaStatCard.style.border = oaCb.checked ? '2px solid #0F3460' : '1px solid #e5e7eb';
+          page = 1;
+          reloadList();
+        });
+      }
 
       // Tab counters mirror the stat cards.
       if (tabPCnt) tabPCnt.textContent = `(${(s.pending ?? 0).toLocaleString()})`;
@@ -10947,7 +10965,8 @@
       if (qInp.value.trim())   params.set('q', qInp.value.trim());
       if (ymin.value.trim())   params.set('year_min', ymin.value.trim());
       if (ymax.value.trim())   params.set('year_max', ymax.value.trim());
-      if (oaCb.checked)        params.set('only_oa', '1');
+      if (oaCb.checked)                  params.set('only_oa', '1');
+      if (lastMonthCb && lastMonthCb.checked) params.set('days', '30');
 
       let data;
       try {
@@ -11298,6 +11317,7 @@
         ymin.value = '';
         ymax.value = '';
         oaCb.checked = false;
+        if (lastMonthCb) lastMonthCb.checked = false;
         page = 1;
         reloadList();
       });
@@ -11469,6 +11489,7 @@
     });
     [ymin, ymax].forEach(inp => inp.addEventListener('change', () => { page = 1; reloadList(); }));
     oaCb.addEventListener('change', () => { page = 1; reloadList(); });
+    if (lastMonthCb) lastMonthCb.addEventListener('change', () => { page = 1; reloadList(); });
   }
 
   // `status` is passed explicitly because this helper lives at module

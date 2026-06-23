@@ -606,6 +606,7 @@ def list_pending(*, q: Optional[str] = None,
                  year_min: Optional[int] = None,
                  year_max: Optional[int] = None,
                  only_oa: bool = False,
+                 days: Optional[int] = None,
                  status: str = "pending",
                  page: int = 1,
                  size: int = 100) -> dict:
@@ -659,6 +660,9 @@ def list_pending(*, q: Optional[str] = None,
         params["ymax"] = year_max
     if only_oa:
         conditions.append("oa_verified = TRUE")
+    if days is not None and days > 0:
+        conditions.append("discovered_at >= NOW() - (:days * INTERVAL '1 day')")
+        params["days"] = int(days)
     where = " AND ".join(conditions)
 
     eng = _get_engine()
