@@ -5843,10 +5843,15 @@ ${refsText}`;
 
     // ── Text 4: First chat message ────────────────────────────────────
     const plain = _pkgToPlainText(pkg);
+    const safeTitle = (pkg.title || 'Package').replace(/[^a-zA-Z0-9 _-]/g, '_').slice(0, 50).trim();
+    const version   = Math.max(1, pkg.docxVersion || pkg.version || 1);
+    const wordName  = `PrionPack_${safeTitle}_v${version}.docx`;
     const text4Lines = [
       `Empezamos. Te paso el estado actual del PrionPack "${title}" (${id}).`,
       '',
-      'A continuación encontrarás todo el contenido estructurado del paquete tal como está ahora.',
+      `He adjuntado al proyecto el documento Word "${wordName}" — por favor úsalo también como referencia del estado actual del paquete.`,
+      '',
+      'A continuación encontrarás el mismo contenido en texto plano estructurado.',
       'Léelo, familiarízate con él y confirma que lo has entendido antes de que empecemos a trabajar.',
       '',
       '---',
