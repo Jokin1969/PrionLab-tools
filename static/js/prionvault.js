@@ -12719,17 +12719,20 @@
       const num = value ?? 0;
       const pctStr = showPct ? ` <span style="font-size:11px;color:#9ca3af;">${pct(num)}</span>` : '';
       const fp = filterParams ? JSON.stringify(filterParams) : null;
-      const bg = accent === 'good' ? '#f0fdf4'
-               : accent === 'warn' ? '#fff7ed'
-               : accent === 'bad'  ? '#fef2f2'
+      const bg = accent === 'good'   ? '#f0fdf4'
+               : accent === 'warn'   ? '#fff7ed'
+               : accent === 'bad'    ? '#fef2f2'
+               : accent === 'purple' ? '#f5f3ff'
                : '#f9fafb';
-      const numColor = accent === 'good' ? '#15803d'
-                     : accent === 'warn' ? '#c2410c'
-                     : accent === 'bad'  ? '#dc2626'
+      const numColor = accent === 'good'   ? '#15803d'
+                     : accent === 'warn'   ? '#c2410c'
+                     : accent === 'bad'    ? '#dc2626'
+                     : accent === 'purple' ? '#6d28d9'
                      : '#111827';
-      const border = accent === 'good' ? '#bbf7d0'
-                   : accent === 'warn' ? '#fde68a'
-                   : accent === 'bad'  ? '#fecaca'
+      const border = accent === 'good'   ? '#bbf7d0'
+                   : accent === 'warn'   ? '#fde68a'
+                   : accent === 'bad'    ? '#fecaca'
+                   : accent === 'purple' ? '#ddd6fe'
                    : '#e5e7eb';
       const interactive = fp ? `onclick='window._pvHealthFilter(${fp})'
         onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'"
@@ -12831,9 +12834,9 @@
         row(2, [card('Con PDF',    d.with_pdf,    true, {has_pdf:'true'},  'good'),
                 card('Sin PDF',    d.without_pdf, true, {has_pdf:'false'}, 'warn')]),
         row(2, [card('Con DOI',    d.with_doi,    true, {has_doi:'true'},  'good'),
-                card('Sin DOI',    d.without_doi, true, {has_doi:'false'}, 'warn')]),
+                card('Sin DOI',    d.without_doi, true, {has_doi:'false'}, 'purple')]),
         row(2, [card('Con PMID',   d.with_pmid,   true, {has_pmid:'true'}, 'good'),
-                card('Sin PMID',   d.without_pmid,true, {has_pmid:'false'},'warn')]),
+                card('Sin PMID',   d.without_pmid,true, {has_pmid:'false'},'purple')]),
         row(2, [card('Con abstract',    d.with_abstract,    true, {abstract_status:'has'},     'good'),
                 card('Sin abstract',    d.without_abstract, true, {abstract_status:'pending'}, 'warn')]),
       ].join('')) +
