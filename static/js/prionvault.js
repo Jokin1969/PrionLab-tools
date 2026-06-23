@@ -3896,6 +3896,15 @@
       return;
     }
 
+    // Fetch used-in pack data for all similar articles in parallel
+    const usedInMap = {};
+    await Promise.all(items.map(async it => {
+      try {
+        const d = await api(`/articles/${it.id}/used-in`);
+        usedInMap[it.id] = d.packs || [];
+      } catch { usedInMap[it.id] = []; }
+    }));
+
     sec.innerHTML = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
         <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
@@ -3917,9 +3926,46 @@
             ? `<span title="Tiene PDF" style="font-size:10.5px;color:#b91c1c;background:#fee2e2;padding:1px 5px;border-radius:4px;font-weight:600;">PDF</span>`
             : '',
         ].filter(Boolean).join(' ');
+
+        // DOI / PMID chips
+        const idChips = [
+          it.doi
+            ? `<a href="https://doi.org/${esc(it.doi)}" target="_blank" rel="noopener"
+                  onclick="event.stopPropagation()"
+                  title="Abrir en doi.org"
+                  style="font-size:10.5px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;
+                         padding:1px 7px;border-radius:5px;font-weight:600;text-decoration:none;">DOI ↗</a>`
+            : '',
+          it.pubmed_id
+            ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(it.pubmed_id)}/" target="_blank" rel="noopener"
+                  onclick="event.stopPropagation()"
+                  title="Abrir en PubMed"
+                  style="font-size:10.5px;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;
+                         padding:1px 7px;border-radius:5px;font-weight:600;text-decoration:none;">PMID ${esc(it.pubmed_id)} ↗</a>`
+            : '',
+        ].filter(Boolean).join('');
+
+        // PrionPacks usage badges
+        const packs = usedInMap[it.id] || [];
+        const packBadges = packs.map(p => {
+          const sections = (p.lists || []).map(t => t === 'intro' ? 'Intro' : 'General').join('+');
+          return `<span title="${esc(p.id)}: ${esc(p.title || '')}"
+                        style="font-size:10.5px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;
+                               padding:1px 7px;border-radius:5px;font-weight:600;max-width:120px;
+                               overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;">
+                    📦 ${esc(p.id)}${sections ? ' · ' + sections : ''}
+                  </span>`;
+        }).join('');
+
+        const extraRow = (idChips || packBadges)
+          ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;align-items:center;">
+               ${idChips}${packBadges}
+             </div>`
+          : '';
+
         return `
           <div class="pv-similar-row" data-aid="${esc(it.id)}"
-               style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+               style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;
                       background:#fafafa;border:1px solid #e5e7eb;border-radius:7px;margin-bottom:5px;
                       cursor:pointer;transition:background 0.1s;"
                onmouseover="this.style.background='#fff'" onmouseout="this.style.background='#fafafa'">
@@ -3930,6 +3976,7 @@
               </div>
               <div style="font-size:11.5px;color:#6b7280;
                           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${headerBits || '—'}</div>
+              ${extraRow}
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
               ${flags}
