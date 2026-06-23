@@ -9090,8 +9090,29 @@
            </a>`
         );
       }
+      const inCart = window.PPCart?.has(c.article_id);
+      const cartChip = `<button type="button"
+          class="pv-rag-cart-btn ${inCart ? 'pv-rag-cart-btn--in' : ''}"
+          data-aid="${escAttr(c.article_id)}"
+          data-title="${escAttr(c.title || '')}"
+          data-authors="${escAttr(c.authors || '')}"
+          data-year="${escAttr(c.year || '')}"
+          data-journal="${escAttr(c.journal || '')}"
+          data-doi="${escAttr(c.doi || '')}"
+          data-pmid="${escAttr(c.pubmed_id || '')}"
+          data-haspdf="${c.has_pdf ? '1' : '0'}"
+          title="${inCart ? 'En el carrito' : 'Añadir al carrito de PrionPacks'}"
+          style="font-size:10.5px;padding:2px 8px;border-radius:5px;border:1px solid;
+                 font-weight:600;cursor:pointer;
+                 ${inCart
+                   ? 'background:#d1fae5;color:#065f46;border-color:#6ee7b7;'
+                   : 'background:#f9fafb;color:#374151;border-color:#d1d5db;'}">
+        ${inCart ? '🛒 ✓' : '🛒'}
+      </button>`;
+      linkChips.push(cartChip);
+
       const linkRow = linkChips.length
-        ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${linkChips.join('')}</div>`
+        ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">${linkChips.join('')}</div>`
         : '';
 
       // Extract — the literal chunk text the model saw. Collapsed by
@@ -9155,6 +9176,25 @@
       a.addEventListener('click', e => {
         e.preventDefault();
         openDetail(a.dataset.aid);
+      });
+    });
+
+    container.querySelectorAll('.pv-rag-cart-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!window.PPCart) return;
+        const d = btn.dataset;
+        window.PPCart.add({
+          id: d.aid, title: d.title, authors: d.authors,
+          year: d.year || null, journal: d.journal,
+          doi: d.doi, pubmed_id: d.pmid, has_pdf: d.haspdf === '1',
+        });
+        btn.classList.add('pv-rag-cart-btn--in');
+        btn.style.background = '#d1fae5';
+        btn.style.color = '#065f46';
+        btn.style.borderColor = '#6ee7b7';
+        btn.title = 'En el carrito';
+        btn.innerHTML = '🛒 ✓';
       });
     });
   }
