@@ -167,10 +167,14 @@ class BackupManager:
         try:
             import database.models as _m
             from sqlalchemy import inspect
+            # Tables with large regenerable data (embeddings, etc.) are skipped
+            _SKIP_TABLES = {"article_chunk"}
             inspector = inspect(db.engine)
             buf = io.BytesIO()
             with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
                 for table_name in inspector.get_table_names():
+                    if table_name in _SKIP_TABLES:
+                        continue
                     csv_buf = io.StringIO()
                     writer = csv.writer(csv_buf)
                     with db.engine.connect() as conn:
