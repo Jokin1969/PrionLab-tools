@@ -641,10 +641,7 @@ def list_pending(*, q: Optional[str] = None,
         # ALSO match "pending" — the operator wants them to keep showing
         # up in normal searches; the "kept" tab is just an extra lens.
         conditions = ["imported_at IS NULL", "dismissed = FALSE"]
-        # Within pending, kept rows surface first so the operator
-        # never loses sight of an explicit "Esta sí" decision.
-        order_by   = ("(kept_at IS NOT NULL) DESC, "
-                      "year DESC NULLS LAST, last_seen_at DESC")
+        order_by   = "year ASC NULLS LAST, pmid ASC"
 
     params: dict = {}
     if q:

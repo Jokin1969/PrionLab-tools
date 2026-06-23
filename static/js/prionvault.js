@@ -11183,12 +11183,18 @@
           method: 'POST',
           body: JSON.stringify({ pmids }),
         });
-        pmids.forEach(p => selected.delete(p));
-        await reloadStats();
-        await reloadList();
+        pmids.forEach(p => {
+          selected.delete(p);
+          const row = list.querySelector(`[data-pmid="${CSS.escape(p)}"]`);
+          if (row) row.remove();
+        });
+        btn.disabled = false;
+        btn.textContent = orig;
+        reloadStats();
+        refreshBulkBar();
+        syncMaster();
       } catch (e) {
         alert('Error descartando: ' + e.message);
-      } finally {
         btn.disabled = false;
         btn.textContent = orig;
       }
@@ -11227,12 +11233,24 @@
           method: 'POST',
           body: JSON.stringify({ pmids }),
         });
-        pmids.forEach(p => selected.delete(p));
-        await reloadStats();
-        await reloadList();
+        pmids.forEach(p => {
+          selected.delete(p);
+          const row = list.querySelector(`[data-pmid="${CSS.escape(p)}"]`);
+          if (row) {
+            // Visually mark as kept and move to end of list
+            row.style.opacity = '0.55';
+            row.style.borderLeft = '3px solid #f59e0b';
+            list.appendChild(row);
+            setTimeout(() => { row.style.opacity = ''; }, 600);
+          }
+        });
+        btn.disabled = false;
+        btn.textContent = orig;
+        reloadStats();
+        refreshBulkBar();
+        syncMaster();
       } catch (e) {
         alert('Error marcando: ' + e.message);
-      } finally {
         btn.disabled = false;
         btn.textContent = orig;
       }
