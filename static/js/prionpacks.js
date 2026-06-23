@@ -1810,7 +1810,7 @@ ${refsText}`;
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ article_ids: [aid], target }),
+                body: JSON.stringify({ article_ids: [aid], targets: [target] }),
               });
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               btn.innerHTML = '<i class="fas fa-check"></i> Añadido';
@@ -1933,7 +1933,7 @@ ${refsText}`;
             const res = await fetch(`/prionpacks/api/packages/${encodeURIComponent(state.currentId)}/import-articles`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               credentials: 'same-origin',
-              body: JSON.stringify({ article_ids: [aid], target }),
+              body: JSON.stringify({ article_ids: [aid], targets: [target] }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             btn.innerHTML = '<i class="fas fa-check"></i> Añadido';
@@ -2031,7 +2031,7 @@ ${refsText}`;
               const res = await fetch(`/prionpacks/api/packages/${encodeURIComponent(state.currentId)}/import-articles`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ article_ids: [btn.dataset.aid], target: btn.dataset.target }),
+                body: JSON.stringify({ article_ids: [btn.dataset.aid], targets: [btn.dataset.target] }),
               });
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               btn.innerHTML = '<i class="fas fa-check"></i> Añadido'; btn.classList.add('pp-btn-success');
