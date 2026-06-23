@@ -2909,6 +2909,11 @@ ${refsText}`;
   function _updateAltTitlesDisplay(_altTitles) {
     // Alternative titles are intentionally not shown in the top title bar.
     // They live in the Basic Info editor and are exported to the DOCX.
+    const copyBtn = document.getElementById('btn-copy-alt-titles');
+    if (copyBtn) {
+      const titles = _collectAltTitlesFromEditor();
+      copyBtn.style.display = titles.length > 0 ? '' : 'none';
+    }
   }
 
   function _addAltTitleRow() {
@@ -4067,6 +4072,24 @@ ${refsText}`;
     document.getElementById('btn-delete-package').addEventListener('click', deletePackage);
     _wireSuggestModal();
     _wireAiProjectModal();
+
+    document.getElementById('btn-copy-alt-titles')?.addEventListener('click', async function () {
+      const titles = _collectAltTitlesFromEditor();
+      if (!titles.length) return;
+      const text = titles.join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      const orig = this.innerHTML;
+      this.innerHTML = '<i class="fas fa-check"></i> Copiado';
+      this.style.color = '#065f46'; this.style.borderColor = '#6ee7b7'; this.style.background = '#d1fae5';
+      setTimeout(() => { this.innerHTML = orig; this.style.color = ''; this.style.borderColor = ''; this.style.background = ''; }, 2000);
+    });
 
     // Alternative titles
     document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
