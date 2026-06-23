@@ -1865,6 +1865,8 @@ ${refsText}`;
 
     const render = () => {
       const items = window.PPCart?.getAll() || [];
+      const clearBtn = document.getElementById('pp-cart-clear-btn');
+      if (clearBtn) clearBtn.style.display = items.length ? '' : 'none';
       label.textContent = items.length
         ? `${items.length} artículo${items.length !== 1 ? 's' : ''}${state.currentId ? ' — pack abierto: ' + state.currentId : ''}`
         : 'El carrito está vacío';
