@@ -5285,22 +5285,28 @@ def api_article_used_in(aid):
             return jsonify({"error": "not found"}), 404
         doi = ((row.doi or "")).strip().lower()
 
+        aid_str = str(aid)
         packs = []
         try:
             from tools.prionpacks import models as pp_models
+
+            def _ref_matches(ref) -> bool:
+                if isinstance(ref, dict):
+                    return ref.get("article_id") and str(ref["article_id"]) == aid_str
+                return bool(doi and doi in (ref or "").lower())
+
             for pkg in pp_models.list_packages():
                 if not pkg.get("active", True):
                     continue
                 lists = []
-                if doi:
-                    for ref in (pkg.get("introReferences") or []):
-                        if doi in (ref or "").lower():
-                            lists.append("intro")
-                            break
-                    for ref in (pkg.get("references") or []):
-                        if doi in (ref or "").lower():
-                            lists.append("general")
-                            break
+                for ref in (pkg.get("introReferences") or []):
+                    if _ref_matches(ref):
+                        lists.append("intro")
+                        break
+                for ref in (pkg.get("references") or []):
+                    if _ref_matches(ref):
+                        lists.append("general")
+                        break
                 if lists:
                     packs.append({
                         "id":           pkg.get("id"),
