@@ -11354,58 +11354,6 @@
       });
     }
 
-    // Re-vincular PDFs huérfanos: sweep inventory rows that still
-    // show "PDF pendiente" even though a duplicate row with the PDF
-    // exists (legacy bug, fixed in deduplicator; this cleans the
-    // backlog). First call is dry_run=true so we can show the plan
-    // before touching anything.
-    const relinkBtn = document.getElementById('pv-pinv-relink-orphans');
-    if (relinkBtn) {
-      relinkBtn.addEventListener('click', async () => {
-        relinkBtn.disabled = true;
-        const orig = relinkBtn.textContent;
-        relinkBtn.textContent = '⏳ Analizando…';
-        try {
-          const plan = await api('/admin/inventory/relink-orphans', {
-            method: 'POST',
-            body:   JSON.stringify({ dry_run: true }),
-          });
-          const merg = (plan.pairs     || []).length;
-          const amb  = (plan.ambiguous || []).length;
-          if (!merg && !amb) {
-            alert('No hay huérfanos del inventario con duplicado disponible. Nada que hacer.');
-            return;
-          }
-          const lines = [];
-          lines.push(`Encontrados ${merg} huérfanos con un único duplicado para fusionar.`);
-          if (amb) lines.push(`Otros ${amb} casos tienen varios candidatos y se dejarán sin tocar (revisar en "Buscar duplicados").`);
-          lines.push('');
-          lines.push('Cada fusión COPIA los campos del PDF al inventario (solo donde el inventario está vacío) y BORRA la fila duplicada. Las marcas, tags y colecciones de ambas se conservan.');
-          lines.push('');
-          lines.push('¿Ejecutar ahora?');
-          if (!confirm(lines.join('\n'))) return;
-          relinkBtn.textContent = '⏳ Fusionando…';
-          const res = await api('/admin/inventory/relink-orphans', {
-            method: 'POST',
-            body:   JSON.stringify({ dry_run: false }),
-          });
-          const errN = (res.errors || []).length;
-          let msg = `Re-vinculados: ${res.merged}. Ambiguos sin tocar: ${(res.ambiguous || []).length}.`;
-          if (errN) msg += ` Errores: ${errN} (ver logs).`;
-          alert(msg);
-          await reloadStats();
-          // If the operator is on the Pendientes tab, refresh it so
-          // the orphans that just got their PDF stop showing the chip.
-          if (typeof reloadList === 'function') reloadList();
-        } catch (e) {
-          alert('Error: ' + e.message);
-        } finally {
-          relinkBtn.disabled = false;
-          relinkBtn.textContent = orig;
-        }
-      });
-    }
-
     // Lazy-load the OA detail panel only when the operator opens it,
     // and again on every subsequent open so the data doesn't go stale.
     const oaDetailEl = document.getElementById('pv-pinv-oa-detail');

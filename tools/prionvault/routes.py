@@ -6265,35 +6265,6 @@ def api_oa_fetcher_run():
     })
 
 
-@prionvault_bp.route("/api/admin/inventory/relink-orphans", methods=["POST"])
-@admin_required
-def api_inventory_relink_orphans():
-    """Sweep PubMed-inventory orphan rows (source='pubmed_inventory'
-    AND dropbox_path IS NULL) and merge them with the duplicate row
-    that has the PDF — same PMID, or the same DOI as a fallback.
-    The bug that created these orphans is fixed (deduplicator now
-    matches PMID), but the rows already in the wild have to be
-    cleaned by hand. This endpoint automates that.
-
-    Body: {"dry_run": bool}  — default False.
-
-    We catch every exception and return it as JSON instead of letting
-    Flask render a mute 500, so the operator sees the actual cause
-    (most relink crashes are schema-shape mismatches that look
-    identical from the outside).
-    """
-    from .services import inventory_relink
-    body = request.get_json(silent=True) or {}
-    try:
-        return jsonify(inventory_relink.relink_orphans(
-            dry_run=bool(body.get("dry_run"))))
-    except Exception as exc:
-        current_app.logger.exception("relink-orphans failed")
-        return jsonify({
-            "error":  "relink_failed",
-            "detail": str(exc)[:400],
-        }), 500
-
 
 @prionvault_bp.route("/api/admin/pubmed-inventory/refresh", methods=["POST"])
 @admin_required
