@@ -324,27 +324,26 @@ def _extract_dois(ref: str) -> list[str]:
 # constant in the steady state without making edit→see-it-in-listing
 # feel sluggish.
 _DOI_INDEX_TTL_S = 60.0
-_doi_index_cache: tuple[float, dict, dict] | None = None
+_doi_index_cache: tuple[float, dict, dict, dict] | None = None
 _doi_index_lock = threading.Lock()
 
 
-def _prionpacks_doi_index() -> tuple[dict, dict]:
-    """Returns ({pack_id: pack_title}, {doi_lower: [pack_id, ...]}).
+def _prionpacks_doi_index() -> tuple[dict, dict, dict]:
+    """Returns ({pack_id: pack_title}, {doi_lower: [pack_id, ...]}, {article_id_str: [pack_id, ...]}).
     Empty maps if the prionpacks module fails to load (best effort).
     Cached with a 60 s TTL — see _DOI_INDEX_TTL_S."""
     global _doi_index_cache
     now = time.monotonic()
     cached = _doi_index_cache
     if cached and (now - cached[0]) < _DOI_INDEX_TTL_S:
-        return cached[1], cached[2]
+        return cached[1], cached[2], cached[3]
     with _doi_index_lock:
-        # Re-check inside the lock so a thundering herd doesn't all
-        # rebuild on a cache miss.
         cached = _doi_index_cache
         if cached and (now - cached[0]) < _DOI_INDEX_TTL_S:
-            return cached[1], cached[2]
+            return cached[1], cached[2], cached[3]
         titles: dict[str, str] = {}
         doi_to_packs: dict[str, list[str]] = {}
+        aid_to_packs: dict[str, list[str]] = {}
         try:
             from tools.prionpacks import models as pp_models
             for pkg in pp_models.list_packages():
@@ -355,14 +354,40 @@ def _prionpacks_doi_index() -> tuple[dict, dict]:
                     continue
                 titles[pid] = pkg.get("title") or pid
                 for ref in (pkg.get("references") or []) + (pkg.get("introReferences") or []):
-                    for doi in _extract_dois(ref):
-                        bucket = doi_to_packs.setdefault(doi, [])
-                        if pid not in bucket:
-                            bucket.append(pid)
+                    if isinstance(ref, dict) and ref.get("type") == "linked":
+                        aid = ref.get("article_id")
+                        if aid:
+                            bucket = aid_to_packs.setdefault(str(aid), [])
+                            if pid not in bucket:
+                                bucket.append(pid)
+                    else:
+                        for doi in _extract_dois(ref):
+                            bucket = doi_to_packs.setdefault(doi, [])
+                            if pid not in bucket:
+                                bucket.append(pid)
+            # Resolve linked article_ids → DOIs so DOI-based lookup also works
+            if aid_to_packs:
+                try:
+                    aid_list = list(aid_to_packs.keys())
+                    rows = db.session.execute(
+                        sql_text("SELECT id::text, doi FROM prionvault_articles WHERE id::text = ANY(:ids) AND doi IS NOT NULL AND doi != ''"),
+                        {"ids": aid_list}
+                    ).fetchall()
+                    for row in rows:
+                        aid_str = str(row[0])
+                        doi_val = (row[1] or "").strip().lower()
+                        if not doi_val:
+                            continue
+                        for pid in aid_to_packs.get(aid_str, []):
+                            bucket = doi_to_packs.setdefault(doi_val, [])
+                            if pid not in bucket:
+                                bucket.append(pid)
+                except Exception as exc2:
+                    logger.warning("prionpacks linked-ref DOI resolution failed: %s", exc2)
         except Exception as exc:
             logger.warning("prionpacks DOI index failed: %s", exc)
-        _doi_index_cache = (now, titles, doi_to_packs)
-        return titles, doi_to_packs
+        _doi_index_cache = (now, titles, doi_to_packs, aid_to_packs)
+        return titles, doi_to_packs, aid_to_packs
 
 
 def _invalidate_doi_index_cache() -> None:
@@ -377,7 +402,7 @@ def _invalidate_doi_index_cache() -> None:
 @login_required
 def api_prionpacks_list():
     """Minimal pack list used by the article-listing filter dropdown."""
-    titles, _ = _prionpacks_doi_index()
+    titles, _, _aid = _prionpacks_doi_index()
     items = [{"id": pid, "title": t} for pid, t in titles.items()]
     items.sort(key=lambda x: x["id"])
     return jsonify({"items": items})
@@ -554,20 +579,26 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # ── PrionPacks: filter and attach per-article. The DOI index is built
     # once per request so we can also decorate every returned row with the
     # list of packs it belongs to (used by the listing badges).
-    pp_titles, pp_doi_to_packs = _prionpacks_doi_index()
+    pp_titles, pp_doi_to_packs, pp_aid_to_packs = _prionpacks_doi_index()
     if pp_id:
         scoped_dois = [d for d, packs in pp_doi_to_packs.items() if pp_id in packs]
-        conditions.append("lower(doi) = ANY(:pp_scoped_dois)")
-        params["pp_scoped_dois"] = scoped_dois or [""]   # empty list breaks ANY
+        scoped_aids = [a for a, packs in pp_aid_to_packs.items() if pp_id in packs]
+        conditions.append("(lower(doi) = ANY(:pp_scoped_dois) OR id::text = ANY(:pp_scoped_aids))")
+        params["pp_scoped_dois"] = scoped_dois or [""]
+        params["pp_scoped_aids"] = scoped_aids or [""]
     elif has_pp is True:
         all_pp_dois = list(pp_doi_to_packs.keys())
-        conditions.append("lower(doi) = ANY(:pp_all_dois)")
+        all_pp_aids = list(pp_aid_to_packs.keys())
+        conditions.append("(lower(doi) = ANY(:pp_all_dois) OR id::text = ANY(:pp_all_aids))")
         params["pp_all_dois"] = all_pp_dois or [""]
+        params["pp_all_aids"] = all_pp_aids or [""]
     elif has_pp is False:
         all_pp_dois = list(pp_doi_to_packs.keys())
-        if all_pp_dois:
-            conditions.append("(doi IS NULL OR lower(doi) <> ALL(:pp_all_dois))")
-            params["pp_all_dois"] = all_pp_dois
+        all_pp_aids = list(pp_aid_to_packs.keys())
+        if all_pp_dois or all_pp_aids:
+            conditions.append("(doi IS NULL OR lower(doi) <> ALL(:pp_all_dois)) AND id::text <> ALL(:pp_all_aids)")
+            params["pp_all_dois"] = all_pp_dois or [""]
+            params["pp_all_aids"] = all_pp_aids or [""]
         # If there are no PrionPacks at all, "sin PrionPack" matches everything → no filter.
 
     # Per-user marks: read from prionvault_user_state via _pus join.
@@ -899,7 +930,10 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         aid = _uuid.UUID(str(d["id"]))
         in_pr = aid in prionread_counts
         adoi = (d.get("doi") or "").strip().lower()
-        pp_ids = pp_doi_to_packs.get(adoi, []) if adoi else []
+        aid_str = str(d["id"])
+        pp_ids_by_doi = pp_doi_to_packs.get(adoi, []) if adoi else []
+        pp_ids_by_aid = pp_aid_to_packs.get(aid_str, [])
+        pp_ids = list({*pp_ids_by_doi, *pp_ids_by_aid})
         out = {
             "id":            str(d["id"]),
             "title":         d.get("title") or "",
