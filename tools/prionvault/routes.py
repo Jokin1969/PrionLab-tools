@@ -5953,6 +5953,7 @@ def api_batch_index_start():
     if snap is None:
         return jsonify({"error": "already_running",
                         "status": batch_index.get_status()}), 409
+    return jsonify({"ok": True, "status": snap})
 
 
 @prionvault_bp.route("/api/admin/embeddings/reset-and-reindex",
