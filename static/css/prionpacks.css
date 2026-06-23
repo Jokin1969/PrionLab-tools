@@ -396,13 +396,13 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
 .pp-btn-dashboard {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 5px 10px;
   background: var(--pp-secondary);
   border: 1px solid var(--pp-border);
   color: var(--pp-text-muted);
   border-radius: var(--pp-radius-sm);
-  font-size: 13px;
+  font-size: 12px;
   font-family: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -3126,7 +3126,7 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
+  padding: 5px 10px;
   border: none;
   border-radius: 6px;
   font-size: 12px;
