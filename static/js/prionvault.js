@@ -2524,20 +2524,40 @@
 
     overlay.innerHTML = `
       <div style="background:#fff;border-radius:10px;padding:28px 28px 24px;
-                  max-width:460px;width:calc(100% - 32px);box-shadow:0 8px 32px rgba(0,0,0,0.22);">
+                  max-width:500px;width:calc(100% - 32px);box-shadow:0 8px 32px rgba(0,0,0,0.22);">
         <div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:6px;">
           Subir PDF manualmente
         </div>
         <div style="font-size:12px;color:#6b7280;margin-bottom:18px;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
              title="${esc(title)}">${esc(title.slice(0, 80))}${title.length > 80 ? '…' : ''}</div>
-        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;">
-          Selecciona el archivo PDF:
-        </label>
-        <input type="file" id="pv-manual-pdf-input" accept=".pdf,application/pdf"
-               style="display:block;width:100%;font-size:13px;margin-bottom:18px;
-                      border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;">
-        <div id="pv-manual-pdf-status" style="font-size:12px;min-height:18px;margin-bottom:14px;"></div>
+
+        <!-- Drop zone -->
+        <div id="pv-pdf-dropzone"
+             style="border:2.5px dashed #93c5fd;border-radius:10px;padding:32px 16px;
+                    text-align:center;cursor:pointer;transition:background 0.15s,border-color 0.15s;
+                    margin-bottom:14px;background:#f0f7ff;">
+          <div style="font-size:32px;margin-bottom:8px;">☁️</div>
+          <div style="font-size:14px;font-weight:600;color:#1d4ed8;margin-bottom:4px;">
+            Suelta el PDF aquí
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">o usa el botón de abajo</div>
+          <label id="pv-pdf-file-label"
+                 style="display:inline-block;padding:6px 18px;border-radius:6px;
+                        border:1px solid #3b82f6;background:#fff;color:#2563eb;
+                        font-size:12px;font-weight:600;cursor:pointer;">
+            Seleccionar archivo PDF
+            <input type="file" id="pv-manual-pdf-input" accept=".pdf,application/pdf"
+                   style="display:none;">
+          </label>
+        </div>
+        <div id="pv-pdf-selected-name"
+             style="font-size:12px;color:#374151;min-height:16px;margin-bottom:10px;
+                    text-align:center;font-style:italic;"></div>
+
+        <!-- Progress / status -->
+        <div id="pv-manual-pdf-status" style="font-size:13px;min-height:20px;margin-bottom:14px;
+                                               text-align:center;"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
           <button id="pv-manual-pdf-cancel"
                   style="padding:7px 16px;border-radius:6px;border:1px solid #d1d5db;
@@ -2554,30 +2574,78 @@
 
     document.body.appendChild(overlay);
 
+    const dropzone   = overlay.querySelector('#pv-pdf-dropzone');
     const fileInput  = overlay.querySelector('#pv-manual-pdf-input');
+    const nameDiv    = overlay.querySelector('#pv-pdf-selected-name');
     const statusDiv  = overlay.querySelector('#pv-manual-pdf-status');
     const submitBtn  = overlay.querySelector('#pv-manual-pdf-submit');
     const cancelBtn  = overlay.querySelector('#pv-manual-pdf-cancel');
+    let   chosenFile = null;
+
+    const setFile = (f) => {
+      if (!f) return;
+      chosenFile = f;
+      nameDiv.textContent = '📄 ' + f.name;
+      statusDiv.textContent = '';
+    };
+
+    // File picker
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+    // Drag-and-drop
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.style.background = '#dbeafe';
+      dropzone.style.borderColor = '#2563eb';
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.style.background = '#f0f7ff';
+      dropzone.style.borderColor = '#93c5fd';
+    });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.style.background = '#f0f7ff';
+      dropzone.style.borderColor = '#93c5fd';
+      const f = e.dataTransfer.files[0];
+      if (f && (f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf')) {
+        setFile(f);
+      } else if (f) {
+        statusDiv.textContent = 'El archivo debe ser un PDF.';
+        statusDiv.style.color = '#b91c1c';
+      }
+    });
 
     const close = () => overlay.remove();
     cancelBtn.addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
+    const setStatus = (msg, color) => {
+      statusDiv.textContent = msg;
+      statusDiv.style.color = color || '#374151';
+    };
+
     submitBtn.addEventListener('click', async () => {
-      const file = fileInput.files[0];
+      const file = chosenFile || fileInput.files[0];
       if (!file) {
-        statusDiv.textContent = 'Selecciona un archivo PDF primero.';
-        statusDiv.style.color = '#b91c1c';
+        setStatus('Selecciona un archivo PDF primero.', '#b91c1c');
         return;
       }
       if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-        statusDiv.textContent = 'El archivo debe ser un PDF.';
-        statusDiv.style.color = '#b91c1c';
+        setStatus('El archivo debe ser un PDF.', '#b91c1c');
         return;
       }
+
       submitBtn.disabled = true;
-      submitBtn.textContent = '⏳ Subiendo…';
-      statusDiv.textContent = '';
+      cancelBtn.disabled = true;
+      setStatus('📤 Enviando al servidor…', '#2563eb');
+
+      // Simulate progress steps while the synchronous upload runs
+      let step = 0;
+      const steps = ['📤 Enviando al servidor…', '☁️ Guardando en Dropbox…'];
+      const stepTimer = setInterval(() => {
+        step = Math.min(step + 1, steps.length - 1);
+        setStatus(steps[step], '#2563eb');
+      }, 3500);
 
       const fd = new FormData();
       fd.append('file', file);
@@ -2587,12 +2655,12 @@
           credentials: 'same-origin',
           body: fd,
         });
+        clearInterval(stepTimer);
         const d = await r.json().catch(() => ({}));
+
         if (r.ok) {
-          statusDiv.textContent = '✓ PDF subido correctamente.';
-          statusDiv.style.color = '#15803d';
+          setStatus('✓ PDF subido correctamente.', '#15803d');
           submitBtn.textContent = '✓ Listo';
-          // Swap the trigger button for a thumbnail
           if (triggerBtn) {
             const td = triggerBtn.closest('td');
             if (td) {
@@ -2605,18 +2673,34 @@
                 onerror="this.style.display='none'">`;
             }
           }
-          setTimeout(close, 1200);
-        } else {
-          statusDiv.textContent = 'Error: ' + (d.error || d.detail || r.status);
-          statusDiv.style.color = '#b91c1c';
+          setTimeout(close, 1400);
+        } else if (d.error === 'duplicate_pdf') {
+          const detail = d.detail || '';
+          const dupId  = d.duplicate_of || '';
+          statusDiv.innerHTML =
+            `<span style="color:#b45309;">⚠️ Este PDF ya existe en la biblioteca.</span><br>
+             <span style="font-size:12px;color:#6b7280;">${esc(detail)}</span>` +
+            (dupId ? `<br><span style="font-size:12px;color:#6b7280;">Artículo duplicado: <code>${esc(dupId)}</code></span>` : '');
           submitBtn.disabled = false;
           submitBtn.textContent = 'Subir PDF';
+          cancelBtn.disabled = false;
+        } else if (d.error === 'already_has_pdf') {
+          setStatus('⚠️ Este artículo ya tiene un PDF asociado.', '#b45309');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Subir PDF';
+          cancelBtn.disabled = false;
+        } else {
+          setStatus('Error: ' + (d.detail || d.error || r.status), '#b91c1c');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Subir PDF';
+          cancelBtn.disabled = false;
         }
       } catch (err) {
-        statusDiv.textContent = 'Error de red: ' + err.message;
-        statusDiv.style.color = '#b91c1c';
+        clearInterval(stepTimer);
+        setStatus('Error de red: ' + err.message, '#b91c1c');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Subir PDF';
+        cancelBtn.disabled = false;
       }
     });
   }
