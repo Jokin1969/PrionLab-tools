@@ -716,6 +716,8 @@ const PrionPacks = (() => {
     // to load the full reference list server-side).
     const sgBtn = document.getElementById('btn-suggest-articles');
     if (sgBtn) sgBtn.style.display = isNew ? 'none' : '';
+    const aipBtn = document.getElementById('btn-ai-project');
+    if (aipBtn) aipBtn.style.display = isNew ? 'none' : '';
     _updateEditorNotesBtn(isNew ? null : pkg);
     const vBadge = document.getElementById('editor-version-badge');
     if (!isNew && pkg.docxVersion) {
@@ -4064,6 +4066,7 @@ ${refsText}`;
     document.getElementById('btn-save-package').addEventListener('click', savePackage);
     document.getElementById('btn-delete-package').addEventListener('click', deletePackage);
     _wireSuggestModal();
+    _wireAiProjectModal();
 
     // Alternative titles
     document.getElementById('btn-add-alt-title')?.addEventListener('click', _addAltTitleRow);
@@ -5698,6 +5701,225 @@ ${refsText}`;
       alert('Error añadiendo al pack: ' + e.message);
     }
   }
+
+  // ── Generar proyecto IA ────────────────────────────────────────────────────
+
+  function _pkgToPlainText(pkg) {
+    /* Build a structured plain-text representation of the package —
+       mirrors what the Word export shows, without binary format. */
+    const lines = [];
+    const nl = (n = 1) => { for (let i = 0; i < n; i++) lines.push(''); };
+    const h = (t) => { lines.push(t); lines.push('='.repeat(t.length)); };
+    const h2 = (t) => { lines.push(''); lines.push('## ' + t); };
+    const field = (label, val) => {
+      if (!val || !val.trim()) return;
+      lines.push(`${label}: ${val.trim()}`);
+    };
+
+    h(`[${pkg.id || 'SIN ID'}] ${_sup2text(pkg.title || '(sin título)')}`);
+    nl();
+    field('Estado', pkg.active ? 'Activo' : 'Inactivo');
+    field('Prioridad', pkg.priority || 'none');
+    field('Tipo', pkg.type || '—');
+    field('Versión', pkg.version ? `v${pkg.version}` : '');
+    nl();
+
+    if (pkg.description) { h2('Descripción'); lines.push(pkg.description.trim()); }
+    if (pkg.investigations) { h2('Investigations'); lines.push(pkg.investigations.trim()); }
+
+    // Manuscript fields
+    ['coauthors','affiliations','abstract','author_summary','introduction','methods'].forEach(f => {
+      const v = pkg[f];
+      if (!v || !v.trim()) return;
+      const labels = {
+        coauthors:'Co-authors', affiliations:'Affiliations', abstract:'Abstract',
+        author_summary:'Author Summary', introduction:'Introduction', methods:'Methods',
+      };
+      h2(labels[f]); lines.push(v.trim());
+    });
+
+    // Findings
+    const findings = pkg.findings || [];
+    if (findings.length) {
+      h2('Main Findings');
+      findings.forEach((fn, i) => {
+        nl();
+        lines.push(`Finding ${i + 1}: ${_sup2text(fn.title || '')}`);
+        if (fn.description) lines.push(fn.description.trim());
+        const figs = fn.figures || [];
+        if (figs.length) {
+          lines.push('  Figuras:');
+          figs.forEach((fig, j) => {
+            lines.push(`    Fig ${j + 1}: ${fig.description || ''}`);
+            if (fig.caption) lines.push(`    Pie: ${fig.caption}`);
+          });
+        }
+        const tabs = fn.tables || [];
+        if (tabs.length) {
+          lines.push('  Tablas:');
+          tabs.forEach((tb, j) => lines.push(`    Tabla ${j + 1}: ${tb.description || ''}`));
+        }
+      });
+    }
+
+    // Gaps
+    const gaps = pkg.gaps || [];
+    if (gaps.length) {
+      h2('Gaps & Next Steps');
+      gaps.forEach((g, i) => {
+        nl();
+        lines.push(`Gap ${i + 1}: ${g.missing_info || ''}`);
+        if (g.needed_experiment) lines.push(`  Experimento propuesto: ${g.needed_experiment}`);
+      });
+    }
+
+    // Closing fields
+    ['discussion','credit','references','conflicts_of_interest','funding','acknowledgments'].forEach(f => {
+      const v = pkg[f];
+      if (!v || !v.trim()) return;
+      const labels = {
+        discussion:'Discussion', credit:'CReDiT', references:'References',
+        conflicts_of_interest:'Conflicts of Interest', funding:'Funding',
+        acknowledgments:'Acknowledgments',
+      };
+      h2(labels[f]); lines.push(v.trim());
+    });
+
+    return lines.join('\n');
+  }
+
+  function _sup2text(s) {
+    /* Convert ^x^ superscript markers to plain text x for readability. */
+    return (s || '').replace(/\^([^^]+)\^/g, '$1');
+  }
+
+  function _getContextDoc() {
+    /* Grab the "Contexto general de PrionPacks" doc from the page. */
+    const el = document.getElementById('doc-prionpacks-overview');
+    return el ? el.textContent.trim() : '';
+  }
+
+  function _buildAiProjectTexts(pkg) {
+    const title = _sup2text(pkg.title || '').trim() || '(sin título)';
+    const id    = pkg.id || '';
+    const desc  = (pkg.description || '').trim();
+    const typeMap = { research: 'investigación', review: 'revisión', case: 'caso clínico', methods: 'métodos' };
+    const typeTxt = typeMap[pkg.type] || pkg.type || 'investigación';
+
+    // ── Text 1: Project name ──────────────────────────────────────────
+    const text1 = id ? `[${id}] ${title}` : title;
+
+    // ── Text 2: Brief description ─────────────────────────────────────
+    const text2Lines = [
+      `Proyecto de ${typeTxt} para desarrollar el manuscrito "${title}".`,
+    ];
+    if (desc) text2Lines.push('', desc);
+    text2Lines.push('', 'Objetivo: preparar una publicación científica en el campo de la biología de priones y neurodegeneración.');
+    const text2 = text2Lines.join('\n');
+
+    // ── Text 3: Full project instructions ────────────────────────────
+    const contextDoc = _getContextDoc();
+    const text3Lines = [
+      `Eres un asistente científico especializado en biología de priones, neurodegeneración y neurociencia traslacional.`,
+      `Estás colaborando en el desarrollo del manuscrito científico "${title}" (${id}).`,
+      '',
+      'El objetivo de este proyecto es avanzar hasta tener un manuscrito listo para publicar en una revista de neurociencia / neurodegeneración.',
+      '',
+    ];
+    if (desc) {
+      text3Lines.push('Descripción del trabajo:', desc, '');
+    }
+    const findings = pkg.findings || [];
+    if (findings.length) {
+      text3Lines.push(`Estado actual: el paquete tiene ${findings.length} finding(s) registrado(s).`);
+      const withFigs = findings.filter(f => (f.figures || []).length > 0).length;
+      if (withFigs) text3Lines.push(`  - ${withFigs} finding(s) tienen figuras asociadas.`);
+      const gaps = pkg.gaps || [];
+      if (gaps.length) text3Lines.push(`  - ${gaps.length} gap(s) / experimentos pendientes.`);
+      text3Lines.push('');
+    }
+    if (contextDoc) {
+      text3Lines.push('---', '', contextDoc);
+    }
+    const text3 = text3Lines.join('\n');
+
+    // ── Text 4: First chat message ────────────────────────────────────
+    const plain = _pkgToPlainText(pkg);
+    const text4Lines = [
+      `Empezamos. Te paso el estado actual del PrionPack "${title}" (${id}).`,
+      '',
+      'A continuación encontrarás todo el contenido estructurado del paquete tal como está ahora.',
+      'Léelo, familiarízate con él y confirma que lo has entendido antes de que empecemos a trabajar.',
+      '',
+      '---',
+      '',
+      plain,
+    ];
+    const text4 = text4Lines.join('\n');
+
+    return { text1, text2, text3, text4 };
+  }
+
+  function _openAiProjectModal(pkg) {
+    const modal   = document.getElementById('pp-ai-project-modal');
+    const wordLink = document.getElementById('pp-aip-word-link');
+    if (!modal) return;
+
+    const { text1, text2, text3, text4 } = _buildAiProjectTexts(pkg);
+    document.getElementById('pp-aip-text-1').value = text1;
+    document.getElementById('pp-aip-text-2').value = text2;
+    document.getElementById('pp-aip-text-3').value = text3;
+    document.getElementById('pp-aip-text-4').value = text4;
+
+    if (pkg.id) {
+      wordLink.href = `/prionpacks/api/packages/${pkg.id}/docx`;
+      wordLink.style.display = '';
+    } else {
+      wordLink.style.display = 'none';
+    }
+
+    modal.style.display = '';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function _closeAiProjectModal() {
+    const modal = document.getElementById('pp-ai-project-modal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  function _wireAiProjectModal() {
+    const modal = document.getElementById('pp-ai-project-modal');
+    if (!modal) return;
+
+    document.getElementById('pp-ai-project-close')
+      ?.addEventListener('click', _closeAiProjectModal);
+    modal.addEventListener('click', e => { if (e.target === modal) _closeAiProjectModal(); });
+
+    modal.querySelectorAll('.pp-aip-copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const n  = btn.dataset.block;
+        const ta = document.getElementById(`pp-aip-text-${n}`);
+        if (!ta) return;
+        try {
+          await navigator.clipboard.writeText(ta.value);
+          const orig = btn.innerHTML;
+          btn.classList.add('copied');
+          btn.innerHTML = '<i class="fas fa-check"></i> Copiado';
+          setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = orig; }, 2000);
+        } catch (_) {
+          ta.select(); document.execCommand('copy');
+        }
+      });
+    });
+
+    document.getElementById('btn-ai-project')
+      ?.addEventListener('click', () => {
+        const pkg = state.currentId ? _packages.find(p => p.id === state.currentId) : null;
+        if (pkg) _openAiProjectModal(pkg);
+      });
+  }
+
 })();
 
 document.addEventListener('DOMContentLoaded', PrionPacks.init);

@@ -283,9 +283,8 @@ html:has(#prionpacks-app) { scroll-padding-top: 130px; }
   line-height: 1.5;
 }
 /* Collapsed doc block: hide description and content, keep header visible */
-.pp-doc-block.pp-doc-block-collapsed > .pp-doc-block-desc,
-.pp-doc-block.pp-doc-block-collapsed > .pp-docs-content {
-  display: none;
+.pp-doc-block.pp-doc-block-collapsed > *:not(.pp-doc-block-header) {
+  display: none !important;
 }
 .pp-docs-content {
   background: #fff;
@@ -4195,4 +4194,78 @@ a.pp-similar-id-link:hover {
   color: #065f46;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* ── Generar proyecto IA modal ───────────────────────────────────────────── */
+.pp-aip-block {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px 18px 14px;
+  margin-bottom: 18px;
+  background: #fafafa;
+}
+.pp-aip-block-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.pp-aip-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.pp-aip-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+.pp-aip-hint {
+  font-size: 11px;
+  color: #6b7280;
+  flex: 1;
+  min-width: 0;
+}
+.pp-aip-copy-btn {
+  margin-left: auto;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.pp-aip-copy-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+.pp-aip-copy-btn.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+.pp-aip-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: 'Crimson Pro', 'Georgia', serif;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 10px 12px;
+  resize: vertical;
+  background: #fff;
+}
+.pp-aip-textarea:focus {
+  outline: none;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124,58,237,.15);
 }
