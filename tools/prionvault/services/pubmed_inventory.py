@@ -658,7 +658,7 @@ def list_pending(*, q: Optional[str] = None,
         conditions.append("year <= :ymax")
         params["ymax"] = year_max
     if only_oa:
-        conditions.append("pmcid IS NOT NULL")
+        conditions.append("oa_verified = TRUE")
     where = " AND ".join(conditions)
 
     eng = _get_engine()
