@@ -87,8 +87,11 @@ def find_doi_in_text(text: str) -> Optional[str]:
     if candidates:
         return min(candidates, key=len)
 
-    # Last resort: bare DOI pattern, collect all, pick shortest.
-    all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(text)]
+    # Last resort: bare DOI pattern — restrict to the first page only.
+    # Picking the shortest DOI across the full document is unreliable: a
+    # cited reference can have a shorter DOI than the paper itself. The
+    # paper's own DOI almost always appears on the first page.
+    all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(head)]
     all_bare = [c for c in all_bare if len(c) >= 7]
     return min(all_bare, key=len) if all_bare else None
 

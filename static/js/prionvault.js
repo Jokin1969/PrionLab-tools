@@ -6865,9 +6865,11 @@
     let actionHtml = '';
 
     if (j.status === 'duplicate') {
-      const by = step.match(/by ([^\s|]+)/)?.[1] || '?';
+      const by  = step.match(/by ([^\s|]+)/)?.[1] || '?';
+      const doi = step.match(/doi=([^\s|]+)/)?.[1] || '';
       badge   = '⟳ Duplicado'; badgeBg = '#fef3c7'; badgeFg = '#92400e';
       bodyLines.push(`Coincide con un artículo existente (por ${by}).`);
+      if (doi) bodyLines.push(`DOI extraído del PDF: <code style="font-size:11px;">${escapeHtml(doi)}</code>`);
       bodyLines.push(`El PDF se ha movido a la carpeta <code style="font-size:11px;">_duplicates/</code> dentro de la subcarpeta del año.`);
       if (j.article_id) actionHtml = _aLinkArticle(j.article_id, 'Ver original');
     } else if (j.status === 'failed') {

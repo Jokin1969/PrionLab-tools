@@ -59,7 +59,7 @@ def find_duplicate(
             try:
                 row = conn.execute(
                     text("SELECT id FROM articles "
-                         " WHERE pubmed_id::text = :p::text LIMIT 1"),
+                         " WHERE pubmed_id::text = CAST(:p AS text) LIMIT 1"),
                     {"p": str(pmid).strip()},
                 ).first()
                 if row:
