@@ -11185,7 +11185,7 @@
         });
         pmids.forEach(p => {
           selected.delete(p);
-          const row = list.querySelector(`[data-pmid="${CSS.escape(p)}"]`);
+          const row = list.querySelector(`[data-pinv-pmid="${CSS.escape(p)}"]`);
           if (row) row.remove();
         });
         btn.disabled = false;
@@ -11235,7 +11235,7 @@
         });
         pmids.forEach(p => {
           selected.delete(p);
-          const row = list.querySelector(`[data-pmid="${CSS.escape(p)}"]`);
+          const row = list.querySelector(`[data-pinv-pmid="${CSS.escape(p)}"]`);
           if (row) {
             // Visually mark as kept and move to end of list
             row.style.opacity = '0.55';
