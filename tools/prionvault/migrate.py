@@ -77,6 +77,7 @@ _PRIONVAULT_MIGRATIONS = (
     "041_backfill_summary_ai_provider.sql",
     "042_articles_summary_tokens.sql",
     "043_articles_summary_ai_model.sql",
+    "044_pubmed_inventory_query_name.sql",
 )
 
 _BOOTSTRAP_SQL = """
@@ -323,6 +324,7 @@ _SELF_HEAL_MIGRATIONS = (
     "040_articles_summary_ai_provider.sql",
     "042_articles_summary_tokens.sql",
     "043_articles_summary_ai_model.sql",
+    "044_pubmed_inventory_query_name.sql",
 )
 
 
