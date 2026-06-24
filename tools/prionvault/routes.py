@@ -7351,3 +7351,63 @@ def api_admin_debug_schema():
     finally:
         db.Session.remove()
 
+
+
+# ── Export references as .docx ────────────────────────────────────────────
+
+@prionvault_bp.route("/api/articles/export-refs-docx", methods=["POST"])
+@login_required
+def api_export_refs_docx():
+    """Generate a formatted Word document from a list of article IDs.
+
+    Body JSON: { "article_ids": [...uuid...], "config": {...} }
+    The order of article_ids determines the order in the document.
+    """
+    from .refs_exporter import generate_refs_docx
+
+    data = request.get_json(silent=True) or {}
+    article_ids = data.get('article_ids') or []
+    config      = data.get('config') or {}
+
+    if not article_ids:
+        return jsonify({'error': 'article_ids required'}), 400
+
+    s = _session()
+    try:
+        # Fetch in bulk then reorder to match the requested order
+        rows = (
+            s.query(models.PrionVaultArticle)
+             .filter(models.PrionVaultArticle.id.in_(article_ids))
+             .all()
+        )
+        by_id = {str(r.id): r for r in rows}
+        ordered = [by_id[str(aid)] for aid in article_ids if str(aid) in by_id]
+
+        articles = [
+            {
+                'id':              str(a.id),
+                'title':           a.title or '',
+                'authors':         a.authors or '',
+                'year':            a.year,
+                'journal':         a.journal or '',
+                'doi':             a.doi or '',
+                'pubmed_id':       a.pubmed_id or '',
+                'source_metadata': a.source_metadata or {},
+            }
+            for a in ordered
+        ]
+
+        docx_bytes = generate_refs_docx(articles, config)
+
+        filename = f'Referencias_{datetime.now().strftime("%Y%m%d")}.docx'
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+    except Exception as exc:
+        s.rollback()
+        current_app.logger.exception('export-refs-docx failed')
+        return jsonify({'error': str(exc)}), 500
+    finally:
+        db.Session.remove()

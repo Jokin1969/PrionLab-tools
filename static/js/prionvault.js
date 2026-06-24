@@ -12965,3 +12965,438 @@
   window.addEventListener('pp-cart-changed', updateBadge);
   document.addEventListener('DOMContentLoaded', updateBadge);
 })();
+
+// ── Export References ─────────────────────────────────────────────────────
+(function () {
+  'use strict';
+
+  const BLOCK_META = {
+    authors:         { label: 'Autores',          icon: 'fas fa-users' },
+    title:           { label: 'Título',            icon: 'fas fa-heading' },
+    journal:         { label: 'Revista',           icon: 'fas fa-newspaper' },
+    year:            { label: 'Año',               icon: 'fas fa-calendar' },
+    doi:             { label: 'DOI',               icon: 'fas fa-link' },
+    pmid:            { label: 'PMID',              icon: 'fas fa-flask' },
+    author_position: { label: 'Posición del autor', icon: 'fas fa-list-ol' },
+  };
+
+  const DEFAULT_CONFIG = () => ({
+    blocks: [
+      { id: 'authors',         active: true,  options: { mode: 'all', bold: false, italic: false, underline: false, color: '', marked_bold: false, marked_italic: false, marked_underline: false, marked_color: '' } },
+      { id: 'title',           active: true,  options: { bold: true,  italic: true,  underline: true,  color: '' } },
+      { id: 'journal',         active: true,  options: { bold: true,  italic: true,  underline: false, color: '' } },
+      { id: 'year',            active: true,  options: { bold: true,  italic: true,  underline: false, color: '' } },
+      { id: 'doi',             active: true,  options: { with_link: true,  bold: false, italic: false, underline: false, color: '' } },
+      { id: 'pmid',            active: true,  options: { with_link: true,  bold: false, italic: false, underline: false, color: '' } },
+      { id: 'author_position', active: false, options: { bold: false, italic: false, underline: false, color: '' } },
+    ],
+    show_labels:   false,
+    show_type:     false,
+    marked_author: 'Joaquín Castilla',
+  });
+
+  let _config = DEFAULT_CONFIG();
+  let _selectedBlockId = null;
+  let _dragSrcIdx = null;
+
+  // ── DOM references (resolved once after DOMContentLoaded) ────────────
+
+  let _modal, _blocksEl, _optionsBody, _optionsEmpty,
+      _exportBtn, _markedInput, _showLabels, _showType, _countEl;
+
+  function _el(id) { return document.getElementById(id); }
+
+  // ── Open / close ──────────────────────────────────────────────────────
+
+  function openExportRefs() {
+    const ids = _visibleIds();
+    if (!ids.length) {
+      alert('No hay referencias visibles en el listado.');
+      return;
+    }
+    _config = DEFAULT_CONFIG();
+    _selectedBlockId = null;
+    _markedInput.value = _config.marked_author;
+    _showLabels.checked = _config.show_labels;
+    _showType.checked   = _config.show_type;
+    _countEl.textContent = `${ids.length} referencia${ids.length !== 1 ? 's' : ''}`;
+    _renderBlocks();
+    _renderOptions(null);
+    _modal.style.display = 'flex';
+  }
+
+  function _close() {
+    _modal.style.display = 'none';
+  }
+
+  // Returns article IDs in DOM order (same as the visible list)
+  function _visibleIds() {
+    return Array.from(document.querySelectorAll('.pv-row-select')).map(cb => cb.dataset.aid);
+  }
+
+  // ── Block list renderer ───────────────────────────────────────────────
+
+  function _renderBlocks() {
+    _blocksEl.innerHTML = '';
+    _config.blocks.forEach((block, idx) => {
+      const meta    = BLOCK_META[block.id] || { label: block.id, icon: 'fas fa-circle' };
+      const isActive = block.active;
+      const isSelected = block.id === _selectedBlockId;
+
+      const row = document.createElement('div');
+      row.className   = 'pv-er-block-row';
+      row.draggable   = true;
+      row.dataset.idx = idx;
+      row.style.cssText = `
+        display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:8px;
+        border:1.5px solid ${isSelected ? '#0F3460' : (isActive ? '#d1d5db' : '#e5e7eb')};
+        background:${isSelected ? '#eff6ff' : (isActive ? 'white' : '#f9fafb')};
+        cursor:pointer;user-select:none;transition:border-color .15s,background .15s;
+        opacity:${isActive ? '1' : '0.5'};
+      `;
+
+      // Drag handle
+      const handle = document.createElement('span');
+      handle.innerHTML = '<i class="fas fa-grip-vertical"></i>';
+      handle.style.cssText = 'color:#9ca3af;font-size:12px;cursor:grab;flex-shrink:0;padding:0 2px;';
+
+      // Toggle checkbox
+      const chk = document.createElement('input');
+      chk.type    = 'checkbox';
+      chk.checked = isActive;
+      chk.title   = isActive ? 'Desactivar bloque' : 'Activar bloque';
+      chk.style.cssText = 'width:14px;height:14px;accent-color:#0F3460;flex-shrink:0;cursor:pointer;';
+      chk.addEventListener('click', e => {
+        e.stopPropagation();
+        _config.blocks[idx].active = chk.checked;
+        if (!chk.checked && _selectedBlockId === block.id) {
+          _selectedBlockId = null;
+          _renderOptions(null);
+        }
+        _renderBlocks();
+      });
+
+      // Icon + label
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'flex:1;font-size:12.5px;font-weight:' + (isActive ? '500' : '400') + ';color:' + (isActive ? '#111827' : '#9ca3af') + ';display:flex;align-items:center;gap:6px;';
+      lbl.innerHTML = `<i class="${meta.icon}" style="font-size:11px;opacity:0.6;"></i>${meta.label}`;
+
+      // Up/down arrows
+      const arrowBox = document.createElement('span');
+      arrowBox.style.cssText = 'display:flex;flex-direction:column;gap:1px;flex-shrink:0;';
+      [['fa-chevron-up', -1], ['fa-chevron-down', 1]].forEach(([icon, dir]) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.innerHTML = `<i class="fas ${icon}"></i>`;
+        btn.style.cssText = 'background:none;border:none;padding:1px 3px;cursor:pointer;color:#9ca3af;font-size:9px;line-height:1;';
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const newIdx = idx + dir;
+          if (newIdx < 0 || newIdx >= _config.blocks.length) return;
+          const tmp = _config.blocks[idx];
+          _config.blocks[idx]    = _config.blocks[newIdx];
+          _config.blocks[newIdx] = tmp;
+          _renderBlocks();
+        });
+        arrowBox.appendChild(btn);
+      });
+
+      row.appendChild(handle);
+      row.appendChild(chk);
+      row.appendChild(lbl);
+      row.appendChild(arrowBox);
+
+      // Click → select
+      row.addEventListener('click', () => {
+        if (!block.active) return;
+        _selectedBlockId = block.id;
+        _renderBlocks();
+        _renderOptions(block);
+      });
+
+      // Drag events
+      row.addEventListener('dragstart', e => {
+        _dragSrcIdx = idx;
+        e.dataTransfer.effectAllowed = 'move';
+        row.style.opacity = '0.4';
+      });
+      row.addEventListener('dragend', () => {
+        _dragSrcIdx = null;
+        _renderBlocks();
+      });
+      row.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        row.style.background = '#dbeafe';
+      });
+      row.addEventListener('dragleave', () => {
+        row.style.background = isSelected ? '#eff6ff' : (isActive ? 'white' : '#f9fafb');
+      });
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        if (_dragSrcIdx === null || _dragSrcIdx === idx) return;
+        const moved = _config.blocks.splice(_dragSrcIdx, 1)[0];
+        _config.blocks.splice(idx, 0, moved);
+        _dragSrcIdx = null;
+        _renderBlocks();
+      });
+
+      _blocksEl.appendChild(row);
+    });
+  }
+
+  // ── Per-block options renderer ────────────────────────────────────────
+
+  function _renderOptions(block) {
+    if (!block) {
+      _optionsEmpty.style.display = 'flex';
+      _optionsBody.style.display  = 'none';
+      return;
+    }
+    _optionsEmpty.style.display = 'none';
+    _optionsBody.style.display  = 'block';
+
+    const opts = block.options;
+    const bid  = block.id;
+    const meta = BLOCK_META[bid] || { label: bid, icon: 'fas fa-circle' };
+
+    let html = `
+      <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#111827;
+                 display:flex;align-items:center;gap:7px;">
+        <i class="${meta.icon}" style="color:#0F3460;"></i>${meta.label}
+      </h3>`;
+
+    if (bid === 'authors') {
+      html += _authorsModeHtml(opts);
+      html += _formatRow('Formato otros autores', opts, 'bold', 'italic', 'underline', 'color');
+      html += _markedFmtHtml(opts);
+    } else if (bid === 'doi' || bid === 'pmid') {
+      html += _linkToggleHtml(opts, bid);
+      html += _formatRow('Formato', opts, 'bold', 'italic', 'underline', 'color');
+    } else {
+      html += _formatRow('Formato', opts, 'bold', 'italic', 'underline', 'color');
+    }
+
+    _optionsBody.innerHTML = html;
+    _bindOptionEvents(block);
+  }
+
+  function _fmtCheckbox(label, key, opts) {
+    const id  = `pv-er-opt-${key}`;
+    const chk = opts[key] ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:#374151;">
+      <input type="checkbox" id="${id}" data-key="${key}" ${chk}
+             style="width:13px;height:13px;accent-color:#0F3460;">
+      ${label}
+    </label>`;
+  }
+
+  function _colorPicker(key, opts, label) {
+    const id  = `pv-er-opt-${key}`;
+    const val = opts[key] || '#000000';
+    const on  = !!opts[key];
+    return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;color:#374151;">
+      <input type="checkbox" id="${id}-enabled" data-key="${key}-enabled" ${on ? 'checked' : ''}
+             style="width:13px;height:13px;accent-color:#0F3460;">
+      ${label}
+      <input type="color" id="${id}" data-key="${key}" value="${val}"
+             ${on ? '' : 'disabled'}
+             style="width:28px;height:22px;border:1px solid #d1d5db;border-radius:4px;
+                    padding:1px;cursor:pointer;${on ? '' : 'opacity:0.3;'}">
+    </label>`;
+  }
+
+  function _formatRow(sectionLabel, opts, ...keys) {
+    const chks = [
+      keys.includes('bold')      ? _fmtCheckbox('Negrita', 'bold', opts)      : '',
+      keys.includes('italic')    ? _fmtCheckbox('Cursiva', 'italic', opts)    : '',
+      keys.includes('underline') ? _fmtCheckbox('Subrayado', 'underline', opts) : '',
+      keys.includes('color')     ? _colorPicker('color', opts, 'Color') : '',
+    ].filter(Boolean);
+    return `
+      <div style="margin-bottom:14px;">
+        <p style="margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+                  color:#9ca3af;text-transform:uppercase;">${sectionLabel}</p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px 18px;">${chks.join('')}</div>
+      </div>`;
+  }
+
+  function _authorsModeHtml(opts) {
+    const m = opts.mode || 'all';
+    const modes = [
+      ['all',          'Todos los autores'],
+      ['first_et_al',  'Primero + et al.'],
+      ['first_last',   'Primero + … + último'],
+    ];
+    const radios = modes.map(([val, lbl]) => `
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:#374151;">
+        <input type="radio" name="pv-er-author-mode" data-key="mode" value="${val}"
+               ${m === val ? 'checked' : ''}
+               style="accent-color:#0F3460;">
+        ${lbl}
+      </label>`).join('');
+    return `
+      <div style="margin-bottom:14px;">
+        <p style="margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+                  color:#9ca3af;text-transform:uppercase;">Modo de presentación</p>
+        <div style="display:flex;flex-direction:column;gap:7px;">${radios}</div>
+      </div>`;
+  }
+
+  function _markedFmtHtml(opts) {
+    const chks = [
+      _fmtCheckbox('Negrita', 'marked_bold', opts),
+      _fmtCheckbox('Cursiva', 'marked_italic', opts),
+      _fmtCheckbox('Subrayado', 'marked_underline', opts),
+      _colorPicker('marked_color', opts, 'Color'),
+    ].join('');
+    return `
+      <div style="margin-bottom:14px;padding:10px 12px;background:#f0f9ff;
+                  border-radius:8px;border:1px solid #bae6fd;">
+        <p style="margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+                  color:#0369a1;text-transform:uppercase;">
+          <i class="fas fa-star" style="margin-right:4px;"></i>Formato del autor marcado
+        </p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px 18px;">${chks}</div>
+      </div>`;
+  }
+
+  function _linkToggleHtml(opts, bid) {
+    const on = opts.with_link !== false;
+    return `
+      <div style="margin-bottom:14px;">
+        <p style="margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+                  color:#9ca3af;text-transform:uppercase;">Enlace</p>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;color:#374151;">
+          <input type="checkbox" id="pv-er-opt-with_link" data-key="with_link" ${on ? 'checked' : ''}
+                 style="width:13px;height:13px;accent-color:#0F3460;">
+          Mostrar como hipervínculo
+          <span style="color:#9ca3af;font-size:11px;">(${bid === 'doi' ? 'doi.org' : 'PubMed'})</span>
+        </label>
+      </div>`;
+  }
+
+  // ── Bind events for the options panel ────────────────────────────────
+
+  function _bindOptionEvents(block) {
+    const opts = block.options;
+
+    // Checkboxes (plain bool)
+    _optionsBody.querySelectorAll('input[type=checkbox][data-key]').forEach(cb => {
+      const key = cb.dataset.key;
+      if (key.endsWith('-enabled')) {
+        // Color enabled toggle
+        const colorKey = key.replace('-enabled', '');
+        cb.addEventListener('change', () => {
+          const picker = _optionsBody.querySelector(`[data-key="${colorKey}"]`);
+          if (!cb.checked) {
+            opts[colorKey] = '';
+            if (picker) { picker.disabled = true; picker.style.opacity = '0.3'; }
+          } else {
+            opts[colorKey] = picker ? picker.value : '#000000';
+            if (picker) { picker.disabled = false; picker.style.opacity = '1'; }
+          }
+        });
+      } else {
+        cb.addEventListener('change', () => { opts[key] = cb.checked; });
+      }
+    });
+
+    // Color pickers
+    _optionsBody.querySelectorAll('input[type=color][data-key]').forEach(cp => {
+      cp.addEventListener('input', () => {
+        const enabledCb = _optionsBody.querySelector(`[data-key="${cp.dataset.key}-enabled"]`);
+        if (enabledCb && enabledCb.checked) {
+          opts[cp.dataset.key] = cp.value;
+        }
+      });
+    });
+
+    // Radio buttons (author mode)
+    _optionsBody.querySelectorAll('input[type=radio][data-key]').forEach(rb => {
+      rb.addEventListener('change', () => { if (rb.checked) opts[rb.dataset.key] = rb.value; });
+    });
+  }
+
+  // ── Export action ─────────────────────────────────────────────────────
+
+  async function _doExport() {
+    const ids = _visibleIds();
+    if (!ids.length) { alert('No hay referencias visibles.'); return; }
+
+    // Sync global options from DOM
+    _config.marked_author = _markedInput.value.trim();
+    _config.show_labels   = _showLabels.checked;
+    _config.show_type     = _showType.checked;
+
+    _exportBtn.disabled = true;
+    const orig = _exportBtn.innerHTML;
+    _exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…';
+
+    try {
+      const res = await fetch('/prionvault/api/articles/export-refs-docx', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ article_ids: ids, config: _config }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        alert('Error al exportar: ' + (err.error || res.statusText));
+        return;
+      }
+
+      const blob     = await res.blob();
+      const url      = URL.createObjectURL(blob);
+      const a        = document.createElement('a');
+      const ts       = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      a.href         = url;
+      a.download     = `Referencias_${ts}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      _close();
+    } catch (e) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      _exportBtn.disabled = false;
+      _exportBtn.innerHTML = orig;
+    }
+  }
+
+  // ── Chevron toggle for global details ────────────────────────────────
+
+  function _initGlobalChev() {
+    const det  = _el('pv-er-global-details');
+    const chev = _el('pv-er-global-chev');
+    if (!det || !chev) return;
+    det.addEventListener('toggle', () => {
+      chev.style.transform = det.open ? 'rotate(90deg)' : '';
+    });
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────
+
+  document.addEventListener('DOMContentLoaded', () => {
+    _modal        = _el('pv-export-refs-modal');
+    _blocksEl     = _el('pv-er-blocks');
+    _optionsBody  = _el('pv-er-options-body');
+    _optionsEmpty = _el('pv-er-options-empty');
+    _exportBtn    = _el('pv-er-export');
+    _markedInput  = _el('pv-er-marked-author');
+    _showLabels   = _el('pv-er-show-labels');
+    _showType     = _el('pv-er-show-type');
+    _countEl      = _el('pv-export-refs-count');
+
+    if (!_modal) return;
+
+    _el('btn-export-refs')       ?.addEventListener('click', openExportRefs);
+    _el('pv-export-refs-close')  ?.addEventListener('click', _close);
+    _el('pv-er-cancel')          ?.addEventListener('click', _close);
+    _el('pv-export-refs-backdrop')?.addEventListener('click', _close);
+    _exportBtn                   ?.addEventListener('click', _doExport);
+    _initGlobalChev();
+  });
+
+})();
