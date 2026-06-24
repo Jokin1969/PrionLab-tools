@@ -610,18 +610,16 @@ def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
 def _section_heading(doc: Document, text: str, collapsed: bool = False,
                      accent: RGBColor = None, accent_hex: str = None):
     p = doc.add_paragraph(style='Heading 2')
-    run = p.add_run(text)
-    run.font.bold      = True
-    run.font.size      = Pt(10)
-    run.font.color.rgb = accent if accent is not None else _TEAL
-    # w:pBdr must come before w:collapsed in pPr — Word silently ignores
-    # w:collapsed when the element order is violated.
-    _para_border_bottom(p, accent_hex or _TEAL_HEX)
     if collapsed:
         pPr = p._p.get_or_add_pPr()
         collapsed_el = OxmlElement('w:collapsed')
         collapsed_el.set(qn('w:val'), '1')
         pPr.append(collapsed_el)
+    run = p.add_run(text)
+    run.font.bold      = True
+    run.font.size      = Pt(10)
+    run.font.color.rgb = accent if accent is not None else _TEAL
+    _para_border_bottom(p, accent_hex or _TEAL_HEX)
 
 
 def _dim_para(doc: Document, text: str):
