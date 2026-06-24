@@ -238,10 +238,16 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     if alt_titles:
         _section_heading(doc, 'TÍTULOS ALTERNATIVOS', collapsed=True, accent=ACCENT, accent_hex=acc_hex)
         for at_clean in alt_titles:
-            ap = doc.add_paragraph()
+            # Use Heading 3 so these paragraphs have outlineLvl=2 and are
+            # definitively inside the Heading 2 collapse scope.  Override
+            # spacing/formatting so they look like plain body text.
+            ap = doc.add_paragraph(style='Heading 3')
             ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            add_runs(ap, at_clean, size=Pt(12), italic=True, color=ACCENT)
-        doc.add_paragraph()
+            ap.paragraph_format.space_before = Pt(0)
+            ap.paragraph_format.space_after  = Pt(2)
+            ap.paragraph_format.keep_with_next = False
+            add_runs(ap, at_clean, size=Pt(12), italic=True, bold=False, color=ACCENT)
+        doc.add_paragraph(style='Heading 3').paragraph_format.space_before = Pt(0)
 
     def sh(text, collapsed=True, **kw):
         _section_heading(doc, text, collapsed=collapsed, accent=ACCENT, accent_hex=acc_hex, **kw)
