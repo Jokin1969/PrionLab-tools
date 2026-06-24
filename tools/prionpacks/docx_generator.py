@@ -719,16 +719,25 @@ def _make_ref_heading(doc: Document, label: str, body: str,
 
 
 def _ref_abstract_para(doc: Document, text: str, color: RGBColor) -> None:
-    """Plain paragraph with outlineLvl=3 so it falls inside a Heading 3
-    collapse scope, without appearing as a heading in the nav pane."""
-    p = doc.add_paragraph()
-    p.paragraph_format.space_before = Pt(0)
-    p.paragraph_format.space_after  = Pt(6)
+    """Abstract paragraph using Heading 4 style so it is inside the Heading 3
+    collapse scope (w15:collapsed only collapses heading-style paragraphs,
+    not plain paragraphs even with explicit outlineLvl).
+
+    Visual overrides make it look like italic body text, not a heading.
+    keepNext=0 / keepLines=0 / pageBreakBefore=0 prevent page-break chaining.
+    """
+    p = doc.add_paragraph(style='Heading 4')
+    p.paragraph_format.space_before   = Pt(0)
+    p.paragraph_format.space_after    = Pt(6)
+    p.paragraph_format.keep_with_next = False
+
     pPr = p._p.get_or_add_pPr()
-    ol = OxmlElement('w:outlineLvl')
-    ol.set(qn('w:val'), '3')
-    pPr.append(ol)
-    add_runs(p, text, size=Pt(9), italic=True, color=color)
+    for tag in ('keepNext', 'keepLines', 'pageBreakBefore'):
+        el = OxmlElement(f'w:{tag}')
+        el.set(qn('w:val'), '0')
+        pPr.insert(1, el)
+
+    add_runs(p, text, size=Pt(9), italic=True, bold=False, color=color)
 
 
 def _dim_para(doc: Document, text: str):
