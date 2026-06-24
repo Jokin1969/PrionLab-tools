@@ -192,16 +192,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     t.alignment = WD_ALIGN_PARAGRAPH.LEFT
     add_runs(t, pkg.get('title', 'Sin título'), size=Pt(14), bold=True, color=ACCENT)
 
-    # Alternative titles — collapsed section so they don't clutter the opening view
-    alt_titles = [at.strip() for at in (pkg.get('altTitles') or []) if (at or '').strip()]
-    if alt_titles:
-        _section_heading(doc, 'TÍTULOS ALTERNATIVOS', collapsed=True, accent=ACCENT, accent_hex=acc_hex)
-        for at_clean in alt_titles:
-            ap = doc.add_paragraph()
-            ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            add_runs(ap, at_clean, size=Pt(12), italic=True, color=ACCENT)
-        doc.add_paragraph()
-
+    # Subtitle must come BEFORE alt titles so it is never inside the collapsed section.
     resp_part = f"  ·  Responsable: {resp_name}" if resp_name else ''
     sub = doc.add_paragraph()
     run2 = sub.add_run(
@@ -213,6 +204,16 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
     run2.font.color.rgb = _DIM
 
     doc.add_paragraph()
+
+    # Alternative titles — collapsed section so they don't clutter the opening view
+    alt_titles = [at.strip() for at in (pkg.get('altTitles') or []) if (at or '').strip()]
+    if alt_titles:
+        _section_heading(doc, 'TÍTULOS ALTERNATIVOS', collapsed=True, accent=ACCENT, accent_hex=acc_hex)
+        for at_clean in alt_titles:
+            ap = doc.add_paragraph()
+            ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            add_runs(ap, at_clean, size=Pt(12), italic=True, color=ACCENT)
+        doc.add_paragraph()
 
     def sh(text, collapsed=True, **kw):
         _section_heading(doc, text, collapsed=collapsed, accent=ACCENT, accent_hex=acc_hex, **kw)
@@ -282,6 +283,11 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
             add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             pPr = p._p.get_or_add_pPr()
+            # Suppress page-break-before from Heading 3 style
+            pb3 = OxmlElement('w:pageBreakBefore')
+            pb3.set(qn('w:val'), '0')
+            pPr.append(pb3)
+            # w:collapsed before pBdr (none here, but keeps ordering consistent)
             collapsed_el = OxmlElement('w:collapsed')
             collapsed_el.set(qn('w:val'), '1')
             pPr.append(collapsed_el)
@@ -490,6 +496,9 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
             add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             pPr = p._p.get_or_add_pPr()
+            pb3 = OxmlElement('w:pageBreakBefore')
+            pb3.set(qn('w:val'), '0')
+            pPr.append(pb3)
             collapsed_el = OxmlElement('w:collapsed')
             collapsed_el.set(qn('w:val'), '1')
             pPr.append(collapsed_el)
@@ -579,13 +588,26 @@ def _section_heading(doc: Document, text: str, collapsed: bool = False,
     run.font.bold      = True
     run.font.size      = Pt(10)
     run.font.color.rgb = accent if accent is not None else _TEAL
-    # w:pBdr must exist before w:collapsed in the schema order
-    _para_border_bottom(p, accent_hex or _TEAL_HEX)
+
+    pPr = p._p.get_or_add_pPr()
+
+    # Suppress keepWithNext and pageBreakBefore that the Heading 2 style
+    # may carry — prevents section headings from being pushed to a new page.
+    kn = OxmlElement('w:keepNext')
+    kn.set(qn('w:val'), '0')
+    pPr.append(kn)
+    pb = OxmlElement('w:pageBreakBefore')
+    pb.set(qn('w:val'), '0')
+    pPr.append(pb)
+
+    # w:collapsed must appear before w:pBdr in pPr for Word to honour it.
     if collapsed:
-        pPr = p._p.get_or_add_pPr()
-        collapsed_el = OxmlElement('w:collapsed')
-        collapsed_el.set(qn('w:val'), '1')
-        pPr.append(collapsed_el)
+        c = OxmlElement('w:collapsed')
+        c.set(qn('w:val'), '1')
+        pPr.append(c)
+
+    # Bottom border appended last — pBdr follows collapsed in element order.
+    _para_border_bottom(p, accent_hex or _TEAL_HEX)
 
 
 def _dim_para(doc: Document, text: str):
