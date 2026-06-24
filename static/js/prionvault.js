@@ -4056,12 +4056,14 @@
     try {
       allTags = await api('/tags');
     } catch (e) {
-      document.getElementById('pv-tag-picker-list').innerHTML =
+      const listErr = document.getElementById('pv-tag-picker-list');
+      if (listErr) listErr.innerHTML =
         `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
       return;
     }
     if (!allTags.length) {
-      document.getElementById('pv-tag-picker-list').innerHTML =
+      const listEmpty = document.getElementById('pv-tag-picker-list');
+      if (listEmpty) listEmpty.innerHTML =
         `<span style="font-style:italic;">No hay tags todavía. ` +
         `Crea uno con el botón <strong>+</strong> al lado de Tags en el menú.</span>`;
       return;

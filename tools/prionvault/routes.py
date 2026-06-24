@@ -5804,6 +5804,16 @@ def api_article_fetch_abstract(aid):
                     pmid = meta.pubmed_id
                     a.pubmed_id = pmid
                     s.flush()
+            except IntegrityError as exc:
+                # PMID already belongs to another article — discard the update
+                # and continue without it; we can still fetch the abstract.
+                s.rollback()
+                pmid = None
+                a = s.get(models.Article, aid)
+                logger.warning(
+                    "fetch-abstract: PMID %s already in DB for doi=%s, skipping: %s",
+                    pmid, doi, exc,
+                )
             except Exception as exc:
                 logger.warning("fetch-abstract: pubmed_by_doi failed for %s: %s",
                                doi, exc)
