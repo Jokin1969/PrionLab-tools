@@ -90,11 +90,29 @@ def upload_pdf(content: bytes, target_path: str,
         return UploadResult(dropbox_path="", dropbox_link=None,
                             size_bytes=0, error="dropbox not configured")
 
+    def _do_upload(mode_arg):
+        return client.files_upload(content, target_path, mode=mode_arg,
+                                   autorename=False, mute=True)
+
     try:
         mode = (dropbox.files.WriteMode.overwrite
                 if overwrite else dropbox.files.WriteMode.add)
-        meta = client.files_upload(content, target_path, mode=mode,
-                                   autorename=False, mute=True)
+        try:
+            meta = _do_upload(mode)
+        except dropbox.exceptions.ApiError as exc:
+            # If the file already exists at this path (WriteConflictError)
+            # and the caller did not explicitly request overwrite, retry
+            # with overwrite. This covers the case where the DB row was
+            # deleted but the Dropbox file was not, or the same PDF is
+            # re-uploaded via Edit.
+            error_str = str(exc)
+            if not overwrite and "WriteConflictError" in error_str and "conflict" in error_str:
+                logger.info(
+                    "Dropbox conflict at %s — retrying with overwrite", target_path
+                )
+                meta = _do_upload(dropbox.files.WriteMode.overwrite)
+            else:
+                raise
         link = _try_create_shared_link(client, target_path)
         return UploadResult(
             dropbox_path=meta.path_display or target_path,
@@ -102,7 +120,6 @@ def upload_pdf(content: bytes, target_path: str,
             size_bytes=meta.size if hasattr(meta, "size") else len(content),
         )
     except dropbox.exceptions.ApiError as exc:
-        # Common case: file already exists — still useful info to surface.
         return UploadResult(dropbox_path=target_path, dropbox_link=None,
                             size_bytes=len(content),
                             error=f"dropbox api error: {exc}")
