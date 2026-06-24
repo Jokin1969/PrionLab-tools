@@ -73,6 +73,14 @@ def _norm(s: str) -> str:
     return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('ascii').lower().strip()
 
 
+def _split_authors(raw: str) -> list[str]:
+    """Split an authors string by semicolon or comma, whichever is the primary separator."""
+    if not raw:
+        return []
+    sep = ';' if ';' in raw else ','
+    return [a.strip() for a in raw.split(sep) if a.strip()]
+
+
 def _find_marked_author_index(authors_list: list[str], marked_author: str) -> int | None:
     if not marked_author:
         return None
@@ -238,7 +246,7 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
         # Resolve value(s)
         if bid == 'authors':
             raw = (article.get('authors') or '').strip()
-            authors_list = [a.strip() for a in raw.split(',') if a.strip()] if raw else []
+            authors_list = _split_authors(raw)
             if not authors_list:
                 continue
         elif bid == 'title':
@@ -264,7 +272,7 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
                 continue
         elif bid == 'author_position':
             raw = (article.get('authors') or '').strip()
-            authors_list_pos = [a.strip() for a in raw.split(',') if a.strip()] if raw else []
+            authors_list_pos = _split_authors(raw)
             total = len(authors_list_pos)
             if total == 0:
                 continue
