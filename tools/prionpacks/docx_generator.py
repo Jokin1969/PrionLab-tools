@@ -684,16 +684,27 @@ def _section_heading(doc: Document, text: str, collapsed: bool = False,
 
 def _make_ref_heading(doc: Document, label: str, body: str,
                       accent: RGBColor, add_runs_fn) -> None:
-    """Add a collapsible reference heading (Heading 3) + body paragraph.
+    """Add a collapsible reference heading (Heading 3) + body paragraphs.
 
-    Heading 3 keeps: keepNext=0, keepLines=0, pageBreakBefore=0
-    so chains of references never force a new page.
+    The `body` may contain multiple lines separated by \\n (e.g. the citation
+    on the first line followed by [Resumen IA] metadata lines).  python-docx
+    converts \\n inside a single run to <w:br/>, which keeps everything inside
+    the same paragraph — so the heading has no child paragraphs to collapse.
 
-    The body paragraph gets an explicit outlineLvl=3 (outline level 4,
-    below Heading 3's level 2) so Word includes it in the heading's
-    w15:collapsed scope without turning it into a heading-style paragraph.
+    Fix: only the first non-empty line goes into the H3 paragraph.  Every
+    subsequent line becomes a separate Heading 4 paragraph (via
+    _ref_abstract_para) so they are proper child paragraphs in the outline
+    hierarchy and are included in the H3 collapse scope.
+
+    Heading 3 overrides: keepNext=0, keepLines=0, pageBreakBefore=0 to
+    prevent page-break chaining.
     """
     _DARK_LOCAL = RGBColor(0x1e, 0x2d, 0x3d)
+
+    # Split multi-line body; only first non-empty line in the H3 heading.
+    lines       = [ln for ln in body.split('\n') if ln.strip()]
+    first_line  = lines[0] if lines else body
+    extra_lines = lines[1:]
 
     p = doc.add_paragraph(style='Heading 3')
     p.paragraph_format.space_before = Pt(0)
@@ -704,18 +715,22 @@ def _make_ref_heading(doc: Document, label: str, body: str,
     for tag in ('keepNext', 'keepLines', 'pageBreakBefore'):
         el = OxmlElement(f'w:{tag}')
         el.set(qn('w:val'), '0')
-        pPr.insert(1, el)  # insert after pStyle, before anything else
+        pPr.insert(1, el)
 
-    # Runs
+    # Label ([Ri-01] or [1]) + first citation line only
     r_label = p.add_run(label)
     r_label.font.size = Pt(10); r_label.font.bold = True
     r_label.font.color.rgb = accent
-    add_runs_fn(p, body, size=Pt(10), color=_DARK_LOCAL)
+    add_runs_fn(p, first_line, size=Pt(10), color=_DARK_LOCAL)
 
-    # w:collapsed — will be converted to w15:collapsed by _patch_docx
+    # w:collapsed — converted to w15:collapsed by _patch_docx
     collapsed_el = OxmlElement('w:collapsed')
     collapsed_el.set(qn('w:val'), '1')
     pPr.append(collapsed_el)
+
+    # Remaining metadata lines as separate H4 paragraphs
+    for line in extra_lines:
+        _ref_abstract_para(doc, line, _DARK_LOCAL)
 
 
 def _ref_abstract_para(doc: Document, text: str, color: RGBColor) -> None:
