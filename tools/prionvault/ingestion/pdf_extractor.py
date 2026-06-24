@@ -74,54 +74,81 @@ def normalise_doi(doi: str) -> str:
 def find_doi_in_text(text: str) -> Optional[str]:
     """Return the best DOI candidate from `text`, normalised, or None.
 
-    Strategy (4 passes, most to least reliable):
+    Strategy (mirrors PrionRead's approach):
+      1. Collect all labelled DOIs (DOI: 10.xxx/yyy) from the first page only.
+         These are authoritative; pick the shortest (the paper's own DOI is
+         typically shorter than reference DOIs).
+      2. If none found on page 1, try the full text labelled matches.
+      3. Last resort: bare DOI pattern anywhere, again shortest wins.
+    A paper's own DOI is nearly always shorter than reference DOIs.
 
-      1. "DOI: 10.xxx" colon form on first page (≈3000 chars).
-         Journal metadata headers/footers use this form. Reference lists
-         almost never do — they use URLs. First occurrence wins.
-      2. "DOI: 10.xxx" colon form anywhere in the full text (catches
-         articles where metadata is at the bottom).
-      3. URL form (https://doi.org/10.xxx) on first page only. Shortest
-         wins — the article's own URL is typically shorter than linked
-         references.
-      4. Bare DOI pattern on first page only. Shortest wins.
-
-    Commentary / editorial PDFs often have the cited paper's DOI as a
-    full URL in the first paragraph ("Commentary on: https://doi.org/xxx").
-    Passes 1–2 skip URL-form DOIs, so they naturally skip that citation and
-    find the article's own "DOI: xxx" metadata line instead.
+    When a duplicate is detected based on this result, call
+    `find_doi_strict` on the same text to confirm — it uses a stricter
+    colon-only match that avoids being confused by cited DOIs appearing
+    as hyperlinks in commentaries/editorials.
     """
     if not text:
         return None
 
-    # Limit to first 3 000 chars (≈ first page) for high-confidence passes.
+    # Limit to first 3 000 chars (≈ first page) for the high-confidence pass.
+    head = text[:3000]
+    candidates: list[str] = []
+
+    for m in _DOI_LABEL_RE.finditer(head):
+        cand = normalise_doi(m.group(1))
+        if cand and len(cand) >= 7:
+            candidates.append(cand)
+
+    if not candidates:
+        # Try full text with labelled form.
+        for m in _DOI_LABEL_RE.finditer(text):
+            cand = normalise_doi(m.group(1))
+            if cand and len(cand) >= 7:
+                candidates.append(cand)
+
+    if candidates:
+        return min(candidates, key=len)
+
+    # Last resort: bare DOI pattern — restrict to the first page only.
+    # Picking the shortest DOI across the full document is unreliable: a
+    # cited reference can have a shorter DOI than the paper itself. The
+    # paper's own DOI almost always appears on the first page.
+    all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(head)]
+    all_bare = [c for c in all_bare if len(c) >= 7]
+    return min(all_bare, key=len) if all_bare else None
+
+
+def find_doi_strict(text: str) -> Optional[str]:
+    """Stricter DOI extraction used to *confirm* a duplicate hit.
+
+    Called only when `find_doi_in_text` produced a DOI that matched an
+    existing article.  Uses only the colon form ("DOI: 10.xxx") which
+    is almost exclusively used for a paper's own metadata — not for
+    cited references — so it avoids the false-positive where a
+    commentary/editorial has the cited paper's URL-form DOI appearing
+    before its own "DOI:" line.
+
+    Returns the strict-extraction DOI or None if not found.  If it
+    returns a *different* DOI than the one that triggered the duplicate
+    warning, the caller should trust this result and discard the hit.
+    """
+    if not text:
+        return None
     head = text[:3000]
 
-    # Pass 1: colon-form DOI on first page — first occurrence wins.
+    # Pass 1: colon-form on first page — first occurrence wins.
     for m in _DOI_COLON_RE.finditer(head):
         cand = normalise_doi(m.group(1))
         if cand and len(cand) >= 7:
             return cand
 
-    # Pass 2: colon-form DOI anywhere in the full text.
+    # Pass 2: colon-form anywhere in full text (metadata sometimes at bottom).
     for m in _DOI_COLON_RE.finditer(text):
         cand = normalise_doi(m.group(1))
         if cand and len(cand) >= 7:
             return cand
 
-    # Pass 3: URL-form DOI on first page only. Shortest wins.
-    candidates: list[str] = [
-        normalise_doi(m.group(1))
-        for m in _DOI_URL_RE.finditer(head)
-    ]
-    candidates = [c for c in candidates if len(c) >= 7]
-    if candidates:
-        return min(candidates, key=len)
-
-    # Pass 4: bare DOI pattern on first page only. Shortest wins.
-    all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(head)]
-    all_bare = [c for c in all_bare if len(c) >= 7]
-    return min(all_bare, key=len) if all_bare else None
+    return None
 
 
 def find_pmid_in_text(text: str) -> Optional[str]:
