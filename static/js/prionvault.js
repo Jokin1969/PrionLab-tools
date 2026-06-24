@@ -2870,7 +2870,7 @@
     const readColor = a.is_read     ? '#15803d' : '#d1d5db';
 
     const marksCell = `
-      <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
+      <td style="padding:8px 8px;vertical-align:middle;text-align:center;width:114px;white-space:nowrap;">
         <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
           <button class="pv-flag-btn"
                   data-active="${a.is_flagged ? '1' : '0'}"
@@ -2907,7 +2907,7 @@
     const _oaFailed  = !a.has_pdf && !a.pdf_dropbox_path
                         && a.pdf_oa_status === 'not_available';
     const thumbCell = (a.has_pdf || a.pdf_dropbox_path)
-      ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
+      ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;">
            <img class="pv-thumb"
                 src="/prionvault/api/articles/${esc(a.id)}/thumbnail"
                 loading="lazy"
@@ -2917,7 +2917,7 @@
                 onerror="this.style.display='none'">
          </td>`
       : _canFetchOA
-        ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
+        ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;">
              <button class="pv-oa-fetch-btn" data-aid="${esc(a.id)}"
                      title="Descargar PDF en acceso abierto (Unpaywall + PMC)"
                      style="display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -2928,7 +2928,7 @@
              </button>
            </td>`
         : _oaFailed
-          ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;width:38px;">
+          ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;">
                <button class="pv-oa-manual-btn" data-aid="${esc(a.id)}" data-title="${esc(a.title||'')}"
                        title="OA no disponible — clic para subir PDF manualmente"
                        style="display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -2938,7 +2938,7 @@
                  <span style="font-size:13px;line-height:1;">📤</span>PDF
                </button>
              </td>`
-          : `<td style="padding:4px 4px;width:38px;"></td>`;
+          : `<td style="padding:4px 4px;"></td>`;
 
     // ── Article cell: title, authors+journal, tags+badges ────────────────
     const titleTooltip = [
@@ -2948,7 +2948,7 @@
     ].filter(Boolean).join('\n');
 
     const articleCell = `
-      <td class="pv-row-open" style="padding:8px 12px;vertical-align:middle;max-width:520px;cursor:pointer;">
+      <td class="pv-row-open" style="padding:8px 12px;vertical-align:middle;width:100%;cursor:pointer;">
         <div style="font-size:14px;font-weight:600;color:#111827;line-height:1.35;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
              title="${esc(titleTooltip)}">${supHtml(a.title || '(no title)')}</div>
