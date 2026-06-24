@@ -189,15 +189,60 @@ def _set_compat_mode_15(doc: Document):
 
 
 
-def _patch_app_xml(docx_bytes: bytes) -> bytes:
-    """Rewrite docProps/app.xml so Word 365 sees a Word 2016 document.
+def _patch_docx(docx_bytes: bytes) -> bytes:
+    """Post-process the raw .docx bytes (ZIP) to fix two things:
 
-    python-docx's base template claims AppVersion=14 (Word 2010 for Mac).
-    Word 365 sees that and may silently ignore modern features like
-    w:collapsed.  We patch the bytes in-place after saving.
+    1. docProps/app.xml — claim Word 2016 (AppVersion=16.0000) so Word 365
+       doesn't apply legacy Word-2010-for-Mac behaviour.
+
+    2. word/document.xml — replace every ``<w:collapsed w:val="1"/>`` with
+       ``<w15:collapsed w:val="1"/>`` (the Word-2013 extension namespace).
+       The standard w:collapsed is often silently ignored by Word desktop;
+       w15:collapsed is reliably respected.
+
+    All other ZIP members are copied verbatim so images, relationships,
+    styles, numbering, headers/footers etc. are untouched.
     """
+    from lxml import etree as _et
     import zipfile as _zf
+
+    _W_NS   = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    _W15_NS = 'http://schemas.microsoft.com/office/word/2012/wordml'
+    _MC_NS  = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
     _APP_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/extended-properties'
+
+    def _patch_app(data: bytes) -> bytes:
+        root = _et.fromstring(data)
+        for tag, val in (('Application', 'Microsoft Office Word'),
+                         ('AppVersion', '16.0000')):
+            el = root.find(f'{{{_APP_NS}}}{tag}')
+            if el is not None:
+                el.text = val
+            else:
+                _et.SubElement(root, f'{{{_APP_NS}}}{tag}').text = val
+        return _et.tostring(root, xml_declaration=True,
+                            encoding='UTF-8', standalone=True)
+
+    def _patch_document(data: bytes) -> bytes:
+        root = _et.fromstring(data)
+
+        # Ensure w15 namespace is declared on the root and listed in mc:Ignorable.
+        ignorable = root.get(f'{{{_MC_NS}}}Ignorable', '')
+        if 'w15' not in ignorable.split():
+            root.set(f'{{{_MC_NS}}}Ignorable', (ignorable + ' w15').strip())
+
+        # Replace every <w:collapsed w:val="1"/> with <w15:collapsed w:val="1"/>.
+        for old in root.findall(f'.//{{{_W_NS}}}collapsed'):
+            parent = old.getparent()
+            idx    = list(parent).index(old)
+            parent.remove(old)
+            new_el = _et.Element(f'{{{_W15_NS}}}collapsed')
+            new_el.set(f'{{{_W_NS}}}val', '1')
+            parent.insert(idx, new_el)
+
+        return _et.tostring(root, xml_declaration=True,
+                            encoding='UTF-8', standalone=True)
+
     try:
         in_buf  = io.BytesIO(docx_bytes)
         out_buf = io.BytesIO()
@@ -206,18 +251,9 @@ def _patch_app_xml(docx_bytes: bytes) -> bytes:
             for item in zin.infolist():
                 data = zin.read(item.filename)
                 if item.filename == 'docProps/app.xml':
-                    from lxml import etree as _et
-                    root = _et.fromstring(data)
-                    for tag, val in (('Application', 'Microsoft Office Word'),
-                                     ('AppVersion', '16.0000')):
-                        el = root.find(f'{{{_APP_NS}}}{tag}')
-                        if el is not None:
-                            el.text = val
-                        else:
-                            new_el = _et.SubElement(root, f'{{{_APP_NS}}}{tag}')
-                            new_el.text = val
-                    data = _et.tostring(root, xml_declaration=True,
-                                        encoding='UTF-8', standalone=True)
+                    data = _patch_app(data)
+                elif item.filename == 'word/document.xml':
+                    data = _patch_document(data)
                 zout.writestr(item, data)
         return out_buf.getvalue()
     except Exception:
@@ -596,7 +632,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
 
     buf = io.BytesIO()
     doc.save(buf)
-    return _patch_app_xml(buf.getvalue())
+    return _patch_docx(buf.getvalue())
 
 
 def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
