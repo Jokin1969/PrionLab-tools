@@ -2948,13 +2948,13 @@
     ].filter(Boolean).join('\n');
 
     const articleCell = `
-      <td class="pv-row-open" style="padding:8px 12px;vertical-align:middle;width:100%;cursor:pointer;">
+      <td class="pv-row-open" style="padding:8px 12px;vertical-align:middle;width:100%;overflow:hidden;cursor:pointer;">
         <div style="font-size:14px;font-weight:600;color:#111827;line-height:1.35;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
              title="${esc(titleTooltip)}">${supHtml(a.title || '(no title)')}</div>
         <div style="margin-top:2px;font-size:12px;color:#6b7280;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${authors}${journal}</div>
-        ${(tags || badges) ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;">${badges}${tags}</div>` : ''}
+        ${(tags || badges) ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;overflow:hidden;">${badges}${tags}</div>` : ''}
       </td>`;
 
     // ── Year cell ────────────────────────────────────────────────────────
