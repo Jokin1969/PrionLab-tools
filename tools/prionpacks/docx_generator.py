@@ -283,11 +283,6 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
             add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             pPr = p._p.get_or_add_pPr()
-            # Suppress page-break-before from Heading 3 style
-            pb3 = OxmlElement('w:pageBreakBefore')
-            pb3.set(qn('w:val'), '0')
-            pPr.append(pb3)
-            # w:collapsed before pBdr (none here, but keeps ordering consistent)
             collapsed_el = OxmlElement('w:collapsed')
             collapsed_el.set(qn('w:val'), '1')
             pPr.append(collapsed_el)
@@ -496,9 +491,6 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
             r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
             add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
             pPr = p._p.get_or_add_pPr()
-            pb3 = OxmlElement('w:pageBreakBefore')
-            pb3.set(qn('w:val'), '0')
-            pPr.append(pb3)
             collapsed_el = OxmlElement('w:collapsed')
             collapsed_el.set(qn('w:val'), '1')
             pPr.append(collapsed_el)
@@ -588,26 +580,14 @@ def _section_heading(doc: Document, text: str, collapsed: bool = False,
     run.font.bold      = True
     run.font.size      = Pt(10)
     run.font.color.rgb = accent if accent is not None else _TEAL
-
-    pPr = p._p.get_or_add_pPr()
-
-    # Suppress keepWithNext and pageBreakBefore that the Heading 2 style
-    # may carry — prevents section headings from being pushed to a new page.
-    kn = OxmlElement('w:keepNext')
-    kn.set(qn('w:val'), '0')
-    pPr.append(kn)
-    pb = OxmlElement('w:pageBreakBefore')
-    pb.set(qn('w:val'), '0')
-    pPr.append(pb)
-
-    # w:collapsed must appear before w:pBdr in pPr for Word to honour it.
-    if collapsed:
-        c = OxmlElement('w:collapsed')
-        c.set(qn('w:val'), '1')
-        pPr.append(c)
-
-    # Bottom border appended last — pBdr follows collapsed in element order.
+    # w:pBdr must come before w:collapsed in pPr — Word silently ignores
+    # w:collapsed when the element order is violated.
     _para_border_bottom(p, accent_hex or _TEAL_HEX)
+    if collapsed:
+        pPr = p._p.get_or_add_pPr()
+        collapsed_el = OxmlElement('w:collapsed')
+        collapsed_el.set(qn('w:val'), '1')
+        pPr.append(collapsed_el)
 
 
 def _dim_para(doc: Document, text: str):
