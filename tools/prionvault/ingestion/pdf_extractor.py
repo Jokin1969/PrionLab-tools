@@ -20,7 +20,24 @@ logger = logging.getLogger(__name__)
 # common closing punctuation and the closing parenthesis.
 _DOI_RE = re.compile(r"\b10\.\d{4,}/[^\s\"'<>,;\]\)]+", re.IGNORECASE)
 
-# Heuristic to grab a DOI even when the PDF says "DOI: 10.xxxx/yyyy".
+# Highest-confidence: "DOI: 10.xxx" or "doi: 10.xxx" or "doi/10.xxx" — the
+# colon/slash form used in journal metadata headers and footers. Reference
+# citations almost never use this form; they use full URLs instead.
+_DOI_COLON_RE = re.compile(
+    r"\bdoi\s*[:/]\s*(10\.\d{4,}/[^\s\"'<>,;\]\)]+)",
+    re.IGNORECASE,
+)
+
+# URL form: https://doi.org/10.xxx — appears both in own-article metadata AND
+# in hyperlinked references, so it is less reliable than the colon form.
+_DOI_URL_RE = re.compile(
+    r"https?://(?:dx\.)?doi\.org/(10\.\d{4,}/[^\s\"'<>,;\]\)]+)",
+    re.IGNORECASE,
+)
+
+# Lenient labelled match — prefix is optional. Used only as a fallback when
+# no strictly-labelled DOI exists. Kept separate so the bare-scan heuristic
+# still has a chance to run as a last resort.
 _DOI_LABEL_RE = re.compile(
     r"(?:doi(?:\.org)?[:/]\s*|https?://(?:dx\.)?doi\.org/)?"
     r"(10\.\d{4,}/[^\s\"'<>,;\]\)]+)",
@@ -64,6 +81,11 @@ def find_doi_in_text(text: str) -> Optional[str]:
       2. If none found on page 1, try the full text labelled matches.
       3. Last resort: bare DOI pattern anywhere, again shortest wins.
     A paper's own DOI is nearly always shorter than reference DOIs.
+
+    When a duplicate is detected based on this result, call
+    `find_doi_strict` on the same text to confirm — it uses a stricter
+    colon-only match that avoids being confused by cited DOIs appearing
+    as hyperlinks in commentaries/editorials.
     """
     if not text:
         return None
@@ -94,6 +116,39 @@ def find_doi_in_text(text: str) -> Optional[str]:
     all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(head)]
     all_bare = [c for c in all_bare if len(c) >= 7]
     return min(all_bare, key=len) if all_bare else None
+
+
+def find_doi_strict(text: str) -> Optional[str]:
+    """Stricter DOI extraction used to *confirm* a duplicate hit.
+
+    Called only when `find_doi_in_text` produced a DOI that matched an
+    existing article.  Uses only the colon form ("DOI: 10.xxx") which
+    is almost exclusively used for a paper's own metadata — not for
+    cited references — so it avoids the false-positive where a
+    commentary/editorial has the cited paper's URL-form DOI appearing
+    before its own "DOI:" line.
+
+    Returns the strict-extraction DOI or None if not found.  If it
+    returns a *different* DOI than the one that triggered the duplicate
+    warning, the caller should trust this result and discard the hit.
+    """
+    if not text:
+        return None
+    head = text[:3000]
+
+    # Pass 1: colon-form on first page — first occurrence wins.
+    for m in _DOI_COLON_RE.finditer(head):
+        cand = normalise_doi(m.group(1))
+        if cand and len(cand) >= 7:
+            return cand
+
+    # Pass 2: colon-form anywhere in full text (metadata sometimes at bottom).
+    for m in _DOI_COLON_RE.finditer(text):
+        cand = normalise_doi(m.group(1))
+        if cand and len(cand) >= 7:
+            return cand
+
+    return None
 
 
 def find_pmid_in_text(text: str) -> Optional[str]:

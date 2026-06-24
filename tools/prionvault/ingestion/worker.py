@@ -104,6 +104,29 @@ def _process_job(job: ingest_queue.Job) -> None:
     # create a duplicate article and leave the inventory row
     # stranded on "⏳ PDF pendiente". See deduplicator.find_duplicate.
     dup_id, reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=md5)
+    if dup_id is not None and reason == "doi" and extraction.text:
+        # Extra guard: the standard extractor can be misled by a cited DOI
+        # that appears as a hyperlink before the article's own "DOI:" line
+        # (common in commentaries and editorials). Re-run with the strict
+        # colon-only extractor; if it returns a *different* DOI, the
+        # original hit was a false positive — clear it and continue.
+        from .pdf_extractor import find_doi_strict
+        strict_doi = find_doi_strict(extraction.text)
+        if strict_doi and strict_doi != doi:
+            logger.info(
+                "Job %d: strict re-extraction changed DOI %s → %s; "
+                "discarding false duplicate hit against %s",
+                job.id, doi, strict_doi, dup_id,
+            )
+            doi = strict_doi
+            extraction = extraction.__class__(
+                text=extraction.text, pages=extraction.pages,
+                doi=doi, pmid=extraction.pmid,
+                title_hint=extraction.title_hint, error=extraction.error,
+            )
+            # Re-check with the corrected DOI before continuing.
+            dup_id, reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=md5)
+
     if dup_id is not None:
         logger.info("Job %d duplicate of article %s (%s) — enriching missing PDF metadata",
                     job.id, dup_id, reason)
