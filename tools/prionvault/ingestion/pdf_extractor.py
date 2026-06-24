@@ -20,7 +20,24 @@ logger = logging.getLogger(__name__)
 # common closing punctuation and the closing parenthesis.
 _DOI_RE = re.compile(r"\b10\.\d{4,}/[^\s\"'<>,;\]\)]+", re.IGNORECASE)
 
-# Heuristic to grab a DOI even when the PDF says "DOI: 10.xxxx/yyyy".
+# Highest-confidence: "DOI: 10.xxx" or "doi: 10.xxx" or "doi/10.xxx" — the
+# colon/slash form used in journal metadata headers and footers. Reference
+# citations almost never use this form; they use full URLs instead.
+_DOI_COLON_RE = re.compile(
+    r"\bdoi\s*[:/]\s*(10\.\d{4,}/[^\s\"'<>,;\]\)]+)",
+    re.IGNORECASE,
+)
+
+# URL form: https://doi.org/10.xxx — appears both in own-article metadata AND
+# in hyperlinked references, so it is less reliable than the colon form.
+_DOI_URL_RE = re.compile(
+    r"https?://(?:dx\.)?doi\.org/(10\.\d{4,}/[^\s\"'<>,;\]\)]+)",
+    re.IGNORECASE,
+)
+
+# Lenient labelled match — prefix is optional. Used only as a fallback when
+# no strictly-labelled DOI exists. Kept separate so the bare-scan heuristic
+# still has a chance to run as a last resort.
 _DOI_LABEL_RE = re.compile(
     r"(?:doi(?:\.org)?[:/]\s*|https?://(?:dx\.)?doi\.org/)?"
     r"(10\.\d{4,}/[^\s\"'<>,;\]\)]+)",
@@ -57,40 +74,51 @@ def normalise_doi(doi: str) -> str:
 def find_doi_in_text(text: str) -> Optional[str]:
     """Return the best DOI candidate from `text`, normalised, or None.
 
-    Strategy (mirrors PrionRead's approach):
-      1. Collect all labelled DOIs (DOI: 10.xxx/yyy) from the first page only.
-         These are authoritative; pick the shortest (the paper's own DOI is
-         typically shorter than reference DOIs).
-      2. If none found on page 1, try the full text labelled matches.
-      3. Last resort: bare DOI pattern anywhere, again shortest wins.
-    A paper's own DOI is nearly always shorter than reference DOIs.
+    Strategy (4 passes, most to least reliable):
+
+      1. "DOI: 10.xxx" colon form on first page (≈3000 chars).
+         Journal metadata headers/footers use this form. Reference lists
+         almost never do — they use URLs. First occurrence wins.
+      2. "DOI: 10.xxx" colon form anywhere in the full text (catches
+         articles where metadata is at the bottom).
+      3. URL form (https://doi.org/10.xxx) on first page only. Shortest
+         wins — the article's own URL is typically shorter than linked
+         references.
+      4. Bare DOI pattern on first page only. Shortest wins.
+
+    Commentary / editorial PDFs often have the cited paper's DOI as a
+    full URL in the first paragraph ("Commentary on: https://doi.org/xxx").
+    Passes 1–2 skip URL-form DOIs, so they naturally skip that citation and
+    find the article's own "DOI: xxx" metadata line instead.
     """
     if not text:
         return None
 
-    # Limit to first 3 000 chars (≈ first page) for the high-confidence pass.
+    # Limit to first 3 000 chars (≈ first page) for high-confidence passes.
     head = text[:3000]
-    candidates: list[str] = []
 
-    for m in _DOI_LABEL_RE.finditer(head):
+    # Pass 1: colon-form DOI on first page — first occurrence wins.
+    for m in _DOI_COLON_RE.finditer(head):
         cand = normalise_doi(m.group(1))
         if cand and len(cand) >= 7:
-            candidates.append(cand)
+            return cand
 
-    if not candidates:
-        # Try full text with labelled form.
-        for m in _DOI_LABEL_RE.finditer(text):
-            cand = normalise_doi(m.group(1))
-            if cand and len(cand) >= 7:
-                candidates.append(cand)
+    # Pass 2: colon-form DOI anywhere in the full text.
+    for m in _DOI_COLON_RE.finditer(text):
+        cand = normalise_doi(m.group(1))
+        if cand and len(cand) >= 7:
+            return cand
 
+    # Pass 3: URL-form DOI on first page only. Shortest wins.
+    candidates: list[str] = [
+        normalise_doi(m.group(1))
+        for m in _DOI_URL_RE.finditer(head)
+    ]
+    candidates = [c for c in candidates if len(c) >= 7]
     if candidates:
         return min(candidates, key=len)
 
-    # Last resort: bare DOI pattern — restrict to the first page only.
-    # Picking the shortest DOI across the full document is unreliable: a
-    # cited reference can have a shorter DOI than the paper itself. The
-    # paper's own DOI almost always appears on the first page.
+    # Pass 4: bare DOI pattern on first page only. Shortest wins.
     all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(head)]
     all_bare = [c for c in all_bare if len(c) >= 7]
     return min(all_bare, key=len) if all_bare else None
