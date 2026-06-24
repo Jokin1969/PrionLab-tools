@@ -156,28 +156,72 @@ def _split_reference(ref: str) -> tuple:
 
 
 def _set_compat_mode_15(doc: Document):
-    """Upgrade the document to Word 2013 compatibility mode (val=15).
+    """Upgrade document to Word 2013 compat mode and fix app metadata.
 
-    python-docx's default template ships with compatibilityMode=14 (Word 2010).
-    Heading collapse (w:collapsed) only works from Word 2013 (mode 15) onward;
-    Word silently ignores w:collapsed when the document is in mode 14.
+    python-docx's default template ships with AppVersion=14 (Word 2010 for Mac).
+    Word 365 sees that and applies Word 2010 behaviour, silently ignoring
+    w:collapsed.  We patch both settings.xml (compatibilityMode=15) and
+    docProps/app.xml (AppVersion=16, Application=Microsoft Office Word) so
+    Word 365 trusts and honours the collapse state.
     """
+    # --- settings.xml: compatibilityMode=15 ---
     settings_el = doc.settings.element
     compat = settings_el.find(qn('w:compat'))
     if compat is not None:
         for cs in compat.findall(qn('w:compatSetting')):
             if cs.get(qn('w:name')) == 'compatibilityMode':
                 cs.set(qn('w:val'), '15')
-                return
-    # If the element doesn't exist, create it.
-    if compat is None:
+                break
+        else:
+            cs = OxmlElement('w:compatSetting')
+            cs.set(qn('w:name'), 'compatibilityMode')
+            cs.set(qn('w:uri'), 'http://schemas.microsoft.com/office/word')
+            cs.set(qn('w:val'), '15')
+            compat.append(cs)
+    else:
         compat = OxmlElement('w:compat')
+        cs = OxmlElement('w:compatSetting')
+        cs.set(qn('w:name'), 'compatibilityMode')
+        cs.set(qn('w:uri'), 'http://schemas.microsoft.com/office/word')
+        cs.set(qn('w:val'), '15')
+        compat.append(cs)
         settings_el.append(compat)
-    cs = OxmlElement('w:compatSetting')
-    cs.set(qn('w:name'), 'compatibilityMode')
-    cs.set(qn('w:uri'), 'http://schemas.microsoft.com/office/word')
-    cs.set(qn('w:val'), '15')
-    compat.append(cs)
+
+
+
+def _patch_app_xml(docx_bytes: bytes) -> bytes:
+    """Rewrite docProps/app.xml so Word 365 sees a Word 2016 document.
+
+    python-docx's base template claims AppVersion=14 (Word 2010 for Mac).
+    Word 365 sees that and may silently ignore modern features like
+    w:collapsed.  We patch the bytes in-place after saving.
+    """
+    import zipfile as _zf
+    _APP_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/extended-properties'
+    try:
+        in_buf  = io.BytesIO(docx_bytes)
+        out_buf = io.BytesIO()
+        with _zf.ZipFile(in_buf, 'r') as zin, \
+             _zf.ZipFile(out_buf, 'w', compression=_zf.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename == 'docProps/app.xml':
+                    from lxml import etree as _et
+                    root = _et.fromstring(data)
+                    for tag, val in (('Application', 'Microsoft Office Word'),
+                                     ('AppVersion', '16.0000')):
+                        el = root.find(f'{{{_APP_NS}}}{tag}')
+                        if el is not None:
+                            el.text = val
+                        else:
+                            new_el = _et.SubElement(root, f'{{{_APP_NS}}}{tag}')
+                            new_el.text = val
+                    data = _et.tostring(root, xml_declaration=True,
+                                        encoding='UTF-8', standalone=True)
+                zout.writestr(item, data)
+        return out_buf.getvalue()
+    except Exception:
+        return docx_bytes  # best-effort; return original on any error
 
 
 def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes:
@@ -552,7 +596,7 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
 
     buf = io.BytesIO()
     doc.save(buf)
-    return buf.getvalue()
+    return _patch_app_xml(buf.getvalue())
 
 
 def generate_packages_list_docx(packages: list, gen_date: datetime) -> bytes:
