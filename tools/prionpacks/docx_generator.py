@@ -155,8 +155,36 @@ def _split_reference(ref: str) -> tuple:
     return ref[:m.start()].rstrip(), ref[m.end():].strip()
 
 
+def _set_compat_mode_15(doc: Document):
+    """Upgrade the document to Word 2013 compatibility mode (val=15).
+
+    python-docx's default template ships with compatibilityMode=14 (Word 2010).
+    Heading collapse (w:collapsed) only works from Word 2013 (mode 15) onward;
+    Word silently ignores w:collapsed when the document is in mode 14.
+    """
+    settings_el = doc.settings.element
+    compat = settings_el.find(qn('w:compat'))
+    if compat is not None:
+        for cs in compat.findall(qn('w:compatSetting')):
+            if cs.get(qn('w:name')) == 'compatibilityMode':
+                cs.set(qn('w:val'), '15')
+                return
+    # If the element doesn't exist, create it.
+    if compat is None:
+        compat = OxmlElement('w:compat')
+        settings_el.append(compat)
+    cs = OxmlElement('w:compatSetting')
+    cs.set(qn('w:name'), 'compatibilityMode')
+    cs.set(qn('w:uri'), 'http://schemas.microsoft.com/office/word')
+    cs.set(qn('w:val'), '15')
+    compat.append(cs)
+
+
 def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes:
     doc = Document()
+
+    # Upgrade compatibility to Word 2013+ so w:collapsed on headings is honoured.
+    _set_compat_mode_15(doc)
 
     # ── Page margins ────────────────────────────────────────────────────────────────────────────
     sec = doc.sections[0]
