@@ -77,18 +77,25 @@ def _find_marked_author_index(authors_list: list[str], marked_author: str) -> in
     if not marked_author:
         return None
     parts = marked_author.strip().split()
-    if len(parts) < 2:
+    if not parts:
         return None
-    first, last = parts[0], parts[-1]
-    initial = first[0].upper()
+    last  = parts[-1]
+    first = parts[0] if len(parts) >= 2 else ''
+    initial   = first[0] if first else ''
     norm_last  = _norm(last)
-    norm_first = _norm(first)
+    norm_first = _norm(first) if first else ''
 
     for i, a in enumerate(authors_list):
         na = _norm(a)
-        if norm_last not in na:
+        # Use word boundary to avoid partial matches (Castillo ≠ Castilla)
+        if not re.search(r'\b' + re.escape(norm_last) + r'\b', na):
             continue
-        if norm_first in na or re.search(r'\b' + re.escape(initial.lower()) + r'\b', na):
+        # Last name matched — verify first name or initial when available
+        if not first:
+            return i
+        if norm_first and norm_first in na:
+            return i
+        if initial and re.search(r'\b' + re.escape(initial.lower()) + r'\b', na):
             return i
     return None
 
@@ -106,10 +113,11 @@ def _parse_color(hex_color: str | None) -> RGBColor | None:
 
 
 def _add_run(para, text: str, *, bold=False, italic=False, underline=False,
-             color: RGBColor | None = None, size=Pt(10)):
+             color: RGBColor | None = None, size=Pt(11)):
     if not text:
         return
     r = para.add_run(text)
+    r.font.name      = 'Calibri'
     r.font.size      = size
     r.font.bold      = bold
     r.font.italic    = italic
@@ -119,7 +127,7 @@ def _add_run(para, text: str, *, bold=False, italic=False, underline=False,
 
 
 def _sep_run(para):
-    _add_run(para, '  ·  ', color=DIM, size=Pt(9))
+    _add_run(para, '  ·  ', color=DIM, size=Pt(10))
 
 
 def _add_hyperlink(para, text: str, url: str, opts: dict):
@@ -145,9 +153,9 @@ def _add_hyperlink(para, text: str, url: str, opts: dict):
     rPr.append(col_el)
 
     sz = OxmlElement('w:sz')
-    sz.set(qn('w:val'), '20')
+    sz.set(qn('w:val'), '22')   # 11pt = 22 half-points
     szCs = OxmlElement('w:szCs')
-    szCs.set(qn('w:val'), '20')
+    szCs.set(qn('w:val'), '22')
     rPr.append(sz)
     rPr.append(szCs)
 
@@ -304,11 +312,11 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
 
         elif bid == 'author_position':
             if label_text:
-                _add_run(para, label_text, color=DIM, size=Pt(9))
+                _add_run(para, label_text, color=DIM)
             _add_run(para, f'({val})',
                      bold=opts.get('bold', False), italic=opts.get('italic', False),
                      underline=opts.get('underline', False),
-                     color=_parse_color(opts.get('color')), size=Pt(9))
+                     color=_parse_color(opts.get('color')))
 
         else:
             if label_text:
@@ -342,15 +350,21 @@ def generate_refs_docx(articles: list[dict], config: dict | None = None) -> byte
 
     doc = Document()
 
+    # Default font: Calibri 11pt
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+
     for section in doc.sections:
         section.top_margin    = Cm(2.5)
         section.bottom_margin = Cm(2.5)
-        section.left_margin   = Cm(3.0)
+        section.left_margin   = Cm(2.5)
         section.right_margin  = Cm(2.5)
 
     # Title
     tp = doc.add_paragraph()
     r  = tp.add_run('Lista de referencias')
+    r.font.name      = 'Calibri'
     r.font.size      = Pt(18)
     r.font.bold      = True
     r.font.color.rgb = ACCENT
@@ -363,6 +377,7 @@ def generate_refs_docx(articles: list[dict], config: dict | None = None) -> byte
         f'{len(articles)} referencia{"s" if len(articles) != 1 else ""}  ·  '
         f'Exportado el {datetime.now().strftime("%d/%m/%Y")}'
     )
+    sr.font.name      = 'Calibri'
     sr.font.size      = Pt(10)
     sr.font.color.rgb = DIM
     sr.font.italic    = True
