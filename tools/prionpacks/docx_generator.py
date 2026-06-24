@@ -392,19 +392,9 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         sh('REFERENCIAS DE INTRODUCCIÓN', collapsed=True)
         for i, ref in enumerate(intro_refs_list, 1):
             header, abstract = _split_reference(ref)
-            p = doc.add_paragraph(style='Heading 3')
-            r_num = p.add_run(f'[Ri-{i:02d}] ')
-            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
-            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
-            pPr = p._p.get_or_add_pPr()
-            collapsed_el = OxmlElement('w:collapsed')
-            collapsed_el.set(qn('w:val'), '1')
-            pPr.append(collapsed_el)
+            _make_ref_heading(doc, f'[Ri-{i:02d}] ', header, ACCENT, add_runs_with_doi)
             if abstract:
-                p_abs = doc.add_paragraph()
-                add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
-            sep = doc.add_paragraph()
-            sep.paragraph_format.space_after = Pt(8)
+                _ref_abstract_para(doc, abstract, _DIM)
 
     # ── Methods (multi-field: list of {title, body}) ──────────────────────────────────────────
     methods_raw = pkg.get('methods')
@@ -600,19 +590,9 @@ def generate_package_docx(pkg: dict, version: int, send_date: datetime) -> bytes
         sh('REFERENCIAS', collapsed=True)
         for i, ref in enumerate(refs_list, 1):
             header, abstract = _split_reference(ref)
-            p = doc.add_paragraph(style='Heading 3')
-            r_num = p.add_run(f'[{i}] ')
-            r_num.font.size = Pt(10); r_num.font.bold = True; r_num.font.color.rgb = ACCENT
-            add_runs_with_doi(p, header, size=Pt(10), color=_DARK)
-            pPr = p._p.get_or_add_pPr()
-            collapsed_el = OxmlElement('w:collapsed')
-            collapsed_el.set(qn('w:val'), '1')
-            pPr.append(collapsed_el)
+            _make_ref_heading(doc, f'[{i}] ', header, ACCENT, add_runs_with_doi)
             if abstract:
-                p_abs = doc.add_paragraph()
-                add_runs(p_abs, abstract, size=Pt(9), italic=True, color=_DIM)
-            sep = doc.add_paragraph()
-            sep.paragraph_format.space_after = Pt(8)
+                _ref_abstract_para(doc, abstract, _DIM)
 
     # ── CReDiT ────────────────────────────────────────────────────────────────────────────────
     credit = (pkg.get('credit') or '').strip()
@@ -700,6 +680,55 @@ def _section_heading(doc: Document, text: str, collapsed: bool = False,
     run.font.size      = Pt(10)
     run.font.color.rgb = accent if accent is not None else _TEAL
     _para_border_bottom(p, accent_hex or _TEAL_HEX)
+
+
+def _make_ref_heading(doc: Document, label: str, body: str,
+                      accent: RGBColor, add_runs_fn) -> None:
+    """Add a collapsible reference heading (Heading 3) + body paragraph.
+
+    Heading 3 keeps: keepNext=0, keepLines=0, pageBreakBefore=0
+    so chains of references never force a new page.
+
+    The body paragraph gets an explicit outlineLvl=3 (outline level 4,
+    below Heading 3's level 2) so Word includes it in the heading's
+    w15:collapsed scope without turning it into a heading-style paragraph.
+    """
+    _DARK_LOCAL = RGBColor(0x1e, 0x2d, 0x3d)
+
+    p = doc.add_paragraph(style='Heading 3')
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after  = Pt(2)
+
+    # Override inherited keepNext / keepLines / pageBreakBefore
+    pPr = p._p.get_or_add_pPr()
+    for tag in ('keepNext', 'keepLines', 'pageBreakBefore'):
+        el = OxmlElement(f'w:{tag}')
+        el.set(qn('w:val'), '0')
+        pPr.insert(1, el)  # insert after pStyle, before anything else
+
+    # Runs
+    r_label = p.add_run(label)
+    r_label.font.size = Pt(10); r_label.font.bold = True
+    r_label.font.color.rgb = accent
+    add_runs_fn(p, body, size=Pt(10), color=_DARK_LOCAL)
+
+    # w:collapsed — will be converted to w15:collapsed by _patch_docx
+    collapsed_el = OxmlElement('w:collapsed')
+    collapsed_el.set(qn('w:val'), '1')
+    pPr.append(collapsed_el)
+
+
+def _ref_abstract_para(doc: Document, text: str, color: RGBColor) -> None:
+    """Plain paragraph with outlineLvl=3 so it falls inside a Heading 3
+    collapse scope, without appearing as a heading in the nav pane."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after  = Pt(6)
+    pPr = p._p.get_or_add_pPr()
+    ol = OxmlElement('w:outlineLvl')
+    ol.set(qn('w:val'), '3')
+    pPr.append(ol)
+    add_runs(p, text, size=Pt(9), italic=True, color=color)
 
 
 def _dim_para(doc: Document, text: str):
