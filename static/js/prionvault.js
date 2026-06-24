@@ -12984,6 +12984,7 @@
     blocks: [
       { id: 'authors', active: true, options: {
           mode: 'all',
+          separator: 'comma', last_separator: 'and',
           bold: false, italic: false, underline: false, color: '',
           marked_bold: true, marked_italic: true, marked_underline: true, marked_color: '',
       }},
@@ -13286,7 +13287,9 @@
   }
 
   function _authorsModeHtml(opts) {
-    const m = opts.mode || 'all';
+    const m  = opts.mode          || 'all';
+    const sp = opts.separator     || 'comma';
+    const ls = opts.last_separator || 'and';
     return `
       <div style="margin-bottom:14px;">
         <p style="margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
@@ -13297,6 +13300,32 @@
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:#374151;">
               <input type="radio" name="pv-er-author-mode" data-key="mode" value="${val}"
                      ${m===val?'checked':''} style="accent-color:#0F3460;">
+              ${lbl}
+            </label>`).join('')}
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <p style="margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+                  color:#9ca3af;text-transform:uppercase;">Separador entre autores</p>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;">
+          ${[['comma','Comas  ( , )'],['semicolon','Puntos y coma  ( ; )']]
+            .map(([val,lbl]) => `
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:#374151;">
+              <input type="radio" name="pv-er-separator" data-key="separator" value="${val}"
+                     ${sp===val?'checked':''} style="accent-color:#0F3460;">
+              ${lbl}
+            </label>`).join('')}
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <p style="margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+                  color:#9ca3af;text-transform:uppercase;">Antes del último autor</p>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;">
+          ${[['same','Mismo separador'],['and',', and  /  ; and']]
+            .map(([val,lbl]) => `
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:#374151;">
+              <input type="radio" name="pv-er-last-sep" data-key="last_separator" value="${val}"
+                     ${ls===val?'checked':''} style="accent-color:#0F3460;">
               ${lbl}
             </label>`).join('')}
         </div>

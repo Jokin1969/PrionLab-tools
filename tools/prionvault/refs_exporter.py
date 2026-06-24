@@ -283,13 +283,21 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
 
         if bid == 'authors':
             if label_text:
-                _add_run(para, label_text, color=DIM, size=Pt(9))
-            mode  = opts.get('mode', 'all')
+                _add_run(para, label_text, color=DIM)
+            mode           = opts.get('mode', 'all')
+            sep_style      = opts.get('separator', 'comma')     # 'comma' | 'semicolon'
+            last_sep_style = opts.get('last_separator', 'and')  # 'same'  | 'and'
+            sep      = ', ' if sep_style == 'comma' else '; '
+            last_sep = (', and ' if sep_style == 'comma' else '; and ') \
+                       if last_sep_style == 'and' else sep
+
             parts = _format_authors(authors_list, opts, marked_author, mode)
+            n = len(parts)
             for j, (name, b, it, ul, col) in enumerate(parts):
                 if j > 0:
-                    _add_run(para, ', ', size=Pt(10), color=DARK)
-                _add_run(para, name, bold=b, italic=it, underline=ul, color=col, size=Pt(10))
+                    joiner = last_sep if j == n - 1 else sep
+                    _add_run(para, joiner, color=DARK)
+                _add_run(para, name, bold=b, italic=it, underline=ul, color=col)
 
         elif bid in ('doi', 'pmid'):
             with_link = opts.get('with_link', True)
