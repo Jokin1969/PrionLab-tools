@@ -5816,13 +5816,18 @@ def api_article_fetch_abstract(aid):
                 # PMID already belongs to another article — discard the update
                 # and continue without it; we can still fetch the abstract.
                 s.rollback()
+                orig_pmid = pmid
                 pmid = None
                 a = s.get(models.Article, aid)
                 logger.warning(
                     "fetch-abstract: PMID %s already in DB for doi=%s, skipping: %s",
-                    pmid, doi, exc,
+                    orig_pmid, doi, exc,
                 )
             except Exception as exc:
+                # Any other failure (network, parse, etc.) — roll back so the
+                # session is clean for the abstract-save commit that follows.
+                s.rollback()
+                a = s.get(models.Article, aid)
                 logger.warning("fetch-abstract: pubmed_by_doi failed for %s: %s",
                                doi, exc)
 
