@@ -2454,7 +2454,10 @@
     // backend correctly returns 0 rows, which is what the operator
     // expects when they activated the filter with nothing checked).
     if (state.filterSelectedOnly) {
-      if (_selBackend === 'server') {
+      // Use selected_only=1 (server-side lookup) only when the ID list
+      // would push the URL past the ~8 KB Railway/nginx limit (~200 UUIDs).
+      // For smaller selections, send ids=... directly (more reliable).
+      if (_selBackend === 'server' && state.selectedIds.size > 200) {
         params.set('selected_only', '1');
       } else {
         params.set('ids', Array.from(state.selectedIds).join(','));
