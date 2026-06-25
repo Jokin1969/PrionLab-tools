@@ -2144,8 +2144,23 @@
         state.filterSelectedOnly = !state.filterSelectedOnly;
         state.page = 1;
         _paintOnlySelectedBtn();
-        if (state.filterSelectedOnly && _selBackend === 'server') {
-          await _flushSelectionSync();
+        if (state.filterSelectedOnly) {
+          if (state.selectedIds.size > 200) {
+            // Selection too large for a URL parameter — force a PUT to ensure
+            // the server holds the full current set before we send selected_only=1.
+            try {
+              await api('/user-selection', {
+                method: 'PUT',
+                body: JSON.stringify({ ids: Array.from(state.selectedIds) }),
+              });
+              _selBackend = 'server';
+              _selPending.add.clear();
+              _selPending.remove.clear();
+              if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
+            } catch (_) { /* best-effort; loadArticles will still run */ }
+          } else if (_selBackend === 'server') {
+            await _flushSelectionSync();
+          }
         }
         loadArticles();
       });
@@ -2457,7 +2472,10 @@
       // Use selected_only=1 (server-side lookup) only when the ID list
       // would push the URL past the ~8 KB Railway/nginx limit (~200 UUIDs).
       // For smaller selections, send ids=... directly (more reliable).
-      if (_selBackend === 'server' && state.selectedIds.size > 200) {
+      if (state.selectedIds.size > 200) {
+        // Too many IDs for a URL parameter — always use server-side lookup
+        // to avoid nginx's ~8 KB URI limit (→ 400). The click handler forces
+        // a PUT so the server has the latest selection before we get here.
         params.set('selected_only', '1');
       } else {
         params.set('ids', Array.from(state.selectedIds).join(','));
