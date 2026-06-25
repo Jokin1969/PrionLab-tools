@@ -2464,26 +2464,19 @@
   // ── Build the list query params (shared by loadArticles + fetchAllFilteredIds) ──
   function buildListParams() {
     const params = new URLSearchParams();
-    // "Show only the selected articles" short-circuits every other
-    // filter (an empty selection still sends an empty list so the
-    // backend correctly returns 0 rows, which is what the operator
-    // expects when they activated the filter with nothing checked).
+    // "Ver sólo seleccionados" adds an ID filter ON TOP of other active
+    // filters — it does NOT replace them. This way a search for "Castilla"
+    // with the toggle active returns only selected articles that also match
+    // "Castilla", rather than ignoring the search entirely.
     if (state.filterSelectedOnly) {
-      // Use selected_only=1 (server-side lookup) only when the ID list
-      // would push the URL past the ~8 KB Railway/nginx limit (~200 UUIDs).
-      // For smaller selections, send ids=... directly (more reliable).
       if (state.selectedIds.size > 50) {
-        // Too many IDs for a URL parameter — always use server-side lookup
-        // to avoid Railway/nginx URI length limit (→ 400). The click handler
-        // forces a PUT so the server has the latest selection before we get here.
+        // Too many IDs for a URL parameter — use server-side lookup to
+        // avoid Railway/nginx URI length limit (→ 400). The click handler
+        // forces a PUT so the server has the latest selection first.
         params.set('selected_only', '1');
       } else {
         params.set('ids', Array.from(state.selectedIds).join(','));
       }
-      params.set('page', state.page);
-      params.set('size', state.size);
-      if (state.sort) params.set('sort', state.sort);
-      return params;
     }
     if (state.q)                   params.set('q', state.q);
     if (state.yearMin)             params.set('year_min', state.yearMin);

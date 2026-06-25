@@ -135,7 +135,7 @@ def _add_run(para, text: str, *, bold=False, italic=False, underline=False,
 
 
 def _sep_run(para):
-    _add_run(para, '  ·  ', color=DIM, size=Pt(10))
+    _add_run(para, '  ·  ', color=DIM, size=Pt(11))
 
 
 def _add_hyperlink(para, text: str, url: str, opts: dict):
@@ -222,7 +222,7 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
     show_labels   = config.get('show_labels', False)
     marked_author = config.get('marked_author', '')
 
-    _add_run(para, f'[{number}] ', bold=True, color=ACCENT, size=Pt(10))
+    _add_run(para, f'[{number}] ', bold=True, color=ACCENT, size=Pt(11))
 
     # Determine article type from source_metadata if available
     sm = article.get('source_metadata') or {}
@@ -233,8 +233,8 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
 
     if config.get('show_type', False):
         if show_labels:
-            _add_run(para, 'Type: ', color=DIM, size=Pt(9))
-        _add_run(para, type_str, bold=True, size=Pt(10))
+            _add_run(para, 'Type: ', color=DIM, size=Pt(11))
+        _add_run(para, type_str, bold=True, size=Pt(11))
         first = False
 
     active_blocks = [b for b in blocks if b.get('active', True)]
@@ -317,14 +317,14 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
                 label = f'PMID:{val}'
 
             if label_text:
-                _add_run(para, label_text, color=DIM, size=Pt(9))
+                _add_run(para, label_text, color=DIM, size=Pt(11))
             if with_link:
                 _add_hyperlink(para, label, url, opts)
             else:
                 _add_run(para, label,
                          bold=opts.get('bold', False), italic=opts.get('italic', False),
                          underline=opts.get('underline', False),
-                         color=_parse_color(opts.get('color')), size=Pt(10))
+                         color=_parse_color(opts.get('color')), size=Pt(11))
 
         elif bid == 'author_position':
             if label_text:
@@ -336,11 +336,11 @@ def _render_ref(para, article: dict, config: dict, number: int) -> None:
 
         else:
             if label_text:
-                _add_run(para, label_text, color=DIM, size=Pt(9))
+                _add_run(para, label_text, color=DIM, size=Pt(11))
             _add_run(para, val,
                      bold=opts.get('bold', False), italic=opts.get('italic', False),
                      underline=opts.get('underline', False),
-                     color=_parse_color(opts.get('color')), size=Pt(10))
+                     color=_parse_color(opts.get('color')), size=Pt(11))
 
 
 # ── Document builder ──────────────────────────────────────────────────────
@@ -394,7 +394,7 @@ def generate_refs_docx(articles: list[dict], config: dict | None = None) -> byte
         f'Exportado el {datetime.now().strftime("%d/%m/%Y")}'
     )
     sr.font.name      = 'Calibri'
-    sr.font.size      = Pt(10)
+    sr.font.size      = Pt(11)
     sr.font.color.rgb = DIM
     sr.font.italic    = True
 
