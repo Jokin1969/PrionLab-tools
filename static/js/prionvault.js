@@ -2145,7 +2145,7 @@
         state.page = 1;
         _paintOnlySelectedBtn();
         if (state.filterSelectedOnly) {
-          if (state.selectedIds.size > 200) {
+          if (state.selectedIds.size > 50) {
             // Selection too large for a URL parameter — force a PUT to ensure
             // the server holds the full current set before we send selected_only=1.
             try {
@@ -2472,10 +2472,10 @@
       // Use selected_only=1 (server-side lookup) only when the ID list
       // would push the URL past the ~8 KB Railway/nginx limit (~200 UUIDs).
       // For smaller selections, send ids=... directly (more reliable).
-      if (state.selectedIds.size > 200) {
+      if (state.selectedIds.size > 50) {
         // Too many IDs for a URL parameter — always use server-side lookup
-        // to avoid nginx's ~8 KB URI limit (→ 400). The click handler forces
-        // a PUT so the server has the latest selection before we get here.
+        // to avoid Railway/nginx URI length limit (→ 400). The click handler
+        // forces a PUT so the server has the latest selection before we get here.
         params.set('selected_only', '1');
       } else {
         params.set('ids', Array.from(state.selectedIds).join(','));
@@ -6575,7 +6575,7 @@
     // Register the global IDs-filter helper here so it is always available
     // from page load, regardless of whether the health or verifier modals
     // have been opened first.
-    window._pvApplyIdsFilter = function(ids) {
+    window._pvApplyIdsFilter = async function(ids) {
       Object.assign(state, {
         q: '', yearMin: null, yearMax: null, journal: '', authors: '',
         tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
@@ -6591,6 +6591,18 @@
         ids.forEach(id => state.selectedIds.addSilently(id));
       } else {
         state.selectedIds = new Set(ids);
+      }
+      if (ids.length > 50) {
+        try {
+          await api('/user-selection', {
+            method: 'PUT',
+            body: JSON.stringify({ ids }),
+          });
+          _selBackend = 'server';
+          _selPending.add.clear();
+          _selPending.remove.clear();
+          if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
+        } catch (_) {}
       }
       loadArticles();
     };
