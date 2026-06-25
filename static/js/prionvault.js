@@ -6646,7 +6646,14 @@
     // working set, identical to a fresh install.
     _hydrateSelection().then(() => loadArticles()).then(() => {
       const openId = new URLSearchParams(window.location.search).get('open');
-      if (openId) openDetail(openId);
+      if (openId) {
+        // Strip ?open= from the URL so a page refresh doesn't re-open the modal.
+        const cleanUrl = window.location.pathname +
+          (window.location.search.replace(/([?&])open=[^&]*/g, '$1').replace(/[?&]$/, '') || '') +
+          window.location.hash;
+        history.replaceState(null, '', cleanUrl || window.location.pathname);
+        openDetail(openId);
+      }
       // Bring back the last RAG search if there's a fresh one
       // saved (≤ 6 h old). Runs after loadArticles so the dashboard
       // is set up before we override the visible section with the
