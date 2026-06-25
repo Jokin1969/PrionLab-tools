@@ -2140,10 +2140,13 @@
     // "Ver sólo seleccionados" toggle
     const onlyBtn = $id('pv-bulk-only-selected');
     if (onlyBtn) {
-      onlyBtn.addEventListener('click', () => {
+      onlyBtn.addEventListener('click', async () => {
         state.filterSelectedOnly = !state.filterSelectedOnly;
         state.page = 1;
         _paintOnlySelectedBtn();
+        if (state.filterSelectedOnly && _selBackend === 'server') {
+          await _flushSelectionSync();
+        }
         loadArticles();
       });
     }
@@ -2451,7 +2454,11 @@
     // backend correctly returns 0 rows, which is what the operator
     // expects when they activated the filter with nothing checked).
     if (state.filterSelectedOnly) {
-      params.set('ids', Array.from(state.selectedIds).join(','));
+      if (_selBackend === 'server') {
+        params.set('selected_only', '1');
+      } else {
+        params.set('ids', Array.from(state.selectedIds).join(','));
+      }
       params.set('page', state.page);
       params.set('size', state.size);
       if (state.sort) params.set('sort', state.sort);

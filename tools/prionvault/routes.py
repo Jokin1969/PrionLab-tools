@@ -120,9 +120,17 @@ def api_list_articles():
     # selection scoped to a working set even after leaving and
     # re-entering the page. Comma-separated, capped at 5_000 ids so
     # the IN-list stays reasonable.
+    #
+    # Preferred path: selected_only=1 tells the backend to look up the
+    # caller's selection from the prionvault_user_selection table, avoiding
+    # very long URLs that exceed the Railway/nginx 8 KB URI limit (→ 400).
     ids_param   = (request.args.get("ids") or "").strip()
     ids_filter: list[str] = []
-    if ids_param:
+    if request.args.get("selected_only") == "1":
+        from .services import user_selection as _us
+        viewer_id = _viewer_id()
+        ids_filter = _us.list_for_user(viewer_id) if viewer_id else []
+    elif ids_param:
         for tok in ids_param.split(","):
             tok = tok.strip()
             if tok:
