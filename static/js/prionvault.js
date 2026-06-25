@@ -2146,17 +2146,19 @@
         _paintOnlySelectedBtn();
         if (state.filterSelectedOnly) {
           if (state.selectedIds.size > 50) {
-            // Selection too large for a URL parameter — force a PUT to ensure
-            // the server holds the full current set before we send selected_only=1.
+            // Cancel the debounce timer and clear pending diffs BEFORE starting
+            // the PUT. This prevents a concurrent auto-flush POST (with the old
+            // 136-ID set) from landing on the server AFTER the PUT (with 135 IDs)
+            // and corrupting the selection state.
+            if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
+            _selPending.add.clear();
+            _selPending.remove.clear();
             try {
               await api('/user-selection', {
                 method: 'PUT',
                 body: JSON.stringify({ ids: Array.from(state.selectedIds) }),
               });
               _selBackend = 'server';
-              _selPending.add.clear();
-              _selPending.remove.clear();
-              if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
             } catch (_) { /* best-effort; loadArticles will still run */ }
           } else if (_selBackend === 'server') {
             await _flushSelectionSync();
@@ -6586,15 +6588,15 @@
         state.selectedIds = new Set(ids);
       }
       if (ids.length > 50) {
+        if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
+        _selPending.add.clear();
+        _selPending.remove.clear();
         try {
           await api('/user-selection', {
             method: 'PUT',
             body: JSON.stringify({ ids }),
           });
           _selBackend = 'server';
-          _selPending.add.clear();
-          _selPending.remove.clear();
-          if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
         } catch (_) {}
       }
       loadArticles();
