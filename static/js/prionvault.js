@@ -2145,6 +2145,17 @@
         state.page = 1;
         _paintOnlySelectedBtn();
         if (state.filterSelectedOnly) {
+          // Clear all search/filter state so the view shows exactly the
+          // selected articles without any search narrowing them down.
+          state.q = ''; state.yearMin = null; state.yearMax = null;
+          state.journal = ''; state.authors = ''; state.tagId = null;
+          const si = document.getElementById('pv-search-input');
+          if (si) { si.value = ''; const cb = document.getElementById('pv-search-clear'); if (cb) cb.style.display = 'none'; }
+          const fy1 = document.getElementById('filter-year-min'); if (fy1) fy1.value = '';
+          const fy2 = document.getElementById('filter-year-max'); if (fy2) fy2.value = '';
+          const fa = document.getElementById('filter-authors'); if (fa) fa.value = '';
+          const fj = document.getElementById('filter-journal'); if (fj) fj.value = '';
+
           if (state.selectedIds.size > 50) {
             // Cancel the debounce timer and clear pending diffs BEFORE starting
             // the PUT. This prevents a concurrent auto-flush POST (with the old
