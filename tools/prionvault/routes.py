@@ -111,36 +111,61 @@ def index():
 
 
 # ── Listing & search ────────────────────────────────────────────────────────
-@prionvault_bp.route("/api/articles", methods=["GET"])
+@prionvault_bp.route("/api/articles", methods=["GET", "POST"])
 @login_required
 def api_list_articles():
-    q           = (request.args.get("q") or "").strip()
+    # POST is used when the caller has many selected IDs — PUT them in the
+    # JSON body to avoid Railway/nginx URI length limits (400). The body may
+    # contain any of the same keys as the query-string; query-string values
+    # win on collision so that normal GET behaviour is unaffected.
+    _body = {}
+    if request.method == "POST":
+        _body = request.get_json(silent=True) or {}
+    def _p(key, default=""):
+        v = request.args.get(key)
+        if v is not None:
+            return v
+        return _body.get(key, default)
+
+    q           = (_p("q") or "").strip()
     # Optional "filter by article id list" — used by the bulk-bar's
     # "Ver sólo seleccionados" button so the operator can keep their
     # selection scoped to a working set even after leaving and
-    # re-entering the page. Comma-separated, capped at 5_000 ids so
-    # the IN-list stays reasonable.
+    # re-entering the page. Comma-separated (GET) or list (POST body),
+    # capped at 5_000 ids so the IN-list stays reasonable.
     #
-    # Preferred path: selected_only=1 tells the backend to look up the
-    # caller's selection from the prionvault_user_selection table, avoiding
-    # very long URLs that exceed the Railway/nginx 8 KB URI limit (→ 400).
+    # Preferred path for large selections: POST with ids=[...] in the body,
+    # avoiding Railway/nginx URI length limits (→ 400).
+    _ids_body = _body.get("ids") if request.method == "POST" else None
     ids_param   = (request.args.get("ids") or "").strip()
     ids_filter: list[str] = []
-    if request.args.get("selected_only") == "1":
+    _selected_only_requested = request.args.get("selected_only") == "1"
+    if _selected_only_requested:
         from .services import user_selection as _us
         viewer_id = _viewer_id()
         ids_filter = _us.list_for_user(viewer_id) if viewer_id else []
+    elif _ids_body and isinstance(_ids_body, list):
+        ids_filter = [str(x).strip() for x in _ids_body if str(x).strip()][:5000]
     elif ids_param:
         for tok in ids_param.split(","):
             tok = tok.strip()
             if tok:
                 ids_filter.append(tok)
         ids_filter = ids_filter[:5000]
-    year_min    = request.args.get("year_min", type=int)
-    year_max    = request.args.get("year_max", type=int)
-    journal     = (request.args.get("journal") or "").strip()
-    authors_q   = (request.args.get("authors") or "").strip()
-    tag_id      = request.args.get("tag", type=int)
+    year_min    = _p("year_min") or None
+    year_max    = _p("year_max") or None
+    if year_min is not None:
+        try: year_min = int(year_min)
+        except (ValueError, TypeError): year_min = None
+    if year_max is not None:
+        try: year_max = int(year_max)
+        except (ValueError, TypeError): year_max = None
+    journal     = (_p("journal") or "").strip()
+    authors_q   = (_p("authors") or "").strip()
+    tag_id      = _p("tag") or None
+    if tag_id is not None:
+        try: tag_id = int(tag_id)
+        except (ValueError, TypeError): tag_id = None
     collection_id    = (request.args.get("collection") or "").strip() or None
     collection_group    = (request.args.get("collection_group") or "").strip() or None
     collection_subgroup = (request.args.get("collection_subgroup") or "").strip() or None
@@ -191,6 +216,13 @@ def api_list_articles():
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
+
+    # selected_only=1 with an empty server-side list means the user has nothing
+    # selected (or the PUT hasn't landed yet). Return zero articles instead of
+    # falling through to an unfiltered query that would return everything.
+    if _selected_only_requested and not ids_filter:
+        return jsonify({"items": [], "total": 0, "page": page, "size": page_size,
+                        "pages": 0, "q": q})
 
     # When the caller filters by a SMART collection, the membership is
     # not stored anywhere — it's computed by merging the saved rules

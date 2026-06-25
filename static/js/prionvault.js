@@ -1877,7 +1877,15 @@
     showEmpty('Cargando…');
 
     try {
-      const r = await api('/articles?' + params.toString());
+      let r;
+      if (state.filterSelectedOnly && state.selectedIds.size > 50) {
+        // Send IDs in the POST body to avoid Railway/nginx URI length limits.
+        const body = Object.fromEntries(params.entries());
+        body.ids = Array.from(state.selectedIds);
+        r = await api('/articles', { method: 'POST', body: JSON.stringify(body) });
+      } else {
+        r = await api('/articles?' + params.toString());
+      }
       document.getElementById('pv-result-count').textContent =
         r.total + ' result' + (r.total === 1 ? '' : 's');
       document.getElementById('pv-result-page').textContent =
@@ -1984,7 +1992,14 @@
     const params = buildListParams();
     params.set('size', String(Math.min(50_000, state.lastTotal || 50_000)));
     params.set('page', '1');
-    const r = await api('/articles?' + params.toString());
+    let r;
+    if (state.filterSelectedOnly && state.selectedIds.size > 50) {
+      const body = Object.fromEntries(params.entries());
+      body.ids = Array.from(state.selectedIds);
+      r = await api('/articles', { method: 'POST', body: JSON.stringify(body) });
+    } else {
+      r = await api('/articles?' + params.toString());
+    }
     return (r.items || []).map(a => a.id);
   }
 
@@ -2140,13 +2155,13 @@
     // "Ver sólo seleccionados" toggle
     const onlyBtn = $id('pv-bulk-only-selected');
     if (onlyBtn) {
-      onlyBtn.addEventListener('click', async () => {
+      onlyBtn.addEventListener('click', () => {
         state.filterSelectedOnly = !state.filterSelectedOnly;
         state.page = 1;
         _paintOnlySelectedBtn();
         if (state.filterSelectedOnly) {
           // Clear all search/filter state so the view shows exactly the
-          // selected articles without any search narrowing them down.
+          // selected articles without any search filter interfering.
           state.q = ''; state.yearMin = null; state.yearMax = null;
           state.journal = ''; state.authors = ''; state.tagId = null;
           const si = document.getElementById('pv-search-input');
@@ -2155,25 +2170,6 @@
           const fy2 = document.getElementById('filter-year-max'); if (fy2) fy2.value = '';
           const fa = document.getElementById('filter-authors'); if (fa) fa.value = '';
           const fj = document.getElementById('filter-journal'); if (fj) fj.value = '';
-
-          if (state.selectedIds.size > 50) {
-            // Cancel the debounce timer and clear pending diffs BEFORE starting
-            // the PUT. This prevents a concurrent auto-flush POST (with the old
-            // 136-ID set) from landing on the server AFTER the PUT (with 135 IDs)
-            // and corrupting the selection state.
-            if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
-            _selPending.add.clear();
-            _selPending.remove.clear();
-            try {
-              await api('/user-selection', {
-                method: 'PUT',
-                body: JSON.stringify({ ids: Array.from(state.selectedIds) }),
-              });
-              _selBackend = 'server';
-            } catch (_) { /* best-effort; loadArticles will still run */ }
-          } else if (_selBackend === 'server') {
-            await _flushSelectionSync();
-          }
         }
         loadArticles();
       });
@@ -2475,21 +2471,13 @@
   }
 
   // ── Build the list query params (shared by loadArticles + fetchAllFilteredIds) ──
+  // When filterSelectedOnly is active with >50 IDs the caller must use POST
+  // (IDs go in the request body to avoid Railway URI length limits).
+  // For ≤50 IDs the ids=... query param is short enough for a GET.
   function buildListParams() {
     const params = new URLSearchParams();
-    // "Ver sólo seleccionados" adds an ID filter ON TOP of other active
-    // filters — it does NOT replace them. This way a search for "Castilla"
-    // with the toggle active returns only selected articles that also match
-    // "Castilla", rather than ignoring the search entirely.
-    if (state.filterSelectedOnly) {
-      if (state.selectedIds.size > 50) {
-        // Too many IDs for a URL parameter — use server-side lookup to
-        // avoid Railway/nginx URI length limit (→ 400). The click handler
-        // forces a PUT so the server has the latest selection first.
-        params.set('selected_only', '1');
-      } else {
-        params.set('ids', Array.from(state.selectedIds).join(','));
-      }
+    if (state.filterSelectedOnly && state.selectedIds.size <= 50) {
+      params.set('ids', Array.from(state.selectedIds).join(','));
     }
     if (state.q)                   params.set('q', state.q);
     if (state.yearMin)             params.set('year_min', state.yearMin);
@@ -6581,7 +6569,7 @@
     // Register the global IDs-filter helper here so it is always available
     // from page load, regardless of whether the health or verifier modals
     // have been opened first.
-    window._pvApplyIdsFilter = async function(ids) {
+    window._pvApplyIdsFilter = function(ids) {
       Object.assign(state, {
         q: '', yearMin: null, yearMax: null, journal: '', authors: '',
         tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
@@ -6598,18 +6586,7 @@
       } else {
         state.selectedIds = new Set(ids);
       }
-      if (ids.length > 50) {
-        if (_selTimer) { clearTimeout(_selTimer); _selTimer = null; }
-        _selPending.add.clear();
-        _selPending.remove.clear();
-        try {
-          await api('/user-selection', {
-            method: 'PUT',
-            body: JSON.stringify({ ids }),
-          });
-          _selBackend = 'server';
-        } catch (_) {}
-      }
+      // IDs are sent via POST body in loadArticles — no server sync needed here.
       loadArticles();
     };
 
