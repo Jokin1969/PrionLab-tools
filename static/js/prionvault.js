@@ -9887,16 +9887,32 @@
     const addSummariesBtn = document.getElementById('pv-bi-add-summaries');
     if (addSummariesBtn) {
       addSummariesBtn.addEventListener('click', async () => {
-        if (!confirm(
-          'Añadir vectorización del resumen IA a los artículos que tienen\n' +
-          'resumen pero no tienen chunk de tipo "summary_ai".\n\n' +
-          '• No toca los chunks existentes (PDF, abstract).\n' +
-          '• Corre en background — la búsqueda sigue funcionando mientras tanto.\n' +
-          '• Solo procesa artículos con resumen (≈800 actualmente).\n\n' +
-          '¿Continuar?'
-        )) return;
         addSummariesBtn.disabled = true;
         const orig = addSummariesBtn.textContent;
+        addSummariesBtn.textContent = '⏳ Consultando…';
+        let stats;
+        try {
+          stats = await api('/admin/embeddings/add-summaries');
+        } catch (e) {
+          alert('Error consultando estadísticas: ' + e.message);
+          addSummariesBtn.disabled = false;
+          addSummariesBtn.textContent = orig;
+          return;
+        } finally {
+          addSummariesBtn.textContent = orig;
+        }
+        if (!confirm(
+          `Estadísticas de resúmenes IA:\n` +
+          `• Total con resumen: ${stats.total_with_summary}\n` +
+          `• Ya indexados: ${stats.already_indexed}\n` +
+          `• Pendientes de indexar: ${stats.pending}\n\n` +
+          `Se indexarán ${stats.pending} resúmenes en background.\n` +
+          `No se tocan los chunks existentes (PDF, abstract).\n\n` +
+          `¿Continuar?`
+        )) {
+          addSummariesBtn.disabled = false;
+          return;
+        }
         addSummariesBtn.textContent = '⏳ Enviando…';
         try {
           const r = await api('/admin/embeddings/add-summaries', { method: 'POST' });

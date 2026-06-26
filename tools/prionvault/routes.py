@@ -6126,36 +6126,49 @@ def api_embeddings_add_abstracts():
                     "detail": f"Indexing abstracts for {total} articles in background."})
 
 
-@prionvault_bp.route("/api/admin/embeddings/add-summaries", methods=["POST"])
+@prionvault_bp.route("/api/admin/embeddings/add-summaries", methods=["GET", "POST"])
 @admin_required
 def api_embeddings_add_summaries():
-    """Index the summary_ai field for every article that has a summary
-    but no chunk with source_field='summary_ai'. Non-destructive."""
+    """GET: return stats (how many have/don't have summary_ai chunks).
+    POST: index summary_ai for articles missing those chunks."""
     from .embeddings.indexer import index_article_source
     from .embeddings.embedder import NotConfigured as VoyageNotConfigured
     from sqlalchemy import text as _t
     from database.config import db as _db
     import threading
 
+    _SUMMARY_QUERY = """
+        SELECT a.id::text, a.title, a.summary_ai
+          FROM articles a
+         WHERE a.summary_ai IS NOT NULL AND length(a.summary_ai) > 100
+           AND NOT EXISTS (
+               SELECT 1 FROM article_chunk c
+                WHERE c.article_id = a.id AND c.source_field = 'summary_ai'
+           )
+         ORDER BY a.created_at DESC
+    """
+
     try:
         with _db.engine.connect() as conn:
-            rows = conn.execute(_t(
-                """
-                SELECT a.id::text, a.title, a.summary_ai
-                  FROM articles a
-                 WHERE a.summary_ai IS NOT NULL AND length(a.summary_ai) > 100
-                   AND NOT EXISTS (
-                       SELECT 1 FROM article_chunk c
-                        WHERE c.article_id = a.id AND c.source_field = 'summary_ai'
-                   )
-                 ORDER BY a.created_at DESC
-                """
-            )).all()
+            rows = conn.execute(_t(_SUMMARY_QUERY)).all()
+            total_with_summary = conn.execute(_t(
+                "SELECT count(*) FROM articles "
+                "WHERE summary_ai IS NOT NULL AND length(summary_ai) > 100"
+            )).scalar() or 0
     except Exception as exc:
         return jsonify({"error": "query_failed", "detail": str(exc)[:300]}), 500
 
-    total = len(rows)
-    if total == 0:
+    already_indexed = total_with_summary - len(rows)
+
+    if request.method == "GET":
+        return jsonify({
+            "total_with_summary": total_with_summary,
+            "already_indexed": already_indexed,
+            "pending": len(rows),
+        })
+
+    # POST — run the indexing
+    if len(rows) == 0:
         return jsonify({"ok": True, "queued": 0,
                         "detail": "All articles with summaries already have summary_ai chunks."})
 
@@ -6178,8 +6191,8 @@ def api_embeddings_add_summaries():
         logger.info("add-summaries finished: %d ok, %d failed", ok, fail)
 
     threading.Thread(target=_run, name="pv-add-summaries", daemon=True).start()
-    return jsonify({"ok": True, "queued": total,
-                    "detail": f"Indexing summaries for {total} articles in background."})
+    return jsonify({"ok": True, "queued": len(rows),
+                    "detail": f"Indexing summaries for {len(rows)} articles in background."})
 
 
 @prionvault_bp.route("/api/admin/embeddings/reset-and-reindex",
