@@ -134,7 +134,7 @@ def _fetch_new_articles(topics: list[str], since: datetime,
             i.title,
             i.authors,
             i.journal,
-            i.pub_year,
+            i.year,
             i.doi,
             i.is_oa,
             i.preset,
@@ -144,7 +144,7 @@ def _fetch_new_articles(topics: list[str], since: datetime,
           AND i.first_seen_at >= :since
           AND i.imported_at IS NULL
           {oa_filter}
-        ORDER BY i.pub_year DESC NULLS LAST, i.first_seen_at DESC
+        ORDER BY i.year DESC NULLS LAST, i.first_seen_at DESC
         LIMIT 200
     """
     try:
@@ -173,7 +173,7 @@ def _article_card(a: dict, import_base_url: str) -> str:
     title   = a.get("title") or "Sin título"
     authors = a.get("authors") or ""
     journal = a.get("journal") or ""
-    year    = a.get("pub_year") or ""
+    year    = a.get("year") or ""
     pmid    = a.get("pmid") or ""
     doi     = a.get("doi") or ""
     is_oa   = a.get("is_oa")

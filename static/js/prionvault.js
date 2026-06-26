@@ -13852,6 +13852,12 @@
 
     // ── Load subscription ─────────────────────────────────────────────────
     async function _load() {
+      // Disable interactive buttons and show a loading indicator while
+      // fetching timezones + subscription so the user knows to wait.
+      saveBtn.disabled = true;
+      testBtn.disabled = true;
+      _showStatus('info', '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Cargando configuración…');
+
       await _loadTimezones();
       let sub;
       try {
@@ -13861,6 +13867,8 @@
         // Render default state so form is usable
         _renderTopics(['prion']);
         emailInp.value = DEFAULT_EMAIL;
+        saveBtn.disabled = false;
+        testBtn.disabled = false;
         return;
       }
       enabledCb.checked = !!sub.enabled;
@@ -13897,16 +13905,21 @@
       } else {
         lastWrap.style.display = 'none';
       }
+      // Re-enable buttons now that loading is complete
+      saveBtn.disabled = false;
+      testBtn.disabled = false;
+      statusEl.style.display = 'none';
     }
 
     // ── Status bar ────────────────────────────────────────────────────────
     function _showStatus(type, msg) {
-      statusEl.textContent = msg;
+      statusEl.innerHTML = msg;   // innerHTML to support spinner icon
       statusEl.style.display = 'block';
-      statusEl.style.background = type === 'ok' ? '#f0fdf4' : '#fef2f2';
-      statusEl.style.color      = type === 'ok' ? '#15803d' : '#b91c1c';
-      statusEl.style.border     = type === 'ok' ? '1px solid #bbf7d0' : '1px solid #fecaca';
-      setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+      const isInfo = type === 'info';
+      statusEl.style.background = isInfo ? '#eff6ff' : type === 'ok' ? '#f0fdf4' : '#fef2f2';
+      statusEl.style.color      = isInfo ? '#1d4ed8' : type === 'ok' ? '#15803d' : '#b91c1c';
+      statusEl.style.border     = isInfo ? '1px solid #bfdbfe' : type === 'ok' ? '1px solid #bbf7d0' : '1px solid #fecaca';
+      if (!isInfo) setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
     }
 
     // ── Save ──────────────────────────────────────────────────────────────
