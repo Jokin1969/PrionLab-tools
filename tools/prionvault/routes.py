@@ -6169,32 +6169,34 @@ def api_embeddings_add_pdf():
                     "detail": f"Indexing PDF text for {total} articles in background."})
 
 
-@prionvault_bp.route("/api/admin/embeddings/add-abstracts", methods=["POST"])
+@prionvault_bp.route("/api/admin/embeddings/add-abstracts", methods=["GET", "POST"])
 @admin_required
 def api_embeddings_add_abstracts():
-    """Index the abstract field for every article that already has chunks
-    but has no chunk with source_field='abstract'. Non-destructive: existing
-    extracted_text / summary_ai chunks are untouched."""
+    """GET: stats + first-10 pending articles for diagnosis.
+    POST: index abstract for every article with valid abstract but no abstract chunk."""
     from .embeddings.indexer import index_article_source
     from .embeddings.embedder import NotConfigured as VoyageNotConfigured
     from sqlalchemy import text as _t
     from database.config import db as _db
 
+    _ABSTRACT_FILTERS = """
+        a.abstract IS NOT NULL
+        AND length(a.abstract) > 50
+        AND (a.abstract_unavailable IS NULL OR a.abstract_unavailable = FALSE)
+        AND lower(a.abstract) NOT LIKE '%no abstract available%'
+        AND lower(a.abstract) NOT LIKE '%abstract not available%'
+        AND lower(a.abstract) NOT LIKE '%no abstract%'
+        AND lower(a.abstract) NOT LIKE '%abstract not available in pubmed%'
+        AND lower(a.abstract) NOT LIKE '%sin resumen disponible%'
+    """
+
     try:
         with _db.engine.connect() as conn:
             rows = conn.execute(_t(
-                """
+                f"""
                 SELECT a.id::text, a.title, a.abstract
                   FROM articles a
-                 WHERE a.abstract IS NOT NULL
-                   AND length(a.abstract) > 50
-                   AND (a.abstract_unavailable IS NULL OR a.abstract_unavailable = FALSE)
-                   AND lower(a.abstract) NOT LIKE '%no abstract available%'
-                   AND lower(a.abstract) NOT LIKE '%abstract not available%'
-                   AND lower(a.abstract) NOT LIKE '%no abstract%'
-                   AND EXISTS (
-                       SELECT 1 FROM article_chunk c WHERE c.article_id = a.id
-                   )
+                 WHERE {_ABSTRACT_FILTERS}
                    AND NOT EXISTS (
                        SELECT 1 FROM article_chunk c
                         WHERE c.article_id = a.id AND c.source_field = 'abstract'
@@ -6206,6 +6208,17 @@ def api_embeddings_add_abstracts():
         return jsonify({"error": "query_failed", "detail": str(exc)[:300]}), 500
 
     total = len(rows)
+
+    if request.method == "GET":
+        # Diagnostic: show pending count + first 10 article summaries
+        samples = [
+            {"id": r[0], "title": (r[1] or "")[:80],
+             "abstract_len": len(r[2] or ""),
+             "abstract_start": (r[2] or "")[:120]}
+            for r in rows[:10]
+        ]
+        return jsonify({"pending": total, "samples": samples})
+
     if total == 0:
         return jsonify({"ok": True, "queued": 0,
                         "detail": "All articles already have abstract chunks."})
@@ -6213,22 +6226,31 @@ def api_embeddings_add_abstracts():
     import threading
 
     def _run():
-        ok = fail = 0
+        ok = fail = skip = 0
         for row in rows:
             try:
-                index_article_source(
+                result = index_article_source(
                     article_id=row[0],
                     source_field="abstract",
                     source_text=row[2],
                     title=row[1],
                 )
-                ok += 1
+                if result.chunks_written > 0:
+                    ok += 1
+                elif result.error:
+                    logger.warning("add-abstracts: article %s skipped/failed: %s",
+                                   row[0], result.error)
+                    skip += 1
+                else:
+                    ok += 1
             except VoyageNotConfigured:
+                logger.warning("add-abstracts: VOYAGE_API_KEY not set, stopping")
                 break
             except Exception as exc:
-                logger.warning("add-abstracts: article %s failed: %s", row[0], exc)
+                logger.warning("add-abstracts: article %s exception: %s", row[0], exc)
                 fail += 1
-        logger.info("add-abstracts finished: %d ok, %d failed", ok, fail)
+        logger.info("add-abstracts finished: %d ok, %d skipped, %d failed",
+                    ok, skip, fail)
 
     threading.Thread(target=_run, name="pv-add-abstracts", daemon=True).start()
     return jsonify({"ok": True, "queued": total,
@@ -6282,22 +6304,31 @@ def api_embeddings_add_summaries():
                         "detail": "All articles with summaries already have summary_ai chunks."})
 
     def _run():
-        ok = fail = 0
+        ok = fail = skip = 0
         for row in rows:
             try:
-                index_article_source(
+                result = index_article_source(
                     article_id=row[0],
                     source_field="summary_ai",
                     source_text=row[2],
                     title=row[1],
                 )
-                ok += 1
+                if result.chunks_written > 0:
+                    ok += 1
+                elif result.error:
+                    logger.warning("add-summaries: article %s skipped/failed: %s",
+                                   row[0], result.error)
+                    skip += 1
+                else:
+                    ok += 1
             except VoyageNotConfigured:
+                logger.warning("add-summaries: VOYAGE_API_KEY not set, stopping")
                 break
             except Exception as exc:
-                logger.warning("add-summaries: article %s failed: %s", row[0], exc)
+                logger.warning("add-summaries: article %s exception: %s", row[0], exc)
                 fail += 1
-        logger.info("add-summaries finished: %d ok, %d failed", ok, fail)
+        logger.info("add-summaries finished: %d ok, %d skipped, %d failed",
+                    ok, skip, fail)
 
     threading.Thread(target=_run, name="pv-add-summaries", daemon=True).start()
     return jsonify({"ok": True, "queued": len(rows),

@@ -494,4 +494,9 @@ def run_pending_digests() -> None:
             except Exception as exc:
                 logger.error("email_digest: error for sub %s: %s", sub_id, exc)
     except Exception as exc:
+        # Suppress UndefinedTable until migration 046 has been applied.
+        msg = str(exc)
+        if "UndefinedTable" in type(exc).__name__ or "does not exist" in msg:
+            logger.debug("email_digest: table not yet created, skipping (%s)", msg[:120])
+            return
         logger.error("email_digest: run_pending_digests failed: %s", exc)
