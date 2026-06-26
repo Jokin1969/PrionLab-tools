@@ -73,8 +73,15 @@ def chunk_text(
     Returns an empty list for empty or trivially short input.
     """
     cleaned = _normalise(text)
-    if not cleaned or len(cleaned) < 200:
+    if not cleaned or len(cleaned) < 20:
         return []
+
+    # Texts shorter than one chunk (e.g. short abstracts) — skip the
+    # 200-char gate and return as a single chunk immediately.
+    if len(cleaned) < 200:
+        enc2 = _get_encoding()
+        n2 = len(enc2.encode(cleaned, disallowed_special=())) if enc2 else max(1, len(cleaned) // 4)
+        return [Chunk(index=0, text=cleaned, tokens=n2, char_start=0, char_end=len(cleaned))]
 
     enc = _get_encoding()
     if enc is None:

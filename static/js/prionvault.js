@@ -206,6 +206,7 @@
       set('count-total',      s.total);
       set('count-no-summary', s.total - s.with_summary_ai);
       set('count-indexed',    s.indexed);
+      set('count-notes',      s.with_notes ?? 0);
     } catch (e) { console.error(e); }
   }
 
@@ -6516,12 +6517,48 @@
         btn.addEventListener('click', () => {
           const f = btn.dataset.filter;
           state.tagId     = null;
-          state.hasSummary = (f === 'no-summary') ? 'none' : null;
+          if (f === 'notes') {
+            // Toggle: clicking again deactivates the notes filter
+            state.hasSummary = state.hasSummary === 'human' ? null : 'human';
+          } else {
+            state.hasSummary = (f === 'no-summary') ? 'none' : null;
+          }
           state.sort       = (f === 'recent') ? 'added_desc' : state.sort;
           state.page = 1;
           loadArticles();
         });
       });
+
+    // Note-filter toggles on Colecciones and Tags headers
+    document.getElementById('btn-notes-filter-collections')?.addEventListener('click', () => {
+      state.hasSummary = state.hasSummary === 'human' ? null : 'human';
+      state.page = 1;
+      loadArticles();
+      _paintNotesFilterBtns();
+    });
+    document.getElementById('btn-notes-filter-tags')?.addEventListener('click', () => {
+      state.hasSummary = state.hasSummary === 'human' ? null : 'human';
+      state.page = 1;
+      loadArticles();
+      _paintNotesFilterBtns();
+    });
+
+    function _paintNotesFilterBtns() {
+      const active = state.hasSummary === 'human';
+      ['btn-notes-filter-collections', 'btn-notes-filter-tags', 'btn-filter-notes'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.background = active ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)';
+        el.style.color      = active ? 'white' : 'rgba(255,255,255,0.5)';
+        el.title = active ? 'Mostrando solo artículos con notas — clic para quitar el filtro'
+                          : (id === 'btn-filter-notes' ? 'Mostrar solo artículos con notas personales (Human notes)'
+                                                        : 'Filtrar por artículos con notas en esta sección');
+      });
+    }
+    // Repaint after each loadArticles so active state stays in sync
+    const _origLoadArticles = loadArticles;
+    // Wire notes-filter button click to also repaint
+    document.getElementById('btn-filter-notes')?.addEventListener('click', _paintNotesFilterBtns);
 
     document.getElementById('pv-detail-close').addEventListener('click', closeDetail);
     document.querySelector('#pv-detail-modal .pv-modal-backdrop').addEventListener('click', closeDetail);

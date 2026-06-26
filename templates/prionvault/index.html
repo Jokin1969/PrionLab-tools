@@ -340,6 +340,11 @@
         <span>Indexed for AI</span>
         <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0" id="count-indexed">—</span>
       </button>
+      <button class="pv-nav-btn" data-filter="notes" id="btn-filter-notes"
+              title="Mostrar solo artículos con notas personales (Human notes)">
+        <span>📝 Con notas</span>
+        <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0" id="count-notes">—</span>
+      </button>
 
       <div style="display:flex;align-items:center;gap:6px;padding:14px 10px 4px;">
         <button id="btn-toggle-collections" type="button"
@@ -355,6 +360,11 @@
           <span id="collection-count"
                 style="font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:normal;text-transform:none;font-size:10px;"></span>
         </button>
+        <button id="btn-notes-filter-collections" type="button"
+                title="Mostrar solo artículos con notas en esta colección"
+                style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.12);
+                       color:rgba(255,255,255,0.5);border:none;cursor:pointer;font-size:11px;line-height:1;
+                       display:flex;align-items:center;justify-content:center;">📝</button>
         <button class="pv-admin-only" id="btn-new-collection"
                 style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.18);
                        color:white;border:none;cursor:pointer;font-size:12px;line-height:1;
@@ -377,6 +387,11 @@
           <span id="tag-count"
                 style="font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:normal;text-transform:none;font-size:10px;"></span>
         </button>
+        <button id="btn-notes-filter-tags" type="button"
+                title="Mostrar solo artículos con notas en este tag"
+                style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.12);
+                       color:rgba(255,255,255,0.5);border:none;cursor:pointer;font-size:11px;line-height:1;
+                       display:flex;align-items:center;justify-content:center;">📝</button>
         <button class="pv-admin-only" id="btn-new-tag"
                 style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.18);
                        color:white;border:none;cursor:pointer;font-size:12px;line-height:1;
@@ -1011,8 +1026,11 @@
 <!-- ── Detail modal ──────────────────────────────────────────────────── -->
 <div id="pv-detail-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
-  <div class="pv-modal-inner" style="max-width:680px;">
-    <div style="position:absolute;top:10px;right:52px;display:flex;gap:8px;z-index:1;">
+  <div class="pv-modal-inner" style="max-width:680px;padding-top:0;">
+    <!-- Sticky nav bar: always visible even when scrolled down -->
+    <div style="position:sticky;top:0;z-index:10;background:white;
+                display:flex;align-items:center;justify-content:flex-end;gap:8px;
+                padding:12px 0 10px;border-bottom:1px solid #f3f4f6;margin-bottom:16px;">
       <button id="pv-detail-cart-btn" type="button"
               title="Añadir al carrito de PrionPacks"
               style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
@@ -1027,8 +1045,12 @@
               style="padding:4px 14px;border-radius:6px;border:1px solid #d1d5db;
                      background:white;font-size:17px;color:#374151;cursor:pointer;line-height:1.4;"
               title="Artículo siguiente">›</button>
+      <button id="pv-detail-close" aria-label="Close"
+              style="width:28px;height:28px;border-radius:50%;border:1px solid #e5e7eb;
+                     background:white;font-size:17px;cursor:pointer;display:flex;
+                     align-items:center;justify-content:center;color:#6b7280;line-height:1;
+                     transition:background 0.15s;flex-shrink:0;">×</button>
     </div>
-    <button class="pv-modal-close" id="pv-detail-close" aria-label="Close">×</button>
     <div id="pv-detail-content">…</div>
   </div>
 </div>

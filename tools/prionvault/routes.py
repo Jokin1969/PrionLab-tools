@@ -1286,7 +1286,9 @@ def api_article_stats():
                   COUNT(*)                                       AS total,
                   COUNT(*) FILTER (WHERE summary_ai IS NOT NULL) AS with_summary_ai,
                   COUNT(*) FILTER (WHERE extraction_status = 'extracted') AS with_extraction,
-                  COUNT(*) FILTER (WHERE indexed_at IS NOT NULL) AS indexed
+                  COUNT(*) FILTER (WHERE indexed_at IS NOT NULL) AS indexed,
+                  COUNT(*) FILTER (WHERE summary_human IS NOT NULL
+                                     AND summary_human <> '') AS with_notes
                 FROM articles
             """)).first()
             return jsonify({
@@ -1294,6 +1296,7 @@ def api_article_stats():
                 "with_summary_ai": row[1] if row else 0,
                 "with_extraction": row[2] if row else 0,
                 "indexed":         row[3] if row else 0,
+                "with_notes":      row[4] if row else 0,
             })
         except Exception as col_exc:
             # Migration 001 columns not yet present — fall back to simple count.
