@@ -7799,7 +7799,7 @@ def _validate_notif_payload(data: dict, uemail: str) -> dict:
         "lookback":          lookback,
         "oa_only":           bool(data.get("include_oa_only", False)),
         "enabled":           bool(data.get("enabled", True)),
-        "articles_per_email": ape,
+        "ape":               ape,
     }
 
 
