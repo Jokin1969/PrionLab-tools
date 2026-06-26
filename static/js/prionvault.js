@@ -9778,19 +9778,19 @@
       const p = pct(indexed, available);
       const pendingBadge = pending > 0
         ? `<span style="background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:700;
-                        padding:1px 6px;border-radius:10px;white-space:nowrap;">+${pending.toLocaleString('es-ES')} pendientes</span>`
+                        padding:1px 8px;border-radius:10px;white-space:nowrap;flex-shrink:0;">+${pending.toLocaleString('es-ES')} pendientes</span>`
         : `<span style="background:#dcfce7;color:#15803d;font-size:10.5px;font-weight:700;
-                        padding:1px 6px;border-radius:10px;">✓ al día</span>`;
+                        padding:1px 8px;border-radius:10px;white-space:nowrap;flex-shrink:0;">✓ al día</span>`;
       return `
-        <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;">
-          <span style="width:18px;text-align:center;font-size:14px;">${icon}</span>
-          <span style="width:110px;color:#374151;font-weight:600;">${esc(label)}</span>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;flex-wrap:nowrap;">
+          <span style="width:18px;min-width:18px;text-align:center;font-size:14px;flex-shrink:0;">${icon}</span>
+          <span style="width:105px;min-width:105px;color:#374151;font-weight:600;flex-shrink:0;">${esc(label)}</span>
           ${coverageBar(indexed, available, color)}
-          <span style="width:78px;text-align:right;font-variant-numeric:tabular-nums;color:#6b7280;white-space:nowrap;">
+          <span style="width:90px;min-width:90px;text-align:right;font-variant-numeric:tabular-nums;color:#6b7280;white-space:nowrap;flex-shrink:0;font-size:11.5px;">
             ${indexed.toLocaleString('es-ES')} / ${available.toLocaleString('es-ES')}
-            <span style="color:#9ca3af;font-size:11px;"> (${p}%)</span>
+            <span style="color:#9ca3af;font-size:10.5px;"> (${p}%)</span>
           </span>
-          ${pendingBadge}
+          <span style="margin-left:auto;flex-shrink:0;">${pendingBadge}</span>
         </div>`;
     }
     async function loadCoverage() {
@@ -9858,7 +9858,10 @@
         statCard('Indexables',       lib.indexable ?? 0) +
         statCard('Indexados',        lib.indexed ?? 0, '#15803d') +
         statCard('Sin modelo actual', lib.eligible ?? 0, (lib.eligible ?? 0) > 0 ? '#b45309' : '#15803d',
-                 'Artículos con texto pero sin vectores del modelo actual (voyage-4-large). Start los procesa.');
+                 'Artículos con texto que NO tienen ningún chunk indexado con el modelo actual (voyage-4-large). ' +
+                 'Un artículo puede estar aquí en 0 y aun así tener fuentes pendientes en el panel de arriba: ' +
+                 'eso significa que ya tiene chunks con el modelo actual pero le falta alguna fuente (PDF, abstract o resumen IA). ' +
+                 'Start procesa los artículos sin ningún chunk; los botones de cobertura añaden fuentes a los ya indexados.');
 
       if (s.running) {
         progWrap.style.display = 'block';
