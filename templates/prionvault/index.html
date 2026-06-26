@@ -1638,6 +1638,19 @@
       este modal no detiene el proceso.
     </p>
 
+    <!-- Source coverage panel -->
+    <div id="pv-bi-coverage" style="margin-bottom:16px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+      <div style="background:#f9fafb;padding:8px 14px;font-size:12px;font-weight:600;color:#6b7280;
+                  border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:6px;">
+        <i class="fas fa-layer-group" style="color:#0F3460;"></i> Cobertura de fuentes indexadas
+        <button id="pv-bi-coverage-refresh" title="Actualizar estadísticas"
+                style="margin-left:auto;background:none;border:none;color:#9ca3af;font-size:13px;cursor:pointer;padding:0 2px;">↻</button>
+      </div>
+      <div id="pv-bi-coverage-rows" style="padding:10px 14px;display:flex;flex-direction:column;gap:8px;">
+        <div style="color:#9ca3af;font-size:12px;text-align:center;padding:8px 0;">Cargando…</div>
+      </div>
+    </div>
+
     <div id="pv-bi-stats" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px;"></div>
 
     <div id="pv-bi-progress-wrap" style="display:none;margin-bottom:14px;">

@@ -6060,6 +6060,55 @@ def api_batch_index_start():
     return jsonify({"ok": True, "status": snap})
 
 
+@prionvault_bp.route("/api/admin/embeddings/coverage", methods=["GET"])
+@admin_required
+def api_embeddings_coverage():
+    """Return chunk coverage stats per source_field (pdf / abstract / summary_ai)."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    try:
+        with _db.engine.connect() as conn:
+            # Total articles
+            total = conn.execute(_t("SELECT count(*) FROM articles")).scalar() or 0
+            # PDF indexed
+            pdf_indexed = conn.execute(_t(
+                "SELECT count(DISTINCT article_id) FROM article_chunk "
+                "WHERE source_field = 'extracted_text'"
+            )).scalar() or 0
+            # Abstracts available (not placeholder, not unavailable)
+            abstracts_available = conn.execute(_t(
+                """SELECT count(*) FROM articles
+                    WHERE abstract IS NOT NULL AND length(abstract) > 50
+                      AND (abstract_unavailable IS NULL OR abstract_unavailable = FALSE)
+                      AND lower(abstract) NOT LIKE '%no abstract available%'
+                      AND lower(abstract) NOT LIKE '%abstract not available%'
+                      AND lower(abstract) NOT LIKE '%no abstract%'"""
+            )).scalar() or 0
+            # Abstracts indexed
+            abstract_indexed = conn.execute(_t(
+                "SELECT count(DISTINCT article_id) FROM article_chunk "
+                "WHERE source_field = 'abstract'"
+            )).scalar() or 0
+            # Summaries available
+            summaries_available = conn.execute(_t(
+                "SELECT count(*) FROM articles "
+                "WHERE summary_ai IS NOT NULL AND length(summary_ai) > 100"
+            )).scalar() or 0
+            # Summaries indexed
+            summary_indexed = conn.execute(_t(
+                "SELECT count(DISTINCT article_id) FROM article_chunk "
+                "WHERE source_field = 'summary_ai'"
+            )).scalar() or 0
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    return jsonify({
+        "total": total,
+        "pdf":      {"available": total,        "indexed": pdf_indexed},
+        "abstract": {"available": abstracts_available, "indexed": abstract_indexed},
+        "summary":  {"available": summaries_available, "indexed": summary_indexed},
+    })
+
+
 @prionvault_bp.route("/api/admin/embeddings/add-abstracts", methods=["POST"])
 @admin_required
 def api_embeddings_add_abstracts():

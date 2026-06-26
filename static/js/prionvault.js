@@ -9761,11 +9761,58 @@
     const errorEl    = document.getElementById('pv-bi-error');
     const costEl     = document.getElementById('pv-bi-cost');
     const modelEl    = document.getElementById('pv-bi-model');
+    const coverageRows = document.getElementById('pv-bi-coverage-rows');
+    const coverageRefresh = document.getElementById('pv-bi-coverage-refresh');
+
+    function pct(n, total) {
+      if (!total) return 0;
+      return Math.round(n / total * 100);
+    }
+    function coverageBar(indexed, available, color) {
+      const p = pct(indexed, available);
+      return `<div style="flex:1;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:${p}%;background:${color};border-radius:3px;transition:width .4s;"></div>
+              </div>`;
+    }
+    function coverageRow(icon, label, color, indexed, available, pending, btnId) {
+      const p = pct(indexed, available);
+      const pendingBadge = pending > 0
+        ? `<span style="background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:700;
+                        padding:1px 6px;border-radius:10px;white-space:nowrap;">+${pending.toLocaleString('es-ES')} pendientes</span>`
+        : `<span style="background:#dcfce7;color:#15803d;font-size:10.5px;font-weight:700;
+                        padding:1px 6px;border-radius:10px;">✓ al día</span>`;
+      return `
+        <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;">
+          <span style="width:18px;text-align:center;font-size:14px;">${icon}</span>
+          <span style="width:110px;color:#374151;font-weight:600;">${esc(label)}</span>
+          ${coverageBar(indexed, available, color)}
+          <span style="width:78px;text-align:right;font-variant-numeric:tabular-nums;color:#6b7280;white-space:nowrap;">
+            ${indexed.toLocaleString('es-ES')} / ${available.toLocaleString('es-ES')}
+            <span style="color:#9ca3af;font-size:11px;"> (${p}%)</span>
+          </span>
+          ${pendingBadge}
+        </div>`;
+    }
+    async function loadCoverage() {
+      if (!coverageRows) return;
+      coverageRows.innerHTML = '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:8px 0;">Cargando…</div>';
+      try {
+        const c = await api('/admin/embeddings/coverage');
+        coverageRows.innerHTML = [
+          coverageRow('📄', 'PDF completo', '#0F3460', c.pdf.indexed,      c.pdf.available,      c.pdf.available - c.pdf.indexed,           'pv-bi-start'),
+          coverageRow('📝', 'Abstract',     '#1d4ed8', c.abstract.indexed,  c.abstract.available, c.abstract.available - c.abstract.indexed,  'pv-bi-add-abstracts'),
+          coverageRow('🤖', 'Resumen IA',   '#15803d', c.summary.indexed,   c.summary.available,  c.summary.available - c.summary.indexed,    'pv-bi-add-summaries'),
+        ].join('');
+      } catch (e) {
+        coverageRows.innerHTML = `<div style="color:#b91c1c;font-size:12px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+    if (coverageRefresh) coverageRefresh.addEventListener('click', loadCoverage);
 
     let pollHandle = null;
     function stopPolling() { if (pollHandle) { clearInterval(pollHandle); pollHandle = null; } }
     function startPolling() { stopPolling(); pollHandle = setInterval(refresh, 1800); }
-    function open()  { modal.style.display = 'flex'; refresh(); startPolling(); }
+    function open()  { modal.style.display = 'flex'; refresh(); loadCoverage(); startPolling(); }
     function close() { modal.style.display = 'none'; stopPolling(); }
     btn.addEventListener('click', open);
     closeBtn.addEventListener('click', close);
@@ -9917,6 +9964,7 @@
         try {
           const r = await api('/admin/embeddings/add-summaries', { method: 'POST' });
           alert(`OK — ${r.detail}`);
+          loadCoverage();
         } catch (e) {
           alert('Error: ' + e.message);
         } finally {
@@ -9945,6 +9993,7 @@
         try {
           const r = await api('/admin/embeddings/add-abstracts', { method: 'POST' });
           alert(`OK — ${r.detail}`);
+          loadCoverage();
         } catch (e) {
           alert('Error: ' + e.message);
         } finally {
