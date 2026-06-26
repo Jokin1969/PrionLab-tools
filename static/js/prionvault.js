@@ -13694,4 +13694,234 @@
     _initGlobalChev();
   });
 
+  // ── Notifications / Email Digest Modal ────────────────────────────────────
+  (function initNotificationsModal() {
+    const modal      = document.getElementById('pv-notifications-modal');
+    const openBtn    = document.getElementById('btn-notifications');
+    const closeBtn   = document.getElementById('pv-notif-close');
+    const cancelBtn  = document.getElementById('pv-notif-cancel');
+    const saveBtn    = document.getElementById('pv-notif-save');
+    const testBtn    = document.getElementById('pv-notif-test');
+    const statusEl   = document.getElementById('pv-notif-status');
+    const backdrop   = modal?.querySelector('.pv-modal-backdrop');
+
+    // Form fields
+    const enabledCb  = document.getElementById('pv-notif-enabled');
+    const toggleTrack= document.getElementById('pv-notif-toggle-track');
+    const toggleThumb= document.getElementById('pv-notif-toggle-thumb');
+    const toggleLbl  = document.getElementById('pv-notif-toggle-label');
+    const emailInp   = document.getElementById('pv-notif-email');
+    const topicsWrap = document.getElementById('pv-notif-topics');
+    const freqSel    = document.getElementById('pv-notif-frequency');
+    const dowSel     = document.getElementById('pv-notif-dow');
+    const timeInp    = document.getElementById('pv-notif-time');
+    const tzSel      = document.getElementById('pv-notif-timezone');
+    const lookbackSel= document.getElementById('pv-notif-lookback');
+    const oaOnlyCb   = document.getElementById('pv-notif-oa-only');
+    const nextWrap   = document.getElementById('pv-notif-next-wrap');
+    const nextText   = document.getElementById('pv-notif-next-text');
+    const lastWrap   = document.getElementById('pv-notif-last-wrap');
+    const lastText   = document.getElementById('pv-notif-last-text');
+
+    if (!modal || !openBtn) return;
+
+    const TOPICS = {
+      prion:      { label: 'Prion',               color: '#0F3460', bg: '#e0e7ff' },
+      prion_like: { label: 'Prion-like',           color: '#7c3aed', bg: '#ede9fe' },
+      aav:        { label: 'AAV / Gene therapy',   color: '#065f46', bg: '#d1fae5' },
+    };
+    const DAYS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+
+    // ── Toggle switch wiring ──────────────────────────────────────────────
+    function _paintToggle() {
+      const on = enabledCb.checked;
+      toggleTrack.style.background = on ? '#0F3460' : '#d1d5db';
+      toggleThumb.style.transform  = on ? 'translateX(18px)' : 'translateX(0)';
+      toggleLbl.textContent        = on ? 'Activado' : 'Desactivado';
+    }
+    enabledCb.addEventListener('change', _paintToggle);
+    toggleTrack.addEventListener('click', () => {
+      enabledCb.checked = !enabledCb.checked;
+      _paintToggle();
+    });
+
+    // ── Topic chips ───────────────────────────────────────────────────────
+    function _renderTopics(selected) {
+      topicsWrap.innerHTML = '';
+      Object.entries(TOPICS).forEach(([key, info]) => {
+        const active = selected.includes(key);
+        const chip = document.createElement('label');
+        chip.style.cssText = `display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
+          border-radius:20px;border:2px solid ${active ? info.color : '#d1d5db'};
+          background:${active ? info.bg : '#f9fafb'};cursor:pointer;
+          font-size:13px;font-weight:600;color:${active ? info.color : '#6b7280'};
+          transition:all 0.15s;user-select:none;`;
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = key;
+        cb.checked = active;
+        cb.style.display = 'none';
+        cb.addEventListener('change', () => {
+          const sel = _selectedTopics();
+          chip.style.borderColor = cb.checked ? info.color : '#d1d5db';
+          chip.style.background  = cb.checked ? info.bg : '#f9fafb';
+          chip.style.color       = cb.checked ? info.color : '#6b7280';
+        });
+        chip.appendChild(cb);
+        chip.appendChild(document.createTextNode(info.label));
+        chip.addEventListener('click', () => {
+          cb.checked = !cb.checked;
+          cb.dispatchEvent(new Event('change'));
+        });
+        topicsWrap.appendChild(chip);
+      });
+    }
+
+    function _selectedTopics() {
+      return Array.from(topicsWrap.querySelectorAll('input[type=checkbox]'))
+        .filter(c => c.checked).map(c => c.value);
+    }
+
+    // ── Timezone selector ─────────────────────────────────────────────────
+    async function _loadTimezones() {
+      try {
+        const zones = await api('/notifications/timezones');
+        tzSel.innerHTML = zones.map(z =>
+          `<option value="${z}">${z.replace(/_/g,' ')}</option>`
+        ).join('');
+      } catch (_) {
+        tzSel.innerHTML = '<option value="UTC">UTC</option><option value="Europe/Madrid">Europe/Madrid</option>';
+      }
+    }
+
+    // ── Load subscription ─────────────────────────────────────────────────
+    async function _load() {
+      await _loadTimezones();
+      let sub;
+      try {
+        sub = await api('/notifications/subscription');
+      } catch (e) {
+        _showStatus('error', 'No se pudo cargar la configuración: ' + e.message);
+        return;
+      }
+      enabledCb.checked = !!sub.enabled;
+      _paintToggle();
+      emailInp.value = sub.email || '';
+      _renderTopics(sub.topics || ['prion']);
+      freqSel.value    = sub.frequency    || 'weekly';
+      dowSel.value     = String(sub.day_of_week ?? 4);
+      const h = String(sub.send_hour  ?? 15).padStart(2,'0');
+      const m = String(sub.send_minute ?? 0).padStart(2,'0');
+      timeInp.value    = `${h}:${m}`;
+      // Set timezone
+      const tzVal = sub.user_timezone || 'UTC';
+      const tzOpt = tzSel.querySelector(`option[value="${tzVal}"]`);
+      if (tzOpt) tzSel.value = tzVal;
+      else { const opt = new Option(tzVal, tzVal); tzSel.add(opt); tzSel.value = tzVal; }
+      lookbackSel.value = String(sub.lookback_days ?? 7);
+      oaOnlyCb.checked  = !!sub.include_oa_only;
+
+      if (sub.next_send_at) {
+        const d = new Date(sub.next_send_at);
+        nextText.textContent = `Próximo envío: ${d.toLocaleDateString('es-ES',{
+          weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'
+        })} (UTC)`;
+        nextWrap.style.display = 'block';
+      } else {
+        nextWrap.style.display = 'none';
+      }
+      if (sub.last_sent_at) {
+        const d = new Date(sub.last_sent_at);
+        lastText.textContent = d.toLocaleDateString('es-ES',{
+          weekday:'long', day:'numeric', month:'long', year:'numeric',
+          hour:'2-digit', minute:'2-digit'});
+        lastWrap.style.display = 'block';
+      } else {
+        lastWrap.style.display = 'none';
+      }
+    }
+
+    // ── Status bar ────────────────────────────────────────────────────────
+    function _showStatus(type, msg) {
+      statusEl.textContent = msg;
+      statusEl.style.display = 'block';
+      if (type === 'ok') {
+        statusEl.style.background = '#f0fdf4';
+        statusEl.style.color      = '#15803d';
+        statusEl.style.border     = '1px solid #bbf7d0';
+      } else {
+        statusEl.style.background = '#fef2f2';
+        statusEl.style.color      = '#b91c1c';
+        statusEl.style.border     = '1px solid #fecaca';
+      }
+      setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+    }
+
+    // ── Save ──────────────────────────────────────────────────────────────
+    saveBtn.addEventListener('click', async () => {
+      const topics = _selectedTopics();
+      if (topics.length === 0) {
+        _showStatus('error', 'Selecciona al menos un tema.');
+        return;
+      }
+      const [hh, mm] = (timeInp.value || '15:00').split(':');
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Guardando…';
+      try {
+        const r = await api('/notifications/subscription', {
+          method: 'POST',
+          body: JSON.stringify({
+            enabled:        enabledCb.checked,
+            email:          emailInp.value.trim(),
+            topics,
+            frequency:      freqSel.value,
+            day_of_week:    parseInt(dowSel.value),
+            send_hour:      parseInt(hh || 15),
+            send_minute:    parseInt(mm || 0),
+            user_timezone:  tzSel.value,
+            lookback_days:  parseInt(lookbackSel.value),
+            include_oa_only: oaOnlyCb.checked,
+          }),
+        });
+        if (r.next_send_at) {
+          const d = new Date(r.next_send_at);
+          nextText.textContent = `Próximo envío: ${d.toLocaleDateString('es-ES',{
+            weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'
+          })} (UTC)`;
+          nextWrap.style.display = 'block';
+        }
+        _showStatus('ok', '✓ Configuración guardada.');
+      } catch (e) {
+        _showStatus('error', 'Error al guardar: ' + e.message);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-save" style="margin-right:6px;"></i>Guardar';
+      }
+    });
+
+    // ── Test send ─────────────────────────────────────────────────────────
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…';
+      try {
+        const r = await api('/notifications/test', { method: 'POST' });
+        _showStatus('ok', '✓ ' + (r.detail || 'Email de prueba enviado.'));
+      } catch (e) {
+        const msg = e.responseJSON?.detail || e.message || 'Error desconocido';
+        _showStatus('error', 'Error: ' + msg);
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar prueba';
+      }
+    });
+
+    // ── Open / close ──────────────────────────────────────────────────────
+    function _open()  { modal.style.display = 'flex'; _load(); }
+    function _close() { modal.style.display = 'none'; statusEl.style.display = 'none'; }
+    openBtn.addEventListener('click', _open);
+    closeBtn.addEventListener('click', _close);
+    cancelBtn.addEventListener('click', _close);
+    backdrop.addEventListener('click', _close);
+  })();
+
 })();

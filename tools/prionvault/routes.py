@@ -7700,3 +7700,205 @@ def api_export_refs_docx():
         return jsonify({'error': str(exc)}), 500
     finally:
         db.Session.remove()
+
+
+# ── Email digest / notification subscriptions ────────────────────────────────
+
+@prionvault_bp.route("/api/notifications/subscription", methods=["GET"])
+@login_required
+def api_notifications_get():
+    """Return the current user's notification subscription (or empty defaults)."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from flask_login import current_user
+
+    try:
+        with _db.engine.connect() as conn:
+            row = conn.execute(_t(
+                "SELECT * FROM prionvault_notification_subscriptions "
+                "WHERE user_id = :uid"
+            ), {"uid": str(current_user.id)}).mappings().first()
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+
+    if row:
+        sub = dict(row)
+        # Serialise non-JSON-serialisable fields
+        for k in ("id", "user_id"):
+            if sub.get(k):
+                sub[k] = str(sub[k])
+        for k in ("last_sent_at", "next_send_at", "created_at", "updated_at"):
+            if sub.get(k):
+                sub[k] = sub[k].isoformat()
+        return jsonify(sub)
+
+    # Return sensible defaults when not yet configured
+    return jsonify({
+        "enabled": False,
+        "email": current_user.email or "",
+        "topics": ["prion"],
+        "frequency": "weekly",
+        "day_of_week": 4,
+        "send_hour": 15,
+        "send_minute": 0,
+        "user_timezone": "UTC",
+        "lookback_days": 7,
+        "include_oa_only": False,
+        "last_sent_at": None,
+        "next_send_at": None,
+    })
+
+
+@prionvault_bp.route("/api/notifications/subscription", methods=["POST"])
+@login_required
+def api_notifications_save():
+    """Create or update the current user's notification subscription."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from flask_login import current_user
+    from .services.email_digest import compute_next_send
+
+    data = request.get_json(silent=True) or {}
+
+    # Validate
+    topics = [t for t in (data.get("topics") or []) if isinstance(t, str)]
+    if not topics:
+        topics = ["prion"]
+    freq = data.get("frequency", "weekly")
+    if freq not in ("weekly", "biweekly", "monthly"):
+        freq = "weekly"
+    try:
+        dow = int(data.get("day_of_week", 4))
+        dow = max(0, min(6, dow))
+    except (TypeError, ValueError):
+        dow = 4
+    try:
+        hour = int(data.get("send_hour", 15))
+        hour = max(0, min(23, hour))
+    except (TypeError, ValueError):
+        hour = 15
+    try:
+        minute = int(data.get("send_minute", 0))
+        minute = max(0, min(59, minute))
+    except (TypeError, ValueError):
+        minute = 0
+    try:
+        lookback = int(data.get("lookback_days", 7))
+        if lookback not in (7, 14, 30):
+            lookback = 7
+    except (TypeError, ValueError):
+        lookback = 7
+    email = (data.get("email") or "").strip() or (current_user.email or "")
+    tz    = (data.get("user_timezone") or "UTC").strip()
+    enabled = bool(data.get("enabled", True))
+    oa_only = bool(data.get("include_oa_only", False))
+
+    import json as _json
+    sub_draft = {
+        "frequency":   freq,
+        "day_of_week": dow,
+        "send_hour":   hour,
+        "send_minute": minute,
+        "user_timezone": tz,
+    }
+    next_send = compute_next_send(sub_draft)
+
+    try:
+        with _db.engine.begin() as conn:
+            conn.execute(_t("""
+                INSERT INTO prionvault_notification_subscriptions
+                    (user_id, enabled, email, topics, frequency, day_of_week,
+                     send_hour, send_minute, user_timezone, lookback_days,
+                     include_oa_only, next_send_at, updated_at)
+                VALUES
+                    (:uid, :enabled, :email, :topics::jsonb, :freq, :dow,
+                     :hour, :minute, :tz, :lookback,
+                     :oa_only, :next_send, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET
+                    enabled         = EXCLUDED.enabled,
+                    email           = EXCLUDED.email,
+                    topics          = EXCLUDED.topics,
+                    frequency       = EXCLUDED.frequency,
+                    day_of_week     = EXCLUDED.day_of_week,
+                    send_hour       = EXCLUDED.send_hour,
+                    send_minute     = EXCLUDED.send_minute,
+                    user_timezone   = EXCLUDED.user_timezone,
+                    lookback_days   = EXCLUDED.lookback_days,
+                    include_oa_only = EXCLUDED.include_oa_only,
+                    next_send_at    = EXCLUDED.next_send_at,
+                    updated_at      = NOW()
+            """), {
+                "uid": str(current_user.id),
+                "enabled": enabled,
+                "email": email,
+                "topics": _json.dumps(topics),
+                "freq": freq,
+                "dow": dow,
+                "hour": hour,
+                "minute": minute,
+                "tz": tz,
+                "lookback": lookback,
+                "oa_only": oa_only,
+                "next_send": next_send,
+            })
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+
+    return jsonify({"ok": True, "next_send_at": next_send.isoformat()})
+
+
+@prionvault_bp.route("/api/notifications/test", methods=["POST"])
+@login_required
+def api_notifications_test():
+    """Send a test digest email right now (ignores next_send_at)."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from flask_login import current_user
+    from config import smtp_configured
+
+    if not smtp_configured():
+        return jsonify({"error": "smtp_not_configured",
+                        "detail": "SMTP no configurado en el servidor."}), 503
+
+    try:
+        with _db.engine.connect() as conn:
+            row = conn.execute(_t(
+                "SELECT id::text FROM prionvault_notification_subscriptions "
+                "WHERE user_id = :uid"
+            ), {"uid": str(current_user.id)}).scalar()
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+
+    if not row:
+        return jsonify({"error": "no_subscription",
+                        "detail": "Guarda primero la configuración antes de enviar prueba."}), 400
+
+    from .services.email_digest import send_digest_for_sub
+    ok = send_digest_for_sub(str(row), force=True)
+    if ok:
+        return jsonify({"ok": True, "detail": "Email de prueba enviado."})
+    return jsonify({"error": "send_failed",
+                    "detail": "No se pudo enviar el email. Revisa la configuración SMTP."}), 502
+
+
+@prionvault_bp.route("/api/notifications/timezones", methods=["GET"])
+@login_required
+def api_notifications_timezones():
+    """Return a short list of common timezones for the UI selector."""
+    zones = [
+        "UTC",
+        "Europe/Madrid",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Berlin",
+        "America/New_York",
+        "America/Chicago",
+        "America/Denver",
+        "America/Los_Angeles",
+        "America/Sao_Paulo",
+        "Asia/Tokyo",
+        "Asia/Shanghai",
+        "Asia/Kolkata",
+        "Australia/Sydney",
+    ]
+    return jsonify(zones)
