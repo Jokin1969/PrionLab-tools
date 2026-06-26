@@ -7744,14 +7744,18 @@ def api_notifications_get():
     """Return the current user's notification subscription (or empty defaults)."""
     from sqlalchemy import text as _t
     from database.config import db as _db
-    from flask_login import current_user
+    from core.users import get_user as _get_user
+    _uid = session.get("user_id")
+    _uname = session.get("username", "")
+    _uobj = _get_user(_uname) or {}
+    _uemail = _uobj.get("email", "")
 
     try:
         with _db.engine.connect() as conn:
             row = conn.execute(_t(
                 "SELECT * FROM prionvault_notification_subscriptions "
                 "WHERE user_id = :uid"
-            ), {"uid": str(current_user.id)}).mappings().first()
+            ), {"uid": str(_uid)}).mappings().first()
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
 
@@ -7769,7 +7773,7 @@ def api_notifications_get():
     # Return sensible defaults when not yet configured
     return jsonify({
         "enabled": False,
-        "email": current_user.email or "",
+        "email": _uemail,
         "topics": ["prion"],
         "frequency": "weekly",
         "day_of_week": 4,
@@ -7789,8 +7793,11 @@ def api_notifications_save():
     """Create or update the current user's notification subscription."""
     from sqlalchemy import text as _t
     from database.config import db as _db
-    from flask_login import current_user
+    from core.users import get_user as _get_user
     from .services.email_digest import compute_next_send
+    _uid = session.get("user_id")
+    _uname = session.get("username", "")
+    _uemail = (_get_user(_uname) or {}).get("email", "")
 
     data = request.get_json(silent=True) or {}
 
@@ -7822,7 +7829,7 @@ def api_notifications_save():
             lookback = 7
     except (TypeError, ValueError):
         lookback = 7
-    email = (data.get("email") or "").strip() or (current_user.email or "")
+    email = (data.get("email") or "").strip() or _uemail
     tz    = (data.get("user_timezone") or "UTC").strip()
     enabled = bool(data.get("enabled", True))
     oa_only = bool(data.get("include_oa_only", False))
@@ -7862,7 +7869,7 @@ def api_notifications_save():
                     next_send_at    = EXCLUDED.next_send_at,
                     updated_at      = NOW()
             """), {
-                "uid": str(current_user.id),
+                "uid": str(_uid),
                 "enabled": enabled,
                 "email": email,
                 "topics": _json.dumps(topics),
@@ -7887,8 +7894,8 @@ def api_notifications_test():
     """Send a test digest email right now (ignores next_send_at)."""
     from sqlalchemy import text as _t
     from database.config import db as _db
-    from flask_login import current_user
     from config import smtp_configured
+    _uid = session.get("user_id")
 
     if not smtp_configured():
         return jsonify({"error": "smtp_not_configured",
@@ -7899,7 +7906,7 @@ def api_notifications_test():
             row = conn.execute(_t(
                 "SELECT id::text FROM prionvault_notification_subscriptions "
                 "WHERE user_id = :uid"
-            ), {"uid": str(current_user.id)}).scalar()
+            ), {"uid": str(_uid)}).scalar()
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
 
