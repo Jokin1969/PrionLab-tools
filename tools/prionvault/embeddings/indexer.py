@@ -60,20 +60,19 @@ def _choose_sources(extracted_text, summary_ai, abstract) -> list[tuple[str, str
     sources: list[tuple[str, str]] = []
     if has_extracted:
         sources.append(("extracted_text", extracted_text))
-        # Summary as a COMPLEMENTARY second source — different
-        # phrasing of the same paper. Indexing both makes "GAGs"-style
-        # queries land on the right paper whether the author wrote
-        # "heparan sulfate" or the summarizer wrote "GAGs".
         if has_summary:
             sources.append(("summary_ai", summary_ai))
     elif has_summary:
         sources.append(("summary_ai", summary_ai))
-        # Abstract is the author's original English text — complementary to
-        # an AI summary that may paraphrase or translate key terms. Without
-        # this, phrases like "procrustean bed" (present in the abstract but
-        # not in the Spanish summary) are unsearchable.
-        if has_abstract:
-            sources.append(("abstract", abstract))
+
+    # Always index the abstract as a complementary source when available.
+    # The abstract is the author's authoritative short text in the original
+    # language. PDF extraction can garble or miss it, and AI summaries
+    # paraphrase/translate it — so exact author phrases like "procrustean
+    # bed" may only survive in the abstract field. Skip only when the
+    # abstract is already the sole source (to avoid double-indexing).
+    if has_abstract and (has_extracted or has_summary):
+        sources.append(("abstract", abstract))
     elif has_abstract:
         sources.append(("abstract", abstract))
     return sources
