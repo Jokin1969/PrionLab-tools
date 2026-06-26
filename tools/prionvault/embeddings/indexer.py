@@ -68,6 +68,12 @@ def _choose_sources(extracted_text, summary_ai, abstract) -> list[tuple[str, str
             sources.append(("summary_ai", summary_ai))
     elif has_summary:
         sources.append(("summary_ai", summary_ai))
+        # Abstract is the author's original English text — complementary to
+        # an AI summary that may paraphrase or translate key terms. Without
+        # this, phrases like "procrustean bed" (present in the abstract but
+        # not in the Spanish summary) are unsearchable.
+        if has_abstract:
+            sources.append(("abstract", abstract))
     elif has_abstract:
         sources.append(("abstract", abstract))
     return sources
