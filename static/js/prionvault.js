@@ -9770,7 +9770,7 @@
     }
     function coverageBar(indexed, available, color) {
       const p = pct(indexed, available);
-      return `<div style="flex:1;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;">
+      return `<div style="width:90px;min-width:90px;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;">
                 <div style="height:100%;width:${p}%;background:${color};border-radius:3px;transition:width .4s;"></div>
               </div>`;
     }
@@ -9803,6 +9803,21 @@
           coverageRow('📝', 'Abstract',     '#1d4ed8', c.abstract.indexed,  c.abstract.available, c.abstract.available - c.abstract.indexed,  'pv-bi-add-abstracts'),
           coverageRow('🤖', 'Resumen IA',   '#15803d', c.summary.indexed,   c.summary.available,  c.summary.available - c.summary.indexed,    'pv-bi-add-summaries'),
         ].join('');
+        // Update button labels to show pending counts
+        const absPending = c.abstract.available - c.abstract.indexed;
+        const sumPending = c.summary.available - c.summary.indexed;
+        const absBtn = document.getElementById('pv-bi-add-abstracts');
+        if (absBtn && !absBtn.disabled) {
+          absBtn.textContent = absPending > 0
+            ? `+ Añadir abstracts (${absPending.toLocaleString('es-ES')} pendientes)`
+            : '✓ Abstracts al día';
+        }
+        const sumBtn = document.getElementById('pv-bi-add-summaries');
+        if (sumBtn && !sumBtn.disabled) {
+          sumBtn.textContent = sumPending > 0
+            ? `+ Añadir resúmenes IA (${sumPending.toLocaleString('es-ES')} pendientes)`
+            : '✓ Resúmenes IA al día';
+        }
       } catch (e) {
         coverageRows.innerHTML = `<div style="color:#b91c1c;font-size:12px;">Error: ${esc(e.message)}</div>`;
       }
@@ -9818,8 +9833,10 @@
     closeBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
 
-    function statCard(label, value, color) {
-      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+    function statCard(label, value, color, tooltip) {
+      const titleAttr = tooltip ? ` title="${esc(tooltip)}"` : '';
+      const cursor = tooltip ? 'cursor:help;' : '';
+      return `<div${titleAttr} style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;${cursor}">
                 <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
                 <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
               </div>`;
@@ -9837,10 +9854,11 @@
       if (modelEl && s.embed_model) modelEl.textContent = s.embed_model;
       const lib = s.library_stats || {};
       statsEl.innerHTML =
-        statCard('Total',       lib.total ?? 0) +
-        statCard('Indexables',  lib.indexable ?? 0) +
-        statCard('Indexados',   lib.indexed ?? 0, '#15803d') +
-        statCard('Pendientes',  lib.eligible ?? 0, '#b45309');
+        statCard('Total',            lib.total ?? 0) +
+        statCard('Indexables',       lib.indexable ?? 0) +
+        statCard('Indexados',        lib.indexed ?? 0, '#15803d') +
+        statCard('Sin modelo actual', lib.eligible ?? 0, (lib.eligible ?? 0) > 0 ? '#b45309' : '#15803d',
+                 'Artículos con texto pero sin vectores del modelo actual (voyage-4-large). Start los procesa.');
 
       if (s.running) {
         progWrap.style.display = 'block';
