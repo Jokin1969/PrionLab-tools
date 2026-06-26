@@ -10012,9 +10012,9 @@
         const confirm1 = confirm(
           'BORRAR todos los embeddings existentes y regenerarlos ' +
           'desde cero con el modelo actual (voyage-4-large)?\n\n' +
-          '• Vacía la tabla article_chunk completa.\n' +
-          '• Limpia el index_version de todos los artículos.\n' +
-          '• Lanza el batch_index automáticamente al terminar.\n' +
+          '• Vacía la tabla article_chunk completa (PDF, abstract y resumen IA).\n' +
+          '• Re-indexa TODAS las fuentes disponibles por artículo.\n' +
+          '• Usa esto al cambiar de modelo (ej. Voyage-4 → Voyage-5).\n' +
           '• Durante el reindex la búsqueda IA devuelve "sin ' +
             'resultados" para los artículos aún no procesados.\n' +
           '• Tarda ~30-60 min para 4 k artículos. Coste estimado: ' +
