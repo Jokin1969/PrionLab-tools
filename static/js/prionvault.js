@@ -9883,6 +9883,33 @@
       }
     });
 
+    // Add summary_ai chunks for articles that have a summary but no summary_ai chunk.
+    const addSummariesBtn = document.getElementById('pv-bi-add-summaries');
+    if (addSummariesBtn) {
+      addSummariesBtn.addEventListener('click', async () => {
+        if (!confirm(
+          'Añadir vectorización del resumen IA a los artículos que tienen\n' +
+          'resumen pero no tienen chunk de tipo "summary_ai".\n\n' +
+          '• No toca los chunks existentes (PDF, abstract).\n' +
+          '• Corre en background — la búsqueda sigue funcionando mientras tanto.\n' +
+          '• Solo procesa artículos con resumen (≈800 actualmente).\n\n' +
+          '¿Continuar?'
+        )) return;
+        addSummariesBtn.disabled = true;
+        const orig = addSummariesBtn.textContent;
+        addSummariesBtn.textContent = '⏳ Enviando…';
+        try {
+          const r = await api('/admin/embeddings/add-summaries', { method: 'POST' });
+          alert(`OK — ${r.detail}`);
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          addSummariesBtn.disabled = false;
+          addSummariesBtn.textContent = orig;
+        }
+      });
+    }
+
     // Add abstract chunks to articles that have chunks but no abstract chunk.
     const addAbstractsBtn = document.getElementById('pv-bi-add-abstracts');
     if (addAbstractsBtn) {
@@ -9890,6 +9917,7 @@
         if (!confirm(
           'Añadir vectorización del abstract a todos los artículos que ya tienen\n' +
           'chunks pero no tienen chunk de tipo "abstract".\n\n' +
+          '• Omite artículos marcados como "abstract no disponible".\n' +
           '• No toca los chunks existentes (PDF, summary_ai).\n' +
           '• Corre en background — la búsqueda sigue funcionando mientras tanto.\n' +
           '• Coste estimado: ~$0.25 para 4 000 artículos.\n\n' +
