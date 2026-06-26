@@ -7852,7 +7852,7 @@ def api_notifications_save():
                      send_hour, send_minute, user_timezone, lookback_days,
                      include_oa_only, next_send_at, updated_at)
                 VALUES
-                    (:uid, :enabled, :email, :topics::jsonb, :freq, :dow,
+                    (:uid, :enabled, :email, CAST(:topics AS jsonb), :freq, :dow,
                      :hour, :minute, :tz, :lookback,
                      :oa_only, :next_send, NOW())
                 ON CONFLICT (user_id) DO UPDATE SET
@@ -7946,7 +7946,7 @@ def api_notifications_test():
                          send_hour, send_minute, user_timezone, lookback_days,
                          include_oa_only, next_send_at, updated_at)
                     VALUES
-                        (:uid, true, :email, :topics::jsonb, :freq, :dow,
+                        (:uid, true, :email, CAST(:topics AS jsonb), :freq, :dow,
                          :hour, :minute, 'UTC', 7, false, :next_send, NOW())
                     ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
                     RETURNING id::text
