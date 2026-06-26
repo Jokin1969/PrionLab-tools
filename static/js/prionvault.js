@@ -13732,6 +13732,16 @@
   });
 
   // ── Notifications / Email Digest Modal ────────────────────────────────────
+  async function _notifApi(path, opts = {}) {
+    const r = await fetch('/prionvault/api' + path, {
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      ...opts,
+    });
+    if (!r.ok) { const t = await r.text(); throw new Error(t || r.statusText); }
+    return r.json();
+  }
+
   document.addEventListener('DOMContentLoaded', function initNotificationsModal() {
     const modal      = document.getElementById('pv-notifications-modal');
     const openBtn    = document.getElementById('btn-notifications');
@@ -13829,7 +13839,7 @@
     // ── Timezone selector ─────────────────────────────────────────────────
     async function _loadTimezones() {
       try {
-        const zones = await api('/notifications/timezones');
+        const zones = await _notifApi('/notifications/timezones');
         tzSel.innerHTML = zones.map(z =>
           `<option value="${z}">${z.replace(/_/g,' ')}</option>`
         ).join('');
@@ -13845,7 +13855,7 @@
       await _loadTimezones();
       let sub;
       try {
-        sub = await api('/notifications/subscription');
+        sub = await _notifApi('/notifications/subscription');
       } catch (e) {
         _showStatus('error', 'No se pudo cargar la configuración: ' + e.message);
         // Render default state so form is usable
@@ -13910,7 +13920,7 @@
       saveBtn.disabled = true;
       saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Guardando…';
       try {
-        const r = await api('/notifications/subscription', {
+        const r = await _notifApi('/notifications/subscription', {
           method: 'POST',
           body: JSON.stringify({
             enabled:         enabledCb.checked,
@@ -13946,7 +13956,7 @@
       testBtn.disabled = true;
       testBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:4px;"></i> Enviando…';
       try {
-        const r = await api('/notifications/test', { method: 'POST' });
+        const r = await _notifApi('/notifications/test', { method: 'POST' });
         _showStatus('ok', '✓ ' + (r.detail || 'Email de prueba enviado.'));
       } catch (e) {
         _showStatus('error', 'Error: ' + (e.message || 'No se pudo enviar.'));
