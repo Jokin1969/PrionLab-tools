@@ -80,6 +80,7 @@ _PRIONVAULT_MIGRATIONS = (
     "044_pubmed_inventory_query_name.sql",
     "045_pubmed_inventory_oa_verified.sql",
     "046_notification_subscriptions.sql",
+    "047_notification_multi.sql",
 )
 
 _BOOTSTRAP_SQL = """

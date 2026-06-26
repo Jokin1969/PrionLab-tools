@@ -111,6 +111,55 @@ def compute_next_send(sub: dict, after: Optional[datetime] = None) -> datetime:
 
 # ── Article fetching ─────────────────────────────────────────────────────────
 
+def _fetch_flagged_articles(user_id: str, n: int) -> list[dict]:
+    """Return up to N random articles flagged by user_id (PrionVault Picks)."""
+    from ..ingestion.queue import _get_engine
+    from sqlalchemy import text as _t
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(_t("""
+                SELECT
+                    a.id::text  AS article_id,
+                    a.title,
+                    a.doi,
+                    a.year,
+                    a.journal,
+                    a.pmid,
+                    a.authors
+                FROM prionvault_user_state us
+                JOIN articles a ON a.id = us.article_id
+                WHERE us.user_id = :uid
+                  AND us.is_flagged = TRUE
+                ORDER BY RANDOM()
+                LIMIT :n
+            """), {"uid": user_id, "n": n}).mappings().all()
+        return [dict(r) for r in rows]
+    except Exception as exc:
+        logger.error("email_digest: fetch_flagged failed: %s", exc)
+        return []
+
+
+def _unflag_articles(eng, user_id: str, article_ids: list[str]) -> None:
+    """Clear is_flagged for the given articles for this user."""
+    if not article_ids:
+        return
+    from sqlalchemy import text as _t
+    placeholders = ", ".join(f":aid{i}" for i in range(len(article_ids)))
+    params = {f"aid{i}": aid for i, aid in enumerate(article_ids)}
+    params["uid"] = user_id
+    try:
+        with eng.begin() as conn:
+            conn.execute(_t(f"""
+                UPDATE prionvault_user_state
+                   SET is_flagged = FALSE, updated_at = NOW()
+                 WHERE user_id = :uid
+                   AND article_id::text IN ({placeholders})
+            """), params)
+    except Exception as exc:
+        logger.error("email_digest: unflag failed: %s", exc)
+
+
 def _fetch_new_articles(topics: list[str], since: datetime,
                         oa_only: bool) -> list[dict]:
     """Return inventory rows for the given topics seen after `since` that
@@ -373,6 +422,39 @@ def build_digest_html(articles: list[dict], sub: dict,
 </html>"""
 
 
+def _build_picks_html(cards_html: str, sub: dict, import_base_url: str,
+                      count: int) -> str:
+    """Minimal HTML wrapper for PrionVault Picks emails."""
+    name = sub.get("name") or "PrionVault Picks"
+    base = import_base_url.replace("/import", "")
+    return f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PrionVault Picks</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr><td align="center" style="padding:32px 16px;">
+    <table width="600" cellpadding="0" cellspacing="0"
+           style="background:#fff;border-radius:12px;overflow:hidden;
+                  box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      <tr><td style="background:#0F3460;padding:24px 28px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#fff;">⚑ PrionVault Picks</p>
+        <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.65);">
+          {name} · {count} artículo{'s' if count != 1 else ''} seleccionado{'s' if count != 1 else ''}
+        </p>
+      </td></tr>
+      {cards_html}
+      <tr><td style="background:#f9fafb;padding:16px 28px;text-align:center;
+                     font-size:11.5px;color:#9ca3af;">
+        PrionVault Picks &copy; {datetime.now().year} ·
+        <a href="{base}/prionvault/index" style="color:#0F3460;">Ir a PrionVault</a>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+
 # ── Send one subscription ─────────────────────────────────────────────────────
 
 def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
@@ -399,27 +481,6 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
     if not sub.get("enabled") and not force:
         return False
 
-    # Determine lookback window
-    lookback_days = int(sub.get("lookback_days") or 7)
-    last_sent = sub.get("last_sent_at")
-    if last_sent:
-        try:
-            since = datetime.fromisoformat(str(last_sent)).astimezone(timezone.utc)
-        except Exception:
-            since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-    else:
-        since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-
-    topics   = list(sub.get("topics") or ["prion"])
-    oa_only  = bool(sub.get("include_oa_only"))
-    articles = _fetch_new_articles(topics, since, oa_only)
-
-    # Period label for email subject / header
-    since_str = since.strftime("%-d %b")
-    now_str   = datetime.now(timezone.utc).strftime("%-d %b %Y")
-    period_label = f"{since_str} – {now_str}"
-
-    # Import deep-link base (relative; email client will use full URL via APP_URL)
     try:
         from config import APP_URL
         base = (APP_URL or "").rstrip("/")
@@ -427,36 +488,89 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
         base = ""
     import_base_url = f"{base}/prionvault/import" if base else "/prionvault/import"
 
-    html_body = build_digest_html(articles, sub, import_base_url, period_label)
+    source = sub.get("source") or "pubmed"
+    now_utc = datetime.now(timezone.utc)
 
-    count = len(articles)
-    subject = (
-        f"PrionVault · {count} artículo{'s' if count != 1 else ''} nuevo{'s' if count != 1 else ''} "
-        f"({period_label})"
-        if count else
-        f"PrionVault · Sin novedades esta semana ({period_label})"
-    )
+    if source == "flagged":
+        # ── PrionVault Picks ─────────────────────────────────────────────
+        n        = max(1, int(sub.get("articles_per_email") or 5))
+        articles = _fetch_flagged_articles(str(sub["user_id"]), n)
+        count    = len(articles)
 
-    plain = (
-        f"PrionVault Digest – {period_label}\n\n"
-        + (f"{count} artículo(s) nuevos en PubMed para los temas: "
-           + ", ".join(TOPIC_LABELS.get(t, t) for t in topics) + "\n\n"
-           if count else "No hay artículos nuevos este período.\n\n")
-        + "Gestiona tus notificaciones en: " + import_base_url.replace("/import", "")
-    )
+        if count == 0:
+            picks_cards = """
+            <tr><td style="text-align:center;padding:40px 20px;">
+              <p style="font-size:15px;color:#6b7280;margin:0 0 8px;">
+                No hay artículos marcados en tu biblioteca.
+              </p>
+              <p style="font-size:13px;color:#9ca3af;margin:0;">
+                Marca artículos con ⚑ en PrionVault para recibirlos aquí.
+              </p>
+            </td></tr>"""
+        else:
+            picks_cards = "\n".join(_article_card(a, import_base_url) for a in articles)
 
-    from core.smtp_client import send_email
-    ok = send_email(
-        to=sub["email"],
-        subject=subject,
-        body=plain,
-        html=html_body,
-    )
+        subject = (
+            f"PrionVault Picks · {count} artículo{'s' if count != 1 else ''} seleccionado{'s' if count != 1 else ''}"
+            if count else
+            "PrionVault Picks · Sin artículos marcados"
+        )
+        plain = (
+            f"PrionVault Picks – {count} artículo(s) seleccionado(s) de tu biblioteca.\n\n"
+            if count else
+            "No hay artículos marcados en tu biblioteca PrionVault.\n\n"
+        ) + f"Accede en: {base}/prionvault/index"
+
+        html_body = _build_picks_html(picks_cards, sub, import_base_url, count)
+
+        from core.smtp_client import send_email
+        ok = send_email(to=sub["email"], subject=subject, body=plain, html=html_body)
+
+        if ok and count > 0:
+            _unflag_articles(eng, str(sub["user_id"]),
+                             [a["article_id"] for a in articles])
+
+    else:
+        # ── PubMed digest (existing behaviour) ───────────────────────────
+        lookback_days = int(sub.get("lookback_days") or 7)
+        last_sent = sub.get("last_sent_at")
+        if last_sent:
+            try:
+                since = datetime.fromisoformat(str(last_sent)).astimezone(timezone.utc)
+            except Exception:
+                since = now_utc - timedelta(days=lookback_days)
+        else:
+            since = now_utc - timedelta(days=lookback_days)
+
+        topics   = list(sub.get("topics") or ["prion"])
+        oa_only  = bool(sub.get("include_oa_only"))
+        articles = _fetch_new_articles(topics, since, oa_only)
+        count    = len(articles)
+
+        since_str    = since.strftime("%-d %b")
+        now_str      = now_utc.strftime("%-d %b %Y")
+        period_label = f"{since_str} – {now_str}"
+
+        html_body = build_digest_html(articles, sub, import_base_url, period_label)
+        subject = (
+            f"PrionVault · {count} artículo{'s' if count != 1 else ''} nuevo{'s' if count != 1 else ''} "
+            f"({period_label})"
+            if count else
+            f"PrionVault · Sin novedades esta semana ({period_label})"
+        )
+        plain = (
+            f"PrionVault Digest – {period_label}\n\n"
+            + (f"{count} artículo(s) nuevos en PubMed para los temas: "
+               + ", ".join(TOPIC_LABELS.get(t, t) for t in topics) + "\n\n"
+               if count else "No hay artículos nuevos este período.\n\n")
+            + "Gestiona tus notificaciones en: " + import_base_url.replace("/import", "")
+        )
+        from core.smtp_client import send_email
+        ok = send_email(to=sub["email"], subject=subject, body=plain, html=html_body)
 
     if ok:
-        now_utc = datetime.now(timezone.utc)
-        next_send = compute_next_send(
-            {**sub, "last_sent_at": now_utc.isoformat()}, after=now_utc)
+        next_send = compute_next_send({**sub, "last_sent_at": now_utc.isoformat()},
+                                      after=now_utc)
         with eng.begin() as conn:
             conn.execute(_t("""
                 UPDATE prionvault_notification_subscriptions
@@ -465,7 +579,8 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
                        updated_at   = :now
                  WHERE id = :id
             """), {"now": now_utc, "next": next_send, "id": sub_id})
-        logger.info("email_digest: sent to %s (%d articles)", sub["email"], count)
+        logger.info("email_digest: sent to %s (%d articles, source=%s)",
+                    sub["email"], count, source)
 
     return ok
 

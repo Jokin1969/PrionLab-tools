@@ -2974,7 +2974,7 @@
 <!-- ── Notifications / Email Digest Modal ───────────────────────────── -->
 <div id="pv-notifications-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
-  <div class="pv-modal-inner" style="max-width:660px;">
+  <div class="pv-modal-inner" style="max-width:700px;">
     <button class="pv-modal-close" id="pv-notif-close" aria-label="Close">×</button>
 
     <!-- Header -->
@@ -2988,201 +2988,28 @@
           Notificaciones por email
         </h2>
         <p style="margin:0;font-size:12.5px;color:#6b7280;">
-          Digest periódico de novedades en PubMed para tus temas
+          Gestiona todas tus suscripciones de digest
         </p>
-      </div>
-      <!-- Enabled toggle — far right -->
-      <label id="pv-notif-toggle-wrap"
-             style="margin-left:auto;display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;">
-        <span style="font-size:12.5px;font-weight:600;color:#374151;" id="pv-notif-toggle-label">Activado</span>
-        <div style="position:relative;width:40px;height:22px;">
-          <input type="checkbox" id="pv-notif-enabled" style="opacity:0;width:0;height:0;position:absolute;">
-          <span id="pv-notif-toggle-track"
-                style="position:absolute;inset:0;border-radius:11px;background:#d1d5db;
-                       transition:background 0.2s;cursor:pointer;"></span>
-          <span id="pv-notif-toggle-thumb"
-                style="position:absolute;top:3px;left:3px;width:16px;height:16px;
-                       background:#fff;border-radius:50%;transition:transform 0.2s;
-                       box-shadow:0 1px 3px rgba(0,0,0,0.2);pointer-events:none;"></span>
-        </div>
-      </label>
-    </div>
-
-    <div style="height:1px;background:#e5e7eb;margin:14px 0;"></div>
-
-    <!-- Form body -->
-    <div id="pv-notif-form" style="display:flex;flex-direction:column;gap:20px;">
-
-      <!-- Email -->
-      <div>
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;
-                      text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">
-          <i class="fas fa-envelope" style="color:#0F3460;margin-right:5px;"></i>
-          Dirección de email
-        </label>
-        <input type="email" id="pv-notif-email"
-               placeholder="tu@email.com"
-               style="width:100%;box-sizing:border-box;padding:9px 12px;
-                      border:1px solid #d1d5db;border-radius:8px;font-size:13.5px;
-                      color:#111827;outline:none;transition:border-color 0.15s;">
-        <p style="margin:4px 0 0;font-size:11.5px;color:#9ca3af;">
-          Por defecto se usa el email de tu cuenta.
-        </p>
-      </div>
-
-      <!-- Topics -->
-      <div>
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;
-                      text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">
-          <i class="fas fa-tags" style="color:#0F3460;margin-right:5px;"></i>
-          Temas a monitorizar
-        </label>
-        <div id="pv-notif-topics"
-             style="display:flex;flex-wrap:wrap;gap:8px;">
-          <!-- Rendered by JS -->
-        </div>
-        <p style="margin:6px 0 0;font-size:11.5px;color:#9ca3af;">
-          Selecciona al menos un tema. Los artículos se obtienen de PubMed.
-        </p>
-      </div>
-
-      <!-- Schedule row -->
-      <div>
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;
-                      text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">
-          <i class="fas fa-clock" style="color:#0F3460;margin-right:5px;"></i>
-          Programación
-        </label>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-          <!-- Frequency -->
-          <div>
-            <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:4px;">Frecuencia</label>
-            <select id="pv-notif-frequency"
-                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;
-                           border-radius:8px;font-size:13px;color:#111827;background:#fff;">
-              <option value="weekly">Semanal</option>
-              <option value="biweekly">Quincenal</option>
-              <option value="monthly">Mensual</option>
-            </select>
-          </div>
-          <!-- Day of week -->
-          <div>
-            <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:4px;">Día de la semana</label>
-            <select id="pv-notif-dow"
-                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;
-                           border-radius:8px;font-size:13px;color:#111827;background:#fff;">
-              <option value="0">Lunes</option>
-              <option value="1">Martes</option>
-              <option value="2">Miércoles</option>
-              <option value="3">Jueves</option>
-              <option value="4" selected>Viernes</option>
-              <option value="5">Sábado</option>
-              <option value="6">Domingo</option>
-            </select>
-          </div>
-          <!-- Time -->
-          <div>
-            <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:4px;">Hora de envío</label>
-            <input type="time" id="pv-notif-time" value="15:00"
-                   style="width:100%;box-sizing:border-box;padding:8px 10px;
-                          border:1px solid #d1d5db;border-radius:8px;
-                          font-size:13px;color:#111827;background:#fff;">
-          </div>
-        </div>
-      </div>
-
-      <!-- Timezone + lookback row -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div>
-          <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:4px;">
-            <i class="fas fa-globe" style="margin-right:4px;opacity:0.7;"></i>Zona horaria
-          </label>
-          <select id="pv-notif-timezone"
-                  style="width:100%;padding:8px 10px;border:1px solid #d1d5db;
-                         border-radius:8px;font-size:13px;color:#111827;background:#fff;">
-            <!-- Populated by JS -->
-          </select>
-        </div>
-        <div>
-          <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:4px;">
-            <i class="fas fa-calendar-days" style="margin-right:4px;opacity:0.7;"></i>Período de búsqueda
-          </label>
-          <select id="pv-notif-lookback"
-                  style="width:100%;padding:8px 10px;border:1px solid #d1d5db;
-                         border-radius:8px;font-size:13px;color:#111827;background:#fff;">
-            <option value="7">Última semana (7 días)</option>
-            <option value="14">Últimas 2 semanas</option>
-            <option value="30">Último mes (30 días)</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- OA toggle -->
-      <div style="display:flex;align-items:center;gap:10px;background:#f9fafb;
-                  border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;">
-        <input type="checkbox" id="pv-notif-oa-only"
-               style="width:16px;height:16px;accent-color:#0F3460;cursor:pointer;flex-shrink:0;">
-        <div>
-          <label for="pv-notif-oa-only"
-                 style="font-size:13px;font-weight:600;color:#111827;cursor:pointer;">
-            Solo artículos Open Access
-          </label>
-          <p style="margin:2px 0 0;font-size:11.5px;color:#6b7280;">
-            Filtra el digest para incluir únicamente artículos con acceso abierto.
-          </p>
-        </div>
-      </div>
-
-      <!-- Next send info -->
-      <div id="pv-notif-next-wrap"
-           style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;
-                  padding:10px 14px;display:none;">
-        <p style="margin:0;font-size:12.5px;color:#1e40af;">
-          <i class="fas fa-calendar-check" style="margin-right:6px;"></i>
-          <span id="pv-notif-next-text"></span>
-        </p>
-      </div>
-
-      <!-- Last sent info -->
-      <div id="pv-notif-last-wrap"
-           style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
-                  padding:10px 14px;display:none;">
-        <p style="margin:0;font-size:12.5px;color:#15803d;">
-          <i class="fas fa-check-circle" style="margin-right:6px;"></i>
-          Último envío: <span id="pv-notif-last-text" style="font-weight:600;"></span>
-        </p>
-      </div>
-
-    </div><!-- /form -->
-
-    <div style="height:1px;background:#e5e7eb;margin:20px 0 16px;"></div>
-
-    <!-- Action buttons -->
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <button id="pv-notif-test" type="button"
-              title="Envía un email de prueba ahora con los artículos del período configurado"
-              style="padding:8px 16px;border-radius:8px;border:1px solid #d1d5db;
-                     background:#f9fafb;color:#374151;font-size:13px;font-weight:600;
-                     cursor:pointer;display:flex;align-items:center;gap:6px;">
-        <i class="fas fa-paper-plane"></i> Enviar prueba
-      </button>
-      <div style="margin-left:auto;display:flex;gap:8px;">
-        <button id="pv-notif-cancel" type="button"
-                style="padding:8px 18px;border-radius:8px;border:1px solid #d1d5db;
-                       background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">
-          Cancelar
-        </button>
-        <button id="pv-notif-save" type="button"
-                style="padding:8px 22px;border-radius:8px;border:none;
-                       background:#0F3460;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
-          <i class="fas fa-save" style="margin-right:6px;"></i>Guardar
-        </button>
       </div>
     </div>
 
-    <!-- Status message -->
-    <div id="pv-notif-status" style="display:none;margin-top:10px;font-size:12.5px;
+    <div style="height:1px;background:#e5e7eb;margin:14px 0 12px;"></div>
+
+    <!-- Status bar -->
+    <div id="pv-notif-status" style="display:none;margin-bottom:10px;font-size:12.5px;
                                       padding:8px 12px;border-radius:7px;"></div>
+
+    <!-- Subscriptions table — rendered by JS -->
+    <div id="pv-notif-table-wrap"></div>
+
+    <!-- Add button -->
+    <button id="pv-notif-add" type="button"
+            style="margin-top:10px;padding:8px 16px;border-radius:8px;width:100%;
+                   border:1px dashed #d1d5db;background:#f9fafb;color:#374151;
+                   font-size:13px;font-weight:600;cursor:pointer;">
+      <i class="fas fa-plus" style="color:#0F3460;margin-right:6px;"></i>
+      Nueva suscripción
+    </button>
   </div>
 </div>
 

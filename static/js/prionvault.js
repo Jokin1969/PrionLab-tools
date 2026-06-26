@@ -13742,250 +13742,370 @@
     return r.json();
   }
 
+  // ── Timezones cache ───────────────────────────────────────────────────────
+  let _tzOptions = null;
+  async function _loadTzOptions() {
+    if (_tzOptions) return _tzOptions;
+    try {
+      _tzOptions = await _notifApi('/notifications/timezones');
+    } catch (_) {
+      _tzOptions = ['UTC','Europe/Madrid','Europe/London','America/New_York','Asia/Tokyo'];
+    }
+    return _tzOptions;
+  }
+
   document.addEventListener('DOMContentLoaded', function initNotificationsModal() {
-    const modal      = document.getElementById('pv-notifications-modal');
-    const openBtn    = document.getElementById('btn-notifications');
+    const modal    = document.getElementById('pv-notifications-modal');
+    const openBtn  = document.getElementById('btn-notifications');
     if (!modal || !openBtn) return;
 
-    const closeBtn   = document.getElementById('pv-notif-close');
-    const cancelBtn  = document.getElementById('pv-notif-cancel');
-    const saveBtn    = document.getElementById('pv-notif-save');
-    const testBtn    = document.getElementById('pv-notif-test');
-    const statusEl   = document.getElementById('pv-notif-status');
-    const backdrop   = modal.querySelector('.pv-modal-backdrop');
-
-    const enabledCb  = document.getElementById('pv-notif-enabled');
-    const toggleTrack= document.getElementById('pv-notif-toggle-track');
-    const toggleThumb= document.getElementById('pv-notif-toggle-thumb');
-    const toggleLbl  = document.getElementById('pv-notif-toggle-label');
-    const emailInp   = document.getElementById('pv-notif-email');
-    const topicsWrap = document.getElementById('pv-notif-topics');
-    const freqSel    = document.getElementById('pv-notif-frequency');
-    const dowSel     = document.getElementById('pv-notif-dow');
-    const timeInp    = document.getElementById('pv-notif-time');
-    const tzSel      = document.getElementById('pv-notif-timezone');
-    const lookbackSel= document.getElementById('pv-notif-lookback');
-    const oaOnlyCb   = document.getElementById('pv-notif-oa-only');
-    const nextWrap   = document.getElementById('pv-notif-next-wrap');
-    const nextText   = document.getElementById('pv-notif-next-text');
-    const lastWrap   = document.getElementById('pv-notif-last-wrap');
-    const lastText   = document.getElementById('pv-notif-last-text');
-
-    const DEFAULT_EMAIL = 'castilla@joaquincastilla.com';
+    const closeBtn  = document.getElementById('pv-notif-close');
+    const addBtn    = document.getElementById('pv-notif-add');
+    const tableWrap = document.getElementById('pv-notif-table-wrap');
+    const statusEl  = document.getElementById('pv-notif-status');
+    const backdrop  = modal.querySelector('.pv-modal-backdrop');
 
     const TOPICS = {
       prion:      { label: 'Prion',             color: '#0F3460', bg: '#e0e7ff' },
       prion_like: { label: 'Prion-like',         color: '#7c3aed', bg: '#ede9fe' },
       aav:        { label: 'AAV / Gene therapy', color: '#065f46', bg: '#d1fae5' },
     };
+    const FREQ_LABELS = { weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual' };
+    const DOW_LABELS  = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
-    // ── Toggle switch ─────────────────────────────────────────────────────
-    // Use only the track/thumb span for click handling — do NOT wrap in a
-    // <label> click path to avoid the double-toggle from label's native behaviour.
-    function _paintToggle() {
-      const on = enabledCb.checked;
-      toggleTrack.style.background = on ? '#0F3460' : '#d1d5db';
-      toggleThumb.style.transform  = on ? 'translateX(18px)' : 'translateX(0)';
-      toggleLbl.textContent        = on ? 'Activado' : 'Desactivado';
-    }
-    // Single source of truth: only the track span toggles the state.
-    // stopPropagation prevents the click reaching the parent <label>
-    // which would otherwise natively toggle the checkbox a second time.
-    toggleTrack.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      enabledCb.checked = !enabledCb.checked;
-      _paintToggle();
-    });
-    toggleThumb.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      enabledCb.checked = !enabledCb.checked;
-      _paintToggle();
-    });
-
-    // ── Topic chips ───────────────────────────────────────────────────────
-    // Use <div> instead of <label> to avoid native checkbox double-toggle.
-    const _topicState = {};
-    function _renderTopics(selected) {
-      topicsWrap.innerHTML = '';
-      Object.entries(TOPICS).forEach(([key, info]) => {
-        _topicState[key] = selected.includes(key);
-        const chip = document.createElement('div');
-        chip.dataset.topic = key;
-        _styleChip(chip, key, info);
-        chip.appendChild(document.createTextNode(info.label));
-        chip.addEventListener('click', () => _toggleChip(key));
-        topicsWrap.appendChild(chip);
-      });
-    }
-    function _styleChip(chip, key, info) {
-      const on = _topicState[key];
-      chip.style.cssText = `display:inline-flex;align-items:center;padding:7px 16px;
-        border-radius:20px;border:2px solid ${on ? info.color : '#d1d5db'};
-        background:${on ? info.bg : '#f9fafb'};cursor:pointer;
-        font-size:13px;font-weight:600;color:${on ? info.color : '#6b7280'};
-        transition:all 0.15s;user-select:none;`;
-    }
-    function _toggleChip(key) {
-      _topicState[key] = !_topicState[key];
-      const chip = topicsWrap.querySelector(`[data-topic="${key}"]`);
-      if (chip) _styleChip(chip, key, TOPICS[key]);
-    }
-    function _selectedTopics() {
-      return Object.keys(_topicState).filter(k => _topicState[k]);
+    function _showStatus(type, msg, autohide = true) {
+      statusEl.innerHTML = msg;
+      statusEl.style.display = 'block';
+      const info = type === 'info';
+      statusEl.style.background = info ? '#eff6ff' : type === 'ok' ? '#f0fdf4' : '#fef2f2';
+      statusEl.style.color      = info ? '#1d4ed8' : type === 'ok' ? '#15803d' : '#b91c1c';
+      statusEl.style.border     = `1px solid ${info ? '#bfdbfe' : type === 'ok' ? '#bbf7d0' : '#fecaca'}`;
+      if (autohide && !info) setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
     }
 
-    // ── Timezone selector ─────────────────────────────────────────────────
-    async function _loadTimezones() {
-      try {
-        const zones = await _notifApi('/notifications/timezones');
-        tzSel.innerHTML = zones.map(z =>
-          `<option value="${z}">${z.replace(/_/g,' ')}</option>`
-        ).join('');
-      } catch (_) {
-        tzSel.innerHTML = [
-          'UTC','Europe/Madrid','Europe/London','America/New_York','Asia/Tokyo'
-        ].map(z => `<option value="${z}">${z.replace(/_/g,' ')}</option>`).join('');
-      }
-    }
-
-    // ── Load subscription ─────────────────────────────────────────────────
-    async function _load() {
-      // Disable interactive buttons and show a loading indicator while
-      // fetching timezones + subscription so the user knows to wait.
-      saveBtn.disabled = true;
-      testBtn.disabled = true;
-      _showStatus('info', '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Cargando configuración…');
-
-      await _loadTimezones();
-      let sub;
-      try {
-        sub = await _notifApi('/notifications/subscription');
-      } catch (e) {
-        _showStatus('error', 'No se pudo cargar la configuración: ' + e.message);
-        // Render default state so form is usable
-        _renderTopics(['prion']);
-        emailInp.value = DEFAULT_EMAIL;
-        saveBtn.disabled = false;
-        testBtn.disabled = false;
-        return;
-      }
-      enabledCb.checked = !!sub.enabled;
-      _paintToggle();
-      emailInp.value = sub.email || DEFAULT_EMAIL;
-      _renderTopics(sub.topics && sub.topics.length ? sub.topics : ['prion']);
-      freqSel.value     = sub.frequency   || 'weekly';
-      dowSel.value      = String(sub.day_of_week ?? 4);
+    function _editFormHtml(sub, tzOptions) {
       const h = String(sub.send_hour  ?? 15).padStart(2,'0');
       const m = String(sub.send_minute ?? 0).padStart(2,'0');
-      timeInp.value     = `${h}:${m}`;
-      const tzVal = sub.user_timezone || 'Europe/Madrid';
-      const tzOpt = tzSel.querySelector(`option[value="${tzVal}"]`);
-      if (tzOpt) tzSel.value = tzVal;
-      else { const opt = new Option(tzVal.replace(/_/g,' '), tzVal); tzSel.add(opt); tzSel.value = tzVal; }
-      lookbackSel.value = String(sub.lookback_days ?? 7);
-      oaOnlyCb.checked  = !!sub.include_oa_only;
-
-      if (sub.next_send_at) {
-        const d = new Date(sub.next_send_at);
-        nextText.textContent = `Próximo envío: ${d.toLocaleDateString('es-ES',{
-          weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'
-        })}`;
-        nextWrap.style.display = 'block';
-      } else {
-        nextWrap.style.display = 'none';
-      }
-      if (sub.last_sent_at) {
-        const d = new Date(sub.last_sent_at);
-        lastText.textContent = d.toLocaleDateString('es-ES',{
-          weekday:'long', day:'numeric', month:'long', year:'numeric',
-          hour:'2-digit', minute:'2-digit'});
-        lastWrap.style.display = 'block';
-      } else {
-        lastWrap.style.display = 'none';
-      }
-      // Re-enable buttons now that loading is complete
-      saveBtn.disabled = false;
-      testBtn.disabled = false;
-      statusEl.style.display = 'none';
+      const tzOpts = tzOptions.map(z =>
+        `<option value="${z}"${z === (sub.user_timezone||'UTC') ? ' selected' : ''}>${z.replace(/_/g,' ')}</option>`
+      ).join('');
+      const topicChips = Object.entries(TOPICS).map(([k, info]) => {
+        const on = (sub.topics || ['prion']).includes(k);
+        return `<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;
+          border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+          border:2px solid ${on ? info.color : '#d1d5db'};
+          background:${on ? info.bg : '#fff'};color:${on ? info.color : '#9ca3af'};">
+          <input type="checkbox" name="topic" value="${k}" ${on ? 'checked' : ''}
+                 style="display:none;">
+          ${info.label}
+        </label>`;
+      }).join('');
+      const isPubmed = (sub.source || 'pubmed') === 'pubmed';
+      return `
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;
+                  padding:16px;margin-top:4px;display:flex;flex-direction:column;gap:14px;">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">NOMBRE</label>
+            <input name="name" value="${(sub.name||'Mi suscripción').replace(/"/g,'&quot;')}"
+                   style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d1d5db;
+                          border-radius:7px;font-size:13px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">TIPO</label>
+            <select name="source" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+              <option value="pubmed" ${isPubmed ? 'selected' : ''}>📡 PubMed digest</option>
+              <option value="flagged" ${!isPubmed ? 'selected' : ''}>⚑ PrionVault Picks</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">EMAIL</label>
+          <input type="email" name="email" value="${(sub.email||'').replace(/"/g,'&quot;')}"
+                 style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d1d5db;
+                        border-radius:7px;font-size:13px;">
+        </div>
+        <div class="pv-pubmed-fields" style="display:${isPubmed ? 'flex' : 'none'};flex-direction:column;gap:12px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:5px;">TEMAS</label>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">${topicChips}</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Período de búsqueda</label>
+              <select name="lookback_days" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+                <option value="7" ${(sub.lookback_days||7)==7?'selected':''}>7 días</option>
+                <option value="14" ${sub.lookback_days==14?'selected':''}>14 días</option>
+                <option value="30" ${sub.lookback_days==30?'selected':''}>30 días</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding-top:18px;">
+              <input type="checkbox" name="include_oa_only" ${sub.include_oa_only?'checked':''}
+                     style="width:15px;height:15px;accent-color:#0F3460;">
+              <label style="font-size:12.5px;color:#374151;cursor:pointer;">Solo Open Access</label>
+            </div>
+          </div>
+        </div>
+        <div class="pv-flagged-fields" style="display:${!isPubmed ? 'block' : 'none'};">
+          <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">ARTÍCULOS POR EMAIL</label>
+          <input type="number" name="articles_per_email" min="1" max="50"
+                 value="${sub.articles_per_email || 5}"
+                 style="width:80px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+          <span style="font-size:12px;color:#6b7280;margin-left:6px;">artículos aleatorios por email</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Frecuencia</label>
+            <select name="frequency" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+              <option value="weekly"   ${(sub.frequency||'weekly')==='weekly'?'selected':''}>Semanal</option>
+              <option value="biweekly" ${sub.frequency==='biweekly'?'selected':''}>Quincenal</option>
+              <option value="monthly"  ${sub.frequency==='monthly'?'selected':''}>Mensual</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Día</label>
+            <select name="day_of_week" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+              ${DOW_LABELS.map((d,i)=>`<option value="${i}" ${(sub.day_of_week??4)==i?'selected':''}>${d}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Hora</label>
+            <input type="time" name="time" value="${h}:${m}"
+                   style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Zona horaria</label>
+          <select name="user_timezone" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">${tzOpts}</select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+          <button type="button" class="pv-notif-save-btn"
+                  style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;
+                         color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+            <i class="fas fa-save" style="margin-right:5px;"></i>Guardar
+          </button>
+          <button type="button" class="pv-notif-test-btn"
+                  style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;
+                         background:#f9fafb;color:#374151;font-size:13px;cursor:pointer;">
+            <i class="fas fa-paper-plane"></i> Prueba
+          </button>
+          <button type="button" class="pv-notif-cancel-edit-btn"
+                  style="margin-left:auto;padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;
+                         background:#fff;color:#374151;font-size:13px;cursor:pointer;">
+            Cancelar
+          </button>
+        </div>
+      </div>`;
     }
 
-    // ── Status bar ────────────────────────────────────────────────────────
-    function _showStatus(type, msg) {
-      statusEl.innerHTML = msg;   // innerHTML to support spinner icon
-      statusEl.style.display = 'block';
-      const isInfo = type === 'info';
-      statusEl.style.background = isInfo ? '#eff6ff' : type === 'ok' ? '#f0fdf4' : '#fef2f2';
-      statusEl.style.color      = isInfo ? '#1d4ed8' : type === 'ok' ? '#15803d' : '#b91c1c';
-      statusEl.style.border     = isInfo ? '1px solid #bfdbfe' : type === 'ok' ? '1px solid #bbf7d0' : '1px solid #fecaca';
-      if (!isInfo) setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+    function _readForm(formEl) {
+      const topics = [...formEl.querySelectorAll('input[name="topic"]:checked')].map(c => c.value);
+      const [hh, mm] = (formEl.querySelector('[name="time"]').value || '15:00').split(':');
+      return {
+        name:               formEl.querySelector('[name="name"]').value.trim() || 'Mi suscripción',
+        source:             formEl.querySelector('[name="source"]').value,
+        email:              formEl.querySelector('[name="email"]').value.trim(),
+        topics:             topics.length ? topics : ['prion'],
+        frequency:          formEl.querySelector('[name="frequency"]').value,
+        day_of_week:        parseInt(formEl.querySelector('[name="day_of_week"]').value),
+        send_hour:          parseInt(hh || 15),
+        send_minute:        parseInt(mm || 0),
+        user_timezone:      formEl.querySelector('[name="user_timezone"]').value,
+        lookback_days:      parseInt(formEl.querySelector('[name="lookback_days"]').value),
+        include_oa_only:    formEl.querySelector('[name="include_oa_only"]').checked,
+        articles_per_email: parseInt(formEl.querySelector('[name="articles_per_email"]').value || 5),
+        enabled:            true,
+      };
     }
 
-    // ── Save ──────────────────────────────────────────────────────────────
-    saveBtn.addEventListener('click', async () => {
-      const topics = _selectedTopics();
-      if (topics.length === 0) {
-        _showStatus('error', 'Selecciona al menos un tema.');
+    let _expandedId = null, _lastSubs = [], _lastTz = [];
+
+    function _renderTable(subs, tzOptions) {
+      if (!subs.length) {
+        tableWrap.innerHTML = `<p style="text-align:center;color:#9ca3af;font-size:13px;padding:24px 0;">
+          No tienes suscripciones. Crea una nueva abajo.</p>`;
         return;
       }
-      const [hh, mm] = (timeInp.value || '15:00').split(':');
-      saveBtn.disabled = true;
-      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Guardando…';
-      try {
-        const r = await _notifApi('/notifications/subscription', {
-          method: 'POST',
-          body: JSON.stringify({
-            enabled:         enabledCb.checked,
-            email:           emailInp.value.trim() || DEFAULT_EMAIL,
-            topics,
-            frequency:       freqSel.value,
-            day_of_week:     parseInt(dowSel.value),
-            send_hour:       parseInt(hh || 15),
-            send_minute:     parseInt(mm || 0),
-            user_timezone:   tzSel.value,
-            lookback_days:   parseInt(lookbackSel.value),
-            include_oa_only: oaOnlyCb.checked,
-          }),
+      const rows = subs.map(sub => {
+        const srcChip = sub.source === 'flagged'
+          ? `<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;">⚑ Picks</span>`
+          : `<span style="background:#e0e7ff;color:#0F3460;font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;">📡 PubMed</span>`;
+        const freqTxt = FREQ_LABELS[sub.frequency] || sub.frequency;
+        const dow     = DOW_LABELS[sub.day_of_week ?? 4];
+        const nextTxt = sub.next_send_at
+          ? new Date(sub.next_send_at).toLocaleDateString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+          : '—';
+        const dot = sub.enabled
+          ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;vertical-align:middle;margin-right:4px;"></span>`
+          : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d1d5db;vertical-align:middle;margin-right:4px;"></span>`;
+        const isOpen = _expandedId === sub.id;
+        const editFormHtml = isOpen ? _editFormHtml(sub, tzOptions) : '';
+        return `
+        <tr data-sub-id="${sub.id}" style="border-bottom:1px solid #f3f4f6;">
+          <td style="padding:10px 8px;font-size:13px;font-weight:600;color:#111827;max-width:160px;
+                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${dot}${sub.name || 'Sin nombre'}
+          </td>
+          <td style="padding:10px 6px;">${srcChip}</td>
+          <td style="padding:10px 6px;font-size:12px;color:#6b7280;">${freqTxt} · ${dow}</td>
+          <td style="padding:10px 6px;font-size:12px;color:#6b7280;">${nextTxt}</td>
+          <td style="padding:10px 6px;white-space:nowrap;">
+            <button class="pv-edit-btn" data-id="${sub.id}"
+                    style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
+                           background:${isOpen ? '#e0e7ff' : '#fff'};font-size:12px;cursor:pointer;margin-right:4px;">
+              <i class="fas fa-pen"></i>
+            </button>
+            <button class="pv-del-btn" data-id="${sub.id}"
+                    style="padding:4px 10px;border-radius:6px;border:1px solid #fecaca;
+                           background:#fff;font-size:12px;cursor:pointer;color:#b91c1c;">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        ${isOpen ? `<tr data-edit-row="${sub.id}"><td colspan="5">${editFormHtml}</td></tr>` : ''}`;
+      }).join('');
+
+      tableWrap.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="border-bottom:2px solid #e5e7eb;">
+              <th style="text-align:left;padding:6px 8px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;">Nombre</th>
+              <th style="text-align:left;padding:6px 6px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;">Tipo</th>
+              <th style="text-align:left;padding:6px 6px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;">Frecuencia</th>
+              <th style="text-align:left;padding:6px 6px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;">Próximo envío</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+
+      tableWrap.querySelectorAll('.pv-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          _expandedId = _expandedId === btn.dataset.id ? null : btn.dataset.id;
+          _renderTable(_lastSubs, _lastTz);
         });
-        if (r.next_send_at) {
-          const d = new Date(r.next_send_at);
-          nextText.textContent = `Próximo envío: ${d.toLocaleDateString('es-ES',{
-            weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'
-          })}`;
-          nextWrap.style.display = 'block';
-        }
-        _showStatus('ok', '✓ Configuración guardada.');
+      });
+      tableWrap.querySelectorAll('.pv-del-btn').forEach(btn => {
+        btn.addEventListener('click', () => _deleteSub(btn.dataset.id));
+      });
+      tableWrap.querySelectorAll('.pv-notif-save-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const editRow = btn.closest('[data-edit-row]');
+          if (editRow) _saveEdit(editRow.dataset.editRow, btn.closest('div[style*="flex-direction:column"]'));
+        });
+      });
+      tableWrap.querySelectorAll('.pv-notif-test-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const editRow = btn.closest('[data-edit-row]');
+          if (editRow) _testSub(editRow.dataset.editRow, btn);
+        });
+      });
+      tableWrap.querySelectorAll('.pv-notif-cancel-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => { _expandedId = null; _renderTable(_lastSubs, _lastTz); });
+      });
+      tableWrap.querySelectorAll('[name="source"]').forEach(sel => {
+        sel.addEventListener('change', function() {
+          const wrap = this.closest('div[style*="flex-direction:column"]');
+          if (!wrap) return;
+          const pf = wrap.querySelector('.pv-pubmed-fields');
+          const ff = wrap.querySelector('.pv-flagged-fields');
+          const isPubmed = this.value === 'pubmed';
+          if (pf) pf.style.display = isPubmed ? 'flex' : 'none';
+          if (ff) ff.style.display = isPubmed ? 'none' : 'block';
+        });
+      });
+      tableWrap.querySelectorAll('input[name="topic"]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const lbl = cb.closest('label');
+          const info = TOPICS[cb.value];
+          if (!info || !lbl) return;
+          const on = cb.checked;
+          lbl.style.borderColor = on ? info.color : '#d1d5db';
+          lbl.style.background  = on ? info.bg    : '#fff';
+          lbl.style.color       = on ? info.color : '#9ca3af';
+        });
+      });
+    }
+
+    async function _saveEdit(subId, formEl) {
+      if (!formEl) return;
+      const data = _readForm(formEl);
+      const saveBtn = formEl.querySelector('.pv-notif-save-btn');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+      try {
+        await _notifApi(`/notifications/subscriptions/${subId}`, { method: 'PUT', body: JSON.stringify(data) });
+        _showStatus('ok', '✓ Guardado.');
+        _expandedId = null;
+        await _loadAll();
       } catch (e) {
         _showStatus('error', 'Error al guardar: ' + e.message);
-      } finally {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="fas fa-save" style="margin-right:6px;"></i>Guardar';
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save" style="margin-right:5px;"></i>Guardar'; }
       }
-    });
+    }
 
-    // ── Test send ─────────────────────────────────────────────────────────
-    testBtn.addEventListener('click', async () => {
-      testBtn.disabled = true;
-      testBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:4px;"></i> Enviando…';
+    async function _deleteSub(subId) {
+      if (!confirm('¿Eliminar esta suscripción?')) return;
       try {
-        const r = await _notifApi('/notifications/test', { method: 'POST' });
+        await _notifApi(`/notifications/subscriptions/${subId}`, { method: 'DELETE' });
+        _showStatus('ok', '✓ Eliminada.');
+        if (_expandedId === subId) _expandedId = null;
+        await _loadAll();
+      } catch (e) {
+        _showStatus('error', 'Error al eliminar: ' + e.message);
+      }
+    }
+
+    async function _testSub(subId, btn) {
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+      try {
+        const r = await _notifApi(`/notifications/subscriptions/${subId}/test`, { method: 'POST' });
         _showStatus('ok', '✓ ' + (r.detail || 'Email de prueba enviado.'));
       } catch (e) {
-        _showStatus('error', 'Error: ' + (e.message || 'No se pudo enviar.'));
+        _showStatus('error', 'Error: ' + e.message);
       } finally {
-        testBtn.disabled = false;
-        testBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar prueba';
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Prueba'; }
       }
-    });
+    }
 
-    // ── Open / close ──────────────────────────────────────────────────────
-    function _open()  { modal.style.display = 'flex'; _load(); }
+    async function _loadAll() {
+      _showStatus('info', '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Cargando…', false);
+      addBtn.disabled = true;
+      try {
+        const [subs, tzOptions] = await Promise.all([
+          _notifApi('/notifications/subscriptions'),
+          _loadTzOptions(),
+        ]);
+        _lastSubs = subs; _lastTz = tzOptions;
+        statusEl.style.display = 'none';
+        _renderTable(subs, tzOptions);
+      } catch (e) {
+        _showStatus('error', 'Error al cargar: ' + e.message);
+      } finally {
+        addBtn.disabled = false;
+      }
+    }
+
+    function _open()  { modal.style.display = 'flex'; _expandedId = null; _loadAll(); }
     function _close() { modal.style.display = 'none'; statusEl.style.display = 'none'; }
     openBtn.addEventListener('click', _open);
     closeBtn.addEventListener('click', _close);
-    cancelBtn.addEventListener('click', _close);
     backdrop.addEventListener('click', _close);
+    addBtn.addEventListener('click', async () => {
+      const defaults = {
+        name: 'Nueva suscripción', source: 'pubmed', email: '', topics: ['prion'],
+        frequency: 'weekly', day_of_week: 4, send_hour: 15, send_minute: 0,
+        user_timezone: 'UTC', lookback_days: 7, include_oa_only: false,
+        articles_per_email: 5, enabled: true,
+      };
+      try {
+        const r = await _notifApi('/notifications/subscriptions', { method: 'POST', body: JSON.stringify(defaults) });
+        _expandedId = r.id;
+        await _loadAll();
+      } catch (e) {
+        _showStatus('error', 'Error al crear: ' + e.message);
+      }
+    });
   });
+
 
 })();

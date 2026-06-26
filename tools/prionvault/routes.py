@@ -7738,70 +7738,23 @@ def api_export_refs_docx():
 
 # ── Email digest / notification subscriptions ────────────────────────────────
 
-@prionvault_bp.route("/api/notifications/subscription", methods=["GET"])
-@login_required
-def api_notifications_get():
-    """Return the current user's notification subscription (or empty defaults)."""
-    from sqlalchemy import text as _t
-    from database.config import db as _db
-    from core.users import get_user as _get_user
-    _uid = session.get("user_id")
-    _uname = session.get("username", "")
-    _uobj = _get_user(_uname) or {}
-    _uemail = _uobj.get("email", "")
-
-    try:
-        with _db.engine.connect() as conn:
-            row = conn.execute(_t(
-                "SELECT * FROM prionvault_notification_subscriptions "
-                "WHERE user_id = :uid"
-            ), {"uid": str(_uid)}).mappings().first()
-    except Exception as exc:
-        return jsonify({"error": str(exc)[:300]}), 500
-
-    if row:
-        sub = dict(row)
-        # Serialise non-JSON-serialisable fields
-        for k in ("id", "user_id"):
-            if sub.get(k):
-                sub[k] = str(sub[k])
-        for k in ("last_sent_at", "next_send_at", "created_at", "updated_at"):
-            if sub.get(k):
-                sub[k] = sub[k].isoformat()
-        return jsonify(sub)
-
-    # Return sensible defaults when not yet configured
-    return jsonify({
-        "enabled": False,
-        "email": _uemail,
-        "topics": ["prion"],
-        "frequency": "weekly",
-        "day_of_week": 4,
-        "send_hour": 15,
-        "send_minute": 0,
-        "user_timezone": "UTC",
-        "lookback_days": 7,
-        "include_oa_only": False,
-        "last_sent_at": None,
-        "next_send_at": None,
-    })
+def _notif_sub_to_dict(row) -> dict:
+    """Serialise a subscription row to a JSON-safe dict."""
+    sub = dict(row)
+    for k in ("id", "user_id"):
+        if sub.get(k):
+            sub[k] = str(sub[k])
+    for k in ("last_sent_at", "next_send_at", "created_at", "updated_at"):
+        if sub.get(k):
+            sub[k] = sub[k].isoformat()
+    if sub.get("topics") and not isinstance(sub["topics"], list):
+        sub["topics"] = list(sub["topics"])
+    return sub
 
 
-@prionvault_bp.route("/api/notifications/subscription", methods=["POST"])
-@login_required
-def api_notifications_save():
-    """Create or update the current user's notification subscription."""
-    from sqlalchemy import text as _t
-    from database.config import db as _db
-    from core.users import get_user as _get_user
-    from .services.email_digest import compute_next_send
-    _uid = session.get("user_id")
-    _uname = session.get("username", "")
-    _uemail = (_get_user(_uname) or {}).get("email", "")
-
-    data = request.get_json(silent=True) or {}
-
-    # Validate
+def _validate_notif_payload(data: dict, uemail: str) -> dict:
+    """Validate and normalise subscription fields from a JSON request body."""
+    import json as _json
     topics = [t for t in (data.get("topics") or []) if isinstance(t, str)]
     if not topics:
         topics = ["prion"]
@@ -7809,18 +7762,15 @@ def api_notifications_save():
     if freq not in ("weekly", "biweekly", "monthly"):
         freq = "weekly"
     try:
-        dow = int(data.get("day_of_week", 4))
-        dow = max(0, min(6, dow))
+        dow = max(0, min(6, int(data.get("day_of_week", 4))))
     except (TypeError, ValueError):
         dow = 4
     try:
-        hour = int(data.get("send_hour", 15))
-        hour = max(0, min(23, hour))
+        hour = max(0, min(23, int(data.get("send_hour", 15))))
     except (TypeError, ValueError):
         hour = 15
     try:
-        minute = int(data.get("send_minute", 0))
-        minute = max(0, min(59, minute))
+        minute = max(0, min(59, int(data.get("send_minute", 0))))
     except (TypeError, ValueError):
         minute = 0
     try:
@@ -7829,59 +7779,106 @@ def api_notifications_save():
             lookback = 7
     except (TypeError, ValueError):
         lookback = 7
-    email = (data.get("email") or "").strip() or _uemail
-    tz    = (data.get("user_timezone") or "UTC").strip()
-    enabled = bool(data.get("enabled", True))
-    oa_only = bool(data.get("include_oa_only", False))
-
-    import json as _json
-    sub_draft = {
-        "frequency":   freq,
-        "day_of_week": dow,
-        "send_hour":   hour,
-        "send_minute": minute,
-        "user_timezone": tz,
+    try:
+        ape = max(1, min(50, int(data.get("articles_per_email", 5))))
+    except (TypeError, ValueError):
+        ape = 5
+    source = data.get("source", "pubmed")
+    if source not in ("pubmed", "flagged"):
+        source = "pubmed"
+    return {
+        "name":              (data.get("name") or "Mi suscripción").strip()[:80],
+        "source":            source,
+        "email":             (data.get("email") or "").strip() or uemail,
+        "topics":            _json.dumps(topics),
+        "freq":              freq,
+        "dow":               dow,
+        "hour":              hour,
+        "minute":            minute,
+        "tz":                (data.get("user_timezone") or "UTC").strip(),
+        "lookback":          lookback,
+        "oa_only":           bool(data.get("include_oa_only", False)),
+        "enabled":           bool(data.get("enabled", True)),
+        "articles_per_email": ape,
     }
-    next_send = compute_next_send(sub_draft)
+
+
+@prionvault_bp.route("/api/notifications/subscription", methods=["GET"])
+@login_required
+def api_notifications_get():
+    """Return the oldest subscription for backwards-compat (or empty defaults)."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from core.users import get_user as _get_user
+    _uid = session.get("user_id")
+    _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
 
     try:
+        with _db.engine.connect() as conn:
+            row = conn.execute(_t(
+                "SELECT * FROM prionvault_notification_subscriptions "
+                "WHERE user_id = :uid ORDER BY created_at LIMIT 1"
+            ), {"uid": str(_uid)}).mappings().first()
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+
+    if row:
+        return jsonify(_notif_sub_to_dict(row))
+
+    return jsonify({
+        "enabled": False, "email": _uemail, "topics": ["prion"],
+        "frequency": "weekly", "day_of_week": 4, "send_hour": 15,
+        "send_minute": 0, "user_timezone": "UTC", "lookback_days": 7,
+        "include_oa_only": False, "last_sent_at": None, "next_send_at": None,
+        "source": "pubmed", "name": "Mi suscripción", "articles_per_email": 5,
+    })
+
+
+@prionvault_bp.route("/api/notifications/subscription", methods=["POST"])
+@login_required
+def api_notifications_save():
+    """Backwards-compat: upsert the oldest subscription for this user."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from core.users import get_user as _get_user
+    from .services.email_digest import compute_next_send
+    _uid = session.get("user_id")
+    _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
+
+    data = request.get_json(silent=True) or {}
+    p = _validate_notif_payload(data, _uemail)
+    next_send = compute_next_send({"frequency": p["freq"], "day_of_week": p["dow"],
+                                   "send_hour": p["hour"], "send_minute": p["minute"],
+                                   "user_timezone": p["tz"]})
+    try:
+        with _db.engine.connect() as conn:
+            existing_id = conn.execute(_t(
+                "SELECT id FROM prionvault_notification_subscriptions "
+                "WHERE user_id = :uid ORDER BY created_at LIMIT 1"
+            ), {"uid": str(_uid)}).scalar()
+
         with _db.engine.begin() as conn:
-            conn.execute(_t("""
-                INSERT INTO prionvault_notification_subscriptions
-                    (user_id, enabled, email, topics, frequency, day_of_week,
-                     send_hour, send_minute, user_timezone, lookback_days,
-                     include_oa_only, next_send_at, updated_at)
-                VALUES
-                    (:uid, :enabled, :email, CAST(:topics AS jsonb), :freq, :dow,
-                     :hour, :minute, :tz, :lookback,
-                     :oa_only, :next_send, NOW())
-                ON CONFLICT (user_id) DO UPDATE SET
-                    enabled         = EXCLUDED.enabled,
-                    email           = EXCLUDED.email,
-                    topics          = EXCLUDED.topics,
-                    frequency       = EXCLUDED.frequency,
-                    day_of_week     = EXCLUDED.day_of_week,
-                    send_hour       = EXCLUDED.send_hour,
-                    send_minute     = EXCLUDED.send_minute,
-                    user_timezone   = EXCLUDED.user_timezone,
-                    lookback_days   = EXCLUDED.lookback_days,
-                    include_oa_only = EXCLUDED.include_oa_only,
-                    next_send_at    = EXCLUDED.next_send_at,
-                    updated_at      = NOW()
-            """), {
-                "uid": str(_uid),
-                "enabled": enabled,
-                "email": email,
-                "topics": _json.dumps(topics),
-                "freq": freq,
-                "dow": dow,
-                "hour": hour,
-                "minute": minute,
-                "tz": tz,
-                "lookback": lookback,
-                "oa_only": oa_only,
-                "next_send": next_send,
-            })
+            if existing_id:
+                conn.execute(_t("""
+                    UPDATE prionvault_notification_subscriptions SET
+                        name=:name, source=:source, enabled=:enabled, email=:email,
+                        topics=CAST(:topics AS jsonb), frequency=:freq, day_of_week=:dow,
+                        send_hour=:hour, send_minute=:minute, user_timezone=:tz,
+                        lookback_days=:lookback, include_oa_only=:oa_only,
+                        articles_per_email=:ape, next_send_at=:next_send, updated_at=NOW()
+                    WHERE id=:id
+                """), {**p, "next_send": next_send, "id": existing_id})
+            else:
+                conn.execute(_t("""
+                    INSERT INTO prionvault_notification_subscriptions
+                        (user_id, name, source, enabled, email, topics, frequency,
+                         day_of_week, send_hour, send_minute, user_timezone,
+                         lookback_days, include_oa_only, articles_per_email,
+                         next_send_at, updated_at)
+                    VALUES (:uid, :name, :source, :enabled, :email,
+                            CAST(:topics AS jsonb), :freq, :dow, :hour, :minute,
+                            :tz, :lookback, :oa_only, :ape, :next_send, NOW())
+                """), {**p, "uid": str(_uid), "next_send": next_send})
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
 
@@ -7891,11 +7888,8 @@ def api_notifications_save():
 @prionvault_bp.route("/api/notifications/test", methods=["POST"])
 @login_required
 def api_notifications_test():
-    """Send a test digest email right now (ignores next_send_at).
-
-    If no subscription row exists yet, auto-saves one from the request body
-    (or with defaults) so the test can still proceed without a prior save.
-    """
+    """Send a test using the oldest subscription (backwards-compat).
+    Auto-creates a subscription if none exists yet."""
     from sqlalchemy import text as _t
     from database.config import db as _db
     from core.users import get_user as _get_user
@@ -7904,60 +7898,39 @@ def api_notifications_test():
     import json as _json
 
     _uid = session.get("user_id")
-
     if not smtp_configured():
         return jsonify({"error": "smtp_not_configured",
                         "detail": "SMTP no configurado en el servidor."}), 503
 
-    # Look for an existing subscription
     try:
         with _db.engine.connect() as conn:
             sub_id = conn.execute(_t(
                 "SELECT id::text FROM prionvault_notification_subscriptions "
-                "WHERE user_id = :uid"
+                "WHERE user_id = :uid ORDER BY created_at LIMIT 1"
             ), {"uid": str(_uid)}).scalar()
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
 
-    # No subscription yet — auto-create one from request body / defaults so
-    # the user doesn't have to save before testing.
     if not sub_id:
         data = request.get_json(silent=True) or {}
-        _uname = session.get("username", "")
-        _uemail = (_get_user(_uname) or {}).get("email", "")
-        email   = (data.get("email") or "").strip() or _uemail
-        topics  = [t for t in (data.get("topics") or ["prion"]) if isinstance(t, str)] or ["prion"]
-        freq    = data.get("frequency", "weekly")
-        if freq not in ("weekly", "biweekly", "monthly"):
-            freq = "weekly"
-        sub_draft = {
-            "frequency": freq,
-            "day_of_week": int(data.get("day_of_week", 4)),
-            "send_hour":   int(data.get("send_hour",   15)),
-            "send_minute": int(data.get("send_minute",  0)),
-            "user_timezone": data.get("user_timezone", "UTC"),
-        }
-        next_send = compute_next_send(sub_draft)
+        _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
+        p = _validate_notif_payload(data, _uemail)
+        next_send = compute_next_send({"frequency": p["freq"], "day_of_week": p["dow"],
+                                       "send_hour": p["hour"], "send_minute": p["minute"],
+                                       "user_timezone": p["tz"]})
         try:
             with _db.engine.begin() as conn:
                 sub_id = conn.execute(_t("""
                     INSERT INTO prionvault_notification_subscriptions
-                        (user_id, enabled, email, topics, frequency, day_of_week,
-                         send_hour, send_minute, user_timezone, lookback_days,
-                         include_oa_only, next_send_at, updated_at)
-                    VALUES
-                        (:uid, true, :email, CAST(:topics AS jsonb), :freq, :dow,
-                         :hour, :minute, 'UTC', 7, false, :next_send, NOW())
-                    ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
+                        (user_id, name, source, enabled, email, topics, frequency,
+                         day_of_week, send_hour, send_minute, user_timezone,
+                         lookback_days, include_oa_only, articles_per_email,
+                         next_send_at, updated_at)
+                    VALUES (:uid, :name, :source, true, :email,
+                            CAST(:topics AS jsonb), :freq, :dow, :hour, :minute,
+                            :tz, :lookback, :oa_only, :ape, :next_send, NOW())
                     RETURNING id::text
-                """), {
-                    "uid": str(_uid), "email": email,
-                    "topics": _json.dumps(topics), "freq": freq,
-                    "dow": sub_draft["day_of_week"],
-                    "hour": sub_draft["send_hour"],
-                    "minute": sub_draft["send_minute"],
-                    "next_send": next_send,
-                }).scalar()
+                """), {**p, "uid": str(_uid), "next_send": next_send}).scalar()
         except Exception as exc:
             return jsonify({"error": str(exc)[:300]}), 500
 
@@ -7990,3 +7963,138 @@ def api_notifications_timezones():
         "Australia/Sydney",
     ]
     return jsonify(zones)
+
+
+# ── Multi-subscription CRUD ───────────────────────────────────────────────────
+
+@prionvault_bp.route("/api/notifications/subscriptions", methods=["GET"])
+@login_required
+def api_notifications_list():
+    """Return all subscriptions for the current user."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    _uid = session.get("user_id")
+    try:
+        with _db.engine.connect() as conn:
+            rows = conn.execute(_t(
+                "SELECT * FROM prionvault_notification_subscriptions "
+                "WHERE user_id = :uid ORDER BY created_at"
+            ), {"uid": str(_uid)}).mappings().all()
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    return jsonify([_notif_sub_to_dict(r) for r in rows])
+
+
+@prionvault_bp.route("/api/notifications/subscriptions", methods=["POST"])
+@login_required
+def api_notifications_create():
+    """Create a new subscription for the current user."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from core.users import get_user as _get_user
+    from .services.email_digest import compute_next_send
+    _uid = session.get("user_id")
+    _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
+    data = request.get_json(silent=True) or {}
+    p = _validate_notif_payload(data, _uemail)
+    next_send = compute_next_send({"frequency": p["freq"], "day_of_week": p["dow"],
+                                   "send_hour": p["hour"], "send_minute": p["minute"],
+                                   "user_timezone": p["tz"]})
+    try:
+        with _db.engine.begin() as conn:
+            new_id = conn.execute(_t("""
+                INSERT INTO prionvault_notification_subscriptions
+                    (user_id, name, source, enabled, email, topics, frequency,
+                     day_of_week, send_hour, send_minute, user_timezone,
+                     lookback_days, include_oa_only, articles_per_email,
+                     next_send_at, updated_at)
+                VALUES (:uid, :name, :source, :enabled, :email,
+                        CAST(:topics AS jsonb), :freq, :dow, :hour, :minute,
+                        :tz, :lookback, :oa_only, :ape, :next_send, NOW())
+                RETURNING id::text
+            """), {**p, "uid": str(_uid), "next_send": next_send}).scalar()
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    return jsonify({"ok": True, "id": new_id, "next_send_at": next_send.isoformat()})
+
+
+@prionvault_bp.route("/api/notifications/subscriptions/<sub_id>", methods=["PUT"])
+@login_required
+def api_notifications_update(sub_id):
+    """Update a specific subscription (must belong to current user)."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from core.users import get_user as _get_user
+    from .services.email_digest import compute_next_send
+    _uid = session.get("user_id")
+    _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
+    data = request.get_json(silent=True) or {}
+    p = _validate_notif_payload(data, _uemail)
+    next_send = compute_next_send({"frequency": p["freq"], "day_of_week": p["dow"],
+                                   "send_hour": p["hour"], "send_minute": p["minute"],
+                                   "user_timezone": p["tz"]})
+    try:
+        with _db.engine.begin() as conn:
+            result = conn.execute(_t("""
+                UPDATE prionvault_notification_subscriptions SET
+                    name=:name, source=:source, enabled=:enabled, email=:email,
+                    topics=CAST(:topics AS jsonb), frequency=:freq, day_of_week=:dow,
+                    send_hour=:hour, send_minute=:minute, user_timezone=:tz,
+                    lookback_days=:lookback, include_oa_only=:oa_only,
+                    articles_per_email=:ape, next_send_at=:next_send, updated_at=NOW()
+                WHERE id=:id AND user_id=:uid
+            """), {**p, "next_send": next_send, "id": sub_id, "uid": str(_uid)})
+            if result.rowcount == 0:
+                return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    return jsonify({"ok": True, "next_send_at": next_send.isoformat()})
+
+
+@prionvault_bp.route("/api/notifications/subscriptions/<sub_id>", methods=["DELETE"])
+@login_required
+def api_notifications_delete(sub_id):
+    """Delete a specific subscription (must belong to current user)."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    _uid = session.get("user_id")
+    try:
+        with _db.engine.begin() as conn:
+            result = conn.execute(_t(
+                "DELETE FROM prionvault_notification_subscriptions "
+                "WHERE id=:id AND user_id=:uid"
+            ), {"id": sub_id, "uid": str(_uid)})
+            if result.rowcount == 0:
+                return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/notifications/subscriptions/<sub_id>/test", methods=["POST"])
+@login_required
+def api_notifications_sub_test(sub_id):
+    """Send a test email for a specific subscription."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    from config import smtp_configured
+    _uid = session.get("user_id")
+    if not smtp_configured():
+        return jsonify({"error": "smtp_not_configured",
+                        "detail": "SMTP no configurado en el servidor."}), 503
+    try:
+        with _db.engine.connect() as conn:
+            actual_id = conn.execute(_t(
+                "SELECT id::text FROM prionvault_notification_subscriptions "
+                "WHERE id=:id AND user_id=:uid"
+            ), {"id": sub_id, "uid": str(_uid)}).scalar()
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    if not actual_id:
+        return jsonify({"error": "not_found"}), 404
+    from .services.email_digest import send_digest_for_sub
+    ok = send_digest_for_sub(actual_id, force=True)
+    if ok:
+        return jsonify({"ok": True, "detail": "Email de prueba enviado."})
+    return jsonify({"error": "send_failed",
+                    "detail": "No se pudo enviar el email. Revisa la configuración SMTP."}), 502
