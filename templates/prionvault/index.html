@@ -1660,6 +1660,12 @@
 
     <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
       <span id="pv-bi-cost" style="font-size:11.5px;color:#9ca3af;margin-right:auto;"></span>
+      <button id="pv-bi-add-abstracts" type="button"
+              title="Añade vectorización del abstract (campo abstract de la BD) a todos los artículos que ya tienen chunks pero no tienen chunk de tipo abstract. No toca los chunks existentes."
+              style="padding:8px 14px;border-radius:8px;border:1px solid #bfdbfe;
+                     background:#eff6ff;color:#1e40af;font-size:13px;font-weight:600;cursor:pointer;">
+        + Añadir abstracts
+      </button>
       <button id="pv-bi-reset" type="button"
               title="Borra TODOS los embeddings existentes y los regenera con el modelo actual (voyage-4-large). Necesario tras cambiar de modelo."
               style="padding:8px 14px;border-radius:8px;border:1px solid #fde68a;

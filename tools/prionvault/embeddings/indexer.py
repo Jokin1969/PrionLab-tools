@@ -237,3 +237,25 @@ def index_article(*, article_id, title, extracted_text=None,
         used_source=",".join(sources_used),
         error=last_error,   # non-fatal partial-failure note, if any
     )
+
+
+def index_article_source(*, article_id, source_field: str,
+                         source_text: str, title: str = "") -> IndexResult:
+    """Chunk + embed + persist a single source for an article without
+    touching any other source_field chunks. Used by the 'add abstracts'
+    batch to backfill abstract chunks alongside existing PDF chunks."""
+    start = time.monotonic()
+    if not source_text or not source_text.strip():
+        return IndexResult(
+            article_id=str(article_id), chunks_total=0, chunks_written=0,
+            tokens=0, cost_usd=0.0,
+            elapsed_ms=0, used_source=source_field, error="no_text_available",
+        )
+    ct, cw, tk, cu, err = _persist_one_source(article_id, source_field, source_text)
+    return IndexResult(
+        article_id=str(article_id),
+        chunks_total=ct, chunks_written=cw,
+        tokens=tk, cost_usd=cu,
+        elapsed_ms=int((time.monotonic() - start) * 1000),
+        used_source=source_field, error=err,
+    )

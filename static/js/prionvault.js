@@ -9883,6 +9883,33 @@
       }
     });
 
+    // Add abstract chunks to articles that have chunks but no abstract chunk.
+    const addAbstractsBtn = document.getElementById('pv-bi-add-abstracts');
+    if (addAbstractsBtn) {
+      addAbstractsBtn.addEventListener('click', async () => {
+        if (!confirm(
+          'Añadir vectorización del abstract a todos los artículos que ya tienen\n' +
+          'chunks pero no tienen chunk de tipo "abstract".\n\n' +
+          '• No toca los chunks existentes (PDF, summary_ai).\n' +
+          '• Corre en background — la búsqueda sigue funcionando mientras tanto.\n' +
+          '• Coste estimado: ~$0.25 para 4 000 artículos.\n\n' +
+          '¿Continuar?'
+        )) return;
+        addAbstractsBtn.disabled = true;
+        const orig = addAbstractsBtn.textContent;
+        addAbstractsBtn.textContent = '⏳ Enviando…';
+        try {
+          const r = await api('/admin/embeddings/add-abstracts', { method: 'POST' });
+          alert(`OK — ${r.detail}`);
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          addAbstractsBtn.disabled = false;
+          addAbstractsBtn.textContent = orig;
+        }
+      });
+    }
+
     // Full wipe + reindex. Two confirmation prompts because the
     // operation is destructive — we'd rather make the operator
     // explicitly type-through twice than recover from a misclick on
