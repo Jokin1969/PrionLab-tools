@@ -6080,6 +6080,9 @@ def api_embeddings_add_abstracts():
                  WHERE a.abstract IS NOT NULL
                    AND length(a.abstract) > 50
                    AND (a.abstract_unavailable IS NULL OR a.abstract_unavailable = FALSE)
+                   AND lower(a.abstract) NOT LIKE '%no abstract available%'
+                   AND lower(a.abstract) NOT LIKE '%abstract not available%'
+                   AND lower(a.abstract) NOT LIKE '%no abstract%'
                    AND EXISTS (
                        SELECT 1 FROM article_chunk c WHERE c.article_id = a.id
                    )
