@@ -7891,31 +7891,78 @@ def api_notifications_save():
 @prionvault_bp.route("/api/notifications/test", methods=["POST"])
 @login_required
 def api_notifications_test():
-    """Send a test digest email right now (ignores next_send_at)."""
+    """Send a test digest email right now (ignores next_send_at).
+
+    If no subscription row exists yet, auto-saves one from the request body
+    (or with defaults) so the test can still proceed without a prior save.
+    """
     from sqlalchemy import text as _t
     from database.config import db as _db
+    from core.users import get_user as _get_user
     from config import smtp_configured
+    from .services.email_digest import compute_next_send
+    import json as _json
+
     _uid = session.get("user_id")
 
     if not smtp_configured():
         return jsonify({"error": "smtp_not_configured",
                         "detail": "SMTP no configurado en el servidor."}), 503
 
+    # Look for an existing subscription
     try:
         with _db.engine.connect() as conn:
-            row = conn.execute(_t(
+            sub_id = conn.execute(_t(
                 "SELECT id::text FROM prionvault_notification_subscriptions "
                 "WHERE user_id = :uid"
             ), {"uid": str(_uid)}).scalar()
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
 
-    if not row:
-        return jsonify({"error": "no_subscription",
-                        "detail": "Guarda primero la configuración antes de enviar prueba."}), 400
+    # No subscription yet — auto-create one from request body / defaults so
+    # the user doesn't have to save before testing.
+    if not sub_id:
+        data = request.get_json(silent=True) or {}
+        _uname = session.get("username", "")
+        _uemail = (_get_user(_uname) or {}).get("email", "")
+        email   = (data.get("email") or "").strip() or _uemail
+        topics  = [t for t in (data.get("topics") or ["prion"]) if isinstance(t, str)] or ["prion"]
+        freq    = data.get("frequency", "weekly")
+        if freq not in ("weekly", "biweekly", "monthly"):
+            freq = "weekly"
+        sub_draft = {
+            "frequency": freq,
+            "day_of_week": int(data.get("day_of_week", 4)),
+            "send_hour":   int(data.get("send_hour",   15)),
+            "send_minute": int(data.get("send_minute",  0)),
+            "user_timezone": data.get("user_timezone", "UTC"),
+        }
+        next_send = compute_next_send(sub_draft)
+        try:
+            with _db.engine.begin() as conn:
+                sub_id = conn.execute(_t("""
+                    INSERT INTO prionvault_notification_subscriptions
+                        (user_id, enabled, email, topics, frequency, day_of_week,
+                         send_hour, send_minute, user_timezone, lookback_days,
+                         include_oa_only, next_send_at, updated_at)
+                    VALUES
+                        (:uid, true, :email, :topics::jsonb, :freq, :dow,
+                         :hour, :minute, 'UTC', 7, false, :next_send, NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
+                    RETURNING id::text
+                """), {
+                    "uid": str(_uid), "email": email,
+                    "topics": _json.dumps(topics), "freq": freq,
+                    "dow": sub_draft["day_of_week"],
+                    "hour": sub_draft["send_hour"],
+                    "minute": sub_draft["send_minute"],
+                    "next_send": next_send,
+                }).scalar()
+        except Exception as exc:
+            return jsonify({"error": str(exc)[:300]}), 500
 
     from .services.email_digest import send_digest_for_sub
-    ok = send_digest_for_sub(str(row), force=True)
+    ok = send_digest_for_sub(str(sub_id), force=True)
     if ok:
         return jsonify({"ok": True, "detail": "Email de prueba enviado."})
     return jsonify({"error": "send_failed",
