@@ -6109,6 +6109,66 @@ def api_embeddings_coverage():
     })
 
 
+@prionvault_bp.route("/api/admin/embeddings/add-pdf", methods=["POST"])
+@admin_required
+def api_embeddings_add_pdf():
+    """Index extracted_text for articles that have PDF text but no extracted_text chunks yet.
+    Non-destructive: existing abstract / summary_ai chunks are untouched."""
+    from .embeddings.indexer import index_article_source
+    from .embeddings.embedder import NotConfigured as VoyageNotConfigured
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    import threading
+
+    try:
+        with _db.engine.connect() as conn:
+            rows = conn.execute(_t(
+                """
+                SELECT a.id::text, a.title, a.extracted_text
+                  FROM articles a
+                 WHERE a.extracted_text IS NOT NULL
+                   AND length(a.extracted_text) > 200
+                   AND EXISTS (
+                       SELECT 1 FROM article_chunk c WHERE c.article_id = a.id
+                   )
+                   AND NOT EXISTS (
+                       SELECT 1 FROM article_chunk c
+                        WHERE c.article_id = a.id AND c.source_field = 'extracted_text'
+                   )
+                 ORDER BY a.created_at DESC
+                """
+            )).all()
+    except Exception as exc:
+        return jsonify({"error": "query_failed", "detail": str(exc)[:300]}), 500
+
+    total = len(rows)
+    if total == 0:
+        return jsonify({"ok": True, "queued": 0,
+                        "detail": "All articles with PDF text already have extracted_text chunks."})
+
+    def _run():
+        ok = fail = 0
+        for row in rows:
+            try:
+                index_article_source(
+                    article_id=row[0],
+                    source_field="extracted_text",
+                    source_text=row[2],
+                    title=row[1],
+                )
+                ok += 1
+            except VoyageNotConfigured:
+                break
+            except Exception as exc:
+                logger.warning("add-pdf: article %s failed: %s", row[0], exc)
+                fail += 1
+        logger.info("add-pdf finished: %d ok, %d failed", ok, fail)
+
+    threading.Thread(target=_run, name="pv-add-pdf", daemon=True).start()
+    return jsonify({"ok": True, "queued": total,
+                    "detail": f"Indexing PDF text for {total} articles in background."})
+
+
 @prionvault_bp.route("/api/admin/embeddings/add-abstracts", methods=["POST"])
 @admin_required
 def api_embeddings_add_abstracts():

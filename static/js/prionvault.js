@@ -9799,13 +9799,20 @@
       try {
         const c = await api('/admin/embeddings/coverage');
         coverageRows.innerHTML = [
-          coverageRow('📄', 'PDF completo', '#0F3460', c.pdf.indexed,      c.pdf.available,      c.pdf.available - c.pdf.indexed,           'pv-bi-start'),
+          coverageRow('📄', 'PDF completo', '#0F3460', c.pdf.indexed,      c.pdf.available,      c.pdf.available - c.pdf.indexed,           'pv-bi-add-pdf'),
           coverageRow('📝', 'Abstract',     '#1d4ed8', c.abstract.indexed,  c.abstract.available, c.abstract.available - c.abstract.indexed,  'pv-bi-add-abstracts'),
           coverageRow('🤖', 'Resumen IA',   '#15803d', c.summary.indexed,   c.summary.available,  c.summary.available - c.summary.indexed,    'pv-bi-add-summaries'),
         ].join('');
         // Update button labels to show pending counts
+        const pdfPending = c.pdf.available - c.pdf.indexed;
         const absPending = c.abstract.available - c.abstract.indexed;
         const sumPending = c.summary.available - c.summary.indexed;
+        const pdfBtn = document.getElementById('pv-bi-add-pdf');
+        if (pdfBtn && !pdfBtn.disabled) {
+          pdfBtn.textContent = pdfPending > 0
+            ? `+ Añadir PDF (${pdfPending.toLocaleString('es-ES')} pendientes)`
+            : '✓ PDF al día';
+        }
         const absBtn = document.getElementById('pv-bi-add-abstracts');
         if (absBtn && !absBtn.disabled) {
           absBtn.textContent = absPending > 0
@@ -10020,6 +10027,33 @@
         } finally {
           addAbstractsBtn.disabled = false;
           addAbstractsBtn.textContent = orig;
+        }
+      });
+    }
+
+    // Add extracted_text chunks to articles that have PDF text but no extracted_text chunk.
+    const addPdfBtn = document.getElementById('pv-bi-add-pdf');
+    if (addPdfBtn) {
+      addPdfBtn.addEventListener('click', async () => {
+        if (!confirm(
+          'Añadir vectorización del PDF completo a los artículos que ya tienen\n' +
+          'chunks (abstract/resumen) pero les falta el texto del PDF.\n\n' +
+          '• No toca los chunks existentes (abstract, summary_ai).\n' +
+          '• Corre en background — la búsqueda sigue funcionando.\n\n' +
+          '¿Continuar?'
+        )) return;
+        addPdfBtn.disabled = true;
+        const orig = addPdfBtn.textContent;
+        addPdfBtn.textContent = '⏳ Enviando…';
+        try {
+          const r = await api('/admin/embeddings/add-pdf', { method: 'POST' });
+          alert(`OK — ${r.detail}`);
+          loadCoverage();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          addPdfBtn.disabled = false;
+          addPdfBtn.textContent = orig;
         }
       });
     }
