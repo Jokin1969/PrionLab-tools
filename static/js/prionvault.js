@@ -13853,7 +13853,7 @@
                  style="width:80px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
           <span style="font-size:12px;color:#6b7280;margin-left:6px;">artículos aleatorios por email</span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div>
             <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Frecuencia</label>
             <select name="frequency" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
@@ -13863,15 +13863,22 @@
             </select>
           </div>
           <div>
-            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Día</label>
-            <select name="day_of_week" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
-              ${DOW_LABELS.map((d,i)=>`<option value="${i}" ${(sub.day_of_week??4)==i?'selected':''}>${d}</option>`).join('')}
-            </select>
-          </div>
-          <div>
             <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;">Hora</label>
             <input type="time" name="time" value="${h}:${m}"
                    style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:5px;">Días</label>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            ${DOW_LABELS.map((d,i)=>{
+              const activeDays = Array.isArray(sub.days_of_week) ? sub.days_of_week
+                : [sub.day_of_week ?? 4];
+              const chk = activeDays.includes(i) ? 'checked' : '';
+              return `<label style="display:flex;align-items:center;gap:3px;padding:5px 9px;border:1px solid #d1d5db;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;">
+                <input type="checkbox" name="days_of_week" value="${i}" ${chk} style="accent-color:#0F3460;">${d}
+              </label>`;
+            }).join('')}
           </div>
         </div>
         <div>
@@ -13907,7 +13914,7 @@
         email:              formEl.querySelector('[name="email"]').value.trim(),
         topics:             topics.length ? topics : ['prion'],
         frequency:          formEl.querySelector('[name="frequency"]').value,
-        day_of_week:        parseInt(formEl.querySelector('[name="day_of_week"]').value),
+        days_of_week:       (d => d.length ? d : [4])(Array.from(formEl.querySelectorAll('[name="days_of_week"]:checked')).map(cb=>parseInt(cb.value))),
         send_hour:          parseInt(hh || 15),
         send_minute:        parseInt(mm || 0),
         user_timezone:      formEl.querySelector('[name="user_timezone"]').value,
@@ -13931,7 +13938,10 @@
           ? `<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;">⚑ Picks</span>`
           : `<span style="background:#e0e7ff;color:#0F3460;font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;">📡 PubMed</span>`;
         const freqTxt = FREQ_LABELS[sub.frequency] || sub.frequency;
-        const dow     = DOW_LABELS[sub.day_of_week ?? 4];
+        const DOW_SHORT = ['L','M','X','J','V','S','D'];
+        const activeDays = Array.isArray(sub.days_of_week) && sub.days_of_week.length
+          ? sub.days_of_week : [sub.day_of_week ?? 4];
+        const dow = activeDays.map(d => DOW_SHORT[d] ?? d).join(' ');
         const nextTxt = sub.next_send_at
           ? new Date(sub.next_send_at).toLocaleDateString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
           : '—';
@@ -14093,7 +14103,7 @@
     addBtn.addEventListener('click', async () => {
       const defaults = {
         name: 'Nueva suscripción', source: 'pubmed', email: '', topics: ['prion'],
-        frequency: 'weekly', day_of_week: 4, send_hour: 15, send_minute: 0,
+        frequency: 'weekly', days_of_week: [4], send_hour: 15, send_minute: 0,
         user_timezone: 'UTC', lookback_days: 7, include_oa_only: false,
         articles_per_email: 5, enabled: true,
       };

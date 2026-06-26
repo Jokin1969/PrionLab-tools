@@ -7761,10 +7761,18 @@ def _validate_notif_payload(data: dict, uemail: str) -> dict:
     freq = data.get("frequency", "weekly")
     if freq not in ("weekly", "biweekly", "monthly"):
         freq = "weekly"
-    try:
-        dow = max(0, min(6, int(data.get("day_of_week", 4))))
-    except (TypeError, ValueError):
-        dow = 4
+    # Accept new days_of_week array; fall back to legacy day_of_week scalar.
+    raw_days = data.get("days_of_week")
+    if raw_days and isinstance(raw_days, list):
+        days = sorted({max(0, min(6, int(d))) for d in raw_days if str(d).isdigit() or isinstance(d, int)})
+    else:
+        try:
+            days = [max(0, min(6, int(data.get("day_of_week", 4))))]
+        except (TypeError, ValueError):
+            days = [4]
+    if not days:
+        days = [4]
+    dow = days[0]  # keep legacy field in sync with first selected day
     try:
         hour = max(0, min(23, int(data.get("send_hour", 15))))
     except (TypeError, ValueError):
@@ -7793,6 +7801,7 @@ def _validate_notif_payload(data: dict, uemail: str) -> dict:
         "topics":            _json.dumps(topics),
         "freq":              freq,
         "dow":               dow,
+        "days":              days,
         "hour":              hour,
         "minute":            minute,
         "tz":                (data.get("user_timezone") or "UTC").strip(),
@@ -7847,7 +7856,7 @@ def api_notifications_save():
 
     data = request.get_json(silent=True) or {}
     p = _validate_notif_payload(data, _uemail)
-    next_send = compute_next_send({"frequency": p["freq"], "day_of_week": p["dow"],
+    next_send = compute_next_send({"frequency": p["freq"], "days_of_week": p["days"],
                                    "send_hour": p["hour"], "send_minute": p["minute"],
                                    "user_timezone": p["tz"]})
     try:
@@ -7863,8 +7872,8 @@ def api_notifications_save():
                     UPDATE prionvault_notification_subscriptions SET
                         name=:name, source=:source, enabled=:enabled, email=:email,
                         topics=CAST(:topics AS jsonb), frequency=:freq, day_of_week=:dow,
-                        send_hour=:hour, send_minute=:minute, user_timezone=:tz,
-                        lookback_days=:lookback, include_oa_only=:oa_only,
+                        days_of_week=:days, send_hour=:hour, send_minute=:minute,
+                        user_timezone=:tz, lookback_days=:lookback, include_oa_only=:oa_only,
                         articles_per_email=:ape, next_send_at=:next_send, updated_at=NOW()
                     WHERE id=:id
                 """), {**p, "next_send": next_send, "id": existing_id})
@@ -7872,11 +7881,11 @@ def api_notifications_save():
                 conn.execute(_t("""
                     INSERT INTO prionvault_notification_subscriptions
                         (user_id, name, source, enabled, email, topics, frequency,
-                         day_of_week, send_hour, send_minute, user_timezone,
+                         day_of_week, days_of_week, send_hour, send_minute, user_timezone,
                          lookback_days, include_oa_only, articles_per_email,
                          next_send_at, updated_at)
                     VALUES (:uid, :name, :source, :enabled, :email,
-                            CAST(:topics AS jsonb), :freq, :dow, :hour, :minute,
+                            CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
                             :tz, :lookback, :oa_only, :ape, :next_send, NOW())
                 """), {**p, "uid": str(_uid), "next_send": next_send})
     except Exception as exc:
@@ -7923,11 +7932,11 @@ def api_notifications_test():
                 sub_id = conn.execute(_t("""
                     INSERT INTO prionvault_notification_subscriptions
                         (user_id, name, source, enabled, email, topics, frequency,
-                         day_of_week, send_hour, send_minute, user_timezone,
+                         day_of_week, days_of_week, send_hour, send_minute, user_timezone,
                          lookback_days, include_oa_only, articles_per_email,
                          next_send_at, updated_at)
                     VALUES (:uid, :name, :source, true, :email,
-                            CAST(:topics AS jsonb), :freq, :dow, :hour, :minute,
+                            CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
                             :tz, :lookback, :oa_only, :ape, :next_send, NOW())
                     RETURNING id::text
                 """), {**p, "uid": str(_uid), "next_send": next_send}).scalar()
@@ -7997,7 +8006,7 @@ def api_notifications_create():
     _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
     data = request.get_json(silent=True) or {}
     p = _validate_notif_payload(data, _uemail)
-    next_send = compute_next_send({"frequency": p["freq"], "day_of_week": p["dow"],
+    next_send = compute_next_send({"frequency": p["freq"], "days_of_week": p["days"],
                                    "send_hour": p["hour"], "send_minute": p["minute"],
                                    "user_timezone": p["tz"]})
     try:
@@ -8030,7 +8039,7 @@ def api_notifications_update(sub_id):
     _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
     data = request.get_json(silent=True) or {}
     p = _validate_notif_payload(data, _uemail)
-    next_send = compute_next_send({"frequency": p["freq"], "day_of_week": p["dow"],
+    next_send = compute_next_send({"frequency": p["freq"], "days_of_week": p["days"],
                                    "send_hour": p["hour"], "send_minute": p["minute"],
                                    "user_timezone": p["tz"]})
     try:
@@ -8039,8 +8048,8 @@ def api_notifications_update(sub_id):
                 UPDATE prionvault_notification_subscriptions SET
                     name=:name, source=:source, enabled=:enabled, email=:email,
                     topics=CAST(:topics AS jsonb), frequency=:freq, day_of_week=:dow,
-                    send_hour=:hour, send_minute=:minute, user_timezone=:tz,
-                    lookback_days=:lookback, include_oa_only=:oa_only,
+                    days_of_week=:days, send_hour=:hour, send_minute=:minute,
+                    user_timezone=:tz, lookback_days=:lookback, include_oa_only=:oa_only,
                     articles_per_email=:ape, next_send_at=:next_send, updated_at=NOW()
                 WHERE id=:id AND user_id=:uid
             """), {**p, "next_send": next_send, "id": sub_id, "uid": str(_uid)})

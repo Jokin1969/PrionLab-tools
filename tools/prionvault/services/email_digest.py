@@ -40,11 +40,27 @@ FREQ_LABELS = {
 
 # ── Next-send computation ────────────────────────────────────────────────────
 
-def compute_next_send(sub: dict, after: Optional[datetime] = None) -> datetime:
+def _next_occurrence_in_days(days: list[int], hour: int, minute: int,
+                              now_local: "datetime") -> "datetime":
+    """Return the nearest future local datetime matching one of `days` (0=Mon…6=Sun)."""
+    base = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    best = None
+    for dow in days:
+        ahead = (dow - base.weekday()) % 7
+        if ahead == 0 and base <= now_local:
+            ahead = 7
+        cand = base + timedelta(days=ahead)
+        if best is None or cand < best:
+            best = cand
+    return best  # type: ignore[return-value]
+
+
+def compute_next_send(sub: dict, after: "Optional[datetime]" = None) -> "datetime":
     """Return the next UTC datetime when sub should fire.
 
-    `sub` keys used: frequency, day_of_week (0=Mon…6=Sun), send_hour,
-    send_minute, user_timezone, last_sent_at (optional ISO string).
+    `sub` keys used: days_of_week (list[int], 0=Mon…6=Sun; falls back to
+    legacy day_of_week int), send_hour, send_minute, frequency,
+    user_timezone, last_sent_at (optional ISO string).
     `after` defaults to now(UTC).
     """
     try:
@@ -57,36 +73,34 @@ def compute_next_send(sub: dict, after: Optional[datetime] = None) -> datetime:
     now_utc = after or datetime.now(timezone.utc)
     now_local = now_utc.astimezone(tz)
 
-    freq        = sub.get("frequency", "weekly")
-    dow_target  = int(sub.get("day_of_week", 4))   # 0=Mon…6=Sun
-    hour        = int(sub.get("send_hour",   15))
-    minute      = int(sub.get("send_minute",  0))
+    freq   = sub.get("frequency", "weekly")
+    hour   = int(sub.get("send_hour",   15))
+    minute = int(sub.get("send_minute",  0))
 
-    # Candidate: next occurrence of (dow_target, hour, minute) in local tz
-    # Start from today at the target time.
-    candidate = now_local.replace(hour=hour, minute=minute,
-                                  second=0, microsecond=0)
+    # Resolve days list — support both new array and legacy scalar field.
+    raw_days = sub.get("days_of_week")
+    if raw_days:
+        days = [int(d) for d in raw_days]
+    else:
+        days = [int(sub.get("day_of_week", 4))]
+    if not days:
+        days = [4]  # Friday fallback
 
-    # Find the next matching day-of-week (0 = Monday in Python's .weekday())
-    days_ahead = (dow_target - candidate.weekday()) % 7
-    if days_ahead == 0 and candidate <= now_local:
-        days_ahead = 7   # same weekday but already past → next week
-    candidate += timedelta(days=days_ahead)
+    candidate = _next_occurrence_in_days(days, hour, minute, now_local)
 
     if freq == "biweekly":
-        # Align to fortnight from last send; if no last send use +1 week
         last = sub.get("last_sent_at")
         if last:
             try:
                 last_dt = datetime.fromisoformat(last).astimezone(tz)
-                two_weeks_after = last_dt + timedelta(weeks=2)
-                two_weeks_after = two_weeks_after.replace(
-                    hour=hour, minute=minute, second=0, microsecond=0)
-                # Snap to correct weekday
-                adj = (dow_target - two_weeks_after.weekday()) % 7
-                two_weeks_after += timedelta(days=adj)
-                if two_weeks_after > now_local:
-                    candidate = two_weeks_after
+                after_two = last_dt + timedelta(weeks=2)
+                # Find nearest matching day on or after the two-week mark.
+                biweekly_cand = _next_occurrence_in_days(
+                    days, hour, minute,
+                    after_two.replace(hour=hour, minute=minute,
+                                      second=0, microsecond=0) - timedelta(seconds=1))
+                if biweekly_cand > now_local:
+                    candidate = biweekly_cand
             except Exception:
                 pass
 
@@ -95,14 +109,13 @@ def compute_next_send(sub: dict, after: Optional[datetime] = None) -> datetime:
         if last:
             try:
                 last_dt = datetime.fromisoformat(last).astimezone(tz)
-                # First matching weekday >= 28 days after last send
-                monthly_after = last_dt + timedelta(days=28)
-                monthly_after = monthly_after.replace(
-                    hour=hour, minute=minute, second=0, microsecond=0)
-                adj = (dow_target - monthly_after.weekday()) % 7
-                monthly_after += timedelta(days=adj)
-                if monthly_after > now_local:
-                    candidate = monthly_after
+                after_month = last_dt + timedelta(days=28)
+                monthly_cand = _next_occurrence_in_days(
+                    days, hour, minute,
+                    after_month.replace(hour=hour, minute=minute,
+                                        second=0, microsecond=0) - timedelta(seconds=1))
+                if monthly_cand > now_local:
+                    candidate = monthly_cand
             except Exception:
                 pass
 
