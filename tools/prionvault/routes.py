@@ -5894,6 +5894,8 @@ def api_article_fetch_abstract(aid):
                 orig_pmid = pmid
                 pmid = None
                 a = s.get(models.Article, aid)
+                if a is None:
+                    return jsonify({"error": "not_found"}), 404
                 logger.warning(
                     "fetch-abstract: PMID %s already in DB for doi=%s, skipping: %s",
                     orig_pmid, doi, exc,
@@ -5903,6 +5905,8 @@ def api_article_fetch_abstract(aid):
                 # session is clean for the abstract-save commit that follows.
                 s.rollback()
                 a = s.get(models.Article, aid)
+                if a is None:
+                    return jsonify({"error": "not_found"}), 404
                 logger.warning("fetch-abstract: pubmed_by_doi failed for %s: %s",
                                doi, exc)
 

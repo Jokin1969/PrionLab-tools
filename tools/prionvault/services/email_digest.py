@@ -138,7 +138,7 @@ def _fetch_flagged_articles(user_id: str, n: int) -> list[dict]:
                     a.doi,
                     a.year,
                     a.journal,
-                    a.pmid,
+                    a.pubmed_id AS pmid,
                     a.authors,
                     a.dropbox_path,
                     a.pdf_md5

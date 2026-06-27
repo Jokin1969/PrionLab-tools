@@ -14102,22 +14102,24 @@
     }
 
     function _readForm(formEl) {
+      const _val = (sel, def = '') => (formEl.querySelector(sel) || { value: def }).value;
+      const _chk = (sel, def = false) => formEl.querySelector(sel) ? formEl.querySelector(sel).checked : def;
       const topics = [...formEl.querySelectorAll('input[name="topic"]:checked')].map(c => c.value);
-      const [hh, mm] = (formEl.querySelector('[name="time"]').value || '15:00').split(':');
+      const [hh, mm] = (_val('[name="time"]', '15:00') || '15:00').split(':');
       return {
-        name:               formEl.querySelector('[name="name"]').value.trim() || 'Mi suscripción',
-        source:             formEl.querySelector('[name="source"]').value,
-        email:              formEl.querySelector('[name="email"]').value.trim(),
+        name:               _val('[name="name"]') .trim() || 'Mi suscripción',
+        source:             _val('[name="source"]'),
+        email:              _val('[name="email"]').trim(),
         topics:             topics.length ? topics : ['prion'],
-        frequency:          formEl.querySelector('[name="frequency"]').value,
+        frequency:          _val('[name="frequency"]', 'weekly'),
         days_of_week:       (d => d.length ? d : [4])(Array.from(formEl.querySelectorAll('[name="days_of_week"]:checked')).map(cb=>parseInt(cb.value))),
         send_hour:          parseInt(hh || 15),
         send_minute:        parseInt(mm || 0),
-        user_timezone:      formEl.querySelector('[name="user_timezone"]').value,
-        lookback_days:      parseInt(formEl.querySelector('[name="lookback_days"]').value),
-        include_oa_only:    formEl.querySelector('[name="include_oa_only"]').checked,
-        articles_per_email: parseInt(formEl.querySelector('[name="articles_per_email"]').value || 5),
-        include_pdfs:       formEl.querySelector('[name="include_pdfs"]').checked,
+        user_timezone:      _val('[name="user_timezone"]', 'UTC'),
+        lookback_days:      parseInt(_val('[name="lookback_days"]', '7')),
+        include_oa_only:    _chk('[name="include_oa_only"]'),
+        articles_per_email: parseInt(_val('[name="articles_per_email"]', '5') || 5),
+        include_pdfs:       _chk('[name="include_pdfs"]', true),
         enabled:            true,
       };
     }
