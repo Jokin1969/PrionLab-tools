@@ -8,7 +8,7 @@ import logging
 import time as _time
 from typing import Optional, Set, Tuple
 
-from flask import Response, jsonify, session
+from flask import Response, g, jsonify, session
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session as SASession
 
@@ -50,10 +50,14 @@ _GuardResult = Optional[Tuple[Response, int]]
 
 
 def _viewer_role() -> Optional[str]:
+    if getattr(g, "_ext_authed", False):
+        return "admin"
     return session.get("role")
 
 
 def _viewer_id() -> Optional[str]:
+    if getattr(g, "_ext_authed", False):
+        return None  # extension requests are not tied to a user
     uid = session.get("user_id")
     if uid:
         return uid

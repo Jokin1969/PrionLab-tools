@@ -1,10 +1,17 @@
 from functools import wraps
-from flask import flash, redirect, request, session, url_for
+from flask import flash, g, redirect, request, session, url_for
+
+
+def _ext_authed() -> bool:
+    """True when the request carries a valid extension API key."""
+    return bool(getattr(g, "_ext_authed", False))
 
 
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if _ext_authed():
+            return f(*args, **kwargs)
         if not session.get("logged_in"):
             return redirect(url_for("auth.login", next=request.full_path))
         return f(*args, **kwargs)
@@ -14,6 +21,8 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if _ext_authed():
+            return f(*args, **kwargs)
         if not session.get("logged_in"):
             return redirect(url_for("auth.login", next=request.full_path))
         if session.get("role") != "admin":
@@ -26,6 +35,8 @@ def admin_required(f):
 def editor_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if _ext_authed():
+            return f(*args, **kwargs)
         if not session.get("logged_in"):
             return redirect(url_for("auth.login", next=request.full_path))
         if session.get("role") not in ("admin", "editor"):
@@ -39,6 +50,8 @@ def reader_required(f):
     """Any authenticated user (admin / editor / reader)."""
     @wraps(f)
     def decorated(*args, **kwargs):
+        if _ext_authed():
+            return f(*args, **kwargs)
         if not session.get("logged_in"):
             return redirect(url_for("auth.login", next=request.full_path))
         return f(*args, **kwargs)
