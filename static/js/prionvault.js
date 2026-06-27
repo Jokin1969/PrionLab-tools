@@ -2071,6 +2071,7 @@
                 style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;font-weight:700;">✓ −</button>
       </div>
 
+      ${IS_ADMIN ? `
       <button id="pv-bulk-tags${s}" type="button"
               title="Añadir o quitar tags a los artículos seleccionados"
               style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
@@ -2109,7 +2110,7 @@
                      border:1px solid #fecaca;cursor:pointer;font-size:12px;font-weight:600;
                      display:inline-flex;align-items:center;gap:4px;">
         <i class="fas fa-trash"></i> Eliminar
-      </button>
+      </button>` : ''}
 
       <button id="pv-bulk-clear${s}" type="button"
               style="padding:4px 10px;border-radius:6px;background:transparent;color:white;
@@ -2121,7 +2122,6 @@
   const _BULK_SUFFIXES = ['', '-top'];
 
   function wireBulkBar() {
-    if (!IS_ADMIN) return;
     // Inject the same markup into both bars so the actions are in reach
     // from the top AND the bottom of long article lists.
     const bottom = document.getElementById('pv-bulk-bar');
@@ -3050,7 +3050,7 @@
       <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
         <div style="display:inline-flex;align-items:center;gap:8px;">
           ${assignedStatus}
-          <button class="pv-open-prionread-btn"
+          ${IS_ADMIN ? `<button class="pv-open-prionread-btn"
                   data-aid="${esc(a.id)}"
                   title="Abrir este artículo en PrionRead admin ↗"
                   style="background:none;border:none;padding:2px 4px;cursor:pointer;
@@ -3062,7 +3062,7 @@
                     <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
                     <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
                   </svg>
-                </button>
+                </button>` : ''}
         </div>
       </td>`;
 
@@ -3082,7 +3082,8 @@
     }
 
     // ── Wiring ──────────────────────────────────────────────────────────
-    row.querySelector('.pv-open-prionread-btn').addEventListener('click', e => {
+    const prBtn = row.querySelector('.pv-open-prionread-btn');
+    if (prBtn) prBtn.addEventListener('click', e => {
       e.stopPropagation();
       window.open(`/prionread/admin/articles?open=${encodeURIComponent(a.id)}`,
                   '_blank', 'noopener');
