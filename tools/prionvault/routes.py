@@ -2246,7 +2246,7 @@ def api_articles_bulk_update():
             f"""
             INSERT INTO prionvault_user_state
               (user_id, article_id, {col_list})
-            SELECT CAST(:u AS uuid), x::uuid, {select_consts}
+            SELECT DISTINCT CAST(:u AS uuid), x::uuid, {select_consts}
               FROM unnest(CAST(:ids AS text[])) AS x
             ON CONFLICT (user_id, article_id) DO UPDATE
                SET {excl_set}
