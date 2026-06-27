@@ -7400,6 +7400,7 @@
     const btnCancel = document.getElementById('pv-add-cancel');
     const btnClose = document.getElementById('pv-add-close');
 
+    let _addOpts = {};
     function reset() {
       ident.value = '';
       [fTitle, fAuthors, fYear, fJournal, fDoi, fPmid, fAbstr].forEach(el => el.value = '');
@@ -7407,7 +7408,22 @@
       form.style.display = 'none';
       statusEl.textContent = '';
       statusEl.style.color = '#6b7280';
+      _addOpts = {};
     }
+
+    // External API used by the bulk-lookup modal to open this modal
+    // pre-filled with a specific identifier and auto-trigger the lookup.
+    window._pvOpenAddByDoi = function(identifier, opts) {
+      reset();
+      _addOpts = opts || {};
+      modal.style.display = 'flex';
+      ident.value = identifier || '';
+      if (_addOpts.queueLabel) {
+        statusEl.textContent = _addOpts.queueLabel;
+        statusEl.style.color = '#6b7280';
+      }
+      setTimeout(doLookup, 80);
+    };
 
     // Reflect the chosen PDF (name + size) so the user can confirm
     // they picked the right file before clicking Save.
@@ -7538,9 +7554,11 @@
         } else {
           await api('/articles', { method: 'POST', body: JSON.stringify(payload) });
         }
+        const savedCb = _addOpts.onSaved;
         close();
         loadArticles();
         refreshStats();
+        if (savedCb) savedCb();
       } catch (e) {
         if (e.status === 409) {
           const dup = (e.body && e.body.duplicate_of) || '';
@@ -8743,10 +8761,14 @@
                 onmouseover="this.style.background='#f9fafb'"
                 onmouseout="this.style.background=''"
                 data-aid="${esc(m.id)}">
+              <td style="padding:6px 8px;text-align:center;width:32px;" class="pv-bl-chk-cell">
+                <input type="checkbox" class="pv-bl-chk" data-aid="${esc(m.id)}"
+                       style="width:15px;height:15px;accent-color:#0F3460;cursor:pointer;">
+              </td>
               <td style="padding:6px 8px;font-size:11.5px;color:#9ca3af;font-variant-numeric:tabular-nums;">${i+1}</td>
               <td style="padding:6px 8px;font-size:11px;color:#15803d;font-weight:700;">✓</td>
               <td style="padding:6px 8px;font-size:11.5px;font-family:ui-monospace,monospace;color:#374151;
-                         word-break:break-all;max-width:220px;">${inp}</td>
+                         word-break:break-all;max-width:200px;">${inp}</td>
               <td style="padding:6px 8px;">
                 <div style="font-size:13px;font-weight:600;color:#111827;">${supHtml(m.title || '(sin título)')}</div>
                 <div style="font-size:11.5px;color:#6b7280;margin-top:1px;">${meta} ${badges}</div>
@@ -8758,18 +8780,17 @@
           : '<span style="color:#92400e;">No está en la biblioteca</span>';
         return `
           <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:6px 8px;width:32px;"></td>
             <td style="padding:6px 8px;font-size:11.5px;color:#9ca3af;font-variant-numeric:tabular-nums;">${i+1}</td>
             <td style="padding:6px 8px;font-size:11px;color:#b91c1c;font-weight:700;">✗</td>
             <td style="padding:6px 8px;font-size:11.5px;font-family:ui-monospace,monospace;color:#374151;
-                       word-break:break-all;max-width:220px;">${inp}</td>
+                       word-break:break-all;max-width:200px;">${inp}</td>
             <td style="padding:6px 8px;font-size:12px;">${reason}</td>
           </tr>`;
       }).join('');
 
-      const notFoundList = (r.items || [])
-        .filter(it => !it.match)
-        .map(it => it.input)
-        .join('\n');
+      const notFoundItems = (r.items || []).filter(it => !it.match).map(it => it.input);
+      const notFoundList  = notFoundItems.join('\n');
 
       const copyBtn = notFoundList
         ? `<button id="pv-bulk-lookup-copy" type="button"
@@ -8779,41 +8800,173 @@
           </button>`
         : '';
 
-      resultsEl.innerHTML = summary +
-        `<div style="max-height:420px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;">
+      const addBtn = notFoundList
+        ? `<button id="pv-bulk-lookup-add" type="button"
+                   style="padding:5px 11px;border-radius:6px;border:1px solid #0F3460;background:#0F3460;
+                          font-size:11.5px;color:#fff;font-weight:600;cursor:pointer;">
+            <i class="fas fa-search-plus"></i> Buscar y añadir (${notFound + bad})
+          </button>`
+        : '';
+
+      // Action bar shown when ≥1 found article is checked.
+      const actionBar = `
+        <div id="pv-bl-action-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;
+             padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb;margin-bottom:8px;">
+          <span id="pv-bl-sel-count" style="font-size:12px;color:#374151;font-weight:600;"></span>
+          <button id="pv-bl-flag-btn" type="button"
+                  style="padding:4px 10px;border-radius:6px;border:1px solid #f59e0b;background:#fffbeb;
+                         font-size:12px;color:#92400e;cursor:pointer;font-weight:600;">
+            ⚑ Marcar con banderita
+          </button>
+          <button id="pv-bl-del-btn" type="button"
+                  style="padding:4px 10px;border-radius:6px;border:1px solid #f87171;background:#fff1f2;
+                         font-size:12px;color:#b91c1c;cursor:pointer;font-weight:600;">
+            🗑 Eliminar de PrionVault
+          </button>
+          <span id="pv-bl-action-status" style="font-size:11.5px;color:#6b7280;"></span>
+        </div>`;
+
+      resultsEl.innerHTML = summary + actionBar +
+        `<div style="max-height:380px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;">
            <table style="width:100%;border-collapse:collapse;font-size:13px;">
              <thead style="background:#f9fafb;position:sticky;top:0;">
                <tr style="text-align:left;color:#6b7280;font-size:10.5px;
                           text-transform:uppercase;letter-spacing:0.04em;">
-                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:40px;">#</th>
-                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:30px;"></th>
-                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:220px;">Input</th>
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:32px;text-align:center;">
+                   <input type="checkbox" id="pv-bl-select-all" title="Seleccionar todos"
+                          style="width:15px;height:15px;accent-color:#0F3460;cursor:pointer;">
+                 </th>
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:36px;">#</th>
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:26px;"></th>
+                 <th style="padding:8px;border-bottom:1px solid #e5e7eb;width:200px;">Input</th>
                  <th style="padding:8px;border-bottom:1px solid #e5e7eb;">Artículo</th>
                </tr>
              </thead>
              <tbody>${rows}</tbody>
            </table>
          </div>
-         <div style="display:flex;justify-content:flex-end;margin-top:10px;">${copyBtn}</div>`;
+         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;flex-wrap:wrap;">
+           ${copyBtn}${addBtn}
+         </div>`;
 
-      // Click row → open detail for the matched article.
+      // ── Checkbox selection + action bar ────────────────────────────────
+      const actionBarEl  = document.getElementById('pv-bl-action-bar');
+      const selCountEl   = document.getElementById('pv-bl-sel-count');
+      const actionStatus = document.getElementById('pv-bl-action-status');
+      const selectAll    = document.getElementById('pv-bl-select-all');
+
+      function getChecked() {
+        return Array.from(resultsEl.querySelectorAll('.pv-bl-chk:checked'));
+      }
+      function updateActionBar() {
+        const chks = getChecked();
+        if (chks.length > 0) {
+          selCountEl.textContent = `${chks.length} seleccionado${chks.length > 1 ? 's' : ''}`;
+          actionBarEl.style.display = 'flex';
+        } else {
+          actionBarEl.style.display = 'none';
+        }
+        actionStatus.textContent = '';
+      }
+
+      resultsEl.querySelectorAll('.pv-bl-chk').forEach(cb => {
+        cb.addEventListener('change', updateActionBar);
+      });
+
+      selectAll?.addEventListener('change', () => {
+        resultsEl.querySelectorAll('.pv-bl-chk').forEach(cb => {
+          cb.checked = selectAll.checked;
+        });
+        updateActionBar();
+      });
+
+      // Flag selected
+      document.getElementById('pv-bl-flag-btn')?.addEventListener('click', async () => {
+        const ids = getChecked().map(cb => cb.dataset.aid);
+        if (!ids.length) return;
+        actionStatus.textContent = 'Marcando…';
+        try {
+          await api('/articles/bulk', {
+            method: 'PATCH',
+            body: JSON.stringify({ ids, updates: { is_flagged: true } }),
+          });
+          actionStatus.textContent = `✓ ${ids.length} marcado${ids.length > 1 ? 's' : ''} con banderita`;
+          actionStatus.style.color = '#15803d';
+        } catch (e) {
+          actionStatus.textContent = 'Error: ' + e.message;
+          actionStatus.style.color = '#b91c1c';
+        }
+      });
+
+      // Delete selected
+      document.getElementById('pv-bl-del-btn')?.addEventListener('click', async () => {
+        const ids = getChecked().map(cb => cb.dataset.aid);
+        if (!ids.length) return;
+        if (!confirm(`¿Eliminar ${ids.length} artículo${ids.length > 1 ? 's' : ''} de PrionVault? Esta acción no se puede deshacer.`)) return;
+        actionStatus.textContent = 'Eliminando…';
+        try {
+          await api('/articles/bulk-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids }),
+          });
+          // Remove the deleted rows from the table.
+          ids.forEach(id => {
+            const tr = resultsEl.querySelector(`tr[data-aid="${id}"]`);
+            if (tr) tr.remove();
+          });
+          actionBarEl.style.display = 'none';
+          loadArticles();
+          refreshStats();
+        } catch (e) {
+          actionStatus.textContent = 'Error: ' + e.message;
+          actionStatus.style.color = '#b91c1c';
+        }
+      });
+
+      // Click row → open detail (but skip if clicking the checkbox).
       resultsEl.querySelectorAll('tr[data-aid]').forEach(tr => {
-        tr.addEventListener('click', () => {
+        tr.addEventListener('click', e => {
+          if (e.target.closest('.pv-bl-chk-cell')) return;
           modal.style.display = 'none';
           openDetail(tr.dataset.aid);
         });
       });
+
       // Copy not-found list.
-      const cb = document.getElementById('pv-bulk-lookup-copy');
-      if (cb) cb.addEventListener('click', async () => {
+      const copyBtnEl = document.getElementById('pv-bulk-lookup-copy');
+      if (copyBtnEl) copyBtnEl.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(notFoundList);
-          cb.innerHTML = '<i class="fas fa-check"></i> Copiado';
+          copyBtnEl.innerHTML = '<i class="fas fa-check"></i> Copiado';
           setTimeout(() => {
-            cb.innerHTML = '<i class="fas fa-clipboard"></i> Copiar los que no están (' +
+            copyBtnEl.innerHTML = '<i class="fas fa-clipboard"></i> Copiar los que no están (' +
                            (notFound + bad) + ')';
           }, 1800);
         } catch (e) { alert('No se pudo copiar: ' + e.message); }
+      });
+
+      // Sequential "Buscar y añadir" for not-found items.
+      const addBtnEl = document.getElementById('pv-bulk-lookup-add');
+      if (addBtnEl) addBtnEl.addEventListener('click', () => {
+        if (!notFoundItems.length) return;
+        // Hide this modal while the add modal is open; re-show after sequence.
+        const queue = [...notFoundItems];
+        let idx = 0;
+        function openNext() {
+          if (idx >= queue.length) {
+            // All done — re-open the lookup modal.
+            modal.style.display = 'flex';
+            return;
+          }
+          modal.style.display = 'none';
+          const identifier = queue[idx];
+          idx++;
+          window._pvOpenAddByDoi(identifier, {
+            queueLabel: `Artículo ${idx} de ${queue.length} no encontrados`,
+            onSaved: openNext,
+          });
+        }
+        openNext();
       });
     }
   }
