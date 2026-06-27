@@ -73,6 +73,40 @@
   .pv-modal-close:hover { background: #f3f4f6; }
   .pv-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.45); }
 
+  /* ── Help modal tabs ─────────────────────────────────────────────────── */
+  .pv-help-tab {
+    padding: 6px 14px; font-size: 13px; font-weight: 600; border-radius: 20px;
+    border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .pv-help-tab:hover { background: #f3f4f6; color: #374151; }
+  .pv-help-tab-active { background: #0F3460 !important; color: white !important; border-color: #0F3460 !important; }
+  .pv-help-section { margin-bottom: 28px; }
+  .pv-help-section h3 { font-size: 15px; font-weight: 700; color: #111827; margin: 0 0 10px; }
+  .pv-help-section h4 { font-size: 13px; font-weight: 700; color: #374151; margin: 16px 0 6px; }
+  .pv-help-section p, .pv-help-section li { font-size: 13.5px; color: #4b5563; line-height: 1.65; margin: 0 0 6px; }
+  .pv-help-section ul, .pv-help-section ol { padding-left: 20px; margin: 0 0 10px; }
+  .pv-help-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 9px; border-radius: 12px; font-size: 12px; font-weight: 600;
+    border: 1px solid currentColor;
+  }
+  .pv-help-chip-admin { color: #0F3460; background: #eff6ff; border-color: #bfdbfe; }
+  .pv-help-chip-reader { color: #065f46; background: #f0fdf4; border-color: #86efac; }
+  .pv-help-role-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .pv-help-role-table th { background: #f9fafb; padding: 8px 12px; text-align: left; font-weight: 700;
+                            color: #374151; border: 1px solid #e5e7eb; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .pv-help-role-table td { padding: 8px 12px; border: 1px solid #e5e7eb; color: #4b5563; vertical-align: top; }
+  .pv-help-role-table tr:nth-child(even) td { background: #fafafa; }
+  .pv-help-yes { color: #15803d; font-weight: 700; }
+  .pv-help-no  { color: #9ca3af; }
+  .pv-help-partial { color: #c2410c; font-weight: 600; }
+  .pv-help-new-badge {
+    display: inline-block; padding: 1px 7px; border-radius: 10px;
+    background: #f0fdf4; color: #15803d; border: 1px solid #86efac;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; margin-left: 6px; vertical-align: middle;
+  }
+
   /* ── Soft buttons ───────────────────────────────────────────────────── */
   .pv-btn-soft {
     padding: 6px 14px; font-size: 13px; border-radius: 8px;
@@ -568,6 +602,11 @@
       <button class="pv-nav-btn" id="btn-library-health" onclick="openLibraryHealth()"
               title="Vista general del estado de la biblioteca: PDFs, metadatos, extracción, indexación y resúmenes.">
         <span><i class="fas fa-heartbeat" style="width:13px;margin-right:6px;opacity:0.7;"></i>Salud biblioteca</span>
+      </button>
+
+      <button class="pv-nav-btn" id="btn-help" onclick="openPrionVaultHelp()"
+              title="Guía de uso de PrionVault: funciones, roles y novedades.">
+        <span><i class="fas fa-circle-question" style="width:13px;margin-right:6px;opacity:0.7;"></i>Ayuda</span>
       </button>
 
     </nav>
@@ -2834,6 +2873,31 @@
     <div id="pv-health-body">
       <p style="color:#6b7280;text-align:center;padding:2rem;">Cargando…</p>
     </div>
+  </div>
+</div>
+
+<!-- ── Help modal ─────────────────────────────────────────────────────── -->
+<div id="pv-help-modal" class="pv-modal" style="display:none;" role="dialog"
+     aria-modal="true" aria-labelledby="pv-help-title">
+  <div class="pv-modal-backdrop"
+       onclick="document.getElementById('pv-help-modal').style.display='none'"></div>
+  <div class="pv-modal-inner" style="max-width:900px;width:94vw;max-height:90vh;overflow-y:auto;padding:0;">
+    <div style="padding:22px 28px 18px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:white;z-index:2;">
+      <button class="pv-modal-close" aria-label="Cerrar"
+              onclick="document.getElementById('pv-help-modal').style.display='none'">×</button>
+      <h2 id="pv-help-title" style="margin:0 0 4px;font-size:18px;font-weight:700;color:#111827;">
+        <i class="fas fa-circle-question" style="color:#0F3460;margin-right:9px;"></i>Guía de PrionVault
+      </h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;" id="pv-help-tabs">
+        <button class="pv-help-tab pv-help-tab-active" data-tab="novedades">🆕 Novedades</button>
+        <button class="pv-help-tab" data-tab="roles">👤 Roles</button>
+        <button class="pv-help-tab" data-tab="busqueda">🔍 Búsqueda</button>
+        <button class="pv-help-tab" data-tab="notificaciones">🔔 Notificaciones</button>
+        <button class="pv-help-tab" data-tab="salud">❤️ Salud biblioteca</button>
+        <button class="pv-help-tab" data-tab="jc">📖 Journal Club</button>
+      </div>
+    </div>
+    <div id="pv-help-body" style="padding:24px 28px 28px;"></div>
   </div>
 </div>
 

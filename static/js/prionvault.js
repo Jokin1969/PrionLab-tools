@@ -14318,4 +14318,263 @@
   });
 
 
+  // ── Help modal ────────────────────────────────────────────────────────────
+  window.openPrionVaultHelp = function openPrionVaultHelp() {
+    const modal = document.getElementById('pv-help-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    _helpRenderTab('novedades');
+
+    // Wire tabs (only once)
+    if (!modal.dataset.wired) {
+      modal.dataset.wired = '1';
+      modal.querySelectorAll('.pv-help-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          modal.querySelectorAll('.pv-help-tab').forEach(b => b.classList.remove('pv-help-tab-active'));
+          btn.classList.add('pv-help-tab-active');
+          _helpRenderTab(btn.dataset.tab);
+        });
+      });
+    }
+  };
+
+  function _helpRenderTab(tab) {
+    const body = document.getElementById('pv-help-body');
+    if (!body) return;
+
+    const NEW = '<span class="pv-help-new-badge">NUEVO</span>';
+    const YES = '<span class="pv-help-yes">✓</span>';
+    const NO  = '<span class="pv-help-no">—</span>';
+    const PART= '<span class="pv-help-partial">parcial</span>';
+
+    const html = {
+
+      // ── Novedades ──────────────────────────────────────────────────────
+      novedades: `
+        <div class="pv-help-section">
+          <h3>Últimas novedades en PrionVault</h3>
+
+          <h4>🔔 Notificaciones por email ${NEW}</h4>
+          <p>Configura digests automáticos que te llegan por correo con los artículos más relevantes. Accede desde <strong>Miscelánea → Notificaciones</strong> en el menú lateral. Puedes crear varias suscripciones con configuraciones diferentes.</p>
+          <ul>
+            <li><strong>PrionVault Picks:</strong> artículos que hayas marcado con bandera (🚩), enviados en el período elegido.</li>
+            <li><strong>PubMed Digest:</strong> artículos nuevos en PubMed que coincidan con tus temas de interés.</li>
+            <li><strong>Incluir PDFs adjuntos:</strong> si el artículo tiene PDF en Dropbox, se adjunta al email directamente.</li>
+            <li>Configurable: frecuencia, horario, zona horaria, número de artículos y temas.</li>
+          </ul>
+
+          <h4>❤️ Salud de la biblioteca — Completitud de metadatos ${NEW}</h4>
+          <p>El modal de <strong>Salud biblioteca</strong> ahora incluye un sub-panel de completitud de metadatos. Pulsa el botón <em>"🗂 Completitud de metadatos →"</em> para ver cuántos artículos tienen campos vacíos: título, autores, revista, año, abstract, DOI y PMID. Cada número es clickable y filtra el listado principal directamente.</p>
+
+          <h4>👥 Roles de usuario ${NEW}</h4>
+          <p>PrionVault ahora soporta dos roles diferenciados: <strong>Administrador</strong> y <strong>Lector</strong>. La pestaña <em>"Roles"</em> de esta ayuda detalla exactamente qué puede hacer cada uno.</p>
+
+          <h4>✅ Selección y acciones masivas para lectores ${NEW}</h4>
+          <p>Los lectores pueden ahora usar las checkboxes de la tabla para seleccionar varios artículos y aplicar acciones en lote: bandera, favorito, hito, leído/no leído, color y prioridad. Las acciones destructivas (eliminar, resumir con IA, gestión de tags) siguen siendo exclusivas del administrador.</p>
+
+          <h4>🔍 Nuevos filtros de salud en el listado ${NEW}</h4>
+          <p>Desde el modal de Salud biblioteca puedes filtrar el listado principal por artículos a los que les falta título, autores, revista, año, abstract, DOI o PMID. Útil para completar metadatos de forma sistemática.</p>
+
+          <h4>🔐 Mejoras de seguridad</h4>
+          <ul>
+            <li>Límite de intentos de login (10/min, 50/hora) para proteger contra fuerza bruta.</li>
+            <li>Cabeceras HTTP de seguridad: <code>X-Frame-Options</code>, <code>X-Content-Type-Options</code>, CSP, Referrer-Policy.</li>
+            <li>Clave de sesión configurable vía <code>APP_SECRET_KEY</code> independiente de la contraseña de admin.</li>
+            <li>Rate limiting en endpoints de búsqueda DOI/PMID.</li>
+          </ul>
+        </div>
+      `,
+
+      // ── Roles ─────────────────────────────────────────────────────────
+      roles: `
+        <div class="pv-help-section">
+          <h3>Roles de usuario</h3>
+          <p>PrionVault distingue dos roles. El rol se asigna al crear el usuario y determina qué funciones están disponibles en la interfaz.</p>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+            <div style="flex:1;min-width:220px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px;">
+              <div style="font-weight:700;font-size:14px;color:#0F3460;margin-bottom:6px;">
+                <i class="fas fa-shield-halved" style="margin-right:6px;"></i>Administrador
+              </div>
+              <p style="margin:0;font-size:13px;color:#1e40af;">Acceso completo: puede añadir, editar y eliminar artículos, gestionar PDFs, lanzar procesos de IA y ver todas las herramientas del menú lateral.</p>
+            </div>
+            <div style="flex:1;min-width:220px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px;">
+              <div style="font-weight:700;font-size:14px;color:#065f46;margin-bottom:6px;">
+                <i class="fas fa-user" style="margin-right:6px;"></i>Lector
+              </div>
+              <p style="margin:0;font-size:13px;color:#065f46;">Acceso de consulta: puede explorar la biblioteca, organizar su lectura personal, crear entradas de Journal Club y recibir notificaciones.</p>
+            </div>
+          </div>
+
+          <h4>Tabla comparativa de capacidades</h4>
+          <table class="pv-help-role-table">
+            <thead>
+              <tr>
+                <th style="width:45%;">Función</th>
+                <th style="width:27.5%;text-align:center;">
+                  <span style="color:#0F3460;">⚙ Admin</span>
+                </th>
+                <th style="width:27.5%;text-align:center;">
+                  <span style="color:#065f46;">👤 Lector</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Exploración y búsqueda</td></tr>
+              <tr><td>Ver listado de artículos</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Búsqueda de texto libre (IA semántica)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Filtros por año, autores, revista, tags, colección…</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Ver abstract, PDF y resumen IA</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Ver artículos similares</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Exportar referencias (Word)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Filtrar por asignación en PrionRead (👥)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+
+              <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Estado personal del artículo</td></tr>
+              <tr><td>Marcar como favorito (♥)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Marcar como leído (✓)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Poner bandera (🚩)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Marcar como hito (★)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Asignar color y prioridad</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Valorar artículo (★ rating)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+
+              <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Selección masiva</td></tr>
+              <tr><td>Usar checkboxes y barra de acciones</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Acciones masivas: bandera, favorito, leído, color, prioridad</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Acciones masivas: eliminar artículos</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Acciones masivas: generar resúmenes IA</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Acciones masivas: tags, PrionPack, colección</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+
+              <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Colecciones y tags</td></tr>
+              <tr><td>Ver colecciones y tags existentes</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Filtrar por colección o tag</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Crear / editar / eliminar colecciones y tags</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+
+              <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Journal Club</td></tr>
+              <tr><td>Ver presentaciones JC de todos</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Crear nuevas entradas JC</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Adjuntar archivos (PPTX, PDF…) a sus propias entradas</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Editar o eliminar entradas propias</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Editar o eliminar entradas de otros usuarios</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+
+              <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Notificaciones</td></tr>
+              <tr><td>Configurar suscripciones de email propias</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Recibir PrionVault Picks (artículos con bandera)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+
+              <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Gestión de contenido (solo admin)</td></tr>
+              <tr><td>Añadir artículos (DOI, PMID, PDF, búsqueda PubMed…)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Editar metadatos de artículos</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Eliminar artículos</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Subir y gestionar PDFs</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Abrir artículo en PrionRead admin ↗</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Búsqueda masiva por DOI / PMID</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Generar resúmenes IA, indexación vectorial</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Gestionar PrionPacks</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Ver Salud biblioteca (métricas del corpus)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+              <tr><td>Encontrar duplicados, verificar PDFs, Estado IA</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      `,
+
+      // ── Búsqueda ──────────────────────────────────────────────────────
+      busqueda: `
+        <div class="pv-help-section">
+          <h3>Búsqueda y filtros</h3>
+          <h4>Barra de búsqueda</h4>
+          <p>La barra de búsqueda superior admite tres modos según el botón activo a su izquierda:</p>
+          <ul>
+            <li><strong>🔤 Texto libre:</strong> búsqueda clásica por título, autores, abstract y notas. Rápida y sin coste.</li>
+            <li><strong>🤖 IA semántica:</strong> formula tu pregunta en lenguaje natural y el sistema busca por significado usando embeddings vectoriales. Requiere que los artículos estén indexados.</li>
+            <li><strong>🔍 Búsqueda bibliográfica:</strong> consulta PubMed y Scopus en tiempo real. Los resultados se pueden importar directamente a la biblioteca.</li>
+          </ul>
+          <h4>Filtros del panel lateral</h4>
+          <p>Filtra por año, autores, revista, colección, tag, estado PDF, estado resumen IA, bandera, hito, favorito, leído, color, prioridad, Journal Club, PrionPack y asignación PrionRead. Los filtros se combinan (AND).</p>
+          <h4>Búsqueda masiva por DOI / PMID <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
+          <p>Pega varios DOIs o PMIDs separados por comas o saltos de línea en el campo de la barra de herramientas para encontrar de golpe qué artículos ya están en la biblioteca y cuáles faltan.</p>
+        </div>
+      `,
+
+      // ── Notificaciones ────────────────────────────────────────────────
+      notificaciones: `
+        <div class="pv-help-section">
+          <h3>Notificaciones por email</h3>
+          <p>Accede desde <strong>Miscelánea → 🔔 Notificaciones</strong>. Puedes crear y gestionar tantas suscripciones como quieras, cada una con su propia configuración.</p>
+
+          <h4>Tipos de suscripción</h4>
+          <ul>
+            <li><strong>PrionVault Picks:</strong> recopila los artículos de tu biblioteca que tengan bandera 🚩 activa en el período seleccionado (semana, quincena, mes…) y los envía en un digest estructurado.</li>
+            <li><strong>PubMed Digest:</strong> busca artículos nuevos en PubMed según los temas que configures y te los envía periódicamente.</li>
+          </ul>
+
+          <h4>Opciones de configuración</h4>
+          <ul>
+            <li><strong>Nombre:</strong> identifica la suscripción (aparece en el asunto del email).</li>
+            <li><strong>Email destinatario:</strong> puede ser diferente al de tu cuenta.</li>
+            <li><strong>Frecuencia:</strong> diaria, semanal, quincenal o mensual.</li>
+            <li><strong>Días de la semana:</strong> en frecuencia semanal, elige qué día llega el email.</li>
+            <li><strong>Hora de envío y zona horaria:</strong> el digest se genera y envía a la hora local que indiques.</li>
+            <li><strong>Período de búsqueda:</strong> cuántos días atrás mira el sistema para recopilar artículos (1–90 días).</li>
+            <li><strong>Artículos por email:</strong> límite máximo de artículos incluidos en cada envío.</li>
+            <li><strong>Solo Open Access:</strong> para el digest de PubMed, filtra únicamente artículos con acceso libre.</li>
+            <li><strong>Incluir PDFs adjuntos:</strong> si el artículo tiene PDF almacenado en Dropbox, lo adjunta al email. Activado por defecto. Puede desactivarse si prefieres emails más ligeros.</li>
+          </ul>
+
+          <h4>Activar / desactivar</h4>
+          <p>Cada suscripción tiene un interruptor que la activa o pausa sin necesidad de eliminarla. Los digests solo se envían si hay artículos que cumplan los criterios; si no hay nada nuevo, el email no se manda.</p>
+        </div>
+      `,
+
+      // ── Salud biblioteca ──────────────────────────────────────────────
+      salud: `
+        <div class="pv-help-section">
+          <h3>Salud de la biblioteca <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h3>
+          <p>Abre desde el botón <strong>❤️ Salud biblioteca</strong> en la parte inferior del menú lateral. Ofrece un diagnóstico completo del estado del corpus.</p>
+
+          <h4>Panel principal — métricas globales</h4>
+          <ul>
+            <li><strong>Artículos totales, con PDF, sin PDF:</strong> cuántos artículos tiene la biblioteca y qué proporción tiene PDF asociado.</li>
+            <li><strong>Extracción de texto:</strong> artículos cuyo PDF ha sido procesado para poder buscar dentro de él (OCR incluido para escaneados).</li>
+            <li><strong>Resúmenes IA:</strong> artículos con resumen generado por IA vs. pendientes.</li>
+            <li><strong>Indexación vectorial:</strong> artículos disponibles para búsqueda semántica.</li>
+            <li><strong>Journal Club:</strong> artículos presentados en sesiones JC.</li>
+            <li><strong>Con DOI / con PMID:</strong> cobertura de identificadores para enlazar con bases de datos externas.</li>
+          </ul>
+          <p>Cada número es un botón clickable: al pulsarlo se cierra el modal y el listado muestra exactamente esos artículos.</p>
+
+          <h4>🗂 Completitud de metadatos ${NEW}</h4>
+          <p>Pulsa el botón <em>"🗂 Completitud de metadatos →"</em> para ver un sub-panel con el recuento de artículos que tienen vacíos los campos más importantes:</p>
+          <ul>
+            <li>Título · Autores · Revista · Año · Abstract · DOI · PMID</li>
+          </ul>
+          <p>Al igual que las métricas principales, cada contador es clickable y filtra el listado para que puedas completar esos campos de forma sistemática usando el editor de metadatos.</p>
+          <p>Vuelve al panel principal con el botón <em>"← Atrás"</em>.</p>
+        </div>
+      `,
+
+      // ── Journal Club ──────────────────────────────────────────────────
+      jc: `
+        <div class="pv-help-section">
+          <h3>Journal Club (JC)</h3>
+          <p>El módulo de Journal Club permite registrar las sesiones en las que se presenta y discute un artículo, con historial de presentadores, fechas y materiales adjuntos.</p>
+
+          <h4>Quién puede hacer qué</h4>
+          <ul>
+            <li><strong>Cualquier usuario (admin y lector)</strong> puede crear una nueva entrada JC para cualquier artículo de la biblioteca.</li>
+            <li>El creador puede editar y eliminar sus propias entradas en cualquier momento.</li>
+            <li>El administrador puede editar y eliminar las entradas de cualquier usuario.</li>
+            <li>Todos pueden ver el historial completo de sesiones JC.</li>
+          </ul>
+
+          <h4>Archivos adjuntos</h4>
+          <p>Puedes adjuntar uno o varios archivos a cada entrada JC (presentaciones PPTX, PDFs complementarios, notas…). Los archivos se almacenan en Dropbox y están disponibles para todos los usuarios. El creador de la entrada y el administrador pueden añadir o eliminar adjuntos.</p>
+
+          <h4>Acceso</h4>
+          <p>Las entradas JC aparecen en el panel lateral del artículo, en la sección <em>"Journal Club"</em>. También puedes filtrar el listado principal para ver solo artículos con presentaciones JC usando el filtro correspondiente en el menú lateral.</p>
+        </div>
+      `,
+    };
+
+    body.innerHTML = html[tab] || `<p style="color:#9ca3af;">Sección no encontrada.</p>`;
+  }
+
+
 })();
