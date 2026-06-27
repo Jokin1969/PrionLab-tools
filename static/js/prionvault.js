@@ -7408,6 +7408,8 @@
       form.style.display = 'none';
       statusEl.textContent = '';
       statusEl.style.color = '#6b7280';
+      btnSave.disabled = false;
+      btnSave.style.opacity = '1';
       _addOpts = {};
     }
 
