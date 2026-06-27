@@ -264,6 +264,10 @@
               <span class="nb-item-icon">&#127981;</span>
               <span class="nb-item-body"><span class="nb-item-title">{{ _('My Lab') }}</span></span>
             </a>
+            <a href="{{ url_for('prionvault.download_extension') }}" class="nb-item" role="menuitem" download>
+              <span class="nb-item-icon">🧩</span>
+              <span class="nb-item-body"><span class="nb-item-title">{{ _('Chrome Extension') }}</span></span>
+            </a>
             <div class="nb-menu-divider"></div>
             <div class="nb-menu-section-label">Admin</div>
             <a href="{{ url_for('admin.index') }}" class="nb-item" role="menuitem">
@@ -290,7 +294,10 @@
           </div>
         </div>
         {% else %}
-        <!-- Reader: just a logout button, no dropdown -->
+        <!-- Reader: extension download + logout -->
+        <a href="{{ url_for('prionvault.download_extension') }}" class="nb-link" title="{{ _('Chrome Extension') }}" download>
+          🧩
+        </a>
         <a href="{{ url_for('auth.logout') }}" class="nb-link nb-logout" aria-label="{{ _('Log out') }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span class="nb-label">{{ _('Log out') }}</span>

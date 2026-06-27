@@ -16,14 +16,16 @@ Covers:
 Registered on prionvault_bp via side-effect import at the bottom of routes.py.
 """
 import hashlib
+import io
 import logging
 import os
 import threading
+import zipfile
 from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
 
-from flask import Response, jsonify, request
+from flask import Response, jsonify, request, send_file
 from sqlalchemy import text as sql_text
 from sqlalchemy.exc import IntegrityError
 
@@ -1855,3 +1857,28 @@ def api_delete_summary(aid):
     finally:
         s.close()
 
+
+
+# ── Chrome Extension download ─────────────────────────────────────────────────
+
+@prionvault_bp.route("/extension/download")
+@login_required
+def download_extension():
+    """Serve the prionvault-extension/ folder as a ZIP for Chrome installation."""
+    ext_dir = os.path.join(os.path.dirname(__file__), "..", "..", "prionvault-extension")
+    ext_dir = os.path.normpath(ext_dir)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _dirs, files in os.walk(ext_dir):
+            for fname in files:
+                fpath = os.path.join(root, fname)
+                arcname = os.path.join("prionvault-extension", os.path.relpath(fpath, ext_dir))
+                zf.write(fpath, arcname)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="prionvault-extension.zip",
+    )
