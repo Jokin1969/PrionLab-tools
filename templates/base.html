@@ -61,7 +61,20 @@
   <header class="site-header">
     <div class="nb-container">
 
-      <!-- Brand -->
+      <!-- Brand — readers get a non-linked logo; admins get the home link -->
+      {% if session.get('logged_in') and session.get('role') != 'admin' %}
+      <span class="nb-brand">
+        <div class="nb-brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/>
+          </svg>
+        </div>
+        <div class="nb-brand-text">
+          <span class="nb-brand-primary">PrionLab</span>
+          <span class="nb-brand-secondary">Tools</span>
+        </div>
+      </span>
+      {% else %}
       <a href="{{ url_for('home') }}" class="nb-brand">
         <div class="nb-brand-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -73,9 +86,10 @@
           <span class="nb-brand-secondary">Tools</span>
         </div>
       </a>
+      {% endif %}
 
-      {% if session.get('logged_in') %}
-      <!-- Main nav -->
+      {% if session.get('logged_in') and session.get('role') == 'admin' %}
+      <!-- Main nav — admin only -->
       <nav class="nb-nav" aria-label="{{ _('Main navigation') }}">
 
         <!-- Dashboard (direct link) -->
@@ -204,19 +218,32 @@
         </div>
 
       </nav>
+
+      {% elif session.get('logged_in') %}
+      <!-- Reader nav — PrionRead only -->
+      <nav class="nb-nav" aria-label="{{ _('Main navigation') }}">
+        <a href="{{ url_for('prionread.index') }}" class="nb-link" style="color:#4F46E5;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span class="nb-label">PrionRead</span>
+        </a>
+      </nav>
       {% endif %}
 
       <!-- Right area -->
       <div class="nb-right">
 
-        <!-- Language flags -->
+        <!-- Language flags — admin only -->
+        {% if session.get('role') == 'admin' or not session.get('logged_in') %}
         <div class="nb-flags">
           <a href="{{ lang_url('es') }}" class="nb-flag {% if current_locale == 'es' %}nb-active{% endif %}" title="Español">🇪🇸</a>
           <a href="{{ lang_url('en') }}" class="nb-flag {% if current_locale == 'en' %}nb-active{% endif %}" title="English">🇬🇧</a>
         </div>
+        {% endif %}
 
-        <!-- User dropdown -->
+        <!-- User area -->
         {% if session.get('logged_in') %}
+        {% if session.get('role') == 'admin' %}
+        <!-- Admin: full dropdown with profile, lab, admin links -->
         <div class="nb-dropdown">
           <button class="nb-link" aria-haspopup="true" aria-expanded="false">
             <div class="nb-avatar" aria-hidden="true">
@@ -237,7 +264,6 @@
               <span class="nb-item-icon">&#127981;</span>
               <span class="nb-item-body"><span class="nb-item-title">{{ _('My Lab') }}</span></span>
             </a>
-            {% if session.get('role') == 'admin' %}
             <div class="nb-menu-divider"></div>
             <div class="nb-menu-section-label">Admin</div>
             <a href="{{ url_for('admin.index') }}" class="nb-item" role="menuitem">
@@ -256,7 +282,6 @@
               <span class="nb-item-icon">&#128190;</span>
               <span class="nb-item-body"><span class="nb-item-title">{{ _('Data Management') }}</span></span>
             </a>
-            {% endif %}
             <div class="nb-menu-divider"></div>
             <a href="{{ url_for('auth.logout') }}" class="nb-item nb-logout" role="menuitem">
               <span class="nb-item-icon">&#128682;</span>
@@ -265,11 +290,18 @@
           </div>
         </div>
         {% else %}
+        <!-- Reader: just a logout button, no dropdown -->
+        <a href="{{ url_for('auth.logout') }}" class="nb-link nb-logout" aria-label="{{ _('Log out') }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span class="nb-label">{{ _('Log out') }}</span>
+        </a>
+        {% endif %}
+        {% else %}
           <a href="{{ url_for('auth.login') }}" class="nb-link">{{ _('Login') }}</a>
         {% endif %}
 
-        <!-- Mobile hamburger -->
-        {% if session.get('logged_in') %}
+        <!-- Mobile hamburger — admin only (readers have no drawer) -->
+        {% if session.get('logged_in') and session.get('role') == 'admin' %}
         <button id="nb-mobile-toggle" class="nb-mobile-toggle" aria-label="{{ _('Open menu') }}" aria-expanded="false">
           <span class="nb-ham"></span>
           <span class="nb-ham"></span>
@@ -280,8 +312,8 @@
       </div>
     </div><!-- /.nb-container -->
 
-    <!-- Mobile drawer -->
-    {% if session.get('logged_in') %}
+    <!-- Mobile drawer — admin only -->
+    {% if session.get('logged_in') and session.get('role') == 'admin' %}
     <div id="nb-mobile-drawer" class="nb-mobile-drawer" role="dialog" aria-label="{{ _('Navigation menu') }}">
       <div class="nb-mobile-panel">
 
@@ -346,12 +378,10 @@
             <span class="nb-item-icon">&#127981;</span>
             <span class="nb-item-body"><span class="nb-item-title">{{ _('My Lab') }}</span></span>
           </a>
-          {% if session.get('role') == 'admin' %}
           <a href="{{ url_for('admin.index') }}" class="nb-item">
             <span class="nb-item-icon">&#9881;</span>
             <span class="nb-item-body"><span class="nb-item-title">{{ _('Admin') }}</span></span>
           </a>
-          {% endif %}
           <a href="{{ url_for('auth.logout') }}" class="nb-item nb-logout">
             <span class="nb-item-icon">&#128682;</span>
             <span class="nb-item-body"><span class="nb-item-title">{{ _('Log out') }}</span></span>
