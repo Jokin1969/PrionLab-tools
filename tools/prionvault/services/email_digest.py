@@ -471,12 +471,17 @@ def _build_picks_html(cards_html: str, sub: dict, import_base_url: str,
 
 # ── PDF attachment helper ─────────────────────────────────────────────────────
 
+_PDF_ATTACH_MAX_BYTES = 25 * 1024 * 1024   # 25 MB per PDF — sane email attachment cap
+_PDF_ATTACH_TIMEOUT  = 30                   # seconds per Dropbox download
+
+
 def _collect_pdf_attachments(articles: list[dict]) -> list[tuple[str, bytes, str]]:
     """Download PDFs from Dropbox for articles that have one.
 
     Returns a list of (filename, bytes, mime_type) tuples ready for
-    send_email_with_attachments. Silently skips articles without a PDF or
-    when the download fails (we prefer a partial email over no email).
+    send_email_with_attachments. Silently skips articles without a PDF,
+    PDFs above the size cap, or when the download fails (we prefer a
+    partial email over no email at all).
     """
     import re as _re
     result = []
@@ -494,8 +499,23 @@ def _collect_pdf_attachments(articles: list[dict]) -> list[tuple[str, bytes, str
         if not path:
             continue
         try:
-            _, resp = dbx.files_download(path)
+            meta, resp = dbx.files_download(path,
+                                            timeout=_PDF_ATTACH_TIMEOUT)
+            # Respect size cap — avoid attaching multi-hundred-MB files.
+            declared = getattr(meta, "size", None)
+            if declared and declared > _PDF_ATTACH_MAX_BYTES:
+                logger.info(
+                    "email_digest: skipping PDF attachment (%.1f MB > limit): %s",
+                    declared / 1024 / 1024, path,
+                )
+                continue
             content = resp.content
+            if len(content) > _PDF_ATTACH_MAX_BYTES:
+                logger.info(
+                    "email_digest: skipping PDF attachment after download (%.1f MB): %s",
+                    len(content) / 1024 / 1024, path,
+                )
+                continue
             raw_name = path.rsplit("/", 1)[-1] or "article.pdf"
             safe_name = _re.sub(r'[^\w.\-]', '_', raw_name)
             result.append((safe_name, content, "application/pdf"))

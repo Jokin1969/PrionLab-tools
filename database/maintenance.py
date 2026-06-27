@@ -24,7 +24,7 @@ class MaintenanceScheduler:
             from apscheduler.schedulers.background import BackgroundScheduler
             from apscheduler.triggers.cron import CronTrigger
             from apscheduler.triggers.interval import IntervalTrigger
-            sched = BackgroundScheduler(daemon=True, timezone="UTC")
+            sched = BackgroundScheduler(daemon=True, timezone="UTC", misfire_grace_time=300)
             app = self.app
 
             def _run(fn):

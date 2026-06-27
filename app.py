@@ -60,19 +60,35 @@ def _ensure_data_dirs():
         os.makedirs(d, exist_ok=True)
 
 
+class _JsonFormatter(logging.Formatter):
+    """Emit one JSON object per log line — Railway / any log aggregator can parse by field."""
+    def format(self, record: logging.LogRecord) -> str:
+        import json, traceback as tb
+        payload: dict = {
+            "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level":   record.levelname,
+            "logger":  record.name,
+            "msg":     record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = tb.format_exception(*record.exc_info)[-1].strip()
+        return json.dumps(payload, ensure_ascii=False)
+
+
 def _setup_logging(app: Flask):
     log_file = os.path.join(config.LOGS_DIR, "prionlab.log")
+    fmt = _JsonFormatter()
     handler = logging.handlers.RotatingFileHandler(
         log_file, maxBytes=5 * 1024 * 1024, backupCount=3
     )
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"
-    ))
+    handler.setFormatter(fmt)
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
-    if app.debug:
-        root.addHandler(logging.StreamHandler())
+    # Always emit to stdout so Railway captures logs even without a mounted volume.
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(fmt)
+    root.addHandler(stream_handler)
 
 
 def _init_postgresql(app: Flask) -> None:
@@ -118,7 +134,7 @@ def _start_prionpacks_backup_scheduler(app: Flask) -> None:
         from apscheduler.schedulers.background import BackgroundScheduler
         from tools.prionpacks.backup import run_backup
 
-        scheduler = BackgroundScheduler(daemon=True)
+        scheduler = BackgroundScheduler(daemon=True, misfire_grace_time=600)
         scheduler.add_job(
             run_backup,
             trigger='interval',
