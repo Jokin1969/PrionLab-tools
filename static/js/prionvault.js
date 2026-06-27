@@ -8818,11 +8818,6 @@
                          font-size:12px;color:#92400e;cursor:pointer;font-weight:600;">
             ⚑ Marcar con banderita
           </button>
-          <button id="pv-bl-del-btn" type="button"
-                  style="padding:4px 10px;border-radius:6px;border:1px solid #f87171;background:#fff1f2;
-                         font-size:12px;color:#b91c1c;cursor:pointer;font-weight:600;">
-            🗑 Eliminar de PrionVault
-          </button>
           <span id="pv-bl-action-status" style="font-size:11.5px;color:#6b7280;"></span>
         </div>`;
 
@@ -8892,31 +8887,6 @@
           });
           actionStatus.textContent = `✓ ${ids.length} marcado${ids.length > 1 ? 's' : ''} con banderita`;
           actionStatus.style.color = '#15803d';
-        } catch (e) {
-          actionStatus.textContent = 'Error: ' + e.message;
-          actionStatus.style.color = '#b91c1c';
-        }
-      });
-
-      // Delete selected
-      document.getElementById('pv-bl-del-btn')?.addEventListener('click', async () => {
-        const ids = getChecked().map(cb => cb.dataset.aid);
-        if (!ids.length) return;
-        if (!confirm(`¿Eliminar ${ids.length} artículo${ids.length > 1 ? 's' : ''} de PrionVault? Esta acción no se puede deshacer.`)) return;
-        actionStatus.textContent = 'Eliminando…';
-        try {
-          await api('/articles/bulk-delete', {
-            method: 'POST',
-            body: JSON.stringify({ ids }),
-          });
-          // Remove the deleted rows from the table.
-          ids.forEach(id => {
-            const tr = resultsEl.querySelector(`tr[data-aid="${id}"]`);
-            if (tr) tr.remove();
-          });
-          actionBarEl.style.display = 'none';
-          loadArticles();
-          refreshStats();
         } catch (e) {
           actionStatus.textContent = 'Error: ' + e.message;
           actionStatus.style.color = '#b91c1c';

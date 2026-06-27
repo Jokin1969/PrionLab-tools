@@ -2187,7 +2187,7 @@ def api_articles_bulk_update():
     if len(ids) > _BULK_MAX_IDS:
         return jsonify({"error": "too_many",
                         "detail": f"Máximo {_BULK_MAX_IDS} ids por llamada."}), 400
-    ids = [str(x) for x in ids if x]
+    ids = list(dict.fromkeys(str(x) for x in ids if x))  # dedup, preserve order
 
     updates = data.get("updates") or {}
     if not isinstance(updates, dict):
