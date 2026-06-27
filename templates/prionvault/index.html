@@ -152,11 +152,14 @@
        a phone. We do NOT mobile-optimise admin batch modals — they are
        still reachable through the drawer but only really useful from a
        laptop. */
+  /* PrionVault has its own help system in the sidebar — hide the
+     global floating help button to avoid confusion. */
+  #hs-toggle { display: none !important; }
+
   @media (max-width: 800px) {
     /* The page navbar is sticky and z-index 900; floating widgets that
        want to coexist with the search bar / modals would only get in
        the way at this size. */
-    #hs-toggle { display: none !important; }
 
     /* We keep the desktop flex layout (main scrolls, page doesn't).
        The aside is yanked out of the flow with position: fixed below,
