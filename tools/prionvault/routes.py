@@ -7839,7 +7839,7 @@ def _validate_notif_payload(data: dict, uemail: str) -> dict:
     if source not in ("pubmed", "flagged"):
         source = "pubmed"
     return {
-        "name":              (data.get("name") or "Mi suscripción").strip()[:80],
+        "name":              (data.get("name", "").strip() or "Mi suscripción")[:80],
         "source":            source,
         "email":             (data.get("email") or "").strip() or uemail,
         "topics":            _json.dumps(topics),
