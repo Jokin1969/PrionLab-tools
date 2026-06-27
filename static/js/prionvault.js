@@ -13971,12 +13971,19 @@
             </div>
           </div>
         </div>
-        <div class="pv-flagged-fields" style="display:${!isPubmed ? 'block' : 'none'};">
-          <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">ARTÍCULOS POR EMAIL</label>
-          <input type="number" name="articles_per_email" min="1" max="50"
-                 value="${sub.articles_per_email || 5}"
-                 style="width:80px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
-          <span style="font-size:12px;color:#6b7280;margin-left:6px;">artículos aleatorios por email</span>
+        <div class="pv-flagged-fields" style="display:${!isPubmed ? 'flex' : 'none'};flex-direction:column;gap:10px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">ARTÍCULOS POR EMAIL</label>
+            <input type="number" name="articles_per_email" min="1" max="50"
+                   value="${sub.articles_per_email || 5}"
+                   style="width:80px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+            <span style="font-size:12px;color:#6b7280;margin-left:6px;">artículos aleatorios por email</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" name="include_pdfs" ${sub.include_pdfs !== false ? 'checked' : ''}
+                   style="width:15px;height:15px;accent-color:#0F3460;">
+            <label style="font-size:12.5px;color:#374151;cursor:pointer;">Adjuntar PDFs al email</label>
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div>
@@ -14046,6 +14053,7 @@
         lookback_days:      parseInt(formEl.querySelector('[name="lookback_days"]').value),
         include_oa_only:    formEl.querySelector('[name="include_oa_only"]').checked,
         articles_per_email: parseInt(formEl.querySelector('[name="articles_per_email"]').value || 5),
+        include_pdfs:       formEl.querySelector('[name="include_pdfs"]').checked,
         enabled:            true,
       };
     }

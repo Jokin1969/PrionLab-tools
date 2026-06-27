@@ -7809,6 +7809,7 @@ def _validate_notif_payload(data: dict, uemail: str) -> dict:
         "oa_only":           bool(data.get("include_oa_only", False)),
         "enabled":           bool(data.get("enabled", True)),
         "ape":               ape,
+        "include_pdfs":      bool(data.get("include_pdfs", True)),
     }
 
 
@@ -7874,7 +7875,8 @@ def api_notifications_save():
                         topics=CAST(:topics AS jsonb), frequency=:freq, day_of_week=:dow,
                         days_of_week=:days, send_hour=:hour, send_minute=:minute,
                         user_timezone=:tz, lookback_days=:lookback, include_oa_only=:oa_only,
-                        articles_per_email=:ape, next_send_at=:next_send, updated_at=NOW()
+                        articles_per_email=:ape, include_pdfs=:include_pdfs,
+                        next_send_at=:next_send, updated_at=NOW()
                     WHERE id=:id
                 """), {**p, "next_send": next_send, "id": existing_id})
             else:
@@ -7882,11 +7884,11 @@ def api_notifications_save():
                     INSERT INTO prionvault_notification_subscriptions
                         (user_id, name, source, enabled, email, topics, frequency,
                          day_of_week, days_of_week, send_hour, send_minute, user_timezone,
-                         lookback_days, include_oa_only, articles_per_email,
+                         lookback_days, include_oa_only, articles_per_email, include_pdfs,
                          next_send_at, updated_at)
                     VALUES (:uid, :name, :source, :enabled, :email,
                             CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
-                            :tz, :lookback, :oa_only, :ape, :next_send, NOW())
+                            :tz, :lookback, :oa_only, :ape, :include_pdfs, :next_send, NOW())
                 """), {**p, "uid": str(_uid), "next_send": next_send})
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
@@ -7933,11 +7935,11 @@ def api_notifications_test():
                     INSERT INTO prionvault_notification_subscriptions
                         (user_id, name, source, enabled, email, topics, frequency,
                          day_of_week, days_of_week, send_hour, send_minute, user_timezone,
-                         lookback_days, include_oa_only, articles_per_email,
+                         lookback_days, include_oa_only, articles_per_email, include_pdfs,
                          next_send_at, updated_at)
                     VALUES (:uid, :name, :source, true, :email,
                             CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
-                            :tz, :lookback, :oa_only, :ape, :next_send, NOW())
+                            :tz, :lookback, :oa_only, :ape, :include_pdfs, :next_send, NOW())
                     RETURNING id::text
                 """), {**p, "uid": str(_uid), "next_send": next_send}).scalar()
         except Exception as exc:
@@ -8014,12 +8016,12 @@ def api_notifications_create():
             new_id = conn.execute(_t("""
                 INSERT INTO prionvault_notification_subscriptions
                     (user_id, name, source, enabled, email, topics, frequency,
-                     day_of_week, send_hour, send_minute, user_timezone,
-                     lookback_days, include_oa_only, articles_per_email,
+                     day_of_week, days_of_week, send_hour, send_minute, user_timezone,
+                     lookback_days, include_oa_only, articles_per_email, include_pdfs,
                      next_send_at, updated_at)
                 VALUES (:uid, :name, :source, :enabled, :email,
-                        CAST(:topics AS jsonb), :freq, :dow, :hour, :minute,
-                        :tz, :lookback, :oa_only, :ape, :next_send, NOW())
+                        CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
+                        :tz, :lookback, :oa_only, :ape, :include_pdfs, :next_send, NOW())
                 RETURNING id::text
             """), {**p, "uid": str(_uid), "next_send": next_send}).scalar()
     except Exception as exc:
@@ -8050,7 +8052,8 @@ def api_notifications_update(sub_id):
                     topics=CAST(:topics AS jsonb), frequency=:freq, day_of_week=:dow,
                     days_of_week=:days, send_hour=:hour, send_minute=:minute,
                     user_timezone=:tz, lookback_days=:lookback, include_oa_only=:oa_only,
-                    articles_per_email=:ape, next_send_at=:next_send, updated_at=NOW()
+                    articles_per_email=:ape, include_pdfs=:include_pdfs,
+                    next_send_at=:next_send, updated_at=NOW()
                 WHERE id=:id AND user_id=:uid
             """), {**p, "next_send": next_send, "id": sub_id, "uid": str(_uid)})
             if result.rowcount == 0:

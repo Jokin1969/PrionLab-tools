@@ -139,7 +139,9 @@ def _fetch_flagged_articles(user_id: str, n: int) -> list[dict]:
                     a.year,
                     a.journal,
                     a.pmid,
-                    a.authors
+                    a.authors,
+                    a.dropbox_path,
+                    a.pdf_md5
                 FROM prionvault_user_state us
                 JOIN articles a ON a.id = us.article_id
                 WHERE us.user_id = :uid
@@ -467,6 +469,42 @@ def _build_picks_html(cards_html: str, sub: dict, import_base_url: str,
 </body></html>"""
 
 
+# ── PDF attachment helper ─────────────────────────────────────────────────────
+
+def _collect_pdf_attachments(articles: list[dict]) -> list[tuple[str, bytes, str]]:
+    """Download PDFs from Dropbox for articles that have one.
+
+    Returns a list of (filename, bytes, mime_type) tuples ready for
+    send_email_with_attachments. Silently skips articles without a PDF or
+    when the download fails (we prefer a partial email over no email).
+    """
+    import re as _re
+    result = []
+    try:
+        from core.dropbox_client import get_client
+        dbx = get_client()
+    except Exception:
+        dbx = None
+
+    if not dbx:
+        return result
+
+    for a in articles:
+        path = a.get("dropbox_path")
+        if not path:
+            continue
+        try:
+            _, resp = dbx.files_download(path)
+            content = resp.content
+            raw_name = path.rsplit("/", 1)[-1] or "article.pdf"
+            safe_name = _re.sub(r'[^\w.\-]', '_', raw_name)
+            result.append((safe_name, content, "application/pdf"))
+        except Exception as exc:
+            logger.warning("email_digest: PDF download failed for %s: %s", path, exc)
+
+    return result
+
+
 # ── Send one subscription ─────────────────────────────────────────────────────
 
 def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
@@ -537,8 +575,19 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
 
         html_body = _build_picks_html(picks_cards, sub, import_base_url, count)
 
-        from core.smtp_client import send_email
-        ok = send_email(to=sub["email"], subject=subject, body=plain, html=html_body)
+        attachments = []
+        if count and sub.get("include_pdfs", True):
+            attachments = _collect_pdf_attachments(articles)
+
+        if attachments:
+            from core.smtp_client import send_email_with_attachments
+            ok = send_email_with_attachments(
+                to=sub["email"], subject=subject, body=plain,
+                html=html_body, attachments=attachments,
+            )
+        else:
+            from core.smtp_client import send_email
+            ok = send_email(to=sub["email"], subject=subject, body=plain, html=html_body)
 
         if ok and count > 0:
             _unflag_articles(eng, str(sub["user_id"]),
