@@ -7554,7 +7554,7 @@
             throw e;
           }
         } else {
-          await api('/articles', { method: 'POST', body: JSON.stringify(payload) });
+          await api('/articles/create', { method: 'POST', body: JSON.stringify(payload) });
         }
         const savedCb = _addOpts.onSaved;
         close();

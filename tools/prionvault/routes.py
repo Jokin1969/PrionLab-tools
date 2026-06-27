@@ -2971,7 +2971,7 @@ def api_article_create_with_pdf():
         s.close()
 
 
-@prionvault_bp.route("/api/articles", methods=["POST"])
+@prionvault_bp.route("/api/articles/create", methods=["POST"])
 @admin_required
 def api_article_create():
     """Create an article from supplied metadata. Returns 409 on duplicate."""
