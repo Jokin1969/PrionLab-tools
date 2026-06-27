@@ -4057,24 +4057,10 @@
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;">
         <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151;
                    text-transform:uppercase;letter-spacing:0.05em;">Tags</h3>
-        ${IS_ADMIN ? `<span style="font-size:11px;color:#9ca3af;">Click para asignar / quitar</span>` : ''}
+        <span style="font-size:11px;color:#9ca3af;">Click para asignar / quitar</span>
       </div>
       <div id="pv-tag-picker-list" style="display:flex;flex-wrap:wrap;gap:6px;
                                           font-size:12px;color:#9ca3af;">Cargando…</div>`;
-    if (!IS_ADMIN) {
-      // Read-only render: just the assigned tags as chips.
-      const list = document.getElementById('pv-tag-picker-list');
-      if (!a.tags || !a.tags.length) {
-        list.innerHTML = '<span style="font-style:italic;">Sin tags.</span>';
-      } else {
-        list.innerHTML = a.tags.map(t =>
-          `<span style="padding:3px 9px;border-radius:14px;font-size:12px;font-weight:500;
-                        background:${esc(t.color || '#9ca3af')}22;color:${esc(t.color || '#4f46e5')};">
-             ${esc(t.name)}
-           </span>`).join('');
-      }
-      return;
-    }
 
     let allTags = [];
     try {
@@ -4089,7 +4075,7 @@
       const listEmpty = document.getElementById('pv-tag-picker-list');
       if (listEmpty) listEmpty.innerHTML =
         `<span style="font-style:italic;">No hay tags todavía. ` +
-        `Crea uno con el botón <strong>+</strong> al lado de Tags en el menú.</span>`;
+        `Pulsa <strong>"+ Nuevo tag"</strong> para crear el primero.</span>`;
       return;
     }
 
@@ -4138,6 +4124,55 @@
           }
         });
       });
+
+      // "+ Nuevo tag" button — available to all logged-in users.
+      const newBtn = list.parentElement.querySelector('.pv-tag-new-inline');
+      if (newBtn) newBtn.addEventListener('click', async () => {
+        const palette = {
+          rojo: '#ef4444', naranja: '#fb923c', amarillo: '#f59e0b',
+          verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
+          rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
+        };
+        const name = prompt('Nombre del nuevo tag:');
+        if (!name || !name.trim()) return;
+        const colorInput = prompt(
+          'Color (hex #rrggbb o nombre: rojo/naranja/amarillo/verde/azul/morado/rosa/gris/cian).\nVacío = sin color.'
+        );
+        let color = null;
+        if (colorInput && colorInput.trim()) {
+          const v = colorInput.trim().toLowerCase();
+          color = palette[v] || (v.startsWith('#') ? v : null);
+        }
+        try {
+          const created = await api('/tags', {
+            method: 'POST',
+            body: JSON.stringify({ name: name.trim(), color }),
+          });
+          allTags = await api('/tags');
+          // Auto-assign the newly created tag to this article.
+          await api(`/articles/${a.id}/tags/${created.id}`, { method: 'PUT' });
+          articleTagIds.add(created.id);
+          a.tags = [...(a.tags || []), created];
+          renderChips();
+          refreshTags();
+        } catch (e) {
+          alert('No se pudo crear el tag: ' + e.message);
+        }
+      });
+    }
+
+    // Append "+ Nuevo tag" button below the chip list (rendered once).
+    const container = sec.querySelector('#pv-tag-picker-list');
+    if (container && !sec.querySelector('.pv-tag-new-inline')) {
+      const newTagBtn = document.createElement('button');
+      newTagBtn.type = 'button';
+      newTagBtn.className = 'pv-tag-new-inline';
+      newTagBtn.style.cssText =
+        'margin-top:8px;padding:4px 10px;font-size:11px;border-radius:14px;' +
+        'border:1px dashed #d1d5db;background:white;color:#6b7280;cursor:pointer;' +
+        'display:flex;align-items:center;gap:4px;';
+      newTagBtn.innerHTML = '<i class="fas fa-plus" style="font-size:9px;"></i> Nuevo tag';
+      container.insertAdjacentElement('afterend', newTagBtn);
     }
   }
 
