@@ -13218,8 +13218,22 @@
       </div>`;
     }
 
+    const completenessBtn = `<div id="pv-completeness-btn" onclick="window._pvShowCompleteness()"
+      onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'"
+      onmouseleave="this.style.boxShadow='none';this.style.transform=''"
+      style="display:flex;align-items:center;justify-content:space-between;
+             background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+             padding:14px 18px;margin-bottom:16px;cursor:pointer;
+             transition:box-shadow 0.15s,transform 0.15s;">
+      <span style="font-size:13.5px;font-weight:600;color:#1d4ed8;">🗂 Completitud de metadatos</span>
+      <span style="font-size:18px;color:#3b82f6;font-weight:700;">→</span>
+    </div>`;
+
+    body.style.position = 'relative';
+
     body.innerHTML =
       heroCard +
+      completenessBtn +
 
       section('Contenido', [
         row(2, [card('Con PDF',    d.with_pdf,    true, {has_pdf:'true'},  'good'),
@@ -13285,6 +13299,55 @@
                 card('Sin verificar (con PDF)',    d.verify_pending, true, {pdf_verify_status:'unverified'}, '')]),
       ].join(''));
 
+    // Sub-panel: completeness breakdown
+    window._pvShowCompleteness = function() {
+      const existing = document.getElementById('pv-completeness-panel');
+      if (existing) existing.remove();
+
+      const fields = [
+        { label: 'Título',    key: 'missing_title',    filter: {has_title:'false'},           accent: d.missing_title   > 0 ? 'warn'   : 'good' },
+        { label: 'Autores',   key: 'missing_authors',  filter: {has_authors:'false'},         accent: d.missing_authors > 0 ? 'warn'   : 'good' },
+        { label: 'Revista',   key: 'missing_journal',  filter: {has_journal:'false'},         accent: d.missing_journal > 0 ? 'warn'   : 'good' },
+        { label: 'Año',       key: 'missing_year',     filter: {has_year:'false'},            accent: d.missing_year    > 0 ? 'warn'   : 'good' },
+        { label: 'Abstract',  key: 'missing_abstract', filter: {abstract_status:'pending'},   accent: d.missing_abstract > 0 ? 'warn'  : 'good' },
+        { label: 'DOI',       key: 'missing_doi',      filter: {has_doi:'false'},             accent: d.missing_doi     > 0 ? 'purple' : 'good' },
+        { label: 'PMID',      key: 'missing_pmid',     filter: {has_pmid:'false'},            accent: d.missing_pmid    > 0 ? 'purple' : 'good' },
+      ];
+
+      const fieldCards = fields.map(f => card('Sin ' + f.label, d[f.key] ?? 0, true, f.filter, f.accent)).join('');
+      const gridRows = [];
+      for (let i = 0; i < fields.length; i += 2) {
+        const pair = fields.slice(i, i + 2);
+        gridRows.push(`<div style="display:grid;grid-template-columns:repeat(${pair.length},1fr);gap:8px;margin-bottom:8px;">${
+          pair.map(f => card('Sin ' + f.label, d[f.key] ?? 0, true, f.filter, f.accent)).join('')
+        }</div>`);
+      }
+
+      const panel = document.createElement('div');
+      panel.id = 'pv-completeness-panel';
+      panel.style.cssText = 'position:absolute;inset:0;background:#fff;z-index:10;border-radius:inherit;display:flex;flex-direction:column;overflow:hidden;';
+      panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #f3f4f6;flex-shrink:0;">
+          <button onclick="document.getElementById('pv-completeness-panel').remove()"
+            style="background:none;border:1px solid #e5e7eb;border-radius:8px;padding:5px 12px;
+                   cursor:pointer;font-size:13px;color:#374151;font-weight:600;">← Atrás</button>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#111827;">Artículos con metadatos incompletos</div>
+            <div style="font-size:11.5px;color:#9ca3af;">Haz clic en un campo para ver los artículos afectados</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:18px;">
+          <div style="text-align:center;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:12px;
+                      padding:14px 24px;margin-bottom:16px;">
+            <div style="font-size:32px;font-weight:800;color:#3730a3;line-height:1;">${(d.total??0).toLocaleString()}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:3px;">artículos totales</div>
+          </div>
+          ${gridRows.join('')}
+        </div>
+      `;
+      body.appendChild(panel);
+    };
+
     // Wire up click handler for health filters
     window._pvHealthFilter = function(params) {
       modal.style.display = 'none';
@@ -13307,7 +13370,8 @@
       // For params the state doesn't have native slots for, store as _healthExtra
       // and patch buildListParams temporarily
       const extra = {};
-      for (const k of ['has_pdf','has_doi','has_pmid','pdf_is_scan','pdf_searchable',
+      for (const k of ['has_pdf','has_doi','has_pmid','has_title','has_authors','has_journal','has_year',
+                        'pdf_is_scan','pdf_searchable',
                         'source','needs_indexing','has_summary_ai','has_summary_notes',
                         'pdf_verify_status','summary_ai_provider']) {
         if (params[k] !== undefined) extra[k] = params[k];

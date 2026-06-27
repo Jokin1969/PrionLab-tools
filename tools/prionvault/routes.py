@@ -211,6 +211,14 @@ def api_list_articles():
     has_summary_notes = True if has_summary_notes_raw == "true" else None
     pdf_verify_status = (request.args.get("pdf_verify_status") or "").strip() or None
     summary_ai_provider = (request.args.get("summary_ai_provider") or "").strip() or None
+    has_title_raw = request.args.get("has_title")
+    has_title = True if has_title_raw == "true" else (False if has_title_raw == "false" else None)
+    has_authors_raw = request.args.get("has_authors")
+    has_authors = True if has_authors_raw == "true" else (False if has_authors_raw == "false" else None)
+    has_journal_raw = request.args.get("has_journal")
+    has_journal = True if has_journal_raw == "true" else (False if has_journal_raw == "false" else None)
+    has_year_raw = request.args.get("has_year")
+    has_year = True if has_year_raw == "true" else (False if has_year_raw == "false" else None)
     _sf_raw     = (request.args.get("search_fields") or "").strip()
     search_fields = [f.strip() for f in _sf_raw.split(",") if f.strip() in ("title", "authors", "abstract")] if _sf_raw else []
     sort        = request.args.get("sort", "added_desc")
@@ -282,6 +290,8 @@ def api_list_articles():
             indexed_status=indexed_status,
             ids_filter=ids_filter,
             has_pdf=has_pdf, has_doi=has_doi, has_pmid=has_pmid,
+            has_title=has_title, has_authors=has_authors,
+            has_journal=has_journal, has_year=has_year,
             pdf_source_filter=pdf_source_filter,
             pdf_searchable_filter=pdf_searchable_filter,
             pdf_is_scan_filter=pdf_is_scan_filter,
@@ -464,6 +474,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         indexed_status=None,
                         ids_filter=None,
                         has_pdf=None, has_doi=None, has_pmid=None,
+                        has_title=None, has_authors=None, has_journal=None, has_year=None,
                         pdf_source_filter=None, pdf_searchable_filter=None,
                         pdf_is_scan_filter=None, needs_indexing=None,
                         has_summary_ai=None, has_summary_notes=None,
@@ -675,6 +686,26 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("pubmed_id IS NOT NULL AND pubmed_id <> ''")
     elif has_pmid is False:
         conditions.append("(pubmed_id IS NULL OR pubmed_id = '')")
+
+    if has_title is True:
+        conditions.append("title IS NOT NULL AND title <> ''")
+    elif has_title is False:
+        conditions.append("(title IS NULL OR title = '')")
+
+    if has_authors is True:
+        conditions.append("authors IS NOT NULL AND authors <> ''")
+    elif has_authors is False:
+        conditions.append("(authors IS NULL OR authors = '')")
+
+    if has_journal is True:
+        conditions.append("journal IS NOT NULL AND journal <> ''")
+    elif has_journal is False:
+        conditions.append("(journal IS NULL OR journal = '')")
+
+    if has_year is True:
+        conditions.append("year IS NOT NULL")
+    elif has_year is False:
+        conditions.append("year IS NULL")
 
     if pdf_source_filter:
         conditions.append("source = :source_filter")
@@ -1455,7 +1486,14 @@ def api_article_health():
                     "0")}                                                           AS tokens_gemini_in,
               {_col("summary_tokens_out",
                     "COALESCE(SUM(summary_tokens_out) FILTER (WHERE summary_ai_provider = 'gemini'), 0)",
-                    "0")}                                                           AS tokens_gemini_out
+                    "0")}                                                           AS tokens_gemini_out,
+              COUNT(*) FILTER (WHERE title IS NULL OR title = '')                    AS missing_title,
+              COUNT(*) FILTER (WHERE authors IS NULL OR authors = '')                AS missing_authors,
+              COUNT(*) FILTER (WHERE journal IS NULL OR journal = '')                AS missing_journal,
+              COUNT(*) FILTER (WHERE year IS NULL)                                   AS missing_year,
+              COUNT(*) FILTER (WHERE abstract IS NULL OR abstract = '')              AS missing_abstract,
+              COUNT(*) FILTER (WHERE doi IS NULL OR doi = '')                        AS missing_doi,
+              COUNT(*) FILTER (WHERE pubmed_id IS NULL OR pubmed_id = '')            AS missing_pmid
             FROM articles
         """
         query_params = {}
@@ -1479,6 +1517,8 @@ def api_article_health():
             "tokens_claude_in", "tokens_claude_out",
             "tokens_gpt_in", "tokens_gpt_out",
             "tokens_gemini_in", "tokens_gemini_out",
+            "missing_title", "missing_authors", "missing_journal", "missing_year",
+            "missing_abstract", "missing_doi", "missing_pmid",
         ]
         result = {k: int(row[i]) if row and row[i] is not None else 0
                   for i, k in enumerate(keys)}
