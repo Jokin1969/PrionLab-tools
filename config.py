@@ -7,6 +7,11 @@ load_dotenv()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
 
+# Public-facing base URL (no trailing slash). Used in email links so they
+# resolve correctly in email clients. Set APP_URL in your .env / environment.
+# Example: APP_URL=https://prionlab.joaquincastilla.com
+APP_URL = os.environ.get("APP_URL", "").rstrip("/")
+
 DROPBOX_APP_KEY = os.environ.get("DROPBOX_APP_KEY", "")
 DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET", "")
 DROPBOX_REFRESH_TOKEN = os.environ.get("DROPBOX_REFRESH_TOKEN", "")

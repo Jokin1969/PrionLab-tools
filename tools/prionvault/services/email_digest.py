@@ -345,7 +345,8 @@ def build_digest_html(articles: list[dict], sub: dict,
         </td></tr>
         {cards}"""
 
-    settings_url = import_base_url.replace("/import", "") if "/import" in import_base_url else import_base_url
+    _base = import_base_url.replace("/import", "") if import_base_url != "#" else ""
+    settings_url = f"{_base}/prionvault" if _base else ""
 
     return f"""<!DOCTYPE html>
 <html lang="es">
@@ -411,10 +412,8 @@ def build_digest_html(articles: list[dict], sub: dict,
             <tr>
               <td>
                 <p style="margin:0;font-size:11px;color:#9ca3af;line-height:1.6;">
-                  Recibes este email porque estás suscrito al digest de PrionVault.<br>
-                  <a href="{settings_url}" style="color:#0F3460;text-decoration:none;">
-                    Gestionar notificaciones
-                  </a>
+                  Recibes este email porque estás suscrito al digest de PrionVault.
+                  {f'<br><a href="{settings_url}" style="color:#0F3460;text-decoration:none;">Gestionar notificaciones</a>' if settings_url else ''}
                 </p>
               </td>
               <td align="right">
@@ -439,7 +438,7 @@ def _build_picks_html(cards_html: str, sub: dict, import_base_url: str,
                       count: int) -> str:
     """Minimal HTML wrapper for PrionVault Picks emails."""
     name = sub.get("name") or "PrionVault Picks"
-    base = import_base_url.replace("/import", "")
+    base = import_base_url.replace("/import", "") if import_base_url != "#" else ""
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -459,8 +458,8 @@ def _build_picks_html(cards_html: str, sub: dict, import_base_url: str,
       {cards_html}
       <tr><td style="background:#f9fafb;padding:16px 28px;text-align:center;
                      font-size:11.5px;color:#9ca3af;">
-        PrionVault Picks &copy; {datetime.now().year} ·
-        <a href="{base}/prionvault/index" style="color:#0F3460;">Ir a PrionVault</a>
+        PrionVault Picks &copy; {datetime.now().year}
+        {f' · <a href="{base}/prionvault" style="color:#0F3460;">Ir a PrionVault</a>' if base else ''}
       </td></tr>
     </table>
   </td></tr>
@@ -499,7 +498,9 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
         base = (APP_URL or "").rstrip("/")
     except ImportError:
         base = ""
-    import_base_url = f"{base}/prionvault/import" if base else "/prionvault/import"
+    # Relative URLs are meaningless in email clients; fall back to a safe
+    # placeholder so links render as text rather than "[/prionvault]foo".
+    import_base_url = f"{base}/prionvault/import" if base else "#"
 
     source = sub.get("source") or "pubmed"
     now_utc = datetime.now(timezone.utc)
