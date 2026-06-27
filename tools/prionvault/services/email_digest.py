@@ -188,7 +188,7 @@ def _fetch_new_articles(topics: list[str], since: datetime,
     params: dict = {f"t{i}": t for i, t in enumerate(topics)}
     params["since"] = since
 
-    oa_filter = " AND i.is_oa = TRUE" if oa_only else ""
+    oa_filter = " AND i.oa_verified = TRUE" if oa_only else ""
 
     sql = f"""
         SELECT
@@ -198,7 +198,7 @@ def _fetch_new_articles(topics: list[str], since: datetime,
             i.journal,
             i.year,
             i.doi,
-            i.is_oa,
+            i.oa_verified,
             i.preset,
             i.first_seen_at
         FROM prionvault_pubmed_inventory i
@@ -238,7 +238,7 @@ def _article_card(a: dict, import_base_url: str) -> str:
     year    = a.get("year") or ""
     pmid    = a.get("pmid") or ""
     doi     = a.get("doi") or ""
-    is_oa   = a.get("is_oa")
+    is_oa   = a.get("oa_verified")
     preset  = a.get("preset", "prion")
 
     topic_label = TOPIC_LABELS.get(preset, preset)
