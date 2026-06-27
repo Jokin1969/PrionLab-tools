@@ -45,6 +45,8 @@ if os.environ.get("SENTRY_DSN"):
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from flask_babel import Babel
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 import config
 from core.auth import auth_bp, bootstrap_admin_user
@@ -141,6 +143,20 @@ def create_app() -> Flask:
     _ensure_data_dirs()
     _setup_logging(app)
 
+    # ── Rate limiting ────────────────────────────────────────────────────────
+    # Uses Redis when REDIS_URL is set (production), falls back to in-memory
+    # for local dev. The limiter is applied selectively on sensitive endpoints.
+    _redis_uri = os.environ.get("REDIS_URL") or os.environ.get("REDIS_URI")
+    limiter = Limiter(
+        key_func=get_remote_address,
+        app=app,
+        storage_uri=_redis_uri or "memory://",
+        default_limits=[],          # no global limit — apply per-route only
+        headers_enabled=True,       # X-RateLimit-* headers in responses
+        swallow_errors=True,        # never crash the app on limiter errors
+    )
+    app.extensions["limiter"] = limiter
+
     try:
         init_db()
     except Exception as e:
@@ -217,6 +233,27 @@ def create_app() -> Flask:
 
     Babel(app, locale_selector=get_locale)
 
+    # ── Security headers ─────────────────────────────────────────────────────
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        # CSP: allow same-origin resources + CDNs already used in templates.
+        # 'unsafe-inline' is needed for inline styles/scripts present throughout
+        # the templates; tighten further when templates are refactored.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+            "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'self';"
+        )
+        return response
+
     @app.before_request
     def force_password_change():
         """When a user logs in with the starter password and hasn't
@@ -277,6 +314,10 @@ def create_app() -> Flask:
     # ── Blueprints ───────────────────────────────────────────────────────────
 
     app.register_blueprint(auth_bp)
+    # Limit login attempts: 10 per minute + 50 per hour per IP.
+    # Slows credential-stuffing without blocking legitimate typos.
+    from core.auth import login as _login_view
+    limiter.limit("10 per minute; 50 per hour")(_login_view)
 
     from tools.admin import admin_bp
     app.register_blueprint(admin_bp)
@@ -346,6 +387,11 @@ def create_app() -> Flask:
         try:
             from tools.prionvault import prionvault_bp
             app.register_blueprint(prionvault_bp)
+            # Limit external-lookup endpoints: they hit PubMed/CrossRef APIs
+            # and are expensive. 60/min per IP is generous for normal use.
+            from tools.prionvault.routes import api_article_lookup, api_articles_lookup_bulk
+            limiter.limit("60 per minute")(api_article_lookup)
+            limiter.limit("30 per minute")(api_articles_lookup_bulk)
         except Exception as e:
             app.logger.error('PrionVault blueprint registration failed: %s', e, exc_info=True)
 

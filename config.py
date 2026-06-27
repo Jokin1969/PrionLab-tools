@@ -87,7 +87,10 @@ def _derive_secret_key(password: str) -> str:
         return "dev-insecure-secret-key-set-ADMIN_PASSWORD"
     return hashlib.sha256(f"prionlab-secret:{password}".encode()).hexdigest()
 
-SECRET_KEY = _derive_secret_key(ADMIN_PASSWORD)
+# APP_SECRET_KEY takes priority over the password-derived fallback.
+# Generate a strong value once and pin it in .env:
+#   python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY = os.environ.get("APP_SECRET_KEY") or _derive_secret_key(ADMIN_PASSWORD)
 
 def dropbox_configured() -> bool:
     return all([DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN])

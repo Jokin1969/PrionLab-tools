@@ -1,4 +1,5 @@
 Flask>=3.0
+Flask-Limiter>=3.5
 gunicorn>=21
 dropbox>=11.36
 python-dotenv>=1.0
