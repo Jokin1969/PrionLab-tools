@@ -712,6 +712,111 @@ _BUILTIN_ARTICLES = {
         'slug': 'prionvault-indexing',
     },
 
+    'prionvault-chrome-extension': {
+        'title_es': 'Extensión Chrome: instalación y uso',
+        'title_en': 'Chrome Extension: installation and use',
+        'excerpt_es': 'Cómo instalar la extensión de PrionVault para Chrome y añadir artículos desde cualquier web.',
+        'excerpt_en': 'How to install the PrionVault Chrome extension and add articles from any website.',
+        'content_es': (
+            '**Extensión de Chrome para PrionVault**\n\n'
+            'La extensión detecta DOIs y PMIDs en cualquier página web y te permite añadir '
+            'artículos directamente a PrionVault sin salir del navegador.\n\n'
+
+            '**1. Descargar la extensión**\n'
+            'En PrionVault, abre el menú de usuario (tu inicial en la esquina superior derecha) '
+            'y haz clic en **🧩 Chrome Extension**. Se descargará el fichero '
+            '`prionvault-extension.zip`. Descomprímelo en una carpeta de tu ordenador.\n\n'
+
+            '**2. Instalar en Chrome**\n'
+            '- Abre Chrome y ve a `chrome://extensions`\n'
+            '- Activa el **Modo desarrollador** (interruptor en la esquina superior derecha)\n'
+            '- Haz clic en **Cargar descomprimida**\n'
+            '- Selecciona la carpeta `prionvault-extension` que acabas de descomprimir\n\n'
+
+            '**3. Fijar la extensión en la barra**\n'
+            'Haz clic en el icono de puzzle 🧩 de Chrome (barra superior derecha) para ver '
+            'todas tus extensiones. Busca **PrionVault** y haz clic en el pin 📌 para fijarlo. '
+            'Aparecerá el icono con la "P" azul directamente en la barra.\n\n'
+
+            '**4. Configurar servidor y API key**\n'
+            'Haz clic en el icono de PrionVault en la barra de Chrome. Se abrirá un popup con dos campos:\n'
+            '- _URL del servidor_: la URL raíz de tu instancia, por ejemplo '
+            '`https://tu-app.up.railway.app` (sin rutas adicionales al final)\n'
+            '- _API Key_: el valor que has configurado en la variable de entorno '
+            '`PRIONVAULT_EXTENSION_API_KEY` en el servidor\n\n'
+            'Pulsa **Guardar configuración**. Si la conexión es correcta, verás ✓ Conectado.\n\n'
+
+            '**5. Usar la extensión**\n'
+            'Navega a la página de cualquier artículo científico (PubMed, DOI.org, revista, etc.). '
+            'Si la página contiene un DOI o PMID, la extensión abrirá automáticamente un panel '
+            'lateral con los metadatos del artículo.\n\n'
+            'Desde ese panel puedes:\n'
+            '- Ver título, autores, revista, año, DOI, PMID y abstract\n'
+            '- Pulsar **+ Añadir a PrionVault** para guardarlo con sus metadatos\n'
+            '- Pulsar **📄 Añadir con PDF** para guardar también el PDF '
+            '(funciona con PDFs en acceso abierto o si tienes acceso institucional activo)\n\n'
+            'Si el artículo ya está en tu biblioteca, el panel lo indica con una marca verde '
+            'y un enlace directo para verlo en PrionVault.\n\n'
+
+            '**Generar la API key**\n'
+            'Si aún no has creado la clave, ejecuta en tu máquina:\n'
+            '`python -c "import secrets; print(secrets.token_hex(32))"`\n'
+            'Copia el resultado y añádelo como variable de entorno `PRIONVAULT_EXTENSION_API_KEY` '
+            'en Railway (u donde tengas el servidor). Usa ese mismo valor en el popup de la extensión.'
+        ),
+        'content_en': (
+            '**PrionVault Chrome Extension**\n\n'
+            'The extension detects DOIs and PMIDs on any web page and lets you add '
+            'articles directly to PrionVault without leaving your browser.\n\n'
+
+            '**1. Download the extension**\n'
+            'In PrionVault, open the user menu (your initial in the top-right corner) '
+            'and click **🧩 Chrome Extension**. The file `prionvault-extension.zip` will download. '
+            'Unzip it to a folder on your computer.\n\n'
+
+            '**2. Install in Chrome**\n'
+            '- Open Chrome and go to `chrome://extensions`\n'
+            '- Enable **Developer mode** (toggle in the top-right corner)\n'
+            '- Click **Load unpacked**\n'
+            '- Select the `prionvault-extension` folder you just unzipped\n\n'
+
+            '**3. Pin the extension to the toolbar**\n'
+            'Click the Chrome puzzle icon 🧩 (top-right toolbar) to see all your extensions. '
+            'Find **PrionVault** and click the pin 📌 to pin it. '
+            'The blue "P" icon will appear directly in the toolbar.\n\n'
+
+            '**4. Configure server and API key**\n'
+            'Click the PrionVault icon in the Chrome toolbar. A popup opens with two fields:\n'
+            '- _Server URL_: the root URL of your instance, e.g. '
+            '`https://your-app.up.railway.app` (no extra path at the end)\n'
+            '- _API Key_: the value you set in the `PRIONVAULT_EXTENSION_API_KEY` '
+            'environment variable on the server\n\n'
+            'Click **Save settings**. If the connection is successful you will see ✓ Connected.\n\n'
+
+            '**5. Using the extension**\n'
+            'Navigate to any scientific article page (PubMed, DOI.org, journal site, etc.). '
+            'If the page contains a DOI or PMID, the extension automatically opens a side panel '
+            'with the article metadata.\n\n'
+            'From that panel you can:\n'
+            '- View title, authors, journal, year, DOI, PMID and abstract\n'
+            '- Click **+ Add to PrionVault** to save it with its metadata\n'
+            '- Click **📄 Add with PDF** to also save the PDF '
+            '(works with open-access PDFs or if you have active institutional access)\n\n'
+            'If the article is already in your library, the panel shows a green badge '
+            'and a direct link to view it in PrionVault.\n\n'
+
+            '**Generate the API key**\n'
+            'If you have not created the key yet, run on your machine:\n'
+            '`python -c "import secrets; print(secrets.token_hex(32))"`\n'
+            'Copy the result and add it as the `PRIONVAULT_EXTENSION_API_KEY` environment variable '
+            'in Railway (or wherever your server runs). Use the same value in the extension popup.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-chrome-extension',
+    },
+
 }
 
 # ── Quick tips per page context ───────────────────────────────────────────────
