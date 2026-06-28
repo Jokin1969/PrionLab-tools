@@ -613,13 +613,28 @@ def resolve_metadata(*, doi: Optional[str] = None,
     """Try the resolver chain. Returns None only if EVERY step fails.
 
     Priority order:
-      1. DOI  → CrossRef (best metadata) → PubMed-by-DOI
+      1. DOI  → CrossRef (best metadata) + PubMed enrichment (PMID + abstract)
+               → PubMed-by-DOI fallback
       2. PMID → PubMed-by-PMID; then CrossRef-by-title to recover the DOI
       3. Title hint → CrossRef title search
     """
     if doi:
         meta = crossref_by_doi(doi)
         if meta and meta.title:
+            # CrossRef never carries a PMID. If the article is in PubMed,
+            # fetch PMID and abstract now so callers don't need a separate
+            # backfill pass. Fail-soft: if PubMed is unreachable or the
+            # paper isn't indexed there, we still return the CrossRef data.
+            if not meta.pubmed_id or not meta.abstract:
+                try:
+                    pm = pubmed_by_doi(doi)
+                    if pm:
+                        if not meta.pubmed_id and pm.pubmed_id:
+                            meta.pubmed_id = pm.pubmed_id
+                        if not meta.abstract and pm.abstract:
+                            meta.abstract = pm.abstract
+                except Exception as exc:
+                    logger.debug("resolve_metadata: PubMed enrichment failed for %s: %s", doi, exc)
             return meta
         # PubMed fallback (sometimes has data when CrossRef doesn't).
         meta = pubmed_by_doi(doi)
@@ -649,5 +664,18 @@ def resolve_metadata(*, doi: Optional[str] = None,
     if title_hint:
         meta = crossref_by_title(title_hint)
         if meta and meta.title:
+            # Same PubMed enrichment pass: if CrossRef found the paper by
+            # title, try to backfill PMID + abstract via the DOI it returned.
+            if meta.doi and (not meta.pubmed_id or not meta.abstract):
+                try:
+                    pm = pubmed_by_doi(meta.doi)
+                    if pm:
+                        if not meta.pubmed_id and pm.pubmed_id:
+                            meta.pubmed_id = pm.pubmed_id
+                        if not meta.abstract and pm.abstract:
+                            meta.abstract = pm.abstract
+                except Exception as exc:
+                    logger.debug("resolve_metadata: PubMed enrichment (title) failed for %s: %s",
+                                 meta.doi, exc)
             return meta
     return None

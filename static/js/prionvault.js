@@ -5425,6 +5425,16 @@
     document.getElementById('pv-edit-close') ?.addEventListener('click', close);
     document.getElementById('pv-edit-cancel')?.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+    document.getElementById('pv-edit-doi-copy')?.addEventListener('click', () => {
+      const val = document.getElementById('pv-edit-doi').value.trim();
+      if (!val) return;
+      navigator.clipboard.writeText(val).then(() => {
+        const btn = document.getElementById('pv-edit-doi-copy');
+        const prev = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = prev; }, 1500);
+      });
+    });
     document.getElementById('pv-edit-refetch-doi') ?.addEventListener('click', () => _editRefetch('doi'));
     document.getElementById('pv-edit-refetch-pmid')?.addEventListener('click', () => _editRefetch('pmid'));
     document.getElementById('pv-edit-identify-ai') ?.addEventListener('click', _editIdentifyAI);

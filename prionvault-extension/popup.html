@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>PrionVault — Configuración</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div id="popup-root">
+
+  <div id="popup-header">
+    <span class="logo">🧬</span>
+    <div>
+      <div class="title">PrionVault</div>
+      <div class="subtitle">Extensión de navegador</div>
+    </div>
+  </div>
+
+  <div id="popup-body">
+
+    <div class="field">
+      <label for="server-url">URL del servidor</label>
+      <input type="url" id="server-url" placeholder="https://tu-app.up.railway.app">
+    </div>
+
+    <div class="field">
+      <label for="api-key">API Key</label>
+      <div class="input-row">
+        <input type="password" id="api-key" placeholder="••••••••••••••••">
+        <button type="button" id="toggle-key" title="Mostrar/ocultar">👁</button>
+      </div>
+      <div class="field-hint">
+        Generada con <code>secrets.token_hex(32)</code> y guardada en<br>
+        <code>PRIONVAULT_EXTENSION_API_KEY</code> en el servidor.
+      </div>
+    </div>
+
+    <button id="save-btn" class="btn-primary">Guardar configuración</button>
+    <div id="save-msg" class="save-msg"></div>
+
+    <hr>
+
+    <div id="status-block">
+      <div class="status-label">Estado</div>
+      <div id="status-text" class="status-checking">Comprobando conexión…</div>
+    </div>
+
+    <button id="open-panel-btn" class="btn-secondary">
+      Abrir panel en esta pestaña
+    </button>
+
+  </div>
+
+  <div id="popup-footer">
+    Genera tu API key en el servidor:<br>
+    <code>python -c "import secrets; print(secrets.token_hex(32))"</code>
+  </div>
+
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
