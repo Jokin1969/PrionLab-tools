@@ -233,9 +233,19 @@ def _oa_badge(is_oa: bool | None) -> str:
             'letter-spacing:0.04em;vertical-align:middle;">🔒 Restringido</span>')
 
 
+def _format_authors_short(authors: str) -> str:
+    if not authors:
+        return ""
+    auth_list = [x.strip() for x in authors.split(",") if x.strip()]
+    if len(auth_list) > 3:
+        return ", ".join(auth_list[:3]) + " et al."
+    return ", ".join(auth_list)
+
+
 def _article_card(a: dict, import_base_url: str) -> str:
+    """Card for PubMed digest — articles NOT yet in the library."""
     title   = a.get("title") or "Sin título"
-    authors = a.get("authors") or ""
+    authors = _format_authors_short(a.get("authors") or "")
     journal = a.get("journal") or ""
     year    = a.get("year") or ""
     pmid    = a.get("pmid") or ""
@@ -246,18 +256,6 @@ def _article_card(a: dict, import_base_url: str) -> str:
     topic_label = TOPIC_LABELS.get(preset, preset)
     doi_url  = f"https://doi.org/{doi}" if doi else ""
     pmid_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
-
-    # Authors: show first 3 then et al.
-    if authors:
-        auth_list = [x.strip() for x in authors.split(",") if x.strip()]
-        if len(auth_list) > 3:
-            authors_short = ", ".join(auth_list[:3]) + " et al."
-        else:
-            authors_short = ", ".join(auth_list)
-    else:
-        authors_short = ""
-
-    # Import link (deep-link into PrionVault import-by-pmid)
     import_url = f"{import_base_url}?pmid={pmid}" if pmid else ""
 
     doi_link = (f'<a href="{doi_url}" style="color:#0F3460;text-decoration:none;'
@@ -287,30 +285,87 @@ def _article_card(a: dict, import_base_url: str) -> str:
                   overflow:hidden;">
       <tr>
         <td style="padding:16px 18px 12px;">
-          <!-- Title -->
           <p style="margin:0 0 6px;font-size:14.5px;font-weight:700;
-                    color:#111827;line-height:1.4;">
-            {title}
-          </p>
-          <!-- Authors + journal -->
+                    color:#111827;line-height:1.4;">{title}</p>
           <p style="margin:0 0 8px;font-size:12px;color:#6b7280;line-height:1.5;">
-            {authors_short}
-            {"<br>" if authors_short and (journal or year) else ""}
+            {authors}{"<br>" if authors and (journal or year) else ""}
             <em>{journal}</em>{(", " + str(year)) if journal and year else str(year)}
           </p>
-          <!-- Badges row -->
-          <p style="margin:0 0 12px;">
-            {_oa_badge(is_oa)}
-            &nbsp; {topic_chip}
+          <p style="margin:0 0 12px;">{_oa_badge(is_oa)}&nbsp;{topic_chip}</p>
+          <table cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="padding-right:14px;">{doi_link}</td>
+            <td style="padding-right:14px;">{pmid_link}</td>
+            <td>{import_btn}</td>
+          </tr></table>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>"""
+
+
+def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool) -> str:
+    """Card for PrionVault Picks — articles already IN the library."""
+    title      = a.get("title") or "Sin título"
+    authors    = _format_authors_short(a.get("authors") or "")
+    journal    = a.get("journal") or ""
+    year       = a.get("year") or ""
+    pmid       = a.get("pmid") or ""
+    doi        = a.get("doi") or ""
+    article_id = a.get("article_id") or ""
+
+    doi_url  = f"https://doi.org/{doi}" if doi else ""
+    pmid_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
+    view_url = (f"{server_base_url}/prionvault/?open={article_id}"
+                if server_base_url and article_id else "")
+
+    doi_link = (f'<a href="{doi_url}" style="color:#0F3460;text-decoration:none;'
+                f'font-size:11.5px;">DOI ↗</a>' if doi_url else "")
+    pmid_link = (f'<a href="{pmid_url}" style="color:#6b7280;text-decoration:none;'
+                 f'font-size:11.5px;">PubMed ↗</a>' if pmid_url else "")
+    view_btn = ""
+    if view_url:
+        view_btn = (
+            f'<a href="{view_url}" '
+            f'style="display:inline-block;background:#0F3460;color:#fff;'
+            f'font-size:11.5px;font-weight:600;padding:5px 14px;border-radius:6px;'
+            f'text-decoration:none;letter-spacing:0.02em;">Ver en PrionVault →</a>'
+        )
+
+    pdf_note = ""
+    if has_pdf:
+        pdf_note = (
+            '<p style="margin:8px 0 0;font-size:11px;color:#065f46;'
+            'background:#d1fae5;padding:4px 8px;border-radius:4px;display:inline-block;">'
+            '📎 PDF adjunto en este email</p>'
+        )
+    else:
+        pdf_note = (
+            '<p style="margin:8px 0 0;font-size:11px;color:#92400e;'
+            'background:#fef3c7;padding:4px 8px;border-radius:4px;display:inline-block;">'
+            '⚠ Sin PDF disponible</p>'
+        )
+
+    return f"""
+<tr>
+  <td style="padding:0 0 16px 0;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;
+                  overflow:hidden;">
+      <tr>
+        <td style="padding:16px 18px 12px;">
+          <p style="margin:0 0 6px;font-size:14.5px;font-weight:700;
+                    color:#111827;line-height:1.4;">{title}</p>
+          <p style="margin:0 0 8px;font-size:12px;color:#6b7280;line-height:1.5;">
+            {authors}{"<br>" if authors and (journal or year) else ""}
+            <em>{journal}</em>{(", " + str(year)) if journal and year else str(year)}
           </p>
-          <!-- Links row -->
-          <table cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td style="padding-right:14px;">{doi_link}</td>
-              <td style="padding-right:14px;">{pmid_link}</td>
-              <td>{import_btn}</td>
-            </tr>
-          </table>
+          <table cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="padding-right:14px;">{doi_link}</td>
+            <td style="padding-right:14px;">{pmid_link}</td>
+            <td>{view_btn}</td>
+          </tr></table>
+          {pdf_note}
         </td>
       </tr>
     </table>
@@ -569,6 +624,14 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
         articles = _fetch_flagged_articles(str(sub["user_id"]), n)
         count    = len(articles)
 
+        # Collect PDF attachments first so we can tell each card if it has one
+        attachments: list[tuple[str, bytes, str]] = []
+        if count and sub.get("include_pdfs", True):
+            attachments = _collect_pdf_attachments(articles)
+
+        # Build a set of filenames that were successfully attached
+        attached_filenames: set[str] = {att[0] for att in attachments}
+
         if count == 0:
             picks_cards = """
             <tr><td style="text-align:center;padding:40px 20px;">
@@ -580,7 +643,14 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
               </p>
             </td></tr>"""
         else:
-            picks_cards = "\n".join(_article_card(a, import_base_url) for a in articles)
+            picks_cards = "\n".join(
+                _picks_article_card(
+                    a,
+                    server_base_url=base,
+                    has_pdf=bool(a.get("dropbox_path") and attachments),
+                )
+                for a in articles
+            )
 
         subject = (
             f"PrionVault Picks · {count} artículo{'s' if count != 1 else ''} seleccionado{'s' if count != 1 else ''}"
@@ -594,10 +664,6 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
         ) + f"Accede en: {base}/prionvault/index"
 
         html_body = _build_picks_html(picks_cards, sub, import_base_url, count)
-
-        attachments = []
-        if count and sub.get("include_pdfs", True):
-            attachments = _collect_pdf_attachments(articles)
 
         if attachments:
             from core.smtp_client import send_email_with_attachments
