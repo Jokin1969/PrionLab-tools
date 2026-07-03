@@ -201,14 +201,14 @@ def _fetch_new_articles(topics: list[str], since: datetime,
             i.year,
             i.doi,
             i.oa_verified,
-            i.preset,
-            i.first_seen_at
+            i.query_name   AS preset,
+            i.discovered_at AS first_seen_at
         FROM prionvault_pubmed_inventory i
-        WHERE i.preset IN ({placeholders})
-          AND i.first_seen_at >= :since
+        WHERE i.query_name IN ({placeholders})
+          AND i.discovered_at >= :since
           AND i.imported_at IS NULL
           {oa_filter}
-        ORDER BY i.year DESC NULLS LAST, i.first_seen_at DESC
+        ORDER BY i.year DESC NULLS LAST, i.discovered_at DESC
         LIMIT 200
     """
     try:
