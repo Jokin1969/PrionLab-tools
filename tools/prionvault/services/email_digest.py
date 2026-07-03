@@ -313,11 +313,14 @@ def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool) -> str:
     pmid       = a.get("pmid") or ""
     doi        = a.get("doi") or ""
     article_id = a.get("article_id") or ""
+    has_pdf_in_db = bool(a.get("pdf_md5"))
 
     doi_url  = f"https://doi.org/{doi}" if doi else ""
     pmid_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
     view_url = (f"{server_base_url}/prionvault/?open={article_id}"
                 if server_base_url and article_id else "")
+    pdf_url  = (f"{server_base_url}/prionvault/api/articles/{article_id}/pdf-view"
+                if server_base_url and article_id and has_pdf_in_db else "")
 
     doi_link = (f'<a href="{doi_url}" style="color:#0F3460;text-decoration:none;'
                 f'font-size:11.5px;">DOI ↗</a>' if doi_url else "")
@@ -332,18 +335,23 @@ def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool) -> str:
             f'text-decoration:none;letter-spacing:0.02em;">Ver en PrionVault →</a>'
         )
 
-    pdf_note = ""
     if has_pdf:
         pdf_note = (
             '<p style="margin:8px 0 0;font-size:11px;color:#065f46;'
             'background:#d1fae5;padding:4px 8px;border-radius:4px;display:inline-block;">'
             '📎 PDF adjunto en este email</p>'
         )
+    elif has_pdf_in_db and pdf_url:
+        pdf_note = (
+            f'<p style="margin:8px 0 0;font-size:11px;color:#1e40af;'
+            f'background:#eff6ff;padding:4px 8px;border-radius:4px;display:inline-block;">'
+            f'📄 <a href="{pdf_url}" style="color:#1e40af;">Ver PDF en PrionVault →</a></p>'
+        )
     else:
         pdf_note = (
-            '<p style="margin:8px 0 0;font-size:11px;color:#92400e;'
-            'background:#fef3c7;padding:4px 8px;border-radius:4px;display:inline-block;">'
-            '⚠ Sin PDF disponible</p>'
+            '<p style="margin:8px 0 0;font-size:11px;color:#6b7280;'
+            'background:#f3f4f6;padding:4px 8px;border-radius:4px;display:inline-block;">'
+            '— Sin PDF</p>'
         )
 
     return f"""
@@ -537,6 +545,9 @@ def _collect_pdf_attachments(articles: list[dict]) -> list[tuple[str, bytes, str
     send_email_with_attachments. Silently skips articles without a PDF,
     PDFs above the size cap, or when the download fails (we prefer a
     partial email over no email at all).
+
+    For articles that have pdf_md5 but no dropbox_path (e.g. older imports),
+    attempts to reconstruct the canonical Dropbox path before giving up.
     """
     import re as _re
     result = []
@@ -551,12 +562,24 @@ def _collect_pdf_attachments(articles: list[dict]) -> list[tuple[str, bytes, str
 
     for a in articles:
         path = a.get("dropbox_path")
+
+        # Fallback: reconstruct path from doi/year/md5 for older articles
+        if not path and a.get("pdf_md5"):
+            try:
+                from ..ingestion.dropbox_uploader import build_path
+                path = build_path(
+                    doi=a.get("doi"),
+                    year=a.get("year"),
+                    md5=a.get("pdf_md5"),
+                )
+            except Exception:
+                pass
+
         if not path:
             continue
+
         try:
-            meta, resp = dbx.files_download(path,
-                                            timeout=_PDF_ATTACH_TIMEOUT)
-            # Respect size cap — avoid attaching multi-hundred-MB files.
+            meta, resp = dbx.files_download(path, timeout=_PDF_ATTACH_TIMEOUT)
             declared = getattr(meta, "size", None)
             if declared and declared > _PDF_ATTACH_MAX_BYTES:
                 logger.info(
