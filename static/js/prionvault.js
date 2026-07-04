@@ -14335,6 +14335,7 @@
     }
 
     async function _previewSub(subId, btn) {
+      const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…'; }
 
       // Remove any existing preview panel in the same edit row
