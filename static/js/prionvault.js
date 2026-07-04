@@ -14138,6 +14138,12 @@
                          background:#f9fafb;color:#374151;font-size:13px;cursor:pointer;">
             <i class="fas fa-paper-plane"></i> Prueba
           </button>
+          <button type="button" class="pv-notif-preview-btn"
+                  style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;
+                         background:#f9fafb;color:#374151;font-size:13px;cursor:pointer;"
+                  title="Ver qué artículos se enviarían sin mandar el email">
+            <i class="fas fa-search"></i> Diagnóstico
+          </button>
           <button type="button" class="pv-notif-cancel-edit-btn"
                   style="margin-left:auto;padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;
                          background:#fff;color:#374151;font-size:13px;cursor:pointer;">
@@ -14255,6 +14261,12 @@
           if (editRow) _testSub(editRow.dataset.editRow, btn);
         });
       });
+      tableWrap.querySelectorAll('.pv-notif-preview-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const editRow = btn.closest('[data-edit-row]');
+          if (editRow) _previewSub(editRow.dataset.editRow, btn);
+        });
+      });
       tableWrap.querySelectorAll('.pv-notif-cancel-edit-btn').forEach(btn => {
         btn.addEventListener('click', () => { _expandedId = null; _renderTable(_lastSubs, _lastTz); });
       });
@@ -14319,6 +14331,112 @@
         _showStatus('error', 'Error: ' + e.message);
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Prueba'; }
+      }
+    }
+
+    async function _previewSub(subId, btn) {
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…'; }
+
+      // Remove any existing preview panel in the same edit row
+      const editRow = btn?.closest('[data-edit-row]');
+      editRow?.querySelector('.pv-notif-preview-panel')?.remove();
+
+      try {
+        const d = await _notifApi(`/notifications/subscriptions/${subId}/preview`);
+        const panelEl = document.createElement('div');
+        panelEl.className = 'pv-notif-preview-panel';
+        panelEl.style.cssText = 'margin-top:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:14px;font-size:12.5px;';
+
+        const fmtDate = iso => iso ? new Date(iso).toLocaleString('es-ES', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+
+        let html = '';
+        if (d.source === 'pubmed') {
+          const topicLabels = { prion:'Prion', prion_like:'Prion-like', aav:'AAV / Gene therapy' };
+          const topics = (d.topics || []).map(t => topicLabels[t] || t).join(', ');
+          const oaWarn = d.oa_only && d.count === 0 && d.count_without_oa_filter > 0
+            ? `<div style="margin-top:6px;padding:6px 10px;background:#fef3c7;border-radius:6px;color:#92400e;">
+                ⚠ Hay <strong>${d.count_without_oa_filter}</strong> artículos si se desactiva el filtro "Solo OA". Están ocultos porque la suscripción tiene activado <em>Solo Open Access</em>.
+               </div>` : '';
+
+          html = `
+            <div style="font-weight:700;color:#0369a1;margin-bottom:10px;">
+              🔍 Diagnóstico del digest — simulación sin enviar email
+            </div>
+            <table style="border-collapse:collapse;width:100%;font-size:12px;">
+              <tr><td style="color:#6b7280;padding:2px 8px 2px 0;white-space:nowrap;">Temas</td><td><strong>${esc(topics)}</strong></td></tr>
+              <tr><td style="color:#6b7280;padding:2px 8px 2px 0;">Período</td><td>${fmtDate(d.since)} → ${fmtDate(d.now)}</td></tr>
+              <tr><td style="color:#6b7280;padding:2px 8px 2px 0;">Solo OA</td><td>${d.oa_only ? '✓ Sí' : 'No'}</td></tr>
+              <tr><td style="color:#6b7280;padding:2px 8px 2px 0;">Último envío</td><td>${fmtDate(d.last_sent_at)}</td></tr>
+              <tr><td style="color:#6b7280;padding:2px 8px 2px 0;">Próximo envío</td><td>${fmtDate(d.next_send_at)}</td></tr>
+            </table>
+            <div style="margin-top:10px;padding:8px 12px;border-radius:6px;font-weight:700;
+                        background:${d.count > 0 ? '#dcfce7' : '#fef2f2'};
+                        color:${d.count > 0 ? '#15803d' : '#b91c1c'};">
+              ${d.count > 0
+                ? `✓ Se enviarían <strong>${d.count} artículo${d.count !== 1 ? 's' : ''}</strong>`
+                : '✗ No hay artículos nuevos para este período con los filtros actuales'}
+            </div>
+            ${oaWarn}`;
+
+          if (d.articles && d.articles.length > 0) {
+            html += `<div style="margin-top:10px;"><div style="font-weight:600;color:#374151;margin-bottom:6px;">Artículos (hasta 20):</div>`;
+            d.articles.forEach((a, i) => {
+              const topic = topicLabels[a.topic] || a.topic || '';
+              html += `<div style="padding:6px 0;border-bottom:1px solid #e0f2fe;display:flex;gap:8px;align-items:baseline;">
+                <span style="min-width:20px;color:#94a3b8;font-size:11px;">${i+1}.</span>
+                <span>
+                  <span style="font-weight:600;color:#1e293b;">${esc(a.title || '—')}</span>
+                  <span style="color:#64748b;"> · ${a.year || '—'} · ${esc(a.journal || '—')}</span>
+                  ${a.doi ? `<a href="https://doi.org/${esc(a.doi)}" target="_blank" style="color:#0F3460;margin-left:6px;">DOI ↗</a>` : ''}
+                  ${a.oa ? '<span style="margin-left:6px;font-size:10px;background:#d1fae5;color:#065f46;padding:1px 5px;border-radius:10px;">OA</span>' : ''}
+                  ${topic ? `<span style="margin-left:4px;font-size:10px;background:#eff6ff;color:#1e40af;padding:1px 5px;border-radius:10px;">${esc(topic)}</span>` : ''}
+                </span>
+              </div>`;
+            });
+            html += '</div>';
+          }
+        } else {
+          // flagged / Picks
+          html = `
+            <div style="font-weight:700;color:#0369a1;margin-bottom:10px;">
+              🔍 Diagnóstico PrionVault Picks — simulación sin enviar email
+            </div>
+            <div style="padding:8px 12px;border-radius:6px;font-weight:700;
+                        background:${d.count > 0 ? '#dcfce7' : '#fef2f2'};
+                        color:${d.count > 0 ? '#15803d' : '#b91c1c'};">
+              ${d.count > 0
+                ? `✓ <strong>${d.count} artículo${d.count !== 1 ? 's' : ''}</strong> marcado${d.count !== 1 ? 's' : ''} se enviarían`
+                : '✗ No hay artículos marcados con ⚑ en la biblioteca'}
+            </div>`;
+          if (d.articles && d.articles.length > 0) {
+            html += `<div style="margin-top:10px;"><div style="font-weight:600;color:#374151;margin-bottom:6px;">Artículos seleccionados:</div>`;
+            d.articles.forEach((a, i) => {
+              html += `<div style="padding:6px 0;border-bottom:1px solid #e0f2fe;display:flex;gap:8px;align-items:baseline;">
+                <span style="min-width:20px;color:#94a3b8;font-size:11px;">${i+1}.</span>
+                <span>
+                  <span style="font-weight:600;color:#1e293b;">${esc(a.title || '—')}</span>
+                  <span style="color:#64748b;"> · ${a.year || '—'}</span>
+                  ${a.has_pdf ? '<span style="margin-left:6px;font-size:10px;background:#d1fae5;color:#065f46;padding:1px 5px;border-radius:10px;">PDF</span>' : ''}
+                </span>
+              </div>`;
+            });
+            html += '</div>';
+          }
+        }
+
+        html += `<div style="margin-top:10px;text-align:right;">
+          <button type="button" onclick="this.closest('.pv-notif-preview-panel').remove()"
+                  style="font-size:11px;color:#6b7280;background:none;border:none;cursor:pointer;">✕ Cerrar</button>
+        </div>`;
+
+        panelEl.innerHTML = html;
+        const formWrap = btn?.closest('div[style*="flex-direction:column"]');
+        if (formWrap) formWrap.appendChild(panelEl);
+
+      } catch (e) {
+        _showStatus('error', 'Error en diagnóstico: ' + e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Diagnóstico'; }
       }
     }
 

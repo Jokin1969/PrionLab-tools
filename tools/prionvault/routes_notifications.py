@@ -360,3 +360,97 @@ def api_notifications_sub_test(sub_id):
         return jsonify({"ok": True, "detail": "Email de prueba enviado."})
     return jsonify({"error": "send_failed",
                     "detail": "No se pudo enviar el email. Revisa la configuración SMTP."}), 502
+
+
+@prionvault_bp.route("/api/notifications/subscriptions/<sub_id>/preview", methods=["GET"])
+@login_required
+def api_notifications_sub_preview(sub_id):
+    """Diagnostic dry-run: returns what the next digest *would* send without
+    actually sending an email or updating last_sent_at."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+
+    _uid = session.get("user_id")
+    try:
+        with _db.engine.connect() as conn:
+            row = conn.execute(_t(
+                "SELECT * FROM prionvault_notification_subscriptions "
+                "WHERE id=:id AND user_id=:uid"
+            ), {"id": sub_id, "uid": str(_uid)}).mappings().first()
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    if not row:
+        return jsonify({"error": "not_found"}), 404
+
+    sub = dict(row)
+    source = sub.get("source") or "pubmed"
+
+    if source == "flagged":
+        from .services.email_digest import _fetch_flagged_articles
+        n        = max(1, int(sub.get("articles_per_email") or 5))
+        articles = _fetch_flagged_articles(str(sub["user_id"]), n)
+        return jsonify({
+            "source":   "flagged",
+            "count":    len(articles),
+            "articles": [
+                {"title": a.get("title"), "doi": a.get("doi"),
+                 "pmid": a.get("pmid"), "year": a.get("year"),
+                 "journal": a.get("journal"),
+                 "has_pdf": bool(a.get("dropbox_path") or a.get("pdf_md5"))}
+                for a in articles
+            ],
+        })
+
+    # PubMed digest
+    from .services.email_digest import _fetch_new_articles, compute_next_send
+    from .services import email_digest as _ed
+
+    lookback_days = int(sub.get("lookback_days") or 7)
+    last_sent     = sub.get("last_sent_at")
+    now_utc       = datetime.now(timezone.utc)
+
+    if last_sent:
+        try:
+            since = datetime.fromisoformat(str(last_sent)).astimezone(timezone.utc)
+        except Exception:
+            since = now_utc - timedelta(days=lookback_days)
+    else:
+        since = now_utc - timedelta(days=lookback_days)
+
+    topics  = list(sub.get("topics") or ["prion"])
+    oa_only = bool(sub.get("include_oa_only"))
+
+    articles = _fetch_new_articles(topics, since, oa_only)
+
+    # Also report total unfiltered count (ignoring oa_only) for diagnosis
+    all_articles = _fetch_new_articles(topics, since, False) if oa_only else articles
+
+    next_send = compute_next_send(sub, after=now_utc)
+
+    return jsonify({
+        "source":          "pubmed",
+        "topics":          topics,
+        "oa_only":         oa_only,
+        "lookback_days":   lookback_days,
+        "since":           since.isoformat(),
+        "now":             now_utc.isoformat(),
+        "next_send_at":    (sub.get("next_send_at") or next_send).isoformat()
+                           if hasattr((sub.get("next_send_at") or next_send), "isoformat")
+                           else str(sub.get("next_send_at") or next_send),
+        "last_sent_at":    str(last_sent) if last_sent else None,
+        "count":           len(articles),
+        "count_without_oa_filter": len(all_articles),
+        "articles": [
+            {
+                "title":   a.get("title"),
+                "doi":     a.get("doi"),
+                "pmid":    a.get("pmid"),
+                "year":    a.get("year"),
+                "journal": a.get("journal"),
+                "oa":      bool(a.get("oa_verified")),
+                "topic":   a.get("preset"),
+            }
+            for a in articles[:20]  # cap at 20 for display
+        ],
+    })
