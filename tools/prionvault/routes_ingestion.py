@@ -1873,7 +1873,7 @@ def download_extension():
         for root, _dirs, files in os.walk(ext_dir):
             for fname in files:
                 fpath = os.path.join(root, fname)
-                arcname = os.path.join("prionvault-extension", os.path.relpath(fpath, ext_dir))
+                arcname = os.path.relpath(fpath, ext_dir)
                 zf.write(fpath, arcname)
     buf.seek(0)
     return send_file(
