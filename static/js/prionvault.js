@@ -3554,12 +3554,34 @@
           </button>
         </div>`;
 
+      const chatLauncher = `
+        <div style="margin:0 0 14px;">
+          <button id="pv-detail-chat-btn" type="button"
+                  title="Abre un chat para hacer preguntas a la IA sobre este artículo"
+                  style="display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:9px;
+                         border:none;background:linear-gradient(135deg,#0F3460,#16528a);color:#fff;
+                         font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 1px 3px rgba(15,52,96,0.3);">
+            <span style="font-size:15px;">🤖</span>
+            <span>Preguntar a la IA sobre este artículo</span>
+          </button>
+          <button id="pv-detail-chat-history-btn" type="button"
+                  title="Ver conversaciones anteriores sobre este artículo"
+                  style="display:inline-flex;align-items:center;gap:6px;padding:9px 13px;border-radius:9px;
+                         border:1px solid #d1d5db;background:white;color:#374151;
+                         font-size:12.5px;font-weight:600;cursor:pointer;margin-left:8px;">
+            🕑 <span>Chats anteriores</span>
+            <span id="pv-detail-chat-count" style="display:none;background:#eef2ff;color:#4f46e5;
+                  border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;"></span>
+          </button>
+        </div>`;
+
       content.innerHTML = `
         <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;line-height:1.35;padding-right:24px;">
           ${supHtml(a.title)}
         </h2>
         ${prionreadBadge}
         ${personalChips}
+        ${chatLauncher}
         <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:14px;color:#6b7280;margin-bottom:16px;">
           ${a.authors ? esc(a.authors) : '—'}
           ${a.journal ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${esc(a.journal)}` : ''}
@@ -3658,6 +3680,7 @@
       renderRatingsSection(a);
       wirePdfViewer(a);
       wirePersonalState(a);
+      wireChatLauncher(a);
       renderAiSummary(a);
       wireUnpaywallButton(a);
       wireAddToPackButton(a);
@@ -5974,6 +5997,325 @@
         .catch(() => ({}));
     }
     return _aiProvidersPromise;
+  }
+
+  // ── Article AI chat ──────────────────────────────────────────────────
+  // A per-article Q&A modal. The prompt behind each question bundles the
+  // article (vectorized text), its AI summary and the prior turns of the
+  // conversation. Provider fallback (Claude → GPT → Gemini) is handled
+  // server-side; the UI just flags when a switch happened. Conversations
+  // are persisted so the user can revisit them later.
+  const PVChat = (() => {
+    let _article = null;   // { id, title }
+    let _chatId  = null;   // active conversation id (null until first send)
+    let _sending = false;
+
+    const $ = id => document.getElementById(id);
+
+    function providerLabel(key) {
+      return ({ anthropic: 'Claude', openai: 'GPT', gemini: 'Gemini' })[key] || key || '';
+    }
+
+    async function populateProviders() {
+      const sel = $('pv-chat-provider');
+      if (!sel) return;
+      let providers = {};
+      try {
+        const r = await api('/chat-providers');
+        providers = r.providers || {};
+      } catch (e) { /* fall through to a bare default */ }
+      const keys = Object.keys(providers);
+      if (!keys.length) {
+        sel.innerHTML =
+          '<option value="anthropic">Claude</option>' +
+          '<option value="openai">GPT</option>' +
+          '<option value="gemini">Gemini</option>';
+      } else {
+        sel.innerHTML = keys.map(k => {
+          const p = providers[k];
+          const off = !p.configured;
+          return `<option value="${esc(k)}" ${off ? 'disabled' : ''}>${esc(p.label)}${off ? ' (sin API key)' : ''}</option>`;
+        }).join('');
+      }
+      const stored = localStorage.getItem('pv-chat-provider') || 'anthropic';
+      const ok = !providers[stored] || providers[stored].configured;
+      sel.value = ok ? stored
+                     : (keys.find(k => providers[k].configured) || 'anthropic');
+      sel.onchange = () => { if (sel.value) localStorage.setItem('pv-chat-provider', sel.value); };
+    }
+
+    function scrollToBottom() {
+      const m = $('pv-chat-messages');
+      if (m) m.scrollTop = m.scrollHeight;
+    }
+
+    function bubbleUser(text) {
+      return `<div style="display:flex;justify-content:flex-end;margin:0 0 12px;">
+        <div style="max-width:82%;background:#0F3460;color:#fff;border-radius:12px 12px 3px 12px;
+                    padding:9px 13px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;">${esc(text)}</div>
+      </div>`;
+    }
+
+    function bubbleAssistant(text, meta) {
+      const m = meta || {};
+      const label = m.provider_label || providerLabel(m.provider);
+      const badge = label
+        ? `<span style="display:inline-block;background:#eef2ff;color:#4f46e5;font-size:10.5px;
+                   font-weight:700;padding:1px 7px;border-radius:10px;margin-bottom:5px;">${esc(label)}</span>`
+        : '';
+      return `<div style="display:flex;justify-content:flex-start;margin:0 0 12px;">
+        <div style="max-width:88%;">
+          ${badge}
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;color:#374151;
+                      border-radius:12px 12px 12px 3px;padding:10px 13px;font-size:13.5px;
+                      line-height:1.6;white-space:pre-wrap;">${markdownLite(text)}</div>
+        </div>
+      </div>`;
+    }
+
+    function renderMessages(messages) {
+      const m = $('pv-chat-messages');
+      if (!m) return;
+      if (!messages || !messages.length) {
+        m.innerHTML = `<div style="text-align:center;color:#9ca3af;font-size:13px;padding:36px 12px;">
+          Hazle a la IA cualquier pregunta sobre este artículo.<br>
+          <span style="font-size:11.5px;">Metodología, resultados, limitaciones, comparación con otros trabajos…</span>
+        </div>`;
+        return;
+      }
+      m.innerHTML = messages.map(msg =>
+        msg.role === 'user'
+          ? bubbleUser(msg.content)
+          : bubbleAssistant(msg.content, msg)
+      ).join('');
+      scrollToBottom();
+    }
+
+    function showSwitchNote(result) {
+      const note = $('pv-chat-switch-note');
+      if (!note) return;
+      if (result && result.switched) {
+        const from = providerLabel(result.requested_provider);
+        const to   = result.provider_label || providerLabel(result.actual_provider);
+        note.style.display = 'block';
+        note.innerHTML = `⚠ <strong>${esc(from)}</strong> no pudo responder — te contesté con <strong>${esc(to)}</strong>.`;
+      } else {
+        note.style.display = 'none';
+        note.innerHTML = '';
+      }
+    }
+
+    async function ensureConversation() {
+      if (_chatId) return _chatId;
+      const provider = ($('pv-chat-provider') || {}).value || 'anthropic';
+      const r = await api(`/articles/${_article.id}/chats`, {
+        method: 'POST',
+        body: JSON.stringify({ provider }),
+      });
+      _chatId = r.chat_id;
+      return _chatId;
+    }
+
+    async function send() {
+      if (_sending) return;
+      const input = $('pv-chat-input');
+      const question = (input.value || '').trim();
+      if (!question) return;
+      _sending = true;
+      const sendBtn = $('pv-chat-send');
+      if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
+
+      const m = $('pv-chat-messages');
+      // Clear the placeholder if this is the first message.
+      if (m && m.querySelector('div[style*="text-align:center"]')) m.innerHTML = '';
+      if (m) m.insertAdjacentHTML('beforeend', bubbleUser(question));
+      input.value = '';
+      const thinkingId = 'pv-chat-thinking';
+      if (m) {
+        m.insertAdjacentHTML('beforeend',
+          `<div id="${thinkingId}" style="display:flex;justify-content:flex-start;margin:0 0 12px;">
+             <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;
+                         padding:10px 13px;font-size:13px;color:#9ca3af;">
+               <i class="fas fa-spinner fa-spin"></i> Pensando…
+             </div>
+           </div>`);
+      }
+      scrollToBottom();
+
+      try {
+        await ensureConversation();
+        const provider = ($('pv-chat-provider') || {}).value || undefined;
+        const r = await api(`/chats/${_chatId}/ask`, {
+          method: 'POST',
+          body: JSON.stringify({ question, provider }),
+        });
+        $(thinkingId)?.remove();
+        if (m) m.insertAdjacentHTML('beforeend', bubbleAssistant(r.answer, r));
+        showSwitchNote(r);
+        scrollToBottom();
+        updateLauncherCount(_article);
+      } catch (e) {
+        $(thinkingId)?.remove();
+        let detail = e.message || 'Error desconocido';
+        if (e.body && e.body.attempts && e.body.attempts.length) {
+          detail += ' — ' + e.body.attempts
+            .map(a => `${providerLabel(a.provider)}: ${a.reason}`).join('; ');
+        }
+        if (m) m.insertAdjacentHTML('beforeend',
+          `<div style="margin:0 0 12px;font-size:12.5px;color:#b91c1c;background:#fef2f2;
+                       border:1px solid #fecaca;border-radius:10px;padding:9px 12px;">
+             No se pudo obtener respuesta: ${esc(detail)}
+           </div>`);
+        scrollToBottom();
+      } finally {
+        _sending = false;
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Enviar'; }
+      }
+    }
+
+    function newConversation() {
+      _chatId = null;
+      showSwitchNote(null);
+      renderMessages([]);
+      const panel = $('pv-chat-history-panel');
+      if (panel) panel.style.display = 'none';
+      const input = $('pv-chat-input');
+      if (input) input.focus();
+    }
+
+    async function loadHistory() {
+      const panel = $('pv-chat-history-panel');
+      const list  = $('pv-chat-history-list');
+      if (!panel || !list) return;
+      panel.style.display = 'block';
+      list.innerHTML = '<div style="color:#9ca3af;font-size:12.5px;padding:6px;">Cargando…</div>';
+      try {
+        const r = await api(`/articles/${_article.id}/chats`);
+        const chats = r.chats || [];
+        if (!chats.length) {
+          list.innerHTML = '<div style="color:#9ca3af;font-size:12.5px;padding:6px;">Aún no hay conversaciones sobre este artículo.</div>';
+          return;
+        }
+        list.innerHTML = chats.map(c => {
+          const when = c.updated_at ? new Date(c.updated_at).toLocaleString() : '';
+          const label = c.provider_label || providerLabel(c.requested_provider);
+          return `<div class="pv-chat-hist-item" data-cid="${esc(c.id)}"
+                       style="border:1px solid #e5e7eb;border-radius:8px;padding:9px 11px;margin-bottom:7px;
+                              cursor:pointer;background:#fff;display:flex;gap:10px;align-items:center;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;color:#111827;font-weight:600;white-space:nowrap;
+                          overflow:hidden;text-overflow:ellipsis;">${esc(c.title || 'Conversación')}</div>
+              <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
+                ${esc(when)} · ${c.message_count || 0} mensaje${(c.message_count||0) === 1 ? '' : 's'}
+              </div>
+            </div>
+            <span style="background:#eef2ff;color:#4f46e5;font-size:10.5px;font-weight:700;
+                         padding:1px 7px;border-radius:10px;flex-shrink:0;">${esc(label)}</span>
+            <button class="pv-chat-hist-del" data-cid="${esc(c.id)}" title="Eliminar conversación"
+                    style="flex-shrink:0;background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
+          </div>`;
+        }).join('');
+        list.querySelectorAll('.pv-chat-hist-item').forEach(el => {
+          el.addEventListener('click', ev => {
+            if (ev.target.closest('.pv-chat-hist-del')) return;
+            openConversation(el.dataset.cid);
+          });
+        });
+        list.querySelectorAll('.pv-chat-hist-del').forEach(btn => {
+          btn.addEventListener('click', async ev => {
+            ev.stopPropagation();
+            if (!confirm('¿Eliminar esta conversación? No se puede deshacer.')) return;
+            try {
+              await api(`/chats/${btn.dataset.cid}`, { method: 'DELETE' });
+              if (_chatId === btn.dataset.cid) newConversation();
+              loadHistory();
+              updateLauncherCount(_article);
+            } catch (e) { alert('No se pudo eliminar: ' + e.message); }
+          });
+        });
+      } catch (e) {
+        list.innerHTML = `<div style="color:#b91c1c;font-size:12.5px;padding:6px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    async function openConversation(chatId) {
+      const m = $('pv-chat-messages');
+      if (m) m.innerHTML = '<div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">Cargando…</div>';
+      const panel = $('pv-chat-history-panel');
+      if (panel) panel.style.display = 'none';
+      showSwitchNote(null);
+      try {
+        const chat = await api(`/chats/${chatId}`);
+        _chatId = chat.id;
+        const sel = $('pv-chat-provider');
+        if (sel && chat.requested_provider) sel.value = chat.requested_provider;
+        renderMessages(chat.messages || []);
+      } catch (e) {
+        if (m) m.innerHTML = `<div style="color:#b91c1c;padding:16px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    async function updateLauncherCount(article) {
+      const badge = document.getElementById('pv-detail-chat-count');
+      if (!badge || !article) return;
+      try {
+        const r = await api(`/articles/${article.id}/chats`);
+        const n = (r.chats || []).length;
+        if (n > 0) { badge.style.display = 'inline-block'; badge.textContent = n; }
+        else       { badge.style.display = 'none'; }
+      } catch (e) { /* silent */ }
+    }
+
+    let _wired = false;
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-chat-close')?.addEventListener('click', close);
+      document.querySelector('#pv-chat-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-chat-send')?.addEventListener('click', send);
+      $('pv-chat-new-btn')?.addEventListener('click', newConversation);
+      $('pv-chat-history-btn')?.addEventListener('click', loadHistory);
+      const input = $('pv-chat-input');
+      if (input) input.addEventListener('keydown', ev => {
+        // Enter sends, Shift+Enter makes a newline.
+        if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(); }
+      });
+    }
+
+    function open(article, opts = {}) {
+      _article = article;
+      _chatId = null;
+      wireOnce();
+      const modal = document.getElementById('pv-chat-modal');
+      if (!modal) return;
+      const titleEl = document.getElementById('pv-chat-article-title');
+      if (titleEl) titleEl.textContent = article.title || '';
+      showSwitchNote(null);
+      renderMessages([]);
+      modal.style.display = 'flex';
+      populateProviders();
+      if (opts.showHistory) loadHistory();
+      else {
+        const panel = $('pv-chat-history-panel');
+        if (panel) panel.style.display = 'none';
+        $('pv-chat-input')?.focus();
+      }
+    }
+
+    function close() {
+      const modal = document.getElementById('pv-chat-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    return { open, close, updateLauncherCount };
+  })();
+
+  function wireChatLauncher(a) {
+    const btn     = document.getElementById('pv-detail-chat-btn');
+    const histBtn = document.getElementById('pv-detail-chat-history-btn');
+    if (btn)     btn.addEventListener('click', () => PVChat.open(a, { showHistory: false }));
+    if (histBtn) histBtn.addEventListener('click', () => PVChat.open(a, { showHistory: true }));
+    PVChat.updateLauncherCount(a);
   }
 
   function renderAiSummary(a) {

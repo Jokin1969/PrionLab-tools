@@ -4172,3 +4172,6 @@ from . import routes_admin  # noqa: F401, E402
 from . import routes_notifications  # noqa: F401, E402
 # Re-export so existing callers (tests, etc.) can still import from here.
 from .routes_notifications import _validate_notif_payload, _notif_sub_to_dict  # noqa: F401, E402
+
+# Per-article AI chat routes live in their own module.
+from . import routes_chat  # noqa: F401, E402
