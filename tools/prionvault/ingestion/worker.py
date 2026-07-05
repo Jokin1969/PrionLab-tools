@@ -228,13 +228,32 @@ def _process_job(job: ingest_queue.Job) -> None:
     summary  = f"done | {id_type}={final_doi or pubmed_id or md5[:8]} | {target_path}{scan_tag}"
     ingest_queue.mark_step(job.id, status="done", step=summary,
                            article_id=article_id)
+
+    # For articles that arrived by email, run the full setup pipeline
+    # (PMID + abstract, searchable PDF, AI summary, Voyage index) before
+    # replying, so the confirmation email can report every step and carry
+    # the AI summary. Other ingest paths (DOI-add, Import-PDFs, Dropbox
+    # scan) keep the lightweight behaviour.
+    enrichment = None
+    if (job.notify_email or "").strip():
+        try:
+            enrichment = _post_ingest_enrich(
+                article_id=article_id, content=content,
+                dropbox_path=upload.dropbox_path, title=title,
+                doi=final_doi, pubmed_id=pubmed_id, abstract=abstract,
+                extracted_text=extraction.text, is_scan=is_scan,
+            )
+        except Exception as exc:
+            logger.exception("worker: post-ingest enrichment crashed for job %d", job.id)
+
     _notify_outcome(
         job, status="done", article_id=article_id, pdf_content=content,
         is_scan=is_scan,
+        enrichment=enrichment,
         article_meta={
             "title":      title,
             "doi":        final_doi,
-            "pubmed_id":  pubmed_id,
+            "pubmed_id":  (enrichment or {}).get("pubmed_id") or pubmed_id,
             "year":       year,
             "authors":    authors,
             "journal":    journal,
@@ -535,11 +554,179 @@ def _bump_or_fail(job: ingest_queue.Job, content: Optional[bytes],
     return new_status
 
 
+# ── Post-ingest enrichment (email pipeline) ──────────────────────────────────
+
+def _update_article_fields(eng, article_id, **fields) -> None:
+    """Update the given articles columns, skipping any that don't exist."""
+    if not fields:
+        return
+    try:
+        with eng.begin() as conn:
+            cols = _get_articles_columns(conn)
+            usable = {k: v for k, v in fields.items() if k in cols}
+            if not usable:
+                return
+            set_sql = ", ".join(f"{k} = :{k}" for k in usable)
+            conn.execute(text(
+                f"UPDATE articles SET {set_sql}, updated_at = NOW() "
+                f"WHERE id = :aid"
+            ), {**usable, "aid": str(article_id)})
+    except Exception as exc:
+        logger.warning("post-enrich: field update failed for %s: %s",
+                       article_id, exc)
+
+
+def _save_summary_row(eng, article_id, res) -> None:
+    """Persist an ai_summary.SummaryResult onto the articles row."""
+    try:
+        with eng.begin() as conn:
+            conn.execute(text(
+                """UPDATE articles
+                      SET summary_ai          = :t,
+                          summary_ai_provider = :p,
+                          summary_ai_model    = :m,
+                          summary_ai_notes    = NULL,
+                          summary_tokens_in   = :tin,
+                          summary_tokens_out  = :tout,
+                          updated_at          = NOW()
+                    WHERE id = :aid"""
+            ), {"t": res.text, "p": res.provider, "m": res.model,
+                "tin": res.tokens_in, "tout": res.tokens_out,
+                "aid": str(article_id)})
+    except Exception as exc:
+        logger.warning("post-enrich: summary save failed for %s: %s",
+                       article_id, exc)
+
+
+def _post_ingest_enrich(*, article_id, content: bytes,
+                        dropbox_path: Optional[str], title: Optional[str],
+                        doi: Optional[str], pubmed_id, abstract,
+                        extracted_text, is_scan: bool) -> dict:
+    """Finish setting up an email-ingested article: resolve PMID + abstract
+    from PubMed, make the PDF text-searchable, generate the AI summary and
+    index everything in Voyage. Best-effort — a failing step is recorded
+    but never aborts the rest. Returns {steps, pubmed_id, abstract,
+    summary_ai, summary_provider} for the confirmation email."""
+    eng = _get_engine()
+    steps: list[dict] = []
+
+    def _step(key, label, status, detail=""):
+        steps.append({"key": key, "label": label,
+                      "status": status, "detail": detail})
+
+    # 1. PMID — resolve from the DOI when missing.
+    new_pmid = pubmed_id
+    if not new_pmid and doi:
+        try:
+            from .metadata_resolver import pubmed_by_doi
+            md = pubmed_by_doi(doi)
+            if md and md.pubmed_id:
+                new_pmid = md.pubmed_id
+                if not abstract and md.abstract:
+                    abstract = md.abstract
+                _update_article_fields(eng, article_id, pubmed_id=str(new_pmid))
+        except Exception as exc:
+            logger.info("post-enrich: pubmed_by_doi failed: %s", exc)
+    if new_pmid:
+        _step("pmid", "Código PMID", "ok", f"PMID {new_pmid}")
+    else:
+        _step("pmid", "Código PMID", "skip",
+              "no se encontró en PubMed (por DOI/título)")
+
+    # 2. Abstract — fetch from PubMed once we have a PMID.
+    if not abstract and new_pmid:
+        try:
+            from .metadata_resolver import pubmed_efetch_abstract
+            ab = pubmed_efetch_abstract(str(new_pmid))
+            if ab:
+                abstract = ab
+                _update_article_fields(eng, article_id, abstract=ab)
+        except Exception as exc:
+            logger.info("post-enrich: efetch abstract failed: %s", exc)
+    if abstract:
+        _step("abstract", "Abstract de PubMed", "ok",
+              f"{len(abstract)} caracteres")
+    else:
+        _step("abstract", "Abstract de PubMed", "skip", "no disponible")
+
+    # 3. Searchable PDF (text layer via OCR when needed).
+    if is_scan:
+        _step("searchable", "PDF con texto buscable", "skip",
+              "es un escaneo; el OCR se completará en el proceso por lotes")
+    elif not dropbox_path:
+        _step("searchable", "PDF con texto buscable", "skip",
+              "sin PDF en Dropbox")
+    else:
+        try:
+            from ..services.batch_searchable_pdf import _make_searchable
+            out, st = _make_searchable(content)
+            if out:
+                upload_pdf(out, dropbox_path, overwrite=True)
+                _update_article_fields(eng, article_id, pdf_searchable=True)
+                _step("searchable", "PDF con texto buscable", "ok",
+                      "capa de texto añadida")
+            elif st == "already_searchable":
+                _update_article_fields(eng, article_id, pdf_searchable=True)
+                _step("searchable", "PDF con texto buscable", "ok",
+                      "el PDF ya era buscable")
+            else:
+                _step("searchable", "PDF con texto buscable", "fail", st[:140])
+        except Exception as exc:
+            _step("searchable", "PDF con texto buscable", "fail", str(exc)[:140])
+
+    # 4. AI summary — run before indexing so the summary is embedded too.
+    summary_text = None
+    summary_provider = None
+    try:
+        from ..services.ai_summary import generate_summary, DEFAULT_PROVIDER
+        res = generate_summary(
+            title=title, abstract=abstract, doi=doi, pubmed_id=new_pmid,
+            extracted_text=extracted_text, provider=DEFAULT_PROVIDER,
+        )
+        summary_text = res.text
+        summary_provider = res.provider
+        _save_summary_row(eng, article_id, res)
+        _step("summary", "Resumen con IA", "ok", res.model or summary_provider)
+    except Exception as exc:
+        logger.info("post-enrich: summary failed: %s", exc)
+        _step("summary", "Resumen con IA", "fail", str(exc)[:150])
+
+    # 5. Voyage index (PDF text + abstract + AI summary).
+    if not extracted_text and not summary_text and not abstract:
+        _step("index", "Indexado por Voyage", "skip",
+              "sin texto que indexar todavía")
+    else:
+        try:
+            from ..embeddings.indexer import index_article
+            r = index_article(
+                article_id=article_id, title=title or "",
+                extracted_text=extracted_text, summary_ai=summary_text,
+                abstract=abstract,
+            )
+            if r.error and r.chunks_written == 0:
+                _step("index", "Indexado por Voyage", "fail", str(r.error)[:140])
+            else:
+                _step("index", "Indexado por Voyage", "ok",
+                      f"{r.chunks_written} fragmentos vectorizados")
+        except Exception as exc:
+            logger.info("post-enrich: index failed: %s", exc)
+            _step("index", "Indexado por Voyage", "fail", str(exc)[:140])
+
+    return {
+        "steps":            steps,
+        "pubmed_id":        new_pmid,
+        "abstract":         abstract,
+        "summary_ai":       summary_text,
+        "summary_provider": summary_provider,
+    }
+
+
 def _notify_outcome(job: ingest_queue.Job, *, status: str,
                     pdf_content: Optional[bytes],
                     article_id: Optional[str] = None,
                     article_meta: Optional[dict] = None,
                     duplicate_reason: Optional[str] = None,
+                    enrichment: Optional[dict] = None,
                     is_scan: bool = False,
                     error: Optional[str] = None) -> None:
     """Send the operator who emailed in a final reply with the result.
@@ -565,13 +752,18 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
     if (not meta or not meta.get("title")) and article_id:
         meta = {**_load_article_summary(article_id), **meta}
 
+    html = None
     if status == "done":
         if is_scan:
             subject = f"[PrionVault] ✓ Ingerido (escaneo, OCR pendiente) — {meta.get('title') or short_subj}"
             body    = _compose_scan_body(meta, article_id, orig_subject)
         else:
             subject = f"[PrionVault] ✓ Ingerido — {meta.get('title') or short_subj}"
-            body    = _compose_done_body(meta, article_id, orig_subject)
+            body    = _compose_done_body(meta, article_id, orig_subject, enrichment)
+        # When the email pipeline ran, build a rich HTML confirmation
+        # with the per-step checklist and the AI summary inline.
+        if enrichment:
+            html = _compose_done_html(meta, article_id, orig_subject, enrichment)
     elif status == "duplicate":
         subject = f"[PrionVault] Ya estaba en la base — {meta.get('title') or short_subj}"
         body    = _compose_duplicate_body(meta, article_id, orig_subject,
@@ -593,7 +785,7 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
 
     try:
         from core.smtp_client import send_email_with_attachments
-        send_email_with_attachments(to, subject, body, attachments)
+        send_email_with_attachments(to, subject, body, attachments, html=html)
     except Exception as exc:
         logger.warning("worker: notify-email to %s failed (%s)", to, exc)
 
@@ -664,7 +856,8 @@ def _article_link(article_id) -> str:
     return f"{_PUBLIC_BASE_URL}/prionvault/?open={article_id}"
 
 
-def _compose_done_body(meta: dict, article_id, orig_subject: str) -> str:
+def _compose_done_body(meta: dict, article_id, orig_subject: str,
+                       enrichment: Optional[dict] = None) -> str:
     lines = [
         "Hola,",
         "",
@@ -687,9 +880,29 @@ def _compose_done_body(meta: dict, article_id, orig_subject: str) -> str:
         lines.append(f"  DOI       : {meta['doi']}")
     if meta.get("pubmed_id"):
         lines.append(f"  PubMed    : {meta['pubmed_id']}")
+
+    if enrichment and enrichment.get("steps"):
+        lines += ["", "PROCESO COMPLETADO", "──────────────────"]
+        marks = {"ok": "[OK]", "skip": "[--]", "fail": "[!!]"}
+        for s in enrichment["steps"]:
+            tag = marks.get(s["status"], "[  ]")
+            detail = f" — {s['detail']}" if s.get("detail") else ""
+            lines.append(f"  {tag} {s['label']}{detail}")
+
     lines += [
         "",
         f"Verlo en PrionVault: {_article_link(article_id)}",
+    ]
+
+    if enrichment and enrichment.get("summary_ai"):
+        lines += [
+            "",
+            "RESUMEN DE LA IA",
+            "────────────────",
+            enrichment["summary_ai"].strip(),
+        ]
+
+    lines += [
         "",
         "(Adjunto va el PDF original que enviaste.)",
         "",
@@ -698,6 +911,134 @@ def _compose_done_body(meta: dict, article_id, orig_subject: str) -> str:
         "— PrionVault",
     ]
     return "\n".join(lines)
+
+
+# ── Rich HTML confirmation (email pipeline) ──────────────────────────────────
+
+_STEP_ICON = {"ok": "✅", "skip": "⏭️", "fail": "⚠️"}
+_STEP_COLOR = {"ok": "#065f46", "skip": "#6b7280", "fail": "#b45309"}
+
+
+def _summary_to_html(text: str) -> str:
+    """Light Markdown → HTML for the AI summary: ## headings, **bold**,
+    and paragraphs. Input is escaped first so nothing injects markup."""
+    import html as _html
+    import re as _re
+    out: list[str] = []
+    for block in (text or "").split("\n"):
+        line = block.rstrip()
+        if not line.strip():
+            continue
+        esc = _html.escape(line.strip())
+        esc = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc)
+        if line.startswith("## "):
+            out.append(
+                f'<h3 style="margin:16px 0 6px;font-size:14px;color:#0F3460;'
+                f'text-transform:uppercase;letter-spacing:0.04em;">'
+                f'{_html.escape(line[3:].strip())}</h3>')
+        elif line.startswith("# "):
+            out.append(f'<p style="margin:2px 0;font-weight:700;color:#111827;">'
+                       f'{_html.escape(line[2:].strip())}</p>')
+        else:
+            out.append(f'<p style="margin:0 0 8px;font-size:13.5px;color:#374151;'
+                       f'line-height:1.6;">{esc}</p>')
+    return "\n".join(out)
+
+
+def _compose_done_html(meta: dict, article_id, orig_subject: str,
+                       enrichment: dict) -> str:
+    import html as _html
+    steps = enrichment.get("steps") or []
+    summary_text = enrichment.get("summary_ai")
+    link = _article_link(article_id)
+
+    def _row(label, value):
+        if not value:
+            return ""
+        return (f'<tr><td style="padding:3px 12px 3px 0;color:#6b7280;'
+                f'font-size:12.5px;white-space:nowrap;vertical-align:top;">{label}</td>'
+                f'<td style="padding:3px 0;color:#111827;font-size:12.5px;">'
+                f'{_html.escape(str(value))}</td></tr>')
+
+    meta_rows = "".join([
+        _row("Título", meta.get("title")),
+        _row("Autores", _fmt_authors(meta.get("authors"))),
+        _row("Revista", meta.get("journal")),
+        _row("Año", meta.get("year")),
+        _row("DOI", meta.get("doi")),
+        _row("PubMed", meta.get("pubmed_id")),
+    ])
+
+    step_rows = "".join(
+        f'<tr><td style="padding:5px 10px 5px 0;font-size:15px;width:22px;">'
+        f'{_STEP_ICON.get(s["status"], "•")}</td>'
+        f'<td style="padding:5px 0;font-size:13px;color:#111827;font-weight:600;">'
+        f'{_html.escape(s["label"])}'
+        f'<span style="font-weight:400;color:{_STEP_COLOR.get(s["status"], "#6b7280")};">'
+        f'{(" — " + _html.escape(s["detail"])) if s.get("detail") else ""}</span>'
+        f'</td></tr>'
+        for s in steps
+    )
+
+    all_ok = all(s["status"] != "fail" for s in steps)
+    banner_bg = "#0F3460" if all_ok else "#92400e"
+    banner_txt = ("Tu artículo está completamente listo en PrionVault."
+                  if all_ok else
+                  "Tu artículo está en PrionVault; algún paso necesita revisión.")
+
+    summary_block = ""
+    if summary_text:
+        prov = enrichment.get("summary_provider") or ""
+        prov_label = {"anthropic": "Claude", "openai": "GPT",
+                      "gemini": "Gemini"}.get(prov, prov)
+        summary_block = f"""
+        <tr><td style="padding:20px 28px 4px;">
+          <h2 style="margin:0 0 2px;font-size:15px;color:#111827;">🧠 Resumen generado por la IA</h2>
+          {f'<p style="margin:0 0 10px;font-size:11px;color:#9ca3af;">Generado con {_html.escape(prov_label)}</p>' if prov_label else ''}
+        </td></tr>
+        <tr><td style="padding:0 28px 8px;">
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;">
+            {_summary_to_html(summary_text)}
+          </div>
+        </td></tr>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PrionVault</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:28px 16px;">
+  <tr><td align="center">
+    <table width="620" cellpadding="0" cellspacing="0" style="max-width:620px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      <tr><td style="background:{banner_bg};padding:22px 28px;">
+        <p style="margin:0;font-size:20px;font-weight:800;color:#fff;">🔬 PrionVault</p>
+        <p style="margin:6px 0 0;font-size:13.5px;color:rgba(255,255,255,0.9);">{banner_txt}</p>
+      </td></tr>
+
+      <tr><td style="padding:20px 28px 4px;">
+        <h2 style="margin:0 0 10px;font-size:15px;color:#111827;">📄 Artículo</h2>
+        <table cellpadding="0" cellspacing="0">{meta_rows}</table>
+      </td></tr>
+
+      <tr><td style="padding:18px 28px 4px;">
+        <h2 style="margin:0 0 8px;font-size:15px;color:#111827;">⚙️ Proceso completado</h2>
+        <table cellpadding="0" cellspacing="0" width="100%">{step_rows}</table>
+      </td></tr>
+
+      {summary_block}
+
+      <tr><td style="padding:16px 28px 22px;">
+        <a href="{link}" style="display:inline-block;background:#0F3460;color:#fff;font-size:13.5px;
+                  font-weight:600;padding:10px 22px;border-radius:8px;text-decoration:none;">
+          Ver en PrionVault →</a>
+        <p style="margin:14px 0 0;font-size:11.5px;color:#9ca3af;">
+          Adjunto va el PDF original que enviaste.<br>Re: {_html.escape(orig_subject)}
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
 
 
 def _compose_duplicate_body(meta: dict, article_id, orig_subject: str,
