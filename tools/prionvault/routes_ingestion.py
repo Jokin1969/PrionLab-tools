@@ -25,7 +25,7 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
 
-from flask import Response, jsonify, request, send_file
+from flask import Response, jsonify, redirect, render_template_string, request, send_file, url_for
 from sqlalchemy import text as sql_text
 from sqlalchemy.exc import IntegrityError
 
@@ -1857,6 +1857,147 @@ def api_delete_summary(aid):
     finally:
         s.close()
 
+
+
+# ── Email import landing page ─────────────────────────────────────────────────
+
+_IMPORT_PAGE = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Importar artículos – PrionVault</title>
+<style>
+  body{margin:0;padding:32px 16px;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  .card{max-width:700px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.1);overflow:hidden;}
+  .hdr{background:#0F3460;color:#fff;padding:24px 28px;}
+  .hdr h1{margin:0;font-size:20px;font-weight:700;}
+  .hdr p{margin:4px 0 0;font-size:13px;opacity:.7;}
+  .body{padding:24px 28px;}
+  .art{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin:0 0 12px;}
+  .art-title{font-size:14px;font-weight:600;color:#111827;margin:0 0 4px;}
+  .art-meta{font-size:12px;color:#6b7280;margin:0;}
+  .actions{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;}
+  .btn{display:inline-block;padding:9px 22px;border-radius:8px;font-size:14px;font-weight:600;
+       text-decoration:none;border:none;cursor:pointer;letter-spacing:.02em;}
+  .btn-primary{background:#0F3460;color:#fff;}
+  .btn-green{background:#059669;color:#fff;}
+  .btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db;}
+  .note{font-size:12px;color:#9ca3af;margin:16px 0 0;}
+  .ok{background:#d1fae5;color:#065f46;border-radius:8px;padding:14px 18px;font-weight:600;}
+  .err{background:#fee2e2;color:#991b1b;border-radius:8px;padding:14px 18px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr">
+    <h1>⬇ Importar artículos a PrionVault</h1>
+    <p>{{count}} artículo{{plural}} desde el email del digest</p>
+  </div>
+  <div class="body">
+    {{result_html}}
+    {{articles_html}}
+    {{form_html}}
+    <p class="note">Solo se importan artículos que no estén ya en tu biblioteca.</p>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+@prionvault_bp.route("/import", methods=["GET", "POST"])
+@admin_required
+def import_from_email():
+    """Landing page for email digest 'Importar' links.
+
+    GET  ?pmid=XXX           — confirm + import one article
+    GET  ?pmids=X,Y,Z        — confirm + import several articles
+    POST (form submission)   — perform import, show result
+    """
+    from .services import pubmed_inventory as _inv
+
+    # Resolve PMID list from query params or posted form field
+    if request.method == "POST":
+        raw = request.form.get("pmids", "")
+    else:
+        raw = request.args.get("pmids") or request.args.get("pmid") or ""
+
+    pmids = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
+    if not pmids:
+        return redirect(url_for("prionvault.index"))
+
+    count   = len(pmids)
+    plural  = "s" if count != 1 else ""
+
+    if request.method == "POST":
+        # Perform the import
+        summary = _inv.import_pmids(pmids, by_user=_viewer_id())
+        lines = []
+        if summary.get("created"):
+            lines.append(f"✅ {summary['created']} artículo{'s' if summary['created'] != 1 else ''} importado{'s' if summary['created'] != 1 else ''} correctamente.")
+        if summary.get("duplicates"):
+            lines.append(f"ℹ️ {summary['duplicates']} ya estaba{'n' if summary['duplicates'] != 1 else ''} en tu biblioteca.")
+        if summary.get("failed"):
+            lines.append(f"⚠️ {summary['failed']} no se pudo{'n' if summary['failed'] != 1 else ''} importar.")
+        result_class = "err" if summary.get("failed") and not summary.get("created") and not summary.get("duplicates") else "ok"
+        result_html = f'<div class="{result_class}">{"<br>".join(lines)}</div>'
+        back_btn = f'<div class="actions"><a href="{url_for("prionvault.index")}" class="btn btn-primary">Ir a PrionVault →</a></div>'
+        page = (_IMPORT_PAGE
+                .replace("{{count}}", str(count))
+                .replace("{{plural}}", plural)
+                .replace("{{result_html}}", result_html)
+                .replace("{{articles_html}}", "")
+                .replace("{{form_html}}", back_btn))
+        return page
+
+    # GET — fetch article titles from inventory and show confirmation
+    try:
+        from .ingestion.queue import _get_engine
+        eng = _get_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(sql_text("""
+                SELECT pmid, title, authors, year, journal
+                  FROM prionvault_pubmed_inventory
+                 WHERE pmid = ANY(:p)
+            """), {"p": pmids}).mappings().all()
+        meta = {r["pmid"]: dict(r) for r in rows}
+    except Exception:
+        meta = {}
+
+    cards = []
+    for pmid in pmids:
+        m = meta.get(pmid, {})
+        title = m.get("title") or f"PMID {pmid}"
+        year  = m.get("year") or ""
+        journal = m.get("journal") or ""
+        authors = m.get("authors") or ""
+        auth_short = ", ".join(authors.split(",")[:2]).strip() + (" et al." if len(authors.split(",")) > 2 else "") if authors else ""
+        cards.append(
+            f'<div class="art">'
+            f'<p class="art-title">{title}</p>'
+            f'<p class="art-meta">{auth_short}{"<br>" if auth_short else ""}<em>{journal}</em>{(", " + str(year)) if journal and year else str(year)}</p>'
+            f'</div>'
+        )
+    articles_html = "".join(cards)
+
+    pmids_hidden = f'<input type="hidden" name="pmids" value="{",".join(pmids)}">'
+    form_html = (
+        f'<form method="post" action="{url_for("prionvault.import_from_email")}">'
+        f'{pmids_hidden}'
+        f'<div class="actions">'
+        f'<button type="submit" class="btn btn-green">⬇ Confirmar importación</button>'
+        f'<a href="{url_for("prionvault.index")}" class="btn btn-secondary">Cancelar</a>'
+        f'</div>'
+        f'</form>'
+    )
+
+    page = (_IMPORT_PAGE
+            .replace("{{count}}", str(count))
+            .replace("{{plural}}", plural)
+            .replace("{{result_html}}", "")
+            .replace("{{articles_html}}", articles_html)
+            .replace("{{form_html}}", form_html))
+    return page
 
 
 # ── Chrome Extension download ─────────────────────────────────────────────────

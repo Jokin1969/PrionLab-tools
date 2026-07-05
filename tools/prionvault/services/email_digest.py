@@ -190,7 +190,7 @@ def _fetch_new_articles(topics: list[str], since: datetime,
     params: dict = {f"t{i}": t for i, t in enumerate(topics)}
     params["since"] = since
 
-    oa_filter = " AND i.oa_verified = TRUE" if oa_only else ""
+    oa_having = "HAVING BOOL_OR(i.oa_verified) = TRUE" if oa_only else ""
 
     sql = f"""
         SELECT
@@ -200,15 +200,16 @@ def _fetch_new_articles(topics: list[str], since: datetime,
             i.journal,
             i.year,
             i.doi,
-            i.oa_verified,
-            i.query_name   AS preset,
-            i.discovered_at AS first_seen_at
+            BOOL_OR(i.oa_verified)           AS oa_verified,
+            array_agg(DISTINCT i.query_name) AS presets,
+            MIN(i.discovered_at)             AS first_seen_at
         FROM prionvault_pubmed_inventory i
         WHERE i.query_name IN ({placeholders})
           AND i.discovered_at >= :since
           AND i.imported_at IS NULL
-          {oa_filter}
-        ORDER BY i.year DESC NULLS LAST, i.discovered_at DESC
+        GROUP BY i.pmid, i.title, i.authors, i.journal, i.year, i.doi
+        {oa_having}
+        ORDER BY i.year DESC NULLS LAST, MIN(i.discovered_at) DESC
         LIMIT 200
     """
     try:
@@ -251,9 +252,10 @@ def _article_card(a: dict, import_base_url: str) -> str:
     pmid    = a.get("pmid") or ""
     doi     = a.get("doi") or ""
     is_oa   = a.get("oa_verified")
-    preset  = a.get("preset", "prion")
+    presets_raw = a.get("presets") or [a.get("preset", "prion")]
+    if isinstance(presets_raw, str):
+        presets_raw = [presets_raw]
 
-    topic_label = TOPIC_LABELS.get(preset, preset)
     doi_url  = f"https://doi.org/{doi}" if doi else ""
     pmid_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
     import_url = f"{import_base_url}?pmid={pmid}" if pmid else ""
@@ -271,10 +273,11 @@ def _article_card(a: dict, import_base_url: str) -> str:
             f'text-decoration:none;letter-spacing:0.02em;">⬇ Importar a PrionVault</a>'
         )
 
-    topic_chip = (
+    topic_chips = " ".join(
         f'<span style="display:inline-block;background:#eff6ff;color:#1e40af;'
         f'font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;'
-        f'letter-spacing:0.04em;vertical-align:middle;">{topic_label}</span>'
+        f'letter-spacing:0.04em;vertical-align:middle;">{TOPIC_LABELS.get(p, p)}</span>'
+        for p in presets_raw
     )
 
     return f"""
@@ -291,7 +294,7 @@ def _article_card(a: dict, import_base_url: str) -> str:
             {authors}{"<br>" if authors and (journal or year) else ""}
             <em>{journal}</em>{(", " + str(year)) if journal and year else str(year)}
           </p>
-          <p style="margin:0 0 12px;">{_oa_badge(is_oa)}&nbsp;{topic_chip}</p>
+          <p style="margin:0 0 12px;">{_oa_badge(is_oa)}&nbsp;{topic_chips}</p>
           <table cellpadding="0" cellspacing="0" border="0"><tr>
             <td style="padding-right:14px;">{doi_link}</td>
             <td style="padding-right:14px;">{pmid_link}</td>
@@ -401,6 +404,23 @@ def build_digest_html(articles: list[dict], sub: dict,
         </td></tr>"""
     else:
         cards = "\n".join(_article_card(a, import_base_url) for a in articles)
+        # Build bulk-import URL (PMIDs comma-separated, max 100 in URL)
+        all_pmids = [str(a["pmid"]) for a in articles if a.get("pmid")]
+        _base_for_bulk = import_base_url.replace("/import", "") if import_base_url != "#" else ""
+        bulk_url = ""
+        if _base_for_bulk and all_pmids:
+            bulk_url = f"{_base_for_bulk}/prionvault/import?pmids={','.join(all_pmids[:100])}"
+        import_all_btn = ""
+        if bulk_url:
+            import_all_btn = f"""
+        <tr><td style="text-align:center;padding:8px 0 20px;">
+          <a href="{bulk_url}"
+             style="display:inline-block;background:#059669;color:#fff;
+                    font-size:12px;font-weight:700;padding:8px 20px;border-radius:8px;
+                    text-decoration:none;letter-spacing:0.02em;">
+            ⬇ Importar todos los artículos a PrionVault
+          </a>
+        </td></tr>"""
         body_content = f"""
         <tr><td style="padding:0 0 8px;">
           <p style="margin:0;font-size:13px;color:#6b7280;">
@@ -408,7 +428,8 @@ def build_digest_html(articles: list[dict], sub: dict,
             en PubMed que aún no están en tu biblioteca.
           </p>
         </td></tr>
-        {cards}"""
+        {cards}
+        {import_all_btn}"""
 
     _base = import_base_url.replace("/import", "") if import_base_url != "#" else ""
     settings_url = f"{_base}/prionvault" if _base else ""
