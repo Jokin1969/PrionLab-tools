@@ -318,6 +318,16 @@ def ask(chat_id: str, user_id: str, question: str,
     article_text = _fetch_article_text(article_id)
     user_prompt = _build_user_prompt(article, article_text, history, question)
 
+    # Append the admin-maintained translation glossary so the chat obeys
+    # the same fixed translations as the summaries. Never let a glossary
+    # failure break the answer.
+    system_prompt = _SYSTEM_PROMPT
+    try:
+        from .glossary import glossary_prompt_block
+        system_prompt = _SYSTEM_PROMPT + glossary_prompt_block()
+    except Exception:
+        pass
+
     # Run the fallback chain.
     chain = _fallback_chain(primary)
     attempts: list[dict] = []
@@ -332,7 +342,7 @@ def ask(chat_id: str, user_id: str, question: str,
         try:
             answer, tokens_in, tokens_out, model_used = _chat(
                 provider=attempt_provider,
-                system=_SYSTEM_PROMPT,
+                system=system_prompt,
                 user=user_prompt,
             )
             if not answer:

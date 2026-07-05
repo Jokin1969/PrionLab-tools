@@ -91,6 +91,16 @@ narrativo; sí puedes usarlas en Métodos / Resultados si los datos son \
 muchos y enumerables."""
 
 
+def _effective_system_prompt() -> str:
+    """The base system prompt plus the admin-maintained translation
+    glossary (if any). Glossary failures never break generation."""
+    try:
+        from .glossary import glossary_prompt_block
+        return _SYSTEM_PROMPT + glossary_prompt_block()
+    except Exception:
+        return _SYSTEM_PROMPT
+
+
 def _build_user_prompt(*, title, authors, year, journal, abstract,
                        doi, pubmed_id, extracted_text,
                        title_hint: bool = False) -> str:
@@ -295,7 +305,7 @@ def _call_anthropic(api_key: str, user_prompt: str,
     message = client.messages.create(
         model=model,
         max_tokens=max_tokens,
-        system=_SYSTEM_PROMPT,
+        system=_effective_system_prompt(),
         messages=[{"role": "user", "content": user_prompt}],
     )
     elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -340,7 +350,7 @@ def _call_openai(api_key: str, user_prompt: str,
         model=model,
         max_tokens=max_tokens,
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _effective_system_prompt()},
             {"role": "user",   "content": user_prompt},
         ],
     )
@@ -383,7 +393,7 @@ def _call_gemini(api_key: str, user_prompt: str,
         model=model,
         contents=user_prompt,
         config=types.GenerateContentConfig(
-            system_instruction=_SYSTEM_PROMPT,
+            system_instruction=_effective_system_prompt(),
             max_output_tokens=max_tokens,
             temperature=0.4,
         ),

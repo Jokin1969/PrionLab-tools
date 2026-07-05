@@ -7011,6 +7011,7 @@
       wireSidebarGroups();
       wireAIStatus();
       wireQueryExpansion();
+      wireGlossary();
       wireSidebarResize();
       wireMobileDrawer();
       wireBulkBar();
@@ -13154,6 +13155,148 @@
   // dictionary the biomedical retriever uses to broaden queries.
   // Admin-added entries persist across deploys; seed entries refresh
   // automatically when the code's _SEED_DICTIONARY changes.
+  // ── Translation glossary admin modal ─────────────────────────────────
+  function wireGlossary() {
+    const btn   = document.getElementById('btn-glossary');
+    const modal = document.getElementById('pv-glossary-modal');
+    if (!btn || !modal) return;
+    const closeBtn = document.getElementById('pv-glossary-close');
+    const listEl   = document.getElementById('pv-glossary-list');
+    const filtEl   = document.getElementById('pv-glossary-filter');
+    const cntEl    = document.getElementById('pv-glossary-counts');
+    const srcEl    = document.getElementById('pv-glossary-source');
+    const tgtEl    = document.getElementById('pv-glossary-target');
+    const noteEl   = document.getElementById('pv-glossary-note');
+    const addBtn   = document.getElementById('pv-glossary-add');
+    const addStat  = document.getElementById('pv-glossary-add-status');
+    let items = [];
+
+    function open()  { modal.style.display = 'flex'; refresh(); }
+    function close() { modal.style.display = 'none'; }
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    async function refresh() {
+      listEl.innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:24px;font-size:13px;">Cargando…</div>';
+      try {
+        const r = await api('/admin/glossary');
+        items = r.entries || [];
+        render();
+      } catch (e) {
+        listEl.innerHTML =
+          `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    function render() {
+      const filter = (filtEl.value || '').trim().toLowerCase();
+      const matches = items.filter(it =>
+        !filter ||
+        (it.source_term || '').toLowerCase().includes(filter) ||
+        (it.target_term || '').toLowerCase().includes(filter) ||
+        (it.note || '').toLowerCase().includes(filter)
+      );
+      cntEl.textContent = `${items.length} entrada${items.length === 1 ? '' : 's'}` +
+        (filter ? ` · ${matches.length} mostrada${matches.length === 1 ? '' : 's'}` : '');
+      if (!matches.length) {
+        listEl.innerHTML =
+          `<div style="text-align:center;color:#9ca3af;padding:22px;font-size:13px;">
+             ${filter ? 'Sin coincidencias.' : 'Glosario vacío — añade tu primera traducción arriba.'}
+           </div>`;
+        return;
+      }
+      listEl.innerHTML = matches.map(it => `
+        <div class="pv-glossary-row" data-id="${esc(it.id)}"
+             style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #f3f4f6;
+                    border-radius:8px;margin-bottom:6px;background:#fff;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;color:#111827;">
+              <span style="font-weight:600;">${esc(it.source_term)}</span>
+              <span style="color:#9ca3af;margin:0 6px;">→</span>
+              <span style="font-weight:600;color:#0F3460;">${esc(it.target_term)}</span>
+            </div>
+            ${it.note ? `<div style="font-size:11.5px;color:#9ca3af;margin-top:2px;">${esc(it.note)}</div>` : ''}
+          </div>
+          <button class="pv-glossary-edit" title="Editar"
+                  style="background:none;border:none;color:#6d28d9;cursor:pointer;font-size:13px;">✏</button>
+          <button class="pv-glossary-del" title="Eliminar"
+                  style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
+        </div>`).join('');
+
+      listEl.querySelectorAll('.pv-glossary-row').forEach(row => {
+        const id = row.dataset.id;
+        const it = items.find(x => x.id === id);
+        row.querySelector('.pv-glossary-del').addEventListener('click', async () => {
+          if (!confirm(`¿Eliminar la regla «${it.source_term}» → «${it.target_term}»?`)) return;
+          try { await api(`/admin/glossary/${id}`, { method: 'DELETE' }); refresh(); }
+          catch (e) { alert('No se pudo eliminar: ' + e.message); }
+        });
+        row.querySelector('.pv-glossary-edit').addEventListener('click', () => startEdit(row, it));
+      });
+    }
+
+    function startEdit(row, it) {
+      row.innerHTML = `
+        <input class="pv-ge-src" value="${esc(it.source_term)}"
+               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+        <span style="color:#9ca3af;">→</span>
+        <input class="pv-ge-tgt" value="${esc(it.target_term)}"
+               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+        <input class="pv-ge-note" value="${esc(it.note || '')}" placeholder="nota"
+               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+        <button class="pv-ge-save" style="background:#0F3460;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;">✓</button>
+        <button class="pv-ge-cancel" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;">✕</button>`;
+      row.querySelector('.pv-ge-cancel').addEventListener('click', render);
+      row.querySelector('.pv-ge-save').addEventListener('click', async () => {
+        const payload = {
+          source_term: row.querySelector('.pv-ge-src').value.trim(),
+          target_term: row.querySelector('.pv-ge-tgt').value.trim(),
+          note:        row.querySelector('.pv-ge-note').value.trim(),
+        };
+        try {
+          await api(`/admin/glossary/${it.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+          refresh();
+        } catch (e) { alert('No se pudo guardar: ' + e.message); }
+      });
+    }
+
+    async function add() {
+      const payload = {
+        source_term: srcEl.value.trim(),
+        target_term: tgtEl.value.trim(),
+        note:        noteEl.value.trim(),
+      };
+      if (!payload.source_term || !payload.target_term) {
+        addStat.style.color = '#b91c1c';
+        addStat.textContent = 'Rellena origen y traducción.';
+        return;
+      }
+      addBtn.disabled = true;
+      addStat.style.color = '#9ca3af';
+      addStat.textContent = 'Guardando…';
+      try {
+        await api('/admin/glossary', { method: 'POST', body: JSON.stringify(payload) });
+        srcEl.value = ''; tgtEl.value = ''; noteEl.value = '';
+        addStat.style.color = '#15803d';
+        addStat.textContent = '✓ Añadida';
+        refresh();
+        setTimeout(() => { addStat.textContent = ''; }, 2500);
+      } catch (e) {
+        addStat.style.color = '#b91c1c';
+        addStat.textContent = e.message;
+      } finally {
+        addBtn.disabled = false;
+      }
+    }
+
+    addBtn.addEventListener('click', add);
+    noteEl.addEventListener('keydown', ev => { if (ev.key === 'Enter') add(); });
+    tgtEl.addEventListener('keydown',  ev => { if (ev.key === 'Enter') add(); });
+    filtEl.addEventListener('input', render);
+  }
+
   function wireQueryExpansion() {
     const escAttr = (v) => esc(String(v || ''));
     const btn   = document.getElementById('btn-query-expansion');

@@ -595,6 +595,10 @@
                   title="Estado de cada proveedor de IA / API externa: últimos éxitos / errores, detección de crédito agotado o API key inválida.">
             <span><i class="fas fa-circle-info" style="width:13px;margin-right:6px;opacity:0.7;"></i>Estado IA</span>
           </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-glossary"
+                  title="Glosario de traducciones que la IA debe respetar en resúmenes y chat (p. ej. 'bank vole' → 'topillo rojo').">
+            <span><i class="fas fa-language" style="width:13px;margin-right:6px;opacity:0.7;"></i>Glosario de traducción</span>
+          </button>
           <button class="pv-nav-btn" id="btn-export-refs"
                   title="Exporta el listado de referencias visible como documento Word con formato personalizable.">
             <span><i class="fas fa-file-word" style="width:13px;margin-right:6px;opacity:0.7;"></i>Exportar referencias</span>
@@ -1177,6 +1181,54 @@
         La IA recibe el artículo (texto vectorizado), su resumen y esta conversación como contexto.
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── Translation glossary modal ────────────────────────────────────── -->
+<div id="pv-glossary-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:640px;">
+    <button class="pv-modal-close" id="pv-glossary-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-language" style="color:#0F3460;margin-right:8px;"></i>Glosario de traducción
+    </h2>
+    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 16px;">
+      Traducciones que la IA debe respetar siempre en los resúmenes y en el chat.
+      Por ejemplo: <em>bank vole</em> → <strong>topillo rojo</strong> (y nunca «musaraña de banco»).
+    </p>
+
+    <!-- Add form -->
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:1;min-width:150px;">
+          <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Término original (inglés)</label>
+          <input id="pv-glossary-source" type="text" placeholder="bank vole"
+                 style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+        </div>
+        <div style="font-size:16px;color:#9ca3af;padding-bottom:7px;">→</div>
+        <div style="flex:1;min-width:150px;">
+          <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Traducción correcta</label>
+          <input id="pv-glossary-target" type="text" placeholder="topillo rojo"
+                 style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Nota (opcional)</label>
+        <input id="pv-glossary-note" type="text" placeholder="p. ej. Myodes glareolus"
+               style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+        <button id="pv-glossary-add" type="button"
+                style="padding:7px 16px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                       font-size:13px;font-weight:600;cursor:pointer;">+ Añadir</button>
+        <span id="pv-glossary-add-status" style="font-size:12px;color:#9ca3af;"></span>
+      </div>
+    </div>
+
+    <input id="pv-glossary-filter" type="search" placeholder="Filtrar…"
+           style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-bottom:10px;">
+    <div id="pv-glossary-counts" style="font-size:11.5px;color:#9ca3af;margin-bottom:8px;"></div>
+    <div id="pv-glossary-list" style="max-height:44vh;overflow-y:auto;"></div>
   </div>
 </div>
 
