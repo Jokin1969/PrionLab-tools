@@ -11187,7 +11187,7 @@
     const ymin     = document.getElementById('pv-pinv-ymin');
     const ymax     = document.getElementById('pv-pinv-ymax');
     const oaCb        = document.getElementById('pv-pinv-only-oa');
-    const lastMonthCb = document.getElementById('pv-pinv-last-month');
+    const daysSelect  = document.getElementById('pv-pinv-days');
     const refrBtn  = document.getElementById('pv-pinv-refresh-pubmed');
     const stopBtn  = document.getElementById('pv-pinv-stop-harvest');
     const bulkBar  = document.getElementById('pv-pinv-bulk-bar');
@@ -11269,7 +11269,7 @@
         oaStatCard.style.border = oaCb.checked ? '2px solid #0F3460' : '1px solid #e5e7eb';
         oaStatCard.addEventListener('click', () => {
           oaCb.checked = !oaCb.checked;
-          if (lastMonthCb) lastMonthCb.checked = false;
+          if (daysSelect) daysSelect.value = '';
           oaStatCard.style.border = oaCb.checked ? '2px solid #0F3460' : '1px solid #e5e7eb';
           page = 1;
           reloadList();
@@ -11381,7 +11381,7 @@
       if (ymin.value.trim())   params.set('year_min', ymin.value.trim());
       if (ymax.value.trim())   params.set('year_max', ymax.value.trim());
       if (oaCb.checked)                  params.set('only_oa', '1');
-      if (lastMonthCb && lastMonthCb.checked) params.set('days', '30');
+      if (daysSelect && daysSelect.value)       params.set('days', daysSelect.value);
 
       let data;
       try {
@@ -11750,7 +11750,7 @@
         ymin.value = '';
         ymax.value = '';
         oaCb.checked = false;
-        if (lastMonthCb) lastMonthCb.checked = false;
+        if (daysSelect) daysSelect.value = '';
         page = 1;
         reloadList();
       });
@@ -11922,7 +11922,7 @@
     });
     [ymin, ymax].forEach(inp => inp.addEventListener('change', () => { page = 1; reloadList(); }));
     oaCb.addEventListener('change', () => { page = 1; reloadList(); });
-    if (lastMonthCb) lastMonthCb.addEventListener('change', () => { page = 1; reloadList(); });
+    if (daysSelect)  daysSelect.addEventListener('change',  () => { page = 1; reloadList(); });
   }
 
   // `status` is passed explicitly because this helper lives at module

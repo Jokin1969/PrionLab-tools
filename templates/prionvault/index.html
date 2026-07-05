@@ -2129,10 +2129,13 @@
         <input type="checkbox" id="pv-pinv-only-oa" style="margin:0;">
         Solo con PDF OA
       </label>
-      <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;cursor:pointer;">
-        <input type="checkbox" id="pv-pinv-last-month" style="margin:0;">
-        Último mes
-      </label>
+      <select id="pv-pinv-days"
+              style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;color:#374151;background:#fff;cursor:pointer;">
+        <option value="">Todas las fechas</option>
+        <option value="7">Última semana</option>
+        <option value="30">Último mes</option>
+        <option value="90">Últimos 3 meses</option>
+      </select>
       <button id="pv-pinv-clear-search" type="button"
               title="Limpiar todos los filtros de búsqueda"
               style="padding:6px 10px;border-radius:6px;border:1px solid #d1d5db;background:#f9fafb;color:#6b7280;font-size:12.5px;cursor:pointer;">
