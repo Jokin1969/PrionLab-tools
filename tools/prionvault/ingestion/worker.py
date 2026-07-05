@@ -150,8 +150,22 @@ def _process_job(job: ingest_queue.Job) -> None:
                                step=f"duplicate | by {reason}{doi_info}{enr_info}{move_info}",
                                article_id=dup_id,
                                error=f"Already in library (matched by {reason}).")
+
+        # For email-submitted duplicates, make sure the existing article
+        # is fully set up (searchable PDF, Voyage index, AI summary) —
+        # completing only what's missing — and reply with the same rich
+        # HTML confirmation, noting it was already in PrionVault.
+        dup_enrichment = None
+        if (job.notify_email or "").strip():
+            try:
+                dup_enrichment = _enrich_existing_article(
+                    article_id=dup_id, content=content)
+            except Exception:
+                logger.exception("worker: duplicate enrichment crashed for job %d", job.id)
+
         _notify_outcome(job, status="duplicate", article_id=dup_id,
-                        pdf_content=content, duplicate_reason=reason)
+                        pdf_content=content, duplicate_reason=reason,
+                        enrichment=dup_enrichment)
         ingest_queue.cleanup_source_pdf(job.id, status="duplicate")
         _cleanup_staged(staged)
         return
@@ -721,6 +735,161 @@ def _post_ingest_enrich(*, article_id, content: bytes,
     }
 
 
+def _enrich_existing_article(*, article_id, content: bytes) -> dict:
+    """For an article that was already in PrionVault (email duplicate):
+    verify it is searchable + indexed in Voyage and has an AI summary,
+    completing only the steps that are missing. Returns the same shape as
+    _post_ingest_enrich so the confirmation email can be built the same
+    way (the AI summary — new or pre-existing — is included)."""
+    eng = _get_engine()
+    steps: list[dict] = []
+
+    def _step(key, label, status, detail=""):
+        steps.append({"key": key, "label": label,
+                      "status": status, "detail": detail})
+
+    # Load the current state of the row.
+    row = {}
+    try:
+        with eng.connect() as conn:
+            cols = _get_articles_columns(conn)
+            wanted = [c for c in (
+                "title", "doi", "pubmed_id", "abstract", "extracted_text",
+                "summary_ai", "indexed_at", "pdf_searchable", "dropbox_path",
+                "pdf_is_scan") if c in cols]
+            r = conn.execute(text(
+                f"SELECT {', '.join(wanted)} FROM articles WHERE id = :aid"
+            ), {"aid": str(article_id)}).first()
+            if r:
+                row = dict(zip(wanted, r))
+    except Exception as exc:
+        logger.warning("dup-enrich: could not load article %s: %s", article_id, exc)
+
+    title          = row.get("title")
+    doi            = row.get("doi")
+    pubmed_id      = row.get("pubmed_id")
+    abstract       = row.get("abstract")
+    extracted_text = row.get("extracted_text")
+    summary_ai     = row.get("summary_ai")
+    dropbox_path   = row.get("dropbox_path")
+    is_scan        = bool(row.get("pdf_is_scan"))
+
+    # 1. PMID
+    if pubmed_id:
+        _step("pmid", "Código PMID", "ok", f"PMID {pubmed_id} (ya estaba)")
+    elif doi:
+        try:
+            from .metadata_resolver import pubmed_by_doi
+            md = pubmed_by_doi(doi)
+            if md and md.pubmed_id:
+                pubmed_id = md.pubmed_id
+                if not abstract and md.abstract:
+                    abstract = md.abstract
+                _update_article_fields(eng, article_id, pubmed_id=str(pubmed_id))
+                _step("pmid", "Código PMID", "ok", f"PMID {pubmed_id} (añadido)")
+            else:
+                _step("pmid", "Código PMID", "skip", "no encontrado en PubMed")
+        except Exception:
+            _step("pmid", "Código PMID", "skip", "no encontrado en PubMed")
+    else:
+        _step("pmid", "Código PMID", "skip", "sin DOI para buscarlo")
+
+    # 2. Abstract
+    if abstract:
+        _step("abstract", "Abstract de PubMed", "ok", "ya estaba")
+    elif pubmed_id:
+        try:
+            from .metadata_resolver import pubmed_efetch_abstract
+            ab = pubmed_efetch_abstract(str(pubmed_id))
+            if ab:
+                abstract = ab
+                _update_article_fields(eng, article_id, abstract=ab)
+                _step("abstract", "Abstract de PubMed", "ok", "añadido")
+            else:
+                _step("abstract", "Abstract de PubMed", "skip", "no disponible")
+        except Exception:
+            _step("abstract", "Abstract de PubMed", "skip", "no disponible")
+    else:
+        _step("abstract", "Abstract de PubMed", "skip", "no disponible")
+
+    # 3. Searchable PDF
+    if row.get("pdf_searchable"):
+        _step("searchable", "PDF con texto buscable", "ok", "ya era buscable")
+    elif is_scan:
+        _step("searchable", "PDF con texto buscable", "skip",
+              "es un escaneo; OCR pendiente en el proceso por lotes")
+    elif dropbox_path and content:
+        try:
+            from ..services.batch_searchable_pdf import _make_searchable
+            out, st = _make_searchable(content)
+            if out:
+                upload_pdf(out, dropbox_path, overwrite=True)
+                _update_article_fields(eng, article_id, pdf_searchable=True)
+                _step("searchable", "PDF con texto buscable", "ok", "capa de texto añadida")
+            elif st == "already_searchable":
+                _update_article_fields(eng, article_id, pdf_searchable=True)
+                _step("searchable", "PDF con texto buscable", "ok", "el PDF ya era buscable")
+            else:
+                _step("searchable", "PDF con texto buscable", "fail", st[:140])
+        except Exception as exc:
+            _step("searchable", "PDF con texto buscable", "fail", str(exc)[:140])
+    else:
+        _step("searchable", "PDF con texto buscable", "skip", "sin PDF en Dropbox")
+
+    # 4. AI summary — generate only if missing.
+    summary_text = summary_ai
+    summary_provider = None
+    summary_new = False
+    if summary_ai:
+        _step("summary", "Resumen con IA", "ok", "ya tenía resumen")
+    else:
+        try:
+            from ..services.ai_summary import generate_summary, DEFAULT_PROVIDER
+            res = generate_summary(
+                title=title, abstract=abstract, doi=doi, pubmed_id=pubmed_id,
+                extracted_text=extracted_text, provider=DEFAULT_PROVIDER,
+            )
+            summary_text = res.text
+            summary_provider = res.provider
+            summary_new = True
+            _save_summary_row(eng, article_id, res)
+            _step("summary", "Resumen con IA", "ok", (res.model or res.provider) + " (nuevo)")
+        except Exception as exc:
+            logger.info("dup-enrich: summary failed: %s", exc)
+            _step("summary", "Resumen con IA", "fail", str(exc)[:150])
+
+    # 5. Voyage index — reindex if not indexed yet, or if we just added a
+    # summary (so its chunks get embedded too). Otherwise leave as-is.
+    if row.get("indexed_at") and not summary_new:
+        _step("index", "Indexado por Voyage", "ok", "ya estaba indexado")
+    elif not extracted_text and not summary_text and not abstract:
+        _step("index", "Indexado por Voyage", "skip", "sin texto que indexar")
+    else:
+        try:
+            from ..embeddings.indexer import index_article
+            r = index_article(
+                article_id=article_id, title=title or "",
+                extracted_text=extracted_text, summary_ai=summary_text,
+                abstract=abstract,
+            )
+            if r.error and r.chunks_written == 0:
+                _step("index", "Indexado por Voyage", "fail", str(r.error)[:140])
+            else:
+                detail = f"{r.chunks_written} fragmentos vectorizados"
+                _step("index", "Indexado por Voyage", "ok",
+                      detail + (" (reindexado con el resumen)" if summary_new else ""))
+        except Exception as exc:
+            _step("index", "Indexado por Voyage", "fail", str(exc)[:140])
+
+    return {
+        "steps":            steps,
+        "pubmed_id":        pubmed_id,
+        "abstract":         abstract,
+        "summary_ai":       summary_text,
+        "summary_provider": summary_provider,
+    }
+
+
 def _notify_outcome(job: ingest_queue.Job, *, status: str,
                     pdf_content: Optional[bytes],
                     article_id: Optional[str] = None,
@@ -767,7 +936,13 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
     elif status == "duplicate":
         subject = f"[PrionVault] Ya estaba en la base — {meta.get('title') or short_subj}"
         body    = _compose_duplicate_body(meta, article_id, orig_subject,
-                                          duplicate_reason)
+                                          duplicate_reason, enrichment)
+        # When the email pipeline ran on the existing article, send the
+        # same rich HTML confirmation but flagged as "already in library",
+        # carrying its AI summary.
+        if enrichment:
+            html = _compose_done_html(meta, article_id, orig_subject,
+                                      enrichment, duplicate=True)
     else:  # failed
         subject = f"[PrionVault] ✗ No se pudo ingerir — {short_subj}"
         body    = _compose_failed_body(orig_subject, error)
@@ -946,7 +1121,7 @@ def _summary_to_html(text: str) -> str:
 
 
 def _compose_done_html(meta: dict, article_id, orig_subject: str,
-                       enrichment: dict) -> str:
+                       enrichment: dict, duplicate: bool = False) -> str:
     import html as _html
     steps = enrichment.get("steps") or []
     summary_text = enrichment.get("summary_ai")
@@ -981,10 +1156,18 @@ def _compose_done_html(meta: dict, article_id, orig_subject: str,
     )
 
     all_ok = all(s["status"] != "fail" for s in steps)
-    banner_bg = "#0F3460" if all_ok else "#92400e"
-    banner_txt = ("Tu artículo está completamente listo en PrionVault."
-                  if all_ok else
-                  "Tu artículo está en PrionVault; algún paso necesita revisión.")
+    if duplicate:
+        banner_bg = "#7c3aed" if all_ok else "#92400e"
+        banner_txt = ("Este artículo YA estaba en PrionVault. Comprobé que "
+                      "esté completo y te dejo aquí su resumen."
+                      if all_ok else
+                      "Este artículo ya estaba en PrionVault; algún paso "
+                      "necesita revisión.")
+    else:
+        banner_bg = "#0F3460" if all_ok else "#92400e"
+        banner_txt = ("Tu artículo está completamente listo en PrionVault."
+                      if all_ok else
+                      "Tu artículo está en PrionVault; algún paso necesita revisión.")
 
     summary_block = ""
     if summary_text:
@@ -1021,7 +1204,7 @@ def _compose_done_html(meta: dict, article_id, orig_subject: str,
       </td></tr>
 
       <tr><td style="padding:18px 28px 4px;">
-        <h2 style="margin:0 0 8px;font-size:15px;color:#111827;">⚙️ Proceso completado</h2>
+        <h2 style="margin:0 0 8px;font-size:15px;color:#111827;">{'🔍 Comprobación y puesta a punto' if duplicate else '⚙️ Proceso completado'}</h2>
         <table cellpadding="0" cellspacing="0" width="100%">{step_rows}</table>
       </td></tr>
 
@@ -1042,7 +1225,8 @@ def _compose_done_html(meta: dict, article_id, orig_subject: str,
 
 
 def _compose_duplicate_body(meta: dict, article_id, orig_subject: str,
-                            reason: Optional[str]) -> str:
+                            reason: Optional[str],
+                            enrichment: Optional[dict] = None) -> str:
     lines = [
         "Hola,",
         "",
@@ -1066,9 +1250,29 @@ def _compose_duplicate_body(meta: dict, article_id, orig_subject: str,
         lines.append(f"  DOI       : {meta['doi']}")
     if meta.get("pubmed_id"):
         lines.append(f"  PubMed    : {meta['pubmed_id']}")
+
+    if enrichment and enrichment.get("steps"):
+        lines += ["", "COMPROBACIÓN Y PUESTA A PUNTO", "─────────────────────────────"]
+        marks = {"ok": "[OK]", "skip": "[--]", "fail": "[!!]"}
+        for s in enrichment["steps"]:
+            tag = marks.get(s["status"], "[  ]")
+            detail = f" — {s['detail']}" if s.get("detail") else ""
+            lines.append(f"  {tag} {s['label']}{detail}")
+
     lines += [
         "",
         f"Verlo en PrionVault: {_article_link(article_id)}",
+    ]
+
+    if enrichment and enrichment.get("summary_ai"):
+        lines += [
+            "",
+            "RESUMEN DE LA IA",
+            "────────────────",
+            enrichment["summary_ai"].strip(),
+        ]
+
+    lines += [
         "",
         f"Re: {orig_subject}",
         "",
