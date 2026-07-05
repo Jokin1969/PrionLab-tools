@@ -817,6 +817,323 @@ _BUILTIN_ARTICLES = {
         'slug': 'prionvault-chrome-extension',
     },
 
+    'prionvault-notes': {
+        'title_es': 'Notas en los artículos',
+        'title_en': 'Article sticky notes',
+        'excerpt_es': 'Crea hasta 5 notas de colores por artículo, con texto e imágenes.',
+        'excerpt_en': 'Create up to 5 colour-coded notes per article, with text and images.',
+        'content_es': (
+            '**Notas por artículo**\n\n'
+            'Cada artículo puede tener tus propias notas privadas. Son personales: '
+            'solo tú ves las tuyas.\n\n'
+
+            '**Dónde están**\n'
+            'En el listado de artículos, a la izquierda del carrito 🛒, verás un icono '
+            'de nota. Si el artículo aún no tiene notas, aparece una **nota gris** '
+            '(añadir). Al crear notas, cada una aparece con su color y la gris se '
+            'mantiene a su derecha para añadir la siguiente.\n\n'
+
+            '**Colores automáticos**\n'
+            'No se elige el color: se asigna por orden de creación.\n'
+            '- 1ª nota: **amarilla**\n'
+            '- 2ª nota: **azul**\n'
+            '- 3ª nota: **verde**\n'
+            '- 4ª nota: **morada**\n'
+            '- 5ª nota: **naranja**\n\n'
+            'El máximo es **5 notas por artículo**. Al llegar a la quinta, la nota gris '
+            'de "añadir" desaparece.\n\n'
+
+            '**Crear, ver, editar y borrar**\n'
+            '- Clic en la **nota gris** para escribir una nueva.\n'
+            '- Clic en una **nota de color** para abrir esa nota y editarla.\n'
+            '- Dentro del editor puedes escribir texto y **pegar imágenes** '
+            '(se comprimen automáticamente).\n'
+            '- Pulsa **Guardar** (o Ctrl/Cmd+S). Para eliminar, usa **Eliminar**.\n\n'
+            'Si borras una nota, su color queda libre y la nota gris vuelve a aparecer '
+            'hasta completar de nuevo las 5.\n\n'
+            'Dentro del modal, los círculos de color de arriba te permiten cambiar de '
+            'una nota a otra o crear una nueva con el botón **+**.'
+        ),
+        'content_en': (
+            '**Per-article notes**\n\n'
+            'Every article can hold your own private notes. They are personal — only '
+            'you see yours.\n\n'
+
+            '**Where they are**\n'
+            'In the article list, to the left of the cart 🛒, you will see a note icon. '
+            'If the article has no notes yet, a **grey note** (add) appears. As you '
+            'create notes, each shows in its colour and the grey one stays to its right '
+            'to add the next.\n\n'
+
+            '**Automatic colours**\n'
+            'The colour is not chosen — it follows creation order.\n'
+            '- 1st note: **yellow**\n'
+            '- 2nd note: **blue**\n'
+            '- 3rd note: **green**\n'
+            '- 4th note: **purple**\n'
+            '- 5th note: **orange**\n\n'
+            'The maximum is **5 notes per article**. On the fifth, the grey "add" note '
+            'disappears.\n\n'
+
+            '**Create, view, edit and delete**\n'
+            '- Click the **grey note** to write a new one.\n'
+            '- Click a **coloured note** to open and edit it.\n'
+            '- In the editor you can type text and **paste images** '
+            '(auto-compressed).\n'
+            '- Click **Save** (or Ctrl/Cmd+S). To remove it, use **Delete**.\n\n'
+            'If you delete a note, its colour frees up and the grey note reappears '
+            'until you reach 5 again.\n\n'
+            'Inside the modal, the coloured circles at the top let you switch between '
+            'notes or create a new one with the **+** button.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-notes',
+    },
+
+    'prionvault-ai-chat': {
+        'title_es': 'Chatear con la IA sobre un artículo',
+        'title_en': 'Chat with the AI about an article',
+        'excerpt_es': 'Haz preguntas sobre un artículo concreto; con cambio automático de IA y conversaciones guardadas.',
+        'excerpt_en': 'Ask questions about a specific article; automatic AI fallback and saved conversations.',
+        'content_es': (
+            '**Preguntar a la IA sobre un artículo**\n\n'
+            'Puedes abrir un chat centrado en un solo artículo. La IA recibe como contexto '
+            'el propio artículo (su texto vectorizado), su resumen IA si lo tiene, y las '
+            'conversaciones previas, para dar mejores respuestas.\n\n'
+
+            '**Cómo abrirlo**\n'
+            '- En el listado, pulsa el botón azul **🤖 Chat** del artículo.\n'
+            '- O dentro de la ficha del artículo, el botón **🤖 Preguntar a la IA sobre este artículo**.\n\n'
+
+            '**Elegir la IA (y cambio automático)**\n'
+            'En el modal puedes elegir el modelo. Por defecto es **Claude**. Si el modelo '
+            'elegido falla (límite de uso, filtro de seguridad, etc.), el sistema cambia '
+            'solo en este orden: **Claude → GPT → Gemini**, y te avisa con un aviso ámbar '
+            'de qué IA respondió finalmente.\n\n'
+
+            '**Formato de chat**\n'
+            'Escribes tu pregunta y la respuesta aparece debajo, en forma de conversación. '
+            'Cada respuesta lleva la etiqueta de la IA que la generó.\n\n'
+
+            '**Conversaciones guardadas**\n'
+            'Todas las conversaciones se guardan. Con **🕑 Chats anteriores** recuperas las '
+            'conversaciones previas sobre ese artículo, cada una marcada con la IA usada. '
+            'Puedes retomarlas, crear una **+ Nueva conversación** o eliminar las que no '
+            'quieras. Las conversaciones son personales (por usuario).'
+        ),
+        'content_en': (
+            '**Ask the AI about an article**\n\n'
+            'You can open a chat focused on a single article. The AI receives the article '
+            'itself (its vectorized text), its AI summary if any, and prior conversations '
+            'as context, for better answers.\n\n'
+
+            '**How to open it**\n'
+            '- In the list, click the blue **🤖 Chat** button on the article.\n'
+            '- Or inside the article view, the **🤖 Ask the AI about this article** button.\n\n'
+
+            '**Choose the AI (and automatic fallback)**\n'
+            'In the modal you can pick the model. Default is **Claude**. If the chosen model '
+            'fails (rate limit, safety filter, etc.), the system switches automatically in '
+            'this order: **Claude → GPT → Gemini**, and shows an amber note telling you which '
+            'AI actually answered.\n\n'
+
+            '**Chat format**\n'
+            'You type your question and the answer appears below, as a conversation. Each '
+            'answer is tagged with the AI that produced it.\n\n'
+
+            '**Saved conversations**\n'
+            'All conversations are saved. Use **🕑 Past chats** to retrieve prior '
+            'conversations about that article, each tagged with the AI used. You can resume '
+            'them, start a **+ New conversation**, or delete the ones you do not want. '
+            'Conversations are personal (per user).'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-ai-chat',
+    },
+
+    'prionvault-glossary': {
+        'title_es': 'Glosario de traducción para la IA',
+        'title_en': 'Translation glossary for the AI',
+        'excerpt_es': 'Fija traducciones correctas que la IA debe respetar en resúmenes y chat.',
+        'excerpt_en': 'Pin correct translations the AI must respect in summaries and chat.',
+        'content_es': (
+            '**Glosario de traducción**\n\n'
+            'A veces la IA traduce mal un término. El glosario te permite fijar la '
+            'traducción correcta para que la respete siempre. Ejemplo clásico: '
+            '_bank vole_ debe ser **topillo rojo**, y nunca «musaraña de banco».\n\n'
+
+            '**Dónde está**\n'
+            'En la barra lateral de PrionVault, dentro de **Miscelánea → 🗣 Glosario de '
+            'traducción** (solo administradores).\n\n'
+
+            '**Cómo usarlo**\n'
+            '- Escribe el **término original** (en inglés) y su **traducción correcta**, '
+            'con una nota opcional (por ejemplo, el nombre científico).\n'
+            '- Pulsa **+ Añadir**. Puedes editar, filtrar o eliminar reglas.\n\n'
+
+            '**Qué garantiza**\n'
+            'Cada regla se inyecta como instrucción obligatoria en la IA, tanto en los '
+            '**resúmenes** (Claude, GPT y Gemini) como en el **chat del artículo**. Así, '
+            'cuando aparezca el término de origen, usará siempre tu traducción.\n\n'
+            '_Nota:_ afecta a lo que se genere a partir de ahora. Los resúmenes ya creados '
+            'con la traducción incorrecta hay que **regenerarlos** para que apliquen el glosario.'
+        ),
+        'content_en': (
+            '**Translation glossary**\n\n'
+            'Sometimes the AI mistranslates a term. The glossary lets you pin the correct '
+            'translation so it always respects it. Classic example: _bank vole_ must be '
+            '**topillo rojo** in Spanish, never «musaraña de banco».\n\n'
+
+            '**Where it is**\n'
+            'In the PrionVault sidebar, under **Miscellaneous → 🗣 Translation glossary** '
+            '(admins only).\n\n'
+
+            '**How to use it**\n'
+            '- Enter the **source term** (English) and its **correct translation**, with an '
+            'optional note (e.g. the scientific name).\n'
+            '- Click **+ Add**. You can edit, filter or delete rules.\n\n'
+
+            '**What it guarantees**\n'
+            'Each rule is injected as a mandatory instruction into the AI, both in the '
+            '**summaries** (Claude, GPT and Gemini) and in the **article chat**. So whenever '
+            'the source term appears, it will always use your translation.\n\n'
+            '_Note:_ this affects text generated from now on. Summaries already created with '
+            'the wrong translation must be **regenerated** to apply the glossary.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-glossary',
+    },
+
+    'prionvault-notifications': {
+        'title_es': 'Notificaciones por email y PrionVault Picks',
+        'title_en': 'Email notifications and PrionVault Picks',
+        'excerpt_es': 'Digest semanal, PrionVault Picks con PDF adjunto, importación en bloque y diagnóstico.',
+        'excerpt_en': 'Weekly digest, PrionVault Picks with attached PDF, bulk import and diagnostics.',
+        'content_es': (
+            '**Notificaciones por email**\n\n'
+            'Desde **Miscelánea → 🔔 Notificaciones** configuras avisos por email: temas, '
+            'frecuencia (semanal, quincenal, mensual), día y hora.\n\n'
+
+            '**Digest de novedades de PubMed**\n'
+            '- El email muestra los artículos nuevos de tus temas. Si un artículo coincide '
+            'con **varios temas** (por ejemplo Prion y Prion-like), ahora se muestra una sola '
+            'vez con **todas sus etiquetas**.\n'
+            '- Botón **Importar todos** al final del email para pasar todos los artículos a '
+            'PrionVault de una vez (abre una página de confirmación). Cada artículo también '
+            'tiene su botón individual.\n\n'
+
+            '**PrionVault Picks**\n'
+            'Es un envío con artículos que has marcado en tu biblioteca. Ahora el email trae '
+            'el botón **Ver en PrionVault →** y, cuando es posible, **adjunta el PDF** del '
+            'artículo para que puedas leerlo directamente.\n\n'
+
+            '**Diagnóstico ("¿por qué no llegaron artículos?")**\n'
+            'En cada notificación hay un botón **🔍 Diagnóstico** que comprueba, sin enviar '
+            'ningún email, exactamente qué encontraría la consulta con tus parámetros: temas, '
+            'fechas, número de artículos y si el filtro de solo acceso abierto está ocultando '
+            'resultados. Útil cuando un envío dice "sin novedades".'
+        ),
+        'content_en': (
+            '**Email notifications**\n\n'
+            'From **Miscellaneous → 🔔 Notifications** you configure email alerts: topics, '
+            'frequency (weekly, biweekly, monthly), day and time.\n\n'
+
+            '**PubMed new-articles digest**\n'
+            '- The email lists new articles for your topics. If an article matches '
+            '**several topics** (e.g. Prion and Prion-like), it now shows once with **all its '
+            'tags**.\n'
+            '- An **Import all** button at the bottom sends every article to PrionVault at '
+            'once (opens a confirmation page). Each article also has its own button.\n\n'
+
+            '**PrionVault Picks**\n'
+            'A send with articles you flagged in your library. The email now carries a '
+            '**View in PrionVault →** button and, when possible, **attaches the article PDF** '
+            'so you can read it directly.\n\n'
+
+            '**Diagnostics ("why no articles?")**\n'
+            'Each notification has a **🔍 Diagnostics** button that checks — without sending '
+            'any email — exactly what the query would find with your parameters: topics, '
+            'dates, article count, and whether the open-access-only filter is hiding results. '
+            'Handy when a send says "nothing new".'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'beginner',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-notifications',
+    },
+
+    'prionvault-email-ingest': {
+        'title_es': 'Enviar artículos por email a PrionVault',
+        'title_en': 'Email articles into PrionVault',
+        'excerpt_es': 'Manda un PDF por email y PrionVault lo deja listo (PMID, abstract, buscable, indexado y resumido) y te contesta con el resumen.',
+        'excerpt_en': 'Email a PDF and PrionVault sets it up (PMID, abstract, searchable, indexed, summarised) and replies with the summary.',
+        'content_es': (
+            '**Enviar un artículo por email**\n\n'
+            'Puedes reenviar un artículo (con el PDF adjunto) a la dirección de ingesta de '
+            'PrionVault. La app lo procesa por completo y te responde con un email HTML '
+            'que confirma cada paso e incluye el resumen de la IA.\n\n'
+
+            '**Qué hace con un artículo nuevo**\n'
+            'Tras añadirlo, ejecuta automáticamente (cada paso es independiente):\n'
+            '1. **Código PMID** — lo busca en PubMed a partir del DOI si falta.\n'
+            '2. **Abstract de PubMed** — lo descarga una vez tiene el PMID.\n'
+            '3. **PDF buscable** — le añade la capa de texto (OCR si hace falta).\n'
+            '4. **Resumen con IA** — lo genera (Claude por defecto).\n'
+            '5. **Indexado por Voyage** — vectoriza texto + abstract + resumen.\n\n'
+
+            '**Si el artículo ya estaba en PrionVault**\n'
+            'No lo duplica: comprueba que esté completo y **completa solo lo que falte** '
+            '(buscable, indexado, resumen si no lo tenía). El email de respuesta lo indica '
+            'con un aviso morado ("ya estaba en PrionVault") e **incluye igualmente el resumen**.\n\n'
+
+            '**El email de confirmación**\n'
+            'Llega en formato HTML con: los datos del artículo, una lista de comprobación '
+            'con ✅/⏭️/⚠️ por cada paso, el **resumen de la IA incrustado**, un botón '
+            '**Ver en PrionVault →** y el **PDF original adjunto**.\n\n'
+            '_Nota:_ el remitente debe estar en la lista autorizada del servidor. Si el PDF '
+            'es un escaneo sin texto, los pasos de buscable/indexado quedan pendientes del '
+            'OCR por lotes y el resto se hace con lo disponible.'
+        ),
+        'content_en': (
+            '**Email an article in**\n\n'
+            'You can forward an article (with the PDF attached) to the PrionVault ingest '
+            'address. The app fully processes it and replies with an HTML email confirming '
+            'each step and including the AI summary.\n\n'
+
+            '**What it does with a new article**\n'
+            'After adding it, it automatically runs (each step is independent):\n'
+            '1. **PMID** — looks it up on PubMed from the DOI if missing.\n'
+            '2. **PubMed abstract** — fetched once a PMID is known.\n'
+            '3. **Searchable PDF** — adds the text layer (OCR if needed).\n'
+            '4. **AI summary** — generated (Claude by default).\n'
+            '5. **Voyage index** — vectorizes text + abstract + summary.\n\n'
+
+            '**If the article was already in PrionVault**\n'
+            'It is not duplicated: it verifies the article is complete and **completes only '
+            'what is missing** (searchable, indexed, summary if it had none). The reply email '
+            'flags it with a purple note ("already in PrionVault") and **still includes the '
+            'summary**.\n\n'
+
+            '**The confirmation email**\n'
+            'Arrives as HTML with: the article details, a checklist with ✅/⏭️/⚠️ per step, '
+            'the **AI summary inline**, a **View in PrionVault →** button, and the '
+            '**original PDF attached**.\n\n'
+            '_Note:_ the sender must be on the server allowlist. If the PDF is a text-less '
+            'scan, the searchable/index steps wait for the batch OCR and the rest is done '
+            'with what is available.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-email-ingest',
+    },
+
 }
 
 # ── Quick tips per page context ───────────────────────────────────────────────
