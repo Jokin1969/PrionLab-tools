@@ -6361,10 +6361,11 @@
                            max-width:170px;">
               <option value="">Cargando…</option>
             </select>
-            <label title="Si el PDF contiene texto de otro artículo, activa esto para que la IA se centre solo en el artículo cuyo título figura en la ficha."
+            <label title="Marcada: la IA recibe la orden de resumir ÚNICAMENTE el artículo cuyo título figura en la ficha e ignorar cualquier otro texto del PDF. Útil cuando el PDF trae varios artículos juntos (p. ej. un número de revista) o texto sobrante de otro trabajo.&#10;&#10;Sin marcar: la IA resume todo el texto extraído del PDF tal cual, sin filtrar por título. Es lo normal cuando el PDF contiene un solo artículo."
                    style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;
                           color:#374151;cursor:pointer;white-space:nowrap;">
               <input type="checkbox" id="pv-ai-title-hint"
+                     title="Marcada: la IA resume solo el artículo cuyo título figura en la ficha e ignora el resto del PDF (útil si el PDF mezcla varios artículos).&#10;&#10;Sin marcar: la IA resume todo el texto del PDF sin filtrar por título (lo habitual con un PDF de un solo artículo)."
                      style="accent-color:#0F3460;cursor:pointer;">
               Usar título como filtro
             </label>
