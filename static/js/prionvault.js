@@ -2762,6 +2762,11 @@
       : '';
 
     const badges = [
+      `<button type="button" class="pv-chat-row-btn" data-aid="${esc(a.id)}"
+                title="Preguntar a la IA sobre este artículo"
+                style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
+                       font-size:10.5px;font-weight:600;background:#0F3460;color:#fff;
+                       border:none;cursor:pointer;line-height:1.2;">🤖 Chat</button>`,
       IS_ADMIN
         ? `<button type="button" class="pv-edit-row-btn" data-aid="${esc(a.id)}"
                     title="${a.pubmed_id ? 'Editar artículo + abrir PubMed en otra pestaña' : 'Editar artículo'}"
@@ -3199,6 +3204,12 @@
       if (prChip) prChip.addEventListener('click', e => {
         e.stopPropagation();
         openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+
+      const chatRowBtn = row.querySelector('.pv-chat-row-btn');
+      if (chatRowBtn) chatRowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        PVChat.open(a, { showHistory: false });
       });
 
       const indexedChip = row.querySelector('.pv-indexed-chip');
@@ -6289,7 +6300,23 @@
       const modal = document.getElementById('pv-chat-modal');
       if (!modal) return;
       const titleEl = document.getElementById('pv-chat-article-title');
-      if (titleEl) titleEl.textContent = article.title || '';
+      if (titleEl) titleEl.innerHTML = supHtml(article.title || '(sin título)');
+      const metaEl = document.getElementById('pv-chat-article-meta');
+      if (metaEl) {
+        const bits = [];
+        if (article.authors) bits.push(esc(article.authors));
+        const line2 = [];
+        if (article.journal) line2.push(esc(article.journal));
+        if (article.year)    line2.push(String(article.year));
+        if (line2.length) bits.push(line2.join(' · '));
+        if (article.doi) {
+          bits.push(`<a href="https://doi.org/${esc(article.doi)}" target="_blank" rel="noopener"
+                        style="color:#0F3460;text-decoration:none;">${esc(article.doi)}</a>`);
+        } else if (article.pubmed_id) {
+          bits.push(`PMID ${esc(article.pubmed_id)}`);
+        }
+        metaEl.innerHTML = bits.join('<br>');
+      }
       showSwitchNote(null);
       renderMessages([]);
       modal.style.display = 'flex';
