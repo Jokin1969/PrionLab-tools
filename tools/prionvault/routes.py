@@ -852,6 +852,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     rating_aggs = {}        # aid -> {"avg": float, "count": int}
     my_ratings  = {}        # aid -> int (viewer's rating, if any)
     user_states = {}        # aid -> {"is_favorite": bool, "is_read": bool, "read_at": iso}
+    note_stubs = {}         # aid(str) -> [{"id","color_index"}, ...] for viewer
     # jc_count was previously a correlated subquery in the main SELECT.
     # Now batched here as one GROUP BY scan over the JC table.
     jc_counts: dict = {}    # aid -> int
@@ -918,6 +919,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                                "read_at": r[2].isoformat() if r[2] else None}
                         for r in state_rows
                     }
+                    # Per-user note stubs (id + colour slot) so each row
+                    # can render its coloured note icons without a request
+                    # per row. Keyed by article-id string.
+                    try:
+                        from .services.article_notes import note_stubs_for_articles
+                        note_stubs = note_stubs_for_articles(
+                            [str(i) for i in item_ids], str(viewer_id))
+                    except Exception as exc:
+                        logger.warning("Could not batch note stubs: %s", exc)
         except Exception as exc:
             logger.warning("Could not query user_articles / ratings / state: %s", exc)
 
@@ -973,6 +983,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "is_favorite":    (user_states.get(aid) or {}).get("is_favorite", False),
             "is_read":        (user_states.get(aid) or {}).get("is_read", False),
             "read_at":        (user_states.get(aid) or {}).get("read_at"),
+            "notes":          note_stubs.get(aid_str, []),
             "prionpacks":     [{"id": p, "title": pp_titles.get(p, p)} for p in pp_ids],
         }
         if is_admin:
@@ -4175,3 +4186,6 @@ from .routes_notifications import _validate_notif_payload, _notif_sub_to_dict  #
 
 # Per-article AI chat routes live in their own module.
 from . import routes_chat  # noqa: F401, E402
+
+# Per-user article notes routes live in their own module.
+from . import routes_notes  # noqa: F401, E402

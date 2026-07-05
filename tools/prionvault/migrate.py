@@ -85,6 +85,7 @@ _PRIONVAULT_MIGRATIONS = (
     "049_notification_include_pdfs.sql",
     "050_article_chats.sql",
     "051_translation_glossary.sql",
+    "052_article_notes.sql",
 )
 
 _BOOTSTRAP_SQL = """

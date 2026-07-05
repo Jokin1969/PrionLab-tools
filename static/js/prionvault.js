@@ -79,6 +79,18 @@
   ];
   const COLOR_CSS = Object.fromEntries(COLOR_LABELS.map(c => [c.value, c.css]));
 
+  // Sticky-note colours, assigned by creation order (index 0..4). The
+  // colour is NOT user-chosen: 1st note amarilla, 2nd azul, 3rd verde,
+  // 4th morada, 5th naranja. Max 5 notes per article per user.
+  const PV_NOTE_COLORS = [
+    { bg: '#fef9c3', text: '#713f12', name: 'Amarilla' },
+    { bg: '#dbeafe', text: '#1e3a8a', name: 'Azul' },
+    { bg: '#dcfce7', text: '#14532d', name: 'Verde' },
+    { bg: '#f3e8ff', text: '#6b21a8', name: 'Morada' },
+    { bg: '#ffedd5', text: '#7c2d12', name: 'Naranja' },
+  ];
+  const PV_MAX_NOTES = 5;
+
   // ── helpers ────────────────────────────────────────────────────────────
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
                                   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -2860,6 +2872,10 @@
               style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;text-decoration:none;">📦 ${esc(a.prionpacks[0].id)}${a.prionpacks.length > 1 ? ' +' + (a.prionpacks.length - 1) : ''}</a>`
         : '',
       ratingChip,
+      // Sticky notes — coloured icon per existing note + grey "add"
+      // icon while under the 5-note cap. Rendered LEFT of the cart.
+      `<span class="pv-notes-cluster" data-aid="${esc(a.id)}"
+             style="display:inline-flex;gap:4px;">${_noteClusterInner(a.notes)}</span>`,
       // Cart button — adds article to PrionPacks cart (localStorage).
       // No inline onclick: JSON double-quotes would break the HTML attribute.
       // Wired via addEventListener below (has access to `a` via closure).
@@ -3211,6 +3227,9 @@
         e.stopPropagation();
         PVChat.open(a, { showHistory: false });
       });
+
+      const noteCluster = row.querySelector('.pv-notes-cluster');
+      if (noteCluster) _wireNoteCluster(noteCluster, a);
 
       const indexedChip = row.querySelector('.pv-indexed-chip');
       if (indexedChip) indexedChip.addEventListener('click', (e) => {
@@ -6344,6 +6363,317 @@
     if (histBtn) histBtn.addEventListener('click', () => PVChat.open(a, { showHistory: true }));
     PVChat.updateLauncherCount(a);
   }
+
+  // ── Sticky notes (per-article, per-user) ─────────────────────────────
+  // Row cluster: one coloured icon per note + a grey "add" icon (≤5).
+  function _noteClusterInner(notes) {
+    const list = (notes || []).slice().sort((x, y) => x.color_index - y.color_index);
+    const icons = list.map(n => {
+      const c = PV_NOTE_COLORS[n.color_index] || PV_NOTE_COLORS[0];
+      return `<button type="button" class="pv-note-icon" data-note-id="${esc(n.id)}"
+                      title="Abrir nota ${esc(c.name.toLowerCase())}"
+                      style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;
+                             font-size:10.5px;border:none;cursor:pointer;line-height:1.2;
+                             background:${c.bg};color:${c.text};"><i class="fas fa-sticky-note"></i></button>`;
+    }).join('');
+    const addIcon = list.length < PV_MAX_NOTES
+      ? `<button type="button" class="pv-note-add"
+                 title="${list.length ? 'Añadir otra nota' : 'Añadir una nota'}"
+                 style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;
+                        font-size:10.5px;border:none;cursor:pointer;line-height:1.2;
+                        background:#f3f4f6;color:#9ca3af;"><i class="far fa-sticky-note"></i></button>`
+      : '';
+    return icons + addIcon;
+  }
+
+  function _wireNoteCluster(container, a) {
+    container.querySelectorAll('.pv-note-icon').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        PVNotes.open(a, { noteId: btn.dataset.noteId });
+      });
+    });
+    const addBtn = container.querySelector('.pv-note-add');
+    if (addBtn) addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      PVNotes.open(a, { create: true });
+    });
+  }
+
+  // Re-render every row cluster for this article after a note change,
+  // and keep the in-memory article object's `notes` in sync.
+  function _refreshNoteClusters(aid, notes, article) {
+    if (article) article.notes = notes;
+    document.querySelectorAll(`.pv-notes-cluster[data-aid="${window.CSS && CSS.escape ? CSS.escape(aid) : aid}"]`)
+      .forEach(cl => {
+        cl.innerHTML = _noteClusterInner(notes);
+        _wireNoteCluster(cl, article || { id: aid, notes });
+      });
+  }
+
+  const PVNotes = (() => {
+    let _article = null;
+    let _notes = [];          // [{id, color_index, body, ...}]
+    let _activeId = null;     // note id being edited, or null in compose mode
+    let _composeIndex = null; // colour index for a new note in compose mode
+    let _wired = false;
+
+    const $ = id => document.getElementById(id);
+
+    // Whitelist-sanitize contenteditable HTML (safe tags + base64 images).
+    function sanitize(html) {
+      const doc = new DOMParser().parseFromString(html || '', 'text/html');
+      const ALLOWED = new Set(['b','i','strong','em','br','p','div','span','ul','ol','li','img']);
+      (function walk(node) {
+        Array.from(node.childNodes).forEach(child => {
+          if (child.nodeType === Node.TEXT_NODE) return;
+          if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); return; }
+          const tag = child.tagName.toLowerCase();
+          if (!ALLOWED.has(tag)) {
+            const frag = document.createDocumentFragment();
+            Array.from(child.childNodes).forEach(c => frag.appendChild(c.cloneNode(true)));
+            child.replaceWith(frag);
+            return;
+          }
+          if (tag === 'img') {
+            const src = child.getAttribute('src') || '';
+            if (!src.startsWith('data:image/')) { child.remove(); return; }
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+            child.setAttribute('src', src);
+          } else {
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+            walk(child);
+          }
+        });
+      })(doc.body);
+      return doc.body.innerHTML;
+    }
+    function htmlToText(html) {
+      const d = document.createElement('div');
+      d.innerHTML = html || '';
+      return d.textContent || '';
+    }
+    function compressImage(file) {
+      return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX = 900;
+            let w = img.width, h = img.height;
+            if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.65));
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function nextFreeIndex() {
+      const used = new Set(_notes.map(n => n.color_index));
+      for (let i = 0; i < PV_MAX_NOTES; i++) if (!used.has(i)) return i;
+      return null;
+    }
+
+    function activeColor() {
+      const idx = _activeId != null
+        ? (_notes.find(n => n.id === _activeId) || {}).color_index
+        : _composeIndex;
+      return PV_NOTE_COLORS[idx] || PV_NOTE_COLORS[0];
+    }
+
+    function renderTabs() {
+      const tabs = $('pv-note-tabs');
+      if (!tabs) return;
+      const sorted = _notes.slice().sort((a, b) => a.color_index - b.color_index);
+      let html = sorted.map(n => {
+        const c = PV_NOTE_COLORS[n.color_index] || PV_NOTE_COLORS[0];
+        const active = n.id === _activeId;
+        return `<button type="button" class="pv-note-tab" data-note-id="${esc(n.id)}"
+                        title="Nota ${esc(c.name.toLowerCase())}"
+                        style="width:26px;height:26px;border-radius:50%;cursor:pointer;
+                               background:${c.bg};border:2px solid ${active ? c.text : 'transparent'};
+                               box-shadow:0 1px 2px rgba(0,0,0,0.12);"></button>`;
+      }).join('');
+      if (_notes.length < PV_MAX_NOTES) {
+        const composing = _activeId == null;
+        html += `<button type="button" class="pv-note-tab-add"
+                        title="Nueva nota"
+                        style="width:26px;height:26px;border-radius:50%;cursor:pointer;
+                               background:#f3f4f6;color:#9ca3af;border:2px dashed ${composing ? '#9ca3af' : '#e5e7eb'};
+                               display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1;">+</button>`;
+      }
+      tabs.innerHTML = html;
+      tabs.querySelectorAll('.pv-note-tab').forEach(t =>
+        t.addEventListener('click', () => selectNote(t.dataset.noteId)));
+      const addT = tabs.querySelector('.pv-note-tab-add');
+      if (addT) addT.addEventListener('click', startCompose);
+    }
+
+    function applyColor() {
+      const c = activeColor();
+      const ed = $('pv-note-editor');
+      const hd = $('pv-note-modal-head');
+      if (ed) { ed.style.background = c.bg; ed.style.color = c.text; }
+      if (hd) hd.style.background = c.bg;
+      const badge = $('pv-note-color-name');
+      if (badge) { badge.textContent = c.name; badge.style.color = c.text; }
+    }
+
+    function loadEditor() {
+      const ed = $('pv-note-editor');
+      if (!ed) return;
+      const note = _activeId != null ? _notes.find(n => n.id === _activeId) : null;
+      ed.innerHTML = note ? sanitize(note.body || '') : '';
+      applyColor();
+      const delBtn = $('pv-note-delete');
+      if (delBtn) delBtn.style.display = _activeId != null ? 'inline-flex' : 'none';
+      const dateEl = $('pv-note-date');
+      if (dateEl) dateEl.textContent = (note && note.updated_at)
+        ? new Date(note.updated_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '';
+      setTimeout(() => ed.focus(), 60);
+    }
+
+    function selectNote(noteId) {
+      _activeId = noteId;
+      _composeIndex = null;
+      renderTabs();
+      loadEditor();
+    }
+
+    function startCompose() {
+      const idx = nextFreeIndex();
+      if (idx == null) return;   // already at max
+      _activeId = null;
+      _composeIndex = idx;
+      renderTabs();
+      loadEditor();
+    }
+
+    async function save() {
+      const ed = $('pv-note-editor');
+      if (!ed) return;
+      const html = sanitize(ed.innerHTML || '');
+      const plain = htmlToText(html).trim();
+      const status = $('pv-note-status');
+      if (!plain && !/<img/i.test(html)) {
+        if (status) { status.style.color = '#b91c1c'; status.textContent = 'La nota está vacía.'; }
+        return;
+      }
+      const saveBtn = $('pv-note-save');
+      if (saveBtn) saveBtn.disabled = true;
+      if (status) { status.style.color = '#9ca3af'; status.textContent = 'Guardando…'; }
+      try {
+        if (_activeId != null) {
+          const r = await api(`/notes/${_activeId}`, { method: 'PATCH', body: JSON.stringify({ body: html }) });
+          const i = _notes.findIndex(n => n.id === _activeId);
+          if (i >= 0) _notes[i] = r.note;
+        } else {
+          const r = await api(`/articles/${_article.id}/notes`, { method: 'POST', body: JSON.stringify({ body: html }) });
+          _notes.push(r.note);
+          _activeId = r.note.id;
+          _composeIndex = null;
+        }
+        if (status) { status.style.color = '#15803d'; status.textContent = '✓ Guardada'; }
+        renderTabs();
+        loadEditor();
+        _refreshNoteClusters(_article.id, _notes, _article);
+        setTimeout(() => { if (status) status.textContent = ''; }, 2000);
+      } catch (e) {
+        if (status) {
+          status.style.color = '#b91c1c';
+          status.textContent = e.status === 409 ? 'Máximo 5 notas por artículo.' : ('Error: ' + e.message);
+        }
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    }
+
+    async function del() {
+      if (_activeId == null) return;
+      if (!confirm('¿Eliminar esta nota? No se puede deshacer.')) return;
+      try {
+        await api(`/notes/${_activeId}`, { method: 'DELETE' });
+        _notes = _notes.filter(n => n.id !== _activeId);
+        _refreshNoteClusters(_article.id, _notes, _article);
+        if (_notes.length) selectNote(_notes.slice().sort((a, b) => a.color_index - b.color_index)[0].id);
+        else startCompose();
+      } catch (e) { alert('No se pudo eliminar: ' + e.message); }
+    }
+
+    async function handlePaste(e) {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imgItem = items.find(it => it.type.startsWith('image/'));
+      if (!imgItem) return;
+      e.preventDefault();
+      const file = imgItem.getAsFile();
+      if (!file) return;
+      const b64 = await compressImage(file);
+      const img = document.createElement('img');
+      img.src = b64;
+      const sel = window.getSelection();
+      if (!sel.rangeCount) { $('pv-note-editor')?.appendChild(img); return; }
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(img);
+      range.setStartAfter(img);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-note-close')?.addEventListener('click', close);
+      document.querySelector('#pv-note-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-note-save')?.addEventListener('click', save);
+      $('pv-note-delete')?.addEventListener('click', del);
+      const ed = $('pv-note-editor');
+      ed?.addEventListener('paste', handlePaste);
+      ed?.addEventListener('keydown', e => {
+        if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+      });
+    }
+
+    async function open(article, opts = {}) {
+      _article = article;
+      wireOnce();
+      const modal = document.getElementById('pv-note-modal');
+      if (!modal) return;
+      const titleEl = document.getElementById('pv-note-article-title');
+      if (titleEl) titleEl.innerHTML = supHtml(article.title || '');
+      const status = $('pv-note-status');
+      if (status) status.textContent = '';
+      modal.style.display = 'flex';
+      const ed = $('pv-note-editor');
+      if (ed) ed.innerHTML = '<span style="color:#9ca3af;">Cargando…</span>';
+      try {
+        const r = await api(`/articles/${article.id}/notes`);
+        _notes = r.notes || [];
+      } catch (e) {
+        _notes = article.notes ? article.notes.map(n => ({ ...n, body: '' })) : [];
+      }
+      // Keep row clusters in sync with the freshly fetched list.
+      _refreshNoteClusters(article.id, _notes, article);
+      if (opts.noteId && _notes.some(n => n.id === opts.noteId)) selectNote(opts.noteId);
+      else if (opts.create && _notes.length < PV_MAX_NOTES) startCompose();
+      else if (_notes.length) selectNote(_notes.slice().sort((a, b) => a.color_index - b.color_index)[0].id);
+      else startCompose();
+    }
+
+    function close() {
+      const modal = document.getElementById('pv-note-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    return { open, close };
+  })();
 
   function renderAiSummary(a) {
     const block = document.getElementById('pv-ai-summary-block');

@@ -1184,6 +1184,54 @@
   </div>
 </div>
 
+<!-- ── Article sticky-notes modal ────────────────────────────────────── -->
+<div id="pv-note-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:560px;padding:0;overflow:hidden;">
+    <!-- Coloured header (matches active note colour) -->
+    <div id="pv-note-modal-head" style="padding:16px 20px 14px;transition:background 0.2s;">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:#111827;display:flex;align-items:center;gap:7px;">
+            <i class="fas fa-sticky-note"></i><span>Notas</span>
+            <span id="pv-note-color-name" style="font-size:11px;font-weight:600;"></span>
+          </div>
+          <div id="pv-note-article-title"
+               style="font-size:12.5px;color:#374151;margin-top:5px;line-height:1.4;font-weight:600;"></div>
+        </div>
+        <button id="pv-note-close" aria-label="Close"
+                style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(0,0,0,0.12);
+                       background:rgba(255,255,255,0.75);font-size:17px;cursor:pointer;display:flex;
+                       align-items:center;justify-content:center;color:#374151;line-height:1;flex-shrink:0;">×</button>
+      </div>
+      <!-- Note tabs (one coloured dot per note + a dashed "+" to add) -->
+      <div id="pv-note-tabs" style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;"></div>
+    </div>
+
+    <!-- Editor (background matches active note colour) -->
+    <div id="pv-note-editor" contenteditable="true"
+         style="min-height:200px;max-height:48vh;overflow-y:auto;padding:16px 20px;
+                font-size:14px;line-height:1.6;outline:none;transition:background 0.2s;"></div>
+
+    <!-- Footer -->
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:#fff;
+                border-top:1px solid #f3f4f6;">
+      <span id="pv-note-date" style="font-size:11.5px;color:#9ca3af;"></span>
+      <span id="pv-note-status" style="font-size:12px;color:#9ca3af;margin-left:auto;"></span>
+      <button id="pv-note-delete" type="button"
+              style="display:none;align-items:center;gap:5px;padding:7px 13px;border-radius:7px;
+                     border:1px solid #fecaca;background:#fff;color:#b91c1c;font-size:12.5px;
+                     font-weight:600;cursor:pointer;"><i class="fas fa-trash-alt"></i> Eliminar</button>
+      <button id="pv-note-save" type="button"
+              style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">Guardar</button>
+    </div>
+    <div style="font-size:10.5px;color:#9ca3af;padding:0 20px 12px;background:#fff;">
+      Puedes pegar imágenes directamente. Máximo 5 notas por artículo; el color es automático.
+    </div>
+  </div>
+</div>
+
 <!-- ── Translation glossary modal ────────────────────────────────────── -->
 <div id="pv-glossary-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
