@@ -13764,10 +13764,15 @@
               throw new Error(err.detail || err.error || res.statusText);
             }
             uploadQueue.shift();               // accepted — drop from queue
-            // Wait for the server to finish parsing before the next one.
-            await new Promise(r => setTimeout(r, 1000));
-            while (await serverBusy()) { await refresh(); await new Promise(r => setTimeout(r, 1500)); }
+            // Poll until the server finishes this one, refreshing the
+            // grid each tick so the year turns green as soon as it lands.
+            await new Promise(r => setTimeout(r, 800));
+            let wasBusy = false;
+            while (await serverBusy()) { wasBusy = true; await refresh(); await new Promise(r => setTimeout(r, 1200)); }
+            // Small settle for the commit to be visible, then a couple of
+            // guaranteed refreshes (covers a fast import the poll missed).
             await refresh();
+            if (!wasBusy) { await new Promise(r => setTimeout(r, 600)); await refresh(); }
           } catch (e) {
             uploadQueue.shift();
             statusEl.style.color = '#b91c1c';
@@ -13776,6 +13781,7 @@
         }
       } finally {
         pumping = false;
+        await refresh();                       // final state once queue drains
       }
     }
 
