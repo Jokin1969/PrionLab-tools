@@ -13636,7 +13636,6 @@
     if (!btn || !modal) return;
     const closeBtn = document.getElementById('pv-scimago-close');
     const gridEl   = document.getElementById('pv-scimago-year-grid');
-    const dl6Btn   = document.getElementById('pv-scimago-download-6');
     const yearEl   = document.getElementById('pv-scimago-year');
     const fileEl   = document.getElementById('pv-scimago-file');
     const upBtn    = document.getElementById('pv-scimago-upload');
@@ -13656,32 +13655,28 @@
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
 
     function renderGrid() {
+      // Each button opens the SCImago CSV in a new tab so the browser
+      // (with the user's own IP) downloads it, then prefills the year in
+      // the uploader. Server-side download is blocked by SCImago's WAF.
       gridEl.innerHTML = YEARS.map(y => {
         const has = havYears.has(y);
         return `<button class="pv-scimago-dl" data-year="${y}"
-                  title="${has ? 'Ya descargado — clic para volver a descargar' : 'Descargar ' + y}"
+                  title="${has ? 'Ya cargado — vuelve a descargar si quieres actualizarlo' : 'Descargar ' + y + ' desde SCImago'}"
                   style="padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer;
                          border:1px solid ${has ? '#6ee7b7' : '#d1d5db'};
                          background:${has ? '#d1fae5' : '#fff'};color:${has ? '#065f46' : '#374151'};">
                   ${has ? '✓ ' : '⬇ '}${y}</button>`;
       }).join('');
       gridEl.querySelectorAll('.pv-scimago-dl').forEach(b =>
-        b.addEventListener('click', () => downloadYears([Number(b.dataset.year)])));
+        b.addEventListener('click', () => {
+          const y = b.dataset.year;
+          window.open(`https://www.scimagojr.com/journalrank.php?out=xls&year=${y}`, '_blank', 'noopener');
+          yearEl.value = y;
+          statusEl.style.color = '#6b7280';
+          statusEl.textContent = `Descargando ${y} en tu navegador… cuando termine, súbelo aquí abajo (paso 2).`;
+          fileEl.focus();
+        }));
     }
-
-    async function downloadYears(years) {
-      try {
-        await api('/admin/scimago/download', { method: 'POST', body: JSON.stringify({ years }) });
-        statusEl.style.color = '#9ca3af';
-        statusEl.textContent = 'Descarga iniciada desde scimagojr.com…';
-        setTimeout(refresh, 800);
-      } catch (e) {
-        statusEl.style.color = '#b91c1c';
-        statusEl.textContent = e.status === 409 ? 'Ya hay una descarga en curso.' : ('Error: ' + e.message);
-      }
-    }
-
-    dl6Btn.addEventListener('click', () => downloadYears(YEARS.slice(0, 6)));
 
     async function refresh() {
       let r;
