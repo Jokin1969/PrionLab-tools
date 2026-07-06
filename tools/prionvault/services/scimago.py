@@ -19,8 +19,8 @@ from __future__ import annotations
 import csv
 import io
 import logging
-import math
 import re
+import threading
 import unicodedata
 from typing import Optional
 
@@ -94,10 +94,36 @@ def _split_issns(raw: str) -> list[str]:
 
 _import_state = {"running": False, "year": None, "rows": 0,
                  "quartiled": 0, "error": None, "phase": None}
+_state_lock = threading.Lock()
 
 
 def import_state() -> dict:
-    return dict(_import_state)
+    with _state_lock:
+        return dict(_import_state)
+
+
+def begin_import(year=None) -> bool:
+    """Atomically claim the single import slot. Returns False (without
+    changing anything) when an import is already running, so overlapping
+    requests are rejected cleanly instead of clobbering each other."""
+    with _state_lock:
+        if _import_state["running"]:
+            return False
+        _import_state.update(running=True, year=year, error=None, rows=0,
+                             quartiled=0, phase="starting")
+        return True
+
+
+def _finish_import(**kw) -> None:
+    with _state_lock:
+        _import_state.update(kw)
+        _import_state["running"] = False
+        _import_state["phase"] = None
+
+
+def _set_phase(**kw) -> None:
+    with _state_lock:
+        _import_state.update(kw)
 
 
 # ── Download from SCImago ──────────────────────────────────────────────────────
@@ -147,51 +173,46 @@ def _do_download_year(year: int) -> dict:
 
 
 def download_year(year: int) -> None:
-    """Background entry point: fetch one year from SCImago."""
-    _import_state.update(running=True, year=year, error=None, rows=0,
-                         quartiled=0, phase="downloading")
+    """Background worker: fetch one year from SCImago. Caller must have
+    claimed the slot via begin_import()."""
+    _set_phase(phase="downloading")
     try:
         res = _do_download_year(year)
-        _import_state.update(rows=res["rows"], quartiled=res["quartiled"])
+        _finish_import(rows=res["rows"], quartiled=res["quartiled"])
     except Exception as exc:
         logger.exception("scimago download failed for %s", year)
-        _import_state.update(error=str(exc)[:300])
-    finally:
-        _import_state.update(running=False, phase=None)
+        _finish_import(error=str(exc)[:300])
 
 
 def run_download_years(years: list) -> None:
-    """Background entry point: fetch several years sequentially."""
+    """Background worker: fetch several years sequentially. Caller must
+    have claimed the slot via begin_import()."""
     years = [int(y) for y in years]
-    _import_state.update(running=True, error=None, rows=0, quartiled=0,
-                         phase="downloading", year=None)
+    _set_phase(phase="downloading")
     errors = []
     total = 0
     for y in years:
-        _import_state.update(year=y, phase="downloading")
+        _set_phase(year=y, phase="downloading")
         try:
             res = _do_download_year(y)
             total += res["rows"]
         except Exception as exc:
             logger.warning("scimago: year %s failed: %s", y, exc)
             errors.append(f"{y}: {str(exc)[:120]}")
-    _import_state.update(running=False, phase=None, rows=total,
-                         error="; ".join(errors) if errors else None,
-                         year=None)
+    _finish_import(rows=total, year=None,
+                   error="; ".join(errors) if errors else None)
 
 
 def run_import(content: str, year: int) -> None:
-    """Background entry point for a MANUAL CSV upload (fallback path)."""
-    _import_state.update(running=True, year=year, error=None, rows=0,
-                         quartiled=0, phase="parsing")
+    """Background worker for a MANUAL CSV upload. The caller must have
+    already claimed the slot via begin_import()."""
+    _set_phase(phase="parsing")
     try:
         res = import_csv(content, year)
-        _import_state.update(rows=res["rows"], quartiled=res["quartiled"])
+        _finish_import(rows=res["rows"], quartiled=res["quartiled"])
     except Exception as exc:
         logger.exception("scimago import failed")
-        _import_state.update(error=str(exc)[:300])
-    finally:
-        _import_state.update(running=False, phase=None)
+        _finish_import(error=str(exc)[:300])
 
 
 def _backup_to_dropbox(raw: bytes, year: int) -> None:

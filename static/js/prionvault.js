@@ -13644,9 +13644,10 @@
     let pollHandle = null;
     let havYears = new Set();
 
-    // SCImago publishes with a lag, so offer the last ~8 completed years.
+    // Offer every completed year from last year back to 2012.
     const NOW_Y = new Date().getFullYear();
-    const YEARS = Array.from({ length: 8 }, (_, i) => NOW_Y - 1 - i);
+    const YEARS = [];
+    for (let y = NOW_Y - 1; y >= 2012; y--) YEARS.push(y);
 
     function open()  { modal.style.display = 'flex'; renderGrid(); refresh(); }
     function close() { modal.style.display = 'none'; if (pollHandle) { clearInterval(pollHandle); pollHandle = null; } }
@@ -13683,10 +13684,15 @@
       try { r = await api('/admin/scimago/stats'); }
       catch (e) { yearsEl.innerHTML = `<div style="color:#b91c1c;font-size:12.5px;">Error: ${esc(e.message)}</div>`; return; }
       const imp = r.import || {};
+      // Lock the Import button while one is running so a burst of uploads
+      // can't overlap (the server also rejects overlaps with a 409).
+      upBtn.disabled = !!imp.running;
+      upBtn.style.opacity = imp.running ? '0.5' : '1';
+      upBtn.style.cursor  = imp.running ? 'not-allowed' : 'pointer';
       if (imp.running) {
         statusEl.style.color = '#9ca3af';
-        const ph = ({ downloading: 'Descargando', parsing: 'Procesando', backing_up: 'Guardando copia' })[imp.phase] || 'Trabajando';
-        statusEl.textContent = `${ph} ${imp.year || ''}… (puede tardar)`;
+        const ph = ({ starting: 'Iniciando', downloading: 'Descargando', parsing: 'Procesando', backing_up: 'Guardando copia' })[imp.phase] || 'Trabajando';
+        statusEl.textContent = `${ph} ${imp.year || ''}… espera a que termine antes de subir otro.`;
         if (!pollHandle) pollHandle = setInterval(refresh, 2500);
       } else {
         if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
@@ -13726,18 +13732,26 @@
       statusEl.textContent = 'Subiendo…';
       try {
         const res = await fetch('/prionvault/api/admin/scimago/import', { method: 'POST', body: fd, credentials: 'same-origin' });
+        if (res.status === 409) {
+          statusEl.style.color = '#92400e';
+          statusEl.textContent = 'Hay otra importación en curso — espera a que termine y vuelve a subirlo.';
+          setTimeout(refresh, 1000);
+          return;
+        }
         if (!res.ok && res.status !== 202) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.detail || err.error || res.statusText);
         }
+        // Clear the file so the next year starts clean.
+        fileEl.value = '';
         statusEl.textContent = 'Importación iniciada…';
-        setTimeout(refresh, 1000);
+        setTimeout(refresh, 800);
       } catch (e) {
         statusEl.style.color = '#b91c1c';
         statusEl.textContent = 'Error: ' + e.message;
-      } finally {
         upBtn.disabled = false;
       }
+      // On success, refresh() re-enables the button once the import ends.
     });
   }
 

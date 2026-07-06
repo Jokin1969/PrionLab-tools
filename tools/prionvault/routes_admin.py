@@ -1822,9 +1822,12 @@ def api_scimago_import():
     except Exception as exc:
         return jsonify({"error": "read_failed", "detail": str(exc)[:200]}), 400
 
-    if scimago.import_state().get("running"):
-        return jsonify({"error": "busy", "detail": "Ya hay una importación en curso."}), 409
-
+    # Atomically claim the single import slot: a burst of uploads can't run
+    # several parsers at once. A second upload gets a clean 409, not an error.
+    if not scimago.begin_import(year):
+        return jsonify({"error": "busy",
+                        "detail": "Ya hay una importación en curso. "
+                                  "Espera a que termine y vuelve a intentarlo."}), 409
     threading.Thread(target=scimago.run_import, args=(content, year),
                      daemon=True).start()
     return jsonify({"ok": True, "status": "started", "year": year}), 202
@@ -1847,7 +1850,7 @@ def api_scimago_download():
     years = [y for y in years if 1990 <= y <= 2100]
     if not years:
         return jsonify({"error": "bad_year", "detail": "Indica año(s) válidos."}), 400
-    if scimago.import_state().get("running"):
+    if not scimago.begin_import(years[0] if len(years) == 1 else None):
         return jsonify({"error": "busy", "detail": "Ya hay una descarga en curso."}), 409
 
     if len(years) == 1:
