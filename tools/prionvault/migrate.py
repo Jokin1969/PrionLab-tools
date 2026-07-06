@@ -87,6 +87,7 @@ _PRIONVAULT_MIGRATIONS = (
     "051_translation_glossary.sql",
     "052_article_notes.sql",
     "053_journal_ranking.sql",
+    "054_journal_ranking_percentile.sql",
 )
 
 _BOOTSTRAP_SQL = """

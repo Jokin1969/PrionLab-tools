@@ -13629,24 +13629,59 @@
     filtEl.addEventListener('input', render);
   }
 
-  // ── SCImago rankings admin modal ─────────────────────────────────────
+  // ── SCImago (SJR) admin modal ────────────────────────────────────────
   function wireScimago() {
     const btn   = document.getElementById('btn-scimago');
     const modal = document.getElementById('pv-scimago-modal');
     if (!btn || !modal) return;
     const closeBtn = document.getElementById('pv-scimago-close');
+    const gridEl   = document.getElementById('pv-scimago-year-grid');
+    const dl6Btn   = document.getElementById('pv-scimago-download-6');
     const yearEl   = document.getElementById('pv-scimago-year');
     const fileEl   = document.getElementById('pv-scimago-file');
     const upBtn    = document.getElementById('pv-scimago-upload');
     const statusEl = document.getElementById('pv-scimago-status');
     const yearsEl  = document.getElementById('pv-scimago-years');
     let pollHandle = null;
+    let havYears = new Set();
 
-    function open()  { modal.style.display = 'flex'; refresh(); }
+    // SCImago publishes with a lag, so offer the last ~8 completed years.
+    const NOW_Y = new Date().getFullYear();
+    const YEARS = Array.from({ length: 8 }, (_, i) => NOW_Y - 1 - i);
+
+    function open()  { modal.style.display = 'flex'; renderGrid(); refresh(); }
     function close() { modal.style.display = 'none'; if (pollHandle) { clearInterval(pollHandle); pollHandle = null; } }
     btn.addEventListener('click', open);
     closeBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    function renderGrid() {
+      gridEl.innerHTML = YEARS.map(y => {
+        const has = havYears.has(y);
+        return `<button class="pv-scimago-dl" data-year="${y}"
+                  title="${has ? 'Ya descargado — clic para volver a descargar' : 'Descargar ' + y}"
+                  style="padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer;
+                         border:1px solid ${has ? '#6ee7b7' : '#d1d5db'};
+                         background:${has ? '#d1fae5' : '#fff'};color:${has ? '#065f46' : '#374151'};">
+                  ${has ? '✓ ' : '⬇ '}${y}</button>`;
+      }).join('');
+      gridEl.querySelectorAll('.pv-scimago-dl').forEach(b =>
+        b.addEventListener('click', () => downloadYears([Number(b.dataset.year)])));
+    }
+
+    async function downloadYears(years) {
+      try {
+        await api('/admin/scimago/download', { method: 'POST', body: JSON.stringify({ years }) });
+        statusEl.style.color = '#9ca3af';
+        statusEl.textContent = 'Descarga iniciada desde scimagojr.com…';
+        setTimeout(refresh, 800);
+      } catch (e) {
+        statusEl.style.color = '#b91c1c';
+        statusEl.textContent = e.status === 409 ? 'Ya hay una descarga en curso.' : ('Error: ' + e.message);
+      }
+    }
+
+    dl6Btn.addEventListener('click', () => downloadYears(YEARS.slice(0, 6)));
 
     async function refresh() {
       let r;
@@ -13655,14 +13690,17 @@
       const imp = r.import || {};
       if (imp.running) {
         statusEl.style.color = '#9ca3af';
-        statusEl.textContent = `Importando ${imp.year || ''}… (puede tardar)`;
+        const ph = ({ downloading: 'Descargando', parsing: 'Procesando', backing_up: 'Guardando copia' })[imp.phase] || 'Trabajando';
+        statusEl.textContent = `${ph} ${imp.year || ''}… (puede tardar)`;
         if (!pollHandle) pollHandle = setInterval(refresh, 2500);
       } else {
         if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
         if (imp.error) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Error: ' + imp.error; }
-        else if (imp.rows) { statusEl.style.color = '#15803d'; statusEl.textContent = `✓ ${imp.rows.toLocaleString()} revistas importadas (${imp.quartiled.toLocaleString()} con cuartil) para ${imp.year}.`; }
+        else if (imp.rows) { statusEl.style.color = '#15803d'; statusEl.textContent = `✓ ${Number(imp.rows).toLocaleString()} revistas procesadas${imp.year ? ' (' + imp.year + ')' : ''}.`; }
       }
       const years = (r.stats || {}).years || [];
+      havYears = new Set(years.map(y => Number(y.year)));
+      renderGrid();
       yearsEl.innerHTML = years.length
         ? years.map(y => `
             <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid #f3f4f6;
@@ -13672,7 +13710,7 @@
               <button class="pv-scimago-del" data-year="${esc(y.year)}" title="Eliminar este año"
                       style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
             </div>`).join('')
-        : '<div style="color:#9ca3af;font-size:12.5px;padding:4px;">Aún no has importado ningún año.</div>';
+        : '<div style="color:#9ca3af;font-size:12.5px;padding:4px;">Aún no has descargado ningún año.</div>';
       yearsEl.querySelectorAll('.pv-scimago-del').forEach(b => b.addEventListener('click', async () => {
         if (!confirm(`¿Eliminar los rankings de ${b.dataset.year}?`)) return;
         try { await api('/admin/scimago/clear', { method: 'POST', body: JSON.stringify({ year: Number(b.dataset.year) }) }); refresh(); }

@@ -410,6 +410,8 @@ _GOVASCO_LABELS = {
         'authors': 'Authors: ', 'title': 'Title: ',
         'journal': 'Name of journal: ', 'volume': 'Volume: ',
         'initial': 'Initial pag: ', 'final': 'Final pag: ', 'year': 'Year: ',
+        'doi': 'DOI: ', 'pmid': 'PMID: ', 'issn': 'ISSN: ',
+        'pubplace': 'Publication place: ',
         'quality': 'Quality indicators: ', 'database': 'Data base ',
         'quartile': 'Quartile ', 'and': ' and ',
     },
@@ -417,6 +419,8 @@ _GOVASCO_LABELS = {
         'authors': 'Autores: ', 'title': 'Título: ',
         'journal': 'Nombre de la revista: ', 'volume': 'Volumen: ',
         'initial': 'Pág. inicial: ', 'final': 'Pág. final: ', 'year': 'Año: ',
+        'doi': 'DOI: ', 'pmid': 'PMID: ', 'issn': 'ISSN: ',
+        'pubplace': 'Lugar de publicación: ',
         'quality': 'Indicadores de calidad: ', 'database': 'Base de datos ',
         'quartile': 'Cuartil ', 'and': ' y ',
     },
@@ -470,29 +474,60 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
         _label(pj, L['journal'])
         _add_run(pj, (art.get('journal') or '').strip(), size=Pt(11))
 
-        # Volume / pages / year — one line, tab-separated labels.
-        volume, ini_pag, fin_pag = _govasco_vol_pages(sm)
         year = art.get('year')
-        pv = doc.add_paragraph(); pv.paragraph_format.space_after = Pt(0)
-        _label(pv, L['volume']);      _add_run(pv, volume, size=Pt(11))
-        _add_run(pv, '\t', size=Pt(11)); _label(pv, L['initial']); _add_run(pv, ini_pag, size=Pt(11))
-        _add_run(pv, '\t', size=Pt(11)); _label(pv, L['final']);   _add_run(pv, fin_pag, size=Pt(11))
-        _add_run(pv, '\t', size=Pt(11)); _label(pv, L['year']);    _add_run(pv, str(year) if year else '', size=Pt(11))
 
-        # Quality indicators — auto-filled from SCImago when the journal
-        # is found; otherwise left blank for the researcher.
-        db_val = ''
-        quartile_val = ''
+        # SCImago lookup: ISSN, country and quality indicators.
+        hit = None
         try:
             from .services import scimago
-            hit = scimago.lookup_quartile(art.get('journal') or '', year)
-            if hit and hit.get('quartile'):
-                db_val = hit.get('database') or 'SCImago (SJR)'
-                quartile_val = hit['quartile']
-                if hit.get('category'):
-                    quartile_val += f' ({hit["category"]})'
+            hit = scimago.lookup(art.get('journal') or '', year)
         except Exception:
-            pass
+            hit = None
+
+        # DOI · PMID · Year — DOI and PMID as hyperlinks, dot-separated.
+        doi  = (art.get('doi') or '').strip()
+        pmid = (art.get('pubmed_id') or '').strip()
+        pdp = doc.add_paragraph(); pdp.paragraph_format.space_after = Pt(0)
+        wrote_any = False
+        if doi:
+            _label(pdp, L['doi'])
+            url = doi if doi.startswith('http') else f'https://doi.org/{doi}'
+            _add_hyperlink(pdp, doi, url, {'color': '#0F3460'})
+            wrote_any = True
+        if pmid:
+            if wrote_any:
+                _add_run(pdp, '  ·  ', color=DIM, size=Pt(11))
+            _label(pdp, L['pmid'])
+            _add_hyperlink(pdp, pmid, f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/',
+                           {'color': '#0F3460'})
+            wrote_any = True
+        if year:
+            if wrote_any:
+                _add_run(pdp, '  ·  ', color=DIM, size=Pt(11))
+            _label(pdp, L['year']); _add_run(pdp, str(year), size=Pt(11))
+
+        # ISSN · Publication place (from SCImago).
+        issn    = (hit or {}).get('issn') or ''
+        country = (hit or {}).get('country') or ''
+        pip = doc.add_paragraph(); pip.paragraph_format.space_after = Pt(0)
+        _label(pip, L['issn']);     _add_run(pip, issn, size=Pt(11))
+        _add_run(pip, '\t', size=Pt(11))
+        _label(pip, L['pubplace']); _add_run(pip, country, size=Pt(11))
+
+        # Quality indicators — Data base + Quartile · Decile · Percentile
+        # (best category in parentheses), auto-filled from SCImago.
+        db_val = ''
+        quartile_val = ''
+        if hit and hit.get('quartile'):
+            db_val = hit.get('database') or 'SCImago (SJR)'
+            bits = [hit['quartile']]
+            if hit.get('decile'):
+                bits.append(hit['decile'])
+            if hit.get('percentile') is not None:
+                bits.append(f'P{hit["percentile"]:.1f}')
+            quartile_val = ' · '.join(bits)
+            if hit.get('category'):
+                quartile_val += f' ({hit["category"]})'
 
         doc.add_paragraph()  # blank line
         pq = doc.add_paragraph(); pq.paragraph_format.space_after = Pt(0)

@@ -1,28 +1,36 @@
-"""SCImago (SJR) journal quartile rankings.
+"""SCImago (SJR) journal rankings — download, parse, percentiles, lookup.
 
-Import the yearly SCImago CSV (scimagojr.com → "Download data") and look
-up a journal's best quartile for the Gobierno Vasco export.
+Powers the automatic quality indicators in the Gobierno Vasco export.
 
-The CSV is ';'-separated with a header. Relevant columns:
-  Title, Issn, SJR, SJR Best Quartile, Categories
-`Categories` looks like:
-  "Cellular and Molecular Neuroscience (Q1); Neurology (Q2)"
-so each category carries its own quartile. We parse those, keep the best
-(Q1 > Q2 > …) and remember which category it came from.
+Flow (no manual work needed):
+  * download_year(year) fetches the yearly SCImago CSV straight from
+    scimagojr.com, parses it, computes per-category percentiles/deciles,
+    stores everything in Postgres, and archives the raw CSV to Dropbox.
+  * lookup(journal, year) returns the best quartile + decile + percentile
+    for a journal plus its ISSN and country (Publication place).
 
-Matching is by normalized journal title because PrionVault does not store
-ISSNs. One DB row per (title_norm, year).
+The SCImago CSV is ';'-separated (decimal comma) with columns including
+Title, Issn, SJR, SJR Best Quartile, Categories, Country. `Categories`
+looks like "Neurology (Q1); Pathology (Q2)". Matching is by normalized
+journal title because PrionVault stores no ISSN.
 """
 from __future__ import annotations
 
 import csv
 import io
 import logging
+import math
 import re
 import unicodedata
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# SCImago exposes the yearly ranking as a (semicolon) CSV at this URL
+# despite the out=xls name.
+_SCIMAGO_URL = "https://www.scimagojr.com/journalrank.php?out=xls&year={year}"
+# Where the raw CSV backup lands in Dropbox.
+_DROPBOX_DIR = "/PrionLab tools/SCImago"
 
 
 def _get_engine():
@@ -32,8 +40,7 @@ def _get_engine():
 
 def norm_title(s: str) -> str:
     """Lowercase, strip accents/punctuation, collapse spaces, drop a
-    leading article, so 'Acta Neuropathol. Communications' and
-    'Acta Neuropathologica Communications' have a chance to line up."""
+    leading article, so journal names line up despite formatting."""
     if not s:
         return ""
     s = unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('ascii')
@@ -60,19 +67,22 @@ def _parse_categories(cat_field: str) -> list[dict]:
     return out
 
 
-def _best(categories: list[dict], fallback_q: str) -> tuple[Optional[str], Optional[str]]:
-    """Return (best_quartile, best_category). Best = lowest Q number."""
-    best = None
-    for c in categories:
-        q = c["quartile"]
-        if best is None or q < best[0]:   # 'Q1' < 'Q2' lexicographically
-            best = (q, c["category"])
-    if best:
-        return best
-    fb = (fallback_q or "").strip().upper()
-    if re.match(r'^Q[1-4]$', fb):
-        return fb, None
-    return None, None
+def _parse_sjr(raw: str) -> float:
+    """SCImago prints SJR with a decimal comma ('2,500'). Return a float."""
+    s = (raw or "").strip().replace('.', '').replace(',', '.')
+    try:
+        return float(s) if s else 0.0
+    except ValueError:
+        return 0.0
+
+
+def _format_issn(issns: list[str]) -> Optional[str]:
+    """Return the first ISSN as XXXX-XXXX (SCImago stores them dash-less)."""
+    for raw in issns:
+        digits = re.sub(r'[^0-9Xx]', '', raw).upper()
+        if len(digits) == 8:
+            return f"{digits[:4]}-{digits[4:]}"
+    return None
 
 
 def _split_issns(raw: str) -> list[str]:
@@ -80,41 +90,105 @@ def _split_issns(raw: str) -> list[str]:
             for p in (raw or "").split(',') if re.sub(r'[^0-9Xx]', '', p)]
 
 
-# ── Import ────────────────────────────────────────────────────────────────────
+# ── State (shared by upload + auto-download background jobs) ───────────────────
 
 _import_state = {"running": False, "year": None, "rows": 0,
-                 "quartiled": 0, "error": None}
+                 "quartiled": 0, "error": None, "phase": None}
 
 
 def import_state() -> dict:
     return dict(_import_state)
 
 
+# ── Download from SCImago ──────────────────────────────────────────────────────
+
+def _do_download_year(year: int) -> dict:
+    """Fetch + import + Dropbox-backup one year. Raises on failure."""
+    import requests
+    url = _SCIMAGO_URL.format(year=year)
+    resp = requests.get(url, timeout=120, headers={
+        "User-Agent": "Mozilla/5.0 (PrionVault SCImago importer)"})
+    resp.raise_for_status()
+    content = resp.content.decode("utf-8-sig", errors="replace")
+    if "Title" not in content[:2000] and "Rank" not in content[:2000]:
+        raise RuntimeError("La respuesta de SCImago no parece un CSV válido "
+                           "(¿aún no hay datos para ese año?).")
+    res = import_csv(content, year)
+    _backup_to_dropbox(resp.content, year)
+    logger.info("scimago: downloaded+imported %s rows for %s", res["rows"], year)
+    return res
+
+
+def download_year(year: int) -> None:
+    """Background entry point: fetch one year from SCImago."""
+    _import_state.update(running=True, year=year, error=None, rows=0,
+                         quartiled=0, phase="downloading")
+    try:
+        res = _do_download_year(year)
+        _import_state.update(rows=res["rows"], quartiled=res["quartiled"])
+    except Exception as exc:
+        logger.exception("scimago download failed for %s", year)
+        _import_state.update(error=str(exc)[:300])
+    finally:
+        _import_state.update(running=False, phase=None)
+
+
+def run_download_years(years: list) -> None:
+    """Background entry point: fetch several years sequentially."""
+    years = [int(y) for y in years]
+    _import_state.update(running=True, error=None, rows=0, quartiled=0,
+                         phase="downloading", year=None)
+    errors = []
+    total = 0
+    for y in years:
+        _import_state.update(year=y, phase="downloading")
+        try:
+            res = _do_download_year(y)
+            total += res["rows"]
+        except Exception as exc:
+            logger.warning("scimago: year %s failed: %s", y, exc)
+            errors.append(f"{y}: {str(exc)[:120]}")
+    _import_state.update(running=False, phase=None, rows=total,
+                         error="; ".join(errors) if errors else None,
+                         year=None)
+
+
 def run_import(content: str, year: int) -> None:
-    """Background-thread entry point: import + record progress/errors."""
-    _import_state.update(running=True, year=year, error=None,
-                         rows=0, quartiled=0)
+    """Background entry point for a MANUAL CSV upload (fallback path)."""
+    _import_state.update(running=True, year=year, error=None, rows=0,
+                         quartiled=0, phase="parsing")
     try:
         res = import_csv(content, year)
         _import_state.update(rows=res["rows"], quartiled=res["quartiled"])
-        logger.info("scimago: imported %s rows for %s", res["rows"], year)
     except Exception as exc:
         logger.exception("scimago import failed")
         _import_state.update(error=str(exc)[:300])
     finally:
-        _import_state.update(running=False)
+        _import_state.update(running=False, phase=None)
 
+
+def _backup_to_dropbox(raw: bytes, year: int) -> None:
+    try:
+        from core.dropbox_client import get_client
+        import dropbox
+        dbx = get_client()
+        if not dbx:
+            return
+        path = f"{_DROPBOX_DIR}/scimago_{year}.csv"
+        dbx.files_upload(raw, path, mode=dropbox.files.WriteMode.overwrite)
+    except Exception as exc:
+        logger.warning("scimago: Dropbox backup failed for %s: %s", year, exc)
+
+
+# ── Import + percentile computation ────────────────────────────────────────────
 
 def import_csv(content: str, year: int) -> dict:
-    """Parse a SCImago yearly CSV and upsert its rows for `year`.
-    Returns {rows, quartiled, year}."""
-    # SCImago uses ';' as delimiter. Sniff just in case a comma variant
-    # slips in, but default to ';'.
+    """Parse a SCImago yearly CSV, compute per-category percentiles/deciles,
+    and upsert. Returns {rows, quartiled, year}."""
     sample = content[:4000]
     delim = ';' if sample.count(';') >= sample.count(',') else ','
     reader = csv.DictReader(io.StringIO(content), delimiter=delim)
 
-    # Case-insensitive column resolution.
     def _col(row, *names):
         for n in names:
             for k in row:
@@ -122,30 +196,80 @@ def import_csv(content: str, year: int) -> dict:
                     return row[k]
         return ""
 
-    batch: list[dict] = []
-    quartiled = 0
+    # Pass 1 — parse every journal.
+    journals: list[dict] = []
     seen: set = set()
     for row in reader:
         title = (_col(row, "Title") or "").strip()
         if not title:
             continue
         tn = norm_title(title)
-        if not tn or (tn, year) in seen:
+        if not tn or tn in seen:
             continue
-        seen.add((tn, year))
-        cats = _parse_categories(_col(row, "Categories"))
-        bq, bc = _best(cats, _col(row, "SJR Best Quartile"))
-        if bq:
-            quartiled += 1
-        batch.append({
+        seen.add(tn)
+        journals.append({
             "title_norm": tn,
             "title":      title,
             "issns":      _split_issns(_col(row, "Issn")),
-            "year":       year,
+            "country":    (_col(row, "Country") or "").strip() or None,
+            "sjr":        _parse_sjr(_col(row, "SJR")),
+            "sjr_raw":    (_col(row, "SJR") or "").strip() or None,
+            "categories": _parse_categories(_col(row, "Categories")),
+            "best_q_hint": (_col(row, "SJR Best Quartile") or "").strip(),
+        })
+
+    # Pass 2 — per-category ranking → percentile + decile.
+    # Group journal indices by category, sort by SJR desc, assign.
+    by_cat: dict[str, list[int]] = {}
+    for i, j in enumerate(journals):
+        for c in j["categories"]:
+            by_cat.setdefault(c["category"], []).append(i)
+    for cat, idxs in by_cat.items():
+        idxs.sort(key=lambda i: journals[i]["sjr"], reverse=True)
+        n = len(idxs)
+        for rank, i in enumerate(idxs):           # rank 0 = top journal
+            pct = round((n - rank) / n * 100, 1)   # 100 = top, →0 = bottom
+            dec = min(10, int(rank / n * 10) + 1)  # D1 = top decile
+            for c in journals[i]["categories"]:
+                if c["category"] == cat:
+                    c["percentile"] = pct
+                    c["decile"] = f"D{dec}"
+
+    # Pass 3 — pick each journal's best category (best quartile, then
+    # highest percentile) and build the DB rows.
+    batch: list[dict] = []
+    quartiled = 0
+    for j in journals:
+        cats = j["categories"]
+        best = None
+        for c in cats:
+            if "quartile" not in c:
+                continue
+            key = (c["quartile"], -(c.get("percentile") or 0))
+            if best is None or key < best[0]:
+                best = (key, c)
+        bq = bc = bp = bd = None
+        if best:
+            bq = best[1]["quartile"]
+            bc = best[1]["category"]
+            bp = best[1].get("percentile")
+            bd = best[1].get("decile")
+            quartiled += 1
+        elif re.match(r'^Q[1-4]$', j["best_q_hint"].upper()):
+            bq = j["best_q_hint"].upper()
+        batch.append({
+            "title_norm":  j["title_norm"],
+            "title":       j["title"],
+            "issns":       j["issns"],
+            "primary_issn": _format_issn(j["issns"]),
+            "country":     j["country"],
+            "year":        year,
             "best_quartile": bq,
             "best_category": bc,
-            "categories": cats,
-            "sjr":        (_col(row, "SJR") or "").strip() or None,
+            "best_percentile": bp,
+            "best_decile": bd,
+            "categories":  cats,
+            "sjr":         j["sjr_raw"],
         })
 
     _upsert(batch)
@@ -164,33 +288,40 @@ def _upsert(batch: list[dict]) -> None:
             for r in batch[i:i + CHUNK]:
                 conn.execute(_sql("""
                     INSERT INTO journal_ranking
-                        (title_norm, title, issns, year, best_quartile,
-                         best_category, categories, sjr, source, updated_at)
-                    VALUES (:tn, :ti, CAST(:iss AS jsonb), :yr, :bq, :bc,
-                            CAST(:cats AS jsonb), :sjr, 'scimago', NOW())
+                        (title_norm, title, issns, primary_issn, country, year,
+                         best_quartile, best_category, best_percentile,
+                         best_decile, categories, sjr, source, updated_at)
+                    VALUES (:tn, :ti, CAST(:iss AS jsonb), :pi, :co, :yr,
+                            :bq, :bc, :bp, :bd, CAST(:cats AS jsonb), :sjr,
+                            'scimago', NOW())
                     ON CONFLICT (title_norm, year) DO UPDATE SET
-                        title         = EXCLUDED.title,
-                        issns         = EXCLUDED.issns,
-                        best_quartile = EXCLUDED.best_quartile,
-                        best_category = EXCLUDED.best_category,
-                        categories    = EXCLUDED.categories,
-                        sjr           = EXCLUDED.sjr,
-                        updated_at    = NOW()
+                        title           = EXCLUDED.title,
+                        issns           = EXCLUDED.issns,
+                        primary_issn    = EXCLUDED.primary_issn,
+                        country         = EXCLUDED.country,
+                        best_quartile   = EXCLUDED.best_quartile,
+                        best_category   = EXCLUDED.best_category,
+                        best_percentile = EXCLUDED.best_percentile,
+                        best_decile     = EXCLUDED.best_decile,
+                        categories      = EXCLUDED.categories,
+                        sjr             = EXCLUDED.sjr,
+                        updated_at      = NOW()
                 """), {
                     "tn": r["title_norm"], "ti": r["title"],
-                    "iss": _json.dumps(r["issns"]), "yr": r["year"],
+                    "iss": _json.dumps(r["issns"]), "pi": r["primary_issn"],
+                    "co": r["country"], "yr": r["year"],
                     "bq": r["best_quartile"], "bc": r["best_category"],
-                    "cats": _json.dumps(r["categories"]),
-                    "sjr": r["sjr"],
+                    "bp": r["best_percentile"], "bd": r["best_decile"],
+                    "cats": _json.dumps(r["categories"]), "sjr": r["sjr"],
                 })
 
 
 # ── Lookup ────────────────────────────────────────────────────────────────────
 
-def lookup_quartile(journal: str, year: Optional[int] = None) -> Optional[dict]:
-    """Return {quartile, category, year, database} for a journal, choosing
-    the ranking year closest to (and not after) `year` when possible.
-    None when the journal isn't in the imported data."""
+def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
+    """Return quality data for a journal (best quartile + decile +
+    percentile + ISSN + country), choosing the ranking year closest to
+    (not after) `year`. None when the journal isn't in the imported data."""
     tn = norm_title(journal or "")
     if not tn:
         return None
@@ -199,11 +330,12 @@ def lookup_quartile(journal: str, year: Optional[int] = None) -> Optional[dict]:
     try:
         with eng.connect() as conn:
             rows = conn.execute(_sql("""
-                SELECT year, best_quartile, best_category
+                SELECT year, best_quartile, best_category, best_percentile,
+                       best_decile, primary_issn, country
                   FROM journal_ranking
-                 WHERE title_norm = :tn AND best_quartile IS NOT NULL
+                 WHERE title_norm = :tn
                  ORDER BY year
-            """), {"tn": tn}).all()
+            """), {"tn": tn}).mappings().all()
     except Exception as exc:
         logger.warning("scimago lookup failed for %r: %s", journal, exc)
         return None
@@ -212,25 +344,34 @@ def lookup_quartile(journal: str, year: Optional[int] = None) -> Optional[dict]:
 
     chosen = None
     if year:
-        exact = [r for r in rows if r[0] == year]
-        older = [r for r in rows if r[0] <= year]
+        exact = [r for r in rows if r["year"] == year]
+        older = [r for r in rows if r["year"] <= year]
         if exact:
             chosen = exact[0]
         elif older:
-            chosen = older[-1]         # latest year not after the article
+            chosen = older[-1]
     if chosen is None:
-        chosen = rows[-1]              # latest available overall
+        chosen = rows[-1]
 
     return {
-        "quartile": chosen[1],
-        "category": chosen[2],
-        "year":     chosen[0],
-        "database": "SCImago (SJR)",
+        "quartile":   chosen["best_quartile"],
+        "category":   chosen["best_category"],
+        "percentile": (float(chosen["best_percentile"])
+                       if chosen["best_percentile"] is not None else None),
+        "decile":     chosen["best_decile"],
+        "issn":       chosen["primary_issn"],
+        "country":    chosen["country"],
+        "year":       chosen["year"],
+        "database":   "SCImago (SJR)",
     }
 
 
+# Backwards-compatible alias for older callers.
+def lookup_quartile(journal: str, year: Optional[int] = None) -> Optional[dict]:
+    return lookup(journal, year)
+
+
 def stats() -> dict:
-    """Per-year row counts for the admin panel."""
     from sqlalchemy import text as _sql
     eng = _get_engine()
     try:

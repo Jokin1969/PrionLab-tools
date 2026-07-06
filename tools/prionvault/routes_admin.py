@@ -1830,6 +1830,35 @@ def api_scimago_import():
     return jsonify({"ok": True, "status": "started", "year": year}), 202
 
 
+@prionvault_bp.route("/api/admin/scimago/download", methods=["POST"])
+@admin_required
+def api_scimago_download():
+    """Download one or more years directly from scimagojr.com (no manual
+    upload). Body: {"year": 2023} or {"years": [2018,...,2023]}."""
+    from .services import scimago
+    body = request.get_json(silent=True) or {}
+    years = body.get("years")
+    if not years and body.get("year") is not None:
+        years = [body["year"]]
+    try:
+        years = [int(y) for y in (years or [])]
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad_year"}), 400
+    years = [y for y in years if 1990 <= y <= 2100]
+    if not years:
+        return jsonify({"error": "bad_year", "detail": "Indica año(s) válidos."}), 400
+    if scimago.import_state().get("running"):
+        return jsonify({"error": "busy", "detail": "Ya hay una descarga en curso."}), 409
+
+    if len(years) == 1:
+        threading.Thread(target=scimago.download_year, args=(years[0],),
+                         daemon=True).start()
+    else:
+        threading.Thread(target=scimago.run_download_years, args=(years,),
+                         daemon=True).start()
+    return jsonify({"ok": True, "status": "started", "years": years}), 202
+
+
 @prionvault_bp.route("/api/admin/scimago/clear", methods=["POST"])
 @admin_required
 def api_scimago_clear():
