@@ -1785,3 +1785,58 @@ def api_glossary_delete(entry_id):
     if not ok:
         return jsonify({"error": "not_found"}), 404
     return jsonify({"ok": True})
+
+
+# ── SCImago (SJR) journal quartile rankings ──────────────────────────────────
+# Admin imports the yearly SCImago CSV; the Gobierno Vasco export uses it to
+# auto-fill the quartile (best category in parentheses).
+
+@prionvault_bp.route("/api/admin/scimago/stats", methods=["GET"])
+@admin_required
+def api_scimago_stats():
+    from .services import scimago
+    return jsonify({"stats": scimago.stats(), "import": scimago.import_state()})
+
+
+@prionvault_bp.route("/api/admin/scimago/import", methods=["POST"])
+@admin_required
+def api_scimago_import():
+    """Multipart upload: `file` (SCImago CSV) + `year`. Runs in the
+    background so a big CSV (~30k journals) doesn't hit the request
+    timeout; the UI polls /scimago/stats for progress."""
+    from .services import scimago
+    year_raw = (request.form.get("year") or "").strip()
+    try:
+        year = int(year_raw)
+    except ValueError:
+        return jsonify({"error": "bad_year", "detail": "Indica el año del CSV."}), 400
+    if not (1990 <= year <= 2100):
+        return jsonify({"error": "bad_year", "detail": "Año fuera de rango."}), 400
+
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "no_file", "detail": "Adjunta el CSV de SCImago."}), 400
+    try:
+        content = f.read().decode("utf-8-sig", errors="replace")
+    except Exception as exc:
+        return jsonify({"error": "read_failed", "detail": str(exc)[:200]}), 400
+
+    if scimago.import_state().get("running"):
+        return jsonify({"error": "busy", "detail": "Ya hay una importación en curso."}), 409
+
+    threading.Thread(target=scimago.run_import, args=(content, year),
+                     daemon=True).start()
+    return jsonify({"ok": True, "status": "started", "year": year}), 202
+
+
+@prionvault_bp.route("/api/admin/scimago/clear", methods=["POST"])
+@admin_required
+def api_scimago_clear():
+    from .services import scimago
+    body = request.get_json(silent=True) or {}
+    try:
+        year = int(body.get("year"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad_year"}), 400
+    n = scimago.clear_year(year)
+    return jsonify({"ok": True, "deleted": n, "year": year})

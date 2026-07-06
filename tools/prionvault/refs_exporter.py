@@ -479,13 +479,27 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
         _add_run(pv, '\t', size=Pt(11)); _label(pv, L['final']);   _add_run(pv, fin_pag, size=Pt(11))
         _add_run(pv, '\t', size=Pt(11)); _label(pv, L['year']);    _add_run(pv, str(year) if year else '', size=Pt(11))
 
-        # Quality indicators — labels only; the researcher fills the values.
+        # Quality indicators — auto-filled from SCImago when the journal
+        # is found; otherwise left blank for the researcher.
+        db_val = ''
+        quartile_val = ''
+        try:
+            from .services import scimago
+            hit = scimago.lookup_quartile(art.get('journal') or '', year)
+            if hit and hit.get('quartile'):
+                db_val = hit.get('database') or 'SCImago (SJR)'
+                quartile_val = hit['quartile']
+                if hit.get('category'):
+                    quartile_val += f' ({hit["category"]})'
+        except Exception:
+            pass
+
         doc.add_paragraph()  # blank line
         pq = doc.add_paragraph(); pq.paragraph_format.space_after = Pt(0)
         _label(pq, L['quality'])
-        _add_run(pq, '\t', size=Pt(11)); _label(pq, L['database']); _add_run(pq, '', size=Pt(11))
+        _add_run(pq, '\t', size=Pt(11)); _label(pq, L['database']); _add_run(pq, db_val, size=Pt(11))
         pq2 = doc.add_paragraph(); pq2.paragraph_format.space_after = Pt(0)
-        _add_run(pq2, '\t\t\t', size=Pt(11)); _label(pq2, L['quartile']); _add_run(pq2, '', size=Pt(11))
+        _add_run(pq2, '\t\t\t', size=Pt(11)); _label(pq2, L['quartile']); _add_run(pq2, quartile_val, size=Pt(11))
 
         # Separator between references.
         if idx != len(articles) - 1:

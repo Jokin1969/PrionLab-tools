@@ -7343,6 +7343,7 @@
       wireAIStatus();
       wireQueryExpansion();
       wireGlossary();
+      wireScimago();
       wireSidebarResize();
       wireMobileDrawer();
       wireBulkBar();
@@ -13626,6 +13627,85 @@
     noteEl.addEventListener('keydown', ev => { if (ev.key === 'Enter') add(); });
     tgtEl.addEventListener('keydown',  ev => { if (ev.key === 'Enter') add(); });
     filtEl.addEventListener('input', render);
+  }
+
+  // ── SCImago rankings admin modal ─────────────────────────────────────
+  function wireScimago() {
+    const btn   = document.getElementById('btn-scimago');
+    const modal = document.getElementById('pv-scimago-modal');
+    if (!btn || !modal) return;
+    const closeBtn = document.getElementById('pv-scimago-close');
+    const yearEl   = document.getElementById('pv-scimago-year');
+    const fileEl   = document.getElementById('pv-scimago-file');
+    const upBtn    = document.getElementById('pv-scimago-upload');
+    const statusEl = document.getElementById('pv-scimago-status');
+    const yearsEl  = document.getElementById('pv-scimago-years');
+    let pollHandle = null;
+
+    function open()  { modal.style.display = 'flex'; refresh(); }
+    function close() { modal.style.display = 'none'; if (pollHandle) { clearInterval(pollHandle); pollHandle = null; } }
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    async function refresh() {
+      let r;
+      try { r = await api('/admin/scimago/stats'); }
+      catch (e) { yearsEl.innerHTML = `<div style="color:#b91c1c;font-size:12.5px;">Error: ${esc(e.message)}</div>`; return; }
+      const imp = r.import || {};
+      if (imp.running) {
+        statusEl.style.color = '#9ca3af';
+        statusEl.textContent = `Importando ${imp.year || ''}… (puede tardar)`;
+        if (!pollHandle) pollHandle = setInterval(refresh, 2500);
+      } else {
+        if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
+        if (imp.error) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Error: ' + imp.error; }
+        else if (imp.rows) { statusEl.style.color = '#15803d'; statusEl.textContent = `✓ ${imp.rows.toLocaleString()} revistas importadas (${imp.quartiled.toLocaleString()} con cuartil) para ${imp.year}.`; }
+      }
+      const years = (r.stats || {}).years || [];
+      yearsEl.innerHTML = years.length
+        ? years.map(y => `
+            <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid #f3f4f6;
+                        border-radius:8px;margin-bottom:6px;background:#fff;">
+              <span style="font-weight:700;color:#111827;font-size:13px;">${esc(y.year)}</span>
+              <span style="flex:1;font-size:12px;color:#6b7280;">${Number(y.total).toLocaleString()} revistas · ${Number(y.quartiled).toLocaleString()} con cuartil</span>
+              <button class="pv-scimago-del" data-year="${esc(y.year)}" title="Eliminar este año"
+                      style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
+            </div>`).join('')
+        : '<div style="color:#9ca3af;font-size:12.5px;padding:4px;">Aún no has importado ningún año.</div>';
+      yearsEl.querySelectorAll('.pv-scimago-del').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm(`¿Eliminar los rankings de ${b.dataset.year}?`)) return;
+        try { await api('/admin/scimago/clear', { method: 'POST', body: JSON.stringify({ year: Number(b.dataset.year) }) }); refresh(); }
+        catch (e) { alert('No se pudo eliminar: ' + e.message); }
+      }));
+    }
+
+    upBtn.addEventListener('click', async () => {
+      const year = (yearEl.value || '').trim();
+      const file = fileEl.files && fileEl.files[0];
+      if (!year) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Indica el año del CSV.'; return; }
+      if (!file) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Selecciona el fichero CSV.'; return; }
+      const fd = new FormData();
+      fd.append('year', year);
+      fd.append('file', file);
+      upBtn.disabled = true;
+      statusEl.style.color = '#9ca3af';
+      statusEl.textContent = 'Subiendo…';
+      try {
+        const res = await fetch('/prionvault/api/admin/scimago/import', { method: 'POST', body: fd, credentials: 'same-origin' });
+        if (!res.ok && res.status !== 202) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || err.error || res.statusText);
+        }
+        statusEl.textContent = 'Importación iniciada…';
+        setTimeout(refresh, 1000);
+      } catch (e) {
+        statusEl.style.color = '#b91c1c';
+        statusEl.textContent = 'Error: ' + e.message;
+      } finally {
+        upBtn.disabled = false;
+      }
+    });
   }
 
   function wireQueryExpansion() {
