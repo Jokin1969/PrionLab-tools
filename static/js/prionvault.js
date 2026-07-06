@@ -13732,6 +13732,7 @@
     // curso" errors, no manual waiting.
     const uploadQueue = [];
     let pumping = false;
+    let processingYear = null;   // year currently being uploaded/processed
 
     function queueLabel() {
       return uploadQueue.length
@@ -13751,6 +13752,7 @@
         while (uploadQueue.length) {
           while (await serverBusy()) await new Promise(r => setTimeout(r, 1500));
           const item = uploadQueue[0];
+          processingYear = item.year;
           const fd = new FormData();
           fd.append('year', item.year);
           fd.append('file', item.file);
@@ -13777,6 +13779,8 @@
             uploadQueue.shift();
             statusEl.style.color = '#b91c1c';
             statusEl.textContent = `Error con ${item.year}: ${e.message}${queueLabel()}`;
+          } finally {
+            processingYear = null;
           }
         }
       } finally {
@@ -13790,6 +13794,17 @@
       const file = fileEl.files && fileEl.files[0];
       if (!year) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Indica el año del CSV.'; return; }
       if (!file) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Selecciona el fichero CSV.'; return; }
+      // Don't allow importing a year that's already processing or queued.
+      if (processingYear === year) {
+        statusEl.style.color = '#92400e';
+        statusEl.textContent = `El año ${year} se está importando ahora mismo — espera a que termine.`;
+        return;
+      }
+      if (uploadQueue.some(q => q.year === year)) {
+        statusEl.style.color = '#92400e';
+        statusEl.textContent = `El año ${year} ya está en la cola.`;
+        return;
+      }
       uploadQueue.push({ year, file });
       fileEl.value = '';               // ready for the next file
       statusEl.style.color = '#6b7280';
