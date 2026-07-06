@@ -1134,6 +1134,97 @@ _BUILTIN_ARTICLES = {
         'slug': 'prionvault-email-ingest',
     },
 
+    'prionvault-govasco-export': {
+        'title_es': 'Exportar referencias en formato Gobierno Vasco (con cuartil SCImago)',
+        'title_en': 'Export references in Basque Government format (with SCImago quartile)',
+        'excerpt_es': 'Genera el Word de justificación del Gobierno Vasco y rellena el cuartil automáticamente con SCImago (SJR).',
+        'excerpt_en': 'Generate the Basque Government justification Word and auto-fill the quartile with SCImago (SJR).',
+        'content_es': (
+            '**Exportar en formato Gobierno Vasco**\n\n'
+            'En el listado de PrionVault, abre **Miscelánea → 📄 Exportar referencias**. '
+            'Junto al botón normal verás **🏛 Formato Gobierno Vasco**, que genera un Word '
+            'con el diseño que pide la justificación: Authors / Title / Name of journal / '
+            'Volume · Initial pag · Final pag · Year / Quality indicators.\n\n'
+
+            '- Se exportan las **referencias visibles** en el listado (aplica antes los '
+            'filtros que quieras).\n'
+            '- El **autor marcado** (campo "Autor marcado" del modal) sale en **negrita**; '
+            'los autores se separan por comas y con «and»/«y» antes del último.\n'
+            '- Los campos que PrionVault no almacena (páginas, volumen…) se dejan **vacíos** '
+            'para completarlos a mano si hace falta.\n\n'
+
+            '**Idioma de las etiquetas**\n'
+            'Por defecto las etiquetas van en **inglés** (como pide el formulario). Activa '
+            'la casilla **Etiquetas en español** para generarlas en español '
+            '(Autores, Título, Nombre de la revista, Volumen, Cuartil, etc.).\n\n'
+
+            '**Cuartil automático con SCImago (SJR)**\n'
+            'El indicador de calidad se rellena solo a partir de los datos de SCImago:\n'
+            '1. Descarga el CSV anual (gratis) en scimagojr.com → «Download data» '
+            '(un fichero por año).\n'
+            '2. En **Miscelánea → 🏆 Rankings SCImago (cuartiles)**, indica el **año**, '
+            'sube el **CSV** y pulsa **Importar**. Se procesa en segundo plano; puedes '
+            'ver el progreso y los años ya importados (y borrarlos).\n'
+            '3. Al exportar, para cada artículo se busca la revista **por su nombre** y el '
+            'año más cercano (no posterior) al del artículo. Se elige **el mejor cuartil** '
+            '(Q1 es mejor que Q2…) y se indica **la categoría entre paréntesis**, por '
+            'ejemplo: `Cuartil: Q1 (Cellular and Molecular Neuroscience)`. La base de datos '
+            'se rellena como **SCImago (SJR)**.\n\n'
+            'Si la revista no está en los datos importados, el cuartil se deja vacío.\n\n'
+
+            '**Notas**\n'
+            '- Importa el/los **años** que necesites antes de exportar (p. ej. el CSV de '
+            '2022 para publicaciones de 2022).\n'
+            '- SCImago da **cuartiles** (Q1–Q4), no deciles ni percentiles: el «D1» y el '
+            'percentil exacto solo están en el JCR (Web of Science), que es de pago.\n'
+            '- El cruce es por **nombre de revista** (PrionVault no guarda ISSN), así que '
+            'funciona mejor con nombres completos que con abreviaturas.'
+        ),
+        'content_en': (
+            '**Export in Basque Government format**\n\n'
+            'In the PrionVault list, open **Miscellaneous → 📄 Export references**. Next to '
+            'the normal button you will see **🏛 Basque Government format**, which builds a '
+            'Word with the layout the justification requires: Authors / Title / Name of '
+            'journal / Volume · Initial pag · Final pag · Year / Quality indicators.\n\n'
+
+            '- It exports the **visible references** in the list (apply your filters first).\n'
+            '- The **marked author** (the modal\'s "Marked author" field) appears in **bold**; '
+            'authors are comma-separated with "and"/"y" before the last one.\n'
+            '- Fields PrionVault does not store (pages, volume…) are left **blank** to fill '
+            'in by hand if needed.\n\n'
+
+            '**Label language**\n'
+            'Labels default to **English** (as the form requires). Tick **Etiquetas en '
+            'español** to generate them in Spanish.\n\n'
+
+            '**Automatic quartile with SCImago (SJR)**\n'
+            'The quality indicator is auto-filled from SCImago data:\n'
+            '1. Download the yearly CSV (free) at scimagojr.com → "Download data" '
+            '(one file per year).\n'
+            '2. In **Miscellaneous → 🏆 SCImago rankings**, enter the **year**, upload the '
+            '**CSV** and click **Import**. It runs in the background; you can watch progress '
+            'and see/delete imported years.\n'
+            '3. On export, each article\'s journal is matched **by name** for the year '
+            'closest to (not after) the article\'s year. The **best quartile** is chosen '
+            '(Q1 beats Q2…) with **the category in parentheses**, e.g. '
+            '`Cuartil: Q1 (Cellular and Molecular Neuroscience)`. The database is filled as '
+            '**SCImago (SJR)**.\n\n'
+            'If the journal is not in the imported data, the quartile is left blank.\n\n'
+
+            '**Notes**\n'
+            '- Import the **year(s)** you need before exporting (e.g. the 2022 CSV for 2022 '
+            'papers).\n'
+            '- SCImago provides **quartiles** (Q1–Q4), not deciles/percentiles: "D1" and the '
+            'exact percentile only exist in JCR (Web of Science), which is paid.\n'
+            '- Matching is by **journal name** (PrionVault stores no ISSN), so full names '
+            'work better than abbreviations.'
+        ),
+        'page_context': 'prionvault',
+        'difficulty_level': 'intermediate',
+        'category': {'name': 'PrionVault', 'icon': '📚'},
+        'slug': 'prionvault-govasco-export',
+    },
+
 }
 
 # ── Quick tips per page context ───────────────────────────────────────────────
