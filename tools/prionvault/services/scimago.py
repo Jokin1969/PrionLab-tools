@@ -102,12 +102,39 @@ def import_state() -> dict:
 
 # ── Download from SCImago ──────────────────────────────────────────────────────
 
+# A realistic browser UA + a warm-up request are needed: SCImago's
+# download endpoint 403s bare/bot-looking requests.
+_BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/122.0.0.0 Safari/537.36"),
+    "Accept": ("text/csv,application/vnd.ms-excel,text/html,"
+               "application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+    "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+    "Referer": "https://www.scimagojr.com/journalrank.php",
+}
+
+
 def _do_download_year(year: int) -> dict:
     """Fetch + import + Dropbox-backup one year. Raises on failure."""
     import requests
+    session = requests.Session()
+    session.headers.update(_BROWSER_HEADERS)
+    # Warm-up: visit the ranking page first so SCImago sets its cookies;
+    # the CSV endpoint 403s otherwise. Best-effort — ignore its failures.
+    try:
+        session.get("https://www.scimagojr.com/journalrank.php",
+                    timeout=60)
+    except Exception:
+        pass
+
     url = _SCIMAGO_URL.format(year=year)
-    resp = requests.get(url, timeout=120, headers={
-        "User-Agent": "Mozilla/5.0 (PrionVault SCImago importer)"})
+    resp = session.get(url, timeout=120)
+    if resp.status_code == 403:
+        raise RuntimeError(
+            f"SCImago rechazó la descarga de {year} (403). Puede que ese año "
+            f"aún no esté publicado o que el sitio esté bloqueando la petición. "
+            f"Prueba otro año o usa la subida manual del CSV.")
     resp.raise_for_status()
     content = resp.content.decode("utf-8-sig", errors="replace")
     if "Title" not in content[:2000] and "Rank" not in content[:2000]:
