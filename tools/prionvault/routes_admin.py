@@ -14,7 +14,7 @@ from sqlalchemy import text as sql_text
 
 from core.decorators import admin_required, login_required
 from database.config import db
-from . import prionvault_bp
+from . import prionvault_bp, models
 from ._helpers import _viewer_role, _viewer_id, _session
 
 logger = logging.getLogger(__name__)
