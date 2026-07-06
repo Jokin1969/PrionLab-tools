@@ -316,7 +316,9 @@ def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool) -> str:
     pmid       = a.get("pmid") or ""
     doi        = a.get("doi") or ""
     article_id = a.get("article_id") or ""
-    has_pdf_in_db = bool(a.get("pdf_md5"))
+    # The article has a PDF in the library if it has EITHER a Dropbox path
+    # or an md5 — older rows may have only one of the two.
+    has_pdf_in_db = bool(a.get("pdf_md5") or a.get("dropbox_path"))
 
     doi_url  = f"https://doi.org/{doi}" if doi else ""
     pmid_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
@@ -559,27 +561,32 @@ _PDF_ATTACH_MAX_BYTES = 25 * 1024 * 1024   # 25 MB per PDF — sane email attach
 _PDF_ATTACH_TIMEOUT  = 30                   # seconds per Dropbox download
 
 
-def _collect_pdf_attachments(articles: list[dict]) -> list[tuple[str, bytes, str]]:
+def _collect_pdf_attachments(
+        articles: list[dict]) -> tuple[list[tuple[str, bytes, str]], set]:
     """Download PDFs from Dropbox for articles that have one.
 
-    Returns a list of (filename, bytes, mime_type) tuples ready for
-    send_email_with_attachments. Silently skips articles without a PDF,
-    PDFs above the size cap, or when the download fails (we prefer a
-    partial email over no email at all).
+    Returns (attachments, attached_ids) where attachments is a list of
+    (filename, bytes, mime_type) tuples ready for
+    send_email_with_attachments, and attached_ids is the set of
+    article_ids whose PDF was actually attached (so each card can be
+    labelled correctly). Silently skips articles without a PDF, PDFs
+    above the size cap, or when the download fails.
 
-    For articles that have pdf_md5 but no dropbox_path (e.g. older imports),
-    attempts to reconstruct the canonical Dropbox path before giving up.
+    Prefers the stored dropbox_path; for older rows that only have
+    pdf_md5, reconstructs the canonical Dropbox path before giving up.
     """
     import re as _re
-    result = []
+    result: list[tuple[str, bytes, str]] = []
+    attached_ids: set = set()
     try:
         from core.dropbox_client import get_client
         dbx = get_client()
-    except Exception:
+    except Exception as exc:
+        logger.warning("email_digest: Dropbox client unavailable for Picks PDFs: %s", exc)
         dbx = None
 
     if not dbx:
-        return result
+        return result, attached_ids
 
     for a in articles:
         path = a.get("dropbox_path")
@@ -618,10 +625,12 @@ def _collect_pdf_attachments(articles: list[dict]) -> list[tuple[str, bytes, str
             raw_name = path.rsplit("/", 1)[-1] or "article.pdf"
             safe_name = _re.sub(r'[^\w.\-]', '_', raw_name)
             result.append((safe_name, content, "application/pdf"))
+            if a.get("article_id"):
+                attached_ids.add(str(a["article_id"]))
         except Exception as exc:
             logger.warning("email_digest: PDF download failed for %s: %s", path, exc)
 
-    return result
+    return result, attached_ids
 
 
 # ── Send one subscription ─────────────────────────────────────────────────────
@@ -668,13 +677,13 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
         articles = _fetch_flagged_articles(str(sub["user_id"]), n)
         count    = len(articles)
 
-        # Collect PDF attachments first so we can tell each card if it has one
+        # Collect PDF attachments first so we can tell each card if it has one.
+        # Only skip when the subscription EXPLICITLY disabled PDFs; a missing
+        # or NULL value defaults to attaching.
         attachments: list[tuple[str, bytes, str]] = []
-        if count and sub.get("include_pdfs", True):
-            attachments = _collect_pdf_attachments(articles)
-
-        # Build a set of filenames that were successfully attached
-        attached_filenames: set[str] = {att[0] for att in attachments}
+        attached_ids: set = set()
+        if count and sub.get("include_pdfs") is not False:
+            attachments, attached_ids = _collect_pdf_attachments(articles)
 
         if count == 0:
             picks_cards = """
@@ -691,7 +700,7 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
                 _picks_article_card(
                     a,
                     server_base_url=base,
-                    has_pdf=bool(a.get("dropbox_path") and attachments),
+                    has_pdf=str(a.get("article_id")) in attached_ids,
                 )
                 for a in articles
             )

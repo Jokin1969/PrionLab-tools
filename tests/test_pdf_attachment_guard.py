@@ -17,6 +17,7 @@ pytest.importorskip("sqlalchemy")
 
 from tools.prionvault.services.email_digest import (
     _collect_pdf_attachments,
+    _picks_article_card,
     _PDF_ATTACH_MAX_BYTES,
 )
 
@@ -62,19 +63,19 @@ def _patch_client(monkeypatch, dbx):
 
 def test_no_articles_returns_empty(monkeypatch):
     _patch_client(monkeypatch, _FakeDbx(b"data"))
-    assert _collect_pdf_attachments([]) == []
+    assert _collect_pdf_attachments([])[0] == []
 
 
 def test_article_without_dropbox_path_skipped(monkeypatch):
     _patch_client(monkeypatch, _FakeDbx(b"data"))
-    result = _collect_pdf_attachments([{"dropbox_path": None}])
+    result, _ids = _collect_pdf_attachments([{"dropbox_path": None}])
     assert result == []
 
 
 def test_small_pdf_included(monkeypatch):
     data = b"%PDF small content"
     _patch_client(monkeypatch, _FakeDbx(data))
-    result = _collect_pdf_attachments([{"dropbox_path": "/papers/art.pdf"}])
+    result, _ids = _collect_pdf_attachments([{"dropbox_path": "/papers/art.pdf"}])
     assert len(result) == 1
     fname, content, mime = result[0]
     assert content == data
@@ -86,7 +87,7 @@ def test_pdf_above_size_cap_skipped_via_metadata(monkeypatch):
     """Declared size above cap → skip before even reading body."""
     oversized = _PDF_ATTACH_MAX_BYTES + 1
     _patch_client(monkeypatch, _FakeDbx(b"x" * 100, declared_size=oversized))
-    result = _collect_pdf_attachments([{"dropbox_path": "/papers/big.pdf"}])
+    result, _ids = _collect_pdf_attachments([{"dropbox_path": "/papers/big.pdf"}])
     assert result == []
 
 
@@ -94,7 +95,7 @@ def test_pdf_above_size_cap_skipped_via_content(monkeypatch):
     """Body larger than cap but metadata absent (size=0) → skip after download."""
     oversized_bytes = b"x" * (_PDF_ATTACH_MAX_BYTES + 1)
     _patch_client(monkeypatch, _FakeDbx(oversized_bytes, declared_size=0))
-    result = _collect_pdf_attachments([{"dropbox_path": "/papers/big2.pdf"}])
+    result, _ids = _collect_pdf_attachments([{"dropbox_path": "/papers/big2.pdf"}])
     assert result == []
 
 
@@ -102,7 +103,7 @@ def test_download_error_skipped_gracefully(monkeypatch):
     """A Dropbox error on one article must not prevent processing others."""
     _patch_client(monkeypatch, _ErrorDbx())
     # No exception should propagate
-    result = _collect_pdf_attachments([{"dropbox_path": "/papers/err.pdf"}])
+    result, _ids = _collect_pdf_attachments([{"dropbox_path": "/papers/err.pdf"}])
     assert result == []
 
 
@@ -110,7 +111,7 @@ def test_no_dropbox_client_returns_empty(monkeypatch):
     """When get_client() returns None, return empty list without crashing."""
     import core.dropbox_client as _dbx_mod
     monkeypatch.setattr(_dbx_mod, "get_client", lambda: None)
-    result = _collect_pdf_attachments([{"dropbox_path": "/papers/x.pdf"}])
+    result, _ids = _collect_pdf_attachments([{"dropbox_path": "/papers/x.pdf"}])
     assert result == []
 
 
@@ -130,7 +131,7 @@ def test_multiple_articles_partial_failure(monkeypatch):
         {"dropbox_path": "/papers/fail.pdf"},
         {"dropbox_path": "/papers/ok.pdf"},
     ]
-    result = _collect_pdf_attachments(articles)
+    result, _ids = _collect_pdf_attachments(articles)
     assert len(result) == 1
     assert result[0][1] == b"ok content"
 
@@ -138,8 +139,38 @@ def test_multiple_articles_partial_failure(monkeypatch):
 def test_filename_sanitised(monkeypatch):
     """Filenames with special characters are made safe."""
     _patch_client(monkeypatch, _FakeDbx(b"data"))
-    result = _collect_pdf_attachments([{"dropbox_path": "/papers/my article (2024).pdf"}])
+    result, _ids = _collect_pdf_attachments([{"dropbox_path": "/papers/my article (2024).pdf"}])
     assert len(result) == 1
     fname = result[0][0]
     assert " " not in fname
     assert "(" not in fname
+
+
+def test_attached_ids_tracks_article(monkeypatch):
+    """attached_ids reports which articles were actually attached."""
+    _patch_client(monkeypatch, _FakeDbx(b"%PDF ok"))
+    articles = [
+        {"article_id": "aaa", "dropbox_path": "/papers/a.pdf"},
+        {"article_id": "bbb", "dropbox_path": None},   # no PDF
+    ]
+    result, ids = _collect_pdf_attachments(articles)
+    assert len(result) == 1
+    assert ids == {"aaa"}
+
+
+def test_card_shows_view_pdf_with_only_dropbox_path():
+    """An article with a Dropbox PDF but no md5 must NOT read 'Sin PDF'."""
+    card = _picks_article_card(
+        {"article_id": "xyz", "title": "T", "dropbox_path": "/p/a.pdf"},
+        server_base_url="https://x", has_pdf=False,
+    )
+    assert "Ver PDF en PrionVault" in card
+    assert "Sin PDF" not in card
+
+
+def test_card_shows_attached_note():
+    card = _picks_article_card(
+        {"article_id": "xyz", "title": "T", "pdf_md5": "abc"},
+        server_base_url="https://x", has_pdf=True,
+    )
+    assert "PDF adjunto" in card

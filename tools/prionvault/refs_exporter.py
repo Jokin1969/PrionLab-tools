@@ -405,17 +405,19 @@ def _clean_category(cat: str) -> str:
 
 
 def _format_quality(hit: dict) -> str:
-    """Build the quality-indicator string per the D1 rule:
-       D1  → 'Q1 · D1';  otherwise → 'Q2 · P83.4'. Category in ()."""
+    """Build the quality-indicator string:
+       D1  → 'Q1 · D1 · P98.0'   (decile shown only when it's D1)
+       !D1 → 'Q2 · P83.4'
+    The percentile is always shown when available. Category in ()."""
     q = hit.get('quartile') or ''
     decile = hit.get('decile')
     pct = hit.get('percentile')
+    bits = [q] if q else []
     if decile == 'D1':
-        val = f'{q} · D1'
-    else:
-        val = q
-        if pct is not None:
-            val += f' · P{pct:.1f}'
+        bits.append('D1')
+    if pct is not None:
+        bits.append(f'P{pct:.1f}')
+    val = ' · '.join(bits)
     cat = _clean_category(hit.get('category') or '')
     if cat:
         val += f' ({cat})'
