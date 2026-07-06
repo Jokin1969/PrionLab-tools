@@ -13690,10 +13690,18 @@
       upBtn.style.opacity = imp.running ? '0.5' : '1';
       upBtn.style.cursor  = imp.running ? 'not-allowed' : 'pointer';
       if (imp.running) {
-        statusEl.style.color = '#9ca3af';
-        const ph = ({ starting: 'Iniciando', downloading: 'Descargando', parsing: 'Procesando', backing_up: 'Guardando copia' })[imp.phase] || 'Trabajando';
-        statusEl.textContent = `${ph} ${imp.year || ''}… espera a que termine antes de subir otro.`;
-        if (!pollHandle) pollHandle = setInterval(refresh, 2500);
+        statusEl.style.color = '#374151';
+        const ph = ({ starting: 'Iniciando', downloading: 'Descargando', parsing: 'Analizando CSV', saving: 'Guardando en la base de datos', backing_up: 'Copiando a Dropbox' })[imp.phase] || 'Trabajando';
+        if (imp.total) {
+          const pct = Math.max(1, Math.round(imp.processed / imp.total * 100));
+          statusEl.innerHTML =
+            `${esc(ph)} ${imp.year || ''} — ${Number(imp.processed).toLocaleString()} / ${Number(imp.total).toLocaleString()} (${pct}%)` +
+            `<div style="height:7px;background:#e5e7eb;border-radius:5px;margin-top:6px;overflow:hidden;">` +
+            `<div style="height:100%;width:${pct}%;background:#0F3460;transition:width 0.3s;"></div></div>`;
+        } else {
+          statusEl.textContent = `${ph} ${imp.year || ''}…`;
+        }
+        if (!pollHandle) pollHandle = setInterval(refresh, 1200);
       } else {
         if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
         if (imp.error) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Error: ' + imp.error; }
@@ -13719,39 +13727,68 @@
       }));
     }
 
-    upBtn.addEventListener('click', async () => {
+    // Client-side queue: you can queue several years in a row and they
+    // upload one at a time, waiting for each to finish — no "otra en
+    // curso" errors, no manual waiting.
+    const uploadQueue = [];
+    let pumping = false;
+
+    function queueLabel() {
+      return uploadQueue.length
+        ? ` · ${uploadQueue.length} en cola (${uploadQueue.map(q => q.year).join(', ')})`
+        : '';
+    }
+
+    async function serverBusy() {
+      try { const r = await api('/admin/scimago/stats'); return !!(r.import || {}).running; }
+      catch { return false; }
+    }
+
+    async function pump() {
+      if (pumping) return;
+      pumping = true;
+      try {
+        while (uploadQueue.length) {
+          while (await serverBusy()) await new Promise(r => setTimeout(r, 1500));
+          const item = uploadQueue[0];
+          const fd = new FormData();
+          fd.append('year', item.year);
+          fd.append('file', item.file);
+          statusEl.style.color = '#9ca3af';
+          statusEl.textContent = `Subiendo ${item.year}…${queueLabel()}`;
+          try {
+            const res = await fetch('/prionvault/api/admin/scimago/import', { method: 'POST', body: fd, credentials: 'same-origin' });
+            if (res.status === 409) { await new Promise(r => setTimeout(r, 1500)); continue; }
+            if (!res.ok && res.status !== 202) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.detail || err.error || res.statusText);
+            }
+            uploadQueue.shift();               // accepted — drop from queue
+            // Wait for the server to finish parsing before the next one.
+            await new Promise(r => setTimeout(r, 1000));
+            while (await serverBusy()) { await refresh(); await new Promise(r => setTimeout(r, 1500)); }
+            await refresh();
+          } catch (e) {
+            uploadQueue.shift();
+            statusEl.style.color = '#b91c1c';
+            statusEl.textContent = `Error con ${item.year}: ${e.message}${queueLabel()}`;
+          }
+        }
+      } finally {
+        pumping = false;
+      }
+    }
+
+    upBtn.addEventListener('click', () => {
       const year = (yearEl.value || '').trim();
       const file = fileEl.files && fileEl.files[0];
       if (!year) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Indica el año del CSV.'; return; }
       if (!file) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Selecciona el fichero CSV.'; return; }
-      const fd = new FormData();
-      fd.append('year', year);
-      fd.append('file', file);
-      upBtn.disabled = true;
-      statusEl.style.color = '#9ca3af';
-      statusEl.textContent = 'Subiendo…';
-      try {
-        const res = await fetch('/prionvault/api/admin/scimago/import', { method: 'POST', body: fd, credentials: 'same-origin' });
-        if (res.status === 409) {
-          statusEl.style.color = '#92400e';
-          statusEl.textContent = 'Hay otra importación en curso — espera a que termine y vuelve a subirlo.';
-          setTimeout(refresh, 1000);
-          return;
-        }
-        if (!res.ok && res.status !== 202) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || err.error || res.statusText);
-        }
-        // Clear the file so the next year starts clean.
-        fileEl.value = '';
-        statusEl.textContent = 'Importación iniciada…';
-        setTimeout(refresh, 800);
-      } catch (e) {
-        statusEl.style.color = '#b91c1c';
-        statusEl.textContent = 'Error: ' + e.message;
-        upBtn.disabled = false;
-      }
-      // On success, refresh() re-enables the button once the import ends.
+      uploadQueue.push({ year, file });
+      fileEl.value = '';               // ready for the next file
+      statusEl.style.color = '#6b7280';
+      statusEl.textContent = `En cola: ${year}.${queueLabel()}`;
+      pump();
     });
   }
 

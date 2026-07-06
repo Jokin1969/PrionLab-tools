@@ -1818,7 +1818,8 @@ def api_scimago_import():
     if not f:
         return jsonify({"error": "no_file", "detail": "Adjunta el CSV de SCImago."}), 400
     try:
-        content = f.read().decode("utf-8-sig", errors="replace")
+        raw = f.read()
+        content = raw.decode("utf-8-sig", errors="replace")
     except Exception as exc:
         return jsonify({"error": "read_failed", "detail": str(exc)[:200]}), 400
 
@@ -1829,7 +1830,7 @@ def api_scimago_import():
                         "detail": "Ya hay una importación en curso. "
                                   "Espera a que termine y vuelve a intentarlo."}), 409
     threading.Thread(target=scimago.run_import, args=(content, year),
-                     daemon=True).start()
+                     kwargs={"raw": raw}, daemon=True).start()
     return jsonify({"ok": True, "status": "started", "year": year}), 202
 
 

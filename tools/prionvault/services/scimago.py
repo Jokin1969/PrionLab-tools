@@ -93,7 +93,8 @@ def _split_issns(raw: str) -> list[str]:
 # ── State (shared by upload + auto-download background jobs) ───────────────────
 
 _import_state = {"running": False, "year": None, "rows": 0,
-                 "quartiled": 0, "error": None, "phase": None}
+                 "quartiled": 0, "error": None, "phase": None,
+                 "processed": 0, "total": 0}
 _state_lock = threading.Lock()
 
 
@@ -110,7 +111,8 @@ def begin_import(year=None) -> bool:
         if _import_state["running"]:
             return False
         _import_state.update(running=True, year=year, error=None, rows=0,
-                             quartiled=0, phase="starting")
+                             quartiled=0, phase="starting",
+                             processed=0, total=0)
         return True
 
 
@@ -203,12 +205,16 @@ def run_download_years(years: list) -> None:
                    error="; ".join(errors) if errors else None)
 
 
-def run_import(content: str, year: int) -> None:
+def run_import(content: str, year: int, raw: Optional[bytes] = None) -> None:
     """Background worker for a MANUAL CSV upload. The caller must have
-    already claimed the slot via begin_import()."""
+    already claimed the slot via begin_import(). `raw` (the original CSV
+    bytes) is archived to Dropbox just like the auto-download path."""
     _set_phase(phase="parsing")
     try:
         res = import_csv(content, year)
+        if raw:
+            _set_phase(phase="backing_up")
+            _backup_to_dropbox(raw, year)
         _finish_import(rows=res["rows"], quartiled=res["quartiled"])
     except Exception as exc:
         logger.exception("scimago import failed")
@@ -320,48 +326,55 @@ def import_csv(content: str, year: int) -> dict:
             "sjr":         j["sjr_raw"],
         })
 
-    _upsert(batch)
+    _set_phase(phase="saving", processed=0, total=len(batch))
+    _upsert(batch, progress=lambda done, total: _set_phase(processed=done, total=total))
     return {"rows": len(batch), "quartiled": quartiled, "year": year}
 
 
-def _upsert(batch: list[dict]) -> None:
+def _upsert(batch: list[dict], progress=None) -> None:
     if not batch:
         return
     import json as _json
     from sqlalchemy import text as _sql
     eng = _get_engine()
-    CHUNK = 500
+    sql = _sql("""
+        INSERT INTO journal_ranking
+            (title_norm, title, issns, primary_issn, country, year,
+             best_quartile, best_category, best_percentile,
+             best_decile, categories, sjr, source, updated_at)
+        VALUES (:tn, :ti, CAST(:iss AS jsonb), :pi, :co, :yr,
+                :bq, :bc, :bp, :bd, CAST(:cats AS jsonb), :sjr,
+                'scimago', NOW())
+        ON CONFLICT (title_norm, year) DO UPDATE SET
+            title           = EXCLUDED.title,
+            issns           = EXCLUDED.issns,
+            primary_issn    = EXCLUDED.primary_issn,
+            country         = EXCLUDED.country,
+            best_quartile   = EXCLUDED.best_quartile,
+            best_category   = EXCLUDED.best_category,
+            best_percentile = EXCLUDED.best_percentile,
+            best_decile     = EXCLUDED.best_decile,
+            categories      = EXCLUDED.categories,
+            sjr             = EXCLUDED.sjr,
+            updated_at      = NOW()
+    """)
+    CHUNK = 1000
+    total = len(batch)
     with eng.begin() as conn:
-        for i in range(0, len(batch), CHUNK):
-            for r in batch[i:i + CHUNK]:
-                conn.execute(_sql("""
-                    INSERT INTO journal_ranking
-                        (title_norm, title, issns, primary_issn, country, year,
-                         best_quartile, best_category, best_percentile,
-                         best_decile, categories, sjr, source, updated_at)
-                    VALUES (:tn, :ti, CAST(:iss AS jsonb), :pi, :co, :yr,
-                            :bq, :bc, :bp, :bd, CAST(:cats AS jsonb), :sjr,
-                            'scimago', NOW())
-                    ON CONFLICT (title_norm, year) DO UPDATE SET
-                        title           = EXCLUDED.title,
-                        issns           = EXCLUDED.issns,
-                        primary_issn    = EXCLUDED.primary_issn,
-                        country         = EXCLUDED.country,
-                        best_quartile   = EXCLUDED.best_quartile,
-                        best_category   = EXCLUDED.best_category,
-                        best_percentile = EXCLUDED.best_percentile,
-                        best_decile     = EXCLUDED.best_decile,
-                        categories      = EXCLUDED.categories,
-                        sjr             = EXCLUDED.sjr,
-                        updated_at      = NOW()
-                """), {
-                    "tn": r["title_norm"], "ti": r["title"],
-                    "iss": _json.dumps(r["issns"]), "pi": r["primary_issn"],
-                    "co": r["country"], "yr": r["year"],
-                    "bq": r["best_quartile"], "bc": r["best_category"],
-                    "bp": r["best_percentile"], "bd": r["best_decile"],
-                    "cats": _json.dumps(r["categories"]), "sjr": r["sjr"],
-                })
+        for i in range(0, total, CHUNK):
+            chunk = batch[i:i + CHUNK]
+            # One executemany per chunk (SQLAlchemy pipelines the params)
+            # — far faster than a per-row execute over ~30k rows.
+            conn.execute(sql, [{
+                "tn": r["title_norm"], "ti": r["title"],
+                "iss": _json.dumps(r["issns"]), "pi": r["primary_issn"],
+                "co": r["country"], "yr": r["year"],
+                "bq": r["best_quartile"], "bc": r["best_category"],
+                "bp": r["best_percentile"], "bd": r["best_decile"],
+                "cats": _json.dumps(r["categories"]), "sjr": r["sjr"],
+            } for r in chunk])
+            if progress:
+                progress(min(i + CHUNK, total), total)
 
 
 # ── Lookup ────────────────────────────────────────────────────────────────────
