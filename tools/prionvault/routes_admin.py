@@ -1874,3 +1874,52 @@ def api_scimago_clear():
         return jsonify({"error": "bad_year"}), 400
     n = scimago.clear_year(year)
     return jsonify({"ok": True, "deleted": n, "year": year})
+
+
+# ── Manual journals (for journals SCImago doesn't cover) ─────────────────────
+
+@prionvault_bp.route("/api/admin/scimago/manual", methods=["GET"])
+@admin_required
+def api_scimago_manual_list():
+    from .services import scimago
+    return jsonify({"journals": scimago.list_manual_journals()})
+
+
+@prionvault_bp.route("/api/admin/scimago/manual", methods=["POST"])
+@admin_required
+def api_scimago_manual_add():
+    from .services import scimago
+    body = request.get_json(silent=True) or {}
+    try:
+        res = scimago.add_manual_journal(
+            journal=body.get("journal", ""),
+            issn=body.get("issn", ""),
+            country=body.get("country", ""),
+            quartile=body.get("quartile", ""),
+            decile=body.get("decile", ""),
+            percentile=body.get("percentile"),
+            category=body.get("category", ""),
+        )
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("scimago manual add failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"ok": True, **res})
+
+
+@prionvault_bp.route("/api/admin/scimago/manual/delete", methods=["POST"])
+@admin_required
+def api_scimago_manual_delete():
+    from .services import scimago
+    body = request.get_json(silent=True) or {}
+    ok = scimago.delete_manual_journal(body.get("journal", ""))
+    return jsonify({"ok": ok})
+
+
+@prionvault_bp.route("/api/admin/scimago/missing", methods=["GET"])
+@admin_required
+def api_scimago_missing():
+    """Scan the library and list journals with no ranking data yet."""
+    from .services import scimago
+    return jsonify({"journals": scimago.find_missing_journals()})

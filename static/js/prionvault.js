@@ -13649,7 +13649,7 @@
     const YEARS = [];
     for (let y = NOW_Y - 1; y >= 2012; y--) YEARS.push(y);
 
-    function open()  { modal.style.display = 'flex'; renderGrid(); refresh(); }
+    function open()  { modal.style.display = 'flex'; renderGrid(); refresh(); refreshManual(); }
     function close() { modal.style.display = 'none'; if (pollHandle) { clearInterval(pollHandle); pollHandle = null; } }
     btn.addEventListener('click', open);
     closeBtn.addEventListener('click', close);
@@ -13811,6 +13811,108 @@
       statusEl.textContent = `En cola: ${year}.${queueLabel()}`;
       pump();
     });
+
+    // ── Manual journals ───────────────────────────────────────────────
+    const mjJournal = document.getElementById('pv-mj-journal');
+    const mjIssn    = document.getElementById('pv-mj-issn');
+    const mjCountry = document.getElementById('pv-mj-country');
+    const mjQuart   = document.getElementById('pv-mj-quartile');
+    const mjDecile  = document.getElementById('pv-mj-decile');
+    const mjPct     = document.getElementById('pv-mj-percentile');
+    const mjCat     = document.getElementById('pv-mj-category');
+    const mjSave    = document.getElementById('pv-mj-save');
+    const mjStatus  = document.getElementById('pv-mj-status');
+    const mjList    = document.getElementById('pv-mj-list');
+    const scanBtn   = document.getElementById('pv-scimago-scan');
+    const missingEl = document.getElementById('pv-scimago-missing');
+
+    async function refreshManual() {
+      if (!mjList) return;
+      try {
+        const r = await api('/admin/scimago/manual');
+        const js = r.journals || [];
+        mjList.innerHTML = js.length
+          ? js.map(j => {
+              const bits = [];
+              if (j.best_quartile) bits.push(esc(j.best_quartile));
+              if (j.best_decile)   bits.push(esc(j.best_decile));
+              if (j.best_percentile != null) bits.push('P' + j.best_percentile);
+              const q = bits.join(' · ');
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #f3f4f6;border-radius:8px;margin-bottom:5px;background:#fff;">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12.5px;font-weight:600;color:#111827;">${esc(j.title)}</div>
+                  <div style="font-size:11px;color:#9ca3af;">${esc(j.primary_issn || 'ISSN: Unknown')} · ${esc(j.country || 'Unknown')}${q ? ' · ' + q : ''}${j.best_category ? ' · ' + esc(j.best_category) : ''}</div>
+                </div>
+                <button class="pv-mj-edit" data-j="${esc(j.title)}" title="Editar" style="background:none;border:none;color:#6d28d9;cursor:pointer;font-size:13px;">✏</button>
+                <button class="pv-mj-del" data-j="${esc(j.title)}" title="Eliminar" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
+              </div>`;
+            }).join('')
+          : '<div style="color:#9ca3af;font-size:12px;padding:4px;">Aún no has añadido revistas manuales.</div>';
+        mjList.querySelectorAll('.pv-mj-del').forEach(b => b.addEventListener('click', async () => {
+          if (!confirm(`¿Eliminar «${b.dataset.j}»?`)) return;
+          try { await api('/admin/scimago/manual/delete', { method: 'POST', body: JSON.stringify({ journal: b.dataset.j }) }); refreshManual(); }
+          catch (e) { alert('No se pudo eliminar: ' + e.message); }
+        }));
+        mjList.querySelectorAll('.pv-mj-edit').forEach(b => b.addEventListener('click', () => {
+          const j = js.find(x => x.title === b.dataset.j);
+          if (!j) return;
+          mjJournal.value = j.title || '';
+          mjIssn.value    = j.primary_issn || '';
+          mjCountry.value = j.country || '';
+          mjQuart.value   = j.best_quartile || '';
+          mjDecile.value  = j.best_decile || '';
+          mjPct.value     = j.best_percentile != null ? j.best_percentile : '';
+          mjCat.value     = j.best_category || '';
+          mjJournal.focus();
+        }));
+      } catch (e) {
+        mjList.innerHTML = `<div style="color:#b91c1c;font-size:12px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    if (mjSave) mjSave.addEventListener('click', async () => {
+      const journal = (mjJournal.value || '').trim();
+      if (!journal) { mjStatus.style.color = '#b91c1c'; mjStatus.textContent = 'El nombre de la revista es obligatorio.'; return; }
+      mjSave.disabled = true;
+      mjStatus.style.color = '#9ca3af'; mjStatus.textContent = 'Guardando…';
+      try {
+        await api('/admin/scimago/manual', { method: 'POST', body: JSON.stringify({
+          journal, issn: mjIssn.value.trim(), country: mjCountry.value.trim(),
+          quartile: mjQuart.value, decile: mjDecile.value,
+          percentile: mjPct.value.trim(), category: mjCat.value.trim(),
+        }) });
+        mjStatus.style.color = '#15803d'; mjStatus.textContent = '✓ Guardada';
+        mjJournal.value = mjIssn.value = mjCountry.value = mjPct.value = mjCat.value = '';
+        mjQuart.value = mjDecile.value = '';
+        refreshManual();
+        if (scanBtn && missingEl.dataset.loaded) scanBtn.click();  // refresh missing list
+        setTimeout(() => { mjStatus.textContent = ''; }, 2500);
+      } catch (e) {
+        mjStatus.style.color = '#b91c1c'; mjStatus.textContent = 'Error: ' + e.message;
+      } finally { mjSave.disabled = false; }
+    });
+
+    if (scanBtn) scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      missingEl.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Escaneando la biblioteca…</span>';
+      try {
+        const r = await api('/admin/scimago/missing');
+        const js = r.journals || [];
+        missingEl.dataset.loaded = '1';
+        missingEl.innerHTML = js.length
+          ? `<div style="font-size:12px;color:#374151;margin-bottom:5px;">${js.length} revista(s) sin datos — clic para rellenar:</div>` +
+            js.map(j => `<button class="pv-miss-j" data-j="${esc(j)}" style="display:inline-block;margin:0 5px 5px 0;padding:3px 9px;border-radius:14px;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;font-size:11.5px;cursor:pointer;">${esc(j)}</button>`).join('')
+          : '<div style="color:#15803d;font-size:12px;">✓ Todas las revistas de la biblioteca tienen datos.</div>';
+        missingEl.querySelectorAll('.pv-miss-j').forEach(b => b.addEventListener('click', () => {
+          mjJournal.value = b.dataset.j;
+          mjIssn.focus();
+          mjJournal.scrollIntoView({ block: 'nearest' });
+        }));
+      } catch (e) {
+        missingEl.innerHTML = `<div style="color:#b91c1c;font-size:12px;">Error: ${esc(e.message)}</div>`;
+      } finally { scanBtn.disabled = false; }
+    });
+
   }
 
   function wireQueryExpansion() {

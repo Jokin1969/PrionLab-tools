@@ -1187,7 +1187,12 @@ _BUILTIN_ARTICLES = {
             '- El decil/percentil se **calcula** a partir del ranking por SJR dentro de cada '
             'categoría (SCImago no trae una columna de percentil).\n'
             '- El cruce es por **nombre de revista**, así que funciona mejor con nombres '
-            'completos que con abreviaturas.'
+            'completos que con abreviaturas.\n'
+            '- **Revistas que SCImago no tiene**: en el mismo modal, despliega «📝 Revistas '
+            'manuales» para meterlas a mano (ISSN, país, cuartil, decil, percentil, categoría). '
+            'Son atemporales. El botón «🔍 Buscar revistas sin datos» escanea tu biblioteca y '
+            'te lista las que faltan para que las rellenes. Lo que dejes vacío sale como '
+            '«Unknown» en la exportación.'
         ),
         'content_en': (
             '**Export in Basque Government format**\n\n'
@@ -1233,7 +1238,11 @@ _BUILTIN_ARTICLES = {
             'after downloading the CSV, upload it in step 2.\n'
             '- The decile/percentile is **computed** from the SJR ranking within each '
             'category (SCImago has no percentile column).\n'
-            '- Matching is by **journal name**, so full names work better than abbreviations.'
+            '- Matching is by **journal name**, so full names work better than abbreviations.\n'
+            '- **Journals SCImago lacks**: in the same modal, expand "📝 Manual journals" to '
+            'add them by hand (ISSN, country, quartile, decile, percentile, category). They are '
+            'atemporal. The "🔍 Find journals without data" button scans your library and lists '
+            'the missing ones to fill. Anything left blank shows as "Unknown" in the export.'
         ),
         'page_context': 'prionvault',
         'difficulty_level': 'intermediate',

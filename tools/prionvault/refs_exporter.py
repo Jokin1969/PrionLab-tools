@@ -386,6 +386,42 @@ def _postprocess_docx(doc: "Document") -> bytes:
 #   Quality indicators:   Data base
 #                         Quartile
 
+def _sort_newest_first(articles: list[dict]) -> list[dict]:
+    """Sort by year descending (newest first); missing years go last."""
+    def _yr(a):
+        try:
+            return int(a.get('year') or 0)
+        except (TypeError, ValueError):
+            return 0
+    return sorted(articles, key=_yr, reverse=True)
+
+
+def _clean_category(cat: str) -> str:
+    """Collapse any '... (miscellaneous)' / 'Miscellaneous ...' category to
+    just 'Miscellaneous'."""
+    if cat and 'miscellaneous' in cat.lower():
+        return 'Miscellaneous'
+    return cat or ''
+
+
+def _format_quality(hit: dict) -> str:
+    """Build the quality-indicator string per the D1 rule:
+       D1  → 'Q1 · D1';  otherwise → 'Q2 · P83.4'. Category in ()."""
+    q = hit.get('quartile') or ''
+    decile = hit.get('decile')
+    pct = hit.get('percentile')
+    if decile == 'D1':
+        val = f'{q} · D1'
+    else:
+        val = q
+        if pct is not None:
+            val += f' · P{pct:.1f}'
+    cat = _clean_category(hit.get('category') or '')
+    if cat:
+        val += f' ({cat})'
+    return val
+
+
 def _govasco_vol_pages(sm: dict) -> tuple[str, str, str]:
     """Extract (volume, initial_page, final_page) from source_metadata,
     tolerating the various key shapes CrossRef / PubMed leave behind."""
@@ -444,6 +480,9 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
     def _label(para, label):
         _add_run(para, label, bold=False, color=DARK, size=Pt(11))
 
+    # Default order: newest → oldest (unless the caller pre-sorted).
+    articles = _sort_newest_first(articles)
+
     for idx, art in enumerate(articles):
         sm = art.get('source_metadata') or {}
         authors_list = _split_authors((art.get('authors') or '').strip())
@@ -455,13 +494,17 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
         p.paragraph_format.space_after = Pt(0)
         _label(p, L['authors'])
         n = len(authors_list)
+        last_name = ''
         for j, name in enumerate(authors_list):
             if j > 0:
                 _add_run(para=p, text=(L['and'] if j == n - 1 else ', '),
                          color=DARK, size=Pt(11))
             _add_run(p, name, bold=(marked_idx is not None and j == marked_idx),
                      size=Pt(11))
-        if authors_list:
+            last_name = name
+        # Final period — but not if the last author already ends with one
+        # (avoids "Castilla J..").
+        if authors_list and not last_name.rstrip().endswith('.'):
             _add_run(p, '.', color=DARK, size=Pt(11))
 
         # Title
@@ -506,30 +549,24 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
                 _add_run(pdp, '  ·  ', color=DIM, size=Pt(11))
             _label(pdp, L['year']); _add_run(pdp, str(year), size=Pt(11))
 
-        # ISSN · Publication place (from SCImago).
-        issn    = (hit or {}).get('issn') or ''
-        country = (hit or {}).get('country') or ''
+        # ISSN · Publication place (from SCImago). "Unknown" when absent.
+        issn    = (hit or {}).get('issn') or 'Unknown'
+        country = (hit or {}).get('country') or 'Unknown'
         pip = doc.add_paragraph(); pip.paragraph_format.space_after = Pt(0)
         _label(pip, L['issn']);     _add_run(pip, issn, size=Pt(11))
         _add_run(pip, '\t', size=Pt(11))
         _label(pip, L['pubplace']); _add_run(pip, country, size=Pt(11))
 
-        # Quality indicators — Data base + Quartile · Decile · Percentile
-        # (best category in parentheses), auto-filled from SCImago.
+        # Quality indicators — Data base + quality string. Rule:
+        #   D1  → "Q1 · D1"      (quartile + decile, no percentile)
+        #   !D1 → "Q2 · P83.4"   (quartile + percentile, no decile)
+        # plus the best category in parentheses ("Miscellaneous" collapsed).
         db_val = ''
         quartile_val = ''
         if hit and hit.get('quartile'):
             db_val = hit.get('database') or 'SCImago (SJR)'
-            bits = [hit['quartile']]
-            if hit.get('decile'):
-                bits.append(hit['decile'])
-            if hit.get('percentile') is not None:
-                bits.append(f'P{hit["percentile"]:.1f}')
-            quartile_val = ' · '.join(bits)
-            if hit.get('category'):
-                quartile_val += f' ({hit["category"]})'
+            quartile_val = _format_quality(hit)
 
-        doc.add_paragraph()  # blank line
         pq = doc.add_paragraph(); pq.paragraph_format.space_after = Pt(0)
         _label(pq, L['quality'])
         _add_run(pq, '\t', size=Pt(11)); _label(pq, L['database']); _add_run(pq, db_val, size=Pt(11))
@@ -557,6 +594,9 @@ def generate_refs_docx(articles: list[dict], config: dict | None = None) -> byte
     if 'blocks' not in config:
         import copy
         config['blocks'] = copy.deepcopy(_DEFAULT_BLOCKS)
+
+    # Default order: newest → oldest.
+    articles = _sort_newest_first(articles)
 
     doc = Document()
 

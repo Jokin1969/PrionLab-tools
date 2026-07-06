@@ -381,8 +381,10 @@ def _upsert(batch: list[dict], progress=None) -> None:
 
 def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
     """Return quality data for a journal (best quartile + decile +
-    percentile + ISSN + country), choosing the ranking year closest to
-    (not after) `year`. None when the journal isn't in the imported data."""
+    percentile + ISSN + country). Prefers the SCImago ranking year closest
+    to (not after) `year`; fills any gaps from a manual (atemporal) entry;
+    falls back entirely to the manual entry when SCImago has nothing.
+    None when neither source knows the journal."""
     tn = norm_title(journal or "")
     if not tn:
         return None
@@ -392,7 +394,7 @@ def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
         with eng.connect() as conn:
             rows = conn.execute(_sql("""
                 SELECT year, best_quartile, best_category, best_percentile,
-                       best_decile, primary_issn, country
+                       best_decile, primary_issn, country, source
                   FROM journal_ranking
                  WHERE title_norm = :tn
                  ORDER BY year
@@ -403,28 +405,150 @@ def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
     if not rows:
         return None
 
-    chosen = None
-    if year:
-        exact = [r for r in rows if r["year"] == year]
-        older = [r for r in rows if r["year"] <= year]
-        if exact:
-            chosen = exact[0]
-        elif older:
-            chosen = older[-1]
-    if chosen is None:
-        chosen = rows[-1]
+    sci_rows = [r for r in rows if r["source"] != "manual"]
+    manual   = next((r for r in rows if r["source"] == "manual"), None)
 
+    chosen = None
+    if sci_rows:
+        if year:
+            exact = [r for r in sci_rows if r["year"] == year]
+            older = [r for r in sci_rows if r["year"] <= year]
+            if exact:
+                chosen = exact[0]
+            elif older:
+                chosen = older[-1]
+        if chosen is None:
+            chosen = sci_rows[-1]
+
+    if chosen is None and manual is None:
+        return None
+
+    def _pick(field):
+        if chosen is not None and chosen[field] is not None:
+            return chosen[field]
+        return manual[field] if manual is not None else None
+
+    pct = _pick("best_percentile")
     return {
-        "quartile":   chosen["best_quartile"],
-        "category":   chosen["best_category"],
-        "percentile": (float(chosen["best_percentile"])
-                       if chosen["best_percentile"] is not None else None),
-        "decile":     chosen["best_decile"],
-        "issn":       chosen["primary_issn"],
-        "country":    chosen["country"],
-        "year":       chosen["year"],
-        "database":   "SCImago (SJR)",
+        "quartile":   _pick("best_quartile"),
+        "category":   _pick("best_category"),
+        "percentile": float(pct) if pct is not None else None,
+        "decile":     _pick("best_decile"),
+        "issn":       _pick("primary_issn"),
+        "country":    _pick("country"),
+        "year":       chosen["year"] if chosen is not None else None,
+        "database":   "SCImago (SJR)" if chosen is not None else "Manual",
     }
+
+
+# ── Manual journals (atemporal: for journals SCImago doesn't cover) ────────────
+
+def add_manual_journal(*, journal: str, issn: str = "", country: str = "",
+                       quartile: str = "", decile: str = "",
+                       percentile=None, category: str = "") -> dict:
+    """Insert/update a manual (atemporal, year=0) journal entry. Empty
+    fields are stored as NULL. Raises ValueError without a journal name."""
+    title = (journal or "").strip()
+    tn = norm_title(title)
+    if not tn:
+        raise ValueError("El nombre de la revista es obligatorio.")
+
+    def _norm_q(v, prefix):
+        v = (v or "").strip().upper()
+        return v if re.match(rf'^{prefix}\d+$', v) else None
+    quartile = _norm_q(quartile, 'Q')
+    decile   = _norm_q(decile, 'D')
+    try:
+        pct = float(str(percentile).replace(',', '.')) if percentile not in (None, "") else None
+    except (TypeError, ValueError):
+        pct = None
+    import json as _json
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    with eng.begin() as conn:
+        conn.execute(_sql("""
+            INSERT INTO journal_ranking
+                (title_norm, title, issns, primary_issn, country, year,
+                 best_quartile, best_category, best_percentile, best_decile,
+                 categories, sjr, source, updated_at)
+            VALUES (:tn, :ti, '[]'::jsonb, :issn, :co, 0,
+                    :bq, :bc, :bp, :bd, '[]'::jsonb, NULL, 'manual', NOW())
+            ON CONFLICT (title_norm, year) DO UPDATE SET
+                title           = EXCLUDED.title,
+                primary_issn    = EXCLUDED.primary_issn,
+                country         = EXCLUDED.country,
+                best_quartile   = EXCLUDED.best_quartile,
+                best_category   = EXCLUDED.best_category,
+                best_percentile = EXCLUDED.best_percentile,
+                best_decile     = EXCLUDED.best_decile,
+                source          = 'manual',
+                updated_at      = NOW()
+        """), {"tn": tn, "ti": title,
+                "issn": (issn or "").strip() or None,
+                "co": (country or "").strip() or None,
+                "bq": quartile, "bc": (category or "").strip() or None,
+                "bp": pct, "bd": decile})
+    return {"title_norm": tn, "title": title}
+
+
+def list_manual_journals() -> list[dict]:
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(_sql("""
+            SELECT title, primary_issn, country, best_quartile, best_decile,
+                   best_percentile, best_category
+              FROM journal_ranking
+             WHERE source = 'manual'
+             ORDER BY LOWER(title)
+        """)).mappings().all()
+    out = []
+    for r in rows:
+        d = dict(r)
+        if d.get("best_percentile") is not None:
+            d["best_percentile"] = float(d["best_percentile"])
+        out.append(d)
+    return out
+
+
+def delete_manual_journal(journal: str) -> bool:
+    tn = norm_title(journal or "")
+    if not tn:
+        return False
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    with eng.begin() as conn:
+        res = conn.execute(_sql(
+            "DELETE FROM journal_ranking WHERE title_norm = :tn AND source = 'manual'"
+        ), {"tn": tn})
+    return (res.rowcount or 0) > 0
+
+
+def find_missing_journals() -> list[str]:
+    """Distinct journals in the library with NO ranking data (neither
+    SCImago nor manual). Returns original journal names, sorted."""
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    try:
+        with eng.connect() as conn:
+            journals = [r[0] for r in conn.execute(_sql(
+                "SELECT DISTINCT journal FROM articles "
+                "WHERE journal IS NOT NULL AND journal <> ''"
+            )).all()]
+            known = {r[0] for r in conn.execute(_sql(
+                "SELECT DISTINCT title_norm FROM journal_ranking "
+                "WHERE best_quartile IS NOT NULL OR primary_issn IS NOT NULL "
+                "   OR country IS NOT NULL"
+            )).all()}
+    except Exception as exc:
+        logger.warning("scimago find_missing failed: %s", exc)
+        return []
+    missing = {}
+    for j in journals:
+        tn = norm_title(j)
+        if tn and tn not in known and tn not in missing:
+            missing[tn] = j.strip()
+    return sorted(missing.values(), key=lambda s: s.lower())
 
 
 # Backwards-compatible alias for older callers.
@@ -441,10 +565,15 @@ def stats() -> dict:
                 SELECT year, COUNT(*) AS total,
                        COUNT(*) FILTER (WHERE best_quartile IS NOT NULL) AS quartiled
                   FROM journal_ranking
+                 WHERE source <> 'manual'
                  GROUP BY year ORDER BY year DESC
             """)).mappings().all()
+            manual = conn.execute(_sql(
+                "SELECT COUNT(*) FROM journal_ranking WHERE source = 'manual'"
+            )).scalar() or 0
         return {"years": [dict(r) for r in rows],
-                "total": sum(r["total"] for r in rows)}
+                "total": sum(r["total"] for r in rows),
+                "manual": int(manual)}
     except Exception as exc:
         logger.warning("scimago stats failed: %s", exc)
         return {"years": [], "total": 0}

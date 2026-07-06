@@ -1282,6 +1282,81 @@
 
     <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Años cargados</div>
     <div id="pv-scimago-years"></div>
+
+    <!-- Manual journals (SCImago doesn't cover them) -->
+    <details style="margin-top:16px;border-top:1px solid #f3f4f6;padding-top:12px;">
+      <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#0F3460;">
+        📝 Revistas manuales (las que SCImago no tiene)
+      </summary>
+      <p style="font-size:12px;color:#6b7280;line-height:1.55;margin:8px 0 10px;">
+        Aquí metes a mano las revistas que no aparecen en SCImago. Son <strong>atemporales</strong>
+        (no dependen del año) y se guardan para el futuro. Solo el nombre es obligatorio; lo que
+        dejes vacío se mostrará como «Unknown» en la exportación.
+      </p>
+
+      <div style="margin:0 0 10px;">
+        <button id="pv-scimago-scan" type="button"
+                style="padding:6px 12px;border-radius:7px;border:1px solid #0F3460;background:#fff;color:#0F3460;
+                       font-size:12.5px;font-weight:600;cursor:pointer;">🔍 Buscar revistas sin datos en la biblioteca</button>
+        <div id="pv-scimago-missing" style="margin-top:8px;"></div>
+      </div>
+
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;">
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Nombre de la revista *</label>
+            <input id="pv-mj-journal" type="text" placeholder="p. ej. Prion"
+                   style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:130px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">ISSN</label>
+              <input id="pv-mj-issn" type="text" placeholder="0022-3069"
+                     style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            </div>
+            <div style="flex:1;min-width:130px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Lugar de publicación (país)</label>
+              <input id="pv-mj-country" type="text" placeholder="United Kingdom"
+                     style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="width:90px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Cuartil</label>
+              <select id="pv-mj-quartile" style="width:100%;padding:7px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff;">
+                <option value="">—</option><option>Q1</option><option>Q2</option><option>Q3</option><option>Q4</option>
+              </select>
+            </div>
+            <div style="width:90px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Decil</label>
+              <select id="pv-mj-decile" style="width:100%;padding:7px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff;">
+                <option value="">—</option><option>D1</option><option>D2</option><option>D3</option><option>D4</option><option>D5</option>
+                <option>D6</option><option>D7</option><option>D8</option><option>D9</option><option>D10</option>
+              </select>
+            </div>
+            <div style="width:100px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Percentil</label>
+              <input id="pv-mj-percentile" type="number" step="0.1" placeholder="85.4"
+                     style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            </div>
+            <div style="flex:1;min-width:150px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Categoría</label>
+              <input id="pv-mj-category" type="text" placeholder="Neuroscience"
+                     style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button id="pv-mj-save" type="button"
+                    style="padding:8px 16px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                           font-size:13px;font-weight:600;cursor:pointer;">Guardar revista</button>
+            <span id="pv-mj-status" style="font-size:12px;color:#9ca3af;"></span>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:11.5px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;margin:14px 0 6px;">Revistas manuales guardadas</div>
+      <div id="pv-mj-list"></div>
+    </details>
   </div>
 </div>
 
