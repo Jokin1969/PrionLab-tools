@@ -14763,6 +14763,54 @@
     }
   }
 
+  // ── Gobierno Vasco export ─────────────────────────────────────────────
+
+  async function _doExportGovasco() {
+    const ids = _visibleIds();
+    if (!ids.length) { alert('No hay referencias visibles.'); return; }
+
+    const govBtn = _el('pv-er-export-govasco');
+    const config = {
+      format:        'govasco',
+      marked_author: _markedInput.value.trim(),
+    };
+    if (govBtn) {
+      govBtn.disabled  = true;
+      govBtn.dataset.orig = govBtn.innerHTML;
+      govBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…';
+    }
+    try {
+      const res = await fetch('/prionvault/api/articles/export-refs-docx', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ article_ids: ids, config }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        alert('Error al exportar: ' + (err.error || res.statusText));
+        return;
+      }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const ts   = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      a.href     = url;
+      a.download = `Referencias_GobiernoVasco_${ts}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      _close();
+    } catch (e) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      if (govBtn) {
+        govBtn.disabled  = false;
+        govBtn.innerHTML = govBtn.dataset.orig || 'Formato Gobierno Vasco';
+      }
+    }
+  }
+
   // ── Save preset flow ──────────────────────────────────────────────────
 
   function _promptSavePreset() {
@@ -14805,6 +14853,7 @@
     _el('pv-er-cancel')           ?.addEventListener('click', _close);
     _el('pv-export-refs-backdrop')?.addEventListener('click', _close);
     _exportBtn                    ?.addEventListener('click', _doExport);
+    _el('pv-er-export-govasco')   ?.addEventListener('click', _doExportGovasco);
     _el('pv-er-save-preset')      ?.addEventListener('click', _promptSavePreset);
     _initGlobalChev();
   });

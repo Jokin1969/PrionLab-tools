@@ -356,10 +356,130 @@ def _patch_app_xml(data: bytes) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
 
+def _postprocess_docx(doc: "Document") -> bytes:
+    """Save + patch AppVersion so Word 365 opens it as a modern document."""
+    buf = io.BytesIO()
+    doc.save(buf)
+    raw = buf.getvalue()
+    in_buf  = io.BytesIO(raw)
+    out_buf = io.BytesIO()
+    with _zf.ZipFile(in_buf, 'r') as zin, \
+         _zf.ZipFile(out_buf, 'w', compression=_zf.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == 'docProps/app.xml':
+                data = _patch_app_xml(data)
+            zout.writestr(item, data)
+    return out_buf.getvalue()
+
+
+# ── Gobierno Vasco justification format ────────────────────────────────────
+#
+# The Basque Government asks for a per-publication block with fixed English
+# labels. Layout (missing fields are left blank):
+#
+#   Authors:  A, B, ... Y and Z.        (marked author in bold)
+#   Title: ...
+#   Name of journal: ...
+#   Volume: N   Initial pag: p1   Final pag: p2   Year: YYYY
+#
+#   Quality indicators:   Data base
+#                         Quartile
+
+def _govasco_vol_pages(sm: dict) -> tuple[str, str, str]:
+    """Extract (volume, initial_page, final_page) from source_metadata,
+    tolerating the various key shapes CrossRef / PubMed leave behind."""
+    def _s(v) -> str:
+        return str(v).strip() if v not in (None, '') else ''
+    volume = _s(sm.get('volume') or sm.get('vol'))
+    ini = _s(sm.get('first_page') or sm.get('page_first') or sm.get('spage'))
+    fin = _s(sm.get('last_page') or sm.get('page_last') or sm.get('epage'))
+    if not ini and not fin:
+        pages = _s(sm.get('pages') or sm.get('page'))
+        if pages:
+            parts = re.split(r'[-–—]', pages)
+            ini = parts[0].strip()
+            fin = parts[1].strip() if len(parts) > 1 else ''
+    return volume, ini, fin
+
+
+def generate_govasco_docx(articles: list[dict], marked_author: str = '') -> bytes:
+    """Return .docx bytes with each reference in the Gobierno Vasco
+    justification layout. Missing fields are rendered as empty labels."""
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+    for section in doc.sections:
+        section.top_margin = section.bottom_margin = Cm(2.5)
+        section.left_margin = section.right_margin = Cm(2.5)
+
+    def _label(para, label):
+        _add_run(para, label, bold=False, color=DARK, size=Pt(11))
+
+    for idx, art in enumerate(articles):
+        sm = art.get('source_metadata') or {}
+        authors_list = _split_authors((art.get('authors') or '').strip())
+        marked_idx = _find_marked_author_index(authors_list, marked_author) \
+            if marked_author else None
+
+        # Authors — comma separated, "and" before the last, marked bold.
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(0)
+        _label(p, 'Authors: ')
+        n = len(authors_list)
+        for j, name in enumerate(authors_list):
+            if j > 0:
+                _add_run(para=p, text=(' and ' if j == n - 1 else ', '),
+                         color=DARK, size=Pt(11))
+            _add_run(p, name, bold=(marked_idx is not None and j == marked_idx),
+                     size=Pt(11))
+        if authors_list:
+            _add_run(p, '.', color=DARK, size=Pt(11))
+
+        # Title
+        pt = doc.add_paragraph(); pt.paragraph_format.space_after = Pt(0)
+        _label(pt, 'Title: ')
+        _add_run(pt, (art.get('title') or '').strip(), size=Pt(11))
+
+        # Journal
+        pj = doc.add_paragraph(); pj.paragraph_format.space_after = Pt(0)
+        _label(pj, 'Name of journal: ')
+        _add_run(pj, (art.get('journal') or '').strip(), size=Pt(11))
+
+        # Volume / pages / year — one line, tab-separated labels.
+        volume, ini_pag, fin_pag = _govasco_vol_pages(sm)
+        year = art.get('year')
+        pv = doc.add_paragraph(); pv.paragraph_format.space_after = Pt(0)
+        _label(pv, 'Volume: ');      _add_run(pv, volume, size=Pt(11))
+        _add_run(pv, '\t', size=Pt(11)); _label(pv, 'Initial pag: '); _add_run(pv, ini_pag, size=Pt(11))
+        _add_run(pv, '\t', size=Pt(11)); _label(pv, 'Final pag: ');   _add_run(pv, fin_pag, size=Pt(11))
+        _add_run(pv, '\t', size=Pt(11)); _label(pv, 'Year: ');        _add_run(pv, str(year) if year else '', size=Pt(11))
+
+        # Quality indicators — labels only; the researcher fills the values.
+        doc.add_paragraph()  # blank line
+        pq = doc.add_paragraph(); pq.paragraph_format.space_after = Pt(0)
+        _label(pq, 'Quality indicators: ')
+        _add_run(pq, '\t', size=Pt(11)); _label(pq, 'Data base '); _add_run(pq, '', size=Pt(11))
+        pq2 = doc.add_paragraph(); pq2.paragraph_format.space_after = Pt(0)
+        _add_run(pq2, '\t\t\t', size=Pt(11)); _label(pq2, 'Quartile '); _add_run(pq2, '', size=Pt(11))
+
+        # Separator between references.
+        if idx != len(articles) - 1:
+            sep = doc.add_paragraph()
+            sep.paragraph_format.space_before = Pt(6)
+            sep.paragraph_format.space_after  = Pt(6)
+            _add_run(sep, '─' * 30, color=DIM, size=Pt(9))
+
+    return _postprocess_docx(doc)
+
+
 def generate_refs_docx(articles: list[dict], config: dict | None = None) -> bytes:
     """Return raw .docx bytes for `articles` formatted per `config`."""
     if config is None:
         config = {}
+    if config.get('format') == 'govasco':
+        return generate_govasco_docx(articles, config.get('marked_author', ''))
     if 'blocks' not in config:
         import copy
         config['blocks'] = copy.deepcopy(_DEFAULT_BLOCKS)
