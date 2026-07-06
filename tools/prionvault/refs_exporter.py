@@ -403,9 +403,32 @@ def _govasco_vol_pages(sm: dict) -> tuple[str, str, str]:
     return volume, ini, fin
 
 
-def generate_govasco_docx(articles: list[dict], marked_author: str = '') -> bytes:
+# Field labels per language. English is the Gobierno Vasco default; the
+# export modal can switch to Spanish.
+_GOVASCO_LABELS = {
+    'en': {
+        'authors': 'Authors: ', 'title': 'Title: ',
+        'journal': 'Name of journal: ', 'volume': 'Volume: ',
+        'initial': 'Initial pag: ', 'final': 'Final pag: ', 'year': 'Year: ',
+        'quality': 'Quality indicators: ', 'database': 'Data base ',
+        'quartile': 'Quartile ', 'and': ' and ',
+    },
+    'es': {
+        'authors': 'Autores: ', 'title': 'Título: ',
+        'journal': 'Nombre de la revista: ', 'volume': 'Volumen: ',
+        'initial': 'Pág. inicial: ', 'final': 'Pág. final: ', 'year': 'Año: ',
+        'quality': 'Indicadores de calidad: ', 'database': 'Base de datos ',
+        'quartile': 'Cuartil ', 'and': ' y ',
+    },
+}
+
+
+def generate_govasco_docx(articles: list[dict], marked_author: str = '',
+                          lang: str = 'en') -> bytes:
     """Return .docx bytes with each reference in the Gobierno Vasco
-    justification layout. Missing fields are rendered as empty labels."""
+    justification layout. Missing fields are rendered as empty labels.
+    `lang` ('en' default | 'es') switches the field labels."""
+    L = _GOVASCO_LABELS.get(lang, _GOVASCO_LABELS['en'])
     doc = Document()
     style = doc.styles['Normal']
     style.font.name = 'Calibri'
@@ -423,14 +446,14 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '') -> byte
         marked_idx = _find_marked_author_index(authors_list, marked_author) \
             if marked_author else None
 
-        # Authors — comma separated, "and" before the last, marked bold.
+        # Authors — comma separated, "and"/"y" before the last, marked bold.
         p = doc.add_paragraph()
         p.paragraph_format.space_after = Pt(0)
-        _label(p, 'Authors: ')
+        _label(p, L['authors'])
         n = len(authors_list)
         for j, name in enumerate(authors_list):
             if j > 0:
-                _add_run(para=p, text=(' and ' if j == n - 1 else ', '),
+                _add_run(para=p, text=(L['and'] if j == n - 1 else ', '),
                          color=DARK, size=Pt(11))
             _add_run(p, name, bold=(marked_idx is not None and j == marked_idx),
                      size=Pt(11))
@@ -439,30 +462,30 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '') -> byte
 
         # Title
         pt = doc.add_paragraph(); pt.paragraph_format.space_after = Pt(0)
-        _label(pt, 'Title: ')
+        _label(pt, L['title'])
         _add_run(pt, (art.get('title') or '').strip(), size=Pt(11))
 
         # Journal
         pj = doc.add_paragraph(); pj.paragraph_format.space_after = Pt(0)
-        _label(pj, 'Name of journal: ')
+        _label(pj, L['journal'])
         _add_run(pj, (art.get('journal') or '').strip(), size=Pt(11))
 
         # Volume / pages / year — one line, tab-separated labels.
         volume, ini_pag, fin_pag = _govasco_vol_pages(sm)
         year = art.get('year')
         pv = doc.add_paragraph(); pv.paragraph_format.space_after = Pt(0)
-        _label(pv, 'Volume: ');      _add_run(pv, volume, size=Pt(11))
-        _add_run(pv, '\t', size=Pt(11)); _label(pv, 'Initial pag: '); _add_run(pv, ini_pag, size=Pt(11))
-        _add_run(pv, '\t', size=Pt(11)); _label(pv, 'Final pag: ');   _add_run(pv, fin_pag, size=Pt(11))
-        _add_run(pv, '\t', size=Pt(11)); _label(pv, 'Year: ');        _add_run(pv, str(year) if year else '', size=Pt(11))
+        _label(pv, L['volume']);      _add_run(pv, volume, size=Pt(11))
+        _add_run(pv, '\t', size=Pt(11)); _label(pv, L['initial']); _add_run(pv, ini_pag, size=Pt(11))
+        _add_run(pv, '\t', size=Pt(11)); _label(pv, L['final']);   _add_run(pv, fin_pag, size=Pt(11))
+        _add_run(pv, '\t', size=Pt(11)); _label(pv, L['year']);    _add_run(pv, str(year) if year else '', size=Pt(11))
 
         # Quality indicators — labels only; the researcher fills the values.
         doc.add_paragraph()  # blank line
         pq = doc.add_paragraph(); pq.paragraph_format.space_after = Pt(0)
-        _label(pq, 'Quality indicators: ')
-        _add_run(pq, '\t', size=Pt(11)); _label(pq, 'Data base '); _add_run(pq, '', size=Pt(11))
+        _label(pq, L['quality'])
+        _add_run(pq, '\t', size=Pt(11)); _label(pq, L['database']); _add_run(pq, '', size=Pt(11))
         pq2 = doc.add_paragraph(); pq2.paragraph_format.space_after = Pt(0)
-        _add_run(pq2, '\t\t\t', size=Pt(11)); _label(pq2, 'Quartile '); _add_run(pq2, '', size=Pt(11))
+        _add_run(pq2, '\t\t\t', size=Pt(11)); _label(pq2, L['quartile']); _add_run(pq2, '', size=Pt(11))
 
         # Separator between references.
         if idx != len(articles) - 1:
@@ -479,7 +502,9 @@ def generate_refs_docx(articles: list[dict], config: dict | None = None) -> byte
     if config is None:
         config = {}
     if config.get('format') == 'govasco':
-        return generate_govasco_docx(articles, config.get('marked_author', ''))
+        return generate_govasco_docx(
+            articles, config.get('marked_author', ''),
+            lang=config.get('lang', 'en'))
     if 'blocks' not in config:
         import copy
         config['blocks'] = copy.deepcopy(_DEFAULT_BLOCKS)

@@ -14770,9 +14770,11 @@
     if (!ids.length) { alert('No hay referencias visibles.'); return; }
 
     const govBtn = _el('pv-er-export-govasco');
+    const esToggle = _el('pv-er-govasco-es');
     const config = {
       format:        'govasco',
       marked_author: _markedInput.value.trim(),
+      lang:          (esToggle && esToggle.checked) ? 'es' : 'en',
     };
     if (govBtn) {
       govBtn.disabled  = true;
