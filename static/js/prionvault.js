@@ -6382,6 +6382,7 @@
     let _dirLoaded = false; // users datalist loaded
     let _wired = false;
     const LAST_KEY = 'pv-share-last-email';
+    const COMMENT_KEY = 'pv-share-last-comment';
     const $ = id => document.getElementById(id);
 
     function wireOnce() {
@@ -6409,14 +6410,21 @@
     }
 
     async function loadDirectory() {
+      const sel = $('pv-email-user-select');
+      if (sel && !sel.dataset.wired) {
+        sel.dataset.wired = '1';
+        sel.addEventListener('change', () => {
+          if (sel.value) { $('pv-email-to').value = sel.value; }
+        });
+      }
       if (_dirLoaded) return;
       _dirLoaded = true;
       try {
         const r = await api('/users-directory');
-        const dl = $('pv-email-users');
-        if (dl) dl.innerHTML = (r.users || []).map(u =>
-          `<option value="${esc(u.email)}">${esc(u.name ? u.name + ' — ' + u.email : u.email)}</option>`
-        ).join('');
+        const users = r.users || [];
+        if (sel) sel.innerHTML =
+          '<option value="">— Elegir de la lista de usuarios —</option>' +
+          users.map(u => `<option value="${esc(u.email)}">${esc(u.name ? u.name + ' — ' + u.email : u.email)}</option>`).join('');
       } catch (e) { /* silent */ }
     }
 
@@ -6456,11 +6464,14 @@
         (meta ? `<div style="font-weight:400;color:#6b7280;font-size:12px;">${esc(meta)}</div>` : '');
       $('pv-email-status').textContent = '';
       $('pv-email-hint').textContent = '';
-      // Reset optional fields each open.
+      const sel = $('pv-email-user-select');
+      if (sel) sel.value = '';
+      // Prefill the comment with the last one used, if any.
+      const lastComment = (() => { try { return localStorage.getItem(COMMENT_KEY) || ''; } catch (e) { return ''; } })();
       const ctog = $('pv-email-comment-toggle');
-      if (ctog) ctog.checked = false;
       const cta = $('pv-email-comment');
-      if (cta) { cta.value = ''; cta.style.display = 'none'; }
+      if (cta) { cta.value = lastComment; cta.style.display = lastComment ? 'block' : 'none'; }
+      if (ctog) ctog.checked = !!lastComment;
       const incS = $('pv-email-include-summary');
       if (incS) incS.checked = true;
       modal.style.display = 'flex';
@@ -6489,15 +6500,22 @@
       btn.disabled = true;
       status.style.color = '#9ca3af';
       status.textContent = 'Enviando…';
+      const opts = currentOptions();
       try {
         const r = await api(`/articles/${_article.id}/email`, {
           method: 'POST',
-          body: JSON.stringify({ to, ...currentOptions() }),
+          body: JSON.stringify({ to, ...opts }),
         });
-        try { localStorage.setItem(LAST_KEY, to); } catch (e) { /* ignore */ }
+        try {
+          localStorage.setItem(LAST_KEY, to);
+          if (opts.comment) localStorage.setItem(COMMENT_KEY, opts.comment);
+          else localStorage.removeItem(COMMENT_KEY);
+        } catch (e) { /* ignore */ }
         status.style.color = '#15803d';
-        status.textContent = '✓ Enviado' + (r.attached_pdf ? ' (con PDF adjunto)' : '');
-        setTimeout(close, 1200);
+        const pdfNote = r.attached_pdf ? ' (con PDF adjunto)'
+          : (r.has_pdf ? ' (sin PDF: no disponible o demasiado grande)' : ' (este artículo no tiene PDF)');
+        status.textContent = '✓ Enviado' + pdfNote;
+        setTimeout(close, 1800);
       } catch (e) {
         status.style.color = '#b91c1c';
         status.textContent = 'Error: ' + e.message;

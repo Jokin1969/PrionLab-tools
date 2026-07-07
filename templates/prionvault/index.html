@@ -1203,11 +1203,15 @@
     <div id="pv-email-article" style="font-size:12.5px;font-weight:600;color:#111827;
          margin:0 0 14px;line-height:1.4;"></div>
 
+    <label style="font-size:11.5px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Elegir usuario</label>
+    <select id="pv-email-user-select"
+            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13.5px;
+                   background:#fff;color:#374151;margin-bottom:8px;">
+      <option value="">— Elegir de la lista de usuarios —</option>
+    </select>
     <label style="font-size:11.5px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Enviar a</label>
-    <input id="pv-email-to" type="email" list="pv-email-users" placeholder="nombre@ejemplo.com"
-           autocomplete="off"
+    <input id="pv-email-to" type="email" placeholder="nombre@ejemplo.com" autocomplete="off"
            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13.5px;">
-    <datalist id="pv-email-users"></datalist>
     <div id="pv-email-hint" style="font-size:11.5px;color:#9ca3af;margin-top:5px;"></div>
 
     <!-- Optional intro comment -->
@@ -1247,7 +1251,8 @@
 <!-- ── Email preview modal ───────────────────────────────────────────── -->
 <div id="pv-email-preview-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
-  <div class="pv-modal-inner" style="max-width:680px;width:94vw;padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:90vh;">
+  <div class="pv-modal-inner" style="max-width:900px;width:96vw;padding:0;overflow:hidden;
+              display:flex;flex-direction:column;height:84vh;max-height:84vh;margin-top:3vh;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
       <span style="font-size:14px;font-weight:700;color:#111827;"><i class="fas fa-eye" style="margin-right:7px;color:#0F3460;"></i>Previsualización del email</span>
       <button id="pv-email-preview-close" aria-label="Close"
@@ -1255,7 +1260,7 @@
                      font-size:17px;cursor:pointer;color:#6b7280;line-height:1;">×</button>
     </div>
     <iframe id="pv-email-preview-frame" title="Previsualización"
-            style="border:none;width:100%;flex:1;min-height:420px;background:#f3f4f6;"></iframe>
+            style="border:none;width:100%;flex:1;min-height:0;background:#f3f4f6;"></iframe>
   </div>
 </div>
 

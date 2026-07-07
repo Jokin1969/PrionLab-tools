@@ -242,4 +242,8 @@ def send_article_email(article_id: str, to: str,
 
     if not ok:
         raise RuntimeError("El envío del email falló (revisa el servidor SMTP).")
-    return {"ok": True, "attached_pdf": bool(attachments)}
+    return {
+        "ok": True,
+        "attached_pdf": bool(attachments),
+        "has_pdf": bool(a.get("dropbox_path") or a.get("pdf_md5")),
+    }

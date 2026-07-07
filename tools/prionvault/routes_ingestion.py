@@ -1898,33 +1898,20 @@ def api_me():
 @prionvault_bp.route("/api/users-directory", methods=["GET"])
 @login_required
 def api_users_directory():
-    """List {name, email} for every user (for the share-email dropdown)."""
+    """List {name, email} for every user (for the share-email dropdown).
+    Uses the same source as the admin panel (core.users)."""
     out = []
     try:
-        s = _session()
-        try:
-            cols = {r[0] for r in s.execute(sql_text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = 'users'"
-            )).all()}
-            if "email" not in cols:
-                return jsonify({"users": []})
-            name_col = next((c for c in ("full_name", "name", "username")
-                             if c in cols), None)
-            sel = "email" + (f", {name_col} AS uname" if name_col else "")
-            rows = s.execute(sql_text(
-                f"SELECT {sel} FROM users "
-                f"WHERE email IS NOT NULL AND email <> '' "
-                f"ORDER BY email"
-            )).mappings().all()
-            seen = set()
-            for r in rows:
-                em = (r.get("email") or "").strip()
-                if em and em.lower() not in seen:
-                    seen.add(em.lower())
-                    out.append({"name": r.get("uname") or "", "email": em})
-        finally:
-            s.close()
+        from core.users import load_users
+        seen = set()
+        for u in load_users():
+            em = (u.get("email") or "").strip()
+            if em and em.lower() not in seen:
+                seen.add(em.lower())
+                out.append({"name": (u.get("full_name")
+                                     or u.get("username") or "").strip(),
+                            "email": em})
+        out.sort(key=lambda x: (x["name"] or x["email"]).lower())
     except Exception as exc:
         logger.warning("users-directory failed: %s", exc)
     return jsonify({"users": out})
