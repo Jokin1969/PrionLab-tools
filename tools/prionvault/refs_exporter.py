@@ -508,6 +508,17 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
     # Default order: newest → oldest (unless the caller pre-sorted).
     articles = _sort_newest_first(articles)
 
+    # Prefetch every journal's SCImago rows in ONE query so the loop below
+    # does no per-article DB round-trips (those pile up and can trip the
+    # gunicorn worker timeout on large exports).
+    _sci_index = {}
+    try:
+        from .services import scimago
+        _sci_index = scimago.build_lookup_index(
+            [a.get('journal') or '' for a in articles])
+    except Exception:
+        _sci_index = {}
+
     for idx, art in enumerate(articles):
         sm = art.get('source_metadata') or {}
         authors_list = _split_authors((art.get('authors') or '').strip())
@@ -545,11 +556,12 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
 
         year = art.get('year')
 
-        # SCImago lookup: ISSN, country and quality indicators.
+        # SCImago lookup: ISSN, country and quality indicators — resolved
+        # against the prefetched index (no DB round-trip per article).
         hit = None
         try:
             from .services import scimago
-            hit = scimago.lookup(art.get('journal') or '', year)
+            hit = scimago.lookup_indexed(_sci_index, art.get('journal') or '', year)
         except Exception:
             hit = None
 

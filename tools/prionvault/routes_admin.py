@@ -1681,6 +1681,16 @@ def api_export_refs_docx():
     if not article_ids:
         return jsonify({'error': 'article_ids required'}), 400
 
+    # Hard cap: a single .docx over thousands of refs would blow past the
+    # gunicorn worker timeout. Reject early with a clear message so the user
+    # narrows the selection instead of the worker being killed mid-request.
+    _MAX_REFS = 2000
+    if len(article_ids) > _MAX_REFS:
+        return jsonify({
+            'error': f'Demasiadas referencias ({len(article_ids)}). El máximo por '
+                     f'documento es {_MAX_REFS}. Filtra o selecciona antes de exportar.'
+        }), 413
+
     s = _session()
     try:
         # Fetch in bulk then reorder to match the requested order

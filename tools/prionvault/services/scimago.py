@@ -406,29 +406,18 @@ def _alias_norms(tn: str) -> list[str]:
     return norms
 
 
-def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
-    """Return quality data for a journal (best quartile + decile +
-    percentile + ISSN + country). Prefers the SCImago ranking year closest
-    to (not after) `year`; fills any gaps from a manual (atemporal) entry;
-    falls back entirely to the manual entry when SCImago has nothing.
-    None when neither source knows the journal."""
-    tn = norm_title(journal or "")
-    if not tn:
-        return None
-    from sqlalchemy import text as _sql
-    eng = _get_engine()
-    try:
-        with eng.connect() as conn:
-            rows = conn.execute(_sql("""
-                SELECT year, best_quartile, best_category, best_percentile,
-                       best_decile, primary_issn, country, source
-                  FROM journal_ranking
-                 WHERE title_norm = ANY(:tns)
-                 ORDER BY year
-            """), {"tns": _alias_norms(tn)}).mappings().all()
-    except Exception as exc:
-        logger.warning("scimago lookup failed for %r: %s", journal, exc)
-        return None
+_LOOKUP_SQL = """
+    SELECT title_norm, year, best_quartile, best_category, best_percentile,
+           best_decile, primary_issn, country, source
+      FROM journal_ranking
+     WHERE title_norm = ANY(:tns)
+     ORDER BY year
+"""
+
+
+def _select_best(rows: list, year: Optional[int]) -> Optional[dict]:
+    """Apply the manual-priority + closest-year rules to a journal's candidate
+    rows (must be ascending by year) and return the result dict, or None."""
     if not rows:
         return None
 
@@ -480,6 +469,68 @@ def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
         "year":       primary["year"] if primary is not None else None,
         "database":   "SCImago (SJR)",
     }
+
+
+def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
+    """Return quality data for a journal (best quartile + decile +
+    percentile + ISSN + country). Prefers the SCImago ranking year closest
+    to (not after) `year`; fills any gaps from a manual (atemporal) entry;
+    falls back entirely to the manual entry when SCImago has nothing.
+    None when neither source knows the journal."""
+    tn = norm_title(journal or "")
+    if not tn:
+        return None
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    try:
+        with eng.connect() as conn:
+            rows = conn.execute(_sql(_LOOKUP_SQL),
+                                {"tns": _alias_norms(tn)}).mappings().all()
+    except Exception as exc:
+        logger.warning("scimago lookup failed for %r: %s", journal, exc)
+        return None
+    return _select_best(list(rows), year)
+
+
+def build_lookup_index(journals) -> dict:
+    """Prefetch ranking rows for many journals in ONE query and return a
+    {title_norm: [rows sorted by year]} index. Use with `lookup_indexed` to
+    resolve a whole batch without a per-journal round-trip (avoids worker
+    timeouts on large exports)."""
+    norms: set = set()
+    for j in journals:
+        tn = norm_title(j or "")
+        if tn:
+            norms.update(_alias_norms(tn))
+    if not norms:
+        return {}
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    index: dict = {}
+    try:
+        with eng.connect() as conn:
+            rows = conn.execute(_sql(_LOOKUP_SQL),
+                                {"tns": sorted(norms)}).mappings().all()
+    except Exception as exc:
+        logger.warning("scimago build_lookup_index failed: %s", exc)
+        return {}
+    for r in rows:                       # already ORDER BY year
+        index.setdefault(r["title_norm"], []).append(r)
+    return index
+
+
+def lookup_indexed(index: dict, journal: str,
+                   year: Optional[int] = None) -> Optional[dict]:
+    """Like `lookup`, but resolves against a prefetched `build_lookup_index`
+    result instead of hitting the DB."""
+    tn = norm_title(journal or "")
+    if not tn:
+        return None
+    rows: list = []
+    for n in _alias_norms(tn):
+        rows.extend(index.get(n, []))
+    rows.sort(key=lambda r: r["year"])
+    return _select_best(rows, year)
 
 
 # ── Manual journals (atemporal: for journals SCImago doesn't cover) ────────────
