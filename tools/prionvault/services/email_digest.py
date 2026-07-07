@@ -607,7 +607,10 @@ def _collect_pdf_attachments(
             continue
 
         try:
-            meta, resp = dbx.files_download(path, timeout=_PDF_ATTACH_TIMEOUT)
+            # NOTE: the Dropbox SDK's files_download() takes NO per-call
+            # timeout kwarg (timeout is set on the client) — passing one
+            # raised a TypeError that silently killed every attachment.
+            meta, resp = dbx.files_download(path)
             declared = getattr(meta, "size", None)
             if declared and declared > _PDF_ATTACH_MAX_BYTES:
                 logger.info(

@@ -93,23 +93,33 @@ def build_share_html(a: dict, base_url: str, sender_name: str = "",
           </div>
         </td></tr>"""
 
-    def _row(label, value):
-        if not value:
+    def _row(label, value, html_value=None):
+        if not value and not html_value:
             return ""
+        cell = html_value if html_value is not None else _html.escape(str(value))
         return (f'<tr><td style="padding:3px 12px 3px 0;color:#6b7280;'
                 f'font-size:12.5px;white-space:nowrap;vertical-align:top;">{label}</td>'
-                f'<td style="padding:3px 0;color:#111827;font-size:12.5px;">'
-                f'{_html.escape(str(value))}</td></tr>')
+                f'<td style="padding:3px 0;color:#111827;font-size:12.5px;">{cell}</td></tr>')
 
-    doi = a.get("doi")
-    pmid = a.get("pubmed_id")
+    doi = (a.get("doi") or "").strip()
+    pmid = (a.get("pubmed_id") or "").strip()
+    doi_link = ""
+    if doi:
+        url = doi if doi.startswith("http") else f"https://doi.org/{doi}"
+        doi_link = (f'<a href="{_html.escape(url)}" style="color:#0F3460;text-decoration:none;">'
+                    f'{_html.escape(doi)} ↗</a>')
+    pmid_link = ""
+    if pmid:
+        pmid_link = (f'<a href="https://pubmed.ncbi.nlm.nih.gov/{_html.escape(pmid)}/" '
+                     f'style="color:#0F3460;text-decoration:none;">PMID {_html.escape(pmid)} ↗</a>')
+
     meta_rows = "".join([
         _row("Título", a.get("title")),
         _row("Autores", _fmt_authors(a.get("authors"))),
         _row("Revista", a.get("journal")),
         _row("Año", a.get("year")),
-        _row("DOI", doi),
-        _row("PubMed", pmid),
+        _row("DOI", doi, html_value=doi_link if doi else None),
+        _row("PubMed", pmid, html_value=pmid_link if pmid else None),
     ])
 
     summary_block = ""
