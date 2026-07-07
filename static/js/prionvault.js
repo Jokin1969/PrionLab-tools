@@ -41,6 +41,7 @@
     extraction: null,    // null = all, 'extracted' | 'pending' | 'failed'
     isFavorite: null,    // null = all, true = only favorites, false = non-favorites
     isRead: null,        // null = all, true = personally read, false = unread
+    isJc: null,          // null = all, true = only Journal Club, false = non-JC
     collectionId: null,        // null = no collection filter, else UUID
     collectionGroup: null,     // string when filtering by group
     collectionSubgroup: null,  // string when also restricted to subgroup
@@ -2507,6 +2508,7 @@
     if (state.extraction)          params.set('extraction_status', state.extraction);
     if (state.isFavorite !== null) params.set('is_favorite', state.isFavorite ? '1' : '0');
     if (state.isRead     !== null) params.set('is_read',     state.isRead     ? '1' : '0');
+    if (state.isJc       !== null) params.set('is_jc',       state.isJc       ? '1' : '0');
     if (state.collectionId)        params.set('collection', state.collectionId);
     if (state.collectionGroup)     params.set('collection_group', state.collectionGroup);
     if (state.collectionSubgroup)  params.set('collection_subgroup', state.collectionSubgroup);
@@ -2917,9 +2919,10 @@
 
     const favColor  = a.is_favorite ? '#e11d48' : '#d1d5db';
     const readColor = a.is_read     ? '#15803d' : '#d1d5db';
+    const jcColor   = a.is_jc       ? '#7c3aed' : '#d1d5db';
 
     const marksCell = `
-      <td style="padding:8px 8px;vertical-align:middle;text-align:center;width:114px;white-space:nowrap;">
+      <td style="padding:8px 8px;vertical-align:middle;text-align:center;width:134px;white-space:nowrap;">
         <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
           <button class="pv-flag-btn"
                   data-active="${a.is_flagged ? '1' : '0'}"
@@ -2936,6 +2939,11 @@
                   style="background:none;border:none;padding:0;font-size:15px;line-height:1;
                          cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${milestoneColor};">${a.is_milestone ? '★' : '☆'}</button>
           <span style="width:1px;height:14px;background:#e5e7eb;"></span>
+          <button class="pv-jc-btn"
+                  data-active="${a.is_jc ? '1' : '0'}"
+                  title="${a.is_jc ? 'Quitar de mi Journal Club' : 'Marcar para Journal Club'}"
+                  style="background:none;border:none;padding:0;font-size:13px;line-height:1;cursor:pointer;
+                         color:${jcColor};"><i class="fas fa-book-open"></i></button>
           <button class="pv-favorite-btn"
                   data-active="${a.is_favorite ? '1' : '0'}"
                   title="${a.is_favorite ? 'Quitar de mis favoritos' : 'Añadir a mis favoritos'}"
@@ -3142,6 +3150,24 @@
           body: JSON.stringify({ value: next }),
         });
         a.is_favorite = !!r.is_favorite;
+        replaceRow(row, a);
+      } catch (err) {
+        btn.disabled = false;
+        alert('Error: ' + err.message);
+      }
+    });
+
+    row.querySelector('.pv-jc-btn').addEventListener('click', async e => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      const next = btn.dataset.active !== '1';
+      btn.disabled = true;
+      try {
+        const r = await api(`/articles/${a.id}/jc`, {
+          method: 'POST',
+          body: JSON.stringify({ value: next }),
+        });
+        a.is_jc = !!r.is_jc;
         replaceRow(row, a);
       } catch (err) {
         btn.disabled = false;
@@ -3592,6 +3618,16 @@
                            : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
             <span style="font-size:13px;font-weight:800;line-height:1;color:${a.is_read ? '#15803d' : '#9ca3af'};">✓</span>
             ${a.is_read ? 'Leído por mí' : 'Marcar como leído'}
+          </button>
+          <button id="pv-detail-jc" type="button"
+                  data-active="${a.is_jc ? '1' : '0'}"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;
+                         ${a.is_jc
+                           ? 'background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;'
+                           : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
+            <span style="font-size:12px;line-height:1;color:${a.is_jc ? '#7c3aed' : '#9ca3af'};"><i class="fas fa-book-open"></i></span>
+            ${a.is_jc ? 'En mi Journal Club' : 'Marcar para Journal Club'}
           </button>
         </div>`;
 
@@ -7056,6 +7092,13 @@
       readBtn.outerHTML = fresh;
       wirePersonalState(a);
     }));
+    const jcBtn = document.getElementById('pv-detail-jc');
+    if (jcBtn) jcBtn.addEventListener('click', () => toggle(jcBtn, 'jc', 'is_jc', r => {
+      a.is_jc = !!r.is_jc;
+      const fresh = renderPersonalChip(a, 'jc');
+      jcBtn.outerHTML = fresh;
+      wirePersonalState(a);
+    }));
   }
 
   function renderPersonalChip(a, kind) {
@@ -7069,6 +7112,18 @@
                            : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
                 <span style="font-size:14px;line-height:1;color:${a.is_favorite ? '#e11d48' : '#9ca3af'};">${a.is_favorite ? '♥' : '♡'}</span>
                 ${a.is_favorite ? 'En favoritos' : 'Añadir a favoritos'}
+              </button>`;
+    }
+    if (kind === 'jc') {
+      return `<button id="pv-detail-jc" type="button"
+                  data-active="${a.is_jc ? '1' : '0'}"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;
+                         ${a.is_jc
+                           ? 'background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;'
+                           : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
+                <span style="font-size:12px;line-height:1;color:${a.is_jc ? '#7c3aed' : '#9ca3af'};"><i class="fas fa-book-open"></i></span>
+                ${a.is_jc ? 'En mi Journal Club' : 'Marcar para Journal Club'}
               </button>`;
     }
     return `<button id="pv-detail-read" type="button"
@@ -7317,6 +7372,9 @@
     wireTriStateButton('btn-filter-read', 'isRead', {
       null: '✓ Leídos: todos', true: '✓ Leídos por mí', false: '✓ No leídos',
     });
+    wireTriStateButton('btn-filter-jc', 'isJc', {
+      null: '📖 Journal Club: todos', true: '📖 Mi Journal Club', false: '📖 Fuera de JC',
+    });
 
     document.getElementById('filter-color').addEventListener('change', e => {
       state.colorLabel = e.target.value || null;
@@ -7522,7 +7580,7 @@
         q: '', yearMin: null, yearMax: null, journal: '', authors: '',
         tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
         isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
-        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
+        isFavorite: null, isRead: null, isJc: null, collectionId: null, collectionGroup: null,
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '',
         _healthExtra: null, page: 1,
@@ -9976,7 +10034,7 @@
         q: '', yearMin: null, yearMax: null, journal: '', authors: '',
         tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
         isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
-        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
+        isFavorite: null, isRead: null, isJc: null, collectionId: null, collectionGroup: null,
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', page: 1,
         _healthExtra: { has_summary_ai: hasSummaryVal },
@@ -14695,7 +14753,7 @@
         q: '', yearMin: null, yearMax: null, journal: '', authors: '',
         tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
         isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
-        isFavorite: null, isRead: null, collectionId: null, collectionGroup: null,
+        isFavorite: null, isRead: null, isJc: null, collectionId: null, collectionGroup: null,
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', page: 1,
       });

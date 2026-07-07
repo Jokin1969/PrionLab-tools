@@ -356,6 +356,7 @@ class PrionVaultUserState(Base):
                          ForeignKey("articles.id", ondelete="CASCADE"),
                          primary_key=True)
     is_favorite = Column(Boolean, default=False, nullable=False)
+    is_jc       = Column(Boolean, default=False, nullable=False)
     read_at     = Column(DateTime(timezone=True))
     created_at  = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at  = Column(DateTime(timezone=True), default=datetime.utcnow,

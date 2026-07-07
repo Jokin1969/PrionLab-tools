@@ -119,6 +119,8 @@ def api_list_articles():
     is_favorite = True if is_favorite_raw == "1" else (False if is_favorite_raw == "0" else None)
     is_read_raw = request.args.get("is_read")
     is_read = True if is_read_raw == "1" else (False if is_read_raw == "0" else None)
+    is_jc_raw = request.args.get("is_jc")
+    is_jc = True if is_jc_raw == "1" else (False if is_jc_raw == "0" else None)
     has_pdf_raw = request.args.get("has_pdf")
     has_pdf = True if has_pdf_raw == "true" else (False if has_pdf_raw == "false" else None)
     has_doi_raw = request.args.get("has_doi")
@@ -181,6 +183,7 @@ def api_list_articles():
                 "is_flagged": is_flagged, "is_milestone": is_milestone,
                 "in_prionread": in_prionread,
                 "is_favorite": is_favorite, "is_read": is_read,
+                "is_jc": is_jc,
             })
             q          = merged.get("q") or ""
             authors_q  = merged.get("authors") or ""
@@ -197,6 +200,7 @@ def api_list_articles():
             in_prionread = merged.get("in_prionread")
             is_favorite  = merged.get("is_favorite")
             is_read      = merged.get("is_read")
+            is_jc        = merged.get("is_jc")
             collection_id = None   # do NOT join the link table
 
     s = _session()
@@ -207,6 +211,7 @@ def api_list_articles():
             is_flagged, is_milestone, color_label,
             priority_eq, extraction, is_favorite, is_read,
             sort, page, page_size,
+            is_jc=is_jc,
             search_fields=search_fields,
             tag_id=tag_id, has_summary=has_summary, in_prionread=in_prionread,
             collection_id=collection_id,
@@ -393,6 +398,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         is_favorite, is_read,
                         sort, page, page_size,
                         *, search_fields=None,
+                        is_jc=None,
                         tag_id=None, has_summary=None, in_prionread=None,
                         collection_id=None,
                         collection_group=None, collection_subgroup=None,
@@ -680,6 +686,20 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # NOTE: params["_viewer_uid"] is set unconditionally further down
     # (the _pus LEFT JOIN needs it on EVERY query). This block only
     # adds the is_favorite / is_read conditions when requested.
+    if _viewer_uid and is_jc is not None:
+        if is_jc is True:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM prionvault_user_state s "
+                "WHERE s.article_id = articles.id "
+                "AND s.user_id = :_viewer_uid AND s.is_jc IS TRUE)"
+            )
+        else:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM prionvault_user_state s "
+                "WHERE s.article_id = articles.id "
+                "AND s.user_id = :_viewer_uid AND s.is_jc IS TRUE)"
+            )
+
     if _viewer_uid and (is_favorite is not None or is_read is not None):
         if is_favorite is True:
             conditions.append(
@@ -909,6 +929,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         models.PrionVaultUserState.article_id,
                         models.PrionVaultUserState.is_favorite,
                         models.PrionVaultUserState.read_at,
+                        models.PrionVaultUserState.is_jc,
                     ).filter(
                         models.PrionVaultUserState.article_id.in_(item_ids),
                         models.PrionVaultUserState.user_id == viewer_id,
@@ -916,7 +937,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                     user_states = {
                         r[0]: {"is_favorite": bool(r[1]),
                                "is_read": r[2] is not None,
-                               "read_at": r[2].isoformat() if r[2] else None}
+                               "read_at": r[2].isoformat() if r[2] else None,
+                               "is_jc": bool(r[3])}
                         for r in state_rows
                     }
                     # Per-user note stubs (id + colour slot) so each row
@@ -982,6 +1004,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "my_rating":      my_ratings.get(aid),
             "is_favorite":    (user_states.get(aid) or {}).get("is_favorite", False),
             "is_read":        (user_states.get(aid) or {}).get("is_read", False),
+            "is_jc":          (user_states.get(aid) or {}).get("is_jc", False),
             "read_at":        (user_states.get(aid) or {}).get("read_at"),
             "notes":          note_stubs.get(aid_str, []),
             "prionpacks":     [{"id": p, "title": pp_titles.get(p, p)} for p in pp_ids],
@@ -1789,6 +1812,7 @@ def _get_or_create_state(s, user_id, article_id):
 def _state_to_dict(state):
     return {
         "is_favorite": bool(state.is_favorite),
+        "is_jc":       bool(state.is_jc),
         "read_at":     state.read_at.isoformat() if state.read_at else None,
         "is_read":     state.read_at is not None,
     }
@@ -1815,6 +1839,33 @@ def api_set_favorite(aid):
     except Exception as exc:
         s.rollback()
         logger.exception("api_set_favorite failed")
+        return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/jc", methods=["POST"])
+@login_required
+def api_set_jc(aid):
+    """Set the Journal Club mark for the viewer on this article.
+    Body: {value: bool}."""
+    user_id = _viewer_id()
+    if not user_id:
+        return jsonify({"error": "not authenticated"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    value = bool(data.get("value", True))
+    s = _session()
+    try:
+        state = _get_or_create_state(s, user_id, aid)
+        if state is None:
+            return jsonify({"error": "article not found"}), 404
+        state.is_jc = value
+        state.updated_at = datetime.utcnow()
+        s.commit()
+        return jsonify(_state_to_dict(state))
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_set_jc failed")
         return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
     finally:
         s.close()
@@ -2310,12 +2361,14 @@ def api_articles_bulk_user_state():
 
     set_fav  = "is_favorite" in data
     set_read = "is_read" in data
-    if not (set_fav or set_read):
+    set_jc   = "is_jc" in data
+    if not (set_fav or set_read or set_jc):
         return jsonify({"error": "no_fields",
-                        "detail": "Indica is_favorite y/o is_read."}), 400
+                        "detail": "Indica is_favorite, is_read y/o is_jc."}), 400
 
     fav  = bool(data.get("is_favorite")) if set_fav  else None
     read = bool(data.get("is_read"))     if set_read else None
+    jc   = bool(data.get("is_jc"))       if set_jc   else None
 
     # Build the UPSERT — only the columns actually requested move.
     set_parts = []
@@ -2323,6 +2376,9 @@ def api_articles_bulk_user_state():
     if set_fav:
         set_parts.append("is_favorite = :fav")
         params["fav"] = fav
+    if set_jc:
+        set_parts.append("is_jc = :jc")
+        params["jc"] = jc
     if set_read:
         # read_at is the source of truth; is_read is derived (`read_at IS NOT NULL`).
         if read:
@@ -2335,6 +2391,9 @@ def api_articles_bulk_user_state():
     if set_fav:
         insert_cols.append("is_favorite")
         insert_vals.append(":fav")
+    if set_jc:
+        insert_cols.append("is_jc")
+        insert_vals.append(":jc")
     if set_read:
         insert_cols.append("read_at")
         insert_vals.append(":now" if read else "NULL")
@@ -2355,6 +2414,7 @@ def api_articles_bulk_user_state():
         s.commit()
         updated_fields = []
         if set_fav:  updated_fields.append("is_favorite")
+        if set_jc:   updated_fields.append("is_jc")
         if set_read: updated_fields.append("is_read")
         return jsonify({"ok": True, "updated": res.rowcount or 0,
                         "fields": updated_fields})
