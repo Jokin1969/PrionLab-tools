@@ -424,7 +424,7 @@ def _select_best(rows: list, year: Optional[int]) -> Optional[dict]:
     sci_rows    = [r for r in rows if r["source"] != "manual"]
     manual_rows = [r for r in rows if r["source"] == "manual"]
 
-    # Best SCImago row by year rule (closest not after `year`).
+    # Best SCImago row by year rule. `sci_rows` is ascending by year.
     sci = None
     if sci_rows:
         if year:
@@ -433,9 +433,12 @@ def _select_best(rows: list, year: Optional[int]) -> Optional[dict]:
             if exact:
                 sci = exact[0]
             elif older:
-                sci = older[-1]
-        if sci is None:
-            sci = sci_rows[-1]
+                sci = older[-1]          # closest year not after `year`
+            else:
+                sci = sci_rows[0]        # article older than earliest data
+                                         # (e.g. pre-1999) → use the earliest
+        else:
+            sci = sci_rows[-1]           # no article year → latest available
 
     # Best MANUAL row: an entry for this exact year wins, else an
     # atemporal (year=0) entry.
