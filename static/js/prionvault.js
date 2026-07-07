@@ -9787,16 +9787,29 @@
           </button>`
         : '';
 
-      // Action bar shown when ≥1 found article is checked.
+      // Action bar shown when ≥1 found article is checked. Each mark mirrors
+      // the same operations available elsewhere: article-level flag/hito via
+      // /articles/bulk, per-viewer favorito/leído/Journal-Club via
+      // /articles/bulk-user-state.
+      const BL_MARKS = [
+        { id:'flag', icon:'⚑', label:'Banderita',    kind:'article', body:{is_flagged:true},   bd:'#f59e0b', bg:'#fffbeb', fg:'#92400e' },
+        { id:'jc',   icon:'📖', label:'Journal Club', kind:'user',    body:{is_jc:true},        bd:'#7c3aed', bg:'#f5f3ff', fg:'#6d28d9' },
+        { id:'star', icon:'★', label:'Hito',         kind:'article', body:{is_milestone:true}, bd:'#f59e0b', bg:'#fffbeb', fg:'#92400e' },
+        { id:'fav',  icon:'♥', label:'Favorito',     kind:'user',    body:{is_favorite:true},  bd:'#e11d48', bg:'#fff1f2', fg:'#be123c' },
+        { id:'read', icon:'✓', label:'Leído',        kind:'user',    body:{is_read:true},      bd:'#15803d', bg:'#f0fdf4', fg:'#15803d' },
+      ];
+      const markBtns = BL_MARKS.map(m => `
+          <button class="pv-bl-mark-btn" data-mark="${m.id}" type="button"
+                  title="Marcar los seleccionados: ${m.label}"
+                  style="padding:4px 10px;border-radius:6px;border:1px solid ${m.bd};background:${m.bg};
+                         font-size:12px;color:${m.fg};cursor:pointer;font-weight:600;white-space:nowrap;">
+            ${m.icon} ${m.label}
+          </button>`).join('');
       const actionBar = `
         <div id="pv-bl-action-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;
              padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb;margin-bottom:8px;">
           <span id="pv-bl-sel-count" style="font-size:12px;color:#374151;font-weight:600;"></span>
-          <button id="pv-bl-flag-btn" type="button"
-                  style="padding:4px 10px;border-radius:6px;border:1px solid #f59e0b;background:#fffbeb;
-                         font-size:12px;color:#92400e;cursor:pointer;font-weight:600;">
-            ⚑ Marcar con banderita
-          </button>
+          ${markBtns}
           <span id="pv-bl-action-status" style="font-size:11.5px;color:#6b7280;"></span>
         </div>`;
 
@@ -9854,22 +9867,34 @@
         updateActionBar();
       });
 
-      // Flag selected
-      document.getElementById('pv-bl-flag-btn')?.addEventListener('click', async () => {
-        const ids = getChecked().map(cb => cb.dataset.aid);
-        if (!ids.length) return;
-        actionStatus.textContent = 'Marcando…';
-        try {
-          await api('/articles/bulk', {
-            method: 'PATCH',
-            body: JSON.stringify({ ids, updates: { is_flagged: true } }),
-          });
-          actionStatus.textContent = `✓ ${ids.length} marcado${ids.length > 1 ? 's' : ''} con banderita`;
-          actionStatus.style.color = '#15803d';
-        } catch (e) {
-          actionStatus.textContent = 'Error: ' + e.message;
-          actionStatus.style.color = '#b91c1c';
-        }
+      // Mark selected — one handler for every mark button.
+      resultsEl.querySelectorAll('.pv-bl-mark-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const m = BL_MARKS.find(x => x.id === btn.dataset.mark);
+          if (!m) return;
+          const ids = getChecked().map(cb => cb.dataset.aid);
+          if (!ids.length) return;
+          actionStatus.style.color = '#6b7280';
+          actionStatus.textContent = 'Marcando…';
+          try {
+            if (m.kind === 'user') {
+              await api('/articles/bulk-user-state', {
+                method: 'POST',
+                body: JSON.stringify({ ids, ...m.body }),
+              });
+            } else {
+              await api('/articles/bulk', {
+                method: 'PATCH',
+                body: JSON.stringify({ ids, updates: m.body }),
+              });
+            }
+            actionStatus.textContent = `✓ ${ids.length} marcado${ids.length > 1 ? 's' : ''} · ${m.label}`;
+            actionStatus.style.color = '#15803d';
+          } catch (e) {
+            actionStatus.textContent = 'Error: ' + e.message;
+            actionStatus.style.color = '#b91c1c';
+          }
+        });
       });
 
       // Click row → open detail (but skip if clicking the checkbox).
