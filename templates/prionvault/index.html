@@ -1377,9 +1377,13 @@
         📝 Revistas manuales (las que SCImago no tiene)
       </summary>
       <p style="font-size:12px;color:#6b7280;line-height:1.55;margin:8px 0 10px;">
-        Aquí metes a mano las revistas que no aparecen en SCImago. Son <strong>atemporales</strong>
-        (no dependen del año) y se guardan para el futuro. Solo el nombre es obligatorio; lo que
-        dejes vacío se mostrará como «Unknown» en la exportación.
+        Aquí metes a mano las revistas que no aparecen en SCImago (o cuyos datos quieres fijar
+        tú). Puedes dejar el <strong>Año</strong> vacío para que la entrada valga para
+        <strong>todos los años</strong>, o indicar un año concreto para guardar datos de ese año.
+        Las revistas guardadas tienen <strong>prioridad</strong> sobre SCImago: si hay una entrada
+        para el año del artículo se usan sus datos; si no, se usa la de «todos los años» y, en su
+        defecto, SCImago. Solo el nombre es obligatorio; lo que dejes vacío se mostrará como
+        «Unknown» en la exportación.
       </p>
 
       <div style="margin:0 0 10px;">
@@ -3439,23 +3443,7 @@
                      background:white;font-size:13px;cursor:pointer;color:#374151;">
         Cancelar
       </button>
-      <div style="display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap;margin-right:auto;">
-        <label title="Por defecto las etiquetas van en inglés (como pide el Gobierno Vasco). Actívalo para generarlas en español."
-               style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;">
-          <input type="checkbox" id="pv-er-govasco-es" style="accent-color:#0F3460;cursor:pointer;">
-          Etiquetas en español
-        </label>
-        <label title="Resalta los Autores y el Título en azul medio."
-               style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;">
-          <input type="checkbox" id="pv-er-govasco-color" style="accent-color:#2563EB;cursor:pointer;">
-          Autores/Título en azul
-        </label>
-        <label title="Pone los Autores y el Título en negrita."
-               style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;">
-          <input type="checkbox" id="pv-er-govasco-bold" style="accent-color:#2563EB;cursor:pointer;">
-          Autores/Título en negrita
-        </label>
-      </div>
+      <span style="margin-right:auto;"></span>
       <button id="pv-er-export-govasco"
               title="Exporta en el formato de justificación del Gobierno Vasco (Authors / Title / Name of journal / Volume / páginas / Year / Quality indicators)"
               style="padding:8px 16px;border-radius:8px;border:1px solid #0F3460;
@@ -3473,6 +3461,48 @@
       </button>
     </div>
 
+  </div>
+</div>
+
+<!-- ── Gobierno Vasco format options modal ──────────────────────────── -->
+<div id="pv-govasco-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:440px;">
+    <button class="pv-modal-close" id="pv-govasco-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-landmark" style="color:#0F3460;margin-right:8px;"></i>Formato Gobierno Vasco
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;line-height:1.55;margin:0 0 14px;">
+      Opciones de las <strong>etiquetas</strong> de los campos (Autores:, Título:, …).
+      El resto del formato es fijo, como pide la justificación del Gobierno Vasco.
+    </p>
+
+    <label title="Por defecto las etiquetas van en inglés (como pide el Gobierno Vasco). Actívalo para generarlas en español."
+           style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;cursor:pointer;padding:8px 0;">
+      <input type="checkbox" id="pv-er-govasco-es" style="accent-color:#0F3460;cursor:pointer;width:16px;height:16px;">
+      Etiquetas en español
+    </label>
+    <label title="Resalta las etiquetas de los campos en azul medio."
+           style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;cursor:pointer;padding:8px 0;">
+      <input type="checkbox" id="pv-er-govasco-color" style="accent-color:#2563EB;cursor:pointer;width:16px;height:16px;">
+      Etiquetas en azul
+    </label>
+    <label title="Pone las etiquetas de los campos en negrita."
+           style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;cursor:pointer;padding:8px 0;">
+      <input type="checkbox" id="pv-er-govasco-bold" style="accent-color:#2563EB;cursor:pointer;width:16px;height:16px;">
+      Etiquetas en negrita
+    </label>
+
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:18px;">
+      <button id="pv-govasco-cancel" type="button"
+              style="padding:8px 16px;border-radius:8px;border:1px solid #d1d5db;background:white;
+                     font-size:13px;cursor:pointer;color:#374151;">Cancelar</button>
+      <button id="pv-govasco-generate" type="button"
+              style="padding:8px 18px;border-radius:8px;border:none;background:#0F3460;color:white;
+                     font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+        <i class="fas fa-download"></i> Generar documento
+      </button>
+    </div>
   </div>
 </div>
 

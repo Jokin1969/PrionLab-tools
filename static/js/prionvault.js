@@ -15314,11 +15314,23 @@
 
   // ── Gobierno Vasco export ─────────────────────────────────────────────
 
+  function _openGovascoModal() {
+    // Guard early so the user isn't presented options for an empty export.
+    if (!_visibleIds().length) { alert('No hay referencias visibles.'); return; }
+    const m = _el('pv-govasco-modal');
+    if (m) m.style.display = 'flex';
+  }
+
+  function _closeGovascoModal() {
+    const m = _el('pv-govasco-modal');
+    if (m) m.style.display = 'none';
+  }
+
   async function _doExportGovasco() {
     const ids = _visibleIds();
     if (!ids.length) { alert('No hay referencias visibles.'); return; }
 
-    const govBtn = _el('pv-er-export-govasco');
+    const genBtn = _el('pv-govasco-generate');
     const esToggle = _el('pv-er-govasco-es');
     const colorToggle = _el('pv-er-govasco-color');
     const boldToggle  = _el('pv-er-govasco-bold');
@@ -15329,10 +15341,10 @@
       emphasis_color: !!(colorToggle && colorToggle.checked),
       emphasis_bold:  !!(boldToggle && boldToggle.checked),
     };
-    if (govBtn) {
-      govBtn.disabled  = true;
-      govBtn.dataset.orig = govBtn.innerHTML;
-      govBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…';
+    if (genBtn) {
+      genBtn.disabled  = true;
+      genBtn.dataset.orig = genBtn.innerHTML;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…';
     }
     try {
       const res = await fetch('/prionvault/api/articles/export-refs-docx', {
@@ -15355,13 +15367,14 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      _closeGovascoModal();
       _close();
     } catch (e) {
       alert('Error de red: ' + e.message);
     } finally {
-      if (govBtn) {
-        govBtn.disabled  = false;
-        govBtn.innerHTML = govBtn.dataset.orig || 'Formato Gobierno Vasco';
+      if (genBtn) {
+        genBtn.disabled  = false;
+        genBtn.innerHTML = genBtn.dataset.orig || '<i class="fas fa-download"></i> Generar documento';
       }
     }
   }
@@ -15408,7 +15421,12 @@
     _el('pv-er-cancel')           ?.addEventListener('click', _close);
     _el('pv-export-refs-backdrop')?.addEventListener('click', _close);
     _exportBtn                    ?.addEventListener('click', _doExport);
-    _el('pv-er-export-govasco')   ?.addEventListener('click', _doExportGovasco);
+    _el('pv-er-export-govasco')   ?.addEventListener('click', _openGovascoModal);
+    _el('pv-govasco-close')       ?.addEventListener('click', _closeGovascoModal);
+    _el('pv-govasco-cancel')      ?.addEventListener('click', _closeGovascoModal);
+    _el('pv-govasco-modal')?.querySelector('.pv-modal-backdrop')
+                                  ?.addEventListener('click', _closeGovascoModal);
+    _el('pv-govasco-generate')    ?.addEventListener('click', _doExportGovasco);
     _el('pv-er-save-preset')      ?.addEventListener('click', _promptSavePreset);
     _initGlobalChev();
   });
@@ -15964,6 +15982,23 @@
       novedades: `
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
+
+          <h4>🏛️ Exportación Gobierno Vasco + SCImago (SJR) ${NEW}</h4>
+          <p>Desde el modal <strong>Exportar referencias</strong>, el botón <em>"Formato Gobierno Vasco"</em> genera el .docx con el formato exacto de la justificación (Authors / Title / Name of journal / Volume / páginas / Year / Quality indicators). Al pulsarlo se abre un pequeño diálogo con las opciones de las <strong>etiquetas</strong> de los campos:</p>
+          <ul>
+            <li><strong>Etiquetas en español</strong> (por defecto en inglés, como pide el Gobierno Vasco).</li>
+            <li><strong>Etiquetas en azul</strong> y/o <strong>en negrita</strong>, para resaltar los prefijos «Autores:», «Título:»…</li>
+          </ul>
+          <p>Los indicadores de calidad (cuartil, decil, percentil, ISSN y país) se rellenan solos a partir de los rankings de <strong>SCImago (SJR)</strong>, que se cargan por años desde <strong>Miscelánea → SCImago (SJR)</strong>. Se elige siempre el mejor cuartil/decil y se muestra la categoría entre paréntesis. Nota: el resto de ajustes de formato del modal (orden de bloques, formato de autores/título, separadores…) <em>no</em> afectan al formato Gobierno Vasco, que es fijo.</p>
+
+          <h4>📝 Revistas manuales por año ${NEW}</h4>
+          <p>En el modal de SCImago puedes guardar a mano revistas que SCImago no cubre (o cuyos datos quieras fijar tú). Ahora cada entrada lleva un <strong>Año</strong>: déjalo vacío para que valga para «todos los años» o indica un año concreto. Las revistas guardadas tienen <strong>prioridad</strong> sobre SCImago —si hay entrada para el año del artículo se usan sus datos; si no, la de «todos los años» y, en su defecto, SCImago. La lista de años cargados es ahora desplegable (colapsada por defecto).</p>
+
+          <h4>📖 Journal Club ${NEW}</h4>
+          <p>Nueva marca personal de <strong>Journal Club</strong> (icono de libro, violeta), al mismo nivel que favorito/leído/hito: márcala en la ficha, fíltrala en el listado y aplícala en lote. Está disponible tanto en la barra de acciones masivas como en el modal de <em>Búsqueda en lote de DOIs / PMIDs</em>, donde además puedes marcar los resultados con banderita, hito, favorito y leído.</p>
+
+          <h4>🗒️ Notas, chat con IA y compartir por email ${NEW}</h4>
+          <p>Cada artículo admite <strong>notas de colores</strong> (hasta 5), un <strong>chat con IA</strong> (Claude → GPT → Gemini con reserva automática) que recibe el artículo vectorizado y su resumen como contexto, y un botón para <strong>enviarlo por email</strong> con previsualización, comentario de introducción, resumen opcional y el PDF adjunto.</p>
 
           <h4>🔔 Notificaciones por email ${NEW}</h4>
           <p>Configura digests automáticos que te llegan por correo con los artículos más relevantes. Accede desde <strong>Miscelánea → Notificaciones</strong> en el menú lateral. Puedes crear varias suscripciones con configuraciones diferentes.</p>

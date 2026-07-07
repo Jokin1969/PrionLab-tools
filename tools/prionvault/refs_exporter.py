@@ -490,10 +490,10 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
     """Return .docx bytes with each reference in the Gobierno Vasco
     justification layout. Missing fields are rendered as empty labels.
     `lang` ('en' default | 'es') switches the field labels.
-    `emphasis_color` renders the Authors + Title values in medium blue;
-    `emphasis_bold` renders them in bold."""
+    `emphasis_color` renders the field labels (Authors:, Title:, …) in
+    medium blue; `emphasis_bold` renders those labels in bold."""
     L = _GOVASCO_LABELS.get(lang, _GOVASCO_LABELS['en'])
-    emph_color = MID if emphasis_color else None
+    label_color = MID if emphasis_color else DARK
     doc = Document()
     style = doc.styles['Normal']
     style.font.name = 'Calibri'
@@ -503,7 +503,7 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
         section.left_margin = section.right_margin = Cm(2.5)
 
     def _label(para, label):
-        _add_run(para, label, bold=False, color=DARK, size=Pt(11))
+        _add_run(para, label, bold=emphasis_bold, color=label_color, size=Pt(11))
 
     # Default order: newest → oldest (unless the caller pre-sorted).
     articles = _sort_newest_first(articles)
@@ -525,8 +525,8 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
                 _add_run(para=p, text=(L['and'] if j == n - 1 else ', '),
                          color=DARK, size=Pt(11))
             _add_run(p, name,
-                     bold=(emphasis_bold or (marked_idx is not None and j == marked_idx)),
-                     color=emph_color, size=Pt(11))
+                     bold=(marked_idx is not None and j == marked_idx),
+                     size=Pt(11))
             last_name = name
         # Final period — but not if the last author already ends with one
         # (avoids "Castilla J..").
@@ -536,8 +536,7 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
         # Title
         pt = doc.add_paragraph(); pt.paragraph_format.space_after = Pt(0)
         _label(pt, L['title'])
-        _add_run(pt, (art.get('title') or '').strip(),
-                 bold=emphasis_bold, color=emph_color, size=Pt(11))
+        _add_run(pt, (art.get('title') or '').strip(), size=Pt(11))
 
         # Journal
         pj = doc.add_paragraph(); pj.paragraph_format.space_after = Pt(0)
