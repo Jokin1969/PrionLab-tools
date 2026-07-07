@@ -44,6 +44,7 @@ from lxml import etree
 ACCENT = RGBColor(0x0F, 0x34, 0x60)
 DIM    = RGBColor(0x6B, 0x72, 0x80)
 DARK   = RGBColor(0x1E, 0x2D, 0x3D)
+MID    = RGBColor(0x25, 0x63, 0xEB)   # medium blue for the Authors/Title emphasis toggle
 
 _DEFAULT_BLOCKS: list[dict] = [
     {"id": "authors",         "active": True,  "options": {}},
@@ -397,11 +398,29 @@ def _sort_newest_first(articles: list[dict]) -> list[dict]:
 
 
 def _clean_category(cat: str) -> str:
-    """Collapse any '... (miscellaneous)' / 'Miscellaneous ...' category to
-    just 'Miscellaneous'."""
+    """Normalize category display names:
+       * '... (miscellaneous)' / 'Miscellaneous ...' → 'Miscellaneous'
+       * 'Pathology and Forensic Medicine' → 'Pathology'"""
     if cat and 'miscellaneous' in cat.lower():
         return 'Miscellaneous'
+    if cat and cat.strip().lower() == 'pathology and forensic medicine':
+        return 'Pathology'
     return cat or ''
+
+
+# Journals whose displayed name differs from what's stored in the library.
+_JOURNAL_DISPLAY = {
+    'proceedings of the national academy of sciences':
+        'Proceedings of the National Academy of Sciences (PNAS)',
+    'proceedings of the national academy of sciences of the united states of america':
+        'Proceedings of the National Academy of Sciences (PNAS)',
+}
+
+
+def _display_journal(name: str) -> str:
+    """Map a stored journal name to its preferred display form."""
+    key = (name or '').strip().lower()
+    return _JOURNAL_DISPLAY.get(key, (name or '').strip())
 
 
 def _format_quality(hit: dict) -> str:
@@ -466,11 +485,15 @@ _GOVASCO_LABELS = {
 
 
 def generate_govasco_docx(articles: list[dict], marked_author: str = '',
-                          lang: str = 'en') -> bytes:
+                          lang: str = 'en', emphasis_color: bool = False,
+                          emphasis_bold: bool = False) -> bytes:
     """Return .docx bytes with each reference in the Gobierno Vasco
     justification layout. Missing fields are rendered as empty labels.
-    `lang` ('en' default | 'es') switches the field labels."""
+    `lang` ('en' default | 'es') switches the field labels.
+    `emphasis_color` renders the Authors + Title values in medium blue;
+    `emphasis_bold` renders them in bold."""
     L = _GOVASCO_LABELS.get(lang, _GOVASCO_LABELS['en'])
+    emph_color = MID if emphasis_color else None
     doc = Document()
     style = doc.styles['Normal']
     style.font.name = 'Calibri'
@@ -501,8 +524,9 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
             if j > 0:
                 _add_run(para=p, text=(L['and'] if j == n - 1 else ', '),
                          color=DARK, size=Pt(11))
-            _add_run(p, name, bold=(marked_idx is not None and j == marked_idx),
-                     size=Pt(11))
+            _add_run(p, name,
+                     bold=(emphasis_bold or (marked_idx is not None and j == marked_idx)),
+                     color=emph_color, size=Pt(11))
             last_name = name
         # Final period — but not if the last author already ends with one
         # (avoids "Castilla J..").
@@ -512,12 +536,13 @@ def generate_govasco_docx(articles: list[dict], marked_author: str = '',
         # Title
         pt = doc.add_paragraph(); pt.paragraph_format.space_after = Pt(0)
         _label(pt, L['title'])
-        _add_run(pt, (art.get('title') or '').strip(), size=Pt(11))
+        _add_run(pt, (art.get('title') or '').strip(),
+                 bold=emphasis_bold, color=emph_color, size=Pt(11))
 
         # Journal
         pj = doc.add_paragraph(); pj.paragraph_format.space_after = Pt(0)
         _label(pj, L['journal'])
-        _add_run(pj, (art.get('journal') or '').strip(), size=Pt(11))
+        _add_run(pj, _display_journal(art.get('journal') or ''), size=Pt(11))
 
         year = art.get('year')
 
@@ -592,7 +617,9 @@ def generate_refs_docx(articles: list[dict], config: dict | None = None) -> byte
     if config.get('format') == 'govasco':
         return generate_govasco_docx(
             articles, config.get('marked_author', ''),
-            lang=config.get('lang', 'en'))
+            lang=config.get('lang', 'en'),
+            emphasis_color=bool(config.get('emphasis_color')),
+            emphasis_bold=bool(config.get('emphasis_bold')))
     if 'blocks' not in config:
         import copy
         config['blocks'] = copy.deepcopy(_DEFAULT_BLOCKS)

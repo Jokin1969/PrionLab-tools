@@ -345,7 +345,7 @@ def _upsert(batch: list[dict], progress=None) -> None:
         VALUES (:tn, :ti, CAST(:iss AS jsonb), :pi, :co, :yr,
                 :bq, :bc, :bp, :bd, CAST(:cats AS jsonb), :sjr,
                 'scimago', NOW())
-        ON CONFLICT (title_norm, year) DO UPDATE SET
+        ON CONFLICT (title_norm, year, source) DO UPDATE SET
             title           = EXCLUDED.title,
             issns           = EXCLUDED.issns,
             primary_issn    = EXCLUDED.primary_issn,
@@ -379,6 +379,30 @@ def _upsert(batch: list[dict], progress=None) -> None:
 
 # ── Lookup ────────────────────────────────────────────────────────────────────
 
+# Some journals are stored in SCImago under a longer official name than the
+# one PrionVault (or a manual entry) uses. These aliases let a lookup by
+# either form find rows saved under the other, so a year without a manual
+# entry still resolves via the SCImago row. Keys/values are normalized
+# titles (see norm_title). Declared bidirectionally.
+_TITLE_ALIASES: dict[str, tuple[str, ...]] = {
+    "proceedings of the national academy of sciences": (
+        "proceedings of the national academy of sciences of the united states of america",
+    ),
+    "proceedings of the national academy of sciences of the united states of america": (
+        "proceedings of the national academy of sciences",
+    ),
+}
+
+
+def _alias_norms(tn: str) -> list[str]:
+    """Return `tn` plus any aliased normalized titles it should also match."""
+    norms = [tn]
+    for extra in _TITLE_ALIASES.get(tn, ()):
+        if extra not in norms:
+            norms.append(extra)
+    return norms
+
+
 def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
     """Return quality data for a journal (best quartile + decile +
     percentile + ISSN + country). Prefers the SCImago ranking year closest
@@ -396,37 +420,51 @@ def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
                 SELECT year, best_quartile, best_category, best_percentile,
                        best_decile, primary_issn, country, source
                   FROM journal_ranking
-                 WHERE title_norm = :tn
+                 WHERE title_norm = ANY(:tns)
                  ORDER BY year
-            """), {"tn": tn}).mappings().all()
+            """), {"tns": _alias_norms(tn)}).mappings().all()
     except Exception as exc:
         logger.warning("scimago lookup failed for %r: %s", journal, exc)
         return None
     if not rows:
         return None
 
-    sci_rows = [r for r in rows if r["source"] != "manual"]
-    manual   = next((r for r in rows if r["source"] == "manual"), None)
+    sci_rows    = [r for r in rows if r["source"] != "manual"]
+    manual_rows = [r for r in rows if r["source"] == "manual"]
 
-    chosen = None
+    # Best SCImago row by year rule (closest not after `year`).
+    sci = None
     if sci_rows:
         if year:
             exact = [r for r in sci_rows if r["year"] == year]
             older = [r for r in sci_rows if r["year"] <= year]
             if exact:
-                chosen = exact[0]
+                sci = exact[0]
             elif older:
-                chosen = older[-1]
-        if chosen is None:
-            chosen = sci_rows[-1]
+                sci = older[-1]
+        if sci is None:
+            sci = sci_rows[-1]
 
-    if chosen is None and manual is None:
+    # Best MANUAL row: an entry for this exact year wins, else an
+    # atemporal (year=0) entry.
+    manual = None
+    if manual_rows:
+        if year:
+            manual = next((r for r in manual_rows if r["year"] == year), None)
+        if manual is None:
+            manual = next((r for r in manual_rows if r["year"] == 0), None)
+
+    if sci is None and manual is None:
         return None
 
+    # Manual takes priority; SCImago fills any gaps it leaves.
+    primary   = manual if manual is not None else sci
+    secondary = sci if manual is not None else None
+
     def _pick(field):
-        if chosen is not None and chosen[field] is not None:
-            return chosen[field]
-        return manual[field] if manual is not None else None
+        if primary is not None and primary[field] is not None:
+            return primary[field]
+        return secondary[field] if secondary is not None else None
 
     pct = _pick("best_percentile")
     return {
@@ -436,8 +474,8 @@ def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
         "decile":     _pick("best_decile"),
         "issn":       _pick("primary_issn"),
         "country":    _pick("country"),
-        "year":       chosen["year"] if chosen is not None else None,
-        "database":   "SCImago (SJR)" if chosen is not None else "Manual",
+        "year":       primary["year"] if primary is not None else None,
+        "database":   "SCImago (SJR)",
     }
 
 
@@ -445,9 +483,11 @@ def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
 
 def add_manual_journal(*, journal: str, issn: str = "", country: str = "",
                        quartile: str = "", decile: str = "",
-                       percentile=None, category: str = "") -> dict:
-    """Insert/update a manual (atemporal, year=0) journal entry. Empty
-    fields are stored as NULL. Raises ValueError without a journal name."""
+                       percentile=None, category: str = "", year=None) -> dict:
+    """Insert/update a manual journal entry. `year` empty/None → atemporal
+    (year=0, applies to all years); a specific year stores year-specific
+    data. Empty fields are stored as NULL. Raises ValueError without a
+    journal name."""
     title = (journal or "").strip()
     tn = norm_title(title)
     if not tn:
@@ -462,7 +502,12 @@ def add_manual_journal(*, journal: str, issn: str = "", country: str = "",
         pct = float(str(percentile).replace(',', '.')) if percentile not in (None, "") else None
     except (TypeError, ValueError):
         pct = None
-    import json as _json
+    try:
+        yr = int(year) if year not in (None, "") else 0
+    except (TypeError, ValueError):
+        yr = 0
+    if not (yr == 0 or 1900 <= yr <= 2100):
+        yr = 0
     from sqlalchemy import text as _sql
     eng = _get_engine()
     with eng.begin() as conn:
@@ -471,9 +516,9 @@ def add_manual_journal(*, journal: str, issn: str = "", country: str = "",
                 (title_norm, title, issns, primary_issn, country, year,
                  best_quartile, best_category, best_percentile, best_decile,
                  categories, sjr, source, updated_at)
-            VALUES (:tn, :ti, '[]'::jsonb, :issn, :co, 0,
+            VALUES (:tn, :ti, '[]'::jsonb, :issn, :co, :yr,
                     :bq, :bc, :bp, :bd, '[]'::jsonb, NULL, 'manual', NOW())
-            ON CONFLICT (title_norm, year) DO UPDATE SET
+            ON CONFLICT (title_norm, year, source) DO UPDATE SET
                 title           = EXCLUDED.title,
                 primary_issn    = EXCLUDED.primary_issn,
                 country         = EXCLUDED.country,
@@ -483,12 +528,12 @@ def add_manual_journal(*, journal: str, issn: str = "", country: str = "",
                 best_decile     = EXCLUDED.best_decile,
                 source          = 'manual',
                 updated_at      = NOW()
-        """), {"tn": tn, "ti": title,
+        """), {"tn": tn, "ti": title, "yr": yr,
                 "issn": (issn or "").strip() or None,
                 "co": (country or "").strip() or None,
                 "bq": quartile, "bc": (category or "").strip() or None,
                 "bp": pct, "bd": decile})
-    return {"title_norm": tn, "title": title}
+    return {"title_norm": tn, "title": title, "year": yr}
 
 
 def list_manual_journals() -> list[dict]:
@@ -496,11 +541,11 @@ def list_manual_journals() -> list[dict]:
     eng = _get_engine()
     with eng.connect() as conn:
         rows = conn.execute(_sql("""
-            SELECT title, primary_issn, country, best_quartile, best_decile,
-                   best_percentile, best_category
+            SELECT title, year, primary_issn, country, best_quartile,
+                   best_decile, best_percentile, best_category
               FROM journal_ranking
              WHERE source = 'manual'
-             ORDER BY LOWER(title)
+             ORDER BY LOWER(title), year
         """)).mappings().all()
     out = []
     for r in rows:
@@ -511,16 +556,24 @@ def list_manual_journals() -> list[dict]:
     return out
 
 
-def delete_manual_journal(journal: str) -> bool:
+def delete_manual_journal(journal: str, year=None) -> bool:
+    """Delete a manual entry. With `year` (0 = atemporal) deletes just that
+    year's entry; without it, deletes every manual entry for the journal."""
     tn = norm_title(journal or "")
     if not tn:
         return False
     from sqlalchemy import text as _sql
     eng = _get_engine()
+    params = {"tn": tn}
+    sql = "DELETE FROM journal_ranking WHERE title_norm = :tn AND source = 'manual'"
+    if year not in (None, ""):
+        try:
+            params["yr"] = int(year)
+            sql += " AND year = :yr"
+        except (TypeError, ValueError):
+            pass
     with eng.begin() as conn:
-        res = conn.execute(_sql(
-            "DELETE FROM journal_ranking WHERE title_norm = :tn AND source = 'manual'"
-        ), {"tn": tn})
+        res = conn.execute(_sql(sql), params)
     return (res.rowcount or 0) > 0
 
 
