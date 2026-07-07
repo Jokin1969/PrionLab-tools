@@ -45,6 +45,9 @@ def norm_title(s: str) -> str:
         return ""
     s = unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('ascii')
     s = s.lower()
+    # Canonicalize "&" to "and" so "Research & Therapy" matches SCImago's
+    # "Research and Therapy" (SCImago spells the ampersand out).
+    s = s.replace('&', ' and ')
     s = re.sub(r'[^a-z0-9]+', ' ', s).strip()
     s = re.sub(r'^(the|la|el|los|las|le|les)\s+', '', s)
     return re.sub(r'\s+', ' ', s).strip()
