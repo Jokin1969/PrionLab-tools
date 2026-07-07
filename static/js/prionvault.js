@@ -2082,6 +2082,10 @@
                 style="padding:4px 8px;border-radius:6px;background:#15803d;color:white;border:none;cursor:pointer;font-size:12px;font-weight:700;">✓ +</button>
         <button id="pv-bulk-read-off${s}" type="button" title="Marcar como no leídos"
                 style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;font-weight:700;">✓ −</button>
+        <button id="pv-bulk-jc-on${s}"   type="button" title="Marcar para mi Journal Club"
+                style="padding:4px 8px;border-radius:6px;background:#7c3aed;color:white;border:none;cursor:pointer;font-size:12px;"><i class="fas fa-book-open"></i> +</button>
+        <button id="pv-bulk-jc-off${s}"  type="button" title="Quitar de mi Journal Club"
+                style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;"><i class="fas fa-book-open"></i> −</button>
       </div>
 
       ${IS_ADMIN ? `
@@ -2283,6 +2287,10 @@
       () => doBulkUserState({is_read: true},      'leído'));
     $id('pv-bulk-read-off')?.addEventListener('click',
       () => doBulkUserState({is_read: false},     'no leído'));
+    $id('pv-bulk-jc-on') ?.addEventListener('click',
+      () => doBulkUserState({is_jc: true},        'Journal Club'));
+    $id('pv-bulk-jc-off')?.addEventListener('click',
+      () => doBulkUserState({is_jc: false},       'sin Journal Club'));
 
     // Tags picker
     $id('pv-bulk-tags')?.addEventListener('click',
