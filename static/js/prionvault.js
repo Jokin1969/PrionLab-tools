@@ -14035,6 +14035,7 @@
 
     // ── Manual journals ───────────────────────────────────────────────
     const mjJournal = document.getElementById('pv-mj-journal');
+    const mjYear    = document.getElementById('pv-mj-year');
     const mjIssn    = document.getElementById('pv-mj-issn');
     const mjCountry = document.getElementById('pv-mj-country');
     const mjQuart   = document.getElementById('pv-mj-quartile');
@@ -14059,25 +14060,30 @@
               if (j.best_decile)   bits.push(esc(j.best_decile));
               if (j.best_percentile != null) bits.push('P' + j.best_percentile);
               const q = bits.join(' · ');
+              const yrLabel = j.year ? String(j.year) : 'Todos los años';
               return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #f3f4f6;border-radius:8px;margin-bottom:5px;background:#fff;">
                 <div style="flex:1;min-width:0;">
-                  <div style="font-size:12.5px;font-weight:600;color:#111827;">${esc(j.title)}</div>
+                  <div style="font-size:12.5px;font-weight:600;color:#111827;">${esc(j.title)} <span style="font-weight:500;color:#6d28d9;font-size:11px;">· ${esc(yrLabel)}</span></div>
                   <div style="font-size:11px;color:#9ca3af;">${esc(j.primary_issn || 'ISSN: Unknown')} · ${esc(j.country || 'Unknown')}${q ? ' · ' + q : ''}${j.best_category ? ' · ' + esc(j.best_category) : ''}</div>
                 </div>
-                <button class="pv-mj-edit" data-j="${esc(j.title)}" title="Editar" style="background:none;border:none;color:#6d28d9;cursor:pointer;font-size:13px;">✏</button>
-                <button class="pv-mj-del" data-j="${esc(j.title)}" title="Eliminar" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
+                <button class="pv-mj-edit" data-j="${esc(j.title)}" data-year="${j.year || ''}" title="Editar" style="background:none;border:none;color:#6d28d9;cursor:pointer;font-size:13px;">✏</button>
+                <button class="pv-mj-del" data-j="${esc(j.title)}" data-year="${j.year || ''}" title="Eliminar" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
               </div>`;
             }).join('')
           : '<div style="color:#9ca3af;font-size:12px;padding:4px;">Aún no has añadido revistas manuales.</div>';
         mjList.querySelectorAll('.pv-mj-del').forEach(b => b.addEventListener('click', async () => {
-          if (!confirm(`¿Eliminar «${b.dataset.j}»?`)) return;
-          try { await api('/admin/scimago/manual/delete', { method: 'POST', body: JSON.stringify({ journal: b.dataset.j }) }); refreshManual(); }
+          const yr = b.dataset.year || '';
+          const yrTxt = yr ? ` (${yr})` : ' (todos los años)';
+          if (!confirm(`¿Eliminar «${b.dataset.j}»${yrTxt}?`)) return;
+          try { await api('/admin/scimago/manual/delete', { method: 'POST', body: JSON.stringify({ journal: b.dataset.j, year: yr }) }); refreshManual(); }
           catch (e) { alert('No se pudo eliminar: ' + e.message); }
         }));
         mjList.querySelectorAll('.pv-mj-edit').forEach(b => b.addEventListener('click', () => {
-          const j = js.find(x => x.title === b.dataset.j);
+          const j = js.find(x => x.title === b.dataset.j &&
+                                  String(x.year || '') === (b.dataset.year || ''));
           if (!j) return;
           mjJournal.value = j.title || '';
+          if (mjYear) mjYear.value = j.year || '';
           mjIssn.value    = j.primary_issn || '';
           mjCountry.value = j.country || '';
           mjQuart.value   = j.best_quartile || '';
@@ -14098,13 +14104,15 @@
       mjStatus.style.color = '#9ca3af'; mjStatus.textContent = 'Guardando…';
       try {
         await api('/admin/scimago/manual', { method: 'POST', body: JSON.stringify({
-          journal, issn: mjIssn.value.trim(), country: mjCountry.value.trim(),
+          journal, year: mjYear ? mjYear.value.trim() : '',
+          issn: mjIssn.value.trim(), country: mjCountry.value.trim(),
           quartile: mjQuart.value, decile: mjDecile.value,
           percentile: mjPct.value.trim(), category: mjCat.value.trim(),
         }) });
         mjStatus.style.color = '#15803d'; mjStatus.textContent = '✓ Guardada';
         mjJournal.value = mjIssn.value = mjCountry.value = mjPct.value = mjCat.value = '';
         mjQuart.value = mjDecile.value = '';
+        if (mjYear) mjYear.value = '';
         refreshManual();
         if (scanBtn && missingEl.dataset.loaded) scanBtn.click();  // refresh missing list
         setTimeout(() => { mjStatus.textContent = ''; }, 2500);
@@ -15279,10 +15287,14 @@
 
     const govBtn = _el('pv-er-export-govasco');
     const esToggle = _el('pv-er-govasco-es');
+    const colorToggle = _el('pv-er-govasco-color');
+    const boldToggle  = _el('pv-er-govasco-bold');
     const config = {
-      format:        'govasco',
-      marked_author: _markedInput.value.trim(),
-      lang:          (esToggle && esToggle.checked) ? 'es' : 'en',
+      format:         'govasco',
+      marked_author:  _markedInput.value.trim(),
+      lang:           (esToggle && esToggle.checked) ? 'es' : 'en',
+      emphasis_color: !!(colorToggle && colorToggle.checked),
+      emphasis_bold:  !!(boldToggle && boldToggle.checked),
     };
     if (govBtn) {
       govBtn.disabled  = true;

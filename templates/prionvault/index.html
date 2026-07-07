@@ -1389,10 +1389,18 @@
 
       <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Nombre de la revista *</label>
-            <input id="pv-mj-journal" type="text" placeholder="p. ej. Prion"
-                   style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:200px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Nombre de la revista *</label>
+              <input id="pv-mj-journal" type="text" placeholder="p. ej. Prion"
+                     style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            </div>
+            <div style="width:110px;">
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Año</label>
+              <input id="pv-mj-year" type="number" step="1" placeholder="Todos"
+                     title="Déjalo vacío para que aplique a todos los años; indica un año para datos específicos de ese año."
+                     style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            </div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <div style="flex:1;min-width:130px;">
@@ -3429,11 +3437,23 @@
                      background:white;font-size:13px;cursor:pointer;color:#374151;">
         Cancelar
       </button>
-      <label title="Por defecto las etiquetas van en inglés (como pide el Gobierno Vasco). Actívalo para generarlas en español."
-             style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;margin-right:auto;">
-        <input type="checkbox" id="pv-er-govasco-es" style="accent-color:#0F3460;cursor:pointer;">
-        Etiquetas en español
-      </label>
+      <div style="display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap;margin-right:auto;">
+        <label title="Por defecto las etiquetas van en inglés (como pide el Gobierno Vasco). Actívalo para generarlas en español."
+               style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;">
+          <input type="checkbox" id="pv-er-govasco-es" style="accent-color:#0F3460;cursor:pointer;">
+          Etiquetas en español
+        </label>
+        <label title="Resalta los Autores y el Título en azul medio."
+               style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;">
+          <input type="checkbox" id="pv-er-govasco-color" style="accent-color:#2563EB;cursor:pointer;">
+          Autores/Título en azul
+        </label>
+        <label title="Pone los Autores y el Título en negrita."
+               style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;">
+          <input type="checkbox" id="pv-er-govasco-bold" style="accent-color:#2563EB;cursor:pointer;">
+          Autores/Título en negrita
+        </label>
+      </div>
       <button id="pv-er-export-govasco"
               title="Exporta en el formato de justificación del Gobierno Vasco (Authors / Title / Name of journal / Volume / páginas / Year / Quality indicators)"
               style="padding:8px 16px;border-radius:8px;border:1px solid #0F3460;

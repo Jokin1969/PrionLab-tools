@@ -1899,6 +1899,7 @@ def api_scimago_manual_add():
             decile=body.get("decile", ""),
             percentile=body.get("percentile"),
             category=body.get("category", ""),
+            year=body.get("year"),
         )
     except ValueError as exc:
         return jsonify({"error": "bad_request", "detail": str(exc)}), 400
@@ -1913,7 +1914,8 @@ def api_scimago_manual_add():
 def api_scimago_manual_delete():
     from .services import scimago
     body = request.get_json(silent=True) or {}
-    ok = scimago.delete_manual_journal(body.get("journal", ""))
+    ok = scimago.delete_manual_journal(body.get("journal", ""),
+                                       year=body.get("year"))
     return jsonify({"ok": ok})
 
 
