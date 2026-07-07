@@ -1208,6 +1208,24 @@
            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13.5px;">
     <div id="pv-email-hint" style="font-size:11.5px;color:#9ca3af;margin-top:5px;"></div>
 
+    <!-- Optional intro comment -->
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#374151;
+                  cursor:pointer;margin-top:14px;">
+      <input type="checkbox" id="pv-email-comment-toggle" style="accent-color:#0F3460;cursor:pointer;">
+      Añadir un comentario al inicio del email
+    </label>
+    <textarea id="pv-email-comment" rows="3"
+              placeholder="Hola, Sara: creo que este artículo podría ser interesante para presentarlo en un Journal Club…"
+              style="display:none;width:100%;margin-top:6px;padding:8px 10px;border:1px solid #d1d5db;
+                     border-radius:7px;font-size:13px;font-family:inherit;resize:vertical;line-height:1.5;"></textarea>
+
+    <!-- Include AI summary -->
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#374151;
+                  cursor:pointer;margin-top:12px;">
+      <input type="checkbox" id="pv-email-include-summary" checked style="accent-color:#0F3460;cursor:pointer;">
+      Incluir el resumen de la IA (si lo tiene)
+    </label>
+
     <div style="display:flex;align-items:center;gap:10px;margin-top:16px;">
       <button id="pv-email-send" type="button"
               style="padding:8px 18px;border-radius:8px;border:none;background:#0F3460;color:#fff;

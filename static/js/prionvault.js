@@ -6389,6 +6389,12 @@
       document.querySelector('#pv-email-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-email-send')?.addEventListener('click', send);
       $('pv-email-to')?.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+      const ctog = $('pv-email-comment-toggle');
+      ctog?.addEventListener('change', () => {
+        const ta = $('pv-email-comment');
+        ta.style.display = ctog.checked ? 'block' : 'none';
+        if (ctog.checked) ta.focus();
+      });
     }
 
     async function open(article) {
@@ -6401,6 +6407,13 @@
         (meta ? `<div style="font-weight:400;color:#6b7280;font-size:12px;">${esc(meta)}</div>` : '');
       $('pv-email-status').textContent = '';
       $('pv-email-hint').textContent = '';
+      // Reset optional fields each open.
+      const ctog = $('pv-email-comment-toggle');
+      if (ctog) ctog.checked = false;
+      const cta = $('pv-email-comment');
+      if (cta) { cta.value = ''; cta.style.display = 'none'; }
+      const incS = $('pv-email-include-summary');
+      if (incS) incS.checked = true;
       modal.style.display = 'flex';
       const toEl = $('pv-email-to');
       // Prefill with the current (admin) user's email.
@@ -6423,8 +6436,14 @@
       btn.disabled = true;
       status.style.color = '#9ca3af';
       status.textContent = 'Enviando…';
+      const includeSummary = $('pv-email-include-summary')?.checked !== false;
+      const commentOn = $('pv-email-comment-toggle')?.checked;
+      const comment = commentOn ? ($('pv-email-comment').value || '').trim() : '';
       try {
-        const r = await api(`/articles/${_article.id}/email`, { method: 'POST', body: JSON.stringify({ to }) });
+        const r = await api(`/articles/${_article.id}/email`, {
+          method: 'POST',
+          body: JSON.stringify({ to, include_summary: includeSummary, comment }),
+        });
         status.style.color = '#15803d';
         status.textContent = '✓ Enviado' + (r.attached_pdf ? ' (con PDF adjunto)' : '');
         setTimeout(close, 1200);

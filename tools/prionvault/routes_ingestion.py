@@ -1906,7 +1906,9 @@ def api_article_email(aid):
     me = _current_user_contact()
     try:
         result = article_share.send_article_email(
-            str(aid), to, sender_name=me.get("name") or "")
+            str(aid), to, sender_name=me.get("name") or "",
+            include_summary=body.get("include_summary", True) is not False,
+            comment=body.get("comment", ""))
     except ValueError as exc:
         return jsonify({"error": "bad_request", "detail": str(exc)}), 400
     except LookupError:

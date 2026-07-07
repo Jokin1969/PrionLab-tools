@@ -77,8 +77,21 @@ def _fetch_article(article_id: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
-def build_share_html(a: dict, base_url: str, sender_name: str = "") -> str:
+def build_share_html(a: dict, base_url: str, sender_name: str = "",
+                     include_summary: bool = True, comment: str = "") -> str:
     link = f"{base_url}/prionvault/?open={a['article_id']}" if base_url else ""
+
+    # Optional personal note at the top of the body.
+    comment_block = ""
+    if (comment or "").strip():
+        safe = _html.escape(comment.strip()).replace("\n", "<br>")
+        comment_block = f"""
+        <tr><td style="padding:20px 28px 0;">
+          <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;
+                      padding:14px 16px;font-size:13.5px;color:#3730a3;line-height:1.6;">
+            {safe}
+          </div>
+        </td></tr>"""
 
     def _row(label, value):
         if not value:
@@ -100,7 +113,7 @@ def build_share_html(a: dict, base_url: str, sender_name: str = "") -> str:
     ])
 
     summary_block = ""
-    if a.get("summary_ai"):
+    if include_summary and a.get("summary_ai"):
         prov = a.get("summary_ai_provider") or ""
         prov_label = {"anthropic": "Claude", "openai": "GPT",
                       "gemini": "Gemini"}.get(prov, prov)
@@ -134,6 +147,8 @@ def build_share_html(a: dict, base_url: str, sender_name: str = "") -> str:
         <p style="margin:6px 0 0;font-size:13.5px;color:rgba(255,255,255,0.9);">Ficha del artículo</p>
       </td></tr>
 
+      {comment_block}
+
       <tr><td style="padding:20px 28px 4px;">
         <h2 style="margin:0 0 10px;font-size:15px;color:#111827;">📄 Artículo</h2>
         <table cellpadding="0" cellspacing="0">{meta_rows}</table>
@@ -151,10 +166,14 @@ def build_share_html(a: dict, base_url: str, sender_name: str = "") -> str:
 </body></html>"""
 
 
-def _plain(a: dict, base_url: str, sender_name: str) -> str:
+def _plain(a: dict, base_url: str, sender_name: str,
+           include_summary: bool = True, comment: str = "") -> str:
     link = f"{base_url}/prionvault/?open={a['article_id']}" if base_url else ""
-    lines = ["Ficha del artículo — PrionVault", "", "DATOS DEL ARTÍCULO",
-             "──────────────────"]
+    lines = []
+    if (comment or "").strip():
+        lines += [comment.strip(), "", "─" * 20, ""]
+    lines += ["Ficha del artículo — PrionVault", "", "DATOS DEL ARTÍCULO",
+              "──────────────────"]
     if a.get("title"):   lines.append(f"  Título  : {a['title']}")
     au = _fmt_authors(a.get("authors"))
     if au:               lines.append(f"  Autores : {au}")
@@ -162,7 +181,7 @@ def _plain(a: dict, base_url: str, sender_name: str) -> str:
     if a.get("year"):    lines.append(f"  Año     : {a['year']}")
     if a.get("doi"):     lines.append(f"  DOI     : {a['doi']}")
     if a.get("pubmed_id"): lines.append(f"  PubMed  : {a['pubmed_id']}")
-    if a.get("summary_ai"):
+    if include_summary and a.get("summary_ai"):
         lines += ["", "RESUMEN DE LA IA", "────────────────", a["summary_ai"].strip()]
     if link:
         lines += ["", f"Ver en PrionVault: {link}"]
@@ -174,7 +193,9 @@ _EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def send_article_email(article_id: str, to: str,
-                       sender_name: str = "") -> dict:
+                       sender_name: str = "",
+                       include_summary: bool = True,
+                       comment: str = "") -> dict:
     """Send the article's share email to `to`. Returns {ok, detail}."""
     to = (to or "").strip()
     if not _EMAIL_RE.match(to):
@@ -184,9 +205,10 @@ def send_article_email(article_id: str, to: str,
     if not a:
         raise LookupError("article_not_found")
 
+    comment = (comment or "").strip()[:2000]
     base = _base_url()
-    html = build_share_html(a, base, sender_name)
-    plain = _plain(a, base, sender_name)
+    html = build_share_html(a, base, sender_name, include_summary, comment)
+    plain = _plain(a, base, sender_name, include_summary, comment)
     subject = f"PrionVault · {a.get('title') or 'Artículo'}"[:160]
 
     # Best-effort PDF attachment (same as the ingest confirmation email).
