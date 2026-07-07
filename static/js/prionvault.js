@@ -15314,21 +15314,50 @@
 
   // ── Gobierno Vasco export ─────────────────────────────────────────────
 
+  let _govascoAbort = null;   // AbortController while a doc is generating
+
   function _openGovascoModal() {
     // Guard early so the user isn't presented options for an empty export.
-    if (!_visibleIds().length) { alert('No hay referencias visibles.'); return; }
+    const n = _visibleIds().length;
+    if (!n) { alert('No hay referencias visibles.'); return; }
+    const countEl = _el('pv-govasco-count');
+    if (countEl) {
+      const big = n > _GOVASCO_BIG;
+      countEl.innerHTML =
+        `Se generará el documento para <strong>${n.toLocaleString()}</strong> ` +
+        `artículo${n === 1 ? '' : 's'} (los visibles con el filtro actual).` +
+        (big ? ` <span style="color:#b45309;">⚠ Son muchos: puede tardar bastante. ` +
+               `Filtra o selecciona antes para reducir la lista.</span>` : '');
+    }
     const m = _el('pv-govasco-modal');
     if (m) m.style.display = 'flex';
   }
 
   function _closeGovascoModal() {
+    // Closing mid-generation cancels the in-flight request.
+    if (_govascoAbort) _govascoAbort.abort();
     const m = _el('pv-govasco-modal');
     if (m) m.style.display = 'none';
   }
 
+  const _GOVASCO_BIG = 300;   // above this we ask for confirmation
+
   async function _doExportGovasco() {
+    // A second click while generating cancels the run.
+    if (_govascoAbort) { _govascoAbort.abort(); return; }
+
     const ids = _visibleIds();
     if (!ids.length) { alert('No hay referencias visibles.'); return; }
+
+    // Guard against an accidental massive export (e.g. no filter → thousands).
+    if (ids.length > _GOVASCO_BIG &&
+        !confirm(`Vas a generar el documento del Gobierno Vasco para ` +
+                 `${ids.length.toLocaleString()} artículos.\n\n` +
+                 `Puede tardar bastante (cada artículo consulta los indicadores ` +
+                 `de SCImago) y no siempre es lo que quieres. ¿Continuar?\n\n` +
+                 `Consejo: filtra o selecciona antes para acotar la lista.`)) {
+      return;
+    }
 
     const genBtn = _el('pv-govasco-generate');
     const esToggle = _el('pv-er-govasco-es');
@@ -15341,16 +15370,20 @@
       emphasis_color: !!(colorToggle && colorToggle.checked),
       emphasis_bold:  !!(boldToggle && boldToggle.checked),
     };
+    _govascoAbort = new AbortController();
     if (genBtn) {
-      genBtn.disabled  = true;
+      // Stays enabled: clicking it again cancels the generation.
       genBtn.dataset.orig = genBtn.innerHTML;
-      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…';
+      genBtn.dataset.bg   = genBtn.style.background;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando… (clic para cancelar)';
+      genBtn.style.background = '#b91c1c';
     }
     try {
       const res = await fetch('/prionvault/api/articles/export-refs-docx', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ article_ids: ids, config }),
+        signal:  _govascoAbort.signal,
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -15370,11 +15403,13 @@
       _closeGovascoModal();
       _close();
     } catch (e) {
-      alert('Error de red: ' + e.message);
+      if (e.name !== 'AbortError') alert('Error de red: ' + e.message);
     } finally {
+      _govascoAbort = null;
       if (genBtn) {
         genBtn.disabled  = false;
         genBtn.innerHTML = genBtn.dataset.orig || '<i class="fas fa-download"></i> Generar documento';
+        genBtn.style.background = genBtn.dataset.bg || '';
       }
     }
   }
