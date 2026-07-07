@@ -13898,10 +13898,12 @@
     let pollHandle = null;
     let havYears = new Set();
 
-    // Offer every completed year from last year back to 1998.
+    // Offer every completed year from last year back to 1999 — SCImago's
+    // SJR ranking starts in 1999, and asking for an earlier year makes
+    // SCImago silently serve the latest year instead.
     const NOW_Y = new Date().getFullYear();
     const YEARS = [];
-    for (let y = NOW_Y - 1; y >= 1998; y--) YEARS.push(y);
+    for (let y = NOW_Y - 1; y >= 1999; y--) YEARS.push(y);
 
     function open()  { modal.style.display = 'flex'; renderGrid(); refresh(); refreshManual(); }
     function close() { modal.style.display = 'none'; if (pollHandle) { clearInterval(pollHandle); pollHandle = null; } }
