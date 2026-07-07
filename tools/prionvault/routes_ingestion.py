@@ -1859,6 +1859,64 @@ def api_delete_summary(aid):
 
 
 
+# ── Share an article by email ─────────────────────────────────────────────────
+
+def _current_user_contact() -> dict:
+    """Return {name, email} for the logged-in user, best-effort."""
+    uid = _viewer_id()
+    if not uid:
+        return {"name": "", "email": ""}
+    try:
+        s = _session()
+        try:
+            cols = {r[0] for r in s.execute(sql_text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'users'"
+            )).all()}
+            name_col = next((c for c in ("full_name", "name", "username")
+                             if c in cols), None)
+            sel = "email" + (f", {name_col} AS uname" if name_col else "")
+            row = s.execute(sql_text(
+                f"SELECT {sel} FROM users WHERE id = CAST(:id AS uuid)"
+            ), {"id": str(uid)}).mappings().first()
+        finally:
+            s.close()
+        if row:
+            return {"name": row.get("uname") or "", "email": row.get("email") or ""}
+    except Exception as exc:
+        logger.warning("current_user_contact failed: %s", exc)
+    return {"name": "", "email": ""}
+
+
+@prionvault_bp.route("/api/me", methods=["GET"])
+@login_required
+def api_me():
+    """Name + email of the logged-in user (for the share-email modal)."""
+    return jsonify(_current_user_contact())
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/email", methods=["POST"])
+@login_required
+def api_article_email(aid):
+    """Email the article's full data + AI summary to a chosen recipient,
+    using the same aesthetic as the ingest-confirmation email."""
+    body = request.get_json(silent=True) or {}
+    to = (body.get("to") or "").strip()
+    from .services import article_share
+    me = _current_user_contact()
+    try:
+        result = article_share.send_article_email(
+            str(aid), to, sender_name=me.get("name") or "")
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        logger.exception("article email failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"ok": True, **result})
+
+
 # ── Email import landing page ─────────────────────────────────────────────────
 
 _IMPORT_PAGE = """<!DOCTYPE html>

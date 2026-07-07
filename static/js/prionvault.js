@@ -2774,6 +2774,11 @@
       : '';
 
     const badges = [
+      `<button type="button" class="pv-email-row-btn" data-aid="${esc(a.id)}"
+                title="Enviar este artículo por email (datos + resumen IA)"
+                style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
+                       font-size:10.5px;font-weight:600;background:#eef2ff;color:#4f46e5;
+                       border:none;cursor:pointer;line-height:1.2;"><i class="fas fa-paper-plane"></i></button>`,
       `<button type="button" class="pv-chat-row-btn" data-aid="${esc(a.id)}"
                 title="Preguntar a la IA sobre este artículo"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
@@ -3220,6 +3225,12 @@
       if (prChip) prChip.addEventListener('click', e => {
         e.stopPropagation();
         openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+
+      const emailRowBtn = row.querySelector('.pv-email-row-btn');
+      if (emailRowBtn) emailRowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        PVEmailShare.open(a);
       });
 
       const chatRowBtn = row.querySelector('.pv-chat-row-btn');
@@ -6363,6 +6374,70 @@
     if (histBtn) histBtn.addEventListener('click', () => PVChat.open(a, { showHistory: true }));
     PVChat.updateLauncherCount(a);
   }
+
+  // ── Share article by email ───────────────────────────────────────────
+  const PVEmailShare = (() => {
+    let _article = null;
+    let _me = null;   // {name, email} cached
+    let _wired = false;
+    const $ = id => document.getElementById(id);
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-email-close')?.addEventListener('click', close);
+      document.querySelector('#pv-email-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-email-send')?.addEventListener('click', send);
+      $('pv-email-to')?.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+    }
+
+    async function open(article) {
+      _article = article;
+      wireOnce();
+      const modal = $('pv-email-modal');
+      if (!modal) return;
+      const meta = [article.journal, article.year].filter(Boolean).join(' · ');
+      $('pv-email-article').innerHTML = supHtml(article.title || '') +
+        (meta ? `<div style="font-weight:400;color:#6b7280;font-size:12px;">${esc(meta)}</div>` : '');
+      $('pv-email-status').textContent = '';
+      $('pv-email-hint').textContent = '';
+      modal.style.display = 'flex';
+      const toEl = $('pv-email-to');
+      // Prefill with the current (admin) user's email.
+      if (!_me) { try { _me = await api('/me'); } catch (e) { _me = { name: '', email: '' }; } }
+      toEl.value = _me.email || '';
+      $('pv-email-hint').textContent = _me.email
+        ? `Por defecto: ${_me.name ? _me.name + ' ' : ''}<${_me.email}>. Cámbialo para enviar a otra persona.`
+        : 'Escribe la dirección de destino.';
+      toEl.focus();
+      toEl.select();
+    }
+
+    function close() { const m = $('pv-email-modal'); if (m) m.style.display = 'none'; }
+
+    async function send() {
+      const to = ($('pv-email-to').value || '').trim();
+      const status = $('pv-email-status');
+      if (!to) { status.style.color = '#b91c1c'; status.textContent = 'Indica una dirección de email.'; return; }
+      const btn = $('pv-email-send');
+      btn.disabled = true;
+      status.style.color = '#9ca3af';
+      status.textContent = 'Enviando…';
+      try {
+        const r = await api(`/articles/${_article.id}/email`, { method: 'POST', body: JSON.stringify({ to }) });
+        status.style.color = '#15803d';
+        status.textContent = '✓ Enviado' + (r.attached_pdf ? ' (con PDF adjunto)' : '');
+        setTimeout(close, 1200);
+      } catch (e) {
+        status.style.color = '#b91c1c';
+        status.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    return { open, close };
+  })();
 
   // ── Sticky notes (per-article, per-user) ─────────────────────────────
   // Row cluster: one coloured icon per note + a grey "add" icon (≤5).
