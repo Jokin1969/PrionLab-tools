@@ -14099,21 +14099,21 @@
                   <div style="font-size:12.5px;font-weight:600;color:#111827;">${esc(j.title)} <span style="font-weight:500;color:#6d28d9;font-size:11px;">· ${esc(yrLabel)}</span></div>
                   <div style="font-size:11px;color:#9ca3af;">${esc(j.primary_issn || 'ISSN: Unknown')} · ${esc(j.country || 'Unknown')}${q ? ' · ' + q : ''}${j.best_category ? ' · ' + esc(j.best_category) : ''}</div>
                 </div>
-                <button class="pv-mj-edit" data-j="${esc(j.title)}" data-year="${j.year || ''}" title="Editar" style="background:none;border:none;color:#6d28d9;cursor:pointer;font-size:13px;">✏</button>
-                <button class="pv-mj-del" data-j="${esc(j.title)}" data-year="${j.year || ''}" title="Eliminar" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
+                <button class="pv-mj-edit" data-j="${esc(j.title)}" data-year="${j.year != null ? j.year : ''}" title="Editar" style="background:none;border:none;color:#6d28d9;cursor:pointer;font-size:13px;">✏</button>
+                <button class="pv-mj-del" data-j="${esc(j.title)}" data-year="${j.year != null ? j.year : ''}" title="Eliminar" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
               </div>`;
             }).join('')
           : '<div style="color:#9ca3af;font-size:12px;padding:4px;">Aún no has añadido revistas manuales.</div>';
         mjList.querySelectorAll('.pv-mj-del').forEach(b => b.addEventListener('click', async () => {
           const yr = b.dataset.year || '';
-          const yrTxt = yr ? ` (${yr})` : ' (todos los años)';
+          const yrTxt = (yr && yr !== '0') ? ` (${yr})` : ' (todos los años)';
           if (!confirm(`¿Eliminar «${b.dataset.j}»${yrTxt}?`)) return;
           try { await api('/admin/scimago/manual/delete', { method: 'POST', body: JSON.stringify({ journal: b.dataset.j, year: yr }) }); refreshManual(); }
           catch (e) { alert('No se pudo eliminar: ' + e.message); }
         }));
         mjList.querySelectorAll('.pv-mj-edit').forEach(b => b.addEventListener('click', () => {
           const j = js.find(x => x.title === b.dataset.j &&
-                                  String(x.year || '') === (b.dataset.year || ''));
+                                  String(x.year != null ? x.year : '') === (b.dataset.year || ''));
           if (!j) return;
           mjJournal.value = j.title || '';
           if (mjYear) mjYear.value = j.year || '';
