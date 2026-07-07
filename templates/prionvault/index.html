@@ -1204,8 +1204,10 @@
          margin:0 0 14px;line-height:1.4;"></div>
 
     <label style="font-size:11.5px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Enviar a</label>
-    <input id="pv-email-to" type="email" placeholder="nombre@ejemplo.com"
+    <input id="pv-email-to" type="email" list="pv-email-users" placeholder="nombre@ejemplo.com"
+           autocomplete="off"
            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13.5px;">
+    <datalist id="pv-email-users"></datalist>
     <div id="pv-email-hint" style="font-size:11.5px;color:#9ca3af;margin-top:5px;"></div>
 
     <!-- Optional intro comment -->
@@ -1232,8 +1234,28 @@
                      font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
         <i class="fas fa-paper-plane"></i> Enviar
       </button>
+      <button id="pv-email-preview" type="button"
+              style="padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;
+                     font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+        <i class="fas fa-eye"></i> Previsualizar
+      </button>
       <span id="pv-email-status" style="font-size:12.5px;color:#9ca3af;"></span>
     </div>
+  </div>
+</div>
+
+<!-- ── Email preview modal ───────────────────────────────────────────── -->
+<div id="pv-email-preview-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:680px;width:94vw;padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:90vh;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
+      <span style="font-size:14px;font-weight:700;color:#111827;"><i class="fas fa-eye" style="margin-right:7px;color:#0F3460;"></i>Previsualización del email</span>
+      <button id="pv-email-preview-close" aria-label="Close"
+              style="width:28px;height:28px;border-radius:50%;border:1px solid #e5e7eb;background:#fff;
+                     font-size:17px;cursor:pointer;color:#6b7280;line-height:1;">×</button>
+    </div>
+    <iframe id="pv-email-preview-frame" title="Previsualización"
+            style="border:none;width:100%;flex:1;min-height:420px;background:#f3f4f6;"></iframe>
   </div>
 </div>
 

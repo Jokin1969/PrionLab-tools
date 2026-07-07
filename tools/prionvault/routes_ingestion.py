@@ -1895,6 +1895,61 @@ def api_me():
     return jsonify(_current_user_contact())
 
 
+@prionvault_bp.route("/api/users-directory", methods=["GET"])
+@login_required
+def api_users_directory():
+    """List {name, email} for every user (for the share-email dropdown)."""
+    out = []
+    try:
+        s = _session()
+        try:
+            cols = {r[0] for r in s.execute(sql_text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'users'"
+            )).all()}
+            if "email" not in cols:
+                return jsonify({"users": []})
+            name_col = next((c for c in ("full_name", "name", "username")
+                             if c in cols), None)
+            sel = "email" + (f", {name_col} AS uname" if name_col else "")
+            rows = s.execute(sql_text(
+                f"SELECT {sel} FROM users "
+                f"WHERE email IS NOT NULL AND email <> '' "
+                f"ORDER BY email"
+            )).mappings().all()
+            seen = set()
+            for r in rows:
+                em = (r.get("email") or "").strip()
+                if em and em.lower() not in seen:
+                    seen.add(em.lower())
+                    out.append({"name": r.get("uname") or "", "email": em})
+        finally:
+            s.close()
+    except Exception as exc:
+        logger.warning("users-directory failed: %s", exc)
+    return jsonify({"users": out})
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/email/preview", methods=["POST"])
+@login_required
+def api_article_email_preview(aid):
+    """Return the share email HTML (no send) for the preview modal."""
+    body = request.get_json(silent=True) or {}
+    from .services import article_share
+    me = _current_user_contact()
+    try:
+        html = article_share.render_preview(
+            str(aid), sender_name=me.get("name") or "",
+            include_summary=body.get("include_summary", True) is not False,
+            comment=body.get("comment", ""))
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        logger.exception("article email preview failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"html": html})
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/email", methods=["POST"])
 @login_required
 def api_article_email(aid):

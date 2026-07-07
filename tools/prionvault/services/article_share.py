@@ -192,6 +192,16 @@ def _plain(a: dict, base_url: str, sender_name: str,
 _EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def render_preview(article_id: str, sender_name: str = "",
+                   include_summary: bool = True, comment: str = "") -> str:
+    """Return the share email HTML without sending it (for the preview)."""
+    a = _fetch_article(article_id)
+    if not a:
+        raise LookupError("article_not_found")
+    return build_share_html(a, _base_url(), sender_name, include_summary,
+                            (comment or "").strip()[:2000])
+
+
 def send_article_email(article_id: str, to: str,
                        sender_name: str = "",
                        include_summary: bool = True,

@@ -6378,8 +6378,10 @@
   // ── Share article by email ───────────────────────────────────────────
   const PVEmailShare = (() => {
     let _article = null;
-    let _me = null;   // {name, email} cached
+    let _me = null;         // {name, email} cached
+    let _dirLoaded = false; // users datalist loaded
     let _wired = false;
+    const LAST_KEY = 'pv-share-last-email';
     const $ = id => document.getElementById(id);
 
     function wireOnce() {
@@ -6388,6 +6390,7 @@
       $('pv-email-close')?.addEventListener('click', close);
       document.querySelector('#pv-email-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-email-send')?.addEventListener('click', send);
+      $('pv-email-preview')?.addEventListener('click', preview);
       $('pv-email-to')?.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
       const ctog = $('pv-email-comment-toggle');
       ctog?.addEventListener('change', () => {
@@ -6395,6 +6398,52 @@
         ta.style.display = ctog.checked ? 'block' : 'none';
         if (ctog.checked) ta.focus();
       });
+      // Preview modal close.
+      $('pv-email-preview-close')?.addEventListener('click', () => {
+        const m = $('pv-email-preview-modal'); if (m) m.style.display = 'none';
+      });
+      document.querySelector('#pv-email-preview-modal .pv-modal-backdrop')
+        ?.addEventListener('click', () => {
+          const m = $('pv-email-preview-modal'); if (m) m.style.display = 'none';
+        });
+    }
+
+    async function loadDirectory() {
+      if (_dirLoaded) return;
+      _dirLoaded = true;
+      try {
+        const r = await api('/users-directory');
+        const dl = $('pv-email-users');
+        if (dl) dl.innerHTML = (r.users || []).map(u =>
+          `<option value="${esc(u.email)}">${esc(u.name ? u.name + ' — ' + u.email : u.email)}</option>`
+        ).join('');
+      } catch (e) { /* silent */ }
+    }
+
+    function currentOptions() {
+      const includeSummary = $('pv-email-include-summary')?.checked !== false;
+      const commentOn = $('pv-email-comment-toggle')?.checked;
+      const comment = commentOn ? ($('pv-email-comment').value || '').trim() : '';
+      return { include_summary: includeSummary, comment };
+    }
+
+    async function preview() {
+      const btn = $('pv-email-preview');
+      const status = $('pv-email-status');
+      btn.disabled = true;
+      status.style.color = '#9ca3af'; status.textContent = 'Generando previsualización…';
+      try {
+        const r = await api(`/articles/${_article.id}/email/preview`, {
+          method: 'POST', body: JSON.stringify(currentOptions()),
+        });
+        const frame = $('pv-email-preview-frame');
+        if (frame) frame.srcdoc = r.html || '';
+        const m = $('pv-email-preview-modal');
+        if (m) m.style.display = 'flex';
+        status.textContent = '';
+      } catch (e) {
+        status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e.message;
+      } finally { btn.disabled = false; }
     }
 
     async function open(article) {
@@ -6415,13 +6464,17 @@
       const incS = $('pv-email-include-summary');
       if (incS) incS.checked = true;
       modal.style.display = 'flex';
+      loadDirectory();
       const toEl = $('pv-email-to');
-      // Prefill with the current (admin) user's email.
       if (!_me) { try { _me = await api('/me'); } catch (e) { _me = { name: '', email: '' }; } }
-      toEl.value = _me.email || '';
-      $('pv-email-hint').textContent = _me.email
-        ? `Por defecto: ${_me.name ? _me.name + ' ' : ''}<${_me.email}>. Cámbialo para enviar a otra persona.`
-        : 'Escribe la dirección de destino.';
+      // Prefill with the last email used, else the admin's own email.
+      const last = (() => { try { return localStorage.getItem(LAST_KEY) || ''; } catch (e) { return ''; } })();
+      toEl.value = last || _me.email || '';
+      $('pv-email-hint').innerHTML = last
+        ? `Último usado. Empieza a escribir para elegir de la lista de usuarios, o pon otro.`
+        : (_me.email
+            ? `Por defecto: ${_me.name ? esc(_me.name) + ' ' : ''}&lt;${esc(_me.email)}&gt;. Elige de la lista o escribe otro.`
+            : 'Escribe la dirección de destino.');
       toEl.focus();
       toEl.select();
     }
@@ -6436,14 +6489,12 @@
       btn.disabled = true;
       status.style.color = '#9ca3af';
       status.textContent = 'Enviando…';
-      const includeSummary = $('pv-email-include-summary')?.checked !== false;
-      const commentOn = $('pv-email-comment-toggle')?.checked;
-      const comment = commentOn ? ($('pv-email-comment').value || '').trim() : '';
       try {
         const r = await api(`/articles/${_article.id}/email`, {
           method: 'POST',
-          body: JSON.stringify({ to, include_summary: includeSummary, comment }),
+          body: JSON.stringify({ to, ...currentOptions() }),
         });
+        try { localStorage.setItem(LAST_KEY, to); } catch (e) { /* ignore */ }
         status.style.color = '#15803d';
         status.textContent = '✓ Enviado' + (r.attached_pdf ? ' (con PDF adjunto)' : '');
         setTimeout(close, 1200);
