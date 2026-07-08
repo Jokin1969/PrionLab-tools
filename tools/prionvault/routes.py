@@ -686,19 +686,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # NOTE: params["_viewer_uid"] is set unconditionally further down
     # (the _pus LEFT JOIN needs it on EVERY query). This block only
     # adds the is_favorite / is_read conditions when requested.
-    if _viewer_uid and is_jc is not None:
-        if is_jc is True:
-            conditions.append(
-                "EXISTS (SELECT 1 FROM prionvault_user_state s "
-                "WHERE s.article_id = articles.id "
-                "AND s.user_id = :_viewer_uid AND s.is_jc IS TRUE)"
-            )
-        else:
-            conditions.append(
-                "NOT EXISTS (SELECT 1 FROM prionvault_user_state s "
-                "WHERE s.article_id = articles.id "
-                "AND s.user_id = :_viewer_uid AND s.is_jc IS TRUE)"
-            )
+    # Journal Club is a SHARED, article-level mark since migration 058 — the
+    # admin curates it and everyone filters on the same set.
+    if is_jc is not None and "is_jc" in pv_cols:
+        conditions.append("articles.is_jc IS TRUE" if is_jc is True
+                          else "articles.is_jc IS NOT TRUE")
 
     if _viewer_uid and (is_favorite is not None or is_read is not None):
         if is_favorite is True:
@@ -768,6 +760,10 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                  "COALESCE(_pus.is_flagged,   FALSE) AS is_flagged, "
                  "_pus.color_label                  AS color_label, "
                  "_pus.priority                     AS priority")
+    # Shared Journal Club mark (article-level since migration 058). Guarded
+    # so a not-yet-migrated DB doesn't 500 on a missing column.
+    base_cols += (", COALESCE(articles.is_jc, FALSE) AS is_jc"
+                  if "is_jc" in pv_cols else ", FALSE AS is_jc")
     pv_select = ", ".join(
         c for c in
         ["pdf_md5", "pdf_pages", "pdf_is_scan",
@@ -1004,7 +1000,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "my_rating":      my_ratings.get(aid),
             "is_favorite":    (user_states.get(aid) or {}).get("is_favorite", False),
             "is_read":        (user_states.get(aid) or {}).get("is_read", False),
-            "is_jc":          (user_states.get(aid) or {}).get("is_jc", False),
+            "is_jc":          bool(d.get("is_jc")),   # shared, article-level
             "read_at":        (user_states.get(aid) or {}).get("read_at"),
             "notes":          note_stubs.get(aid_str, []),
             "prionpacks":     [{"id": p, "title": pp_titles.get(p, p)} for p in pp_ids],
@@ -1048,6 +1044,9 @@ def api_article_detail(aid):
             "(SELECT COUNT(*) FROM prionvault_jc_presentation jp "
             " WHERE jp.article_id = articles.id) AS jc_count"
         )
+        # Shared Journal Club mark (article-level since migration 058).
+        base_cols += (", COALESCE(articles.is_jc, FALSE) AS is_jc"
+                      if "is_jc" in pv_cols else ", FALSE AS is_jc")
         optional = [
             "pdf_md5", "pdf_size_bytes", "pdf_pages", "pdf_is_scan",
             "extraction_status", "extraction_error",
@@ -1122,6 +1121,7 @@ def api_article_detail(aid):
             "pdf_oa_status": d.get("pdf_oa_status"),
             "jc_count":      int(d.get("jc_count") or 0),
             "has_jc":        bool(d.get("jc_count") or 0),
+            "is_jc":         bool(d.get("is_jc")),   # shared Journal Club mark
             "extraction_status": d.get("extraction_status") or "pending",
             "extraction_error":  d.get("extraction_error"),
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
@@ -1810,9 +1810,11 @@ def _get_or_create_state(s, user_id, article_id):
 
 
 def _state_to_dict(state):
+    # NOTE: is_jc is NOT included — it's a shared, article-level mark since
+    # migration 058, so it must not be merged from per-user state (that would
+    # clobber the shared value when the viewer toggles favorite/read).
     return {
         "is_favorite": bool(state.is_favorite),
-        "is_jc":       bool(state.is_jc),
         "read_at":     state.read_at.isoformat() if state.read_at else None,
         "is_read":     state.read_at is not None,
     }
@@ -1844,29 +1846,58 @@ def api_set_favorite(aid):
         s.close()
 
 
-@prionvault_bp.route("/api/articles/<uuid:aid>/jc", methods=["POST"])
-@login_required
+@prionvault_bp.route("/api/articles/<uuid:aid>/jc-mark", methods=["POST"])
+@admin_required
 def api_set_jc(aid):
-    """Set the Journal Club mark for the viewer on this article.
+    """Set the SHARED Journal Club mark on this article (admin-only).
+    Everyone sees it — it flags articles to be reviewed in Journal Club.
     Body: {value: bool}."""
-    user_id = _viewer_id()
-    if not user_id:
-        return jsonify({"error": "not authenticated"}), 401
     data = request.get_json(force=True, silent=True) or {}
     value = bool(data.get("value", True))
     s = _session()
     try:
-        state = _get_or_create_state(s, user_id, aid)
-        if state is None:
+        res = s.execute(sql_text(
+            "UPDATE articles SET is_jc = :v, updated_at = NOW() WHERE id = :aid"
+        ), {"v": value, "aid": str(aid)})
+        if (res.rowcount or 0) == 0:
+            s.rollback()
             return jsonify({"error": "article not found"}), 404
-        state.is_jc = value
-        state.updated_at = datetime.utcnow()
         s.commit()
-        return jsonify(_state_to_dict(state))
+        return jsonify({"ok": True, "is_jc": value})
     except Exception as exc:
         s.rollback()
         logger.exception("api_set_jc failed")
         return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+
+@prionvault_bp.route("/api/articles/bulk-jc", methods=["POST"])
+@admin_required
+def api_articles_bulk_jc():
+    """Set the shared Journal Club mark on many articles at once (admin-only).
+    Body: {ids: [...uuid...], value: bool}."""
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids"}), 400
+    if len(ids) > _BULK_MAX_IDS:
+        return jsonify({"error": "too_many",
+                        "detail": f"Máximo {_BULK_MAX_IDS} ids por llamada."}), 400
+    ids = [str(x) for x in ids if x]
+    value = bool(data.get("value", True))
+    s = _session()
+    try:
+        res = s.execute(sql_text(
+            "UPDATE articles SET is_jc = :v, updated_at = NOW() "
+            "WHERE id = ANY(CAST(:ids AS uuid[]))"
+        ), {"v": value, "ids": ids})
+        s.commit()
+        return jsonify({"ok": True, "updated": res.rowcount or 0, "is_jc": value})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("bulk JC failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
     finally:
         s.close()
 
@@ -2361,14 +2392,14 @@ def api_articles_bulk_user_state():
 
     set_fav  = "is_favorite" in data
     set_read = "is_read" in data
-    set_jc   = "is_jc" in data
-    if not (set_fav or set_read or set_jc):
+    # is_jc is a SHARED, admin-only mark since migration 058 — it's handled by
+    # /api/articles/bulk-jc, not here (this endpoint is per-viewer state).
+    if not (set_fav or set_read):
         return jsonify({"error": "no_fields",
-                        "detail": "Indica is_favorite, is_read y/o is_jc."}), 400
+                        "detail": "Indica is_favorite y/o is_read."}), 400
 
     fav  = bool(data.get("is_favorite")) if set_fav  else None
     read = bool(data.get("is_read"))     if set_read else None
-    jc   = bool(data.get("is_jc"))       if set_jc   else None
 
     # Build the UPSERT — only the columns actually requested move.
     set_parts = []
@@ -2376,9 +2407,6 @@ def api_articles_bulk_user_state():
     if set_fav:
         set_parts.append("is_favorite = :fav")
         params["fav"] = fav
-    if set_jc:
-        set_parts.append("is_jc = :jc")
-        params["jc"] = jc
     if set_read:
         # read_at is the source of truth; is_read is derived (`read_at IS NOT NULL`).
         if read:
@@ -2391,9 +2419,6 @@ def api_articles_bulk_user_state():
     if set_fav:
         insert_cols.append("is_favorite")
         insert_vals.append(":fav")
-    if set_jc:
-        insert_cols.append("is_jc")
-        insert_vals.append(":jc")
     if set_read:
         insert_cols.append("read_at")
         insert_vals.append(":now" if read else "NULL")
@@ -2414,7 +2439,6 @@ def api_articles_bulk_user_state():
         s.commit()
         updated_fields = []
         if set_fav:  updated_fields.append("is_favorite")
-        if set_jc:   updated_fields.append("is_jc")
         if set_read: updated_fields.append("is_read")
         return jsonify({"ok": True, "updated": res.rowcount or 0,
                         "fields": updated_fields})

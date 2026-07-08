@@ -2087,9 +2087,9 @@
                 style="padding:4px 8px;border-radius:6px;background:#15803d;color:white;border:none;cursor:pointer;font-size:12px;font-weight:700;">✓ +</button>
         <button id="pv-bulk-read-off${s}" type="button" title="Marcar como no leídos"
                 style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;font-weight:700;">✓ −</button>
-        <button id="pv-bulk-jc-on${s}"   type="button" title="Marcar para mi Journal Club"
+        <button id="pv-bulk-jc-on${s}"   type="button" title="Marcar para Journal Club (visible para todos)"
                 style="padding:4px 8px;border-radius:6px;background:#7c3aed;color:white;border:none;cursor:pointer;font-size:12px;"><i class="fas fa-book-open"></i> +</button>
-        <button id="pv-bulk-jc-off${s}"  type="button" title="Quitar de mi Journal Club"
+        <button id="pv-bulk-jc-off${s}"  type="button" title="Quitar de Journal Club (visible para todos)"
                 style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;"><i class="fas fa-book-open"></i> −</button>
       </div>
 
@@ -2293,9 +2293,9 @@
     $id('pv-bulk-read-off')?.addEventListener('click',
       () => doBulkUserState({is_read: false},     'no leído'));
     $id('pv-bulk-jc-on') ?.addEventListener('click',
-      () => doBulkUserState({is_jc: true},        'Journal Club'));
+      () => doBulkJc(true,  'Journal Club'));
     $id('pv-bulk-jc-off')?.addEventListener('click',
-      () => doBulkUserState({is_jc: false},       'sin Journal Club'));
+      () => doBulkJc(false, 'sin Journal Club'));
 
     // Tags picker
     $id('pv-bulk-tags')?.addEventListener('click',
@@ -2370,6 +2370,22 @@
       await api('/articles/bulk-user-state', {
         method: 'POST',
         body: JSON.stringify({ ids, ...payload }),
+      });
+      loadArticles();
+    } catch (e) {
+      alert('Error en la operación masiva: ' + e.message);
+    }
+  }
+
+  // Journal Club is a SHARED, admin-only mark (article-level) — its own route.
+  async function doBulkJc(value, descr) {
+    const ids = Array.from(state.selectedIds);
+    if (!ids.length) return;
+    if (ids.length > 5 && !confirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
+    try {
+      await api('/articles/bulk-jc', {
+        method: 'POST',
+        body: JSON.stringify({ ids, value }),
       });
       loadArticles();
     } catch (e) {
@@ -2954,9 +2970,10 @@
           <span style="width:1px;height:14px;background:#e5e7eb;"></span>
           <button class="pv-jc-btn"
                   data-active="${a.is_jc ? '1' : '0'}"
-                  title="${a.is_jc ? 'Quitar de mi Journal Club' : 'Marcar para Journal Club'}"
-                  style="background:none;border:none;padding:0;font-size:13px;line-height:1;cursor:pointer;
-                         color:${jcColor};"><i class="fas fa-book-open"></i></button>
+                  title="${a.is_jc ? (IS_ADMIN ? 'En Journal Club — clic para quitar' : 'Seleccionado para Journal Club')
+                                   : (IS_ADMIN ? 'Marcar para Journal Club' : 'No está en Journal Club')}"
+                  style="background:none;border:none;padding:0;font-size:13px;line-height:1;
+                         cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${jcColor};"><i class="fas fa-book-open"></i></button>
           <button class="pv-favorite-btn"
                   data-active="${a.is_favorite ? '1' : '0'}"
                   title="${a.is_favorite ? 'Quitar de mis favoritos' : 'Añadir a mis favoritos'}"
@@ -3172,11 +3189,12 @@
 
     row.querySelector('.pv-jc-btn').addEventListener('click', async e => {
       e.stopPropagation();
+      if (!IS_ADMIN) return;   // JC is a shared, admin-curated mark
       const btn = e.currentTarget;
       const next = btn.dataset.active !== '1';
       btn.disabled = true;
       try {
-        const r = await api(`/articles/${a.id}/jc`, {
+        const r = await api(`/articles/${a.id}/jc-mark`, {
           method: 'POST',
           body: JSON.stringify({ value: next }),
         });
@@ -3632,16 +3650,19 @@
             <span style="font-size:13px;font-weight:800;line-height:1;color:${a.is_read ? '#15803d' : '#9ca3af'};">✓</span>
             ${a.is_read ? 'Leído por mí' : 'Marcar como leído'}
           </button>
+          ${(IS_ADMIN || a.is_jc) ? `
           <button id="pv-detail-jc" type="button"
                   data-active="${a.is_jc ? '1' : '0'}"
+                  title="${IS_ADMIN ? 'Marca compartida — todos ven los artículos de Journal Club'
+                                    : 'Seleccionado para Journal Club'}"
                   style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
-                         font-size:12px;font-weight:600;cursor:pointer;
+                         font-size:12px;font-weight:600;cursor:${IS_ADMIN ? 'pointer' : 'default'};
                          ${a.is_jc
                            ? 'background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;'
                            : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
             <span style="font-size:12px;line-height:1;color:${a.is_jc ? '#7c3aed' : '#9ca3af'};"><i class="fas fa-book-open"></i></span>
-            ${a.is_jc ? 'En mi Journal Club' : 'Marcar para Journal Club'}
-          </button>
+            ${a.is_jc ? 'En Journal Club' : 'Marcar para Journal Club'}
+          </button>` : ''}
         </div>`;
 
       const chatLauncher = `
@@ -7105,8 +7126,9 @@
       readBtn.outerHTML = fresh;
       wirePersonalState(a);
     }));
+    // JC is a shared, admin-only mark — only admins can toggle it.
     const jcBtn = document.getElementById('pv-detail-jc');
-    if (jcBtn) jcBtn.addEventListener('click', () => toggle(jcBtn, 'jc', 'is_jc', r => {
+    if (jcBtn && IS_ADMIN) jcBtn.addEventListener('click', () => toggle(jcBtn, 'jc-mark', 'is_jc', r => {
       a.is_jc = !!r.is_jc;
       const fresh = renderPersonalChip(a, 'jc');
       jcBtn.outerHTML = fresh;
@@ -7136,7 +7158,7 @@
                            ? 'background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;'
                            : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
                 <span style="font-size:12px;line-height:1;color:${a.is_jc ? '#7c3aed' : '#9ca3af'};"><i class="fas fa-book-open"></i></span>
-                ${a.is_jc ? 'En mi Journal Club' : 'Marcar para Journal Club'}
+                ${a.is_jc ? 'En Journal Club' : 'Marcar para Journal Club'}
               </button>`;
     }
     return `<button id="pv-detail-read" type="button"
@@ -9798,7 +9820,7 @@
       // /articles/bulk-user-state.
       const BL_MARKS = [
         { id:'flag', icon:'⚑', label:'Banderita',    kind:'article', body:{is_flagged:true},   bd:'#f59e0b', bg:'#fffbeb', fg:'#92400e' },
-        { id:'jc',   icon:'📖', label:'Journal Club', kind:'user',    body:{is_jc:true},        bd:'#7c3aed', bg:'#f5f3ff', fg:'#6d28d9' },
+        { id:'jc',   icon:'📖', label:'Journal Club', kind:'jc',      value:true,               bd:'#7c3aed', bg:'#f5f3ff', fg:'#6d28d9' },
         { id:'star', icon:'★', label:'Hito',         kind:'article', body:{is_milestone:true}, bd:'#f59e0b', bg:'#fffbeb', fg:'#92400e' },
         { id:'fav',  icon:'♥', label:'Favorito',     kind:'user',    body:{is_favorite:true},  bd:'#e11d48', bg:'#fff1f2', fg:'#be123c' },
         { id:'read', icon:'✓', label:'Leído',        kind:'user',    body:{is_read:true},      bd:'#15803d', bg:'#f0fdf4', fg:'#15803d' },
@@ -9886,6 +9908,11 @@
               await api('/articles/bulk-user-state', {
                 method: 'POST',
                 body: JSON.stringify({ ids, ...m.body }),
+              });
+            } else if (m.kind === 'jc') {
+              await api('/articles/bulk-jc', {
+                method: 'POST',
+                body: JSON.stringify({ ids, value: m.value }),
               });
             } else {
               await api('/articles/bulk', {
