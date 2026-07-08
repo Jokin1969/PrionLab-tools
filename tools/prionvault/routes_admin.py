@@ -1935,3 +1935,106 @@ def api_scimago_missing():
     """Scan the library and list journals with no ranking data yet."""
     from .services import scimago
     return jsonify({"journals": scimago.find_missing_journals()})
+
+
+# ── PrionPacks cart (server-side, per admin) ─────────────────────────────────
+#
+# The cart that stages articles for import into PrionPacks used to live in the
+# browser's localStorage (per-device). It's an admin task and the admin moves
+# between devices, so it's now persisted in `prionvault_cart` keyed by user_id
+# and gated to admins. Each row carries a display snapshot in `data`.
+
+def _cart_items(user_id: str) -> list:
+    s = _session()
+    try:
+        rows = s.execute(sql_text("""
+            SELECT article_id::text AS id, data
+              FROM prionvault_cart
+             WHERE user_id = CAST(:uid AS uuid)
+             ORDER BY created_at DESC
+        """), {"uid": user_id}).mappings().all()
+    finally:
+        s.close()
+    out = []
+    for r in rows:
+        item = dict(r["data"] or {})
+        item["id"] = r["id"]
+        out.append(item)
+    return out
+
+
+@prionvault_bp.route("/api/cart", methods=["GET"])
+@admin_required
+def api_cart_list():
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    return jsonify({"items": _cart_items(uid)})
+
+
+@prionvault_bp.route("/api/cart", methods=["POST"])
+@admin_required
+def api_cart_add():
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    body = request.get_json(silent=True) or {}
+    art = body.get("article") or {}
+    aid = str(art.get("id") or "").strip()
+    if not aid:
+        return jsonify({"error": "article id required"}), 400
+    import json as _json
+    snapshot = {k: art.get(k) for k in
+                ("title", "authors", "year", "journal", "doi", "pubmed_id", "has_pdf")}
+    s = _session()
+    try:
+        s.execute(sql_text("""
+            INSERT INTO prionvault_cart (user_id, article_id, data, created_at)
+            VALUES (CAST(:uid AS uuid), CAST(:aid AS uuid),
+                    CAST(:data AS jsonb), NOW())
+            ON CONFLICT (user_id, article_id) DO UPDATE
+              SET data = EXCLUDED.data
+        """), {"uid": uid, "aid": aid, "data": _json.dumps(snapshot)})
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("cart add failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    finally:
+        s.close()
+    return jsonify({"ok": True, "items": _cart_items(uid)})
+
+
+@prionvault_bp.route("/api/cart/<uuid:article_id>", methods=["DELETE"])
+@admin_required
+def api_cart_remove(article_id):
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        s.execute(sql_text("""
+            DELETE FROM prionvault_cart
+             WHERE user_id = CAST(:uid AS uuid)
+               AND article_id = CAST(:aid AS uuid)
+        """), {"uid": uid, "aid": str(article_id)})
+        s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True, "items": _cart_items(uid)})
+
+
+@prionvault_bp.route("/api/cart/clear", methods=["POST"])
+@admin_required
+def api_cart_clear():
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        s.execute(sql_text("DELETE FROM prionvault_cart WHERE user_id = CAST(:uid AS uuid)"),
+                  {"uid": uid})
+        s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True, "items": []})
