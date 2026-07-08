@@ -54,7 +54,10 @@
     indexedStatus:  '',  // '' | 'yes' | 'no'
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
     page: 1,
-    size: parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100,
+    // Anyone who had the old "todos" (50000, now removed) stored is brought
+    // back to 100 so they don't keep loading the whole catalogue every visit.
+    size: (() => { const n = parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100;
+                   return n > 2000 ? 100 : n; })(),
     // selectedIds: a Set that ALSO syncs every change to the server
     // (table: prionvault_user_selection) so the operator's ticks
     // survive refresh, browser switch and server deploys. Starts as
@@ -2087,10 +2090,11 @@
                 style="padding:4px 8px;border-radius:6px;background:#15803d;color:white;border:none;cursor:pointer;font-size:12px;font-weight:700;">✓ +</button>
         <button id="pv-bulk-read-off${s}" type="button" title="Marcar como no leídos"
                 style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;font-weight:700;">✓ −</button>
+        ${IS_ADMIN ? `
         <button id="pv-bulk-jc-on${s}"   type="button" title="Marcar para Journal Club (visible para todos)"
                 style="padding:4px 8px;border-radius:6px;background:#7c3aed;color:white;border:none;cursor:pointer;font-size:12px;"><i class="fas fa-book-open"></i> +</button>
         <button id="pv-bulk-jc-off${s}"  type="button" title="Quitar de Journal Club (visible para todos)"
-                style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;"><i class="fas fa-book-open"></i> −</button>
+                style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;"><i class="fas fa-book-open"></i> −</button>` : ''}
       </div>
 
       ${IS_ADMIN ? `
@@ -2930,14 +2934,13 @@
     const journal = a.journal ? ` · ${esc(a.journal)}` : '';
 
     // ── Select cell: bulk-selection checkbox (admin only) ────────────────
-    const selectCell = IS_ADMIN
-      ? `<td style="padding:8px 6px 8px 12px;vertical-align:middle;text-align:center;width:32px;">
+    const selectCell =
+      `<td style="padding:8px 6px 8px 12px;vertical-align:middle;text-align:center;width:32px;">
            <input type="checkbox" class="pv-row-select" data-aid="${esc(a.id)}"
                   ${state.selectedIds.has(a.id) ? 'checked' : ''}
                   onclick="event.stopPropagation();"
                   style="cursor:pointer;width:14px;height:14px;">
-         </td>`
-      : '';
+         </td>`;
 
     // ── Marks cell: flag + color dot + milestone (vertical stack) ────────
     const colorCss = a.color_label ? (COLOR_CSS[a.color_label] || '#9ca3af') : null;
@@ -2957,16 +2960,16 @@
                   data-active="${a.is_flagged ? '1' : '0'}"
                   title="${flagTitle}"
                   style="background:none;border:none;padding:0;line-height:0;
-                         cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${flagColor};">${FLAG_SVG(a.is_flagged)}</button>
+                         cursor:pointer;color:${flagColor};">${FLAG_SVG(a.is_flagged)}</button>
           <span class="pv-color-dot"
                 title="${colorTitle}"
-                style="width:11px;height:11px;border-radius:50%;flex-shrink:0;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                style="width:11px;height:11px;border-radius:50%;flex-shrink:0;cursor:pointer;
                        ${colorCss ? `background:${colorCss};` : 'background:transparent;border:1.5px dashed #d1d5db;'}"></span>
           <button class="pv-milestone-btn"
                   data-active="${a.is_milestone ? '1' : '0'}"
                   title="${a.is_milestone ? 'Hito ★ — clic para quitar' : 'Marcar como hito'}"
                   style="background:none;border:none;padding:0;font-size:15px;line-height:1;
-                         cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${milestoneColor};">${a.is_milestone ? '★' : '☆'}</button>
+                         cursor:pointer;color:${milestoneColor};">${a.is_milestone ? '★' : '☆'}</button>
           <span style="width:1px;height:14px;background:#e5e7eb;"></span>
           <button class="pv-jc-btn"
                   data-active="${a.is_jc ? '1' : '0'}"
@@ -3067,10 +3070,10 @@
     const priorityCell = `
       <td style="padding:8px 8px;vertical-align:middle;text-align:center;">
         <span class="pv-priority-chip"
-              title="Prioridad ${prio}/5${IS_ADMIN ? ' — clic para cambiar' : ''}"
+              title="Prioridad ${prio}/5 — clic para cambiar"
               style="display:inline-flex;align-items:center;justify-content:center;
                      min-width:24px;height:20px;padding:0 6px;border-radius:5px;
-                     font-size:11px;font-weight:700;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                     font-size:11px;font-weight:700;cursor:pointer;
                      ${prioStyle}">P${prio}</span>
       </td>`;
 
@@ -3225,31 +3228,40 @@
       }
     });
 
+    // Per-user marks (flag / milestone / color / priority) — available to
+    // every logged-in user since they're personal (migration 037). Each user
+    // organizes their own; readers included.
+    row.querySelector('.pv-milestone-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      const next = e.currentTarget.dataset.active !== '1';
+      patchArticleInline(a, { is_milestone: next }, () => {
+        a.is_milestone = next;
+        if (next) a.priority = 5;
+        replaceRow(row, a);
+      });
+    });
+
+    row.querySelector('.pv-flag-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      const next = e.currentTarget.dataset.active !== '1';
+      patchArticleInline(a, { is_flagged: next }, () => {
+        a.is_flagged = next;
+        replaceRow(row, a);
+      });
+    });
+
+    row.querySelector('.pv-color-dot').addEventListener('click', e => {
+      e.stopPropagation();
+      openColorPopover(e.currentTarget, a, () => replaceRow(row, a));
+    });
+
+    const prChip = row.querySelector('.pv-priority-chip');
+    if (prChip) prChip.addEventListener('click', e => {
+      e.stopPropagation();
+      openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
+    });
+
     if (IS_ADMIN) {
-      row.querySelector('.pv-milestone-btn').addEventListener('click', e => {
-        e.stopPropagation();
-        const next = e.currentTarget.dataset.active !== '1';
-        patchArticleInline(a, { is_milestone: next }, () => {
-          a.is_milestone = next;
-          if (next) a.priority = 5;
-          replaceRow(row, a);
-        });
-      });
-
-      row.querySelector('.pv-flag-btn').addEventListener('click', e => {
-        e.stopPropagation();
-        const next = e.currentTarget.dataset.active !== '1';
-        patchArticleInline(a, { is_flagged: next }, () => {
-          a.is_flagged = next;
-          replaceRow(row, a);
-        });
-      });
-
-      row.querySelector('.pv-color-dot').addEventListener('click', e => {
-        e.stopPropagation();
-        openColorPopover(e.currentTarget, a, () => replaceRow(row, a));
-      });
-
       const fetchAbsBtn = row.querySelector('.pv-fetch-abstract-btn');
       if (fetchAbsBtn) fetchAbsBtn.addEventListener('click', async (ev) => {
         ev.stopPropagation();
@@ -3276,12 +3288,6 @@
           fetchAbsBtn.disabled = false;
           fetchAbsBtn.innerHTML = original;
         }
-      });
-
-      const prChip = row.querySelector('.pv-priority-chip');
-      if (prChip) prChip.addEventListener('click', e => {
-        e.stopPropagation();
-        openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
       });
 
       const emailRowBtn = row.querySelector('.pv-email-row-btn');
@@ -7481,6 +7487,8 @@
     const psSel = document.getElementById('page-size-select');
     if (psSel) {
       psSel.value = String(state.size);
+      // Persist the (possibly clamped) value so a stale "todos" is cleaned up.
+      localStorage.setItem('pv-page-size', String(state.size));
       psSel.addEventListener('change', e => {
         const v = parseInt(e.target.value, 10);
         state.size = Number.isFinite(v) && v > 0 ? v : 100;
