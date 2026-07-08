@@ -1910,10 +1910,15 @@
         renderPagination(r);
         return;
       }
-      showTable();
       _listIds = r.items.map(a => a.id);
+      // Build every row in a detached fragment and insert it in ONE DOM
+      // operation, so the browser reflows once instead of per-row (a big
+      // win on large pages of hundreds/thousands of rows).
+      const _frag = document.createDocumentFragment();
+      r.items.forEach(a => _frag.appendChild(renderRow(a)));
       tbody.innerHTML = '';
-      r.items.forEach(a => tbody.appendChild(renderRow(a)));
+      tbody.appendChild(_frag);
+      showTable();
       state.lastTotal = r.total || 0;
       refreshSortHeaders();
       renderPagination(r);
