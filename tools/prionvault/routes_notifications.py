@@ -85,6 +85,7 @@ def _validate_notif_payload(data: dict, uemail: str) -> dict:
         "enabled":      bool(data.get("enabled", True)),
         "ape":          ape,
         "include_pdfs": bool(data.get("include_pdfs", True)),
+        "include_ai_summary": bool(data.get("include_ai_summary", True)),
     }
 
 
@@ -146,6 +147,7 @@ def api_notifications_save():
                         days_of_week=:days, send_hour=:hour, send_minute=:minute,
                         user_timezone=:tz, lookback_days=:lookback, include_oa_only=:oa_only,
                         articles_per_email=:ape, include_pdfs=:include_pdfs,
+                    include_ai_summary=:include_ai_summary,
                         next_send_at=:next_send, updated_at=NOW()
                     WHERE id=:id
                 """), {**p, "next_send": next_send, "id": existing_id})
@@ -154,11 +156,11 @@ def api_notifications_save():
                     INSERT INTO prionvault_notification_subscriptions
                         (user_id, name, source, enabled, email, topics, frequency,
                          day_of_week, days_of_week, send_hour, send_minute, user_timezone,
-                         lookback_days, include_oa_only, articles_per_email, include_pdfs,
+                         lookback_days, include_oa_only, articles_per_email, include_pdfs, include_ai_summary,
                          next_send_at, updated_at)
                     VALUES (:uid, :name, :source, :enabled, :email,
                             CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
-                            :tz, :lookback, :oa_only, :ape, :include_pdfs, :next_send, NOW())
+                            :tz, :lookback, :oa_only, :ape, :include_pdfs, :include_ai_summary, :next_send, NOW())
                 """), {**p, "uid": str(_uid), "next_send": next_send})
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
@@ -201,11 +203,11 @@ def api_notifications_test():
                     INSERT INTO prionvault_notification_subscriptions
                         (user_id, name, source, enabled, email, topics, frequency,
                          day_of_week, days_of_week, send_hour, send_minute, user_timezone,
-                         lookback_days, include_oa_only, articles_per_email, include_pdfs,
+                         lookback_days, include_oa_only, articles_per_email, include_pdfs, include_ai_summary,
                          next_send_at, updated_at)
                     VALUES (:uid, :name, :source, true, :email,
                             CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
-                            :tz, :lookback, :oa_only, :ape, :include_pdfs, :next_send, NOW())
+                            :tz, :lookback, :oa_only, :ape, :include_pdfs, :include_ai_summary, :next_send, NOW())
                     RETURNING id::text
                 """), {**p, "uid": str(_uid), "next_send": next_send}).scalar()
         except Exception as exc:
@@ -270,11 +272,11 @@ def api_notifications_create():
                 INSERT INTO prionvault_notification_subscriptions
                     (user_id, name, source, enabled, email, topics, frequency,
                      day_of_week, days_of_week, send_hour, send_minute, user_timezone,
-                     lookback_days, include_oa_only, articles_per_email, include_pdfs,
+                     lookback_days, include_oa_only, articles_per_email, include_pdfs, include_ai_summary,
                      next_send_at, updated_at)
                 VALUES (:uid, :name, :source, :enabled, :email,
                         CAST(:topics AS jsonb), :freq, :dow, :days, :hour, :minute,
-                        :tz, :lookback, :oa_only, :ape, :include_pdfs, :next_send, NOW())
+                        :tz, :lookback, :oa_only, :ape, :include_pdfs, :include_ai_summary, :next_send, NOW())
                 RETURNING id::text
             """), {**p, "uid": str(_uid), "next_send": next_send}).scalar()
     except Exception as exc:
@@ -305,6 +307,7 @@ def api_notifications_update(sub_id):
                     days_of_week=:days, send_hour=:hour, send_minute=:minute,
                     user_timezone=:tz, lookback_days=:lookback, include_oa_only=:oa_only,
                     articles_per_email=:ape, include_pdfs=:include_pdfs,
+                    include_ai_summary=:include_ai_summary,
                     next_send_at=:next_send, updated_at=NOW()
                 WHERE id=:id AND user_id=:uid
             """), {**p, "next_send": next_send, "id": sub_id, "uid": str(_uid)})

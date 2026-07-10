@@ -15636,6 +15636,12 @@
                    style="width:15px;height:15px;accent-color:#0F3460;">
             <label style="font-size:12.5px;color:#374151;cursor:pointer;">Adjuntar PDFs al email</label>
           </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" name="include_ai_summary" ${sub.include_ai_summary !== false ? 'checked' : ''}
+                   style="width:15px;height:15px;accent-color:#0F3460;">
+            <label style="font-size:12.5px;color:#374151;cursor:pointer;">Enviar el resumen IA en el email
+              <span style="color:#9ca3af;">(si el artículo lo tiene)</span></label>
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div>
@@ -15714,6 +15720,7 @@
         include_oa_only:    _chk('[name="include_oa_only"]'),
         articles_per_email: parseInt(_val('[name="articles_per_email"]', '5') || 5),
         include_pdfs:       _chk('[name="include_pdfs"]', true),
+        include_ai_summary: _chk('[name="include_ai_summary"]', true),
         enabled:            true,
       };
     }

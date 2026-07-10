@@ -141,7 +141,9 @@ def _fetch_flagged_articles(user_id: str, n: int) -> list[dict]:
                     a.pubmed_id AS pmid,
                     a.authors,
                     a.dropbox_path,
-                    a.pdf_md5
+                    a.pdf_md5,
+                    a.summary_ai,
+                    a.summary_ai_provider
                 FROM prionvault_user_state us
                 JOIN articles a ON a.id = us.article_id
                 WHERE us.user_id = :uid
@@ -307,7 +309,33 @@ def _article_card(a: dict, import_base_url: str) -> str:
 </tr>"""
 
 
-def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool) -> str:
+def _summary_to_html(text: str) -> str:
+    """Light Markdown → HTML for the AI summary inside emails: ## headings,
+    **bold**, paragraphs. Everything escaped."""
+    import html as _html
+    import re as _re
+    out: list[str] = []
+    for block in (text or "").split("\n"):
+        line = block.rstrip()
+        if not line.strip():
+            continue
+        esc = _html.escape(line.strip())
+        esc = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc)
+        if line.startswith("## "):
+            out.append(f'<p style="margin:10px 0 3px;font-size:11px;font-weight:700;'
+                       f'color:#0F3460;text-transform:uppercase;letter-spacing:0.03em;">'
+                       f'{_html.escape(line[3:].strip())}</p>')
+        elif line.startswith("# "):
+            out.append(f'<p style="margin:2px 0;font-weight:700;color:#111827;'
+                       f'font-size:12.5px;">{_html.escape(line[2:].strip())}</p>')
+        else:
+            out.append(f'<p style="margin:0 0 6px;font-size:12px;color:#374151;'
+                       f'line-height:1.55;">{esc}</p>')
+    return "\n".join(out)
+
+
+def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool,
+                        include_summary: bool = False) -> str:
     """Card for PrionVault Picks — articles already IN the library."""
     title      = a.get("title") or "Sin título"
     authors    = _format_authors_short(a.get("authors") or "")
@@ -359,6 +387,24 @@ def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool) -> str:
             '— Sin PDF</p>'
         )
 
+    # AI summary block — only when the subscription asked for it AND the
+    # article actually has a summary.
+    summary_block = ""
+    if include_summary and (a.get("summary_ai") or "").strip():
+        prov = a.get("summary_ai_provider") or ""
+        prov_label = {"anthropic": "Claude", "openai": "GPT",
+                      "gemini": "Gemini"}.get(prov, prov)
+        summary_block = f"""
+      <tr>
+        <td style="padding:0 18px 14px;">
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;">
+            <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#0F3460;
+                      text-transform:uppercase;letter-spacing:0.04em;">🧠 Resumen IA{f" · {prov_label}" if prov_label else ""}</p>
+            {_summary_to_html(a["summary_ai"])}
+          </div>
+        </td>
+      </tr>"""
+
     return f"""
 <tr>
   <td style="padding:0 0 16px 0;">
@@ -381,6 +427,7 @@ def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool) -> str:
           {pdf_note}
         </td>
       </tr>
+      {summary_block}
     </table>
   </td>
 </tr>"""
@@ -699,11 +746,13 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
               </p>
             </td></tr>"""
         else:
+            _incl_summary = sub.get("include_ai_summary") is not False
             picks_cards = "\n".join(
                 _picks_article_card(
                     a,
                     server_base_url=base,
                     has_pdf=str(a.get("article_id")) in attached_ids,
+                    include_summary=_incl_summary,
                 )
                 for a in articles
             )

@@ -92,6 +92,7 @@ _PRIONVAULT_MIGRATIONS = (
     "056_journal_ranking_source_key.sql",
     "057_article_cart.sql",
     "058_articles_is_jc.sql",
+    "059_notification_include_ai_summary.sql",
 )
 
 _BOOTSTRAP_SQL = """
