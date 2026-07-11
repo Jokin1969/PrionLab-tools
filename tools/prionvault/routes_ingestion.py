@@ -1980,14 +1980,22 @@ _IMPORT_PAGE = """<!DOCTYPE html>
   .art-title{font-size:14px;font-weight:600;color:#111827;margin:0 0 4px;}
   .art-meta{font-size:12px;color:#6b7280;margin:0;}
   .actions{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;}
-  .btn{display:inline-block;padding:9px 22px;border-radius:8px;font-size:14px;font-weight:600;
-       text-decoration:none;border:none;cursor:pointer;letter-spacing:.02em;}
+  .btn{display:inline-block;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;
+       text-decoration:none;border:none;cursor:pointer;letter-spacing:.02em;text-align:center;}
   .btn-primary{background:#0F3460;color:#fff;}
   .btn-green{background:#059669;color:#fff;}
   .btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db;}
   .note{font-size:12px;color:#9ca3af;margin:16px 0 0;}
   .ok{background:#d1fae5;color:#065f46;border-radius:8px;padding:14px 18px;font-weight:600;}
   .err{background:#fee2e2;color:#991b1b;border-radius:8px;padding:14px 18px;}
+  /* On phones make the buttons full-width, stacked and easy to tap. */
+  @media (max-width:520px){
+    body{padding:16px 12px;}
+    .hdr{padding:20px;}
+    .body{padding:20px;}
+    .actions{flex-direction:column;gap:10px;}
+    .btn{width:100%;padding:15px;font-size:16px;box-sizing:border-box;}
+  }
 </style>
 </head>
 <body>
@@ -2083,14 +2091,25 @@ def import_from_email():
     articles_html = "".join(cards)
 
     pmids_hidden = f'<input type="hidden" name="pmids" value="{",".join(pmids)}">'
+    # One-step UX: the page auto-submits the import as soon as it loads in a
+    # real browser (after any login round-trip), so the user doesn't need a
+    # second tap. A visible button remains as a fallback if the browser blocks
+    # the auto-submit. Auto-submit runs via JS, so email link-scanners (which
+    # fetch the HTML but don't execute JS) never trigger an import by accident.
     form_html = (
-        f'<form method="post" action="{url_for("prionvault.import_from_email")}">'
+        f'<form method="post" id="pv-import-form" action="{url_for("prionvault.import_from_email")}">'
         f'{pmids_hidden}'
+        f'<p id="pv-import-status" class="note" style="font-size:14px;color:#0F3460;font-weight:600;">'
+        f'⏳ Importando {count} artículo{plural}…</p>'
         f'<div class="actions">'
-        f'<button type="submit" class="btn btn-green">⬇ Confirmar importación</button>'
+        f'<button type="submit" class="btn btn-green">⬇ Importar ahora</button>'
         f'<a href="{url_for("prionvault.index")}" class="btn btn-secondary">Cancelar</a>'
         f'</div>'
         f'</form>'
+        f'<script>window.addEventListener("load",function(){{'
+        f'var f=document.getElementById("pv-import-form");'
+        f'if(f&&!f.dataset.sent){{f.dataset.sent="1";setTimeout(function(){{f.submit();}},400);}}'
+        f'}});</script>'
     )
 
     page = (_IMPORT_PAGE
