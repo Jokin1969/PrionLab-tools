@@ -15742,9 +15742,11 @@
         const activeDays = Array.isArray(sub.days_of_week) && sub.days_of_week.length
           ? sub.days_of_week : [sub.day_of_week ?? 4];
         const dow = activeDays.map(d => DOW_SHORT[d] ?? d).join(' ');
-        const nextTxt = sub.next_send_at
-          ? new Date(sub.next_send_at).toLocaleDateString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
-          : '—';
+        const nextTxt = !sub.enabled
+          ? '<span style="color:#92400e;font-weight:600;">⏸ Pausada</span>'
+          : (sub.next_send_at
+              ? new Date(sub.next_send_at).toLocaleDateString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+              : '—');
         const dot = sub.enabled
           ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;vertical-align:middle;margin-right:4px;"></span>`
           : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d1d5db;vertical-align:middle;margin-right:4px;"></span>`;
@@ -15760,6 +15762,13 @@
           <td style="padding:10px 6px;font-size:12px;color:#6b7280;">${freqTxt} · ${dow}</td>
           <td style="padding:10px 6px;font-size:12px;color:#6b7280;">${nextTxt}</td>
           <td style="padding:10px 6px;white-space:nowrap;">
+            <button class="pv-toggle-btn" data-id="${sub.id}" data-enabled="${sub.enabled ? '1' : '0'}"
+                    title="${sub.enabled ? 'Pausar estas notificaciones (indefinidamente)' : 'Reanudar estas notificaciones'}"
+                    style="padding:4px 10px;border-radius:6px;border:1px solid ${sub.enabled ? '#fde68a' : '#bbf7d0'};
+                           background:${sub.enabled ? '#fffbeb' : '#f0fdf4'};color:${sub.enabled ? '#92400e' : '#15803d'};
+                           font-size:12px;cursor:pointer;margin-right:4px;">
+              <i class="fas fa-${sub.enabled ? 'pause' : 'play'}"></i>
+            </button>
             <button class="pv-edit-btn" data-id="${sub.id}"
                     style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
                            background:${isOpen ? '#e0e7ff' : '#fff'};font-size:12px;cursor:pointer;margin-right:4px;">
@@ -15794,6 +15803,9 @@
           _expandedId = _expandedId === btn.dataset.id ? null : btn.dataset.id;
           _renderTable(_lastSubs, _lastTz);
         });
+      });
+      tableWrap.querySelectorAll('.pv-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => _toggleSub(btn.dataset.id, btn.dataset.enabled !== '1'));
       });
       tableWrap.querySelectorAll('.pv-del-btn').forEach(btn => {
         btn.addEventListener('click', () => _deleteSub(btn.dataset.id));
@@ -15846,6 +15858,10 @@
     async function _saveEdit(subId, formEl) {
       if (!formEl) return;
       const data = _readForm(formEl);
+      // Preserve the paused/active state across edits — the pause toggle owns
+      // it, so editing other settings must not silently re-enable a paused sub.
+      const _cur = (_lastSubs || []).find(s => String(s.id) === String(subId));
+      if (_cur) data.enabled = _cur.enabled !== false;
       const saveBtn = formEl.querySelector('.pv-notif-save-btn');
       if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
       try {
@@ -15856,6 +15872,17 @@
       } catch (e) {
         _showStatus('error', 'Error al guardar: ' + e.message);
         if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save" style="margin-right:5px;"></i>Guardar'; }
+      }
+    }
+
+    async function _toggleSub(subId, enable) {
+      try {
+        await _notifApi(`/notifications/subscriptions/${subId}/enabled`,
+                        { method: 'POST', body: JSON.stringify({ enabled: enable }) });
+        _showStatus('ok', enable ? '✓ Notificaciones reanudadas.' : '⏸ Notificaciones pausadas.');
+        await _loadAll();
+      } catch (e) {
+        _showStatus('error', 'Error al cambiar el estado: ' + e.message);
       }
     }
 

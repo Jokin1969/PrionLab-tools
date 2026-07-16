@@ -318,6 +318,31 @@ def api_notifications_update(sub_id):
     return jsonify({"ok": True, "next_send_at": next_send.isoformat()})
 
 
+@prionvault_bp.route("/api/notifications/subscriptions/<sub_id>/enabled", methods=["POST"])
+@login_required
+def api_notifications_set_enabled(sub_id):
+    """Pause (enabled=false) or resume (enabled=true) a subscription without
+    touching the rest of its config. Paused subscriptions are skipped by the
+    scheduler indefinitely until resumed. Body: {enabled: bool}."""
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+    _uid = session.get("user_id")
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled", True))
+    try:
+        with _db.engine.begin() as conn:
+            result = conn.execute(_t(
+                "UPDATE prionvault_notification_subscriptions "
+                "SET enabled=:en, updated_at=NOW() "
+                "WHERE id=:id AND user_id=:uid"
+            ), {"en": enabled, "id": sub_id, "uid": str(_uid)})
+            if result.rowcount == 0:
+                return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        return jsonify({"error": str(exc)[:300]}), 500
+    return jsonify({"ok": True, "enabled": enabled})
+
+
 @prionvault_bp.route("/api/notifications/subscriptions/<sub_id>", methods=["DELETE"])
 @login_required
 def api_notifications_delete(sub_id):
