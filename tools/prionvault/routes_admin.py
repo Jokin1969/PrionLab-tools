@@ -1054,9 +1054,14 @@ def api_semantic_search():
     from .embeddings.embedder import NotConfigured as VoyageNotConfigured
 
     data = request.get_json(force=True, silent=True) or {}
-    query = (data.get("query") or "").strip()
-    if not query:
+    original_query = (data.get("query") or "").strip()
+    if not original_query:
         return jsonify({"error": "empty query"}), 400
+
+    # Translate Spanish queries to English for better search results
+    from .services.query_translator import detect_and_translate
+    query, source_lang = detect_and_translate(original_query)
+
     # Default raised from 20 to 50 and the hard cap raised from 50 to
     # 200. The frontend now asks for 50 on the first call and bumps
     # the request when the operator clicks "ver más"; the 200 ceiling
