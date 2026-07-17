@@ -797,7 +797,11 @@ def api_article_pdf(aid):
 @prionvault_bp.route("/api/articles/search-by-idea", methods=["POST"])
 @login_required
 def api_articles_search_by_idea():
-    """Semantic search for articles that support or contradict a given idea."""
+    """Semantic search for articles that support or contradict a given idea.
+
+    Automatically detects if the query is in Spanish and translates it to English
+    before searching, allowing Spanish-speaking users to query naturally.
+    """
     data = request.get_json(silent=True) or {}
     idea_text = (data.get("idea") or "").strip()
     mode = (data.get("mode") or "support").strip().lower()
@@ -809,10 +813,14 @@ def api_articles_search_by_idea():
         return jsonify({"error": "mode must be 'support' or 'contradict'"}), 400
     limit = max(1, min(50, limit))
 
-    # Generate embedding for the idea
+    # Translate Spanish queries to English for better search results
+    from .services.query_translator import detect_and_translate
+    search_query, source_lang = detect_and_translate(idea_text)
+
+    # Generate embedding for the (possibly translated) query
     try:
         from .embeddings.embedder import embed_query, NotConfigured as VoyageNotConfigured
-        qvec = embed_query(idea_text)
+        qvec = embed_query(search_query)
     except VoyageNotConfigured as exc:
         return jsonify({"error": "embedder not configured", "detail": str(exc)[:200]}), 503
     except Exception as exc:
