@@ -136,7 +136,18 @@
   </div>
 </section>
 
-{# ── Section C: PrionPacks ───────────────────────────────────────────────── #}
+{# ── Section C: PrionVault Glossary ──────────────────────────────────────── #}
+<section class="admin-section">
+  <div class="admin-section__header">
+    <h2>📚 {{ _('PrionVault Glossary') }}</h2>
+    <a href="{{ url_for('admin.glossary_management') }}" class="btn btn--primary btn--sm">{{ _('Manage') }} →</a>
+  </div>
+  <p style="color:#6b7280;font-size:13px;margin:0">
+    {{ _('Manage biomedical Spanish-English terminology, import updates, and improve summaries with glossary context.') }}
+  </p>
+</section>
+
+{# ── Section D: PrionPacks ───────────────────────────────────────────────── #}
 <section class="admin-section">
   <div class="admin-section__header">
     <h2>PrionPacks</h2>
@@ -189,7 +200,7 @@ async function migrateRefs() {
 }
 </script>
 
-{# ── Section D: Logs ─────────────────────────────────────────────────────── #}
+{# ── Section E: Logs ─────────────────────────────────────────────────────── #}
 <section class="admin-section">
   <div class="admin-section__header">
     <h2>{{ _('Recent logs') }}</h2>
