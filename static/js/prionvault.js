@@ -13885,9 +13885,19 @@
     // Stats tab
     async function loadStats() {
       try {
-        const stats = await api('/glossary/stats');
+        const [stats, detailed] = await Promise.all([
+          api('/glossary/stats'),
+          api('/glossary/stats/detailed')
+        ]);
+
+        // Update detailed status
+        document.getElementById('pv-stats-pending').textContent = (detailed.pending || 0).toLocaleString();
+        document.getElementById('pv-stats-with-changes').textContent = (detailed.reviewed_with_changes || 0).toLocaleString();
+        document.getElementById('pv-stats-without-changes').textContent = (detailed.reviewed_without_changes || 0).toLocaleString();
+
+        // Update primary stats
         document.querySelector('#pv-glossary-stats-content > div:nth-child(1) > div:first-child').textContent =
-          (stats.total_articles_improved || 0).toLocaleString();
+          (detailed.total_reviewed || 0).toLocaleString();
         document.querySelector('#pv-glossary-stats-content > div:nth-child(2) > div:first-child').textContent =
           (stats.total_changes || 0).toLocaleString();
         document.querySelector('#pv-glossary-stats-content > div:nth-child(3) > div:first-child').textContent =
@@ -13900,6 +13910,34 @@
             <span>${v.total_changes} cambios</span>
           </div>
         `).join('');
+
+        // Pending button
+        document.getElementById('pv-glossary-pending-btn').onclick = async () => {
+          if (detailed.pending === 0) {
+            alert('No hay resúmenes pendientes de revisar');
+            return;
+          }
+          try {
+            const result = await api('/glossary/unreviewed?limit=1000');
+            if (result.articles && result.articles.length > 0) {
+              // Switch to improve tab and show articles
+              currentTab = 'improve';
+              modal.querySelectorAll('.pv-glossary-tab').forEach(t => {
+                t.style.borderBottomColor = t.dataset.tab === 'improve' ? '#0F3460' : 'transparent';
+                t.style.color = t.dataset.tab === 'improve' ? '#0F3460' : '#6b7280';
+              });
+              modal.querySelectorAll('.pv-glossary-tab-content').forEach(content => {
+                content.style.display = content.id === 'pv-glossary-improve-tab' ? 'block' : 'none';
+              });
+              // Auto-trigger improve on unreviewed
+              setTimeout(() => {
+                document.getElementById('pv-glossary-improve-unrev-btn').click();
+              }, 300);
+            }
+          } catch (e) {
+            console.error('Error navigating to pending:', e);
+          }
+        };
 
         document.getElementById('pv-glossary-export-btn').addEventListener('click', () => {
           window.location.href = '/prionvault/api/glossary/export';

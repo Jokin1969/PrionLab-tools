@@ -26,6 +26,41 @@ def api_glossary_stats():
     return jsonify(stats)
 
 
+@prionvault_bp.route("/api/glossary/stats/detailed", methods=["GET"])
+@admin_required
+def api_glossary_stats_detailed():
+    """Get detailed statistics: pending, with changes, without changes."""
+    try:
+        with db.engine.connect() as conn:
+            # Pending (no glossary version applied yet)
+            pending = conn.execute(sql_text("""
+                SELECT COUNT(*) FROM articles
+                WHERE summary_ai IS NOT NULL AND ai_summary_glossary_version IS NULL
+            """)).scalar() or 0
+
+            # Reviewed with changes
+            with_changes = conn.execute(sql_text("""
+                SELECT COUNT(*) FROM summary_improvement_log
+                WHERE dry_run = FALSE AND changes_count > 0
+            """)).scalar() or 0
+
+            # Reviewed without changes
+            without_changes = conn.execute(sql_text("""
+                SELECT COUNT(*) FROM summary_improvement_log
+                WHERE dry_run = FALSE AND changes_count = 0
+            """)).scalar() or 0
+
+        return jsonify({
+            "pending": int(pending),
+            "reviewed_with_changes": int(with_changes),
+            "reviewed_without_changes": int(without_changes),
+            "total_reviewed": int(with_changes + without_changes),
+        })
+    except Exception as e:
+        logger.exception("Failed to fetch detailed stats")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 # ── Unreviewed summaries (glossary_version IS NULL) ──────────────────────
 @prionvault_bp.route("/api/glossary/unreviewed", methods=["GET"])
 @admin_required

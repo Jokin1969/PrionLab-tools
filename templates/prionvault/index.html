@@ -1588,25 +1588,52 @@
 
       <!-- Stats tab -->
       <div id="pv-glossary-stats-tab" class="pv-glossary-tab-content" style="display:none;">
-        <div id="pv-glossary-stats-content" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;">
-            <div style="font-size:28px;font-weight:700;color:#15803d;">-</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:4px;">Artículos mejorados</div>
-          </div>
-          <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:10px;padding:16px;">
-            <div style="font-size:28px;font-weight:700;color:#c2410c;">-</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:4px;">Total de cambios</div>
-          </div>
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;">
-            <div style="font-size:28px;font-weight:700;color:#1d4ed8;">-</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:4px;">Versión actual</div>
+        <!-- Action button -->
+        <button id="pv-glossary-pending-btn" style="width:100%;padding:12px;background:#059669;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:16px;">
+          ⏭ Ir a resúmenes pendientes de revisar
+        </button>
+
+        <!-- Status breakdown -->
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:12px;">Estado de revisiones:</div>
+          <div style="display:grid;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e5e7eb;">
+              <span style="font-size:12px;color:#6b7280;">Pendientes (sin revisar):</span>
+              <span id="pv-stats-pending" style="font-size:14px;font-weight:700;color:#dc2626;">-</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e5e7eb;">
+              <span style="font-size:12px;color:#6b7280;">Revisados con cambios:</span>
+              <span id="pv-stats-with-changes" style="font-size:14px;font-weight:700;color:#15803d;">-</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+              <span style="font-size:12px;color:#6b7280;">Revisados sin cambios:</span>
+              <span id="pv-stats-without-changes" style="font-size:14px;font-weight:700;color:#1d4ed8;">-</span>
+            </div>
           </div>
         </div>
-        <div style="margin-top:20px;">
+
+        <!-- Primary stats -->
+        <div id="pv-glossary-stats-content" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;">
+            <div style="font-size:24px;font-weight:700;color:#15803d;">-</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:4px;">Total revisados</div>
+          </div>
+          <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:10px;padding:14px;">
+            <div style="font-size:24px;font-weight:700;color:#c2410c;">-</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:4px;">Total cambios</div>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px;">
+            <div style="font-size:24px;font-weight:700;color:#1d4ed8;">-</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:4px;">Versión actual</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
           <h4 style="font-size:13px;font-weight:700;color:#111827;margin:0 0 12px;">Mejoras por versión:</h4>
           <div id="pv-glossary-by-version" style="display:grid;gap:8px;"></div>
         </div>
-        <div style="margin-top:20px;text-align:center;">
+
+        <div style="text-align:center;">
           <button id="pv-glossary-export-btn" style="padding:8px 20px;background:#0F3460;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
             📥 Descargar Excel
           </button>
