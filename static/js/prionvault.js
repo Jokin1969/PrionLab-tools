@@ -14028,7 +14028,7 @@
 
     let lastValidationData = null;
 
-    async function validateTSV() {
+    function validateTSV() {
       const tsvContent = tsvInput.value.trim();
       if (!tsvContent) {
         alert('Por favor pega contenido TSV');
@@ -14040,41 +14040,107 @@
       validationSuccess.style.display = 'none';
       importStatus.textContent = '';
 
-      try {
-        const result = await api('/glossary/validate-tsv', 'POST', { tsv_content: tsvContent });
+      // Validate locally in JavaScript
+      const lines = tsvContent.split('\n');
+      if (!lines.length) {
+        validationErrors.style.display = 'block';
+        document.getElementById('pv-glossary-validation-error-list').innerHTML = '<li>Archivo vacío</li>';
+        lastValidationData = null;
+        return;
+      }
 
-        if (!result.valid) {
-          // Show errors
-          const errorList = document.getElementById('pv-glossary-validation-error-list');
-          errorList.innerHTML = (result.errors || [])
-            .map(e => `<li>${esc(e)}</li>`)
-            .join('');
-          validationErrors.style.display = 'block';
-          lastValidationData = null;
-          return;
-        }
+      // Check header
+      const expectedHeaders = ['English', 'Castellano recomendado', 'Evitar', 'Comentario', 'Categoría'];
+      const header = lines[0].split('\t').map(h => h.trim());
+      const headerLower = header.map(h => h.toLowerCase());
+      const expectedLower = expectedHeaders.map(h => h.toLowerCase());
 
-        // Show success and preview
-        lastValidationData = { tsvContent, previewRows: result.preview_rows };
-        const previewRows = document.getElementById('pv-glossary-preview-rows');
-        previewRows.innerHTML = (result.preview_rows || [])
-          .map(row => `
-            <tr style="border-bottom:1px solid #e5e7eb;">
-              <td style="padding:6px;color:#111827;">${esc(row.term_en)}</td>
-              <td style="padding:6px;color:#0F3460;font-weight:500;">${esc(row.term_es_recommended)}</td>
-              <td style="padding:6px;color:#dc2626;font-size:11px;">${esc(row.term_es_avoid || '-')}</td>
-              <td style="padding:6px;color:#6b7280;font-size:11px;">${esc(row.category || '-')}</td>
-            </tr>
-          `)
-          .join('');
-
-        validationSuccess.style.display = 'block';
-      } catch (e) {
+      if (headerLower.length !== 5 || !headerLower.every((h, i) => h === expectedLower[i])) {
         validationErrors.style.display = 'block';
         const errorList = document.getElementById('pv-glossary-validation-error-list');
-        errorList.innerHTML = `<li>Error de conexión: ${esc(e.message)}</li>`;
+        errorList.innerHTML = `
+          <li>Encabezados incorrectos</li>
+          <li>Esperado: ${expectedHeaders.join(' | ')}</li>
+          <li>Encontrado: ${header.join(' | ')}</li>
+        `;
         lastValidationData = null;
+        return;
       }
+
+      // Parse data rows
+      const errors = [];
+      const previewRows = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const cells = line.split('\t');
+        if (cells.length !== 5) {
+          errors.push(`Fila ${i + 1}: esperaba 5 columnas, encontró ${cells.length}`);
+          continue;
+        }
+
+        const termEn = cells[0].trim();
+        const termEs = cells[1].trim();
+
+        if (!termEn) {
+          errors.push(`Fila ${i + 1}: término en inglés vacío`);
+          continue;
+        }
+        if (!termEs) {
+          errors.push(`Fila ${i + 1}: término en español vacío`);
+          continue;
+        }
+
+        const row = {
+          term_en: termEn,
+          term_es_recommended: termEs,
+          term_es_avoid: (cells[2].trim() && cells[2].trim() !== '—' && cells[2].trim() !== '-') ? cells[2].trim() : null,
+          notes: cells[3].trim() || null,
+          category: cells[4].trim() || null,
+        };
+        previewRows.push(row);
+      }
+
+      if (errors.length > 0) {
+        validationErrors.style.display = 'block';
+        const errorList = document.getElementById('pv-glossary-validation-error-list');
+        errorList.innerHTML = errors.slice(0, 10)
+          .map(e => `<li>${esc(e)}</li>`)
+          .join('') + (errors.length > 10 ? `<li>...y ${errors.length - 10} errores más</li>` : '');
+        lastValidationData = null;
+        return;
+      }
+
+      if (previewRows.length === 0) {
+        validationErrors.style.display = 'block';
+        document.getElementById('pv-glossary-validation-error-list').innerHTML = '<li>No se encontraron filas de datos</li>';
+        lastValidationData = null;
+        return;
+      }
+
+      // Show success and preview
+      lastValidationData = { tsvContent, previewRows };
+      const previewTable = document.getElementById('pv-glossary-preview-rows');
+      previewTable.innerHTML = previewRows.slice(0, 5)
+        .map(row => `
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:6px;color:#111827;font-size:11px;">${esc(row.term_en)}</td>
+            <td style="padding:6px;color:#0F3460;font-weight:500;font-size:11px;">${esc(row.term_es_recommended)}</td>
+            <td style="padding:6px;color:#dc2626;font-size:10px;">${esc(row.term_es_avoid || '-')}</td>
+            <td style="padding:6px;color:#6b7280;font-size:10px;">${esc(row.category || '-')}</td>
+          </tr>
+        `)
+        .join('');
+
+      const countMsg = previewRows.length > 5 ? ` (mostrando primeros 5 de ${previewRows.length})` : ` (${previewRows.length} total)`;
+      const statsDiv = document.createElement('div');
+      statsDiv.style.cssText = 'font-size:11px;color:#6b7280;margin-top:8px;text-align:right;';
+      statsDiv.textContent = countMsg;
+      previewTable.parentElement.insertBefore(statsDiv, previewTable.nextSibling);
+
+      validationSuccess.style.display = 'block';
     }
 
     async function performImport() {
