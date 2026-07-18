@@ -237,24 +237,74 @@ def api_glossary_version():
         return jsonify({"error": str(e)[:300]}), 500
 
 
+@prionvault_bp.route("/api/glossary/validate-tsv", methods=["POST"])
+@admin_required
+def api_glossary_validate_tsv():
+    """Validate TSV format and preview data before import."""
+    from .services import glossary_manager
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        tsv_content = data.get("tsv_content", "")
+
+        if not tsv_content:
+            return jsonify({"error": "tsv_content is required"}), 400
+
+        is_valid, errors, preview_rows = glossary_manager.validate_tsv_format(tsv_content)
+
+        return jsonify({
+            "valid": is_valid,
+            "errors": errors,
+            "preview_rows": preview_rows,
+            "total_rows": len(preview_rows) + (1 if len(preview_rows) > 0 else 0),
+            "message": f"Preview shows {len(preview_rows)} rows" if is_valid else None,
+        })
+    except Exception as e:
+        logger.exception("TSV validation failed")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/import", methods=["POST"])
 @admin_required
 def api_glossary_import():
-    """Import glossary terms from JSON/CSV."""
+    """Import glossary terms from JSON or TSV.
+
+    Accepts either:
+    - JSON: {"terms": [{...}, ...]}
+    - TSV: {"tsv_content": "English\\tCastellano...\\n..."}
+    """
     from .services import glossary_manager
 
     data = request.get_json(force=True, silent=True) or {}
+
+    # Try JSON format first
     terms = data.get("terms", [])
+    if terms and isinstance(terms, list):
+        try:
+            result = glossary_manager.import_glossary(terms)
+            return jsonify(result.__dict__)
+        except Exception as e:
+            logger.exception("Glossary import failed")
+            return jsonify({"error": str(e)[:300]}), 500
 
-    if not isinstance(terms, list) or not terms:
-        return jsonify({"error": "terms must be a non-empty list"}), 400
+    # Try TSV format
+    tsv_content = data.get("tsv_content", "")
+    if tsv_content:
+        try:
+            # Validate first
+            is_valid, errors, preview_rows = glossary_manager.validate_tsv_format(tsv_content)
+            if not is_valid:
+                return jsonify({"error": "TSV validation failed", "details": errors}), 400
 
-    try:
-        result = glossary_manager.import_glossary(terms)
-        return jsonify(result)
-    except Exception as e:
-        logger.exception("Glossary import failed")
-        return jsonify({"error": str(e)[:300]}), 500
+            # Parse and import
+            terms = glossary_manager.parse_tsv_to_terms(tsv_content)
+            result = glossary_manager.import_glossary(terms)
+            return jsonify(result.__dict__)
+        except Exception as e:
+            logger.exception("TSV import failed")
+            return jsonify({"error": str(e)[:300]}), 500
+
+    return jsonify({"error": "Either 'terms' (JSON) or 'tsv_content' (TSV) is required"}), 400
 
 
 # ── Excel export ───────────────────────────────────────────────────────────

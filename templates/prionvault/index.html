@@ -1476,7 +1476,10 @@
 
     <!-- Tabs -->
     <div style="display:flex;gap:0;border-bottom:1px solid #e5e7eb;padding:0 16px;flex-shrink:0;overflow-x:auto;">
-      <button class="pv-glossary-tab active" data-tab="browse" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid #0F3460;color:#0F3460;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
+      <button class="pv-glossary-tab active" data-tab="import" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid #0F3460;color:#0F3460;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
+        📥 Importar
+      </button>
+      <button class="pv-glossary-tab" data-tab="browse" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
         📖 Navegación
       </button>
       <button class="pv-glossary-tab" data-tab="stats" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
@@ -1492,6 +1495,78 @@
 
     <!-- Tab content -->
     <div style="flex:1;overflow-y:auto;padding:16px;">
+
+      <!-- Import tab -->
+      <div id="pv-glossary-import-tab" class="pv-glossary-tab-content" style="display:block;">
+        <div style="margin-bottom:16px;">
+          <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 12px;">
+            Importa nuevos términos en formato TSV (Tab-Separated Values).
+            Las columnas esperadas son: <strong>English | Castellano recomendado | Evitar | Comentario | Categoría</strong>
+          </p>
+
+          <!-- Input area for TSV -->
+          <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:6px;">
+            Pegar contenido TSV:
+          </label>
+          <textarea id="pv-glossary-tsv-input" placeholder="Pega aquí tu contenido TSV&#10;English	Castellano recomendado	Evitar	Comentario	Categoría&#10;prion	prión	prión	Sin tilde.	Terminología&#10;..."
+                    style="width:100%;height:150px;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:12px;resize:vertical;"></textarea>
+
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button id="pv-glossary-validate-btn" type="button"
+                    style="padding:8px 12px;border:1px solid #d1d5db;background:#f9fafb;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">
+              ✓ Validar
+            </button>
+            <button id="pv-glossary-download-template-btn" type="button"
+                    style="padding:8px 12px;border:1px solid #d1d5db;background:#f9fafb;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">
+              ⬇ Descargar plantilla
+            </button>
+          </div>
+        </div>
+
+        <!-- Validation results -->
+        <div id="pv-glossary-validation-area" style="display:none;margin-bottom:16px;">
+          <div id="pv-glossary-validation-errors" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;margin-bottom:12px;">
+            <div style="font-size:12px;font-weight:600;color:#991b1b;margin-bottom:6px;">⚠ Errores encontrados:</div>
+            <ul id="pv-glossary-validation-error-list" style="margin:0;padding-left:20px;font-size:12px;color:#7f1d1d;"></ul>
+          </div>
+
+          <div id="pv-glossary-validation-success" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px;">
+            <div style="font-size:12px;font-weight:600;color:#15803d;margin-bottom:12px;">✓ Validación exitosa</div>
+
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;color:#6b7280;margin-bottom:6px;">Preview de datos:</div>
+              <div id="pv-glossary-validation-preview" style="max-height:180px;overflow-y:auto;background:white;border:1px solid #e5e7eb;border-radius:4px;padding:8px;">
+                <table style="width:100%;font-size:11px;border-collapse:collapse;">
+                  <thead>
+                    <tr style="border-bottom:1px solid #e5e7eb;">
+                      <th style="text-align:left;padding:6px;font-weight:600;">EN</th>
+                      <th style="text-align:left;padding:6px;font-weight:600;">ES</th>
+                      <th style="text-align:left;padding:6px;font-weight:600;">Evitar</th>
+                      <th style="text-align:left;padding:6px;font-weight:600;">Categoría</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pv-glossary-preview-rows"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <button id="pv-glossary-import-btn" type="button"
+                    style="padding:8px 14px;border:none;background:#0F3460;color:white;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">
+              📥 Importar términos
+            </button>
+            <span id="pv-glossary-import-status" style="margin-left:12px;font-size:12px;color:#6b7280;"></span>
+          </div>
+        </div>
+
+        <!-- File upload option -->
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb;">
+          <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:8px;">
+            O sube un archivo TSV/CSV:
+          </label>
+          <input id="pv-glossary-file-input" type="file" accept=".tsv,.csv,.txt"
+                 style="font-size:12px;padding:6px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;">
+        </div>
+      </div>
 
       <!-- Browse tab -->
       <div id="pv-glossary-browse-tab" class="pv-glossary-tab-content" style="display:block;">

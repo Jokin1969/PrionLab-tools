@@ -16,6 +16,10 @@ from sqlalchemy import text as sql_text
 
 logger = logging.getLogger(__name__)
 
+# Expected TSV column headers
+EXPECTED_COLUMNS = ["English", "Castellano recomendado", "Evitar", "Comentario", "Categoría"]
+EXPECTED_COLUMNS_LOWER = [c.lower() for c in EXPECTED_COLUMNS]
+
 
 def _get_engine():
     """Get database engine."""
@@ -55,33 +59,40 @@ class GlossaryDiff:
 
 
 def import_glossary(terms: list[dict]) -> ImportResult:
-    """Import/update glossary terms from a list of dicts.
+    """Import complete glossary version (replaces previous version).
 
     Each dict should have: term_en, term_es_recommended, term_es_avoid (optional),
     notes (optional), category (optional).
 
-    Returns ImportResult with counts and any errors. Automatically increments
-    version on changes.
+    Deletes all old terms and inserts new ones under incremented version number.
+    Returns ImportResult with counts and any errors.
     """
     if not terms:
         return ImportResult(imported=0, updated=0, skipped=0, errors=[], new_version=1)
 
     eng = _get_engine()
     imported = 0
-    updated = 0
     skipped = 0
     errors: list[str] = []
     new_version = 1
 
     try:
         with eng.begin() as conn:
-            # Get current version
+            # Get current version and increment
             meta = conn.execute(sql_text(
                 "SELECT current_version FROM prionvault_glossary_metadata "
                 "ORDER BY id DESC LIMIT 1"
             )).first()
-            new_version = (meta[0] if meta else 0) + 1
+            old_version = meta[0] if meta else 0
+            new_version = old_version + 1
 
+            # Delete all old terms (replace, don't update)
+            if old_version > 0:
+                conn.execute(sql_text(
+                    "DELETE FROM prionvault_glossary_terms WHERE version = :old_v"
+                ), {"old_v": old_version})
+
+            # Insert all new terms
             for term_dict in terms:
                 try:
                     term_en = (term_dict.get("term_en") or "").strip().lower()
@@ -96,51 +107,19 @@ def import_glossary(terms: list[dict]) -> ImportResult:
                         skipped += 1
                         continue
 
-                    # Check if exists
-                    existing = conn.execute(sql_text(
-                        "SELECT id, term_es_recommended, version FROM prionvault_glossary_terms "
-                        "WHERE term_en = :en"
-                    ), {"en": term_en}).first()
-
-                    if existing:
-                        existing_id, existing_es, existing_version = existing
-                        # Update if changed
-                        if existing_es != term_es or existing.get(2) < new_version:
-                            conn.execute(sql_text(
-                                """UPDATE prionvault_glossary_terms
-                                   SET term_es_recommended = :es,
-                                       term_es_avoid = :avoid,
-                                       notes = :notes,
-                                       category = :cat,
-                                       version = :v,
-                                       updated_at = NOW()
-                                   WHERE id = :id"""
-                            ), {
-                                "es": term_es,
-                                "avoid": avoid,
-                                "notes": notes,
-                                "cat": category,
-                                "v": new_version,
-                                "id": existing_id,
-                            })
-                            updated += 1
-                        else:
-                            skipped += 1
-                    else:
-                        # Insert new
-                        conn.execute(sql_text(
-                            """INSERT INTO prionvault_glossary_terms
-                               (term_en, term_es_recommended, term_es_avoid, notes, category, version)
-                               VALUES (:en, :es, :avoid, :notes, :cat, :v)"""
-                        ), {
-                            "en": term_en,
-                            "es": term_es,
-                            "avoid": avoid,
-                            "notes": notes,
-                            "cat": category,
-                            "v": new_version,
-                        })
-                        imported += 1
+                    conn.execute(sql_text(
+                        """INSERT INTO prionvault_glossary_terms
+                           (term_en, term_es_recommended, term_es_avoid, notes, category, version)
+                           VALUES (:en, :es, :avoid, :notes, :cat, :v)"""
+                    ), {
+                        "en": term_en,
+                        "es": term_es,
+                        "avoid": avoid,
+                        "notes": notes,
+                        "cat": category,
+                        "v": new_version,
+                    })
+                    imported += 1
                 except Exception as e:
                     errors.append(f"Error processing {term_dict}: {str(e)[:200]}")
                     skipped += 1
@@ -152,8 +131,8 @@ def import_glossary(terms: list[dict]) -> ImportResult:
                    ON CONFLICT (id) DO NOTHING"""
             ), {
                 "v": new_version,
-                "count": imported + updated + skipped,
-                "notes": f"Imported {imported}, updated {updated}, skipped {skipped}",
+                "count": imported,
+                "notes": f"Version {new_version}: {imported} terms, {skipped} skipped",
             })
 
     except Exception as e:
@@ -162,7 +141,7 @@ def import_glossary(terms: list[dict]) -> ImportResult:
 
     return ImportResult(
         imported=imported,
-        updated=updated,
+        updated=0,  # No longer tracking updates, full replacement
         skipped=skipped,
         errors=errors,
         new_version=new_version,
@@ -338,3 +317,100 @@ def get_current_glossary_version() -> int:
             "ORDER BY id DESC LIMIT 1"
         )).scalar()
     return result or 1
+
+
+def validate_tsv_format(tsv_content: str) -> tuple[bool, list[str], list[dict]]:
+    """Validate TSV format and return (is_valid, errors, preview_rows).
+
+    Checks:
+    - Correct number of columns
+    - Column headers match expected
+    - At least one data row
+    - Required fields (EN, ES) not empty
+
+    Returns:
+      (is_valid, error_messages, preview_data)
+      preview_data contains up to 5 rows for user confirmation
+    """
+    lines = tsv_content.strip().split('\n')
+    if not lines:
+        return False, ["File is empty"], []
+
+    errors = []
+
+    # Parse header
+    header_cells = lines[0].split('\t')
+    if len(header_cells) != 5:
+        errors.append(f"Expected 5 columns, found {len(header_cells)}")
+        return False, errors, []
+
+    # Check column names (case-insensitive)
+    header_lower = [h.strip().lower() for h in header_cells]
+    if header_lower != EXPECTED_COLUMNS_LOWER:
+        errors.append(f"Column mismatch. Expected: {', '.join(EXPECTED_COLUMNS)}")
+        errors.append(f"Got: {', '.join([h.strip() for h in header_cells])}")
+        return False, errors, []
+
+    # Parse data rows
+    if len(lines) < 2:
+        errors.append("No data rows (only header)")
+        return False, errors, []
+
+    preview_rows = []
+    for i, line in enumerate(lines[1:], start=2):
+        cells = line.split('\t')
+        if len(cells) != 5:
+            errors.append(f"Row {i}: Expected 5 columns, found {len(cells)}")
+            continue
+
+        term_en = cells[0].strip()
+        term_es = cells[1].strip()
+
+        if not term_en:
+            errors.append(f"Row {i}: English term is empty")
+            continue
+        if not term_es:
+            errors.append(f"Row {i}: Spanish term is empty")
+            continue
+
+        row_dict = {
+            "term_en": term_en,
+            "term_es_recommended": term_es,
+            "term_es_avoid": cells[2].strip() if cells[2].strip() != "-" else None,
+            "notes": cells[3].strip() if cells[3].strip() else None,
+            "category": cells[4].strip() if cells[4].strip() else None,
+        }
+        preview_rows.append(row_dict)
+
+    if not preview_rows:
+        errors.append("No valid data rows found")
+        return False, errors, []
+
+    # Return validation success with preview (limit to 5 rows)
+    is_valid = len(errors) == 0
+    return is_valid, errors, preview_rows[:5]
+
+
+def parse_tsv_to_terms(tsv_content: str) -> list[dict]:
+    """Parse TSV content to term dicts (assumes already validated)."""
+    lines = tsv_content.strip().split('\n')
+    terms = []
+
+    for line in lines[1:]:  # Skip header
+        if not line.strip():
+            continue
+
+        cells = line.split('\t')
+        if len(cells) < 5:
+            continue
+
+        term_dict = {
+            "term_en": cells[0].strip(),
+            "term_es_recommended": cells[1].strip(),
+            "term_es_avoid": cells[2].strip() if cells[2].strip() != "-" else None,
+            "notes": cells[3].strip() if cells[3].strip() else None,
+            "category": cells[4].strip() if cells[4].strip() else None,
+        }
+        terms.append(term_dict)
+
+    return terms
