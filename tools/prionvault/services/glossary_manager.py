@@ -327,3 +327,14 @@ def get_categories() -> list[str]:
                ORDER BY category"""
         )).all()
     return [r[0] for r in rows]
+
+
+def get_current_glossary_version() -> int:
+    """Get the current glossary version number."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        result = conn.execute(sql_text(
+            "SELECT current_version FROM prionvault_glossary_metadata "
+            "ORDER BY id DESC LIMIT 1"
+        )).scalar()
+    return result or 1

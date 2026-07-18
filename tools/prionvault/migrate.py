@@ -94,6 +94,7 @@ _PRIONVAULT_MIGRATIONS = (
     "058_articles_is_jc.sql",
     "059_notification_include_ai_summary.sql",
     "061_prionvault_glossary_terms.sql",
+    "062_summary_improvement_log.sql",
 )
 
 _BOOTSTRAP_SQL = """

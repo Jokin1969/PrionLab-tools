@@ -2191,12 +2191,15 @@ def api_summaries_improve_batch():
     if not glossary_context:
         return jsonify({"error": "no glossary terms loaded"}), 503
 
+    glossary_version = glossary_manager.get_current_glossary_version()
+
     def _run_improvement():
         """Background worker."""
         try:
             result = summary_improver.batch_improve_summaries(
                 article_ids,
                 glossary_context,
+                glossary_version=glossary_version,
                 dry_run=dry_run,
             )
             logger.info(f"Batch improvement complete: {result['successful']} successful, "
@@ -2217,3 +2220,55 @@ def api_summaries_improve_batch():
         "dry_run": dry_run,
         "message": f"Queued {len(article_ids)} summaries for improvement in background.",
     }), 202
+
+
+@prionvault_bp.route("/api/admin/summaries/outdated", methods=["GET"])
+@admin_required
+def api_summaries_outdated():
+    """Get articles improved with older glossary versions (need re-improvement).
+
+    Query params:
+      - limit: 1-100 (default 20)
+      - offset: pagination offset
+    """
+    from .services import summary_improver
+
+    limit = max(1, min(100, request.args.get("limit", 20, type=int)))
+    offset = max(0, request.args.get("offset", 0, type=int))
+
+    result = summary_improver.get_outdated_articles(limit=limit, offset=offset)
+    return jsonify(result)
+
+
+@prionvault_bp.route("/api/admin/summaries/stats", methods=["GET"])
+@admin_required
+def api_summaries_stats():
+    """Get comprehensive improvement statistics and dashboard metrics."""
+    from .services import summary_improver
+
+    result = summary_improver.get_improvement_stats()
+    return jsonify(result)
+
+
+@prionvault_bp.route("/api/admin/summaries/log", methods=["GET"])
+@admin_required
+def api_summaries_log():
+    """Get detailed improvement history, optionally filtered by batch.
+
+    Query params:
+      - batch_id: filter by specific batch (optional)
+      - limit: 1-100 (default 50)
+      - offset: pagination offset
+    """
+    from .services import summary_improver
+
+    batch_id = request.args.get("batch_id")
+    limit = max(1, min(100, request.args.get("limit", 50, type=int)))
+    offset = max(0, request.args.get("offset", 0, type=int))
+
+    result = summary_improver.get_improvement_log(
+        batch_id=batch_id,
+        limit=limit,
+        offset=offset,
+    )
+    return jsonify(result)

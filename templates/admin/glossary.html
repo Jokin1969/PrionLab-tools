@@ -1,22 +1,109 @@
 {% extends "base.html" %}
 
-{% block title %}{{ _('Glossary Management') }} — PrionLab Tools{% endblock %}
+{% block title %}📚 {{ _('Glossary Management') }} — PrionLab Tools{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <h1>📚 {{ _('Glossary Management') }}</h1>
-  <p class="subtitle">{{ _('Manage biomedical Spanish-English terminology') }}</p>
+  <p class="subtitle">{{ _('Biomedical terminology & summary improvement control center') }}</p>
 </div>
 
+{# ── Tab Navigation ───────────────────────────────────────────────────────── #}
 <div class="admin-tabs">
-  <button class="tab-btn tab-btn--active" data-tab="import">📥 {{ _('Import') }}</button>
+  <button class="tab-btn tab-btn--active" data-tab="dashboard">📊 {{ _('Dashboard') }}</button>
+  <button class="tab-btn" data-tab="import">📥 {{ _('Import') }}</button>
   <button class="tab-btn" data-tab="browse">📖 {{ _('Browse') }}</button>
   <button class="tab-btn" data-tab="diff">🔄 {{ _('Changes') }}</button>
   <button class="tab-btn" data-tab="improve">✨ {{ _('Improve Summaries') }}</button>
+  <button class="tab-btn" data-tab="history">📋 {{ _('History') }}</button>
+</div>
+
+{# ── Tab 0: Dashboard ───────────────────────────────────────────────────────── #}
+<div class="tab-content tab-content--active" id="tab-dashboard">
+  <section class="admin-section">
+    <h2>{{ _('Control Center') }}</h2>
+    <p class="help-text">{{ _('Complete overview of glossary management and summary improvements') }}</p>
+
+    {# ── Overview Stats ──────────────────────────────────────────────────── #}
+    <div style="margin-bottom: 30px">
+      <h3>📈 {{ _('Overall Statistics') }}</h3>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Current Glossary Version') }}</span>
+          <span class="stat-value" id="dashboard-current-version">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Summaries Improved') }}</span>
+          <span class="stat-value" id="dashboard-articles-improved">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Total Changes') }}</span>
+          <span class="stat-value" id="dashboard-total-changes">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Avg Changes/Article') }}</span>
+          <span class="stat-value" id="dashboard-avg-changes">0.0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Batches Processed') }}</span>
+          <span class="stat-value" id="dashboard-batches">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Outdated Summaries') }}</span>
+          <span class="stat-value outdated-badge" id="dashboard-outdated-count">0</span>
+        </div>
+      </div>
+    </div>
+
+    {# ── Improvements by Version ──────────────────────────────────────────── #}
+    <div style="margin-bottom: 30px">
+      <h3>📚 {{ _('Summaries by Glossary Version') }}</h3>
+      <div id="dashboard-by-version" class="version-breakdown">
+        <p class="help-text">{{ _('Loading...') }}</p>
+      </div>
+    </div>
+
+    {# ── Most Common Corrections ─────────────────────────────────────────── #}
+    <div style="margin-bottom: 30px">
+      <h3>🔝 {{ _('Most Common Corrections (Top 10)') }}</h3>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ _('Original') }}</th>
+              <th>{{ _('Corrected To') }}</th>
+              <th>{{ _('Frequency') }}</th>
+            </tr>
+          </thead>
+          <tbody id="dashboard-corrections-tbody">
+            <tr><td colspan="3" class="text-center text-muted">{{ _('Loading...') }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Quick Actions ────────────────────────────────────────────────────── #}
+    <div style="background: #f0f4ff; padding: 20px; border-radius: 8px">
+      <h3>⚡ {{ _('Quick Actions') }}</h3>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap">
+        <button class="btn btn--primary" onclick="document.querySelector('[data-tab=\"improve\"]').click(); loadOutdated()">
+          ↻ {{ _('Re-improve with new version') }}
+        </button>
+        <button class="btn btn--secondary" onclick="document.querySelector('[data-tab=\"history\"]').click(); loadHistory()">
+          📋 {{ _('View improvement history') }}
+        </button>
+        <button class="btn btn--secondary" onclick="exportDashboardData()">
+          📥 {{ _('Export statistics') }}
+        </button>
+      </div>
+    </div>
+
+    <div id="dashboard-status" class="status-text" style="margin-top: 20px"></div>
+  </section>
 </div>
 
 {# ── Tab 1: Import ───────────────────────────────────────────────────────── #}
-<div class="tab-content tab-content--active" id="tab-import">
+<div class="tab-content" id="tab-import">
   <section class="admin-section">
     <h2>{{ _('Import glossary terms') }}</h2>
     <p class="help-text">
@@ -178,7 +265,7 @@
   <section class="admin-section">
     <h2>✨ {{ _('Improve summaries with glossary') }}</h2>
     <p class="help-text">
-      {{ _('Use the glossary to improve existing article summaries. This will:') }}<br/>
+      {{ _('Use the current glossary to improve existing article summaries. This will:') }}<br/>
       • {{ _('Keep the original summary unchanged') }}<br/>
       • {{ _('Update terminology to match glossary') }}<br/>
       • {{ _('Preserve meaning and length') }}<br/>
@@ -186,7 +273,16 @@
     </p>
 
     <div style="background:#f3f4f6;padding:20px;border-radius:8px;margin-bottom:20px">
-      <h3>{{ _('Step 1: Preview summaries to improve') }}</h3>
+      <h3>{{ _('Choose articles to improve') }}</h3>
+      <div style="display: flex; gap: 12px; margin-bottom: 15px">
+        <button class="btn btn--secondary" onclick="loadAllArticles()">
+          📰 {{ _('Load all articles') }}
+        </button>
+        <button class="btn btn--secondary" onclick="loadOutdated()">
+          ⚠️ {{ _('Load outdated (v<current)') }}
+        </button>
+      </div>
+
       <div class="form-group">
         <label for="preview-limit">{{ _('Show:') }}</label>
         <select id="preview-limit" style="width:100px">
@@ -194,9 +290,6 @@
           <option value="20">20</option>
           <option value="50">50</option>
         </select>
-        <button id="btn-preview" class="btn btn--secondary" onclick="loadPreview()">
-          {{ _('Preview') }}
-        </button>
         <span id="preview-status" class="status-text"></span>
       </div>
 
@@ -209,6 +302,7 @@
                 <th><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll()" /></th>
                 <th>{{ _('Title') }}</th>
                 <th>{{ _('Summary length') }}</th>
+                <th>{{ _('Version') }}</th>
                 <th>{{ _('Authors') }}</th>
                 <th>{{ _('Year') }}</th>
               </tr>
@@ -224,7 +318,7 @@
     </div>
 
     <div style="background:#ecfdf5;padding:20px;border-radius:8px;margin-bottom:20px">
-      <h3>{{ _('Step 2: Run improvement') }}</h3>
+      <h3>{{ _('Run improvement') }}</h3>
       <div class="form-group">
         <label>
           <input type="checkbox" id="dry-run-checkbox" checked />
@@ -260,6 +354,49 @@
         <h3>{{ _('Errors:') }}</h3>
         <ul id="batch-errors-list" style="color:#dc2626;font-size:12px;max-height:300px;overflow-y:auto"></ul>
       </div>
+    </div>
+  </section>
+</div>
+
+{# ── Tab 5: History ────────────────────────────────────────────────────────── #}
+<div class="tab-content" id="tab-history">
+  <section class="admin-section">
+    <h2>📋 {{ _('Improvement History') }}</h2>
+    <p class="help-text">{{ _('Complete audit trail of all summary improvements') }}</p>
+
+    <div class="form-group" style="margin-bottom: 15px">
+      <label for="history-batch-filter">{{ _('Filter by batch ID:') }}</label>
+      <input type="text" id="history-batch-filter" placeholder="UUID or leave empty for all" style="width: 300px; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px" />
+      <button class="btn btn--secondary" onclick="loadHistory()">{{ _('Filter') }}</button>
+    </div>
+
+    <div class="stats-grid" style="margin-bottom: 20px">
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Total Improvements') }}</span>
+        <span class="stat-value" id="history-total">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Last Improvement') }}</span>
+        <span class="stat-value" id="history-last">—</span>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _('Date') }}</th>
+            <th>{{ _('Article') }}</th>
+            <th>{{ _('Glossary Version') }}</th>
+            <th>{{ _('Changes') }}</th>
+            <th>{{ _('Batch ID') }}</th>
+            <th>{{ _('Details') }}</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody">
+          <tr><td colspan="6" class="text-center text-muted">{{ _('Loading...') }}</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 </div>
@@ -326,7 +463,8 @@
 }
 
 .form-group input[type="file"],
-.form-group select {
+.form-group select,
+.form-group input[type="text"] {
   display: block;
   padding: 8px 12px;
   border: 1px solid #d1d5db;
@@ -368,6 +506,11 @@
   font-size: 24px;
   font-weight: bold;
   color: #1f2937;
+}
+
+.stat-value.outdated-badge {
+  color: #dc2626;
+  font-size: 28px;
 }
 
 .status-text {
@@ -454,6 +597,49 @@
   border-bottom: 1px solid #fee2e2;
 }
 
+.version-breakdown {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin: 15px 0;
+}
+
+.version-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.version-card h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #374151;
+}
+
+.version-card .metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.version-card .metric:last-child {
+  border-bottom: none;
+}
+
+.version-card .metric label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.version-card .metric value {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
 .btn {
   padding: 8px 16px;
   border: none;
@@ -502,24 +688,95 @@ let currentCategories = [];
 let currentTerms = [];
 let previewArticles = [];
 let selectedArticleIds = [];
+let improveMode = 'all'; // 'all' or 'outdated'
 
-// ── Tab switching ─────────────────────────────────────────────────────────
+// ── Tab switching ──────────────────────────────────────────────────────────
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
-    // Deactivate all tabs
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('tab-content--active'));
 
-    // Activate clicked
     e.target.classList.add('tab-btn--active');
     const tabId = 'tab-' + e.target.dataset.tab;
     document.getElementById(tabId).classList.add('tab-content--active');
 
-    // Load content when tab opens
-    if (e.target.dataset.tab === 'browse') loadBrowse();
+    if (e.target.dataset.tab === 'dashboard') loadDashboard();
+    else if (e.target.dataset.tab === 'browse') loadBrowse();
     else if (e.target.dataset.tab === 'diff') loadDiff();
   });
 });
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const status = document.getElementById('dashboard-status');
+  status.textContent = '{{ _("Loading...") }}';
+  status.style.color = '#6b7280';
+
+  try {
+    const response = await fetch('/prionvault/api/admin/summaries/stats', {
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+
+    // Update stats
+    document.getElementById('dashboard-current-version').textContent = data.current_glossary_version;
+    document.getElementById('dashboard-articles-improved').textContent = data.total_articles_improved;
+    document.getElementById('dashboard-total-changes').textContent = data.total_changes;
+    document.getElementById('dashboard-avg-changes').textContent = data.avg_changes_per_article.toFixed(1);
+    document.getElementById('dashboard-batches').textContent = data.total_batches;
+
+    // Get outdated count
+    const outdatedResp = await fetch('/prionvault/api/admin/summaries/outdated?limit=1', {
+      credentials: 'same-origin',
+    });
+    const outdatedData = await outdatedResp.json();
+    document.getElementById('dashboard-outdated-count').textContent = outdatedData.total_outdated;
+
+    // Render by version breakdown
+    const versionDiv = document.getElementById('dashboard-by-version');
+    if (data.by_version.length === 0) {
+      versionDiv.innerHTML = '<p class="help-text">{{ _("No improvements yet") }}</p>';
+    } else {
+      versionDiv.innerHTML = data.by_version.map(v => `
+        <div class="version-card">
+          <h4>Version ${v.glossary_version}</h4>
+          <div class="metric">
+            <label>{{ _('Articles') }}</label>
+            <value>${v.articles_improved}</value>
+          </div>
+          <div class="metric">
+            <label>{{ _('Changes') }}</label>
+            <value>${v.total_changes}</value>
+          </div>
+          <div class="metric">
+            <label>{{ _('Avg/Article') }}</label>
+            <value>${(v.total_changes / (v.articles_improved || 1)).toFixed(1)}</value>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Render corrections
+    const correctionsBody = document.getElementById('dashboard-corrections-tbody');
+    if (data.most_common_corrections.length === 0) {
+      correctionsBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">{{ _("No corrections yet") }}</td></tr>';
+    } else {
+      correctionsBody.innerHTML = data.most_common_corrections.map(c => `
+        <tr>
+          <td><code style="color: #dc2626">${escapeHtml(c.original)}</code></td>
+          <td><strong style="color: #16a34a">${escapeHtml(c.corrected)}</strong></td>
+          <td><strong>${c.frequency}</strong></td>
+        </tr>
+      `).join('');
+    }
+
+    status.textContent = '✓ {{ _("Dashboard updated") }}';
+    status.style.color = '#16a34a';
+  } catch (e) {
+    status.textContent = `✗ ${e.message}`;
+    status.style.color = '#dc2626';
+  }
+}
 
 // ── Import ────────────────────────────────────────────────────────────────
 async function handleImport() {
@@ -542,7 +799,6 @@ async function handleImport() {
     const text = await file.text();
     let terms = [];
 
-    // Parse file based on extension
     if (file.name.endsWith('.json')) {
       terms = JSON.parse(text);
       if (!Array.isArray(terms)) terms = [terms];
@@ -567,7 +823,6 @@ async function handleImport() {
       throw new Error(data.error || `HTTP ${response.status}`);
     }
 
-    // Show results
     document.getElementById('import-results').style.display = 'block';
     document.getElementById('import-stats').style.display = 'grid';
     document.getElementById('stat-imported').textContent = data.imported;
@@ -620,7 +875,7 @@ function parseCSV(text, isTSV) {
   return terms;
 }
 
-// ── Browse ────────────────────────────────────────────────────────────────
+// ── Browse ─────────────────────────────────────────────────────────────────
 async function loadBrowse() {
   try {
     const response = await fetch('/prionvault/api/admin/glossary/terms', {
@@ -634,7 +889,6 @@ async function loadBrowse() {
     document.getElementById('browse-total').textContent = data.total || 0;
     document.getElementById('browse-categories').textContent = currentCategories.length;
 
-    // Populate category filter
     const filter = document.getElementById('category-filter');
     filter.innerHTML = '<option value="">{{ _("All categories") }}</option>';
     currentCategories.forEach(cat => {
@@ -675,7 +929,7 @@ function renderTermsTable() {
   `).join('');
 }
 
-// ── Diff ──────────────────────────────────────────────────────────────────
+// ── Diff ───────────────────────────────────────────────────────────────────
 async function loadDiff() {
   try {
     const response = await fetch('/prionvault/api/admin/glossary/diff', {
@@ -688,7 +942,6 @@ async function loadDiff() {
     document.getElementById('diff-new-count').textContent = data.new_terms.length;
     document.getElementById('diff-updated-count').textContent = data.updated_terms.length;
 
-    // New terms
     if (data.new_terms.length > 0) {
       document.getElementById('new-terms-section').style.display = 'block';
       const tbody = document.getElementById('new-terms-tbody');
@@ -704,7 +957,6 @@ async function loadDiff() {
       document.getElementById('new-terms-section').style.display = 'none';
     }
 
-    // Updated terms
     if (data.updated_terms.length > 0) {
       document.getElementById('updated-terms-section').style.display = 'block';
       const tbody = document.getElementById('updated-terms-tbody');
@@ -728,10 +980,11 @@ async function loadDiff() {
   }
 }
 
-// ── Improve Summaries ─────────────────────────────────────────────────────
-async function loadPreview() {
+// ── Improve Summaries ──────────────────────────────────────────────────────
+async function loadAllArticles() {
+  improveMode = 'all';
   const limit = document.getElementById('preview-limit').value;
-  const btn = document.getElementById('btn-preview');
+  const btn = document.querySelector('[onclick="loadAllArticles()"]');
   const status = document.getElementById('preview-status');
 
   btn.disabled = true;
@@ -749,26 +1002,62 @@ async function loadPreview() {
     document.getElementById('preview-results').style.display = 'block';
     document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total} {{ _("articles with summaries") }}`;
 
-    const tbody = document.getElementById('preview-tbody');
-    tbody.innerHTML = previewArticles.map(a => `
-      <tr>
-        <td><input type="checkbox" class="article-checkbox" data-id="${a.id}" onchange="updateSelectedCount()" /></td>
-        <td>${escapeHtml((a.title || '').substring(0, 80))}</td>
-        <td>${a.summary_length || 0}</td>
-        <td style="font-size:12px;color:#6b7280">${escapeHtml((a.authors || '').substring(0, 40))}</td>
-        <td>${a.year || '—'}</td>
-      </tr>
-    `).join('');
-
-    document.getElementById('select-all-checkbox').checked = false;
+    renderPreviewTable();
     status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length}`;
 
   } catch (e) {
     status.textContent = `✗ {{ _("Error:") }} ${e.message}`;
-    alert('{{ _("Error loading preview:") }} ' + e.message);
   } finally {
     btn.disabled = false;
   }
+}
+
+async function loadOutdated() {
+  improveMode = 'outdated';
+  const limit = document.getElementById('preview-limit').value;
+  const btn = document.querySelector('[onclick="loadOutdated()"]');
+  const status = document.getElementById('preview-status');
+
+  btn.disabled = true;
+  status.textContent = '{{ _("Loading outdated...") }}';
+
+  try {
+    const response = await fetch(`/prionvault/api/admin/summaries/outdated?limit=${limit}&offset=0`, {
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+
+    previewArticles = data.articles || [];
+    selectedArticleIds = [];
+
+    document.getElementById('preview-results').style.display = 'block';
+    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total_outdated} {{ _("outdated articles") }} ({{ _("improved with v") }}<${data.current_glossary_version})`;
+
+    renderPreviewTable();
+    status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length} {{ _("outdated") }}`;
+
+  } catch (e) {
+    status.textContent = `✗ {{ _("Error:") }} ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderPreviewTable() {
+  const tbody = document.getElementById('preview-tbody');
+  tbody.innerHTML = previewArticles.map(a => `
+    <tr>
+      <td><input type="checkbox" class="article-checkbox" data-id="${a.id}" onchange="updateSelectedCount()" /></td>
+      <td>${escapeHtml((a.title || '').substring(0, 80))}</td>
+      <td>${a.summary_length || 0}</td>
+      <td>${improveMode === 'outdated' ? `v${a.glossary_version_used}` : '—'}</td>
+      <td style="font-size:12px;color:#6b7280">${escapeHtml((a.authors || '').substring(0, 40))}</td>
+      <td>${a.year || '—'}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('select-all-checkbox').checked = false;
+  updateSelectedCount();
 }
 
 function toggleSelectAll() {
@@ -827,7 +1116,6 @@ async function improveBatch() {
 
     status.textContent = `✓ {{ _("Batch queued") }} ({{ _("running in background") }})`;
 
-    // Auto-check for results after a delay
     setTimeout(() => {
       alert('{{ _("Improvement running in background. Check server logs for progress.") }}');
     }, 2000);
@@ -843,7 +1131,51 @@ async function improveBatch() {
   }
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────
+// ── History ────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const batchId = document.getElementById('history-batch-filter').value || null;
+  const limit = 50;
+
+  try {
+    const url = new URL('/prionvault/api/admin/summaries/log', window.location.origin);
+    if (batchId) url.searchParams.append('batch_id', batchId);
+    url.searchParams.append('limit', limit);
+
+    const response = await fetch(url, { credentials: 'same-origin' });
+    const data = await response.json();
+
+    document.getElementById('history-total').textContent = data.total;
+    document.getElementById('history-last').textContent = data.improvements[0]?.improved_at
+      ? new Date(data.improvements[0].improved_at).toLocaleDateString()
+      : '—';
+
+    const tbody = document.getElementById('history-tbody');
+    if (data.improvements.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">{{ _("No history") }}</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.improvements.map(imp => `
+      <tr>
+        <td>${new Date(imp.improved_at).toLocaleString()}</td>
+        <td><strong>${escapeHtml((imp.title || '').substring(0, 60))}</strong></td>
+        <td>v${imp.glossary_version}</td>
+        <td><strong>${imp.changes_count}</strong></td>
+        <td><code style="font-size: 11px">${imp.batch_id.substring(0, 12)}...</code></td>
+        <td><small>${imp.detail_count} details</small></td>
+      </tr>
+    `).join('');
+
+  } catch (e) {
+    alert('{{ _("Error loading history:") }} ' + e.message);
+  }
+}
+
+function exportDashboardData() {
+  alert('{{ _("Export feature coming soon. Check browser console for raw data.") }}');
+  console.log({ currentTerms, previewArticles });
+}
+
 function escapeHtml(text) {
   if (!text) return '';
   return text
