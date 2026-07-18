@@ -2043,3 +2043,177 @@ def api_cart_clear():
     finally:
         s.close()
     return jsonify({"ok": True, "items": []})
+
+
+# ── Glossary management (biomedical terminology normalization) ──────────────
+
+@prionvault_bp.route("/api/admin/glossary/import", methods=["POST"])
+@admin_required
+def api_glossary_import():
+    """Import or update glossary terms from CSV/TSV data.
+
+    Body: {
+      "terms": [
+        {
+          "term_en": "prion",
+          "term_es_recommended": "prion",
+          "term_es_avoid": "prión",
+          "notes": "Sin tilde.",
+          "category": "Terminología"
+        },
+        ...
+      ]
+    }
+
+    Returns import result with counts and any errors.
+    """
+    from .services import glossary_manager
+
+    data = request.get_json(force=True, silent=True) or {}
+    terms = data.get("terms") or []
+
+    if not terms:
+        return jsonify({"error": "empty terms list"}), 400
+    if not isinstance(terms, list):
+        return jsonify({"error": "terms must be a list"}), 400
+
+    result = glossary_manager.import_glossary(terms)
+    return jsonify({
+        "ok": True,
+        "imported": result.imported,
+        "updated": result.updated,
+        "skipped": result.skipped,
+        "new_version": result.new_version,
+        "errors": result.errors[:20],  # Limit errors shown
+    }), 200 if not result.errors else 207
+
+
+@prionvault_bp.route("/api/admin/glossary/terms", methods=["GET"])
+@admin_required
+def api_glossary_list():
+    """List all glossary terms, optionally filtered by category."""
+    from .services import glossary_manager
+
+    category = request.args.get("category")
+    terms = glossary_manager.get_all_terms(category=category)
+    categories = glossary_manager.get_categories()
+
+    return jsonify({
+        "terms": terms,
+        "categories": categories,
+        "total": len(terms),
+    })
+
+
+@prionvault_bp.route("/api/admin/glossary/diff", methods=["GET"])
+@admin_required
+def api_glossary_diff():
+    """Show what changed since last glossary import.
+
+    Returns new terms and updated terms with their old vs new values.
+    """
+    from .services import glossary_manager
+
+    since_version = request.args.get("since_version", type=int)
+    diff = glossary_manager.get_diff(since_version=since_version)
+
+    return jsonify({
+        "new_terms": [
+            {
+                "term_en": t.term_en,
+                "term_es_recommended": t.term_es_recommended,
+                "term_es_avoid": t.term_es_avoid,
+                "notes": t.notes,
+                "category": t.category,
+            }
+            for t in diff.new_terms
+        ],
+        "updated_terms": [
+            {
+                "term_en": old.term_en,
+                "old": old.term_es_recommended,
+                "new": new.term_es_recommended,
+                "notes": new.notes,
+            }
+            for old, new in diff.updated_terms
+        ],
+        "total_terms": diff.total_terms,
+        "version_before": diff.version_before,
+        "version_after": diff.version_after,
+    })
+
+
+@prionvault_bp.route("/api/admin/summaries/preview-improvement", methods=["GET"])
+@admin_required
+def api_summaries_preview_improvement():
+    """List articles that could be improved using glossary.
+
+    Returns paginated list with current summaries so admin can preview
+    what will be improved.
+    """
+    from .services import summary_improver
+
+    limit = max(1, min(100, request.args.get("limit", 10, type=int)))
+    offset = max(0, request.args.get("offset", 0, type=int))
+
+    result = summary_improver.get_articles_needing_improvement(limit=limit, offset=offset)
+    return jsonify(result)
+
+
+@prionvault_bp.route("/api/admin/summaries/improve-batch", methods=["POST"])
+@admin_required
+def api_summaries_improve_batch():
+    """Trigger batch improvement of summaries using glossary.
+
+    Runs in background thread. Improves terminology in existing summaries
+    using the current glossary without changing meaning or structure.
+
+    Body: {
+      "article_ids": ["uuid1", "uuid2", ...],  // max 100
+      "dry_run": false  // if true, simulate only
+    }
+
+    Returns immediately with job info. Improvement happens in background.
+    """
+    from .services import glossary_manager, summary_improver
+    import threading
+
+    data = request.get_json(force=True, silent=True) or {}
+    article_ids = data.get("article_ids") or []
+    dry_run = bool(data.get("dry_run", False))
+
+    if not article_ids:
+        return jsonify({"error": "empty article_ids"}), 400
+    if len(article_ids) > 100:
+        return jsonify({"error": "max 100 articles per request"}), 400
+
+    glossary_context = glossary_manager.get_glossary_context()
+    if not glossary_context:
+        return jsonify({"error": "no glossary terms loaded"}), 503
+
+    def _run_improvement():
+        """Background worker."""
+        try:
+            result = summary_improver.batch_improve_summaries(
+                article_ids,
+                glossary_context,
+                dry_run=dry_run,
+            )
+            logger.info(f"Batch improvement complete: {result['successful']} successful, "
+                       f"{result['failed']} failed")
+        except Exception as e:
+            logger.exception("batch_improve_summaries crashed")
+
+    thread = threading.Thread(
+        target=_run_improvement,
+        name="prionvault-improve-summaries",
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({
+        "ok": True,
+        "queued": len(article_ids),
+        "dry_run": dry_run,
+        "message": f"Queued {len(article_ids)} summaries for improvement in background.",
+    }), 202

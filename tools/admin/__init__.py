@@ -318,6 +318,13 @@ def api_dashboard():
     return render_template("admin/api_dashboard.html")
 
 
+@admin_bp.route("/glossary")
+@admin_required
+def glossary_management():
+    """Glossary management dashboard."""
+    return render_template("admin/glossary.html")
+
+
 # ── Database JSON APIs ────────────────────────────────────────────────────────
 
 @admin_bp.route("/api/db/health")
