@@ -14772,6 +14772,20 @@
         return html;
       })()) +
 
+      `<div data-glossary-section style="margin-bottom:20px;">
+        <h3 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#9ca3af;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid #f3f4f6;">Glosario y mejora de resúmenes</h3>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px;">
+          <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;">
+            <span style="font-size:21px;font-weight:700;color:#c2410c;line-height:1.1;">...</span>
+            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes sin revisar</span>
+          </div>
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;">
+            <span style="font-size:21px;font-weight:700;color:#dc2626;line-height:1.1;">...</span>
+            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes desactualizados</span>
+          </div>
+        </div>
+      </div>` +
+
       section('🔍 Verificación PDF ↔ metadatos', [
         row(2, [card('✗ Mismatches',  d.verify_mismatch, true, {pdf_verify_status:'mismatch'}, 'bad'),
                 card('⚠ Sospechosos', d.verify_suspect,  true, {pdf_verify_status:'suspect'},  'warn')]),
@@ -14860,6 +14874,45 @@
 
       loadArticles();
     };
+
+    // Fetch glossary stats and update health modal
+    (async () => {
+      try {
+        const [statsRes, unrevRes, outdRes] = await Promise.all([
+          fetch('/prionvault/api/admin/summaries/stats'),
+          fetch('/prionvault/api/admin/summaries/unreviewed?limit=1'),
+          fetch('/prionvault/api/admin/summaries/outdated?limit=1'),
+        ]);
+
+        if (!statsRes.ok || !unrevRes.ok || !outdRes.ok) return;
+
+        const stats = await statsRes.json();
+        const unreviewed = await unrevRes.json();
+        const outdated = await outdRes.json();
+
+        const unrevCount = unreviewed.total ?? 0;
+        const outdCount = outdated.total ?? 0;
+
+        // Find and replace glossary section placeholders
+        const glossarySection = body.querySelector('[data-glossary-section]');
+        if (glossarySection) {
+          const unrevCard = `<div onclick="window.location.href='/admin/glossary#summaries'" style="cursor:pointer;" onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'" onmouseleave="this.style.boxShadow='none';this.style.transform=''" class="pv-health-card" style="background:#fff7ed;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;transition:box-shadow 0.15s,transform 0.15s;">
+            <span style="font-size:21px;font-weight:700;color:#c2410c;line-height:1.1;">${unrevCount.toLocaleString()}</span>
+            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes sin revisar</span>
+          </div>`;
+
+          const outdCard = `<div onclick="window.location.href='/admin/glossary#summaries'" style="cursor:pointer;" onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'" onmouseleave="this.style.boxShadow='none';this.style.transform=''" class="pv-health-card" style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;transition:box-shadow 0.15s,transform 0.15s;">
+            <span style="font-size:21px;font-weight:700;color:#dc2626;line-height:1.1;">${outdCount.toLocaleString()}</span>
+            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes desactualizados</span>
+          </div>`;
+
+          glossarySection.innerHTML = `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px;">${unrevCard}${outdCard}</div>`;
+        }
+      } catch (err) {
+        // Silently fail - health modal still shows placeholder
+        console.debug('Failed to load glossary stats:', err);
+      }
+    })();
 
   };
 
