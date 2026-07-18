@@ -91,14 +91,33 @@ narrativo; sí puedes usarlas en Métodos / Resultados si los datos son \
 muchos y enumerables."""
 
 
-def _effective_system_prompt() -> str:
-    """The base system prompt plus the admin-maintained translation
-    glossary (if any). Glossary failures never break generation."""
+def _effective_system_prompt() -> tuple[str, Optional[int]]:
+    """The base system prompt plus the admin-maintained glossary (if available).
+
+    Returns:
+        (system_prompt: str, glossary_version: int or None)
+
+    Glossary failures never break generation; returns None version if glossary unavailable.
+    """
+    glossary_version = None
+    glossary_block = ""
+
     try:
-        from .glossary import glossary_prompt_block
-        return _SYSTEM_PROMPT + glossary_prompt_block()
+        from . import glossary_manager
+        glossary_context = glossary_manager.get_glossary_context()
+        glossary_version = glossary_manager.get_current_glossary_version()
+
+        if glossary_context:
+            glossary_block = f"\n\nGLOSARIO DE TERMINOLOGÍA:\n{glossary_context}"
     except Exception:
-        return _SYSTEM_PROMPT
+        # If new glossary system unavailable, try the old one
+        try:
+            from .glossary import glossary_prompt_block
+            glossary_block = glossary_prompt_block()
+        except Exception:
+            pass
+
+    return _SYSTEM_PROMPT + glossary_block, glossary_version
 
 
 def _build_user_prompt(*, title, authors, year, journal, abstract,
@@ -207,15 +226,16 @@ DOI: {doi_s}{pmid_line}{abstract_block}{text_block}
 
 @dataclass
 class SummaryResult:
-    text:           str
-    model:          str
-    provider:       str
-    input_chars:    int
-    used_full_text: bool
-    elapsed_ms:     int
-    tokens_in:      Optional[int] = None
-    tokens_out:     Optional[int] = None
-    cost_usd:       Optional[float] = None
+    text:                str
+    model:               str
+    provider:            str
+    input_chars:         int
+    used_full_text:      bool
+    elapsed_ms:          int
+    tokens_in:           Optional[int] = None
+    tokens_out:          Optional[int] = None
+    cost_usd:            Optional[float] = None
+    glossary_version:    Optional[int] = None
 
 
 class NotConfigured(RuntimeError):
@@ -241,7 +261,11 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
                      provider: str = DEFAULT_PROVIDER,
                      title_hint: bool = False) -> SummaryResult:
     """Generate a summary using the requested provider. Retries up to
-    _MAX_ATTEMPTS times on empty / transient errors before giving up."""
+    _MAX_ATTEMPTS times on empty / transient errors before giving up.
+
+    If glossary system is available, automatically injects current glossary
+    context into system prompt and tracks glossary version in result.
+    """
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider: {provider!r}. "
                          f"Valid: {sorted(PROVIDERS)}")
@@ -252,6 +276,9 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
             f"{PROVIDERS[provider]['env']} is not set "
             f"(needed for provider={provider})"
         )
+
+    # Get system prompt and glossary version once
+    system_prompt, glossary_version = _effective_system_prompt()
 
     user_prompt = _build_user_prompt(
         title=title, authors=authors, year=year, journal=journal,
@@ -264,11 +291,14 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             if provider == "anthropic":
-                return _call_anthropic(api_key, user_prompt, extracted_text)
+                return _call_anthropic(api_key, user_prompt, extracted_text,
+                                       system_prompt, glossary_version)
             if provider == "openai":
-                return _call_openai(api_key, user_prompt, extracted_text)
+                return _call_openai(api_key, user_prompt, extracted_text,
+                                    system_prompt, glossary_version)
             if provider == "gemini":
-                return _call_gemini(api_key, user_prompt, extracted_text)
+                return _call_gemini(api_key, user_prompt, extracted_text,
+                                    system_prompt, glossary_version)
         except RuntimeError as exc:
             # Empty / parse-failure responses are retriable.
             last_error = exc
@@ -289,8 +319,8 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
 
 # ── Anthropic ───────────────────────────────────────────────────────────────
 
-def _call_anthropic(api_key: str, user_prompt: str,
-                    extracted_text) -> SummaryResult:
+def _call_anthropic(api_key: str, user_prompt: str, extracted_text,
+                    system_prompt: str, glossary_version: Optional[int]) -> SummaryResult:
     import anthropic
     import httpx
     client = anthropic.Anthropic(
@@ -305,7 +335,7 @@ def _call_anthropic(api_key: str, user_prompt: str,
     message = client.messages.create(
         model=model,
         max_tokens=max_tokens,
-        system=_effective_system_prompt(),
+        system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
     elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -333,13 +363,14 @@ def _call_anthropic(api_key: str, user_prompt: str,
         elapsed_ms=elapsed_ms,
         tokens_in=tokens_in, tokens_out=tokens_out,
         cost_usd=_estimate_cost("anthropic", tokens_in, tokens_out),
+        glossary_version=glossary_version,
     )
 
 
 # ── OpenAI ──────────────────────────────────────────────────────────────────
 
-def _call_openai(api_key: str, user_prompt: str,
-                 extracted_text) -> SummaryResult:
+def _call_openai(api_key: str, user_prompt: str, extracted_text,
+                  system_prompt: str, glossary_version: Optional[int]) -> SummaryResult:
     from openai import OpenAI
     client = OpenAI(api_key=api_key, timeout=60.0)
     model = PROVIDERS["openai"]["model"]
@@ -350,7 +381,7 @@ def _call_openai(api_key: str, user_prompt: str,
         model=model,
         max_tokens=max_tokens,
         messages=[
-            {"role": "system", "content": _effective_system_prompt()},
+            {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt},
         ],
     )
@@ -373,13 +404,14 @@ def _call_openai(api_key: str, user_prompt: str,
         elapsed_ms=elapsed_ms,
         tokens_in=tokens_in, tokens_out=tokens_out,
         cost_usd=_estimate_cost("openai", tokens_in, tokens_out),
+        glossary_version=glossary_version,
     )
 
 
 # ── Gemini ──────────────────────────────────────────────────────────────────
 
-def _call_gemini(api_key: str, user_prompt: str,
-                 extracted_text) -> SummaryResult:
+def _call_gemini(api_key: str, user_prompt: str, extracted_text,
+                 system_prompt: str, glossary_version: Optional[int]) -> SummaryResult:
     # Use the newer google-genai SDK; the old google-generativeai is
     # deprecated. Both APIs differ; we standardise on the new one.
     from google import genai
@@ -393,7 +425,7 @@ def _call_gemini(api_key: str, user_prompt: str,
         model=model,
         contents=user_prompt,
         config=types.GenerateContentConfig(
-            system_instruction=_effective_system_prompt(),
+            system_instruction=system_prompt,
             max_output_tokens=max_tokens,
             temperature=0.4,
         ),
@@ -415,6 +447,7 @@ def _call_gemini(api_key: str, user_prompt: str,
         elapsed_ms=elapsed_ms,
         tokens_in=tokens_in, tokens_out=tokens_out,
         cost_usd=_estimate_cost("gemini", tokens_in, tokens_out),
+        glossary_version=glossary_version,
     )
 
 

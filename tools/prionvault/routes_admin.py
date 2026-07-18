@@ -2272,3 +2272,156 @@ def api_summaries_log():
         offset=offset,
     )
     return jsonify(result)
+
+
+@prionvault_bp.route("/api/admin/summaries/unreviewed", methods=["GET"])
+@admin_required
+def api_summaries_unreviewed():
+    """Get articles with unreviewed AI summaries (ai_summary_glossary_version IS NULL).
+
+    These are summaries generated before glossary system was enabled, or generated
+    without glossary context injection.
+
+    Query params:
+      - limit: 1-100 (default 50)
+      - offset: pagination offset
+    """
+    limit = max(1, min(100, request.args.get("limit", 50, type=int)))
+    offset = max(0, request.args.get("offset", 0, type=int))
+
+    try:
+        with db.engine.connect() as conn:
+            rows = conn.execute(sql_text("""
+                SELECT id::text, title, authors, year, summary_ai,
+                       char_length(summary_ai) as summary_length,
+                       created_at, updated_at
+                FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+                ORDER BY updated_at DESC
+                LIMIT :lim OFFSET :off
+            """), {"lim": limit, "off": offset}).mappings().all()
+
+            total = conn.execute(sql_text("""
+                SELECT COUNT(*) FROM articles
+                WHERE summary_ai IS NOT NULL AND ai_summary_glossary_version IS NULL
+            """)).scalar() or 0
+
+        return jsonify({
+            "articles": [dict(r) for r in rows],
+            "total": int(total),
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total,
+        })
+    except Exception as e:
+        logger.exception(f"Failed to fetch unreviewed summaries: {e}")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/api/admin/summaries/export", methods=["GET"])
+@admin_required
+def api_summaries_export():
+    """Export improvement statistics as Excel file.
+
+    Returns XLSX file with dashboard metrics, by-version breakdown, and
+    most common corrections.
+    """
+    try:
+        import io
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from .services import summary_improver
+
+        stats = summary_improver.get_improvement_stats()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Statistics"
+
+        # Header styling
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+
+        # Title
+        ws['A1'] = "PrionVault Glossary Improvement Statistics"
+        ws['A1'].font = Font(bold=True, size=14)
+        ws.merge_cells('A1:D1')
+
+        # Summary metrics
+        row = 3
+        ws[f'A{row}'] = "Metric"
+        ws[f'B{row}'] = "Value"
+        ws[f'A{row}'].fill = header_fill
+        ws[f'A{row}'].font = header_font
+        ws[f'B{row}'].fill = header_fill
+        ws[f'B{row}'].font = header_font
+
+        row += 1
+        metrics = [
+            ("Total Articles Improved", stats.get("total_articles_improved", 0)),
+            ("Total Changes", stats.get("total_changes", 0)),
+            ("Average Changes/Article", f"{stats.get('avg_changes_per_article', 0.0):.2f}"),
+            ("Total Batches", stats.get("total_batches", 0)),
+            ("Current Glossary Version", stats.get("current_glossary_version", 0)),
+            ("Last Improvement", stats.get("last_improvement_at", "N/A")),
+        ]
+
+        for label, value in metrics:
+            ws[f'A{row}'] = label
+            ws[f'B{row}'] = value
+            row += 1
+
+        # By-version breakdown
+        row += 2
+        ws[f'A{row}'] = "Glossary Version"
+        ws[f'B{row}'] = "Articles"
+        ws[f'C{row}'] = "Total Changes"
+        for col in ['A', 'B', 'C']:
+            ws[f'{col}{row}'].fill = header_fill
+            ws[f'{col}{row}'].font = header_font
+
+        row += 1
+        for v in stats.get("by_version", []):
+            ws[f'A{row}'] = v["glossary_version"]
+            ws[f'B{row}'] = v["articles_improved"]
+            ws[f'C{row}'] = v["total_changes"]
+            row += 1
+
+        # Most common corrections
+        row += 2
+        ws[f'A{row}'] = "Original Term"
+        ws[f'B{row}'] = "Corrected Term"
+        ws[f'C{row}'] = "Frequency"
+        for col in ['A', 'B', 'C']:
+            ws[f'{col}{row}'].fill = header_fill
+            ws[f'{col}{row}'].font = header_font
+
+        row += 1
+        for corr in stats.get("most_common_corrections", []):
+            ws[f'A{row}'] = corr["original"]
+            ws[f'B{row}'] = corr["corrected"]
+            ws[f'C{row}'] = corr["frequency"]
+            row += 1
+
+        # Auto-size columns
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['C'].width = 20
+        ws.column_dimensions['D'].width = 30
+
+        # Write to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return Response(
+            output.getvalue(),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment;filename=glossary_stats.xlsx"}
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to export statistics: {e}")
+        return jsonify({"error": str(e)[:300]}), 500

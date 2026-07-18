@@ -19,8 +19,94 @@ from typing import Optional
 from datetime import datetime
 
 from sqlalchemy import text as sql_text
+from difflib import get_close_matches
 
 logger = logging.getLogger(__name__)
+
+_FUZZY_MATCH_THRESHOLD = 0.80  # 80% similarity required
+
+
+def _build_glossary_lookup():
+    """Build a dict of Spanish recommended → English terms for fuzzy matching.
+
+    Returns: {spanish_recommended: english_term}
+    """
+    from . import glossary_manager
+    try:
+        terms = glossary_manager.get_all_terms()
+        return {term['term_es_recommended']: term['term_en'] for term in terms}
+    except Exception as e:
+        logger.warning(f"Failed to build glossary lookup for fuzzy matching: {e}")
+        return {}
+
+
+def _apply_fuzzy_normalization(text: str, glossary: dict) -> tuple[str, list[dict]]:
+    """Apply fuzzy matching to detect and normalize terminology variations.
+
+    Finds Spanish terms that closely match "avoid" variants and replaces with
+    recommended terminology. Returns: (normalized_text, changes_list)
+
+    Args:
+        text: Text to normalize
+        glossary: {spanish_recommended: english_term} dict
+
+    Returns:
+        (normalized_text, changes) where changes is list of dicts with:
+        {original, corrected, similarity}
+    """
+    if not glossary:
+        return text, []
+
+    # Build reverse lookup of avoided terms for fuzzy matching
+    avoided_to_recommended = {}
+    for es_rec, en_term in glossary.items():
+        try:
+            # Fetch the full term record to get avoided terms
+            from . import glossary_manager
+            terms = glossary_manager.get_all_terms()
+            for t in terms:
+                if t['term_es_recommended'] == es_rec and t.get('term_es_avoid'):
+                    for avoided in t['term_es_avoid'].split('|'):
+                        avoided = avoided.strip()
+                        if avoided:
+                            avoided_to_recommended[avoided] = es_rec
+        except Exception:
+            pass
+
+    if not avoided_to_recommended:
+        return text, []
+
+    changes = []
+    normalized = text
+
+    # For each word in text, check if it matches any avoided term via fuzzy matching
+    words = normalized.split()
+    for i, word in enumerate(words):
+        # Try fuzzy match against all avoided terms
+        for avoided_term, recommended_term in avoided_to_recommended.items():
+            if len(avoided_term) < 3:  # Skip very short terms
+                continue
+
+            # Use difflib for similarity matching
+            ratio = SequenceMatcher(None, word.lower(), avoided_term.lower()).ratio()
+
+            if ratio >= _FUZZY_MATCH_THRESHOLD:
+                # Found a match - replace it
+                old_word = word
+                words[i] = word.replace(avoided_term, recommended_term, 1)
+                changes.append({
+                    'original': old_word,
+                    'corrected': words[i],
+                    'avoided_term': avoided_term,
+                    'recommended_term': recommended_term,
+                    'similarity': ratio,
+                })
+                break
+
+    if changes:
+        normalized = ' '.join(words)
+
+    return normalized, changes
 
 
 def _get_engine():
@@ -46,10 +132,21 @@ def improve_summary(
     article_id: str,
     original_summary: str,
     glossary_context: str,
+    use_fuzzy_matching: bool = True,
 ) -> ImprovementResult:
     """Improve a single summary using glossary.
 
-    Uses Claude Haiku (3.5) for cost efficiency.
+    Uses Claude Haiku (3.5) for cost efficiency. Optionally applies fuzzy
+    matching to detect and normalize terminology variations before Claude processes.
+
+    Args:
+        article_id: Article UUID
+        original_summary: Summary text to improve
+        glossary_context: Formatted glossary for prompt injection
+        use_fuzzy_matching: If True, apply fuzzy matching as preprocessing step
+
+    Returns:
+        ImprovementResult with improvement details
     """
     if not original_summary or not glossary_context:
         return ImprovementResult(
@@ -58,6 +155,14 @@ def improve_summary(
             original_length=len(original_summary or ""),
             improved_length=0,
             error="Empty summary or glossary",
+        )
+
+    # Apply fuzzy normalization as preprocessing
+    summary_to_improve = original_summary
+    if use_fuzzy_matching:
+        glossary_lookup = _build_glossary_lookup()
+        summary_to_improve, _fuzzy_changes = _apply_fuzzy_normalization(
+            original_summary, glossary_lookup
         )
 
     try:
@@ -77,7 +182,7 @@ def improve_summary(
         )
 
         user_prompt = (
-            f"Original summary:\n\n{original_summary}\n\n"
+            f"Original summary:\n\n{summary_to_improve}\n\n"
             "Please improve this summary by applying the glossary terminology. "
             "Remember: ONLY terminology improvements, same meaning, same length."
         )

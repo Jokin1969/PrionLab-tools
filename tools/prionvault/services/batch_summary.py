@@ -318,11 +318,13 @@ def _run_batch_inner(*, viewer_user_id=None,
                            summary_ai_model     = :model,
                            summary_tokens_in    = :tin,
                            summary_tokens_out   = :tout,
+                           ai_summary_glossary_version = :gv,
                            updated_at           = NOW()
                        WHERE id = :aid"""
                 ), {"summary": result.text, "aid": article_id, "prov": provider,
                     "model": result.model,
-                    "tin": int(result.tokens_in or 0), "tout": int(result.tokens_out or 0)})
+                    "tin": int(result.tokens_in or 0), "tout": int(result.tokens_out or 0),
+                    "gv": result.glossary_version})
         except Exception as exc:
             logger.exception("batch_summary: persisting summary for %s failed", article_id)
             with _lock:
