@@ -4273,3 +4273,6 @@ from . import routes_chat  # noqa: F401, E402
 
 # Per-user article notes routes live in their own module.
 from . import routes_notes  # noqa: F401, E402
+
+# Glossary management routes live in their own module.
+from . import routes_glossary  # noqa: F401, E402

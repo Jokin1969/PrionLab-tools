@@ -13786,141 +13786,195 @@
     const btn   = document.getElementById('btn-glossary');
     const modal = document.getElementById('pv-glossary-modal');
     if (!btn || !modal) return;
-    const closeBtn = document.getElementById('pv-glossary-close');
-    const listEl   = document.getElementById('pv-glossary-list');
-    const filtEl   = document.getElementById('pv-glossary-filter');
-    const cntEl    = document.getElementById('pv-glossary-counts');
-    const srcEl    = document.getElementById('pv-glossary-source');
-    const tgtEl    = document.getElementById('pv-glossary-target');
-    const noteEl   = document.getElementById('pv-glossary-note');
-    const addBtn   = document.getElementById('pv-glossary-add');
-    const addStat  = document.getElementById('pv-glossary-add-status');
-    let items = [];
 
-    function open()  { modal.style.display = 'flex'; refresh(); }
+    const closeBtn = document.getElementById('pv-glossary-close');
+    let currentTab = 'browse';
+    let glossaryTerms = [];
+
+    // Tab switching
+    modal.querySelectorAll('.pv-glossary-tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        currentTab = e.target.dataset.tab;
+        modal.querySelectorAll('.pv-glossary-tab').forEach(t => {
+          t.style.borderBottomColor = t.dataset.tab === currentTab ? '#0F3460' : 'transparent';
+          t.style.color = t.dataset.tab === currentTab ? '#0F3460' : '#6b7280';
+        });
+        modal.querySelectorAll('.pv-glossary-tab-content').forEach(content => {
+          content.style.display = content.id === `pv-glossary-${currentTab}-tab` ? 'block' : 'none';
+        });
+        if (currentTab === 'stats') loadStats();
+        if (currentTab === 'improve') loadImproveTab();
+        if (currentTab === 'history') loadHistoryTab();
+      });
+    });
+
+    function open() { modal.style.display = 'flex'; loadBrowseTab(); }
     function close() { modal.style.display = 'none'; }
     btn.addEventListener('click', open);
     closeBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
 
-    async function refresh() {
-      listEl.innerHTML =
-        '<div style="text-align:center;color:#9ca3af;padding:24px;font-size:13px;">Cargando…</div>';
+    // Browse tab
+    async function loadBrowseTab() {
       try {
-        const r = await api('/admin/glossary');
-        items = r.entries || [];
-        render();
+        const r = await api('/glossary/terms');
+        glossaryTerms = r.terms || [];
+        renderGlossaryList();
       } catch (e) {
-        listEl.innerHTML =
+        document.getElementById('pv-glossary-list').innerHTML =
           `<div style="color:#b91c1c;padding:14px;font-size:13px;">Error: ${esc(e.message)}</div>`;
       }
     }
 
-    function render() {
+    function renderGlossaryList() {
+      const filtEl = document.getElementById('pv-glossary-filter');
+      const cntEl  = document.getElementById('pv-glossary-counts');
+      const listEl = document.getElementById('pv-glossary-list');
       const filter = (filtEl.value || '').trim().toLowerCase();
-      const matches = items.filter(it =>
+
+      const matches = glossaryTerms.filter(t =>
         !filter ||
-        (it.source_term || '').toLowerCase().includes(filter) ||
-        (it.target_term || '').toLowerCase().includes(filter) ||
-        (it.note || '').toLowerCase().includes(filter)
+        (t.term_en || '').toLowerCase().includes(filter) ||
+        (t.term_es_recommended || '').toLowerCase().includes(filter)
       );
-      cntEl.textContent = `${items.length} entrada${items.length === 1 ? '' : 's'}` +
-        (filter ? ` · ${matches.length} mostrada${matches.length === 1 ? '' : 's'}` : '');
+
+      cntEl.textContent = `${glossaryTerms.length} términos` +
+        (filter ? ` · ${matches.length} mostrados` : '');
+
       if (!matches.length) {
-        listEl.innerHTML =
-          `<div style="text-align:center;color:#9ca3af;padding:22px;font-size:13px;">
-             ${filter ? 'Sin coincidencias.' : 'Glosario vacío — añade tu primera traducción arriba.'}
-           </div>`;
+        listEl.innerHTML = `<div style="text-align:center;color:#9ca3af;padding:22px;font-size:13px;">
+          ${filter ? 'Sin coincidencias.' : 'Cargando glosario…'}
+        </div>`;
         return;
       }
-      listEl.innerHTML = matches.map(it => `
-        <div class="pv-glossary-row" data-id="${esc(it.id)}"
-             style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #f3f4f6;
-                    border-radius:8px;margin-bottom:6px;background:#fff;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;color:#111827;">
-              <span style="font-weight:600;">${esc(it.source_term)}</span>
-              <span style="color:#9ca3af;margin:0 6px;">→</span>
-              <span style="font-weight:600;color:#0F3460;">${esc(it.target_term)}</span>
+
+      listEl.innerHTML = matches.map(t => {
+        const avoided = (t.term_es_avoid || '').split('|').filter(x => x.trim()).map(x => x.trim());
+        return `
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;">
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:600;color:#111827;">${esc(t.term_en)}</div>
+                <div style="font-size:13px;color:#0F3460;margin-top:2px;font-weight:500;">→ ${esc(t.term_es_recommended)}</div>
+                ${t.notes ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;">${esc(t.notes)}</div>` : ''}
+                ${avoided.length > 0 ? `
+                  <div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:500;">
+                    Evitar: ${avoided.map(x => `<code style="background:#fef2f2;padding:2px 4px;border-radius:3px;">${esc(x)}</code>`).join(' ')}
+                  </div>
+                ` : ''}
+                <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${esc(t.category || 'General')}</div>
+              </div>
             </div>
-            ${it.note ? `<div style="font-size:11.5px;color:#9ca3af;margin-top:2px;">${esc(it.note)}</div>` : ''}
-          </div>
-          <button class="pv-glossary-edit" title="Editar"
-                  style="background:none;border:none;color:#6d28d9;cursor:pointer;font-size:13px;">✏</button>
-          <button class="pv-glossary-del" title="Eliminar"
-                  style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">🗑</button>
-        </div>`).join('');
-
-      listEl.querySelectorAll('.pv-glossary-row').forEach(row => {
-        const id = row.dataset.id;
-        const it = items.find(x => x.id === id);
-        row.querySelector('.pv-glossary-del').addEventListener('click', async () => {
-          if (!confirm(`¿Eliminar la regla «${it.source_term}» → «${it.target_term}»?`)) return;
-          try { await api(`/admin/glossary/${id}`, { method: 'DELETE' }); refresh(); }
-          catch (e) { alert('No se pudo eliminar: ' + e.message); }
-        });
-        row.querySelector('.pv-glossary-edit').addEventListener('click', () => startEdit(row, it));
-      });
+          </div>`;
+      }).join('');
     }
 
-    function startEdit(row, it) {
-      row.innerHTML = `
-        <input class="pv-ge-src" value="${esc(it.source_term)}"
-               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
-        <span style="color:#9ca3af;">→</span>
-        <input class="pv-ge-tgt" value="${esc(it.target_term)}"
-               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
-        <input class="pv-ge-note" value="${esc(it.note || '')}" placeholder="nota"
-               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
-        <button class="pv-ge-save" style="background:#0F3460;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;">✓</button>
-        <button class="pv-ge-cancel" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;">✕</button>`;
-      row.querySelector('.pv-ge-cancel').addEventListener('click', render);
-      row.querySelector('.pv-ge-save').addEventListener('click', async () => {
-        const payload = {
-          source_term: row.querySelector('.pv-ge-src').value.trim(),
-          target_term: row.querySelector('.pv-ge-tgt').value.trim(),
-          note:        row.querySelector('.pv-ge-note').value.trim(),
-        };
-        try {
-          await api(`/admin/glossary/${it.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-          refresh();
-        } catch (e) { alert('No se pudo guardar: ' + e.message); }
-      });
-    }
-
-    async function add() {
-      const payload = {
-        source_term: srcEl.value.trim(),
-        target_term: tgtEl.value.trim(),
-        note:        noteEl.value.trim(),
-      };
-      if (!payload.source_term || !payload.target_term) {
-        addStat.style.color = '#b91c1c';
-        addStat.textContent = 'Rellena origen y traducción.';
-        return;
-      }
-      addBtn.disabled = true;
-      addStat.style.color = '#9ca3af';
-      addStat.textContent = 'Guardando…';
+    document.getElementById('pv-glossary-filter').addEventListener('input', renderGlossaryList);
+    document.getElementById('pv-glossary-category').addEventListener('change', async (e) => {
+      const cat = e.target.value;
       try {
-        await api('/admin/glossary', { method: 'POST', body: JSON.stringify(payload) });
-        srcEl.value = ''; tgtEl.value = ''; noteEl.value = '';
-        addStat.style.color = '#15803d';
-        addStat.textContent = '✓ Añadida';
-        refresh();
-        setTimeout(() => { addStat.textContent = ''; }, 2500);
+        const r = await api(`/glossary/terms?category=${encodeURIComponent(cat)}`);
+        glossaryTerms = r.terms || [];
+        renderGlossaryList();
       } catch (e) {
-        addStat.style.color = '#b91c1c';
-        addStat.textContent = e.message;
-      } finally {
-        addBtn.disabled = false;
+        console.error('Failed to filter by category:', e);
+      }
+    });
+
+    // Stats tab
+    async function loadStats() {
+      try {
+        const stats = await api('/glossary/stats');
+        document.querySelector('#pv-glossary-stats-content > div:nth-child(1) > div:first-child').textContent =
+          (stats.total_articles_improved || 0).toLocaleString();
+        document.querySelector('#pv-glossary-stats-content > div:nth-child(2) > div:first-child').textContent =
+          (stats.total_changes || 0).toLocaleString();
+        document.querySelector('#pv-glossary-stats-content > div:nth-child(3) > div:first-child').textContent =
+          stats.current_glossary_version || '-';
+
+        const byVerEl = document.getElementById('pv-glossary-by-version');
+        byVerEl.innerHTML = (stats.by_version || []).map(v => `
+          <div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:10px;display:flex;justify-content:space-between;font-size:12px;">
+            <span><strong>v${v.glossary_version}</strong>: ${v.articles_improved} artículos</span>
+            <span>${v.total_changes} cambios</span>
+          </div>
+        `).join('');
+
+        document.getElementById('pv-glossary-export-btn').addEventListener('click', () => {
+          window.location.href = '/prionvault/api/glossary/export';
+        });
+      } catch (e) {
+        console.error('Failed to load stats:', e);
       }
     }
 
-    addBtn.addEventListener('click', add);
-    noteEl.addEventListener('keydown', ev => { if (ev.key === 'Enter') add(); });
-    tgtEl.addEventListener('keydown',  ev => { if (ev.key === 'Enter') add(); });
-    filtEl.addEventListener('input', render);
+    // Improve tab
+    async function loadImproveTab() {
+      try {
+        const [unrev, outd] = await Promise.all([
+          api('/glossary/unreviewed?limit=1'),
+          api('/glossary/outdated?limit=1')
+        ]);
+
+        const total = unrev.total || 0;
+        document.getElementById('pv-glossary-unrev-count').textContent = total.toLocaleString();
+        document.getElementById('pv-glossary-outd-count').textContent = (outd.total || 0).toLocaleString();
+
+        document.getElementById('pv-glossary-improve-unrev-btn').onclick = () => improveUnreviewed(unrev.total);
+        document.getElementById('pv-glossary-improve-outd-btn').onclick = () => improveOutdated(outd.total);
+      } catch (e) {
+        console.error('Failed to load improve tab:', e);
+      }
+    }
+
+    async function improveUnreviewed(count) {
+      if (!confirm(`¿Mejorar ${count} resúmenes sin revisar?`)) return;
+      try {
+        const r = await api('/glossary/unreviewed?limit=1000');
+        const ids = (r.articles || []).map(a => a.id);
+        const result = await api('/glossary/improve-batch', {
+          method: 'POST',
+          body: JSON.stringify({ article_ids: ids, dry_run: false })
+        });
+        document.getElementById('pv-glossary-improve-status').textContent =
+          `✓ ${result.queued} artículos en cola`;
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function improveOutdated(count) {
+      if (!confirm(`¿Mejorar ${count} resúmenes desactualizados?`)) return;
+      try {
+        const r = await api('/glossary/outdated?limit=1000');
+        const ids = (r.articles || []).map(a => a.id);
+        const result = await api('/glossary/improve-batch', {
+          method: 'POST',
+          body: JSON.stringify({ article_ids: ids, dry_run: false })
+        });
+        document.getElementById('pv-glossary-improve-status').textContent =
+          `✓ ${result.queued} artículos en cola`;
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    // History tab
+    async function loadHistoryTab() {
+      try {
+        const hist = await api('/glossary/log?limit=20');
+        const histEl = document.getElementById('pv-glossary-history-list');
+        histEl.innerHTML = (hist.improvements || []).map(h => `
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;font-size:12px;">
+            <div style="font-weight:600;color:#111827;">${esc(h.title || h.article_id)}</div>
+            <div style="color:#6b7280;margin-top:2px;">v${h.glossary_version} · ${h.changes_count} cambios</div>
+            <div style="color:#9ca3af;font-size:11px;margin-top:2px;">${new Date(h.improved_at).toLocaleString('es-ES')}</div>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.error('Failed to load history:', e);
+      }
+    }
   }
 
   // ── SCImago (SJR) admin modal ────────────────────────────────────────
