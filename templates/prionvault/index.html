@@ -1462,48 +1462,115 @@
 <!-- ── Translation glossary modal ────────────────────────────────────── -->
 <div id="pv-glossary-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
-  <div class="pv-modal-inner" style="max-width:640px;">
+  <div class="pv-modal-inner" style="max-width:900px;max-height:85vh;display:flex;flex-direction:column;">
     <button class="pv-modal-close" id="pv-glossary-close" aria-label="Close">×</button>
-    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
-      <i class="fas fa-language" style="color:#0F3460;margin-right:8px;"></i>Glosario de traducción
-    </h2>
-    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 16px;">
-      Traducciones que la IA debe respetar siempre en los resúmenes y en el chat.
-      Por ejemplo: <em>bank vole</em> → <strong>topillo rojo</strong> (y nunca «musaraña de banco»).
-    </p>
 
-    <!-- Add form -->
-    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-        <div style="flex:1;min-width:150px;">
-          <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Término original (inglés)</label>
-          <input id="pv-glossary-source" type="text" placeholder="bank vole"
-                 style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
-        </div>
-        <div style="font-size:16px;color:#9ca3af;padding-bottom:7px;">→</div>
-        <div style="flex:1;min-width:150px;">
-          <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Traducción correcta</label>
-          <input id="pv-glossary-target" type="text" placeholder="topillo rojo"
-                 style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
-        </div>
-      </div>
-      <div style="margin-top:8px;">
-        <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Nota (opcional)</label>
-        <input id="pv-glossary-note" type="text" placeholder="p. ej. Myodes glareolus"
-               style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
-        <button id="pv-glossary-add" type="button"
-                style="padding:7px 16px;border-radius:7px;border:none;background:#0F3460;color:#fff;
-                       font-size:13px;font-weight:600;cursor:pointer;">+ Añadir</button>
-        <span id="pv-glossary-add-status" style="font-size:12px;color:#9ca3af;"></span>
-      </div>
+    <div style="flex-shrink:0;border-bottom:1px solid #e5e7eb;padding:16px;">
+      <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+        <i class="fas fa-language" style="color:#0F3460;margin-right:8px;"></i>Glosario de terminología
+      </h2>
+      <p style="color:#6b7280;font-size:12.5px;margin:0;line-height:1.5;">
+        Terminología de priones que la IA debe usar consistentemente en resúmenes, chat y análisis.
+      </p>
     </div>
 
-    <input id="pv-glossary-filter" type="search" placeholder="Filtrar…"
-           style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-bottom:10px;">
-    <div id="pv-glossary-counts" style="font-size:11.5px;color:#9ca3af;margin-bottom:8px;"></div>
-    <div id="pv-glossary-list" style="max-height:44vh;overflow-y:auto;"></div>
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;border-bottom:1px solid #e5e7eb;padding:0 16px;flex-shrink:0;overflow-x:auto;">
+      <button class="pv-glossary-tab active" data-tab="browse" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid #0F3460;color:#0F3460;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
+        📖 Navegación
+      </button>
+      <button class="pv-glossary-tab" data-tab="stats" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
+        📊 Estadísticas
+      </button>
+      <button class="pv-glossary-tab" data-tab="improve" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
+        ✨ Mejorar resúmenes
+      </button>
+      <button class="pv-glossary-tab" data-tab="history" style="padding:12px 16px;border:none;background:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;">
+        ⏱ Historial
+      </button>
+    </div>
+
+    <!-- Tab content -->
+    <div style="flex:1;overflow-y:auto;padding:16px;">
+
+      <!-- Browse tab -->
+      <div id="pv-glossary-browse-tab" class="pv-glossary-tab-content" style="display:block;">
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px;font-weight:600;color:#6b7280;">Categoría:</label>
+          <select id="pv-glossary-category" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;margin-left:8px;">
+            <option value="">Todas</option>
+            <option value="Biología">Biología</option>
+            <option value="Técnicas">Técnicas</option>
+            <option value="Modelos">Modelos</option>
+            <option value="Clínica">Clínica</option>
+          </select>
+          <input id="pv-glossary-filter" type="search" placeholder="Buscar término…"
+                 style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:10px;">
+        </div>
+        <div id="pv-glossary-counts" style="font-size:11.5px;color:#9ca3af;margin-bottom:12px;"></div>
+        <div id="pv-glossary-list" style="display:grid;gap:8px;"></div>
+      </div>
+
+      <!-- Stats tab -->
+      <div id="pv-glossary-stats-tab" class="pv-glossary-tab-content" style="display:none;">
+        <div id="pv-glossary-stats-content" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;">
+            <div style="font-size:28px;font-weight:700;color:#15803d;">-</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;">Artículos mejorados</div>
+          </div>
+          <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:10px;padding:16px;">
+            <div style="font-size:28px;font-weight:700;color:#c2410c;">-</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;">Total de cambios</div>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;">
+            <div style="font-size:28px;font-weight:700;color:#1d4ed8;">-</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;">Versión actual</div>
+          </div>
+        </div>
+        <div style="margin-top:20px;">
+          <h4 style="font-size:13px;font-weight:700;color:#111827;margin:0 0 12px;">Mejoras por versión:</h4>
+          <div id="pv-glossary-by-version" style="display:grid;gap:8px;"></div>
+        </div>
+        <div style="margin-top:20px;text-align:center;">
+          <button id="pv-glossary-export-btn" style="padding:8px 20px;background:#0F3460;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+            📥 Descargar Excel
+          </button>
+        </div>
+      </div>
+
+      <!-- Improve tab -->
+      <div id="pv-glossary-improve-tab" class="pv-glossary-tab-content" style="display:none;">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:16px;">
+          <p style="margin:0;font-size:12px;color:#15803d;">
+            <strong>✓ Resúmenes sin revisar:</strong> <span id="pv-glossary-unrev-count" style="font-weight:700;">-</span>
+            <span id="pv-glossary-unrev-pct" style="color:#6b7280;"></span>
+          </p>
+        </div>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:16px;">
+          <p style="margin:0;font-size:12px;color:#dc2626;">
+            <strong>⚠ Desactualizados:</strong> <span id="pv-glossary-outd-count" style="font-weight:700;">-</span>
+            <span id="pv-glossary-outd-pct" style="color:#6b7280;"></span>
+          </p>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:16px;">
+          <button id="pv-glossary-improve-unrev-btn" style="padding:8px 16px;background:#15803d;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+            🔧 Mejorar sin revisar
+          </button>
+          <button id="pv-glossary-improve-outd-btn" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+            🔧 Mejorar desactualizados
+          </button>
+        </div>
+        <div id="pv-glossary-improve-status" style="font-size:12px;color:#6b7280;"></div>
+      </div>
+
+      <!-- History tab -->
+      <div id="pv-glossary-history-tab" class="pv-glossary-tab-content" style="display:none;">
+        <input id="pv-glossary-history-search" type="search" placeholder="Filtrar por artículo o lote…"
+               style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-bottom:12px;">
+        <div id="pv-glossary-history-list" style="display:grid;gap:8px;"></div>
+      </div>
+
+    </div>
   </div>
 </div>
 
