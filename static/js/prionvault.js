@@ -14035,6 +14035,7 @@
       // Auto-refresh history every 5 seconds while batch is in progress
       if (batchRefreshInterval) clearInterval(batchRefreshInterval);
 
+      let noUpdateCount = 0;
       batchRefreshInterval = setInterval(async () => {
         try {
           // Load latest history
@@ -14042,12 +14043,31 @@
 
           // Check if we should still be tracking (stop after 10 minutes of no new items)
           const histEl = document.getElementById('pv-glossary-history-list');
-          if (!histEl || histEl.children.length === 0) {
+          if (!histEl) {
             return;
           }
 
+          // Find actual improvement items (skip stats header)
+          const items = Array.from(histEl.querySelectorAll('div')).filter(div => {
+            const text = div.textContent;
+            return text && text.includes('cambios') && !text.includes('Última hora');
+          });
+
+          if (items.length === 0) {
+            noUpdateCount++;
+            // Stop after 120 seconds (24 cycles * 5s) with no items
+            if (noUpdateCount > 24) {
+              stopBatchTracking();
+              document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado (o en progreso)';
+            }
+            return;
+          }
+
+          // Reset counter when we see items
+          noUpdateCount = 0;
+
           // Get the timestamp of the newest item
-          const firstItem = histEl.querySelector('div');
+          const firstItem = items[0];
           if (firstItem) {
             const timeText = firstItem.querySelector('div:last-child')?.textContent;
             if (timeText) {
@@ -14055,8 +14075,8 @@
               const now = new Date();
               const minutesSinceLastUpdate = (now - itemTime) / (1000 * 60);
 
-              // Stop tracking if no updates in 10 minutes
-              if (minutesSinceLastUpdate > 10) {
+              // Stop tracking if no updates in 15 minutes
+              if (minutesSinceLastUpdate > 15) {
                 stopBatchTracking();
                 document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado';
               }
