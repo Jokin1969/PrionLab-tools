@@ -219,6 +219,93 @@ def api_glossary_outdated():
 
 
 # ── Improvement log ────────────────────────────────────────────────────────
+@prionvault_bp.route("/api/glossary/log/details", methods=["GET"])
+@admin_required
+def api_glossary_log_details():
+    """Get detailed changes from recent summary improvements.
+
+    Shows individual corrections made to each summary, useful for understanding
+    what's being changed and how to improve the glossary.
+
+    Query parameters:
+    - hours: look back N hours (default 24)
+    - limit: max results (default 100)
+    - term: filter by English term (optional)
+    """
+    hours = request.args.get("hours", 24, type=int)
+    limit = request.args.get("limit", 100, type=int)
+    term_filter = request.args.get("term", "").strip()
+
+    try:
+        with db.engine.connect() as conn:
+            # Build query for recent corrections with article context
+            query = """
+                SELECT
+                    scd.id,
+                    scd.original_text,
+                    scd.corrected_text,
+                    scd.term_en,
+                    scd.recommended_es,
+                    scd.correction_type,
+                    scd.confidence_score,
+                    sil.article_id,
+                    sil.improved_at,
+                    a.title,
+                    sil.glossary_version_used
+                FROM summary_correction_detail scd
+                JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
+                JOIN articles a ON sil.article_id = a.id
+                WHERE sil.improved_at > NOW() - INTERVAL '{} hours'
+                  AND sil.dry_run = FALSE
+            """
+
+            params = {"hours": hours}
+
+            if term_filter:
+                query += f" AND LOWER(scd.term_en) LIKE LOWER(:term)"
+                params["term"] = f"%{term_filter}%"
+
+            query += " ORDER BY sil.improved_at DESC LIMIT :lim"
+            params["lim"] = limit
+
+            rows = conn.execute(sql_text(query.format(hours)), params).mappings().all()
+
+            # Aggregate stats
+            all_terms = {}
+            for row in rows:
+                key = row['term_en'] or 'unknown'
+                if key not in all_terms:
+                    all_terms[key] = {
+                        "term_en": row['term_en'],
+                        "recommended_es": row['recommended_es'],
+                        "count": 0,
+                        "examples": []
+                    }
+                all_terms[key]["count"] += 1
+                if len(all_terms[key]["examples"]) < 3:
+                    all_terms[key]["examples"].append({
+                        "original": row['original_text'][:100],
+                        "corrected": row['corrected_text'][:100],
+                        "article": row['title'][:50]
+                    })
+
+            return jsonify({
+                "changes_total": len(rows),
+                "time_window_hours": hours,
+                "terms_found": len(all_terms),
+                "top_terms": sorted(
+                    all_terms.values(),
+                    key=lambda x: x["count"],
+                    reverse=True
+                )[:20],
+                "recent_changes": [dict(row) for row in rows[:50]]
+            })
+
+    except Exception as e:
+        logger.exception(f"Failed to fetch correction details: {e}")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/log", methods=["GET"])
 @admin_required
 def api_glossary_log():
@@ -420,6 +507,75 @@ def api_glossary_categories():
         })
     except Exception as e:
         logger.exception("Failed to fetch categories")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/api/glossary/insights", methods=["GET"])
+@admin_required
+def api_glossary_insights():
+    """Get insights to improve the glossary based on recent corrections.
+
+    Analyzes what terms are being corrected most frequently to identify:
+    - Terms that should be added to the glossary
+    - Terms with weak avoid variants (need improvement)
+    - High-value terms to focus on
+
+    Query parameters:
+    - hours: analyze last N hours (default 48)
+    - min_occurrences: minimum corrections to consider (default 2)
+    """
+    hours = request.args.get("hours", 48, type=int)
+    min_occurrences = request.args.get("min_occurrences", 2, type=int)
+
+    try:
+        with db.engine.connect() as conn:
+            # Get most corrected terms
+            query = sql_text(f"""
+                SELECT
+                    scd.term_en,
+                    scd.recommended_es,
+                    COUNT(*) as correction_count,
+                    COUNT(DISTINCT sil.article_id) as articles_affected,
+                    STRING_AGG(DISTINCT scd.original_text, ' | ') as variants_found,
+                    AVG(scd.confidence_score)::DECIMAL(3,2) as avg_confidence
+                FROM summary_correction_detail scd
+                JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
+                WHERE sil.improved_at > NOW() - INTERVAL '{hours} hours'
+                  AND sil.dry_run = FALSE
+                  AND scd.term_en IS NOT NULL
+                GROUP BY scd.term_en, scd.recommended_es
+                HAVING COUNT(*) >= {min_occurrences}
+                ORDER BY correction_count DESC
+                LIMIT 50
+            """)
+
+            rows = conn.execute(query).mappings().all()
+
+            insights = []
+            for row in rows:
+                insights.append({
+                    "term_en": row['term_en'],
+                    "term_es_recommended": row['recommended_es'],
+                    "times_corrected": row['correction_count'],
+                    "articles_affected": row['articles_affected'],
+                    "variants_found": (row['variants_found'] or "").split(" | ")[:5],
+                    "avg_confidence": float(row['avg_confidence'] or 0),
+                    "priority": "HIGH" if row['correction_count'] >= 10 else ("MEDIUM" if row['correction_count'] >= 5 else "LOW")
+                })
+
+            return jsonify({
+                "analysis_period_hours": hours,
+                "terms_analyzed": len(insights),
+                "insights": insights,
+                "recommendations": {
+                    "high_priority": len([i for i in insights if i["priority"] == "HIGH"]),
+                    "medium_priority": len([i for i in insights if i["priority"] == "MEDIUM"]),
+                    "low_priority": len([i for i in insights if i["priority"] == "LOW"])
+                }
+            })
+
+    except Exception as e:
+        logger.exception(f"Failed to generate glossary insights: {e}")
         return jsonify({"error": str(e)[:300]}), 500
 
 
