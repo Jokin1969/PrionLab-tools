@@ -580,3 +580,158 @@ def api_glossary_export():
     except Exception as e:
         logger.exception(f"Failed to export statistics: {e}")
         return jsonify({"error": str(e)[:300]}), 500
+
+
+# ── Cost tracking ──────────────────────────────────────────────────────────
+@prionvault_bp.route("/api/glossary/batch/cost/<batch_id>", methods=["GET"])
+@admin_required
+def api_batch_cost(batch_id):
+    """Get cost summary for a specific batch improvement.
+
+    Returns:
+      {
+        "batch_id": "uuid",
+        "articles_processed": 100,
+        "total_tokens": 50000,
+        "input_tokens": 40000,
+        "output_tokens": 10000,
+        "model": "Claude Haiku 4.5",
+        "cost_usd": 0.045,
+        "cost_eur": 0.041,
+        "timestamp": "2026-07-19T12:34:56"
+      }
+    """
+    from .services import claude_pricing
+
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(sql_text("""
+                SELECT
+                  COUNT(DISTINCT article_id) as articles,
+                  SUM(COALESCE(input_tokens, 0)) as input_tokens,
+                  SUM(COALESCE(output_tokens, 0)) as output_tokens,
+                  COALESCE(SUM(cost_usd), 0) as cost_usd,
+                  MAX(model_used) as model,
+                  MAX(improved_at) as timestamp
+                FROM summary_improvement_log
+                WHERE batch_id = :batch_id AND dry_run = FALSE
+            """), {"batch_id": batch_id}).first()
+
+            if not result or result[0] == 0:
+                return jsonify({"error": "Batch not found"}), 404
+
+            articles, input_tokens, output_tokens, cost_usd, model, timestamp = result
+            cost_eur = cost_usd / 1.10 if cost_usd else 0
+
+            return jsonify({
+                "batch_id": batch_id,
+                "articles_processed": int(articles),
+                "total_tokens": int(input_tokens + output_tokens),
+                "input_tokens": int(input_tokens),
+                "output_tokens": int(output_tokens),
+                "model": model or "Claude Haiku 4.5",
+                "cost_usd": round(float(cost_usd), 4),
+                "cost_eur": round(float(cost_eur), 4),
+                "timestamp": str(timestamp) if timestamp else None,
+                "cost_summary": f"€{round(float(cost_eur), 2)} / ${round(float(cost_usd), 2)}"
+            })
+
+    except Exception as e:
+        logger.exception(f"Failed to fetch batch cost for {batch_id}")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/api/glossary/costs/summary", methods=["GET"])
+@admin_required
+def api_costs_summary():
+    """Get cost summary for all glossary improvements.
+
+    Query params:
+      - days: Number of days to look back (default: 30)
+      - limit: Max batches to return (default: 10)
+
+    Returns:
+      {
+        "period_days": 30,
+        "total_batches": 5,
+        "total_articles": 500,
+        "total_tokens": 250000,
+        "total_cost_usd": 0.225,
+        "total_cost_eur": 0.205,
+        "avg_cost_per_article": 0.00045,
+        "avg_tokens_per_article": 500,
+        "recent_batches": [...]
+      }
+    """
+    from .services import claude_pricing
+
+    days = request.args.get("days", 30, type=int)
+    limit = request.args.get("limit", 10, type=int)
+
+    try:
+        with db.engine.connect() as conn:
+            # Get summary stats
+            summary = conn.execute(sql_text("""
+                SELECT
+                  COUNT(DISTINCT batch_id) as batch_count,
+                  COUNT(DISTINCT article_id) as article_count,
+                  SUM(COALESCE(input_tokens, 0)) as total_input_tokens,
+                  SUM(COALESCE(output_tokens, 0)) as total_output_tokens,
+                  COALESCE(SUM(cost_usd), 0) as total_cost_usd
+                FROM summary_improvement_log
+                WHERE dry_run = FALSE
+                  AND improved_at >= NOW() - INTERVAL '1 day' * :days
+            """), {"days": days}).first()
+
+            batch_count, article_count, input_tokens, output_tokens, cost_usd = summary
+            total_tokens = (input_tokens or 0) + (output_tokens or 0)
+            cost_eur = (cost_usd or 0) / 1.10
+
+            avg_cost_per_article = (cost_usd / article_count) if article_count > 0 else 0
+            avg_tokens_per_article = (total_tokens / article_count) if article_count > 0 else 0
+
+            # Get recent batches
+            batches = conn.execute(sql_text("""
+                SELECT
+                  batch_id,
+                  COUNT(DISTINCT article_id) as articles,
+                  SUM(COALESCE(input_tokens, 0)) as input_tokens,
+                  SUM(COALESCE(output_tokens, 0)) as output_tokens,
+                  COALESCE(SUM(cost_usd), 0) as cost_usd,
+                  MAX(improved_at) as timestamp
+                FROM summary_improvement_log
+                WHERE dry_run = FALSE
+                  AND improved_at >= NOW() - INTERVAL '1 day' * :days
+                GROUP BY batch_id
+                ORDER BY timestamp DESC
+                LIMIT :lim
+            """), {"days": days, "lim": limit}).fetchall()
+
+            recent_batches = []
+            for batch_id, articles, in_tok, out_tok, batch_cost, ts in batches:
+                recent_batches.append({
+                    "batch_id": batch_id,
+                    "articles": int(articles),
+                    "tokens": int(in_tok + out_tok),
+                    "cost_usd": round(float(batch_cost), 4),
+                    "cost_eur": round(float(batch_cost / 1.10), 4),
+                    "timestamp": str(ts) if ts else None,
+                })
+
+            return jsonify({
+                "period_days": days,
+                "total_batches": int(batch_count),
+                "total_articles": int(article_count),
+                "total_tokens": int(total_tokens),
+                "total_input_tokens": int(input_tokens or 0),
+                "total_output_tokens": int(output_tokens or 0),
+                "total_cost_usd": round(float(cost_usd or 0), 4),
+                "total_cost_eur": round(float(cost_eur or 0), 4),
+                "avg_cost_per_article": round(avg_cost_per_article, 6),
+                "avg_tokens_per_article": int(avg_tokens_per_article),
+                "recent_batches": recent_batches,
+            })
+
+    except Exception as e:
+        logger.exception("Failed to fetch cost summary")
+        return jsonify({"error": str(e)[:300]}), 500
