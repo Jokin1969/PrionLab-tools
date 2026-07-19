@@ -2049,7 +2049,7 @@ def api_cart_clear():
 
 @prionvault_bp.route("/api/admin/glossary/import", methods=["POST"])
 @admin_required
-def api_glossary_import():
+def api_admin_glossary_import():
     """Import or update glossary terms from CSV/TSV data.
 
     Body: {

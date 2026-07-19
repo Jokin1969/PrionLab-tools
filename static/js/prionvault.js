@@ -13975,6 +13975,211 @@
         console.error('Failed to load history:', e);
       }
     }
+
+    // Import tab - TSV validation and import
+    const tsvInput = document.getElementById('pv-glossary-tsv-input');
+    const validateBtn = document.getElementById('pv-glossary-validate-btn');
+    const importBtn = document.getElementById('pv-glossary-import-btn');
+    const fileInput = document.getElementById('pv-glossary-file-input');
+    const downloadTemplateBtn = document.getElementById('pv-glossary-download-template-btn');
+    const validationArea = document.getElementById('pv-glossary-validation-area');
+    const validationErrors = document.getElementById('pv-glossary-validation-errors');
+    const validationSuccess = document.getElementById('pv-glossary-validation-success');
+    const importStatus = document.getElementById('pv-glossary-import-status');
+
+    let lastValidationData = null;
+
+    function validateTSV() {
+      const tsvContent = tsvInput.value.trim();
+      if (!tsvContent) {
+        alert('Por favor pega contenido TSV');
+        return;
+      }
+
+      validationArea.style.display = 'block';
+      validationErrors.style.display = 'none';
+      validationSuccess.style.display = 'none';
+      importStatus.textContent = '';
+
+      // Validate locally in JavaScript
+      const lines = tsvContent.split('\n');
+      if (!lines.length) {
+        validationErrors.style.display = 'block';
+        document.getElementById('pv-glossary-validation-error-list').innerHTML = '<li>Archivo vacío</li>';
+        lastValidationData = null;
+        return;
+      }
+
+      // Check header
+      const expectedHeaders = ['English', 'Castellano recomendado', 'Evitar', 'Comentario', 'Categoría'];
+      const header = lines[0].split('\t').map(h => h.trim());
+      const headerLower = header.map(h => h.toLowerCase());
+      const expectedLower = expectedHeaders.map(h => h.toLowerCase());
+
+      if (headerLower.length !== 5 || !headerLower.every((h, i) => h === expectedLower[i])) {
+        validationErrors.style.display = 'block';
+        const errorList = document.getElementById('pv-glossary-validation-error-list');
+        errorList.innerHTML = `
+          <li>Encabezados incorrectos</li>
+          <li>Esperado: ${expectedHeaders.join(' | ')}</li>
+          <li>Encontrado: ${header.join(' | ')}</li>
+        `;
+        lastValidationData = null;
+        return;
+      }
+
+      // Parse data rows
+      const errors = [];
+      const previewRows = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const cells = line.split('\t');
+        if (cells.length !== 5) {
+          errors.push(`Fila ${i + 1}: esperaba 5 columnas, encontró ${cells.length}`);
+          continue;
+        }
+
+        const termEn = cells[0].trim();
+        const termEs = cells[1].trim();
+
+        if (!termEn) {
+          errors.push(`Fila ${i + 1}: término en inglés vacío`);
+          continue;
+        }
+        if (!termEs) {
+          errors.push(`Fila ${i + 1}: término en español vacío`);
+          continue;
+        }
+
+        const row = {
+          term_en: termEn,
+          term_es_recommended: termEs,
+          term_es_avoid: (cells[2].trim() && cells[2].trim() !== '—' && cells[2].trim() !== '-') ? cells[2].trim() : null,
+          notes: cells[3].trim() || null,
+          category: cells[4].trim() || null,
+        };
+        previewRows.push(row);
+      }
+
+      if (errors.length > 0) {
+        validationErrors.style.display = 'block';
+        const errorList = document.getElementById('pv-glossary-validation-error-list');
+        errorList.innerHTML = errors.slice(0, 10)
+          .map(e => `<li>${esc(e)}</li>`)
+          .join('') + (errors.length > 10 ? `<li>...y ${errors.length - 10} errores más</li>` : '');
+        lastValidationData = null;
+        return;
+      }
+
+      if (previewRows.length === 0) {
+        validationErrors.style.display = 'block';
+        document.getElementById('pv-glossary-validation-error-list').innerHTML = '<li>No se encontraron filas de datos</li>';
+        lastValidationData = null;
+        return;
+      }
+
+      // Show success and preview
+      lastValidationData = { tsvContent, previewRows };
+      const previewTable = document.getElementById('pv-glossary-preview-rows');
+      previewTable.innerHTML = previewRows.slice(0, 5)
+        .map(row => `
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:6px;color:#111827;font-size:11px;">${esc(row.term_en)}</td>
+            <td style="padding:6px;color:#0F3460;font-weight:500;font-size:11px;">${esc(row.term_es_recommended)}</td>
+            <td style="padding:6px;color:#dc2626;font-size:10px;">${esc(row.term_es_avoid || '-')}</td>
+            <td style="padding:6px;color:#6b7280;font-size:10px;">${esc(row.category || '-')}</td>
+          </tr>
+        `)
+        .join('');
+
+      const countMsg = previewRows.length > 5 ? ` (mostrando primeros 5 de ${previewRows.length})` : ` (${previewRows.length} total)`;
+      const statsDiv = document.createElement('div');
+      statsDiv.style.cssText = 'font-size:11px;color:#6b7280;margin-top:8px;text-align:right;';
+      statsDiv.textContent = countMsg;
+      previewTable.parentElement.insertBefore(statsDiv, previewTable.nextSibling);
+
+      validationSuccess.style.display = 'block';
+    }
+
+    async function performImport() {
+      if (!lastValidationData) {
+        alert('Primero valida el TSV');
+        return;
+      }
+
+      importStatus.textContent = 'Importando...';
+      importBtn.disabled = true;
+
+      try {
+        const result = await api('/glossary/import', {
+          method: 'POST',
+          body: JSON.stringify({
+            tsv_content: lastValidationData.tsvContent
+          })
+        });
+
+        importStatus.textContent = `✓ Importados ${result.imported} términos (v${result.new_version})`;
+        importStatus.style.color = '#15803d';
+        tsvInput.value = '';
+        validationArea.style.display = 'none';
+        lastValidationData = null;
+
+        // Reload browse tab
+        setTimeout(() => { loadBrowseTab(); currentTab = 'browse'; }, 1000);
+      } catch (e) {
+        importStatus.textContent = `Error: ${e.message}`;
+        importStatus.style.color = '#dc2626';
+      } finally {
+        importBtn.disabled = false;
+      }
+    }
+
+    function generateTemplate() {
+      const lines = [
+        'English\tCastellano recomendado\tEvitar\tComentario\tCategoría',
+        'prion\tprión\tprión (con tilde)\tSin tilde en inglés.\tTerminología',
+        'prion disease\tenfermedad priónica\tenfermedad por priones\tForma preferida.\tTerminología'
+      ];
+      tsvInput.value = lines.join('\n');
+    }
+
+    function handleFileUpload(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        tsvInput.value = e.target.result;
+        validateTSV();
+      };
+      reader.onerror = () => alert('Error al leer archivo');
+      reader.readAsText(file);
+    }
+
+    validateBtn.addEventListener('click', validateTSV);
+    importBtn.addEventListener('click', performImport);
+    downloadTemplateBtn.addEventListener('click', generateTemplate);
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileUpload(e.target.files[0]);
+      }
+    });
+
+    // Allow drop on textarea
+    tsvInput.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      tsvInput.style.background = '#f0fdf4';
+    });
+    tsvInput.addEventListener('dragleave', () => {
+      tsvInput.style.background = '';
+    });
+    tsvInput.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tsvInput.style.background = '';
+      if (e.dataTransfer.files.length > 0) {
+        handleFileUpload(e.dataTransfer.files[0]);
+      }
+    });
   }
 
   // ── SCImago (SJR) admin modal ────────────────────────────────────────
