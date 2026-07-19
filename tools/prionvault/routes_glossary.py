@@ -584,7 +584,7 @@ def api_glossary_export():
 
 
 # ── Admin: Test single improvement ──────────────────────────────────────────
-@prionvault_bp.route("/api/admin/test-improvement", methods=["POST"])
+@prionvault_bp.route("/api/admin/test-improvement", methods=["GET", "POST"])
 @admin_required
 def api_admin_test_improvement():
     """Test a single article improvement synchronously (not in background).
@@ -716,7 +716,7 @@ def api_admin_diagnostics():
 
 
 # ── Admin: Run database migrations ──────────────────────────────────────────
-@prionvault_bp.route("/api/admin/run-migrations", methods=["POST"])
+@prionvault_bp.route("/api/admin/run-migrations", methods=["GET", "POST"])
 @admin_required
 def api_admin_run_migrations():
     """Run pending database migrations to create missing tables.
@@ -743,7 +743,7 @@ def api_admin_run_migrations():
         }), 500
 
 
-@prionvault_bp.route("/api/admin/create-tables", methods=["POST"])
+@prionvault_bp.route("/api/admin/create-tables", methods=["GET", "POST"])
 @admin_required
 def api_admin_create_tables():
     """Force creation of glossary tracking tables using raw SQL.
