@@ -14121,7 +14121,7 @@
 
         // Build HTML table of changes
         let html = `
-          <div class="alert alert-info">
+          <div class="alert alert-info mb-3">
             <strong>${total_changes} cambios totales</strong> en ${unique_changes} términos únicos
           </div>
           <div style="max-height: 500px; overflow-y: auto;">
@@ -14163,32 +14163,59 @@
           </div>
         `;
 
-        // Show in modal
+        // Show in modal with simple CSS (no bootstrap dependency)
         const modal = document.createElement('div');
-        modal.className = 'modal fade';
-        modal.innerHTML = `
-          <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title">Cambios del lote</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
-              <div class="modal-body">
-                ${html}
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-success" onclick="downloadBatchChangesCSV('${batchId}')">📥 Descargar CSV</button>
-              </div>
-            </div>
+        modal.style.cssText = `
+          position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0,0,0,0.5); display: flex; align-items: center;
+          justify-content: center; z-index: 9999;
+        `;
+        modal.className = 'pv-modal-backdrop';
+
+        const content = document.createElement('div');
+        content.style.cssText = `
+          background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+          max-width: 900px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;
+        `;
+        content.innerHTML = `
+          <div style="padding: 1.5rem; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
+            <h5 style="margin: 0;">📊 Cambios del lote</h5>
+            <button class="btn btn-sm btn-close" style="cursor: pointer;"></button>
+          </div>
+          <div style="padding: 1.5rem; overflow-y: auto; flex: 1;">
+            ${html}
+          </div>
+          <div style="padding: 1rem; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-sm">Cerrar</button>
+            <button class="btn btn-success btn-sm" onclick="downloadBatchChangesCSV('${batchId}')">📥 Descargar CSV</button>
           </div>
         `;
 
+        modal.appendChild(content);
         document.body.appendChild(modal);
-        const bsModal = new bootstrap.Modal(modal);
-        bsModal.show();
 
-        modal.addEventListener('hidden.bs.modal', () => modal.remove());
+        // Close handlers
+        const closeBtn = content.querySelector('.btn-close');
+        const closeButton = content.querySelector('.btn-secondary');
+        const close = () => {
+          modal.style.display = 'none';
+          setTimeout(() => modal.remove(), 300);
+        };
+
+        closeBtn.addEventListener('click', close);
+        closeButton.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) close();
+        });
+
+        // Esc key to close
+        const escapeHandler = (e) => {
+          if (e.key === 'Escape') {
+            close();
+            document.removeEventListener('keydown', escapeHandler);
+          }
+        };
+        document.addEventListener('keydown', escapeHandler);
       } catch (e) {
         alert('Error al cargar cambios: ' + e.message);
         console.error(e);
