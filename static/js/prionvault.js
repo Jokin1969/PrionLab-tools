@@ -13999,6 +13999,9 @@
       }
     }
 
+    let batchInProgress = false;
+    let batchRefreshInterval = null;
+
     async function improveUnreviewed(count) {
       if (count === 0 || count === '0') {
         alert('No hay resúmenes sin revisar para mejorar.\n\nTodos los resúmenes han sido revisados con la versión actual del glosario.');
@@ -14016,10 +14019,61 @@
           return;
         }
         document.getElementById('pv-glossary-improve-status').textContent =
-          `✓ ${result.queued} artículos en cola para mejorar`;
+          `⏳ ${result.queued} artículos en cola... procesando`;
+
+        // Start batch progress tracking
+        if (!batchInProgress) {
+          batchInProgress = true;
+          startBatchTracking();
+        }
       } catch (e) {
         alert('Error: ' + e.message);
       }
+    }
+
+    function startBatchTracking() {
+      // Auto-refresh history every 5 seconds while batch is in progress
+      if (batchRefreshInterval) clearInterval(batchRefreshInterval);
+
+      batchRefreshInterval = setInterval(async () => {
+        try {
+          // Load latest history
+          await loadHistoryTab();
+
+          // Check if we should still be tracking (stop after 10 minutes of no new items)
+          const histEl = document.getElementById('pv-glossary-history-list');
+          if (!histEl || histEl.children.length === 0) {
+            return;
+          }
+
+          // Get the timestamp of the newest item
+          const firstItem = histEl.querySelector('div');
+          if (firstItem) {
+            const timeText = firstItem.querySelector('div:last-child')?.textContent;
+            if (timeText) {
+              const itemTime = new Date(timeText);
+              const now = new Date();
+              const minutesSinceLastUpdate = (now - itemTime) / (1000 * 60);
+
+              // Stop tracking if no updates in 10 minutes
+              if (minutesSinceLastUpdate > 10) {
+                stopBatchTracking();
+                document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado';
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Error refreshing history:', e);
+        }
+      }, 5000);
+    }
+
+    function stopBatchTracking() {
+      if (batchRefreshInterval) {
+        clearInterval(batchRefreshInterval);
+        batchRefreshInterval = null;
+      }
+      batchInProgress = false;
     }
 
     async function improveOutdated(count) {
@@ -14049,9 +14103,33 @@
     // History tab
     async function loadHistoryTab() {
       try {
-        const hist = await api('/glossary/log?limit=20');
+        const hist = await api('/glossary/log?limit=100');
         const histEl = document.getElementById('pv-glossary-history-list');
-        histEl.innerHTML = (hist.improvements || []).map(h => `
+
+        if (!hist.improvements || hist.improvements.length === 0) {
+          histEl.innerHTML = '<div style="color:#9ca3af;padding:20px;text-align:center;">Sin historial aún</div>';
+          return;
+        }
+
+        // Calculate stats for recent items (last hour)
+        const now = new Date();
+        const oneHourAgo = new Date(now - 60 * 60 * 1000);
+        const recentItems = hist.improvements.filter(h => new Date(h.improved_at) > oneHourAgo);
+        const recentCount = recentItems.length;
+        const recentChanges = recentItems.reduce((sum, h) => sum + (h.changes_count || 0), 0);
+
+        // Show stats header if there are recent items
+        let statsHtml = '';
+        if (recentCount > 0) {
+          statsHtml = `
+            <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:8px;padding:12px;margin-bottom:12px;">
+              <div style="font-weight:600;color:#0c4a6e;">⏱️ Última hora:</div>
+              <div style="color:#0c4a6e;font-size:11px;margin-top:4px;">${recentCount} artículos mejorados · ${recentChanges} cambios totales</div>
+            </div>
+          `;
+        }
+
+        histEl.innerHTML = statsHtml + (hist.improvements || []).map(h => `
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;font-size:12px;">
             <div style="font-weight:600;color:#111827;">${esc(h.title || h.article_id)}</div>
             <div style="color:#6b7280;margin-top:2px;">v${h.glossary_version} · ${h.changes_count} cambios</div>
