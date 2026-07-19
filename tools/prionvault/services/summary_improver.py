@@ -170,12 +170,7 @@ def improve_summary(
 
     try:
         from anthropic import Anthropic
-        import httpx
-
-        # Create client with timeout (60 seconds max for the entire request)
-        client = Anthropic(
-            timeout=httpx.Timeout(60.0)
-        )
+        client = Anthropic()
 
         system_prompt = (
             "You are a scientific terminology expert. Your task is to improve Spanish-language "
@@ -197,10 +192,9 @@ def improve_summary(
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1500,
+            max_tokens=2000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
-            timeout=60.0,
         )
 
         improved = response.content[0].text.strip() if response.content else ""
@@ -288,16 +282,11 @@ def _save_improvement_log(
     try:
         from . import claude_pricing
 
-        logger.info(f"[SAVE] Starting save for {article_id}")
-
         # Calculate cost
         cost_info = claude_pricing.calculate_cost(input_tokens, output_tokens, model_used)
         cost_usd = cost_info["cost_usd"]
-        logger.info(f"[SAVE] Cost calculated: ${cost_usd}")
 
-        logger.info(f"[SAVE] Opening transaction for {article_id}")
         with eng.begin() as conn:
-            logger.info(f"[SAVE] Transaction opened")
             # Insert into summary_improvement_log
             result = conn.execute(sql_text("""
                 INSERT INTO summary_improvement_log
@@ -323,23 +312,9 @@ def _save_improvement_log(
             })
 
             log_id = result.scalar()
-            logger.info(f"[SAVE] INSERT successful, log_id={log_id}")
-
-            # Update article's glossary version to mark it as reviewed with current glossary
-            logger.info(f"[SAVE] Updating article glossary version")
-            conn.execute(sql_text("""
-                UPDATE articles
-                SET ai_summary_glossary_version = :ver
-                WHERE id = :aid
-            """), {
-                "ver": glossary_version,
-                "aid": article_id,
-            })
-            logger.info(f"[SAVE] Article updated")
 
             # Insert individual changes
-            logger.info(f"[SAVE] Inserting {len(changes)} changes")
-            for i, change in enumerate(changes):
+            for change in changes:
                 conn.execute(sql_text("""
                     INSERT INTO summary_correction_detail
                     (improvement_log_id, original_text, corrected_text,
@@ -354,12 +329,10 @@ def _save_improvement_log(
                     "before": change['context_before'],
                     "after": change['context_after'],
                 })
-                logger.info(f"[SAVE] Change {i+1}/{len(changes)} inserted")
 
-            logger.info(f"[SAVE] Transaction complete for {article_id}")
         return True
     except Exception as e:
-        logger.exception(f"Failed to save improvement log for {article_id}: {e}")
+        logger.warning(f"Failed to save improvement log for {article_id}: {e}")
         return False
 
 
@@ -368,7 +341,6 @@ def batch_improve_summaries(
     glossary_context: str,
     glossary_version: int,
     dry_run: bool = False,
-    progress_callback=None,
 ) -> dict:
     """Improve multiple summaries in sequence with full tracking.
 
@@ -377,7 +349,6 @@ def batch_improve_summaries(
         glossary_context: Formatted glossary for injection
         glossary_version: Current glossary version (for audit trail)
         dry_run: If True, simulate but don't save
-        progress_callback: Optional callback(processed_count) called after each article
 
     Returns dict with counts, details, and batch tracking.
     """
@@ -401,8 +372,6 @@ def batch_improve_summaries(
 
     for idx, aid in enumerate(article_ids):
         try:
-            logger.info(f"[{idx+1}/{len(article_ids)}] Processing {aid}...")
-
             # Fetch article + summary
             with eng.connect() as conn:
                 row = conn.execute(sql_text(
@@ -410,7 +379,7 @@ def batch_improve_summaries(
                 ), {"aid": aid}).first()
 
             if not row or not row[0]:
-                logger.warning(f"  No summary found for {aid}")
+                logger.warning(f"[{idx+1}/{len(article_ids)}] No summary found for {aid}")
                 results["errors"].append(f"{aid}: No summary found")
                 results["failed"] += 1
                 results["processed"] += 1
@@ -420,12 +389,12 @@ def batch_improve_summaries(
 
             original_summary = row[0]
             results["summary_lengths_before"].append(len(original_summary))
-            logger.info(f"  Summary length: {len(original_summary)} chars")
+            logger.info(f"[{idx+1}/{len(article_ids)}] Summary length: {len(original_summary)} chars")
 
             # Improve
-            logger.info(f"  Calling improve_summary()...")
+            logger.info(f"[{idx+1}/{len(article_ids)}] Calling improve_summary()...")
             improvement = improve_summary(aid, original_summary, glossary_context)
-            logger.info(f"  Result: success={improvement.success}, error={improvement.error}")
+            logger.info(f"[{idx+1}/{len(article_ids)}] Result: success={improvement.success}, error={improvement.error}")
 
             if improvement.success:
                 improved_summary = improvement.improved_summary
@@ -441,7 +410,7 @@ def batch_improve_summaries(
                 # Save improved version (if not dry_run)
                 if not dry_run:
                     try:
-                        logger.info(f"💾 Saving improvement for {aid}...")
+                        logger.info(f"[{idx+1}/{len(article_ids)}] 💾 Saving improvement for {aid}...")
                         with eng.begin() as conn:
                             conn.execute(sql_text(
                                 """UPDATE articles
@@ -459,20 +428,20 @@ def batch_improve_summaries(
                             model_used=improvement.model_used,
                             dry_run=False
                         )
-                        logger.info(f"✅ Successfully saved improvement for {aid}")
+                        logger.info(f"[{idx+1}/{len(article_ids)}] ✅ Successfully saved improvement for {aid}")
                     except Exception as save_err:
-                        logger.error(f"❌ Failed to save improvement for {aid}: {save_err}")
+                        logger.error(f"[{idx+1}/{len(article_ids)}] ❌ Failed to save improvement for {aid}: {save_err}")
                         raise
 
                 logger.info(
-                    f"✨ Improved {aid}: {improvement.original_length} → "
+                    f"[{idx+1}/{len(article_ids)}] ✨ Improved {aid}: {improvement.original_length} → "
                     f"{improvement.improved_length} chars, {change_count} changes "
                     f"({improvement.tokens_used} tokens)"
                 )
             else:
                 results["failed"] += 1
                 results["errors"].append(f"{aid}: {improvement.error}")
-                logger.warning(f"Failed to improve {aid}: {improvement.error}")
+                logger.warning(f"[{idx+1}/{len(article_ids)}] Failed to improve {aid}: {improvement.error}")
 
             results["processed"] += 1
             if progress_callback:
@@ -482,7 +451,7 @@ def batch_improve_summaries(
             time.sleep(0.5)
 
         except Exception as e:
-            logger.exception(f"batch_improve_summaries: error for {aid}")
+            logger.exception(f"[{idx+1}/{len(article_ids)}] batch_improve_summaries: error for {aid}")
             results["failed"] += 1
             results["errors"].append(f"{aid}: {str(e)[:200]}")
             results["processed"] += 1
