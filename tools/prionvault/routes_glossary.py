@@ -298,6 +298,7 @@ def api_glossary_improve_next():
                     glossary_context=glossary_context,
                     glossary_version=glossary_version,
                     dry_run=dry_run,
+                    progress_callback=lambda count: _batch_state.update({"processed": count}),
                 )
                 _batch_state["status"] = "completed"
                 _batch_state["processed"] = result.get("processed", 0)

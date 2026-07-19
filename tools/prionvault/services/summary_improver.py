@@ -351,6 +351,7 @@ def batch_improve_summaries(
     glossary_context: str,
     glossary_version: int,
     dry_run: bool = False,
+    progress_callback=None,
 ) -> dict:
     """Improve multiple summaries in sequence with full tracking.
 
@@ -359,6 +360,7 @@ def batch_improve_summaries(
         glossary_context: Formatted glossary for injection
         glossary_version: Current glossary version (for audit trail)
         dry_run: If True, simulate but don't save
+        progress_callback: Optional callback(processed_count) called after each article
 
     Returns dict with counts, details, and batch tracking.
     """
@@ -447,6 +449,8 @@ def batch_improve_summaries(
                 logger.warning(f"Failed to improve {aid}: {improvement.error}")
 
             results["processed"] += 1
+            if progress_callback:
+                progress_callback(results["processed"])
 
             # Polite rate limiting
             time.sleep(0.5)
