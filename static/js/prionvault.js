@@ -14444,6 +14444,78 @@
       }
     });
 
+    // Add single term - form submission
+    const addSingleTermBtn = document.getElementById('pv-glossary-single-term-add-btn');
+    const termEnInput = document.getElementById('pv-glossary-single-term-en');
+    const termEsInput = document.getElementById('pv-glossary-single-term-es');
+    const termAvoidInput = document.getElementById('pv-glossary-single-term-avoid');
+    const termCategoryInput = document.getElementById('pv-glossary-single-term-category');
+    const termNotesInput = document.getElementById('pv-glossary-single-term-notes');
+    const singleTermStatus = document.getElementById('pv-glossary-single-term-status');
+
+    async function addSingleTerm() {
+      const termEn = (termEnInput.value || '').trim();
+      const termEs = (termEsInput.value || '').trim();
+      const termAvoid = (termAvoidInput.value || '').trim() || null;
+      const category = (termCategoryInput.value || '').trim() || null;
+      const notes = (termNotesInput.value || '').trim() || null;
+
+      if (!termEn || !termEs) {
+        singleTermStatus.textContent = '❌ English y Spanish recomendado son requeridos';
+        singleTermStatus.style.color = '#dc2626';
+        return;
+      }
+
+      addSingleTermBtn.disabled = true;
+      addSingleTermBtn.textContent = '⏳ Agregando...';
+      singleTermStatus.textContent = '';
+
+      try {
+        const result = await api('/glossary/term/add', {
+          term_en: termEn,
+          term_es_recommended: termEs,
+          term_es_avoid: termAvoid,
+          category: category,
+          notes: notes,
+        });
+
+        if (result.ok) {
+          singleTermStatus.textContent = `✅ "${termEn}" agregado a la versión ${result.new_version}`;
+          singleTermStatus.style.color = '#15803d';
+
+          // Clear form
+          termEnInput.value = '';
+          termEsInput.value = '';
+          termAvoidInput.value = '';
+          termCategoryInput.value = '';
+          termNotesInput.value = '';
+
+          // Refresh browse tab to show new term
+          setTimeout(() => {
+            loadGlossaryBrowse();
+            loadGlossaryStats();
+          }, 500);
+        } else {
+          singleTermStatus.textContent = `❌ ${result.error}`;
+          singleTermStatus.style.color = '#dc2626';
+        }
+      } catch (e) {
+        console.error('Error adding term:', e);
+        singleTermStatus.textContent = `❌ Error: ${e.message}`;
+        singleTermStatus.style.color = '#dc2626';
+      } finally {
+        addSingleTermBtn.disabled = false;
+        addSingleTermBtn.textContent = '✓ Agregar término';
+      }
+    }
+
+    addSingleTermBtn.addEventListener('click', addSingleTerm);
+    [termEnInput, termEsInput].forEach(input => {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addSingleTerm();
+      });
+    });
+
     // Edit glossary term modal
     window.__editGlossaryTerm = async (termData) => {
       let term;
