@@ -1746,7 +1746,7 @@ def api_export_refs_docx():
 
 @prionvault_bp.route("/api/admin/glossary", methods=["GET"])
 @admin_required
-def api_glossary_list():
+def api_old_glossary_list():
     from .services import glossary
     return jsonify({"entries": glossary.list_entries()})
 
