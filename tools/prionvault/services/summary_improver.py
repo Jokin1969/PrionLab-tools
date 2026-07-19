@@ -313,7 +313,7 @@ def _save_improvement_log(
 
             log_id = result.scalar()
 
-            # Update article's glossary version to mark it as reviewed
+            # Update article's glossary version to mark it as reviewed with current glossary
             conn.execute(sql_text("""
                 UPDATE articles
                 SET ai_summary_glossary_version = :ver
