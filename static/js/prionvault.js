@@ -13973,24 +13973,46 @@
         document.getElementById('pv-glossary-unrev-count').textContent = total.toLocaleString();
         document.getElementById('pv-glossary-outd-count').textContent = (outd.total || 0).toLocaleString();
 
-        document.getElementById('pv-glossary-improve-unrev-btn').onclick = () => improveUnreviewed(unrev.total);
+        // Update button handlers with count control
+        document.getElementById('pv-glossary-improve-unrev-btn').onclick = () => showImproveDialog('unreviewed', total);
         document.getElementById('pv-glossary-improve-outd-btn').onclick = () => improveOutdated(outd.total);
       } catch (e) {
         console.error('Failed to load improve tab:', e);
       }
     }
 
+    function showImproveDialog(type, total) {
+      const options = [];
+      if (total > 100) options.push('100');
+      if (total > 500) options.push('500');
+      options.push('Todos');
+
+      const message = `¿Cuántos ${type === 'unreviewed' ? 'resúmenes sin revisar' : 'resúmenes desactualizados'} deseas mejorar?\n\n${total} disponibles\n\nOpciones: ${options.join(', ')}`;
+      const choice = prompt(message, '100');
+
+      if (choice) {
+        if (type === 'unreviewed') {
+          improveUnreviewed(choice === 'Todos' ? 'all' : parseInt(choice));
+        } else {
+          improveOutdated(choice === 'Todos' ? 'all' : parseInt(choice));
+        }
+      }
+    }
+
     async function improveUnreviewed(count) {
-      if (!confirm(`¿Mejorar ${count} resúmenes sin revisar?`)) return;
+      const displayCount = count === 'all' ? '1917' : count;
+      if (!confirm(`¿Mejorar ${displayCount} resúmenes sin revisar?`)) return;
       try {
-        const r = await api('/glossary/unreviewed?limit=1000');
-        const ids = (r.articles || []).map(a => a.id);
-        const result = await api('/glossary/improve-batch', {
+        const result = await api('/glossary/improve-next', {
           method: 'POST',
-          body: JSON.stringify({ article_ids: ids, dry_run: false })
+          body: JSON.stringify({ count: count, dry_run: false })
         });
+        if (!result.ok) {
+          alert('Error: ' + (result.error || 'Error desconocido'));
+          return;
+        }
         document.getElementById('pv-glossary-improve-status').textContent =
-          `✓ ${result.queued} artículos en cola`;
+          `✓ ${result.queued} artículos en cola para mejorar`;
       } catch (e) {
         alert('Error: ' + e.message);
       }

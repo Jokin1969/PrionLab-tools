@@ -237,6 +237,76 @@ def api_glossary_log():
 
 
 # ── Batch improve summaries ────────────────────────────────────────────────
+@prionvault_bp.route("/api/glossary/improve-next", methods=["POST"])
+@admin_required
+def api_glossary_improve_next():
+    """Improve the next N unreviewed summaries with glossary."""
+    from .services import summary_improver, glossary_manager
+
+    data = request.get_json(force=True, silent=True) or {}
+    count = data.get("count", 100)  # Default 100, can be 100, 500, or "all"
+    dry_run = data.get("dry_run", False)
+
+    # Validate count
+    if count == "all":
+        limit = 10000  # Get up to 10k (likely all unreviewed)
+    elif isinstance(count, int):
+        limit = max(1, min(10000, count))
+    else:
+        return jsonify({"error": "count must be an integer or 'all'"}), 400
+
+    try:
+        # Fetch unreviewed articles
+        with db.engine.connect() as conn:
+            article_ids = conn.execute(sql_text("""
+                SELECT id::text FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+                ORDER BY updated_at DESC
+                LIMIT :lim
+            """), {"lim": limit}).scalars().all()
+
+        if not article_ids:
+            return jsonify({
+                "ok": True,
+                "queued": 0,
+                "message": "No unreviewed summaries found",
+                "dry_run": dry_run,
+            })
+
+        # Fetch current glossary
+        glossary_context = glossary_manager.get_glossary_context()
+        glossary_version = glossary_manager.get_current_glossary_version()
+        if not glossary_context:
+            return jsonify({"error": "No glossary terms available"}), 400
+
+        # Run batch in background
+        def _run():
+            try:
+                summary_improver.batch_improve_summaries(
+                    article_ids=article_ids,
+                    glossary_context=glossary_context,
+                    glossary_version=glossary_version,
+                    dry_run=dry_run,
+                )
+            except Exception as exc:
+                logger.exception("Batch improvement failed: %s", exc)
+
+        threading.Thread(target=_run, name="pv-glossary-batch", daemon=True).start()
+
+        return jsonify({
+            "ok": True,
+            "queued": len(article_ids),
+            "dry_run": dry_run,
+            "glossary_version": glossary_version,
+            "message": f"Queued {len(article_ids)} articles for improvement"
+        })
+    except Exception as e:
+        logger.exception("Failed to queue improvement batch")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
 @admin_required
 def api_glossary_improve_batch():
