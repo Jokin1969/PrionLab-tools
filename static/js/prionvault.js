@@ -14224,21 +14224,10 @@
 
     async function downloadBatchChangesCSV(batchId) {
       try {
-        const result = await api(`/glossary/batch-changes/${batchId}`);
-        const { changes } = result;
-
-        // Build CSV
-        let csv = 'original_text,corrected_text,repeticiones,term_en,recommended_es,confidence\n';
-        for (const change of changes) {
-          const confidence = change.avg_confidence ? (change.avg_confidence * 100).toFixed(0) : '';
-          csv += `"${change.original_text.replace(/"/g, '""')}","${change.corrected_text.replace(/"/g, '""')}",${change.change_count},"${change.term_en || ''}","${change.recommended_es || ''}",${confidence}\n`;
-        }
-
-        // Download
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        // Download Excel file from backend
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `batch-${batchId.slice(0, 8)}-cambios.csv`;
+        link.href = `/prionvault/api/glossary/batch-export/${batchId}`;
+        link.download = `batch-${batchId.slice(0, 8)}-cambios.xlsx`;
         link.click();
       } catch (e) {
         alert('Error al descargar: ' + e.message);

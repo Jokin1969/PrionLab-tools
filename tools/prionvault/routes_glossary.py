@@ -5,8 +5,12 @@ Routes registered as side-effect import at bottom of routes.py.
 """
 import logging
 import threading
-from flask import jsonify, request, Response, current_app
+from io import BytesIO
+from datetime import datetime
+from flask import jsonify, request, Response, current_app, send_file
 from sqlalchemy import text as sql_text
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from core.decorators import admin_required, login_required
 from database.config import db
@@ -376,6 +380,158 @@ def api_glossary_batch_changes(batch_id):
             })
     except Exception as e:
         logger.exception(f"Failed to fetch batch changes: {e}")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/api/glossary/batch-export/<batch_id>", methods=["GET"])
+@admin_required
+def api_glossary_batch_export(batch_id):
+    """Export batch changes as a formatted Excel file."""
+    try:
+        with db.engine.connect() as conn:
+            # Get batch info
+            batch_info = conn.execute(sql_text("""
+                SELECT COUNT(DISTINCT article_id) as articles_improved,
+                       MAX(improved_at) as completed_at
+                FROM summary_improvement_log
+                WHERE batch_id = :batch_id
+            """), {"batch_id": batch_id}).mappings().first()
+
+            # Get all corrections
+            rows = conn.execute(sql_text("""
+                SELECT
+                    scd.original_text,
+                    scd.corrected_text,
+                    scd.term_en,
+                    scd.recommended_es,
+                    scd.correction_type,
+                    COUNT(*) as change_count,
+                    AVG(CAST(scd.confidence_score AS DECIMAL)) as avg_confidence
+                FROM summary_correction_detail scd
+                JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
+                WHERE sil.batch_id = :batch_id
+                GROUP BY scd.original_text, scd.corrected_text, scd.term_en,
+                         scd.recommended_es, scd.correction_type
+                ORDER BY change_count DESC, scd.original_text
+            """), {"batch_id": batch_id}).mappings().all()
+
+            changes = [dict(r) for r in rows]
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Cambios"
+
+        # Define styles
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        title_font = Font(bold=True, size=14, color="366092")
+        subheader_fill = PatternFill(start_color="D9E8F5", end_color="D9E8F5", fill_type="solid")
+        subheader_font = Font(bold=True, size=10)
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
+        )
+
+        # Title and metadata
+        ws['A1'] = "📊 REPORTE DE CAMBIOS - MEJORA DE RESÚMENES"
+        ws['A1'].font = title_font
+        ws.merge_cells('A1:F1')
+        ws['A1'].alignment = left_align
+
+        ws['A2'] = f"Batch ID: {batch_id}"
+        ws['A2'].font = Font(size=9, italic=True, color="666666")
+        ws['A3'] = f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        ws['A3'].font = Font(size=9, italic=True, color="666666")
+
+        # Summary stats
+        row = 5
+        ws[f'A{row}'] = "RESUMEN"
+        ws[f'A{row}'].font = subheader_font
+        ws[f'A{row}'].fill = subheader_fill
+
+        row += 1
+        ws[f'A{row}'] = f"Artículos procesados:"
+        ws[f'B{row}'] = batch_info['articles_improved'] if batch_info else 0
+        ws[f'A{row}'].font = Font(bold=True)
+
+        row += 1
+        ws[f'A{row}'] = f"Total de cambios:"
+        ws[f'B{row}'] = sum(c["change_count"] for c in changes)
+        ws[f'A{row}'].font = Font(bold=True)
+
+        row += 1
+        ws[f'A{row}'] = f"Cambios únicos:"
+        ws[f'B{row}'] = len(changes)
+        ws[f'A{row}'].font = Font(bold=True)
+
+        # Data table header
+        row = 10
+        headers = ["Texto Original", "Texto Corregido", "Repeticiones", "Término EN", "Recomendado ES", "Confianza (%)"]
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=col_idx, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+            cell.border = border
+
+        # Set column widths
+        ws.column_dimensions['A'].width = 25
+        ws.column_dimensions['B'].width = 25
+        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['D'].width = 18
+        ws.column_dimensions['E'].width = 20
+        ws.column_dimensions['F'].width = 12
+
+        # Add data rows
+        row = 11
+        for change in changes:
+            confidence = f"{int(change['avg_confidence'] * 100)}" if change['avg_confidence'] else "-"
+
+            cells_data = [
+                change['original_text'],
+                change['corrected_text'],
+                change['change_count'],
+                change['term_en'] or "-",
+                change['recommended_es'] or "-",
+                confidence,
+            ]
+
+            for col_idx, value in enumerate(cells_data, 1):
+                cell = ws.cell(row=row, column=col_idx, value=value)
+                cell.border = border
+                cell.alignment = left_align if col_idx <= 2 else center_align
+                # Alternate row colors for readability
+                if row % 2 == 0:
+                    cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+
+            row += 1
+
+        # Auto-filter on header row
+        ws.auto_filter.ref = f"A10:F{row-1}"
+
+        # Freeze panes
+        ws.freeze_panes = "A11"
+
+        # Save to BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Return as file download
+        return send_file(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"batch-{batch_id[:8]}-cambios.xlsx"
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to export batch changes: {e}")
         return jsonify({"error": str(e)[:300]}), 500
 
 
