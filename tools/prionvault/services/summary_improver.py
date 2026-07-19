@@ -288,11 +288,16 @@ def _save_improvement_log(
     try:
         from . import claude_pricing
 
+        logger.info(f"[SAVE] Starting save for {article_id}")
+
         # Calculate cost
         cost_info = claude_pricing.calculate_cost(input_tokens, output_tokens, model_used)
         cost_usd = cost_info["cost_usd"]
+        logger.info(f"[SAVE] Cost calculated: ${cost_usd}")
 
+        logger.info(f"[SAVE] Opening transaction for {article_id}")
         with eng.begin() as conn:
+            logger.info(f"[SAVE] Transaction opened")
             # Insert into summary_improvement_log
             result = conn.execute(sql_text("""
                 INSERT INTO summary_improvement_log
@@ -318,8 +323,10 @@ def _save_improvement_log(
             })
 
             log_id = result.scalar()
+            logger.info(f"[SAVE] INSERT successful, log_id={log_id}")
 
             # Update article's glossary version to mark it as reviewed with current glossary
+            logger.info(f"[SAVE] Updating article glossary version")
             conn.execute(sql_text("""
                 UPDATE articles
                 SET ai_summary_glossary_version = :ver
@@ -328,9 +335,11 @@ def _save_improvement_log(
                 "ver": glossary_version,
                 "aid": article_id,
             })
+            logger.info(f"[SAVE] Article updated")
 
             # Insert individual changes
-            for change in changes:
+            logger.info(f"[SAVE] Inserting {len(changes)} changes")
+            for i, change in enumerate(changes):
                 conn.execute(sql_text("""
                     INSERT INTO summary_correction_detail
                     (improvement_log_id, original_text, corrected_text,
@@ -345,10 +354,12 @@ def _save_improvement_log(
                     "before": change['context_before'],
                     "after": change['context_after'],
                 })
+                logger.info(f"[SAVE] Change {i+1}/{len(changes)} inserted")
 
+            logger.info(f"[SAVE] Transaction complete for {article_id}")
         return True
     except Exception as e:
-        logger.warning(f"Failed to save improvement log for {article_id}: {e}")
+        logger.exception(f"Failed to save improvement log for {article_id}: {e}")
         return False
 
 
