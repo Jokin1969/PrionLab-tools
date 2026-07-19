@@ -13904,20 +13904,24 @@
         if (noChanEl) noChanEl.textContent = (detailed.reviewed_without_changes || 0).toLocaleString();
 
         // Update primary stats
-        document.querySelector('#pv-glossary-stats-content > div:nth-child(1) > div:first-child').textContent =
-          (detailed.total_reviewed || 0).toLocaleString();
-        document.querySelector('#pv-glossary-stats-content > div:nth-child(2) > div:first-child').textContent =
-          (stats.total_changes || 0).toLocaleString();
-        document.querySelector('#pv-glossary-stats-content > div:nth-child(3) > div:first-child').textContent =
-          stats.current_glossary_version || '-';
+        const totalRevEl = document.getElementById('pv-stats-total-reviewed');
+        if (totalRevEl) totalRevEl.textContent = (detailed.total_reviewed || 0).toLocaleString();
+        const totalChgEl = document.getElementById('pv-stats-total-changes');
+        if (totalChgEl) totalChgEl.textContent = (stats.total_changes || 0).toLocaleString();
+        const versionEl = document.getElementById('pv-stats-version');
+        if (versionEl) versionEl.textContent = stats.current_glossary_version || '-';
 
         const byVerEl = document.getElementById('pv-glossary-by-version');
-        byVerEl.innerHTML = (stats.by_version || []).map(v => `
-          <div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:10px;display:flex;justify-content:space-between;font-size:12px;">
-            <span><strong>v${v.glossary_version}</strong>: ${v.articles_improved} artículos</span>
-            <span>${v.total_changes} cambios</span>
-          </div>
-        `).join('');
+        if (byVerEl) {
+          byVerEl.innerHTML = (stats.by_version || []).map(v => `
+            <div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:10px;display:flex;justify-content:space-between;font-size:12px;">
+              <span><strong>v${v.glossary_version}</strong>: ${v.articles_improved} artículos</span>
+              <span>${v.total_changes} cambios</span>
+            </div>
+          `).join('');
+        } else {
+          console.warn('pv-glossary-by-version not found');
+        }
 
         // Pending button
         const pendingBtn = document.getElementById('pv-glossary-pending-btn');
