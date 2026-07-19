@@ -719,13 +719,19 @@ def get_improvement_log(
               sil.improved_at,
               sil.changes_count,
               sil.batch_id::text,
-              COUNT(scd.id) as detail_count
+              COUNT(scd.id) as detail_count,
+              COALESCE(sil.total_tokens, 0) as total_tokens,
+              COALESCE(sil.input_tokens, 0) as input_tokens,
+              COALESCE(sil.output_tokens, 0) as output_tokens,
+              COALESCE(sil.cost_usd, 0) as cost_usd,
+              sil.model_used
             FROM summary_improvement_log sil
             JOIN articles a ON a.id = sil.article_id
             LEFT JOIN summary_correction_detail scd ON scd.improvement_log_id = sil.id
             {where}
             GROUP BY sil.id, sil.article_id, a.title, sil.glossary_version_used,
-                     sil.improved_at, sil.changes_count, sil.batch_id
+                     sil.improved_at, sil.changes_count, sil.batch_id,
+                     sil.total_tokens, sil.input_tokens, sil.output_tokens, sil.cost_usd, sil.model_used
             ORDER BY sil.improved_at DESC
             LIMIT :lim OFFSET :off
         """), params).fetchall()
@@ -745,6 +751,12 @@ def get_improvement_log(
                 "changes_count": int(r[5]),
                 "batch_id": r[6],
                 "detail_count": int(r[7]),
+                "total_tokens": int(r[8]) if r[8] else 0,
+                "input_tokens": int(r[9]) if r[9] else 0,
+                "output_tokens": int(r[10]) if r[10] else 0,
+                "cost_usd": float(r[11]) if r[11] else 0,
+                "cost_eur": float(r[11] / 1.10) if r[11] else 0,
+                "model": r[12] or "claude-haiku-4-5-20251001",
             }
             for r in rows
         ],
