@@ -39,6 +39,21 @@ def api_glossary_stats_detailed():
     current_version = glossary_manager.get_current_glossary_version()
 
     try:
+        # Check if summary_improvement_log table exists using information_schema
+        table_exists = False
+        try:
+            with db.engine.connect() as check_conn:
+                result = check_conn.execute(sql_text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = 'summary_improvement_log'
+                    )
+                """)).scalar()
+                table_exists = bool(result)
+        except Exception as e:
+            logger.warning(f"Failed to check table existence: {e}")
+            table_exists = False
+
         with db.engine.connect() as conn:
             # Pending: unreviewed summaries (ai_summary_glossary_version IS NULL)
             pending = conn.execute(sql_text("""
@@ -48,21 +63,27 @@ def api_glossary_stats_detailed():
                   AND char_length(summary_ai) > 50
             """)).scalar() or 0
 
-            # Reviewed with changes: articles with improvement log entries
-            reviewed_with_changes = conn.execute(sql_text("""
-                SELECT COUNT(DISTINCT article_id)
-                FROM summary_improvement_log
-                WHERE changes_count > 0 AND dry_run = FALSE
-            """)).scalar() or 0
+            # Reviewed stats: only query if table exists
+            if table_exists:
+                # Reviewed with changes: articles with improvement log entries
+                reviewed_with_changes = conn.execute(sql_text("""
+                    SELECT COUNT(DISTINCT article_id)
+                    FROM summary_improvement_log
+                    WHERE changes_count > 0 AND dry_run = FALSE
+                """)).scalar() or 0
 
-            # Reviewed without changes: articles with improvement log but no changes
-            reviewed_without_changes = conn.execute(sql_text("""
-                SELECT COUNT(DISTINCT article_id)
-                FROM summary_improvement_log
-                WHERE changes_count = 0 AND dry_run = FALSE
-            """)).scalar() or 0
+                # Reviewed without changes: articles with improvement log but no changes
+                reviewed_without_changes = conn.execute(sql_text("""
+                    SELECT COUNT(DISTINCT article_id)
+                    FROM summary_improvement_log
+                    WHERE changes_count = 0 AND dry_run = FALSE
+                """)).scalar() or 0
 
-            total_reviewed = reviewed_with_changes + reviewed_without_changes
+                total_reviewed = reviewed_with_changes + reviewed_without_changes
+            else:
+                reviewed_with_changes = 0
+                reviewed_without_changes = 0
+                total_reviewed = 0
 
         return jsonify({
             "pending": int(pending),

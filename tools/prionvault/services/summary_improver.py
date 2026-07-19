@@ -507,6 +507,35 @@ def get_improvement_stats() -> dict:
     current_version = glossary_manager.get_current_glossary_version()
 
     try:
+        # Check if table exists using information_schema
+        table_exists = False
+        try:
+            with eng.connect() as check_conn:
+                result = check_conn.execute(sql_text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = 'summary_improvement_log'
+                    )
+                """)).scalar()
+                table_exists = bool(result)
+        except Exception as e:
+            logger.warning(f"Failed to check table existence: {e}")
+            table_exists = False
+
+        # If table doesn't exist, return empty stats
+        if not table_exists:
+            logger.warning("summary_improvement_log table not found, returning empty stats")
+            return {
+                "total_articles_improved": 0,
+                "total_changes": 0,
+                "avg_changes_per_article": 0.0,
+                "last_improvement_at": None,
+                "total_batches": 0,
+                "current_glossary_version": current_version,
+                "by_version": [],
+                "most_common_corrections": [],
+            }
+
         with eng.connect() as conn:
             # Total stats
             stats = conn.execute(sql_text("""
