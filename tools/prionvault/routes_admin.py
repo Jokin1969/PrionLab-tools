@@ -2142,3 +2142,84 @@ def api_glossary_diff():
         "version_after": diff.version_after,
     })
 
+
+@prionvault_bp.route("/api/admin/glossary/term/add", methods=["POST", "GET"])
+@admin_required
+def api_glossary_add_term():
+    """Add a single glossary term.
+
+    Body (POST) or query params (GET):
+      term_en: English term (required)
+      term_es_recommended: Recommended Spanish translation (required)
+      term_es_avoid: Spanish variants to avoid (optional)
+      category: Category like 'Biología', 'Terminología' (optional)
+      notes: Additional notes (optional)
+
+    Example:
+      POST /api/admin/glossary/term/add
+      {
+        "term_en": "Bank vole",
+        "term_es_recommended": "Topillo rojo",
+        "term_es_avoid": "Vole de banco",
+        "category": "Biología"
+      }
+
+    Returns:
+      {
+        "ok": true,
+        "new_version": 6,
+        "term_en": "bank vole",
+        "term_es_recommended": "Topillo rojo",
+        "message": "Added 'bank vole' as new term"
+      }
+    """
+    from .services import glossary_manager
+
+    # Handle both POST JSON and GET/POST params
+    if request.method == "POST":
+        data = request.get_json(force=True, silent=True) or request.form or request.args
+    else:
+        data = request.args
+
+    term_en = (data.get("term_en") or "").strip()
+    term_es_recommended = (data.get("term_es_recommended") or "").strip()
+    term_es_avoid = (data.get("term_es_avoid") or "").strip() or None
+    category = (data.get("category") or "").strip() or None
+    notes = (data.get("notes") or "").strip() or None
+
+    if not term_en or not term_es_recommended:
+        return jsonify({
+            "ok": False,
+            "error": "term_en and term_es_recommended are required"
+        }), 400
+
+    result = glossary_manager.add_single_term(
+        term_en=term_en,
+        term_es_recommended=term_es_recommended,
+        term_es_avoid=term_es_avoid,
+        category=category,
+        notes=notes,
+    )
+
+    if result.errors and "already exists" in str(result.errors[0]):
+        return jsonify({
+            "ok": False,
+            "error": result.errors[0],
+            "new_version": result.new_version,
+        }), 409
+
+    if result.imported == 0:
+        return jsonify({
+            "ok": False,
+            "error": result.errors[0] if result.errors else "Failed to add term",
+            "new_version": result.new_version,
+        }), 400
+
+    return jsonify({
+        "ok": True,
+        "new_version": result.new_version,
+        "term_en": term_en.lower(),
+        "term_es_recommended": term_es_recommended,
+        "message": f"Added '{term_en}' to glossary version {result.new_version}"
+    }), 201
+

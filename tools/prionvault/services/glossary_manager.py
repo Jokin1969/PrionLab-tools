@@ -431,3 +431,101 @@ def update_term(term_en: str, term_es_recommended: str, term_es_avoid: Optional[
     except Exception as e:
         logger.exception(f"Failed to update glossary term {term_en}")
         raise
+
+
+def add_single_term(term_en: str, term_es_recommended: str, term_es_avoid: Optional[str] = None,
+                    notes: Optional[str] = None, category: Optional[str] = None) -> ImportResult:
+    """Add a single term to glossary by importing all current terms + new one (increments version).
+
+    Args:
+        term_en: English term (will be lowercased)
+        term_es_recommended: Recommended Spanish translation
+        term_es_avoid: Spanish variants to avoid (optional)
+        notes: Additional notes (optional)
+        category: Category (e.g. 'Biología', 'Terminología') (optional)
+
+    Returns:
+        ImportResult indicating success/failure
+    """
+    eng = _get_engine()
+
+    # Normalize inputs
+    term_en = (term_en or "").strip().lower()
+    term_es_recommended = (term_es_recommended or "").strip()
+    term_es_avoid = (term_es_avoid or "").strip() or None
+    notes = (notes or "").strip() or None
+    category = (category or "").strip() or None
+
+    # Validate
+    if not term_en or not term_es_recommended:
+        return ImportResult(
+            imported=0,
+            updated=0,
+            skipped=0,
+            errors=["English term and Spanish recommendation are required"],
+            new_version=get_current_glossary_version(),
+        )
+
+    try:
+        with eng.begin() as conn:
+            # Get current version and all current terms
+            current_version = conn.execute(sql_text(
+                "SELECT MAX(version) FROM prionvault_glossary_terms"
+            )).scalar() or 0
+
+            # Fetch all current terms
+            current_terms = conn.execute(sql_text(
+                """SELECT term_en, term_es_recommended, term_es_avoid, notes, category
+                   FROM prionvault_glossary_terms
+                   WHERE version = :v"""
+            ), {"v": current_version}).all() if current_version > 0 else []
+
+            # Check if term already exists
+            existing = [t for t in current_terms if t[0].lower() == term_en.lower()]
+            if existing:
+                return ImportResult(
+                    imported=0,
+                    updated=0,
+                    skipped=0,
+                    errors=[f"Term '{term_en}' already exists in glossary"],
+                    new_version=current_version,
+                )
+
+            # Build list of all terms (current + new)
+            all_terms = [
+                {
+                    "term_en": t[0],
+                    "term_es_recommended": t[1],
+                    "term_es_avoid": t[2],
+                    "notes": t[3],
+                    "category": t[4],
+                }
+                for t in current_terms
+            ]
+            all_terms.append({
+                "term_en": term_en,
+                "term_es_recommended": term_es_recommended,
+                "term_es_avoid": term_es_avoid,
+                "notes": notes,
+                "category": category,
+            })
+
+            # Use existing import_glossary to handle versioning
+            result = import_glossary(all_terms)
+            return ImportResult(
+                imported=result.imported,
+                updated=result.updated,
+                skipped=result.skipped,
+                errors=result.errors if result.errors else [f"Added '{term_en}' as new term"],
+                new_version=result.new_version,
+            )
+
+    except Exception as e:
+        logger.exception(f"Failed to add glossary term {term_en}")
+        return ImportResult(
+            imported=0,
+            updated=0,
+            skipped=0,
+            errors=[f"Database error: {str(e)[:200]}"],
+            new_version=get_current_glossary_version(),
+        )
