@@ -40,6 +40,13 @@ def api_glossary_stats_detailed():
 
     try:
         with db.engine.connect() as conn:
+            # Check if summary_improvement_log table exists
+            table_exists = True
+            try:
+                conn.execute(sql_text("SELECT 1 FROM summary_improvement_log LIMIT 1"))
+            except Exception:
+                table_exists = False
+
             # Pending: unreviewed summaries (ai_summary_glossary_version IS NULL)
             pending = conn.execute(sql_text("""
                 SELECT COUNT(*) FROM articles
@@ -48,21 +55,27 @@ def api_glossary_stats_detailed():
                   AND char_length(summary_ai) > 50
             """)).scalar() or 0
 
-            # Reviewed with changes: articles with improvement log entries
-            reviewed_with_changes = conn.execute(sql_text("""
-                SELECT COUNT(DISTINCT article_id)
-                FROM summary_improvement_log
-                WHERE changes_count > 0 AND dry_run = FALSE
-            """)).scalar() or 0
+            # Reviewed stats: only query if table exists
+            if table_exists:
+                # Reviewed with changes: articles with improvement log entries
+                reviewed_with_changes = conn.execute(sql_text("""
+                    SELECT COUNT(DISTINCT article_id)
+                    FROM summary_improvement_log
+                    WHERE changes_count > 0 AND dry_run = FALSE
+                """)).scalar() or 0
 
-            # Reviewed without changes: articles with improvement log but no changes
-            reviewed_without_changes = conn.execute(sql_text("""
-                SELECT COUNT(DISTINCT article_id)
-                FROM summary_improvement_log
-                WHERE changes_count = 0 AND dry_run = FALSE
-            """)).scalar() or 0
+                # Reviewed without changes: articles with improvement log but no changes
+                reviewed_without_changes = conn.execute(sql_text("""
+                    SELECT COUNT(DISTINCT article_id)
+                    FROM summary_improvement_log
+                    WHERE changes_count = 0 AND dry_run = FALSE
+                """)).scalar() or 0
 
-            total_reviewed = reviewed_with_changes + reviewed_without_changes
+                total_reviewed = reviewed_with_changes + reviewed_without_changes
+            else:
+                reviewed_with_changes = 0
+                reviewed_without_changes = 0
+                total_reviewed = 0
 
         return jsonify({
             "pending": int(pending),
