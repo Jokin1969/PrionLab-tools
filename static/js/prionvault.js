@@ -14057,8 +14057,9 @@
 
           if (items.length === 0) {
             noUpdateCount++;
-            // After 30 minutes (600 cycles * 3s) with no items, stop tracking
-            if (noUpdateCount > 600) {
+            // After 2 hours (2400 cycles * 3s) with no items, stop tracking
+            // This allows up to 100 articles at ~45s each to complete
+            if (noUpdateCount > 2400) {
               stopBatchTracking();
               document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado (o detenido)';
             }
@@ -14077,8 +14078,8 @@
               const now = new Date();
               const minutesSinceLastUpdate = (now - itemTime) / (1000 * 60);
 
-              // Stop tracking if no updates in 30 minutes
-              if (minutesSinceLastUpdate > 30) {
+              // Stop tracking if no updates in 2 hours
+              if (minutesSinceLastUpdate > 120) {
                 stopBatchTracking();
                 document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado';
               }
