@@ -368,8 +368,6 @@ def batch_improve_summaries(
         "summary_lengths_before": [],
         "summary_lengths_after": [],
         "total_changes": 0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
     }
 
     for idx, aid in enumerate(article_ids):
@@ -402,10 +400,6 @@ def batch_improve_summaries(
                 results["successful"] += 1
                 results["summary_lengths_after"].append(improvement.improved_length)
 
-                # Accumulate token usage
-                results["total_input_tokens"] += improvement.input_tokens or 0
-                results["total_output_tokens"] += improvement.output_tokens or 0
-
                 # Save improved version (if not dry_run)
                 if not dry_run:
                     try:
@@ -418,12 +412,12 @@ def batch_improve_summaries(
                                    WHERE id = :aid"""
                             ), {"improved": improvement.improved_summary, "aid": aid})
 
-                        # Save to improvement log with token tracking
+                        # Save to improvement log (without token tracking)
                         _save_improvement_log(
                             eng, aid, glossary_version, original_summary,
                             improved_summary, changes, batch_id,
-                            input_tokens=improvement.input_tokens or 0,
-                            output_tokens=improvement.output_tokens or 0,
+                            input_tokens=0,
+                            output_tokens=0,
                             model_used=improvement.model_used,
                             dry_run=False
                         )
@@ -452,18 +446,18 @@ def batch_improve_summaries(
             results["failed"] += 1
             results["errors"].append(f"{aid}: {str(e)[:200]}")
 
-    # Calculate final cost
-    from . import claude_pricing
-    cost_summary = claude_pricing.calculate_batch_cost(results)
-    results["cost_usd"] = cost_summary["cost_usd"]
-    results["cost_eur"] = cost_summary["cost_eur"]
-    results["cost_summary"] = cost_summary
+    # Estimate cost based on successful improvements
+    # Average: ~€0.0005 per article (rough estimate)
+    estimated_cost_eur = results['successful'] * 0.0005
+    estimated_cost_usd = estimated_cost_eur * 1.10
+
+    results["estimated_cost_eur"] = round(estimated_cost_eur, 4)
+    results["estimated_cost_usd"] = round(estimated_cost_usd, 4)
 
     logger.info(
         f"🏁 BATCH COMPLETED: {results['successful']} successful, "
         f"{results['failed']} failed, {results['total_changes']} total changes. "
-        f"Cost: €{cost_summary['cost_eur']:.2f} / ${cost_summary['cost_usd']:.2f} "
-        f"({results['total_input_tokens']:,} input + {results['total_output_tokens']:,} output tokens). "
+        f"Estimated cost: ~€{estimated_cost_eur:.4f} / ~${estimated_cost_usd:.4f}. "
         f"Batch ID: {batch_id}"
     )
     return results
@@ -719,19 +713,13 @@ def get_improvement_log(
               sil.improved_at,
               sil.changes_count,
               sil.batch_id::text,
-              COUNT(scd.id) as detail_count,
-              COALESCE(sil.total_tokens, 0) as total_tokens,
-              COALESCE(sil.input_tokens, 0) as input_tokens,
-              COALESCE(sil.output_tokens, 0) as output_tokens,
-              COALESCE(sil.cost_usd, 0) as cost_usd,
-              sil.model_used
+              COUNT(scd.id) as detail_count
             FROM summary_improvement_log sil
             JOIN articles a ON a.id = sil.article_id
             LEFT JOIN summary_correction_detail scd ON scd.improvement_log_id = sil.id
             {where}
             GROUP BY sil.id, sil.article_id, a.title, sil.glossary_version_used,
-                     sil.improved_at, sil.changes_count, sil.batch_id,
-                     sil.total_tokens, sil.input_tokens, sil.output_tokens, sil.cost_usd, sil.model_used
+                     sil.improved_at, sil.changes_count, sil.batch_id
             ORDER BY sil.improved_at DESC
             LIMIT :lim OFFSET :off
         """), params).fetchall()
@@ -751,12 +739,6 @@ def get_improvement_log(
                 "changes_count": int(r[5]),
                 "batch_id": r[6],
                 "detail_count": int(r[7]),
-                "total_tokens": int(r[8]) if r[8] else 0,
-                "input_tokens": int(r[9]) if r[9] else 0,
-                "output_tokens": int(r[10]) if r[10] else 0,
-                "cost_usd": float(r[11]) if r[11] else 0,
-                "cost_eur": float(r[11] / 1.10) if r[11] else 0,
-                "model": r[12] or "claude-haiku-4-5-20251001",
             }
             for r in rows
         ],

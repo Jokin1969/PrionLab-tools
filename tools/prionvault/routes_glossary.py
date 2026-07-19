@@ -586,32 +586,23 @@ def api_glossary_export():
 @prionvault_bp.route("/api/glossary/batch/cost/<batch_id>", methods=["GET"])
 @admin_required
 def api_batch_cost(batch_id):
-    """Get cost summary for a specific batch improvement.
+    """Get estimated cost for a specific batch improvement.
 
     Returns:
       {
         "batch_id": "uuid",
         "articles_processed": 100,
-        "total_tokens": 50000,
-        "input_tokens": 40000,
-        "output_tokens": 10000,
-        "model": "Claude Haiku 4.5",
-        "cost_usd": 0.045,
-        "cost_eur": 0.041,
+        "estimated_cost_eur": 0.05,
+        "estimated_cost_usd": 0.055,
+        "note": "Estimation based on ~€0.0005 per article",
         "timestamp": "2026-07-19T12:34:56"
       }
     """
-    from .services import claude_pricing
-
     try:
         with db.engine.connect() as conn:
             result = conn.execute(sql_text("""
                 SELECT
                   COUNT(DISTINCT article_id) as articles,
-                  SUM(COALESCE(input_tokens, 0)) as input_tokens,
-                  SUM(COALESCE(output_tokens, 0)) as output_tokens,
-                  COALESCE(SUM(cost_usd), 0) as cost_usd,
-                  MAX(model_used) as model,
                   MAX(improved_at) as timestamp
                 FROM summary_improvement_log
                 WHERE batch_id = :batch_id AND dry_run = FALSE
@@ -620,20 +611,19 @@ def api_batch_cost(batch_id):
             if not result or result[0] == 0:
                 return jsonify({"error": "Batch not found"}), 404
 
-            articles, input_tokens, output_tokens, cost_usd, model, timestamp = result
-            cost_eur = cost_usd / 1.10 if cost_usd else 0
+            articles, timestamp = result
+            # Estimate: ~€0.0005 per article
+            est_cost_eur = articles * 0.0005
+            est_cost_usd = est_cost_eur * 1.10
 
             return jsonify({
                 "batch_id": batch_id,
                 "articles_processed": int(articles),
-                "total_tokens": int(input_tokens + output_tokens),
-                "input_tokens": int(input_tokens),
-                "output_tokens": int(output_tokens),
-                "model": model or "Claude Haiku 4.5",
-                "cost_usd": round(float(cost_usd), 4),
-                "cost_eur": round(float(cost_eur), 4),
+                "estimated_cost_eur": round(est_cost_eur, 4),
+                "estimated_cost_usd": round(est_cost_usd, 4),
+                "cost_summary": f"~€{round(est_cost_eur, 2)} / ~${round(est_cost_usd, 2)}",
+                "note": "Estimation based on ~€0.0005 per article",
                 "timestamp": str(timestamp) if timestamp else None,
-                "cost_summary": f"€{round(float(cost_eur), 2)} / ${round(float(cost_usd), 2)}"
             })
 
     except Exception as e:
@@ -644,27 +634,14 @@ def api_batch_cost(batch_id):
 @prionvault_bp.route("/api/glossary/costs/summary", methods=["GET"])
 @admin_required
 def api_costs_summary():
-    """Get cost summary for all glossary improvements.
+    """Get estimated cost summary for glossary improvements.
 
     Query params:
       - days: Number of days to look back (default: 30)
       - limit: Max batches to return (default: 10)
 
-    Returns:
-      {
-        "period_days": 30,
-        "total_batches": 5,
-        "total_articles": 500,
-        "total_tokens": 250000,
-        "total_cost_usd": 0.225,
-        "total_cost_eur": 0.205,
-        "avg_cost_per_article": 0.00045,
-        "avg_tokens_per_article": 500,
-        "recent_batches": [...]
-      }
+    Returns estimated costs based on articles processed.
     """
-    from .services import claude_pricing
-
     days = request.args.get("days", 30, type=int)
     limit = request.args.get("limit", 10, type=int)
 
@@ -674,30 +651,24 @@ def api_costs_summary():
             summary = conn.execute(sql_text("""
                 SELECT
                   COUNT(DISTINCT batch_id) as batch_count,
-                  COUNT(DISTINCT article_id) as article_count,
-                  SUM(COALESCE(input_tokens, 0)) as total_input_tokens,
-                  SUM(COALESCE(output_tokens, 0)) as total_output_tokens,
-                  COALESCE(SUM(cost_usd), 0) as total_cost_usd
+                  COUNT(DISTINCT article_id) as article_count
                 FROM summary_improvement_log
                 WHERE dry_run = FALSE
                   AND improved_at >= NOW() - INTERVAL '1 day' * :days
             """), {"days": days}).first()
 
-            batch_count, article_count, input_tokens, output_tokens, cost_usd = summary
-            total_tokens = (input_tokens or 0) + (output_tokens or 0)
-            cost_eur = (cost_usd or 0) / 1.10
+            batch_count, article_count = summary
 
-            avg_cost_per_article = (cost_usd / article_count) if article_count > 0 else 0
-            avg_tokens_per_article = (total_tokens / article_count) if article_count > 0 else 0
+            # Estimate: ~€0.0005 per article
+            est_total_eur = article_count * 0.0005
+            est_total_usd = est_total_eur * 1.10
+            avg_cost_per_article = 0.0005
 
             # Get recent batches
             batches = conn.execute(sql_text("""
                 SELECT
                   batch_id,
                   COUNT(DISTINCT article_id) as articles,
-                  SUM(COALESCE(input_tokens, 0)) as input_tokens,
-                  SUM(COALESCE(output_tokens, 0)) as output_tokens,
-                  COALESCE(SUM(cost_usd), 0) as cost_usd,
                   MAX(improved_at) as timestamp
                 FROM summary_improvement_log
                 WHERE dry_run = FALSE
@@ -708,13 +679,14 @@ def api_costs_summary():
             """), {"days": days, "lim": limit}).fetchall()
 
             recent_batches = []
-            for batch_id, articles, in_tok, out_tok, batch_cost, ts in batches:
+            for batch_id, articles, ts in batches:
+                batch_est_eur = articles * 0.0005
+                batch_est_usd = batch_est_eur * 1.10
                 recent_batches.append({
                     "batch_id": batch_id,
                     "articles": int(articles),
-                    "tokens": int(in_tok + out_tok),
-                    "cost_usd": round(float(batch_cost), 4),
-                    "cost_eur": round(float(batch_cost / 1.10), 4),
+                    "estimated_cost_eur": round(batch_est_eur, 4),
+                    "estimated_cost_usd": round(batch_est_usd, 4),
                     "timestamp": str(ts) if ts else None,
                 })
 
@@ -722,13 +694,10 @@ def api_costs_summary():
                 "period_days": days,
                 "total_batches": int(batch_count),
                 "total_articles": int(article_count),
-                "total_tokens": int(total_tokens),
-                "total_input_tokens": int(input_tokens or 0),
-                "total_output_tokens": int(output_tokens or 0),
-                "total_cost_usd": round(float(cost_usd or 0), 4),
-                "total_cost_eur": round(float(cost_eur or 0), 4),
-                "avg_cost_per_article": round(avg_cost_per_article, 6),
-                "avg_tokens_per_article": int(avg_tokens_per_article),
+                "estimated_total_eur": round(est_total_eur, 4),
+                "estimated_total_usd": round(est_total_usd, 4),
+                "avg_estimated_cost_per_article": round(avg_cost_per_article, 6),
+                "note": "Estimations based on ~€0.0005 per article",
                 "recent_batches": recent_batches,
             })
 

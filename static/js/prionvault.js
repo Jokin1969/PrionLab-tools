@@ -14209,7 +14209,7 @@
         const recentItems = hist.improvements.filter(h => new Date(h.improved_at) > oneHourAgo);
         const recentCount = recentItems.length;
         const recentChanges = recentItems.reduce((sum, h) => sum + (h.changes_count || 0), 0);
-        const recentCostEur = recentItems.reduce((sum, h) => sum + (h.cost_eur || 0), 0);
+        const recentCostEur = recentCount * 0.0005;
 
         // Show stats header if there are recent items
         let statsHtml = '';
@@ -14218,7 +14218,7 @@
             <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:8px;padding:12px;margin-bottom:12px;">
               <div style="font-weight:600;color:#0c4a6e;">⏱️ Última hora:</div>
               <div style="color:#0c4a6e;font-size:11px;margin-top:4px;">
-                ${recentCount} artículos mejorados · ${recentChanges} cambios totales · 💶 €${recentCostEur.toFixed(2)}
+                ${recentCount} artículos mejorados · ${recentChanges} cambios · ~€${recentCostEur.toFixed(4)}
               </div>
             </div>
           `;
@@ -14227,10 +14227,9 @@
         histEl.innerHTML = statsHtml + (hist.improvements || []).map(h => `
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;font-size:12px;">
             <div style="font-weight:600;color:#111827;">${esc(h.title || h.article_id)}</div>
-            <div style="color:#6b7280;margin-top:2px;">v${h.glossary_version} · ${h.changes_count} cambios ${h.total_tokens ? `· ${h.total_tokens} tokens` : ''}</div>
+            <div style="color:#6b7280;margin-top:2px;">v${h.glossary_version} · ${h.changes_count} cambios</div>
             <div style="color:#9ca3af;font-size:11px;margin-top:2px;">
               ${new Date(h.improved_at).toLocaleString('es-ES')}
-              ${h.cost_eur ? ` · 💶 €${h.cost_eur.toFixed(4)}` : ''}
             </div>
           </div>
         `).join('');
