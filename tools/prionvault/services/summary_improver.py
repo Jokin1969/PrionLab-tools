@@ -508,6 +508,23 @@ def get_improvement_stats() -> dict:
 
     try:
         with eng.connect() as conn:
+            # Check if table exists first
+            try:
+                conn.execute(sql_text("SELECT 1 FROM summary_improvement_log LIMIT 1"))
+            except Exception as table_check_err:
+                # Table doesn't exist yet - return empty stats
+                logger.warning("summary_improvement_log table not found, returning empty stats")
+                return {
+                    "total_articles_improved": 0,
+                    "total_changes": 0,
+                    "avg_changes_per_article": 0.0,
+                    "last_improvement_at": None,
+                    "total_batches": 0,
+                    "current_glossary_version": current_version,
+                    "by_version": [],
+                    "most_common_corrections": [],
+                }
+
             # Total stats
             stats = conn.execute(sql_text("""
                 SELECT
