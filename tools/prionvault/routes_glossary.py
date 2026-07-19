@@ -535,6 +535,153 @@ def api_glossary_batch_export(batch_id):
         return jsonify({"error": str(e)[:300]}), 500
 
 
+@prionvault_bp.route("/api/glossary/export-all-changes", methods=["GET"])
+@admin_required
+def api_glossary_export_all_changes():
+    """Export all historical changes as a formatted Excel file."""
+    try:
+        with db.engine.connect() as conn:
+            # Get all corrections with batch and article info
+            rows = conn.execute(sql_text("""
+                SELECT
+                    sil.batch_id,
+                    sil.article_id,
+                    a.title,
+                    scd.original_text,
+                    scd.corrected_text,
+                    scd.term_en,
+                    scd.recommended_es,
+                    scd.correction_type,
+                    scd.confidence_score,
+                    sil.improved_at,
+                    sil.glossary_version_used
+                FROM summary_correction_detail scd
+                JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
+                JOIN articles a ON sil.article_id = a.id
+                ORDER BY sil.improved_at DESC, sil.batch_id, a.title
+            """)).mappings().all()
+
+            changes = [dict(r) for r in rows]
+
+        # Group by article for better organization
+        by_article = {}
+        for change in changes:
+            article_key = f"{change['article_id'][:8]} - {change['title'][:50]}"
+            if article_key not in by_article:
+                by_article[article_key] = []
+            by_article[article_key].append(change)
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Todos los cambios"
+
+        # Define styles
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        title_font = Font(bold=True, size=14, color="366092")
+        article_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+        article_font = Font(bold=True, size=11, color="1F4E78")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
+        )
+
+        # Title and metadata
+        ws['A1'] = "📊 HISTÓRICO COMPLETO DE CAMBIOS - MEJORA DE RESÚMENES"
+        ws['A1'].font = title_font
+        ws.merge_cells('A1:G1')
+        ws['A1'].alignment = left_align
+
+        ws['A2'] = f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        ws['A2'].font = Font(size=9, italic=True, color="666666")
+        ws['A3'] = f"Total de artículos procesados: {len(by_article)}"
+        ws['A3'].font = Font(size=9, italic=True, color="666666")
+        ws['A4'] = f"Total de cambios registrados: {len(changes)}"
+        ws['A4'].font = Font(size=9, italic=True, color="666666")
+
+        # Set column widths
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['B'].width = 25
+        ws.column_dimensions['C'].width = 25
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 18
+        ws.column_dimensions['F'].width = 12
+        ws.column_dimensions['G'].width = 15
+
+        current_row = 6
+
+        # Add data grouped by article
+        for article_key in sorted(by_article.keys()):
+            article_changes = by_article[article_key]
+
+            # Article header
+            ws[f'A{current_row}'] = f"📄 {article_key}"
+            ws[f'A{current_row}'].font = article_font
+            ws[f'A{current_row}'].fill = article_fill
+            ws.merge_cells(f'A{current_row}:G{current_row}')
+            current_row += 1
+
+            # Column headers for this article
+            headers = ["Texto Original", "Texto Corregido", "Término EN", "Recomendado ES", "Confianza", "Versión", "Fecha"]
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=current_row, column=col_idx, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_align
+                cell.border = border
+
+            current_row += 1
+
+            # Data rows for this article
+            for change in article_changes:
+                confidence = f"{int(change['confidence_score'] * 100)}%" if change['confidence_score'] else "-"
+                date_str = change['improved_at'].strftime('%d/%m/%Y') if change['improved_at'] else "-"
+
+                cells_data = [
+                    change['original_text'],
+                    change['corrected_text'],
+                    change['term_en'] or "-",
+                    change['recommended_es'] or "-",
+                    confidence,
+                    f"v{change['glossary_version_used']}",
+                    date_str,
+                ]
+
+                for col_idx, value in enumerate(cells_data, 1):
+                    cell = ws.cell(row=current_row, column=col_idx, value=value)
+                    cell.border = border
+                    cell.alignment = left_align if col_idx <= 3 else center_align
+                    if current_row % 2 == 0:
+                        cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+
+                current_row += 1
+
+            # Blank row between articles
+            current_row += 1
+
+        # Save to BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Return as file download
+        return send_file(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"cambios-completos-{datetime.now().strftime('%Y%m%d-%H%M')}.xlsx"
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to export all changes: {e}")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/test-claude", methods=["GET"])
 @admin_required
 def api_glossary_test_claude():

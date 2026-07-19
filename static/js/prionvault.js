@@ -14065,7 +14065,7 @@
             const statusEl = document.getElementById('pv-glossary-improve-status');
             statusEl.innerHTML = `✓ Lote completado
               <button id="btn-show-changes" class="btn btn-sm btn-info ms-2">📊 Ver cambios</button>
-              <button id="btn-download-changes" class="btn btn-sm btn-success ms-2">📥 Descargar CSV</button>`;
+              <button id="btn-download-changes" class="btn btn-sm btn-success ms-2">📥 Descargar Excel</button>`;
 
             // Attach event listeners
             document.getElementById('btn-show-changes').addEventListener('click', () => showBatchChanges(batch_id));
@@ -14187,7 +14187,7 @@
           </div>
           <div style="padding: 1rem; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end; gap: 0.5rem;">
             <button class="btn btn-secondary btn-sm">Cerrar</button>
-            <button class="btn btn-success btn-sm" onclick="downloadBatchChangesCSV('${batchId}')">📥 Descargar CSV</button>
+            <button class="btn btn-success btn-sm" onclick="downloadBatchChangesCSV('${batchId}')">📥 Descargar Excel</button>
           </div>
         `;
 
@@ -14239,6 +14239,21 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    async function downloadAllChanges() {
+      try {
+        const link = document.createElement('a');
+        link.href = '/prionvault/api/glossary/export-all-changes';
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        link.download = `cambios-completos-${dateStr}.xlsx`;
+        link.click();
+        alert('✓ Descargando histórico completo de cambios...');
+      } catch (e) {
+        alert('Error al descargar: ' + e.message);
+        console.error(e);
+      }
     }
 
     async function improveOutdated(count) {
