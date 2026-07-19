@@ -13888,15 +13888,20 @@
     // Stats tab
     async function loadStats() {
       try {
+        console.log('loadStats() called');
         const [stats, detailed] = await Promise.all([
           api('/glossary/stats'),
           api('/glossary/stats/detailed')
         ]);
+        console.log('Stats loaded:', { stats, detailed });
 
         // Update detailed status
-        document.getElementById('pv-stats-pending').textContent = (detailed.pending || 0).toLocaleString();
-        document.getElementById('pv-stats-with-changes').textContent = (detailed.reviewed_with_changes || 0).toLocaleString();
-        document.getElementById('pv-stats-without-changes').textContent = (detailed.reviewed_without_changes || 0).toLocaleString();
+        const pendingEl = document.getElementById('pv-stats-pending');
+        if (pendingEl) pendingEl.textContent = (detailed.pending || 0).toLocaleString();
+        const changesEl = document.getElementById('pv-stats-with-changes');
+        if (changesEl) changesEl.textContent = (detailed.reviewed_with_changes || 0).toLocaleString();
+        const noChanEl = document.getElementById('pv-stats-without-changes');
+        if (noChanEl) noChanEl.textContent = (detailed.reviewed_without_changes || 0).toLocaleString();
 
         // Update primary stats
         document.querySelector('#pv-glossary-stats-content > div:nth-child(1) > div:first-child').textContent =
@@ -13915,24 +13920,38 @@
         `).join('');
 
         // Pending button
-        document.getElementById('pv-glossary-pending-btn').onclick = () => {
-          if (detailed.pending === 0) {
-            alert('No hay resúmenes pendientes de revisar');
-            return;
-          }
-          currentTab = 'improve';
-          modal.querySelectorAll('.pv-glossary-tab-content').forEach(t => t.style.display = 'none');
-          modal.querySelectorAll('.pv-glossary-tab').forEach(t => {
-            t.style.borderBottom = t.dataset.tab === 'improve' ? '2px solid #0F3460' : '2px solid transparent';
-          });
-          document.getElementById('pv-glossary-improve-tab').style.display = 'block';
-          loadImproveTab();
-        };
+        const pendingBtn = document.getElementById('pv-glossary-pending-btn');
+        if (pendingBtn) {
+          console.log('Setting pending button onclick handler');
+          pendingBtn.onclick = () => {
+            console.log('Pending button clicked, detailed.pending =', detailed.pending);
+            if (detailed.pending === 0) {
+              alert('No hay resúmenes pendientes de revisar');
+              return;
+            }
+            currentTab = 'improve';
+            modal.querySelectorAll('.pv-glossary-tab-content').forEach(t => t.style.display = 'none');
+            modal.querySelectorAll('.pv-glossary-tab').forEach(t => {
+              t.style.borderBottom = t.dataset.tab === 'improve' ? '2px solid #0F3460' : '2px solid transparent';
+            });
+            document.getElementById('pv-glossary-improve-tab').style.display = 'block';
+            loadImproveTab();
+          };
+        } else {
+          console.warn('pv-glossary-pending-btn not found');
+        }
 
         // Export button
-        document.getElementById('pv-glossary-export-btn').onclick = () => {
-          window.location.href = '/prionvault/api/glossary/export';
-        };
+        const exportBtn = document.getElementById('pv-glossary-export-btn');
+        if (exportBtn) {
+          console.log('Setting export button onclick handler');
+          exportBtn.onclick = () => {
+            console.log('Export button clicked');
+            window.location.href = '/prionvault/api/glossary/export';
+          };
+        } else {
+          console.warn('pv-glossary-export-btn not found');
+        }
       } catch (e) {
         console.error('Failed to load stats:', e);
       }
