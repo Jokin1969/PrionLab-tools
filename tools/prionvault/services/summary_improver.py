@@ -354,8 +354,13 @@ def batch_improve_summaries(
     """
     logger.info(f"🚀 BATCH IMPROVEMENT STARTED: {len(article_ids)} articles, dry_run={dry_run}")
     logger.info(f"📌 Getting engine...")
-    eng = _get_engine()
-    logger.info(f"✅ Engine obtained successfully")
+    try:
+        eng = _get_engine()
+        logger.info(f"✅ Engine obtained successfully: {eng}")
+    except Exception as eng_err:
+        logger.error(f"❌ Failed to get engine: {eng_err}")
+        raise
+
     batch_id = str(uuid.uuid4())
     logger.info(f"📝 Batch ID: {batch_id}")
 
@@ -376,10 +381,13 @@ def batch_improve_summaries(
     for idx, aid in enumerate(article_ids):
         try:
             # Fetch article + summary
+            logger.info(f"[{idx+1}/{len(article_ids)}] 🔌 Attempting to get DB connection...")
             with eng.connect() as conn:
+                logger.info(f"[{idx+1}/{len(article_ids)}] ✅ Connection obtained")
                 row = conn.execute(sql_text(
                     "SELECT summary_ai FROM articles WHERE id = :aid"
                 ), {"aid": aid}).first()
+            logger.info(f"[{idx+1}/{len(article_ids)}] 🔓 Connection closed, row={row is not None}")
 
             if not row or not row[0]:
                 logger.warning(f"[{idx+1}/{len(article_ids)}] No summary found for {aid}")
