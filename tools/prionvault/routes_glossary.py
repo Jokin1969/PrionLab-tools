@@ -583,6 +583,71 @@ def api_glossary_export():
         return jsonify({"error": str(e)[:300]}), 500
 
 
+# ── Admin: Test single improvement ──────────────────────────────────────────
+@prionvault_bp.route("/api/admin/test-improvement", methods=["POST"])
+@admin_required
+def api_admin_test_improvement():
+    """Test a single article improvement synchronously (not in background).
+
+    This helps diagnose if the improvement logic works, without waiting for
+    the background thread.
+
+    Returns the improvement result immediately.
+    """
+    from .services import summary_improver, glossary_manager
+
+    try:
+        # Get one unreviewed article
+        with db.engine.connect() as conn:
+            article = conn.execute(sql_text("""
+                SELECT id::text, summary_ai FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+                ORDER BY RANDOM()
+                LIMIT 1
+            """)).mappings().first()
+
+        if not article:
+            return jsonify({
+                "error": "No unreviewed articles found",
+                "status": "No articles to test with"
+            }), 400
+
+        article_id = article['id']
+        summary = article['summary_ai']
+
+        # Get glossary
+        glossary_context = glossary_manager.get_glossary_context()
+        if not glossary_context:
+            return jsonify({"error": "No glossary available"}), 400
+
+        # Try to improve synchronously
+        logger.info(f"🧪 TESTING improvement for {article_id}...")
+        result = summary_improver.improve_summary(
+            article_id=article_id,
+            original_summary=summary,
+            glossary_context=glossary_context,
+            use_fuzzy_matching=True
+        )
+
+        return jsonify({
+            "success": result.success,
+            "article_id": article_id,
+            "original_length": result.original_length,
+            "improved_length": result.improved_length,
+            "error": result.error,
+            "message": "✅ Improvement successful" if result.success else "❌ Improvement failed"
+        })
+
+    except Exception as e:
+        logger.exception(f"Test improvement failed: {e}")
+        return jsonify({
+            "error": str(e),
+            "status": "❌ Error during test"
+        }), 500
+
+
 # ── Admin: Diagnostics ──────────────────────────────────────────────────────
 @prionvault_bp.route("/api/admin/diagnostics", methods=["GET"])
 @admin_required
