@@ -345,6 +345,9 @@ def batch_improve_summaries(
 ) -> dict:
     """Improve multiple summaries in sequence with full tracking.
 
+    Processes articles sequentially, calling Claude for terminology improvement,
+    tracking progress via callback, and saving results to database.
+
     Args:
         article_ids: UUIDs to improve
         glossary_context: Formatted glossary for injection
