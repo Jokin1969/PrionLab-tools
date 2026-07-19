@@ -288,13 +288,13 @@ def _save_improvement_log(
 
         with eng.begin() as conn:
             # Insert into summary_improvement_log
+            # Note: input_tokens, output_tokens, total_tokens, model_used, cost_usd use DEFAULT values
+            # when migration 067 hasn't been applied yet
             result = conn.execute(sql_text("""
                 INSERT INTO summary_improvement_log
                 (article_id, glossary_version_used, original_summary, improved_summary,
-                 changes_count, batch_id, dry_run, input_tokens, output_tokens, total_tokens,
-                 model_used, cost_usd)
-                VALUES (:aid, :ver, :orig, :improved, :changes, :batch, :dry,
-                        :in_tokens, :out_tokens, :total_tokens, :model, :cost)
+                 changes_count, batch_id, dry_run)
+                VALUES (:aid, :ver, :orig, :improved, :changes, :batch, :dry)
                 RETURNING id
             """), {
                 "aid": article_id,
@@ -304,11 +304,6 @@ def _save_improvement_log(
                 "changes": len(changes),
                 "batch": batch_id,
                 "dry": dry_run,
-                "in_tokens": input_tokens,
-                "out_tokens": output_tokens,
-                "total_tokens": input_tokens + output_tokens,
-                "model": model_used,
-                "cost": cost_usd,
             })
 
             log_id = result.scalar()
