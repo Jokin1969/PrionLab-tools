@@ -421,6 +421,62 @@ def api_glossary_test_single():
         return jsonify({"error": str(e)[:500]}), 500
 
 
+@prionvault_bp.route("/glossary/test-single", methods=["GET"])
+@admin_required
+def glossary_test_single_page():
+    """Page to test single article improvement."""
+    html = """
+    <h1>Prueba de Mejora Individual</h1>
+    <style>body{font-family:sans-serif;margin:20px}button{padding:10px 20px;font-size:16px;background:#0066cc;color:white;border:none;cursor:pointer;border-radius:4px}button:hover{background:#0052a3}#result{margin-top:20px;padding:15px;background:#f5f5f5;border-radius:4px;white-space:pre-wrap;font-family:monospace}#loading{display:none;color:#666;margin-top:10px}.ok{color:green;font-weight:bold}.error{color:red;font-weight:bold}</style>
+    <p>Haz clic para probar mejorar un artículo individual:</p>
+    <button onclick="testSingle()">Probar Mejora</button>
+    <div id="loading" style="display:none">⏳ Procesando... esto puede tomar 30 segundos o más</div>
+    <div id="result"></div>
+
+    <script>
+    async function testSingle() {
+        const btn = event.target;
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+
+        btn.disabled = true;
+        loading.style.display = 'block';
+        result.innerHTML = '';
+
+        try {
+            const res = await fetch('/prionvault/api/glossary/test-single', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'}
+            });
+
+            const data = await res.json();
+
+            if (res.ok && data.ok) {
+                result.innerHTML = `<span class="ok">✓ Éxito</span>
+Artículo: ${data.article_id}
+Tiempo: ${data.elapsed_seconds.toFixed(2)}s
+Original: ${data.original_length} chars
+Mejorado: ${data.improved_length} chars
+Success: ${data.success}
+Error: ${data.error || 'ninguno'}`;
+            } else {
+                result.innerHTML = `<span class="error">✗ Error</span>
+${JSON.stringify(data, null, 2)}`;
+            }
+        } catch (e) {
+            result.innerHTML = `<span class="error">✗ Error de conexión</span>
+${e.message}`;
+        } finally {
+            btn.disabled = false;
+            loading.style.display = 'none';
+        }
+    }
+    </script>
+    """
+    return Response(html, mimetype='text/html')
+
+
 @prionvault_bp.route("/glossary/diagnose", methods=["GET"])
 @admin_required
 def glossary_diagnose():
