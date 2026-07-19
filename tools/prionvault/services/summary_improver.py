@@ -170,7 +170,12 @@ def improve_summary(
 
     try:
         from anthropic import Anthropic
-        client = Anthropic()
+        import httpx
+
+        # Create client with timeout (60 seconds max for the entire request)
+        client = Anthropic(
+            timeout=httpx.Timeout(60.0)
+        )
 
         system_prompt = (
             "You are a scientific terminology expert. Your task is to improve Spanish-language "
@@ -195,6 +200,7 @@ def improve_summary(
             max_tokens=1500,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
+            timeout=60.0,
         )
 
         improved = response.content[0].text.strip() if response.content else ""
