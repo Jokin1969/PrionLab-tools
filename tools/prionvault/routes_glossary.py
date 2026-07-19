@@ -351,6 +351,57 @@ def api_glossary_test_claude():
         return jsonify({"error": str(e)}), 500
 
 
+@prionvault_bp.route("/glossary/diagnose", methods=["GET"])
+@admin_required
+def glossary_diagnose():
+    """Diagnostic page for glossary processing."""
+    import os
+    from anthropic import Anthropic
+
+    html = "<h1>Diagnóstico del Glosario</h1>"
+    html += "<style>body{font-family:sans-serif;margin:20px}table{border-collapse:collapse;width:100%}td{border:1px solid #ccc;padding:10px}tr:nth-child(odd){background:#f9f9f9}.ok{color:green}.error{color:red}</style>"
+
+    # Check API key
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    status = "✓" if api_key else "✗"
+    html += f"<p><span class=\"{'ok' if api_key else 'error'}\">{status}</span> API Key configurada: {bool(api_key)}</p>"
+
+    # Test Claude
+    try:
+        client = Anthropic(api_key=api_key) if api_key else None
+        if client:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=50,
+                messages=[{"role": "user", "content": "Say OK"}],
+            )
+            html += f"<p><span class=\"ok\">✓</span> Claude API funciona: {response.content[0].text if response.content else 'sin respuesta'}</p>"
+        else:
+            html += f"<p><span class=\"error\">✗</span> No se puede probar Claude sin API key</p>"
+    except Exception as e:
+        html += f"<p><span class=\"error\">✗</span> Error al conectar Claude: {str(e)}</p>"
+
+    # Check database
+    try:
+        with db.engine.connect() as conn:
+            count = conn.execute(sql_text("SELECT COUNT(*) FROM articles WHERE summary_ai IS NOT NULL")).scalar()
+            html += f"<p><span class=\"ok\">✓</span> Base de datos OK: {count} artículos</p>"
+    except Exception as e:
+        html += f"<p><span class=\"error\">✗</span> Error de BD: {str(e)}</p>"
+
+    # Batch status
+    html += "<h2>Estado del Batch</h2>"
+    html += f"<table>"
+    html += f"<tr><td>Estado</td><td>{_batch_state.get('status', 'N/A')}</td></tr>"
+    html += f"<tr><td>Procesados</td><td>{_batch_state.get('processed', 0)}</td></tr>"
+    html += f"<tr><td>En cola</td><td>{_batch_state.get('queued', 0)}</td></tr>"
+    if _batch_state.get('error'):
+        html += f"<tr><td class=\"error\">Error</td><td class=\"error\">{_batch_state.get('error')}</td></tr>"
+    html += "</table>"
+
+    return Response(html, mimetype='text/html')
+
+
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
 @admin_required
 def api_glossary_improve_batch():
