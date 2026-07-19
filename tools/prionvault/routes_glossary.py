@@ -240,21 +240,44 @@ def api_glossary_version():
 @prionvault_bp.route("/api/glossary/import", methods=["POST"])
 @admin_required
 def api_glossary_import():
-    """Import glossary terms from JSON/CSV."""
+    """Import glossary terms from JSON or TSV.
+
+    Accepts either:
+    - JSON: {"terms": [{...}, ...]}
+    - TSV: {"tsv_content": "English\\tCastellano...\\n..."}
+    """
     from .services import glossary_manager
 
     data = request.get_json(force=True, silent=True) or {}
+
+    # Try JSON format first
     terms = data.get("terms", [])
+    if terms and isinstance(terms, list):
+        try:
+            result = glossary_manager.import_glossary(terms)
+            return jsonify(result.__dict__ if hasattr(result, '__dict__') else result)
+        except Exception as e:
+            logger.exception("Glossary import failed")
+            return jsonify({"error": str(e)[:300]}), 500
 
-    if not isinstance(terms, list) or not terms:
-        return jsonify({"error": "terms must be a non-empty list"}), 400
+    # Try TSV format
+    tsv_content = data.get("tsv_content", "")
+    if tsv_content:
+        try:
+            # Validate first
+            is_valid, errors, preview_rows = glossary_manager.validate_tsv_format(tsv_content)
+            if not is_valid:
+                return jsonify({"error": "TSV validation failed", "details": errors}), 400
 
-    try:
-        result = glossary_manager.import_glossary(terms)
-        return jsonify(result)
-    except Exception as e:
-        logger.exception("Glossary import failed")
-        return jsonify({"error": str(e)[:300]}), 500
+            # Parse and import
+            terms = glossary_manager.parse_tsv_to_terms(tsv_content)
+            result = glossary_manager.import_glossary(terms)
+            return jsonify(result.__dict__ if hasattr(result, '__dict__') else result)
+        except Exception as e:
+            logger.exception("TSV import failed")
+            return jsonify({"error": str(e)[:300]}), 500
+
+    return jsonify({"error": "Either 'terms' (JSON) or 'tsv_content' (TSV) is required"}), 400
 
 
 # ── Excel export ───────────────────────────────────────────────────────────
