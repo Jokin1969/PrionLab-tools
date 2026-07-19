@@ -14476,7 +14476,7 @@
       singleTermStatus.textContent = '';
 
       try {
-        const result = await api('/glossary/term/add', {
+        const result = await api('/admin/glossary/term/add', {
           term_en: termEn,
           term_es_recommended: termEs,
           term_es_avoid: termAvoid,
