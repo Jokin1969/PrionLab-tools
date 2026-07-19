@@ -622,6 +622,31 @@ def get_improvement_log(
     """Get detailed improvement history, optionally filtered by batch."""
     eng = _get_engine()
 
+    # Check if table exists using information_schema
+    table_exists = False
+    try:
+        with eng.connect() as check_conn:
+            result = check_conn.execute(sql_text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'summary_improvement_log'
+                )
+            """)).scalar()
+            table_exists = bool(result)
+    except Exception as e:
+        logger.warning(f"Failed to check table existence: {e}")
+        table_exists = False
+
+    # If table doesn't exist, return empty log
+    if not table_exists:
+        return {
+            "improvements": [],
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "has_more": False,
+        }
+
     with eng.connect() as conn:
         where = ""
         params = {"lim": limit, "off": offset}
