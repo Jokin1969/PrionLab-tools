@@ -14057,8 +14057,8 @@
 
           if (items.length === 0) {
             noUpdateCount++;
-            // After 5 minutes (100 cycles * 3s) with no items, check if still processing
-            if (noUpdateCount > 100) {
+            // After 30 minutes (600 cycles * 3s) with no items, stop tracking
+            if (noUpdateCount > 600) {
               stopBatchTracking();
               document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado (o detenido)';
             }
