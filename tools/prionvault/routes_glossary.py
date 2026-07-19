@@ -284,17 +284,28 @@ def api_glossary_improve_next():
         if not glossary_context:
             return jsonify({"error": "No glossary terms available"}), 400
 
+        # Reset batch state
+        _batch_state["status"] = "processing"
+        _batch_state["error"] = None
+        _batch_state["queued"] = len(article_ids)
+        _batch_state["processed"] = 0
+
         # Run batch in background
         def _run():
             try:
-                summary_improver.batch_improve_summaries(
+                result = summary_improver.batch_improve_summaries(
                     article_ids=article_ids,
                     glossary_context=glossary_context,
                     glossary_version=glossary_version,
                     dry_run=dry_run,
                 )
+                _batch_state["status"] = "completed"
+                _batch_state["processed"] = result.get("processed", 0)
+                logger.info(f"Batch completed: {result}")
             except Exception as exc:
                 logger.exception("Batch improvement failed: %s", exc)
+                _batch_state["status"] = "error"
+                _batch_state["error"] = str(exc)[:200]
 
         threading.Thread(target=_run, name="pv-glossary-batch", daemon=True).start()
 
