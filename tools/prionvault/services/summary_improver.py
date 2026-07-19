@@ -379,15 +379,22 @@ def batch_improve_summaries(
                 ), {"aid": aid}).first()
 
             if not row or not row[0]:
+                logger.warning(f"[{idx+1}/{len(article_ids)}] No summary found for {aid}")
                 results["errors"].append(f"{aid}: No summary found")
                 results["failed"] += 1
+                results["processed"] += 1
+                if progress_callback:
+                    progress_callback(results["processed"])
                 continue
 
             original_summary = row[0]
             results["summary_lengths_before"].append(len(original_summary))
+            logger.info(f"[{idx+1}/{len(article_ids)}] Summary length: {len(original_summary)} chars")
 
             # Improve
+            logger.info(f"[{idx+1}/{len(article_ids)}] Calling improve_summary()...")
             improvement = improve_summary(aid, original_summary, glossary_context)
+            logger.info(f"[{idx+1}/{len(article_ids)}] Result: success={improvement.success}, error={improvement.error}")
 
             if improvement.success:
                 improved_summary = improvement.improved_summary
@@ -403,7 +410,7 @@ def batch_improve_summaries(
                 # Save improved version (if not dry_run)
                 if not dry_run:
                     try:
-                        logger.info(f"💾 Saving improvement for {aid}...")
+                        logger.info(f"[{idx+1}/{len(article_ids)}] 💾 Saving improvement for {aid}...")
                         with eng.begin() as conn:
                             conn.execute(sql_text(
                                 """UPDATE articles
@@ -421,30 +428,35 @@ def batch_improve_summaries(
                             model_used=improvement.model_used,
                             dry_run=False
                         )
-                        logger.info(f"✅ Successfully saved improvement for {aid}")
+                        logger.info(f"[{idx+1}/{len(article_ids)}] ✅ Successfully saved improvement for {aid}")
                     except Exception as save_err:
-                        logger.error(f"❌ Failed to save improvement for {aid}: {save_err}")
+                        logger.error(f"[{idx+1}/{len(article_ids)}] ❌ Failed to save improvement for {aid}: {save_err}")
                         raise
 
                 logger.info(
-                    f"✨ Improved {aid}: {improvement.original_length} → "
+                    f"[{idx+1}/{len(article_ids)}] ✨ Improved {aid}: {improvement.original_length} → "
                     f"{improvement.improved_length} chars, {change_count} changes "
                     f"({improvement.tokens_used} tokens)"
                 )
             else:
                 results["failed"] += 1
                 results["errors"].append(f"{aid}: {improvement.error}")
-                logger.warning(f"Failed to improve {aid}: {improvement.error}")
+                logger.warning(f"[{idx+1}/{len(article_ids)}] Failed to improve {aid}: {improvement.error}")
 
             results["processed"] += 1
+            if progress_callback:
+                progress_callback(results["processed"])
 
             # Polite rate limiting
             time.sleep(0.5)
 
         except Exception as e:
-            logger.exception(f"batch_improve_summaries: error for {aid}")
+            logger.exception(f"[{idx+1}/{len(article_ids)}] batch_improve_summaries: error for {aid}")
             results["failed"] += 1
             results["errors"].append(f"{aid}: {str(e)[:200]}")
+            results["processed"] += 1
+            if progress_callback:
+                progress_callback(results["processed"])
 
     # Estimate cost based on successful improvements
     # Average: ~€0.0005 per article (rough estimate)
