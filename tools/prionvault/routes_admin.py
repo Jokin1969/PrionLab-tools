@@ -1740,6 +1740,69 @@ def api_export_refs_docx():
 
 
 
+# ── Translation glossary ─────────────────────────────────────────────────────
+# Admin-maintained EN→ES translations the AI must respect in summaries
+# and article chat (e.g. "bank vole" → "topillo rojo").
+
+@prionvault_bp.route("/api/admin/glossary", methods=["GET"])
+@admin_required
+def api_old_glossary_list():
+    from .services import glossary
+    return jsonify({"entries": glossary.list_entries()})
+
+
+@prionvault_bp.route("/api/admin/glossary", methods=["POST"])
+@admin_required
+def api_glossary_add():
+    from .services import glossary
+    body = request.get_json(silent=True) or {}
+    try:
+        entry = glossary.add_entry(
+            source_term=body.get("source_term", ""),
+            target_term=body.get("target_term", ""),
+            note=body.get("note"),
+            created_by=_viewer_id(),
+        )
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("glossary add failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"ok": True, **entry})
+
+
+@prionvault_bp.route("/api/admin/glossary/<uuid:entry_id>", methods=["PATCH"])
+@admin_required
+def api_glossary_update(entry_id):
+    from .services import glossary
+    body = request.get_json(silent=True) or {}
+    try:
+        ok = glossary.update_entry(
+            str(entry_id),
+            source_term=body.get("source_term", ""),
+            target_term=body.get("target_term", ""),
+            note=body.get("note"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("glossary update failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/admin/glossary/<uuid:entry_id>", methods=["DELETE"])
+@admin_required
+def api_glossary_delete(entry_id):
+    from .services import glossary
+    ok = glossary.delete_entry(str(entry_id))
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
 # ── SCImago (SJR) journal quartile rankings ──────────────────────────────────
 # Admin imports the yearly SCImago CSV; the Gobierno Vasco export uses it to
 # auto-fill the quartile (best category in parentheses).
@@ -1986,7 +2049,7 @@ def api_cart_clear():
 
 @prionvault_bp.route("/api/admin/glossary/import", methods=["POST"])
 @admin_required
-def api_glossary_import():
+def api_admin_glossary_import():
     """Import or update glossary terms from CSV/TSV data.
 
     Body: {
@@ -2024,6 +2087,22 @@ def api_glossary_import():
         "errors": result.errors[:20],  # Limit errors shown
     }), 200 if not result.errors else 207
 
+
+@prionvault_bp.route("/api/admin/glossary/terms", methods=["GET"])
+@admin_required
+def api_glossary_list():
+    """List all glossary terms, optionally filtered by category."""
+    from .services import glossary_manager
+
+    category = request.args.get("category")
+    terms = glossary_manager.get_all_terms(category=category)
+    categories = glossary_manager.get_categories()
+
+    return jsonify({
+        "terms": terms,
+        "categories": categories,
+        "total": len(terms),
+    })
 
 
 @prionvault_bp.route("/api/admin/glossary/diff", methods=["GET"])

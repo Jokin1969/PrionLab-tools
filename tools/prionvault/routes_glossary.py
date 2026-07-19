@@ -26,41 +26,6 @@ def api_glossary_stats():
     return jsonify(stats)
 
 
-@prionvault_bp.route("/api/glossary/stats/detailed", methods=["GET"])
-@admin_required
-def api_glossary_stats_detailed():
-    """Get detailed statistics: pending, with changes, without changes."""
-    try:
-        with db.engine.connect() as conn:
-            # Pending (no glossary version applied yet)
-            pending = conn.execute(sql_text("""
-                SELECT COUNT(*) FROM articles
-                WHERE summary_ai IS NOT NULL AND ai_summary_glossary_version IS NULL
-            """)).scalar() or 0
-
-            # Reviewed with changes
-            with_changes = conn.execute(sql_text("""
-                SELECT COUNT(*) FROM summary_improvement_log
-                WHERE dry_run = FALSE AND changes_count > 0
-            """)).scalar() or 0
-
-            # Reviewed without changes
-            without_changes = conn.execute(sql_text("""
-                SELECT COUNT(*) FROM summary_improvement_log
-                WHERE dry_run = FALSE AND changes_count = 0
-            """)).scalar() or 0
-
-        return jsonify({
-            "pending": int(pending),
-            "reviewed_with_changes": int(with_changes),
-            "reviewed_without_changes": int(without_changes),
-            "total_reviewed": int(with_changes + without_changes),
-        })
-    except Exception as e:
-        logger.exception("Failed to fetch detailed stats")
-        return jsonify({"error": str(e)[:300]}), 500
-
-
 # ── Unreviewed summaries (glossary_version IS NULL) ──────────────────────
 @prionvault_bp.route("/api/glossary/unreviewed", methods=["GET"])
 @admin_required
@@ -272,33 +237,6 @@ def api_glossary_version():
         return jsonify({"error": str(e)[:300]}), 500
 
 
-@prionvault_bp.route("/api/glossary/validate-tsv", methods=["POST"])
-@admin_required
-def api_glossary_validate_tsv():
-    """Validate TSV format and preview data before import."""
-    from .services import glossary_manager
-
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-        tsv_content = data.get("tsv_content", "")
-
-        if not tsv_content:
-            return jsonify({"error": "tsv_content is required"}), 400
-
-        is_valid, errors, preview_rows = glossary_manager.validate_tsv_format(tsv_content)
-
-        return jsonify({
-            "valid": is_valid,
-            "errors": errors,
-            "preview_rows": preview_rows,
-            "total_rows": len(preview_rows) + (1 if len(preview_rows) > 0 else 0),
-            "message": f"Preview shows {len(preview_rows)} rows" if is_valid else None,
-        })
-    except Exception as e:
-        logger.exception("TSV validation failed")
-        return jsonify({"error": str(e)[:300]}), 500
-
-
 @prionvault_bp.route("/api/glossary/import", methods=["POST"])
 @admin_required
 def api_glossary_import():
@@ -317,7 +255,7 @@ def api_glossary_import():
     if terms and isinstance(terms, list):
         try:
             result = glossary_manager.import_glossary(terms)
-            return jsonify(result.__dict__)
+            return jsonify(result.__dict__ if hasattr(result, '__dict__') else result)
         except Exception as e:
             logger.exception("Glossary import failed")
             return jsonify({"error": str(e)[:300]}), 500
@@ -334,7 +272,7 @@ def api_glossary_import():
             # Parse and import
             terms = glossary_manager.parse_tsv_to_terms(tsv_content)
             result = glossary_manager.import_glossary(terms)
-            return jsonify(result.__dict__)
+            return jsonify(result.__dict__ if hasattr(result, '__dict__') else result)
         except Exception as e:
             logger.exception("TSV import failed")
             return jsonify({"error": str(e)[:300]}), 500
