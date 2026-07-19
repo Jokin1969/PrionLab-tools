@@ -289,6 +289,7 @@ def api_glossary_improve_next():
         _batch_state["error"] = None
         _batch_state["queued"] = len(article_ids)
         _batch_state["processed"] = 0
+        _batch_state["batch_id"] = None
 
         # Run batch in background
         def _run():
@@ -305,6 +306,7 @@ def api_glossary_improve_next():
                 logger.info(f"✅ batch_improve_summaries returned successfully")
                 _batch_state["status"] = "completed"
                 _batch_state["processed"] = result.get("processed", 0)
+                _batch_state["batch_id"] = result.get("batch_id")
                 logger.info(f"🏁 Batch completed: {result}")
             except Exception as exc:
                 logger.exception("❌ Batch improvement failed: %s", exc)
@@ -336,6 +338,7 @@ def api_glossary_batch_status():
         "error": _batch_state.get("error"),
         "queued": _batch_state.get("queued", 0),
         "processed": _batch_state.get("processed", 0),
+        "batch_id": _batch_state.get("batch_id"),
     })
 
 

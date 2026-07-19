@@ -14001,6 +14001,7 @@
 
     let batchInProgress = false;
     let batchRefreshInterval = null;
+    let lastBatchId = null;
 
     async function improveUnreviewed(count) {
       if (count === 0 || count === '0') {
@@ -14046,7 +14047,7 @@
           const status = await api('/glossary/batch-status');
           console.log(`[Cycle ${cycleCount}] Batch status:`, status);
 
-          const { processed, queued, status: batchStatus, error } = status;
+          const { processed, queued, status: batchStatus, error, batch_id } = status;
 
           // Update UI with current progress
           if (queued > 0 && batchStatus === 'processing') {
@@ -14058,7 +14059,18 @@
           if (batchStatus === 'completed') {
             console.log('Batch completed! Final state:', status);
             stopBatchTracking();
-            document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado';
+            lastBatchId = batch_id;
+
+            // Show completion message with action buttons
+            const statusEl = document.getElementById('pv-glossary-improve-status');
+            statusEl.innerHTML = `✓ Lote completado
+              <button id="btn-show-changes" class="btn btn-sm btn-info ms-2">📊 Ver cambios</button>
+              <button id="btn-download-changes" class="btn btn-sm btn-success ms-2">📥 Descargar CSV</button>`;
+
+            // Attach event listeners
+            document.getElementById('btn-show-changes').addEventListener('click', () => showBatchChanges(batch_id));
+            document.getElementById('btn-download-changes').addEventListener('click', () => downloadBatchChangesCSV(batch_id));
+
             // Reload history to show results
             await loadHistoryTab();
             return;
@@ -14100,6 +14112,117 @@
         batchRefreshInterval = null;
       }
       batchInProgress = false;
+    }
+
+    async function showBatchChanges(batchId) {
+      try {
+        const result = await api(`/glossary/batch-changes/${batchId}`);
+        const { total_changes, unique_changes, changes } = result;
+
+        // Build HTML table of changes
+        let html = `
+          <div class="alert alert-info">
+            <strong>${total_changes} cambios totales</strong> en ${unique_changes} términos únicos
+          </div>
+          <div style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+              <thead class="sticky-top bg-light">
+                <tr>
+                  <th>Cambio</th>
+                  <th>Repeticiones</th>
+                  <th>Término EN</th>
+                  <th>Recomendado ES</th>
+                  <th>Confianza</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+
+        for (const change of changes) {
+          const confidence = change.avg_confidence ? (change.avg_confidence * 100).toFixed(0) : '-';
+          html += `
+            <tr>
+              <td>
+                <small>
+                  <code>${escapeHtml(change.original_text)}</code><br>
+                  <strong>→</strong><br>
+                  <code>${escapeHtml(change.corrected_text)}</code>
+                </small>
+              </td>
+              <td><strong>${change.change_count}</strong></td>
+              <td>${change.term_en ? escapeHtml(change.term_en) : '-'}</td>
+              <td>${change.recommended_es ? escapeHtml(change.recommended_es) : '-'}</td>
+              <td>${confidence}%</td>
+            </tr>
+          `;
+        }
+
+        html += `
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        // Show in modal
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.innerHTML = `
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Cambios del lote</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                ${html}
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-success" onclick="downloadBatchChangesCSV('${batchId}')">📥 Descargar CSV</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        modal.addEventListener('hidden.bs.modal', () => modal.remove());
+      } catch (e) {
+        alert('Error al cargar cambios: ' + e.message);
+        console.error(e);
+      }
+    }
+
+    async function downloadBatchChangesCSV(batchId) {
+      try {
+        const result = await api(`/glossary/batch-changes/${batchId}`);
+        const { changes } = result;
+
+        // Build CSV
+        let csv = 'original_text,corrected_text,repeticiones,term_en,recommended_es,confidence\n';
+        for (const change of changes) {
+          const confidence = change.avg_confidence ? (change.avg_confidence * 100).toFixed(0) : '';
+          csv += `"${change.original_text.replace(/"/g, '""')}","${change.corrected_text.replace(/"/g, '""')}",${change.change_count},"${change.term_en || ''}","${change.recommended_es || ''}",${confidence}\n`;
+        }
+
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `batch-${batchId.slice(0, 8)}-cambios.csv`;
+        link.click();
+      } catch (e) {
+        alert('Error al descargar: ' + e.message);
+        console.error(e);
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
     async function improveOutdated(count) {
