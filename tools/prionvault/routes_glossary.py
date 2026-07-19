@@ -5,7 +5,6 @@ Routes registered as side-effect import at bottom of routes.py.
 """
 import logging
 import threading
-from datetime import datetime
 from flask import jsonify, request, Response, current_app
 from sqlalchemy import text as sql_text
 
@@ -219,93 +218,6 @@ def api_glossary_outdated():
 
 
 # ── Improvement log ────────────────────────────────────────────────────────
-@prionvault_bp.route("/api/glossary/log/details", methods=["GET"])
-@admin_required
-def api_glossary_log_details():
-    """Get detailed changes from recent summary improvements.
-
-    Shows individual corrections made to each summary, useful for understanding
-    what's being changed and how to improve the glossary.
-
-    Query parameters:
-    - hours: look back N hours (default 24)
-    - limit: max results (default 100)
-    - term: filter by English term (optional)
-    """
-    hours = request.args.get("hours", 24, type=int)
-    limit = request.args.get("limit", 100, type=int)
-    term_filter = request.args.get("term", "").strip()
-
-    try:
-        with db.engine.connect() as conn:
-            # Build query for recent corrections with article context
-            query = """
-                SELECT
-                    scd.id,
-                    scd.original_text,
-                    scd.corrected_text,
-                    scd.term_en,
-                    scd.recommended_es,
-                    scd.correction_type,
-                    scd.confidence_score,
-                    sil.article_id,
-                    sil.improved_at,
-                    a.title,
-                    sil.glossary_version_used
-                FROM summary_correction_detail scd
-                JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
-                JOIN articles a ON sil.article_id = a.id
-                WHERE sil.improved_at > NOW() - INTERVAL '{} hours'
-                  AND sil.dry_run = FALSE
-            """
-
-            params = {"hours": hours}
-
-            if term_filter:
-                query += f" AND LOWER(scd.term_en) LIKE LOWER(:term)"
-                params["term"] = f"%{term_filter}%"
-
-            query += " ORDER BY sil.improved_at DESC LIMIT :lim"
-            params["lim"] = limit
-
-            rows = conn.execute(sql_text(query.format(hours)), params).mappings().all()
-
-            # Aggregate stats
-            all_terms = {}
-            for row in rows:
-                key = row['term_en'] or 'unknown'
-                if key not in all_terms:
-                    all_terms[key] = {
-                        "term_en": row['term_en'],
-                        "recommended_es": row['recommended_es'],
-                        "count": 0,
-                        "examples": []
-                    }
-                all_terms[key]["count"] += 1
-                if len(all_terms[key]["examples"]) < 3:
-                    all_terms[key]["examples"].append({
-                        "original": row['original_text'][:100],
-                        "corrected": row['corrected_text'][:100],
-                        "article": row['title'][:50]
-                    })
-
-            return jsonify({
-                "changes_total": len(rows),
-                "time_window_hours": hours,
-                "terms_found": len(all_terms),
-                "top_terms": sorted(
-                    all_terms.values(),
-                    key=lambda x: x["count"],
-                    reverse=True
-                )[:20],
-                "recent_changes": [dict(row) for row in rows[:50]]
-            })
-
-    except Exception as e:
-        logger.exception(f"Failed to fetch correction details: {e}")
-        return jsonify({"error": str(e)[:300]}), 500
-
-
 @prionvault_bp.route("/api/glossary/log", methods=["GET"])
 @admin_required
 def api_glossary_log():
@@ -510,75 +422,6 @@ def api_glossary_categories():
         return jsonify({"error": str(e)[:300]}), 500
 
 
-@prionvault_bp.route("/api/glossary/insights", methods=["GET"])
-@admin_required
-def api_glossary_insights():
-    """Get insights to improve the glossary based on recent corrections.
-
-    Analyzes what terms are being corrected most frequently to identify:
-    - Terms that should be added to the glossary
-    - Terms with weak avoid variants (need improvement)
-    - High-value terms to focus on
-
-    Query parameters:
-    - hours: analyze last N hours (default 48)
-    - min_occurrences: minimum corrections to consider (default 2)
-    """
-    hours = request.args.get("hours", 48, type=int)
-    min_occurrences = request.args.get("min_occurrences", 2, type=int)
-
-    try:
-        with db.engine.connect() as conn:
-            # Get most corrected terms
-            query = sql_text(f"""
-                SELECT
-                    scd.term_en,
-                    scd.recommended_es,
-                    COUNT(*) as correction_count,
-                    COUNT(DISTINCT sil.article_id) as articles_affected,
-                    STRING_AGG(DISTINCT scd.original_text, ' | ') as variants_found,
-                    AVG(scd.confidence_score)::DECIMAL(3,2) as avg_confidence
-                FROM summary_correction_detail scd
-                JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
-                WHERE sil.improved_at > NOW() - INTERVAL '{hours} hours'
-                  AND sil.dry_run = FALSE
-                  AND scd.term_en IS NOT NULL
-                GROUP BY scd.term_en, scd.recommended_es
-                HAVING COUNT(*) >= {min_occurrences}
-                ORDER BY correction_count DESC
-                LIMIT 50
-            """)
-
-            rows = conn.execute(query).mappings().all()
-
-            insights = []
-            for row in rows:
-                insights.append({
-                    "term_en": row['term_en'],
-                    "term_es_recommended": row['recommended_es'],
-                    "times_corrected": row['correction_count'],
-                    "articles_affected": row['articles_affected'],
-                    "variants_found": (row['variants_found'] or "").split(" | ")[:5],
-                    "avg_confidence": float(row['avg_confidence'] or 0),
-                    "priority": "HIGH" if row['correction_count'] >= 10 else ("MEDIUM" if row['correction_count'] >= 5 else "LOW")
-                })
-
-            return jsonify({
-                "analysis_period_hours": hours,
-                "terms_analyzed": len(insights),
-                "insights": insights,
-                "recommendations": {
-                    "high_priority": len([i for i in insights if i["priority"] == "HIGH"]),
-                    "medium_priority": len([i for i in insights if i["priority"] == "MEDIUM"]),
-                    "low_priority": len([i for i in insights if i["priority"] == "LOW"])
-                }
-            })
-
-    except Exception as e:
-        logger.exception(f"Failed to generate glossary insights: {e}")
-        return jsonify({"error": str(e)[:300]}), 500
-
-
 @prionvault_bp.route("/api/glossary/version", methods=["GET"])
 @login_required
 def api_glossary_version():
@@ -739,280 +582,125 @@ def api_glossary_export():
         return jsonify({"error": str(e)[:300]}), 500
 
 
-# ── Admin: Test single improvement ──────────────────────────────────────────
-@prionvault_bp.route("/api/admin/test-improvement", methods=["GET", "POST"])
+# ── Cost tracking ──────────────────────────────────────────────────────────
+@prionvault_bp.route("/api/glossary/batch/cost/<batch_id>", methods=["GET"])
 @admin_required
-def api_admin_test_improvement():
-    """Test a single article improvement synchronously (not in background).
+def api_batch_cost(batch_id):
+    """Get estimated cost for a specific batch improvement.
 
-    This helps diagnose if the improvement logic works, without waiting for
-    the background thread.
-
-    Returns the improvement result immediately.
+    Returns:
+      {
+        "batch_id": "uuid",
+        "articles_processed": 100,
+        "estimated_cost_eur": 0.05,
+        "estimated_cost_usd": 0.055,
+        "note": "Estimation based on ~€0.0005 per article",
+        "timestamp": "2026-07-19T12:34:56"
+      }
     """
-    from .services import summary_improver, glossary_manager
-
     try:
-        # Get one unreviewed article
         with db.engine.connect() as conn:
-            article = conn.execute(sql_text("""
-                SELECT id::text, summary_ai FROM articles
-                WHERE summary_ai IS NOT NULL
-                  AND ai_summary_glossary_version IS NULL
-                  AND char_length(summary_ai) > 50
-                ORDER BY RANDOM()
-                LIMIT 1
-            """)).mappings().first()
+            result = conn.execute(sql_text("""
+                SELECT
+                  COUNT(DISTINCT article_id) as articles,
+                  MAX(improved_at) as timestamp
+                FROM summary_improvement_log
+                WHERE batch_id = :batch_id AND dry_run = FALSE
+            """), {"batch_id": batch_id}).first()
 
-        if not article:
+            if not result or result[0] == 0:
+                return jsonify({"error": "Batch not found"}), 404
+
+            articles, timestamp = result
+            # Estimate: ~€0.0005 per article
+            est_cost_eur = articles * 0.0005
+            est_cost_usd = est_cost_eur * 1.10
+
             return jsonify({
-                "error": "No unreviewed articles found",
-                "status": "No articles to test with"
-            }), 400
-
-        article_id = article['id']
-        summary = article['summary_ai']
-
-        # Get glossary
-        glossary_context = glossary_manager.get_glossary_context()
-        if not glossary_context:
-            return jsonify({"error": "No glossary available"}), 400
-
-        # Try to improve synchronously
-        logger.info(f"🧪 TESTING improvement for {article_id}...")
-        result = summary_improver.improve_summary(
-            article_id=article_id,
-            original_summary=summary,
-            glossary_context=glossary_context,
-            use_fuzzy_matching=True
-        )
-
-        return jsonify({
-            "success": result.success,
-            "article_id": article_id,
-            "original_length": result.original_length,
-            "improved_length": result.improved_length,
-            "error": result.error,
-            "message": "✅ Improvement successful" if result.success else "❌ Improvement failed"
-        })
+                "batch_id": batch_id,
+                "articles_processed": int(articles),
+                "estimated_cost_eur": round(est_cost_eur, 4),
+                "estimated_cost_usd": round(est_cost_usd, 4),
+                "cost_summary": f"~€{round(est_cost_eur, 2)} / ~${round(est_cost_usd, 2)}",
+                "note": "Estimation based on ~€0.0005 per article",
+                "timestamp": str(timestamp) if timestamp else None,
+            })
 
     except Exception as e:
-        logger.exception(f"Test improvement failed: {e}")
-        return jsonify({
-            "error": str(e),
-            "status": "❌ Error during test"
-        }), 500
+        logger.exception(f"Failed to fetch batch cost for {batch_id}")
+        return jsonify({"error": str(e)[:300]}), 500
 
 
-# ── Admin: Diagnostics ──────────────────────────────────────────────────────
-@prionvault_bp.route("/api/admin/diagnostics", methods=["GET"])
+@prionvault_bp.route("/api/glossary/costs/summary", methods=["GET"])
 @admin_required
-def api_admin_diagnostics():
-    """Diagnostic endpoint to check batch improvement system status.
+def api_costs_summary():
+    """Get estimated cost summary for glossary improvements.
 
-    Shows:
-    - Model version being used
-    - Database table existence
-    - Recent improvement logs
-    - Unreviewed article count
+    Query params:
+      - days: Number of days to look back (default: 30)
+      - limit: Max batches to return (default: 10)
+
+    Returns estimated costs based on articles processed.
     """
-    import os
-    from tools.prionvault.services import summary_improver
-
-    diagnostics = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "model_in_use": "claude-haiku-4-5-20251001",  # Current model
-    }
+    days = request.args.get("days", 30, type=int)
+    limit = request.args.get("limit", 10, type=int)
 
     try:
-        # Check database tables
         with db.engine.connect() as conn:
-            tables_check = {}
-            for table in ['summary_improvement_log', 'summary_correction_detail', 'glossary_improvement_stats']:
-                result = conn.execute(sql_text(f"""
-                    SELECT EXISTS (
-                        SELECT 1 FROM information_schema.tables
-                        WHERE table_name = '{table}'
-                    )
-                """)).scalar()
-                tables_check[table] = bool(result)
+            # Get summary stats
+            summary = conn.execute(sql_text("""
+                SELECT
+                  COUNT(DISTINCT batch_id) as batch_count,
+                  COUNT(DISTINCT article_id) as article_count
+                FROM summary_improvement_log
+                WHERE dry_run = FALSE
+                  AND improved_at >= NOW() - INTERVAL '1 day' * :days
+            """), {"days": days}).first()
 
-            diagnostics["tables"] = tables_check
+            batch_count, article_count = summary
 
-            # Get unreviewed count
-            unreviewed = conn.execute(sql_text("""
-                SELECT COUNT(*) FROM articles
-                WHERE summary_ai IS NOT NULL
-                  AND ai_summary_glossary_version IS NULL
-                  AND char_length(summary_ai) > 50
-            """)).scalar() or 0
-            diagnostics["unreviewed_count"] = unreviewed
+            # Estimate: ~€0.0005 per article
+            est_total_eur = article_count * 0.0005
+            est_total_usd = est_total_eur * 1.10
+            avg_cost_per_article = 0.0005
 
-            # Check recent logs
-            if tables_check['summary_improvement_log']:
-                recent = conn.execute(sql_text("""
-                    SELECT COUNT(*) as total,
-                           MAX(improved_at) as latest
-                    FROM summary_improvement_log
-                    WHERE improved_at > NOW() - INTERVAL '1 hour'
-                """)).mappings().first()
-                if recent:
-                    diagnostics["recent_improvements_1h"] = {
-                        "count": recent['total'] or 0,
-                        "latest": str(recent['latest']) if recent['latest'] else None
-                    }
+            # Get recent batches
+            batches = conn.execute(sql_text("""
+                SELECT
+                  batch_id,
+                  COUNT(DISTINCT article_id) as articles,
+                  MAX(improved_at) as timestamp
+                FROM summary_improvement_log
+                WHERE dry_run = FALSE
+                  AND improved_at >= NOW() - INTERVAL '1 day' * :days
+                GROUP BY batch_id
+                ORDER BY timestamp DESC
+                LIMIT :lim
+            """), {"days": days, "lim": limit}).fetchall()
 
-        diagnostics["status"] = "✅ All systems operational"
+            recent_batches = []
+            for batch_id, articles, ts in batches:
+                batch_est_eur = articles * 0.0005
+                batch_est_usd = batch_est_eur * 1.10
+                recent_batches.append({
+                    "batch_id": batch_id,
+                    "articles": int(articles),
+                    "estimated_cost_eur": round(batch_est_eur, 4),
+                    "estimated_cost_usd": round(batch_est_usd, 4),
+                    "timestamp": str(ts) if ts else None,
+                })
 
-    except Exception as e:
-        diagnostics["error"] = str(e)
-        diagnostics["status"] = f"❌ Error: {str(e)[:100]}"
-
-    return jsonify(diagnostics)
-
-
-# ── Admin: Run database migrations ──────────────────────────────────────────
-@prionvault_bp.route("/api/admin/run-migrations", methods=["GET", "POST"])
-@admin_required
-def api_admin_run_migrations():
-    """Run pending database migrations to create missing tables.
-
-    This endpoint is useful when tables haven't been created yet (e.g.,
-    summary_improvement_log, summary_correction_detail, glossary_improvement_stats).
-
-    Admin-only endpoint.
-    """
-    try:
-        logger.info("🔧 Starting database migrations...")
-        db.run_migrations()
-        logger.info("✅ Database migrations completed successfully")
-
-        return jsonify({
-            "ok": True,
-            "message": "Database migrations completed successfully. Tables created if they didn't exist.",
-        })
-    except Exception as e:
-        logger.exception(f"❌ Failed to run migrations: {e}")
-        return jsonify({
-            "error": f"Migration failed: {str(e)[:300]}",
-            "details": str(e)
-        }), 500
-
-
-@prionvault_bp.route("/api/admin/create-tables", methods=["GET", "POST"])
-@admin_required
-def api_admin_create_tables():
-    """Force creation of glossary tracking tables using raw SQL.
-
-    Creates missing tables directly:
-    - summary_improvement_log
-    - summary_correction_detail
-    - glossary_improvement_stats
-
-    Useful when migrations don't work or haven't run.
-    """
-    try:
-        logger.info("🔧 FORCE creating glossary tracking tables...")
-
-        with db.engine.begin() as conn:
-            # Create summary_improvement_log
-            conn.execute(sql_text("""
-                CREATE TABLE IF NOT EXISTS summary_improvement_log (
-                    id                      BIGSERIAL  PRIMARY KEY,
-                    article_id              UUID       NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-                    glossary_version_used   INTEGER    NOT NULL,
-                    improved_at             TIMESTAMPTZ DEFAULT NOW(),
-                    original_summary        TEXT       NOT NULL,
-                    improved_summary        TEXT       NOT NULL,
-                    changes_count           INTEGER    DEFAULT 0,
-                    batch_id                UUID,
-                    dry_run                 BOOLEAN    DEFAULT FALSE
-                )
-            """))
-            logger.info("✅ Created summary_improvement_log")
-
-            # Create indexes for summary_improvement_log
-            conn.execute(sql_text("""
-                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_article_id
-                ON summary_improvement_log (article_id)
-            """))
-            conn.execute(sql_text("""
-                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_glossary_version
-                ON summary_improvement_log (glossary_version_used)
-            """))
-            conn.execute(sql_text("""
-                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_improved_at
-                ON summary_improvement_log (improved_at)
-            """))
-            conn.execute(sql_text("""
-                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_batch_id
-                ON summary_improvement_log (batch_id)
-            """))
-
-            # Create summary_correction_detail
-            conn.execute(sql_text("""
-                CREATE TABLE IF NOT EXISTS summary_correction_detail (
-                    id                     BIGSERIAL   PRIMARY KEY,
-                    improvement_log_id     BIGINT      NOT NULL REFERENCES summary_improvement_log(id) ON DELETE CASCADE,
-                    original_text          TEXT        NOT NULL,
-                    corrected_text         TEXT        NOT NULL,
-                    term_en                VARCHAR(255),
-                    recommended_es         VARCHAR(255),
-                    correction_type        VARCHAR(50),
-                    confidence_score       DECIMAL(3,2),
-                    context_before         TEXT,
-                    context_after          TEXT
-                )
-            """))
-            logger.info("✅ Created summary_correction_detail")
-
-            conn.execute(sql_text("""
-                CREATE INDEX IF NOT EXISTS idx_summary_correction_detail_improvement_log_id
-                ON summary_correction_detail (improvement_log_id)
-            """))
-            conn.execute(sql_text("""
-                CREATE INDEX IF NOT EXISTS idx_summary_correction_detail_term_en
-                ON summary_correction_detail (term_en)
-            """))
-
-            # Create glossary_improvement_stats
-            conn.execute(sql_text("""
-                CREATE TABLE IF NOT EXISTS glossary_improvement_stats (
-                    id                      BIGSERIAL   PRIMARY KEY,
-                    calculated_at           TIMESTAMPTZ DEFAULT NOW(),
-                    total_articles_improved INTEGER     DEFAULT 0,
-                    total_changes           INTEGER     DEFAULT 0,
-                    articles_with_v1        INTEGER     DEFAULT 0,
-                    articles_with_v2        INTEGER     DEFAULT 0,
-                    articles_with_v3        INTEGER     DEFAULT 0,
-                    articles_with_v4        INTEGER     DEFAULT 0,
-                    articles_with_v5        INTEGER     DEFAULT 0,
-                    avg_changes_per_article DECIMAL(5,2) DEFAULT 0,
-                    most_common_correction  VARCHAR(255),
-                    last_improvement_at     TIMESTAMPTZ
-                )
-            """))
-            logger.info("✅ Created glossary_improvement_stats")
-
-            conn.execute(sql_text("""
-                CREATE UNIQUE INDEX IF NOT EXISTS glossary_stats_latest_idx
-                ON glossary_improvement_stats ((1))
-            """))
-
-        logger.info("✅ All glossary tracking tables created successfully")
-        return jsonify({
-            "ok": True,
-            "message": "All glossary tracking tables created successfully",
-            "tables_created": [
-                "summary_improvement_log",
-                "summary_correction_detail",
-                "glossary_improvement_stats"
-            ]
-        })
+            return jsonify({
+                "period_days": days,
+                "total_batches": int(batch_count),
+                "total_articles": int(article_count),
+                "estimated_total_eur": round(est_total_eur, 4),
+                "estimated_total_usd": round(est_total_usd, 4),
+                "avg_estimated_cost_per_article": round(avg_cost_per_article, 6),
+                "note": "Estimations based on ~€0.0005 per article",
+                "recent_batches": recent_batches,
+            })
 
     except Exception as e:
-        logger.exception(f"❌ Failed to create tables: {e}")
-        return jsonify({
-            "error": f"Failed to create tables: {str(e)[:300]}",
-            "details": str(e)
-        }), 500
+        logger.exception("Failed to fetch cost summary")
+        return jsonify({"error": str(e)[:300]}), 500

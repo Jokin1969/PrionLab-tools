@@ -125,6 +125,9 @@ class ImprovementResult:
     improved_summary: Optional[str] = None
     error: Optional[str] = None
     tokens_used: Optional[int] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    model_used: str = "claude-haiku-4-5-20251001"
     changes_detected: int = 0
 
 
@@ -204,8 +207,9 @@ def improve_summary(
                 error="Empty response from Claude",
             )
 
-        tokens_used = (response.usage.input_tokens + response.usage.output_tokens
-                      if hasattr(response, "usage") else None)
+        input_tokens = response.usage.input_tokens if hasattr(response, "usage") else 0
+        output_tokens = response.usage.output_tokens if hasattr(response, "usage") else 0
+        tokens_used = input_tokens + output_tokens
 
         return ImprovementResult(
             article_id=article_id,
@@ -214,6 +218,9 @@ def improve_summary(
             improved_length=len(improved),
             improved_summary=improved,
             tokens_used=tokens_used,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model_used="claude-haiku-4-5-20251001",
         )
 
     except Exception as e:
@@ -266,17 +273,28 @@ def _save_improvement_log(
     improved_summary: str,
     changes: list[dict],
     batch_id: str,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    model_used: str = "claude-haiku-4-5-20251001",
     dry_run: bool = False,
 ) -> bool:
     """Save improvement to log tables. Returns True if successful."""
     try:
+        from . import claude_pricing
+
+        # Calculate cost
+        cost_info = claude_pricing.calculate_cost(input_tokens, output_tokens, model_used)
+        cost_usd = cost_info["cost_usd"]
+
         with eng.begin() as conn:
             # Insert into summary_improvement_log
             result = conn.execute(sql_text("""
                 INSERT INTO summary_improvement_log
                 (article_id, glossary_version_used, original_summary, improved_summary,
-                 changes_count, batch_id, dry_run)
-                VALUES (:aid, :ver, :orig, :improved, :changes, :batch, :dry)
+                 changes_count, batch_id, dry_run, input_tokens, output_tokens, total_tokens,
+                 model_used, cost_usd)
+                VALUES (:aid, :ver, :orig, :improved, :changes, :batch, :dry,
+                        :in_tokens, :out_tokens, :total_tokens, :model, :cost)
                 RETURNING id
             """), {
                 "aid": article_id,
@@ -286,6 +304,11 @@ def _save_improvement_log(
                 "changes": len(changes),
                 "batch": batch_id,
                 "dry": dry_run,
+                "in_tokens": input_tokens,
+                "out_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+                "model": model_used,
+                "cost": cost_usd,
             })
 
             log_id = result.scalar()
@@ -389,10 +412,14 @@ def batch_improve_summaries(
                                    WHERE id = :aid"""
                             ), {"improved": improvement.improved_summary, "aid": aid})
 
-                        # Save to improvement log
+                        # Save to improvement log (without token tracking)
                         _save_improvement_log(
                             eng, aid, glossary_version, original_summary,
-                            improved_summary, changes, batch_id, dry_run=False
+                            improved_summary, changes, batch_id,
+                            input_tokens=0,
+                            output_tokens=0,
+                            model_used=improvement.model_used,
+                            dry_run=False
                         )
                         logger.info(f"✅ Successfully saved improvement for {aid}")
                     except Exception as save_err:
@@ -419,9 +446,18 @@ def batch_improve_summaries(
             results["failed"] += 1
             results["errors"].append(f"{aid}: {str(e)[:200]}")
 
+    # Estimate cost based on successful improvements
+    # Average: ~€0.0005 per article (rough estimate)
+    estimated_cost_eur = results['successful'] * 0.0005
+    estimated_cost_usd = estimated_cost_eur * 1.10
+
+    results["estimated_cost_eur"] = round(estimated_cost_eur, 4)
+    results["estimated_cost_usd"] = round(estimated_cost_usd, 4)
+
     logger.info(
         f"🏁 BATCH COMPLETED: {results['successful']} successful, "
         f"{results['failed']} failed, {results['total_changes']} total changes. "
+        f"Estimated cost: ~€{estimated_cost_eur:.4f} / ~${estimated_cost_usd:.4f}. "
         f"Batch ID: {batch_id}"
     )
     return results

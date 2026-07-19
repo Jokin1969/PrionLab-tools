@@ -1498,9 +1498,53 @@
 
       <!-- Import tab -->
       <div id="pv-glossary-import-tab" class="pv-glossary-tab-content" style="display:block;">
+
+        <!-- Add single term section -->
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-bottom:20px;">
+          <div style="font-weight:600;color:#15803d;margin-bottom:12px;font-size:13px;">➕ Agregar un término único</div>
+          <div style="display:grid;gap:10px;">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">English term *</label>
+              <input id="pv-glossary-single-term-en" type="text" placeholder="e.g. Bank vole"
+                     style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Castellano recomendado *</label>
+              <input id="pv-glossary-single-term-es" type="text" placeholder="e.g. Topillo rojo"
+                     style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Evitar (variantes)</label>
+              <input id="pv-glossary-single-term-avoid" type="text" placeholder="e.g. Vole de banco (opcional)"
+                     style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>
+                <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Categoría</label>
+                <input id="pv-glossary-single-term-category" type="text" placeholder="e.g. Biología"
+                       style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Notas</label>
+                <input id="pv-glossary-single-term-notes" type="text" placeholder="(opcional)"
+                       style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
+              </div>
+            </div>
+            <button id="pv-glossary-single-term-add-btn" type="button"
+                    style="padding:8px 14px;border:none;background:#15803d;color:white;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;align-self:flex-start;">
+              ✓ Agregar término
+            </button>
+            <span id="pv-glossary-single-term-status" style="font-size:11px;color:#6b7280;"></span>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div style="border-top:2px solid #e5e7eb;padding-top:16px;margin-bottom:16px;"></div>
+
+        <!-- Import TSV section -->
         <div style="margin-bottom:16px;">
           <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 12px;">
-            Importa nuevos términos en formato TSV (Tab-Separated Values).
+            Importa múltiples términos en formato TSV (Tab-Separated Values).
             Las columnas esperadas son: <strong>English | Castellano recomendado | Evitar | Comentario | Categoría</strong>
           </p>
 

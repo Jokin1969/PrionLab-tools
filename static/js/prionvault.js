@@ -14209,6 +14209,7 @@
         const recentItems = hist.improvements.filter(h => new Date(h.improved_at) > oneHourAgo);
         const recentCount = recentItems.length;
         const recentChanges = recentItems.reduce((sum, h) => sum + (h.changes_count || 0), 0);
+        const recentCostEur = recentCount * 0.0005;
 
         // Show stats header if there are recent items
         let statsHtml = '';
@@ -14216,7 +14217,9 @@
           statsHtml = `
             <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:8px;padding:12px;margin-bottom:12px;">
               <div style="font-weight:600;color:#0c4a6e;">⏱️ Última hora:</div>
-              <div style="color:#0c4a6e;font-size:11px;margin-top:4px;">${recentCount} artículos mejorados · ${recentChanges} cambios totales</div>
+              <div style="color:#0c4a6e;font-size:11px;margin-top:4px;">
+                ${recentCount} artículos mejorados · ${recentChanges} cambios · ~€${recentCostEur.toFixed(4)}
+              </div>
             </div>
           `;
         }
@@ -14225,7 +14228,9 @@
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;font-size:12px;">
             <div style="font-weight:600;color:#111827;">${esc(h.title || h.article_id)}</div>
             <div style="color:#6b7280;margin-top:2px;">v${h.glossary_version} · ${h.changes_count} cambios</div>
-            <div style="color:#9ca3af;font-size:11px;margin-top:2px;">${new Date(h.improved_at).toLocaleString('es-ES')}</div>
+            <div style="color:#9ca3af;font-size:11px;margin-top:2px;">
+              ${new Date(h.improved_at).toLocaleString('es-ES')}
+            </div>
           </div>
         `).join('');
       } catch (e) {
@@ -14436,6 +14441,78 @@
       if (e.dataTransfer.files.length > 0) {
         handleFileUpload(e.dataTransfer.files[0]);
       }
+    });
+
+    // Add single term - form submission
+    const addSingleTermBtn = document.getElementById('pv-glossary-single-term-add-btn');
+    const termEnInput = document.getElementById('pv-glossary-single-term-en');
+    const termEsInput = document.getElementById('pv-glossary-single-term-es');
+    const termAvoidInput = document.getElementById('pv-glossary-single-term-avoid');
+    const termCategoryInput = document.getElementById('pv-glossary-single-term-category');
+    const termNotesInput = document.getElementById('pv-glossary-single-term-notes');
+    const singleTermStatus = document.getElementById('pv-glossary-single-term-status');
+
+    async function addSingleTerm() {
+      const termEn = (termEnInput.value || '').trim();
+      const termEs = (termEsInput.value || '').trim();
+      const termAvoid = (termAvoidInput.value || '').trim() || null;
+      const category = (termCategoryInput.value || '').trim() || null;
+      const notes = (termNotesInput.value || '').trim() || null;
+
+      if (!termEn || !termEs) {
+        singleTermStatus.textContent = '❌ English y Spanish recomendado son requeridos';
+        singleTermStatus.style.color = '#dc2626';
+        return;
+      }
+
+      addSingleTermBtn.disabled = true;
+      addSingleTermBtn.textContent = '⏳ Agregando...';
+      singleTermStatus.textContent = '';
+
+      try {
+        const result = await api('/glossary/term/add', {
+          term_en: termEn,
+          term_es_recommended: termEs,
+          term_es_avoid: termAvoid,
+          category: category,
+          notes: notes,
+        });
+
+        if (result.ok) {
+          singleTermStatus.textContent = `✅ "${termEn}" agregado a la versión ${result.new_version}`;
+          singleTermStatus.style.color = '#15803d';
+
+          // Clear form
+          termEnInput.value = '';
+          termEsInput.value = '';
+          termAvoidInput.value = '';
+          termCategoryInput.value = '';
+          termNotesInput.value = '';
+
+          // Refresh browse tab to show new term
+          setTimeout(() => {
+            loadGlossaryBrowse();
+            loadGlossaryStats();
+          }, 500);
+        } else {
+          singleTermStatus.textContent = `❌ ${result.error}`;
+          singleTermStatus.style.color = '#dc2626';
+        }
+      } catch (e) {
+        console.error('Error adding term:', e);
+        singleTermStatus.textContent = `❌ Error: ${e.message}`;
+        singleTermStatus.style.color = '#dc2626';
+      } finally {
+        addSingleTermBtn.disabled = false;
+        addSingleTermBtn.textContent = '✓ Agregar término';
+      }
+    }
+
+    addSingleTermBtn.addEventListener('click', addSingleTerm);
+    [termEnInput, termEsInput].forEach(input => {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addSingleTerm();
+      });
     });
 
     // Edit glossary term modal
