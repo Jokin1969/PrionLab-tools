@@ -14043,13 +14043,7 @@
         cycleCount++;
         try {
           // Query real-time batch status from backend
-          const statusResponse = await fetch('/api/glossary/batch-status');
-          if (!statusResponse.ok) {
-            console.error('Failed to fetch batch status:', statusResponse.status);
-            return;
-          }
-
-          const status = await statusResponse.json();
+          const status = await api('/glossary/batch-status');
           console.log(`[Cycle ${cycleCount}] Batch status:`, status);
 
           const { processed, queued, status: batchStatus, error } = status;
