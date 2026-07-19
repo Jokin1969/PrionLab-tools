@@ -426,9 +426,10 @@ def batch_improve_summaries(
                             conn.execute(sql_text(
                                 """UPDATE articles
                                    SET summary_ai = :improved,
+                                       ai_summary_glossary_version = :ver,
                                        updated_at = NOW()
                                    WHERE id = :aid"""
-                            ), {"improved": improvement.improved_summary, "aid": aid})
+                            ), {"improved": improvement.improved_summary, "ver": glossary_version, "aid": aid})
 
                         # Save to improvement log (without token tracking)
                         _save_improvement_log(
