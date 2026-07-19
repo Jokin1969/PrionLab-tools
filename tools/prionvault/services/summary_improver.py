@@ -329,6 +329,8 @@ def batch_improve_summaries(
 
     Returns dict with counts, details, and batch tracking.
     """
+    logger.info(f"🚀 BATCH IMPROVEMENT STARTED: {len(article_ids)} articles, dry_run={dry_run}")
+
     eng = _get_engine()
     batch_id = str(uuid.uuid4())
 
@@ -377,22 +379,28 @@ def batch_improve_summaries(
 
                 # Save improved version (if not dry_run)
                 if not dry_run:
-                    with eng.begin() as conn:
-                        conn.execute(sql_text(
-                            """UPDATE articles
-                               SET summary_ai = :improved,
-                                   updated_at = NOW()
-                               WHERE id = :aid"""
-                        ), {"improved": improvement.improved_summary, "aid": aid})
+                    try:
+                        logger.info(f"💾 Saving improvement for {aid}...")
+                        with eng.begin() as conn:
+                            conn.execute(sql_text(
+                                """UPDATE articles
+                                   SET summary_ai = :improved,
+                                       updated_at = NOW()
+                                   WHERE id = :aid"""
+                            ), {"improved": improvement.improved_summary, "aid": aid})
 
-                    # Save to improvement log
-                    _save_improvement_log(
-                        eng, aid, glossary_version, original_summary,
-                        improved_summary, changes, batch_id, dry_run=False
-                    )
+                        # Save to improvement log
+                        _save_improvement_log(
+                            eng, aid, glossary_version, original_summary,
+                            improved_summary, changes, batch_id, dry_run=False
+                        )
+                        logger.info(f"✅ Successfully saved improvement for {aid}")
+                    except Exception as save_err:
+                        logger.error(f"❌ Failed to save improvement for {aid}: {save_err}")
+                        raise
 
                 logger.info(
-                    f"Improved {aid}: {improvement.original_length} → "
+                    f"✨ Improved {aid}: {improvement.original_length} → "
                     f"{improvement.improved_length} chars, {change_count} changes "
                     f"({improvement.tokens_used} tokens)"
                 )
@@ -411,6 +419,11 @@ def batch_improve_summaries(
             results["failed"] += 1
             results["errors"].append(f"{aid}: {str(e)[:200]}")
 
+    logger.info(
+        f"🏁 BATCH COMPLETED: {results['successful']} successful, "
+        f"{results['failed']} failed, {results['total_changes']} total changes. "
+        f"Batch ID: {batch_id}"
+    )
     return results
 
 
