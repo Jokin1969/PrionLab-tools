@@ -506,69 +506,83 @@ def get_improvement_stats() -> dict:
     eng = _get_engine()
     current_version = glossary_manager.get_current_glossary_version()
 
-    with eng.connect() as conn:
-        # Total stats
-        stats = conn.execute(sql_text("""
-            SELECT
-              COUNT(DISTINCT article_id) as total_articles_improved,
-              COALESCE(SUM(changes_count), 0) as total_changes,
-              COALESCE(AVG(changes_count), 0) as avg_changes,
-              MAX(improved_at) as last_improvement_at,
-              COUNT(DISTINCT batch_id) as total_batches
-            FROM summary_improvement_log
-            WHERE dry_run = FALSE
-        """)).first()
+    try:
+        with eng.connect() as conn:
+            # Total stats
+            stats = conn.execute(sql_text("""
+                SELECT
+                  COUNT(DISTINCT article_id) as total_articles_improved,
+                  COALESCE(SUM(changes_count), 0) as total_changes,
+                  COALESCE(AVG(changes_count), 0) as avg_changes,
+                  MAX(improved_at) as last_improvement_at,
+                  COUNT(DISTINCT batch_id) as total_batches
+                FROM summary_improvement_log
+                WHERE dry_run = FALSE
+            """)).first()
 
-        # By version
-        by_version = conn.execute(sql_text("""
-            SELECT
-              glossary_version_used,
-              COUNT(DISTINCT article_id) as count,
-              COALESCE(SUM(changes_count), 0) as total_changes
-            FROM summary_improvement_log
-            WHERE dry_run = FALSE
-            GROUP BY glossary_version_used
-            ORDER BY glossary_version_used DESC
-        """)).fetchall()
+            # By version
+            by_version = conn.execute(sql_text("""
+                SELECT
+                  glossary_version_used,
+                  COUNT(DISTINCT article_id) as count,
+                  COALESCE(SUM(changes_count), 0) as total_changes
+                FROM summary_improvement_log
+                WHERE dry_run = FALSE
+                GROUP BY glossary_version_used
+                ORDER BY glossary_version_used DESC
+            """)).fetchall()
 
-        # Recent changes
-        recent = conn.execute(sql_text("""
-            SELECT
-              scd.original_text,
-              scd.corrected_text,
-              COUNT(*) as frequency
-            FROM summary_correction_detail scd
-            JOIN summary_improvement_log sil ON sil.id = scd.improvement_log_id
-            WHERE sil.dry_run = FALSE
-            GROUP BY scd.original_text, scd.corrected_text
-            ORDER BY frequency DESC
-            LIMIT 10
-        """)).fetchall()
+            # Recent changes
+            recent = conn.execute(sql_text("""
+                SELECT
+                  scd.original_text,
+                  scd.corrected_text,
+                  COUNT(*) as frequency
+                FROM summary_correction_detail scd
+                JOIN summary_improvement_log sil ON sil.id = scd.improvement_log_id
+                WHERE sil.dry_run = FALSE
+                GROUP BY scd.original_text, scd.corrected_text
+                ORDER BY frequency DESC
+                LIMIT 10
+            """)).fetchall()
 
-    return {
-        "total_articles_improved": int(stats[0]) if stats else 0,
-        "total_changes": int(stats[1]) if stats else 0,
-        "avg_changes_per_article": float(stats[2]) if stats else 0.0,
-        "last_improvement_at": stats[3].isoformat() if stats and stats[3] else None,
-        "total_batches": int(stats[4]) if stats else 0,
-        "current_glossary_version": current_version,
-        "by_version": [
-            {
-                "glossary_version": int(v[0]),
-                "articles_improved": int(v[1]),
-                "total_changes": int(v[2]),
-            }
-            for v in by_version
-        ],
-        "most_common_corrections": [
-            {
-                "original": r[0],
-                "corrected": r[1],
-                "frequency": int(r[2]),
-            }
-            for r in recent
-        ],
-    }
+        return {
+            "total_articles_improved": int(stats[0]) if stats else 0,
+            "total_changes": int(stats[1]) if stats else 0,
+            "avg_changes_per_article": float(stats[2]) if stats else 0.0,
+            "last_improvement_at": stats[3].isoformat() if stats and stats[3] else None,
+            "total_batches": int(stats[4]) if stats else 0,
+            "current_glossary_version": current_version,
+            "by_version": [
+                {
+                    "glossary_version": int(v[0]),
+                    "articles_improved": int(v[1]),
+                    "total_changes": int(v[2]),
+                }
+                for v in by_version
+            ],
+            "most_common_corrections": [
+                {
+                    "original": r[0],
+                    "corrected": r[1],
+                    "frequency": int(r[2]),
+                }
+                for r in recent
+            ],
+        }
+    except Exception as e:
+        logger.exception("Failed to get improvement stats")
+        return {
+            "total_articles_improved": 0,
+            "total_changes": 0,
+            "avg_changes_per_article": 0.0,
+            "last_improvement_at": None,
+            "total_batches": 0,
+            "current_glossary_version": current_version,
+            "by_version": [],
+            "most_common_corrections": [],
+            "error": str(e)[:200],
+        }
 
 
 def get_improvement_log(

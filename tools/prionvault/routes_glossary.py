@@ -22,8 +22,12 @@ def api_glossary_stats():
     """Get comprehensive glossary statistics for dashboard."""
     from .services import summary_improver
 
-    stats = summary_improver.get_improvement_stats()
-    return jsonify(stats)
+    try:
+        stats = summary_improver.get_improvement_stats()
+        return jsonify(stats)
+    except Exception as e:
+        logger.exception("Failed to fetch glossary stats")
+        return jsonify({"error": str(e)[:300]}), 500
 
 
 @prionvault_bp.route("/api/glossary/stats/detailed", methods=["GET"])
