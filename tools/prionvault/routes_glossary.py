@@ -363,6 +363,64 @@ def api_glossary_test_claude():
         return jsonify({"error": str(e)}), 500
 
 
+@prionvault_bp.route("/api/glossary/test-single", methods=["POST"])
+@admin_required
+def api_glossary_test_single():
+    """Test improving a single article for debugging."""
+    from .services import summary_improver, glossary_manager
+    import time
+
+    try:
+        # Get one unreviewed article
+        with db.engine.connect() as conn:
+            article = conn.execute(sql_text("""
+                SELECT id::text, summary_ai FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+                LIMIT 1
+            """)).first()
+
+        if not article:
+            return jsonify({"error": "No unreviewed articles found"}), 400
+
+        article_id, summary = article
+        logger.info(f"Testing improvement on {article_id}")
+
+        # Get glossary
+        glossary_context = glossary_manager.get_glossary_context()
+        if not glossary_context:
+            return jsonify({"error": "No glossary available"}), 400
+
+        logger.info("Starting improve_summary call...")
+        start = time.time()
+
+        # Test improve (with timeout)
+        improvement = summary_improver.improve_summary(
+            article_id=article_id,
+            original_summary=summary,
+            glossary_context=glossary_context,
+        )
+
+        elapsed = time.time() - start
+
+        logger.info(f"improve_summary completed in {elapsed:.2f}s")
+
+        return jsonify({
+            "ok": True,
+            "article_id": article_id,
+            "success": improvement.success,
+            "original_length": improvement.original_length,
+            "improved_length": improvement.improved_length,
+            "error": improvement.error,
+            "elapsed_seconds": elapsed,
+        })
+
+    except Exception as e:
+        logger.exception("Test single improvement failed")
+        return jsonify({"error": str(e)[:500]}), 500
+
+
 @prionvault_bp.route("/glossary/diagnose", methods=["GET"])
 @admin_required
 def glossary_diagnose():
