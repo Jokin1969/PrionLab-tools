@@ -14,6 +14,9 @@ from . import prionvault_bp
 
 logger = logging.getLogger(__name__)
 
+# Track active batch processing
+_batch_state = {"status": None, "error": None, "queued": 0, "processed": 0}
+
 
 # ── Glossary stats & dashboard ─────────────────────────────────────────────
 @prionvault_bp.route("/api/glossary/stats", methods=["GET"])
@@ -305,6 +308,47 @@ def api_glossary_improve_next():
     except Exception as e:
         logger.exception("Failed to queue improvement batch")
         return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/api/glossary/batch-status", methods=["GET"])
+@admin_required
+def api_glossary_batch_status():
+    """Get current batch processing status."""
+    return jsonify({
+        "status": _batch_state.get("status"),
+        "error": _batch_state.get("error"),
+        "queued": _batch_state.get("queued", 0),
+        "processed": _batch_state.get("processed", 0),
+    })
+
+
+@prionvault_bp.route("/api/glossary/test-claude", methods=["GET"])
+@admin_required
+def api_glossary_test_claude():
+    """Test if Claude API is working."""
+    try:
+        from anthropic import Anthropic
+        import os
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            return jsonify({"error": "ANTHROPIC_API_KEY not configured"}), 400
+
+        client = Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=50,
+            messages=[{"role": "user", "content": "Say OK"}],
+        )
+
+        return jsonify({
+            "ok": True,
+            "model": response.model,
+            "message": response.content[0].text if response.content else "No response",
+        })
+    except Exception as e:
+        logger.exception("Claude test failed")
+        return jsonify({"error": str(e)}), 500
 
 
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
