@@ -384,6 +384,8 @@ def batch_improve_summaries(
 
     for idx, aid in enumerate(article_ids):
         try:
+            logger.info(f"[{idx+1}/{len(article_ids)}] Processing {aid}...")
+
             # Fetch article + summary
             with eng.connect() as conn:
                 row = conn.execute(sql_text(
@@ -391,15 +393,19 @@ def batch_improve_summaries(
                 ), {"aid": aid}).first()
 
             if not row or not row[0]:
+                logger.warning(f"  No summary found for {aid}")
                 results["errors"].append(f"{aid}: No summary found")
                 results["failed"] += 1
                 continue
 
             original_summary = row[0]
             results["summary_lengths_before"].append(len(original_summary))
+            logger.info(f"  Summary length: {len(original_summary)} chars")
 
             # Improve
+            logger.info(f"  Calling improve_summary()...")
             improvement = improve_summary(aid, original_summary, glossary_context)
+            logger.info(f"  Result: success={improvement.success}, error={improvement.error}")
 
             if improvement.success:
                 improved_summary = improvement.improved_summary
