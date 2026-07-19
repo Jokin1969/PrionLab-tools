@@ -14455,7 +14455,13 @@
     async function addSingleTerm() {
       const termEn = (termEnInput.value || '').trim();
       const termEs = (termEsInput.value || '').trim();
-      const termAvoid = (termAvoidInput.value || '').trim() || null;
+
+      // Process multiple avoid variants (one per line) and join with |
+      const avoidLines = (termAvoidInput.value || '').split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      const termAvoid = avoidLines.length > 0 ? avoidLines.join('|') : null;
+
       const category = (termCategoryInput.value || '').trim() || null;
       const notes = (termNotesInput.value || '').trim() || null;
 
