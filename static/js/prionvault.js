@@ -13921,7 +13921,10 @@
             return;
           }
           currentTab = 'improve';
-          modal.querySelectorAll('.pv-glossary-tab').forEach(t => t.style.display = 'none');
+          modal.querySelectorAll('.pv-glossary-tab-content').forEach(t => t.style.display = 'none');
+          modal.querySelectorAll('.pv-glossary-tab').forEach(t => {
+            t.style.borderBottom = t.dataset.tab === 'improve' ? '2px solid #0F3460' : '2px solid transparent';
+          });
           document.getElementById('pv-glossary-improve-tab').style.display = 'block';
           loadImproveTab();
         };
