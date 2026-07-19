@@ -292,7 +292,9 @@ def api_glossary_improve_next():
 
         # Run batch in background
         def _run():
+            logger.info(f"🚀 THREAD STARTED: Batch thread beginning execution")
             try:
+                logger.info(f"📋 Calling batch_improve_summaries with {len(article_ids)} articles")
                 result = summary_improver.batch_improve_summaries(
                     article_ids=article_ids,
                     glossary_context=glossary_context,
@@ -300,13 +302,16 @@ def api_glossary_improve_next():
                     dry_run=dry_run,
                     progress_callback=lambda count: _batch_state.update({"processed": count}),
                 )
+                logger.info(f"✅ batch_improve_summaries returned successfully")
                 _batch_state["status"] = "completed"
                 _batch_state["processed"] = result.get("processed", 0)
-                logger.info(f"Batch completed: {result}")
+                logger.info(f"🏁 Batch completed: {result}")
             except Exception as exc:
-                logger.exception("Batch improvement failed: %s", exc)
+                logger.exception("❌ Batch improvement failed: %s", exc)
                 _batch_state["status"] = "error"
                 _batch_state["error"] = str(exc)[:200]
+            finally:
+                logger.info(f"🔚 THREAD ENDED: Final state = {_batch_state}")
 
         threading.Thread(target=_run, name="pv-glossary-batch", daemon=True).start()
 

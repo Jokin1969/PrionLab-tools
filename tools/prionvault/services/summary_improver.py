@@ -353,9 +353,11 @@ def batch_improve_summaries(
     Returns dict with counts, details, and batch tracking.
     """
     logger.info(f"🚀 BATCH IMPROVEMENT STARTED: {len(article_ids)} articles, dry_run={dry_run}")
-
+    logger.info(f"📌 Getting engine...")
     eng = _get_engine()
+    logger.info(f"✅ Engine obtained successfully")
     batch_id = str(uuid.uuid4())
+    logger.info(f"📝 Batch ID: {batch_id}")
 
     results = {
         "processed": 0,
@@ -370,6 +372,7 @@ def batch_improve_summaries(
         "total_changes": 0,
     }
 
+    logger.info(f"📦 Starting main processing loop for {len(article_ids)} articles")
     for idx, aid in enumerate(article_ids):
         try:
             # Fetch article + summary
