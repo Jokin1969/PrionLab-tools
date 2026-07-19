@@ -26,6 +26,52 @@ def api_glossary_stats():
     return jsonify(stats)
 
 
+@prionvault_bp.route("/api/glossary/stats/detailed", methods=["GET"])
+@admin_required
+def api_glossary_stats_detailed():
+    """Get detailed glossary review status breakdown."""
+    from .services import glossary_manager
+
+    current_version = glossary_manager.get_current_glossary_version()
+
+    try:
+        with db.engine.connect() as conn:
+            # Pending: unreviewed summaries (ai_summary_glossary_version IS NULL)
+            pending = conn.execute(sql_text("""
+                SELECT COUNT(*) FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+            """)).scalar() or 0
+
+            # Reviewed with changes: articles with improvement log entries
+            reviewed_with_changes = conn.execute(sql_text("""
+                SELECT COUNT(DISTINCT article_id)
+                FROM summary_improvement_log
+                WHERE changes_count > 0 AND dry_run = FALSE
+            """)).scalar() or 0
+
+            # Reviewed without changes: articles with improvement log but no changes
+            reviewed_without_changes = conn.execute(sql_text("""
+                SELECT COUNT(DISTINCT article_id)
+                FROM summary_improvement_log
+                WHERE changes_count = 0 AND dry_run = FALSE
+            """)).scalar() or 0
+
+            total_reviewed = reviewed_with_changes + reviewed_without_changes
+
+        return jsonify({
+            "pending": int(pending),
+            "reviewed_with_changes": int(reviewed_with_changes),
+            "reviewed_without_changes": int(reviewed_without_changes),
+            "total_reviewed": int(total_reviewed),
+            "current_glossary_version": current_version,
+        })
+    except Exception as e:
+        logger.exception("Failed to fetch glossary detailed stats")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 # ── Unreviewed summaries (glossary_version IS NULL) ──────────────────────
 @prionvault_bp.route("/api/glossary/unreviewed", methods=["GET"])
 @admin_required

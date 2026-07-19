@@ -13848,8 +13848,9 @@
         return;
       }
 
-      listEl.innerHTML = matches.map((t, idx) => {
+      listEl.innerHTML = matches.map((t) => {
         const avoided = (t.term_es_avoid || '').split('|').filter(x => x.trim()).map(x => x.trim());
+        const termData = encodeURIComponent(JSON.stringify(t));
         return `
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;">
             <div style="display:flex;gap:12px;align-items:flex-start;">
@@ -13864,7 +13865,7 @@
                 ` : ''}
                 <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${esc(t.category || 'General')}</div>
               </div>
-              <button onclick="window.__editGlossaryTerm(${idx})" style="padding:6px 10px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap;">
+              <button onclick="window.__editGlossaryTerm('${termData}')" style="padding:6px 10px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap;">
                 ✏️ Editar
               </button>
             </div>
@@ -14208,9 +14209,14 @@
     });
 
     // Edit glossary term modal
-    window.__editGlossaryTerm = async (idx) => {
-      if (!glossaryTerms[idx]) return;
-      const term = glossaryTerms[idx];
+    window.__editGlossaryTerm = async (termData) => {
+      let term;
+      try {
+        term = JSON.parse(decodeURIComponent(termData));
+      } catch (e) {
+        console.error('Failed to parse term data', e);
+        return;
+      }
 
       const editModal = document.createElement('div');
       editModal.style.cssText = `
@@ -14276,7 +14282,7 @@
         }
 
         try {
-          glossaryTerms[idx] = {
+          const updatedTerm = {
             term_en: en,
             term_es_recommended: es,
             term_es_avoid: document.getElementById('edit-term-avoid').value.trim() || null,
@@ -14284,6 +14290,13 @@
             category: document.getElementById('edit-term-cat').value.trim() || null,
             version: term.version
           };
+
+          // Find and update the term in glossaryTerms
+          const idx = glossaryTerms.findIndex(t => t.term_en === term.term_en);
+          if (idx >= 0) {
+            glossaryTerms[idx] = updatedTerm;
+          }
+
           renderGlossaryList();
           closeEdit();
           alert('Término actualizado. Los cambios se guardarán cuando importes de nuevo.');
