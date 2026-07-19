@@ -741,3 +741,122 @@ def api_admin_run_migrations():
             "error": f"Migration failed: {str(e)[:300]}",
             "details": str(e)
         }), 500
+
+
+@prionvault_bp.route("/api/admin/create-tables", methods=["POST"])
+@admin_required
+def api_admin_create_tables():
+    """Force creation of glossary tracking tables using raw SQL.
+
+    Creates missing tables directly:
+    - summary_improvement_log
+    - summary_correction_detail
+    - glossary_improvement_stats
+
+    Useful when migrations don't work or haven't run.
+    """
+    try:
+        logger.info("🔧 FORCE creating glossary tracking tables...")
+
+        with db.engine.begin() as conn:
+            # Create summary_improvement_log
+            conn.execute(sql_text("""
+                CREATE TABLE IF NOT EXISTS summary_improvement_log (
+                    id                      BIGSERIAL  PRIMARY KEY,
+                    article_id              UUID       NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+                    glossary_version_used   INTEGER    NOT NULL,
+                    improved_at             TIMESTAMPTZ DEFAULT NOW(),
+                    original_summary        TEXT       NOT NULL,
+                    improved_summary        TEXT       NOT NULL,
+                    changes_count           INTEGER    DEFAULT 0,
+                    batch_id                UUID,
+                    dry_run                 BOOLEAN    DEFAULT FALSE
+                )
+            """))
+            logger.info("✅ Created summary_improvement_log")
+
+            # Create indexes for summary_improvement_log
+            conn.execute(sql_text("""
+                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_article_id
+                ON summary_improvement_log (article_id)
+            """))
+            conn.execute(sql_text("""
+                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_glossary_version
+                ON summary_improvement_log (glossary_version_used)
+            """))
+            conn.execute(sql_text("""
+                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_improved_at
+                ON summary_improvement_log (improved_at)
+            """))
+            conn.execute(sql_text("""
+                CREATE INDEX IF NOT EXISTS idx_summary_improvement_log_batch_id
+                ON summary_improvement_log (batch_id)
+            """))
+
+            # Create summary_correction_detail
+            conn.execute(sql_text("""
+                CREATE TABLE IF NOT EXISTS summary_correction_detail (
+                    id                     BIGSERIAL   PRIMARY KEY,
+                    improvement_log_id     BIGINT      NOT NULL REFERENCES summary_improvement_log(id) ON DELETE CASCADE,
+                    original_text          TEXT        NOT NULL,
+                    corrected_text         TEXT        NOT NULL,
+                    term_en                VARCHAR(255),
+                    recommended_es         VARCHAR(255),
+                    correction_type        VARCHAR(50),
+                    confidence_score       DECIMAL(3,2),
+                    context_before         TEXT,
+                    context_after          TEXT
+                )
+            """))
+            logger.info("✅ Created summary_correction_detail")
+
+            conn.execute(sql_text("""
+                CREATE INDEX IF NOT EXISTS idx_summary_correction_detail_improvement_log_id
+                ON summary_correction_detail (improvement_log_id)
+            """))
+            conn.execute(sql_text("""
+                CREATE INDEX IF NOT EXISTS idx_summary_correction_detail_term_en
+                ON summary_correction_detail (term_en)
+            """))
+
+            # Create glossary_improvement_stats
+            conn.execute(sql_text("""
+                CREATE TABLE IF NOT EXISTS glossary_improvement_stats (
+                    id                      BIGSERIAL   PRIMARY KEY,
+                    calculated_at           TIMESTAMPTZ DEFAULT NOW(),
+                    total_articles_improved INTEGER     DEFAULT 0,
+                    total_changes           INTEGER     DEFAULT 0,
+                    articles_with_v1        INTEGER     DEFAULT 0,
+                    articles_with_v2        INTEGER     DEFAULT 0,
+                    articles_with_v3        INTEGER     DEFAULT 0,
+                    articles_with_v4        INTEGER     DEFAULT 0,
+                    articles_with_v5        INTEGER     DEFAULT 0,
+                    avg_changes_per_article DECIMAL(5,2) DEFAULT 0,
+                    most_common_correction  VARCHAR(255),
+                    last_improvement_at     TIMESTAMPTZ
+                )
+            """))
+            logger.info("✅ Created glossary_improvement_stats")
+
+            conn.execute(sql_text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS glossary_stats_latest_idx
+                ON glossary_improvement_stats ((1))
+            """))
+
+        logger.info("✅ All glossary tracking tables created successfully")
+        return jsonify({
+            "ok": True,
+            "message": "All glossary tracking tables created successfully",
+            "tables_created": [
+                "summary_improvement_log",
+                "summary_correction_detail",
+                "glossary_improvement_stats"
+            ]
+        })
+
+    except Exception as e:
+        logger.exception(f"❌ Failed to create tables: {e}")
+        return jsonify({
+            "error": f"Failed to create tables: {str(e)[:300]}",
+            "details": str(e)
+        }), 500
