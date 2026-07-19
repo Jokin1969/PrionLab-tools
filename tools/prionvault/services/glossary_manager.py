@@ -79,11 +79,9 @@ def import_glossary(terms: list[dict]) -> ImportResult:
     try:
         with eng.begin() as conn:
             # Get current version and increment
-            meta = conn.execute(sql_text(
-                "SELECT current_version FROM prionvault_glossary_metadata "
-                "ORDER BY id DESC LIMIT 1"
-            )).first()
-            old_version = meta[0] if meta else 0
+            old_version = conn.execute(sql_text(
+                "SELECT MAX(version) FROM prionvault_glossary_terms"
+            )).scalar() or 0
             new_version = old_version + 1
 
             # Delete all old terms (replace, don't update)
@@ -124,16 +122,8 @@ def import_glossary(terms: list[dict]) -> ImportResult:
                     errors.append(f"Error processing {term_dict}: {str(e)[:200]}")
                     skipped += 1
 
-            # Update metadata
-            conn.execute(sql_text(
-                """INSERT INTO prionvault_glossary_metadata (current_version, total_terms, notes)
-                   VALUES (:v, :count, :notes)
-                   ON CONFLICT (id) DO NOTHING"""
-            ), {
-                "v": new_version,
-                "count": imported,
-                "notes": f"Version {new_version}: {imported} terms, {skipped} skipped",
-            })
+            # Note: version is tracked in prionvault_glossary_terms.version field
+            # No need to update separate metadata table
 
     except Exception as e:
         logger.exception("glossary import failed")
@@ -157,12 +147,12 @@ def get_diff(since_version: Optional[int] = None) -> GlossaryDiff:
     eng = _get_engine()
     with eng.connect() as conn:
         # Get current and previous versions
-        meta = conn.execute(sql_text(
-            "SELECT current_version FROM prionvault_glossary_metadata "
-            "ORDER BY id DESC LIMIT 2"
+        versions = conn.execute(sql_text(
+            "SELECT DISTINCT version FROM prionvault_glossary_terms "
+            "ORDER BY version DESC LIMIT 2"
         )).all()
 
-        if not meta:
+        if not versions:
             return GlossaryDiff(
                 new_terms=[],
                 updated_terms=[],
@@ -171,8 +161,8 @@ def get_diff(since_version: Optional[int] = None) -> GlossaryDiff:
                 version_after=1,
             )
 
-        current_version = meta[0][0] if meta else 1
-        prev_version = meta[1][0] if len(meta) > 1 else 0
+        current_version = versions[0][0] if versions else 1
+        prev_version = versions[1][0] if len(versions) > 1 else 0
         compare_version = since_version or prev_version
 
         # Terms only in current version (new)
@@ -256,7 +246,7 @@ def get_glossary_context() -> str:
         rows = conn.execute(sql_text(
             """SELECT term_en, term_es_recommended, category, notes
                FROM prionvault_glossary_terms
-               WHERE version = (SELECT MAX(version) FROM prionvault_glossary_metadata)
+               WHERE version = (SELECT MAX(version) FROM prionvault_glossary_terms)
                ORDER BY category, term_en"""
         )).all()
 
@@ -288,7 +278,7 @@ def get_all_terms(category: Optional[str] = None) -> list[dict]:
         rows = conn.execute(sql_text(
             f"""SELECT term_en, term_es_recommended, term_es_avoid, notes, category, version
                FROM prionvault_glossary_terms
-               WHERE version = (SELECT MAX(version) FROM prionvault_glossary_metadata){where}
+               WHERE version = (SELECT MAX(version) FROM prionvault_glossary_terms){where}
                ORDER BY category, term_en"""
         ), params).mappings().all()
 
@@ -301,7 +291,7 @@ def get_categories() -> list[str]:
     with eng.connect() as conn:
         rows = conn.execute(sql_text(
             """SELECT DISTINCT category FROM prionvault_glossary_terms
-               WHERE version = (SELECT MAX(version) FROM prionvault_glossary_metadata)
+               WHERE version = (SELECT MAX(version) FROM prionvault_glossary_terms)
                AND category IS NOT NULL
                ORDER BY category"""
         )).all()
@@ -313,8 +303,7 @@ def get_current_glossary_version() -> int:
     eng = _get_engine()
     with eng.connect() as conn:
         result = conn.execute(sql_text(
-            "SELECT current_version FROM prionvault_glossary_metadata "
-            "ORDER BY id DESC LIMIT 1"
+            "SELECT MAX(version) FROM prionvault_glossary_terms"
         )).scalar()
     return result or 1
 
