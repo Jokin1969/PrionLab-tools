@@ -403,3 +403,31 @@ def parse_tsv_to_terms(tsv_content: str) -> list[dict]:
         terms.append(term_dict)
 
     return terms
+
+
+def update_term(term_en: str, term_es_recommended: str, term_es_avoid: Optional[str] = None,
+                notes: Optional[str] = None, category: Optional[str] = None, version: int = 1) -> bool:
+    """Update an existing glossary term in the current version."""
+    eng = _get_engine()
+
+    try:
+        with eng.begin() as conn:
+            result = conn.execute(sql_text(
+                """UPDATE prionvault_glossary_terms
+                   SET term_es_recommended = :es,
+                       term_es_avoid = :avoid,
+                       notes = :notes,
+                       category = :cat
+                   WHERE term_en = :en AND version = :v"""
+            ), {
+                "en": term_en.lower(),
+                "es": term_es_recommended,
+                "avoid": term_es_avoid,
+                "notes": notes,
+                "cat": category,
+                "v": version
+            })
+        return result.rowcount > 0
+    except Exception as e:
+        logger.exception(f"Failed to update glossary term {term_en}")
+        raise

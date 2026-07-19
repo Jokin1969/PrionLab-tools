@@ -206,6 +206,38 @@ def api_glossary_terms():
         return jsonify({"error": str(e)[:300]}), 500
 
 
+@prionvault_bp.route("/api/glossary/term", methods=["PUT"])
+@admin_required
+def api_glossary_update_term():
+    """Update a glossary term in-place."""
+    from .services import glossary_manager
+
+    data = request.get_json(force=True, silent=True) or {}
+    term_en = (data.get("term_en") or "").strip().lower()
+    term_es = (data.get("term_es_recommended") or "").strip()
+    avoid = (data.get("term_es_avoid") or "").strip() or None
+    notes = (data.get("notes") or "").strip() or None
+    category = (data.get("category") or "").strip() or None
+    version = data.get("version", 1)
+
+    if not term_en or not term_es:
+        return jsonify({"error": "term_en and term_es_recommended are required"}), 400
+
+    try:
+        result = glossary_manager.update_term(
+            term_en=term_en,
+            term_es_recommended=term_es,
+            term_es_avoid=avoid,
+            notes=notes,
+            category=category,
+            version=version
+        )
+        return jsonify({"ok": True, "updated": result})
+    except Exception as e:
+        logger.exception("Failed to update glossary term")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/categories", methods=["GET"])
 @login_required
 def api_glossary_categories():

@@ -13848,7 +13848,7 @@
         return;
       }
 
-      listEl.innerHTML = matches.map(t => {
+      listEl.innerHTML = matches.map((t, idx) => {
         const avoided = (t.term_es_avoid || '').split('|').filter(x => x.trim()).map(x => x.trim());
         return `
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;">
@@ -13864,6 +13864,9 @@
                 ` : ''}
                 <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${esc(t.category || 'General')}</div>
               </div>
+              <button onclick="window.__editGlossaryTerm(${idx})" style="padding:6px 10px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap;">
+                ✏️ Editar
+              </button>
             </div>
           </div>`;
       }).join('');
@@ -13884,9 +13887,19 @@
     // Stats tab
     async function loadStats() {
       try {
-        const stats = await api('/glossary/stats');
+        const [stats, detailed] = await Promise.all([
+          api('/glossary/stats'),
+          api('/glossary/stats/detailed')
+        ]);
+
+        // Update detailed status
+        document.getElementById('pv-stats-pending').textContent = (detailed.pending || 0).toLocaleString();
+        document.getElementById('pv-stats-with-changes').textContent = (detailed.reviewed_with_changes || 0).toLocaleString();
+        document.getElementById('pv-stats-without-changes').textContent = (detailed.reviewed_without_changes || 0).toLocaleString();
+
+        // Update primary stats
         document.querySelector('#pv-glossary-stats-content > div:nth-child(1) > div:first-child').textContent =
-          (stats.total_articles_improved || 0).toLocaleString();
+          (detailed.total_reviewed || 0).toLocaleString();
         document.querySelector('#pv-glossary-stats-content > div:nth-child(2) > div:first-child').textContent =
           (stats.total_changes || 0).toLocaleString();
         document.querySelector('#pv-glossary-stats-content > div:nth-child(3) > div:first-child').textContent =
@@ -13900,9 +13913,22 @@
           </div>
         `).join('');
 
-        document.getElementById('pv-glossary-export-btn').addEventListener('click', () => {
+        // Pending button
+        document.getElementById('pv-glossary-pending-btn').onclick = () => {
+          if (detailed.pending === 0) {
+            alert('No hay resúmenes pendientes de revisar');
+            return;
+          }
+          currentTab = 'improve';
+          modal.querySelectorAll('.pv-glossary-tab').forEach(t => t.style.display = 'none');
+          document.getElementById('pv-glossary-improve-tab').style.display = 'block';
+          loadImproveTab();
+        };
+
+        // Export button
+        document.getElementById('pv-glossary-export-btn').onclick = () => {
           window.location.href = '/prionvault/api/glossary/export';
-        });
+        };
       } catch (e) {
         console.error('Failed to load stats:', e);
       }
@@ -14180,6 +14206,96 @@
         handleFileUpload(e.dataTransfer.files[0]);
       }
     });
+
+    // Edit glossary term modal
+    window.__editGlossaryTerm = async (idx) => {
+      if (!glossaryTerms[idx]) return;
+      const term = glossaryTerms[idx];
+
+      const editModal = document.createElement('div');
+      editModal.style.cssText = `
+        position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);
+        display:flex;align-items:center;justify-content:center;z-index:10000;
+      `;
+
+      const editContent = document.createElement('div');
+      editContent.style.cssText = `
+        background:#fff;border-radius:12px;padding:24px;max-width:500px;width:90%;
+        max-height:80vh;overflow-y:auto;box-shadow:0 20px 25px rgba(0,0,0,0.15);
+      `;
+
+      editContent.innerHTML = `
+        <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;color:#111827;">Editar término</h3>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">Término en inglés *</label>
+          <input id="edit-term-en" type="text" value="${esc(term.term_en || '')}"
+            style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" />
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">Término en español recomendado *</label>
+          <input id="edit-term-es" type="text" value="${esc(term.term_es_recommended || '')}"
+            style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" />
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">Términos a evitar</label>
+          <input id="edit-term-avoid" type="text" value="${esc(term.term_es_avoid || '')}"
+            style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;"
+            placeholder="Separar múltiples valores con |" />
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">Notas / Comentario</label>
+          <textarea id="edit-term-notes" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;resize:vertical;min-height:60px;" placeholder="Notas adicionales">${esc(term.notes || '')}</textarea>
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">Categoría</label>
+          <input id="edit-term-cat" type="text" value="${esc(term.category || '')}"
+            style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" />
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="edit-cancel-btn" style="padding:8px 16px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;">
+            Cancelar
+          </button>
+          <button id="edit-save-btn" style="padding:8px 16px;background:#0F3460;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600;">
+            Guardar cambios
+          </button>
+        </div>
+      `;
+
+      editModal.appendChild(editContent);
+      document.body.appendChild(editModal);
+
+      const closeEdit = () => editModal.remove();
+      document.getElementById('edit-cancel-btn').onclick = closeEdit;
+
+      document.getElementById('edit-save-btn').onclick = async () => {
+        const en = document.getElementById('edit-term-en').value.trim();
+        const es = document.getElementById('edit-term-es').value.trim();
+        if (!en || !es) {
+          alert('Rellena los campos de inglés y español');
+          return;
+        }
+
+        try {
+          glossaryTerms[idx] = {
+            term_en: en,
+            term_es_recommended: es,
+            term_es_avoid: document.getElementById('edit-term-avoid').value.trim() || null,
+            notes: document.getElementById('edit-term-notes').value.trim() || null,
+            category: document.getElementById('edit-term-cat').value.trim() || null,
+            version: term.version
+          };
+          renderGlossaryList();
+          closeEdit();
+          alert('Término actualizado. Los cambios se guardarán cuando importes de nuevo.');
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      };
+
+      editModal.onclick = (e) => {
+        if (e.target === editModal) closeEdit();
+      };
+    };
   }
 
   // ── SCImago (SJR) admin modal ────────────────────────────────────────
