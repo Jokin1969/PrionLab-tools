@@ -39,14 +39,22 @@ def api_glossary_stats_detailed():
     current_version = glossary_manager.get_current_glossary_version()
 
     try:
-        with db.engine.connect() as conn:
-            # Check if summary_improvement_log table exists
-            table_exists = True
-            try:
-                conn.execute(sql_text("SELECT 1 FROM summary_improvement_log LIMIT 1"))
-            except Exception:
-                table_exists = False
+        # Check if summary_improvement_log table exists using information_schema
+        table_exists = False
+        try:
+            with db.engine.connect() as check_conn:
+                result = check_conn.execute(sql_text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = 'summary_improvement_log'
+                    )
+                """)).scalar()
+                table_exists = bool(result)
+        except Exception as e:
+            logger.warning(f"Failed to check table existence: {e}")
+            table_exists = False
 
+        with db.engine.connect() as conn:
             # Pending: unreviewed summaries (ai_summary_glossary_version IS NULL)
             pending = conn.execute(sql_text("""
                 SELECT COUNT(*) FROM articles
