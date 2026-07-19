@@ -580,3 +580,31 @@ def api_glossary_export():
     except Exception as e:
         logger.exception(f"Failed to export statistics: {e}")
         return jsonify({"error": str(e)[:300]}), 500
+
+
+# ── Admin: Run database migrations ──────────────────────────────────────────
+@prionvault_bp.route("/api/admin/run-migrations", methods=["POST"])
+@admin_required
+def api_admin_run_migrations():
+    """Run pending database migrations to create missing tables.
+
+    This endpoint is useful when tables haven't been created yet (e.g.,
+    summary_improvement_log, summary_correction_detail, glossary_improvement_stats).
+
+    Admin-only endpoint.
+    """
+    try:
+        logger.info("🔧 Starting database migrations...")
+        db.run_migrations()
+        logger.info("✅ Database migrations completed successfully")
+
+        return jsonify({
+            "ok": True,
+            "message": "Database migrations completed successfully. Tables created if they didn't exist.",
+        })
+    except Exception as e:
+        logger.exception(f"❌ Failed to run migrations: {e}")
+        return jsonify({
+            "error": f"Migration failed: {str(e)[:300]}",
+            "details": str(e)
+        }), 500
