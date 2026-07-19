@@ -14032,61 +14032,70 @@
     }
 
     function startBatchTracking() {
-      // Auto-refresh history every 3 seconds while batch is in progress
+      // Poll batch status every 3 seconds while batch is in progress
       if (batchRefreshInterval) clearInterval(batchRefreshInterval);
 
       let noUpdateCount = 0;
+      let lastProcessedCount = 0;
       let cycleCount = 0;
+
       batchRefreshInterval = setInterval(async () => {
         cycleCount++;
         try {
-          // Load latest history
-          await loadHistoryTab();
-
-          // Check if we should still be tracking
-          const histEl = document.getElementById('pv-glossary-history-list');
-          if (!histEl) {
+          // Query real-time batch status from backend
+          const statusResponse = await fetch('/api/glossary/batch-status');
+          if (!statusResponse.ok) {
+            console.error('Failed to fetch batch status:', statusResponse.status);
             return;
           }
 
-          // Find actual improvement items (skip stats header)
-          const items = Array.from(histEl.querySelectorAll('div')).filter(div => {
-            const text = div.textContent;
-            return text && text.includes('cambios') && !text.includes('Última hora');
-          });
+          const status = await statusResponse.json();
+          console.log(`[Cycle ${cycleCount}] Batch status:`, status);
 
-          if (items.length === 0) {
+          const { processed, queued, status: batchStatus, error } = status;
+
+          // Update UI with current progress
+          if (queued > 0 && batchStatus === 'processing') {
+            document.getElementById('pv-glossary-improve-status').textContent =
+              `⏳ ${processed}/${queued} artículos procesados...`;
+          }
+
+          // Check if batch completed
+          if (batchStatus === 'completed') {
+            console.log('Batch completed! Final state:', status);
+            stopBatchTracking();
+            document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado';
+            // Reload history to show results
+            await loadHistoryTab();
+            return;
+          }
+
+          // Check if batch had an error
+          if (batchStatus === 'error') {
+            console.log('Batch error:', error);
+            stopBatchTracking();
+            document.getElementById('pv-glossary-improve-status').textContent = `❌ Error: ${error}`;
+            return;
+          }
+
+          // Track progress
+          if (processed > lastProcessedCount) {
+            lastProcessedCount = processed;
+            noUpdateCount = 0;
+            console.log(`Progress update: ${processed}/${queued}`);
+          } else {
             noUpdateCount++;
-            // After 2 hours (2400 cycles * 3s) with no items, stop tracking
-            // This allows up to 100 articles at ~45s each to complete
-            if (noUpdateCount > 2400) {
-              stopBatchTracking();
-              document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado (o detenido)';
-            }
-            return;
           }
 
-          // Reset counter when we see items
-          noUpdateCount = 0;
-
-          // Get the timestamp of the newest item
-          const firstItem = items[0];
-          if (firstItem) {
-            const timeText = firstItem.querySelector('div:last-child')?.textContent;
-            if (timeText) {
-              const itemTime = new Date(timeText);
-              const now = new Date();
-              const minutesSinceLastUpdate = (now - itemTime) / (1000 * 60);
-
-              // Stop tracking if no updates in 2 hours
-              if (minutesSinceLastUpdate > 120) {
-                stopBatchTracking();
-                document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado';
-              }
-            }
+          // Timeout after 2 hours of no progress
+          if (noUpdateCount > 2400) {
+            console.log('No progress for 2 hours, stopping');
+            stopBatchTracking();
+            document.getElementById('pv-glossary-improve-status').textContent = '✓ Lote completado (o detenido)';
           }
+
         } catch (e) {
-          console.error('Error refreshing history:', e);
+          console.error('Error checking batch status:', e);
         }
       }, 3000);
     }
