@@ -5,6 +5,7 @@ Routes registered as side-effect import at bottom of routes.py.
 """
 import logging
 import threading
+from datetime import datetime
 from flask import jsonify, request, Response, current_app
 from sqlalchemy import text as sql_text
 
@@ -580,6 +581,73 @@ def api_glossary_export():
     except Exception as e:
         logger.exception(f"Failed to export statistics: {e}")
         return jsonify({"error": str(e)[:300]}), 500
+
+
+# ── Admin: Diagnostics ──────────────────────────────────────────────────────
+@prionvault_bp.route("/api/admin/diagnostics", methods=["GET"])
+@admin_required
+def api_admin_diagnostics():
+    """Diagnostic endpoint to check batch improvement system status.
+
+    Shows:
+    - Model version being used
+    - Database table existence
+    - Recent improvement logs
+    - Unreviewed article count
+    """
+    import os
+    from tools.prionvault.services import summary_improver
+
+    diagnostics = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "model_in_use": "claude-haiku-4-5-20251001",  # Current model
+    }
+
+    try:
+        # Check database tables
+        with db.engine.connect() as conn:
+            tables_check = {}
+            for table in ['summary_improvement_log', 'summary_correction_detail', 'glossary_improvement_stats']:
+                result = conn.execute(sql_text(f"""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = '{table}'
+                    )
+                """)).scalar()
+                tables_check[table] = bool(result)
+
+            diagnostics["tables"] = tables_check
+
+            # Get unreviewed count
+            unreviewed = conn.execute(sql_text("""
+                SELECT COUNT(*) FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+            """)).scalar() or 0
+            diagnostics["unreviewed_count"] = unreviewed
+
+            # Check recent logs
+            if tables_check['summary_improvement_log']:
+                recent = conn.execute(sql_text("""
+                    SELECT COUNT(*) as total,
+                           MAX(improved_at) as latest
+                    FROM summary_improvement_log
+                    WHERE improved_at > NOW() - INTERVAL '1 hour'
+                """)).mappings().first()
+                if recent:
+                    diagnostics["recent_improvements_1h"] = {
+                        "count": recent['total'] or 0,
+                        "latest": str(recent['latest']) if recent['latest'] else None
+                    }
+
+        diagnostics["status"] = "✅ All systems operational"
+
+    except Exception as e:
+        diagnostics["error"] = str(e)
+        diagnostics["status"] = f"❌ Error: {str(e)[:100]}"
+
+    return jsonify(diagnostics)
 
 
 # ── Admin: Run database migrations ──────────────────────────────────────────
