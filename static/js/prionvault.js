@@ -14000,7 +14000,11 @@
     }
 
     async function improveUnreviewed(count) {
-      const displayCount = count === 'all' ? '1917' : count;
+      if (count === 0 || count === '0') {
+        alert('No hay resúmenes sin revisar para mejorar.\n\nTodos los resúmenes han sido revisados con la versión actual del glosario.');
+        return;
+      }
+      const displayCount = count === 'all' ? 'todos' : count;
       if (!confirm(`¿Mejorar ${displayCount} resúmenes sin revisar?`)) return;
       try {
         const result = await api('/glossary/improve-next', {
@@ -14019,10 +14023,19 @@
     }
 
     async function improveOutdated(count) {
+      if (!count || count === 0) {
+        alert('No hay resúmenes desactualizados para mejorar.\n\nTodos los resúmenes mejorados están usando la versión actual del glosario.');
+        return;
+      }
+
       if (!confirm(`¿Mejorar ${count} resúmenes desactualizados?`)) return;
       try {
         const r = await api('/glossary/outdated?limit=1000');
         const ids = (r.articles || []).map(a => a.id);
+        if (ids.length === 0) {
+          alert('No se encontraron artículos para mejorar.');
+          return;
+        }
         const result = await api('/glossary/improve-batch', {
           method: 'POST',
           body: JSON.stringify({ article_ids: ids, dry_run: false })
