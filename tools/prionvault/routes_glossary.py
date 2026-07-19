@@ -339,6 +339,43 @@ def api_glossary_batch_status():
     })
 
 
+@prionvault_bp.route("/api/glossary/batch-changes/<batch_id>", methods=["GET"])
+@admin_required
+def api_glossary_batch_changes(batch_id):
+    """Get all corrections made in a batch, grouped and counted."""
+    try:
+        with db.engine.connect() as conn:
+            # Get all corrections for this batch, grouped by original→corrected
+            rows = conn.execute(sql_text("""
+                SELECT
+                    scd.original_text,
+                    scd.corrected_text,
+                    scd.term_en,
+                    scd.recommended_es,
+                    scd.correction_type,
+                    COUNT(*) as change_count,
+                    AVG(CAST(scd.confidence_score AS DECIMAL)) as avg_confidence
+                FROM summary_correction_detail scd
+                JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
+                WHERE sil.batch_id = :batch_id
+                GROUP BY scd.original_text, scd.corrected_text, scd.term_en,
+                         scd.recommended_es, scd.correction_type
+                ORDER BY change_count DESC, scd.original_text
+            """), {"batch_id": batch_id}).mappings().all()
+
+            changes = [dict(r) for r in rows]
+
+            return jsonify({
+                "batch_id": batch_id,
+                "total_changes": sum(c["change_count"] for c in changes),
+                "unique_changes": len(changes),
+                "changes": changes,
+            })
+    except Exception as e:
+        logger.exception(f"Failed to fetch batch changes: {e}")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/test-claude", methods=["GET"])
 @admin_required
 def api_glossary_test_claude():
