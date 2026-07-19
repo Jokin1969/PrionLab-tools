@@ -396,6 +396,9 @@ def batch_improve_summaries(
                 logger.warning(f"  No summary found for {aid}")
                 results["errors"].append(f"{aid}: No summary found")
                 results["failed"] += 1
+                results["processed"] += 1
+                if progress_callback:
+                    progress_callback(results["processed"])
                 continue
 
             original_summary = row[0]
@@ -465,6 +468,9 @@ def batch_improve_summaries(
             logger.exception(f"batch_improve_summaries: error for {aid}")
             results["failed"] += 1
             results["errors"].append(f"{aid}: {str(e)[:200]}")
+            results["processed"] += 1
+            if progress_callback:
+                progress_callback(results["processed"])
 
     # Estimate cost based on successful improvements
     # Average: ~€0.0005 per article (rough estimate)
