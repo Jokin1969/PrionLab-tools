@@ -1395,6 +1395,79 @@ def api_glossary_public_terms():
         return jsonify({"error": str(e)[:300]}), 500
 
 
+@prionvault_bp.route("/api/glossary/recover-historical", methods=["POST"])
+@admin_required
+def api_glossary_recover_historical():
+    """Recover improvement logs for articles improved before summary_improvement_log existed.
+
+    Articles with ai_summary_glossary_version set but no entry in summary_improvement_log
+    will be given a 'recovered' entry to maintain accurate tracking.
+    """
+    try:
+        with db.engine.begin() as conn:
+            # Find orphaned articles
+            orphaned = conn.execute(sql_text("""
+                SELECT COUNT(*) FROM articles a
+                WHERE a.ai_summary_glossary_version IS NOT NULL
+                  AND a.id NOT IN (
+                    SELECT DISTINCT article_id FROM summary_improvement_log
+                  )
+            """)).scalar() or 0
+
+            if orphaned == 0:
+                return jsonify({
+                    "ok": True,
+                    "recovered": 0,
+                    "message": "No historical articles to recover"
+                })
+
+            # Create recovery entries
+            conn.execute(sql_text("""
+                INSERT INTO summary_improvement_log (
+                    article_id,
+                    glossary_version_used,
+                    original_summary,
+                    improved_summary,
+                    changes_count,
+                    batch_id,
+                    improved_at,
+                    dry_run,
+                    input_tokens,
+                    output_tokens,
+                    model_used
+                )
+                SELECT
+                    a.id,
+                    a.ai_summary_glossary_version,
+                    a.summary_ai,
+                    a.summary_ai,
+                    0,
+                    'recovered-' || gen_random_uuid()::text,
+                    a.updated_at,
+                    FALSE,
+                    0,
+                    0,
+                    'recovered-from-field'
+                FROM articles a
+                WHERE a.ai_summary_glossary_version IS NOT NULL
+                  AND a.id NOT IN (
+                    SELECT DISTINCT article_id FROM summary_improvement_log
+                  )
+                ON CONFLICT DO NOTHING
+            """))
+
+        logger.info(f"✅ Recovered {orphaned} historical glossary improvements")
+        return jsonify({
+            "ok": True,
+            "recovered": orphaned,
+            "message": f"Recovered {orphaned} articles from historical improvements"
+        })
+
+    except Exception as e:
+        logger.exception("Failed to recover historical improvements")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/public/search", methods=["GET"])
 @login_required
 def api_glossary_public_search():
