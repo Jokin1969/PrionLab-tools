@@ -1221,6 +1221,41 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+// ── Diagnostic script for debugging button visibility ──────────────────
+(function() {
+  console.log("✅ glossary.html loaded successfully");
+  console.log("downloadAllChanges function exists:", typeof downloadAllChanges);
+  console.log("downloadBatchExcel function exists:", typeof downloadBatchExcel);
+
+  // Try to find the buttons
+  const allButtons = document.querySelectorAll('[onclick*="downloadAllChanges"]');
+  console.log("📊 Download Excel buttons found in DOM:", allButtons.length);
+
+  allButtons.forEach((btn, i) => {
+    const isVisible = btn.offsetHeight > 0 && btn.offsetWidth > 0;
+    const text = btn.textContent.trim().substring(0, 30);
+    const style = window.getComputedStyle(btn);
+    console.log(`  Button ${i+1}: "${text}" | visible: ${isVisible} | display: ${style.display} | visibility: ${style.visibility}`);
+  });
+
+  // Check for batch buttons too
+  const batchButtons = document.querySelectorAll('[onclick*="downloadBatchExcel"]');
+  console.log("📥 Per-batch Excel buttons found in DOM:", batchButtons.length);
+
+  // Check if functions are callable
+  if (typeof downloadAllChanges === 'function') {
+    console.log("✅ downloadAllChanges is callable");
+  } else {
+    console.error("❌ downloadAllChanges is NOT a function!");
+  }
+
+  if (typeof downloadBatchExcel === 'function') {
+    console.log("✅ downloadBatchExcel is callable");
+  } else {
+    console.error("❌ downloadBatchExcel is NOT a function!");
+  }
+})();
 </script>
 
 {% endblock %}
