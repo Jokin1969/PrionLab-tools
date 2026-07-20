@@ -1166,12 +1166,27 @@ async function loadHistory() {
         <td>v${imp.glossary_version}</td>
         <td><strong>${imp.changes_count}</strong></td>
         <td><code style="font-size: 11px">${imp.batch_id.substring(0, 12)}...</code></td>
-        <td><small>${imp.detail_count} details</small></td>
+        <td>
+          <button class="btn btn--sm btn--primary" onclick="downloadBatchExcel('${imp.batch_id}')" title="Download Excel with changes from this batch">
+            📥 Excel
+          </button>
+        </td>
       </tr>
     `).join('');
 
   } catch (e) {
     alert('{{ _("Error loading history:") }} ' + e.message);
+  }
+}
+
+function downloadBatchExcel(batchId) {
+  try {
+    const link = document.createElement('a');
+    link.href = `/prionvault/api/glossary/batch-export/${batchId}`;
+    link.download = `batch-${batchId.slice(0, 8)}-cambios.xlsx`;
+    link.click();
+  } catch (e) {
+    alert('Error al descargar: ' + e.message);
   }
 }
 
