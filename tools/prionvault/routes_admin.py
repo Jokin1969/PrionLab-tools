@@ -10,7 +10,7 @@ import os
 import re
 from datetime import datetime
 
-from flask import jsonify, request, session, Response, current_app
+from flask import jsonify, request, session, Response, current_app, render_template
 from sqlalchemy import text as sql_text
 
 from core.decorators import admin_required, login_required
@@ -2222,4 +2222,12 @@ def api_glossary_add_term():
         "term_es_recommended": term_es_recommended,
         "message": f"Added '{term_en}' to glossary version {result.new_version}"
     }), 201
+
+
+# ── Glossary admin page ────────────────────────────────────────────────────────
+@prionvault_bp.route("/admin/glossary")
+@admin_required
+def glossary_page():
+    """Serve the glossary management interface."""
+    return render_template("admin/glossary.html")
 
