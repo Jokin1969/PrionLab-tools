@@ -1062,7 +1062,7 @@ async function loadAllArticles() {
   status.textContent = '{{ _("Loading...") }}';
 
   try {
-    const response = await fetch(`/prionvault/api/glossary/outdated?limit=${limit}&offset=0`, {
+    const response = await fetch(`/prionvault/api/glossary/unreviewed?limit=${limit}&offset=0`, {
       credentials: 'same-origin',
     });
     if (!response.ok) {
@@ -1074,7 +1074,7 @@ async function loadAllArticles() {
     selectedArticleIds = [];
 
     document.getElementById('preview-results').style.display = 'block';
-    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total || previewArticles.length} {{ _("articles with summaries") }}`;
+    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total || previewArticles.length} {{ _("articles with unreviewed summaries") }}`;
 
     renderPreviewTable();
     status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length}`;
