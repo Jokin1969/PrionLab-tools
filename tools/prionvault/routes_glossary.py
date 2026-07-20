@@ -336,7 +336,7 @@ def api_glossary_improve_next():
 @prionvault_bp.route("/api/glossary/batch-status", methods=["GET"])
 @admin_required
 def api_glossary_batch_status():
-    """Get current batch processing status."""
+    """Get current batch processing status (real-time progress)."""
     return jsonify({
         "status": _batch_state.get("status"),
         "error": _batch_state.get("error"),
