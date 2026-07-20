@@ -59,52 +59,62 @@ def _apply_fuzzy_normalization(text: str, glossary: dict) -> tuple[str, list[dic
 
     # Build reverse lookup of avoided terms for fuzzy matching
     avoided_to_recommended = {}
-    for es_rec, en_term in glossary.items():
-        try:
-            # Fetch the full term record to get avoided terms
-            from . import glossary_manager
-            terms = glossary_manager.get_all_terms()
-            for t in terms:
-                if t['term_es_recommended'] == es_rec and t.get('term_es_avoid'):
-                    for avoided in t['term_es_avoid'].split('|'):
-                        avoided = avoided.strip()
-                        if avoided:
-                            avoided_to_recommended[avoided] = es_rec
-        except Exception:
-            pass
+    try:
+        from . import glossary_manager
+        terms = glossary_manager.get_all_terms()
+        for t in terms:
+            es_rec = t.get('term_es_recommended')
+            if es_rec and t.get('term_es_avoid'):
+                for avoided in t['term_es_avoid'].split('|'):
+                    avoided = avoided.strip()
+                    if avoided:
+                        avoided_to_recommended[avoided] = es_rec
+    except Exception as e:
+        logger.warning(f"Failed to build avoided terms lookup for fuzzy matching: {e}")
 
     if not avoided_to_recommended:
+        logger.debug(f"No avoided terms found in glossary for fuzzy normalization")
         return text, []
 
     changes = []
     normalized = text
 
-    # For each word in text, check if it matches any avoided term via fuzzy matching
-    words = normalized.split()
-    for i, word in enumerate(words):
-        # Try fuzzy match against all avoided terms
-        for avoided_term, recommended_term in avoided_to_recommended.items():
-            if len(avoided_term) < 3:  # Skip very short terms
-                continue
+    # Sort avoided terms by length (longest first) to match multi-word phrases first
+    sorted_avoided = sorted(avoided_to_recommended.items(), key=lambda x: len(x[0]), reverse=True)
 
-            # Use difflib for similarity matching
-            ratio = SequenceMatcher(None, word.lower(), avoided_term.lower()).ratio()
+    # For each avoided term, try to find and replace it in the text
+    for avoided_term, recommended_term in sorted_avoided:
+        if len(avoided_term) < 3:  # Skip very short terms
+            continue
+
+        # Split text into words to find n-grams
+        words = normalized.split()
+        term_words = avoided_term.split()
+        n = len(term_words)
+
+        # Build list of all possible n-grams from text
+        found_match = False
+        for i in range(len(words) - n + 1):
+            ngram = ' '.join(words[i:i+n])
+
+            # Check fuzzy match similarity
+            ratio = SequenceMatcher(None, ngram.lower(), avoided_term.lower()).ratio()
 
             if ratio >= _FUZZY_MATCH_THRESHOLD:
                 # Found a match - replace it
-                old_word = word
-                words[i] = word.replace(avoided_term, recommended_term, 1)
+                original_ngram = ngram
+                words[i:i+n] = recommended_term.split()
+
                 changes.append({
-                    'original': old_word,
-                    'corrected': words[i],
+                    'original': original_ngram,
+                    'corrected': recommended_term,
                     'avoided_term': avoided_term,
                     'recommended_term': recommended_term,
                     'similarity': ratio,
                 })
+                normalized = ' '.join(words)
+                found_match = True
                 break
-
-    if changes:
-        normalized = ' '.join(words)
 
     return normalized, changes
 
