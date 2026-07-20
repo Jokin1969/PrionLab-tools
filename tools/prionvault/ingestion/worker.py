@@ -45,6 +45,33 @@ _PUBLIC_BASE_URL = os.environ.get(
 _MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 
+def _flag_article_for_admins(article_id: str) -> None:
+    """Mark article as flagged for all admin users.
+
+    Called when an email subject contains "Read" to flag the article
+    for review/reading by administrators.
+    """
+    eng = _get_engine()
+    with eng.begin() as conn:
+        # Get all admin users
+        admin_rows = conn.execute(text(
+            "SELECT id FROM users WHERE role = 'admin'"
+        )).all()
+
+        # Flag article for each admin
+        for (admin_id,) in admin_rows:
+            conn.execute(text("""
+                INSERT INTO prionvault_user_state
+                  (user_id, article_id, is_flagged, created_at, updated_at)
+                VALUES (CAST(:uid AS uuid), CAST(:aid AS uuid), TRUE, NOW(), NOW())
+                ON CONFLICT (user_id, article_id) DO UPDATE
+                   SET is_flagged = TRUE, updated_at = NOW()
+            """), {
+                "uid": str(admin_id),
+                "aid": str(article_id),
+            })
+
+
 # When Postgres goes away (Railway redeploy, upstream outage, etc.)
 # every DB call fails. Don't burn through MAX_ATTEMPTS on the active
 # job and don't fire a Sentry alert per attempt — wait, then probe
@@ -243,8 +270,18 @@ def _process_job(job: ingest_queue.Job) -> None:
     ingest_queue.mark_step(job.id, status="done", step=summary,
                            article_id=article_id)
 
+    # If the email subject contains "Read", flag the article for admin users
+    if (job.notify_subject or "").lower().strip():
+        subject_lower = (job.notify_subject or "").lower()
+        if "read" in subject_lower:
+            try:
+                _flag_article_for_admins(article_id)
+            except Exception as exc:
+                logger.warning("worker: failed to flag article %s: %s",
+                              article_id, exc)
+
     # For articles that arrived by email, run the full setup pipeline
-    # (PMID + abstract, searchable PDF, AI summary, Voyage index) before
+    # (PMID + abstract, searchable PDF, AI summary, Voyage Index) before
     # replying, so the confirmation email can report every step and carry
     # the AI summary. Other ingest paths (DOI-add, Import-PDFs, Dropbox
     # scan) keep the lightweight behaviour.
