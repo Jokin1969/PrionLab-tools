@@ -189,6 +189,7 @@ def api_glossary_outdated():
                   a.title,
                   a.authors,
                   a.year,
+                  a.summary_ai,
                   sil.glossary_version_used,
                   sil.improved_at,
                   sil.changes_count,
@@ -912,6 +913,7 @@ def glossary_diagnose():
 def api_glossary_improve_batch():
     """Start a batch improvement run with glossary."""
     from .services import summary_improver, glossary_manager
+    import uuid
 
     data = request.get_json(force=True, silent=True) or {}
     article_ids = data.get("article_ids", [])
@@ -930,22 +932,52 @@ def api_glossary_improve_batch():
         logger.exception("Failed to load glossary")
         return jsonify({"error": f"Glossary load failed: {str(e)[:200]}"}), 500
 
+    # Generate batch ID
+    batch_id = str(uuid.uuid4())
+
+    # Reset batch state
+    _batch_state["status"] = "processing"
+    _batch_state["error"] = None
+    _batch_state["queued"] = len(article_ids)
+    _batch_state["processed"] = 0
+    _batch_state["batch_id"] = batch_id
+    _batch_state["current_article"] = ""
+    _batch_state["current_status"] = "starting"
+
     # Run batch in background
     def _run():
         try:
-            summary_improver.batch_improve_summaries(
+            logger.info(f"🚀 Starting batch {batch_id} with {len(article_ids)} articles")
+            _batch_state["current_status"] = "processing"
+
+            def progress_callback(count, article_title="", status="processing"):
+                _batch_state.update({
+                    "processed": count,
+                    "current_article": article_title,
+                    "current_status": status,
+                })
+                logger.info(f"[PROGRESS] Batch {batch_id}: {count}/{len(article_ids)} - {article_title}")
+
+            result = summary_improver.batch_improve_summaries(
                 article_ids=article_ids,
                 glossary_context=glossary_context,
                 glossary_version=glossary_version,
                 dry_run=dry_run,
+                progress_callback=progress_callback,
             )
+
+            _batch_state["status"] = "completed"
+            logger.info(f"✅ Batch {batch_id} completed: {result}")
         except Exception as exc:
-            logger.exception("Batch improvement failed: %s", exc)
+            logger.exception(f"❌ Batch {batch_id} failed: {exc}")
+            _batch_state["status"] = "error"
+            _batch_state["error"] = str(exc)[:200]
 
     threading.Thread(target=_run, name="pv-glossary-batch", daemon=True).start()
 
     return jsonify({
         "ok": True,
+        "batch_id": batch_id,
         "queued": len(article_ids),
         "dry_run": dry_run,
         "glossary_version": glossary_version,
