@@ -815,6 +815,10 @@ def import_pmids(pmids: Iterable[str], *, by_user: Optional[str] = None) -> dict
     Uses the inventory's cached metadata — abstracts are deliberately
     left empty; the existing "Recuperar abstracts" batch picks them
     up via PubMed efetch.
+
+    Articles imported via email digest button are flagged for the importing
+    user. PDFs are sourced via OA fetcher (Unpaywall + Europe PMC) or the
+    ingest queue if readily available.
     """
     ids = [str(p).strip() for p in pmids if str(p).strip()]
     if not ids:
@@ -847,6 +851,15 @@ def import_pmids(pmids: Iterable[str], *, by_user: Optional[str] = None) -> dict
             continue
         if created == "created":
             summary["created"] += 1
+            # Try to fetch OA PDF for newly created articles
+            # This integrates imports with the OA pipeline so they follow
+            # the same processing path as email ingests
+            if by_user:
+                try:
+                    _try_enqueue_oa_pdf(meta, by_user)
+                except Exception as exc:
+                    logger.debug("pubmed_inventory: OA enqueue skipped for %s (%s)",
+                                pmid, exc)
         elif created == "duplicate":
             summary["duplicates"] += 1
         # Mark imported either way — duplicates mean the article already
@@ -875,6 +888,63 @@ def import_pmids(pmids: Iterable[str], *, by_user: Optional[str] = None) -> dict
         except Exception as exc:
             logger.warning("pubmed_inventory: could not wake OA fetcher (%s)", exc)
     return summary
+
+
+def _try_enqueue_oa_pdf(meta: dict, by_user: str) -> None:
+    """Attempt to download an OA PDF for an article and enqueue it.
+
+    Tries Unpaywall (by DOI) and Europe PMC (by PMC ID) in parallel-ish.
+    If a PDF is found, it's enqueued just like an email ingest so it
+    follows the same processing pipeline (extraction, metadata, indexing).
+    If not found or if the download fails, the OA PDF fetcher will try
+    again later — this is best-effort only.
+    """
+    from ..ingestion.queue import enqueue_pdf
+    from . import unpaywall
+
+    doi = (meta.get("doi") or "").strip().lower() or None
+    pmcid = meta.get("pmcid")
+    pmid = meta.get("pmid")
+    title = (meta.get("title") or "(sin título)")[:100]
+
+    pdf_content = None
+    pdf_source = None
+
+    # Try Unpaywall first (usually faster)
+    if doi:
+        try:
+            pdf_bytes = unpaywall.download_pdf(doi)
+            if pdf_bytes:
+                pdf_content = pdf_bytes
+                pdf_source = "unpaywall"
+        except Exception as exc:
+            logger.debug("pubmed_inventory: Unpaywall failed for %s: %s", doi, exc)
+
+    # Fallback to Europe PMC if we don't have a PDF yet
+    if not pdf_content and pmcid:
+        try:
+            import requests
+            pmc_url = f"https://europepmc.org/articles/{pmcid}/pdf"
+            resp = requests.get(pmc_url, timeout=15, allow_redirects=True)
+            if resp.status_code == 200 and len(resp.content) > 1000:
+                pdf_content = resp.content
+                pdf_source = "europe_pmc"
+        except Exception as exc:
+            logger.debug("pubmed_inventory: Europe PMC failed for %s: %s", pmcid, exc)
+
+    # If we got a PDF, enqueue it
+    if pdf_content:
+        try:
+            filename = f"pmid_{pmid}_{title[:50].replace(' ', '_')}.pdf"
+            job_id = enqueue_pdf(
+                content=pdf_content,
+                filename=filename,
+                user_id=by_user,
+            )
+            logger.info("pubmed_inventory: enqueued OA PDF for PMID %s (source=%s, job=%d)",
+                       pmid, pdf_source, job_id)
+        except Exception as exc:
+            logger.warning("pubmed_inventory: enqueue failed for PMID %s: %s", pmid, exc)
 
 
 def _create_article_from_meta(meta: dict, *, by_user: Optional[str]) -> str:
@@ -920,6 +990,18 @@ def _create_article_from_meta(meta: dict, *, by_user: Optional[str]) -> str:
             "pmcid":    meta.get("pmcid"),
             "added_by": by_user,
         })
+        # Add flag for the importing user
+        if by_user:
+            conn.execute(sql_text("""
+                INSERT INTO prionvault_user_state
+                  (user_id, article_id, is_flagged, created_at, updated_at)
+                VALUES (CAST(:uid AS uuid), CAST(:aid AS uuid), TRUE, NOW(), NOW())
+                ON CONFLICT (user_id, article_id) DO UPDATE
+                   SET is_flagged = TRUE, updated_at = NOW()
+            """), {
+                "uid": by_user,
+                "aid": str(new_id),
+            })
     return "created"
 
 

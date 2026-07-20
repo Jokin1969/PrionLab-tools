@@ -2024,7 +2024,7 @@ _IMPORT_PAGE = """<!DOCTYPE html>
 
 
 @prionvault_bp.route("/import", methods=["GET", "POST"])
-@admin_required
+@login_required
 def import_from_email():
     """Landing page for email digest 'Importar' links.
 
