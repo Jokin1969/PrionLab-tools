@@ -1181,17 +1181,17 @@ def api_batch_cost(batch_id):
                 return jsonify({"error": "Batch not found"}), 404
 
             articles, timestamp = result
-            # Cost is now €0 since we use fuzzy matching (no Claude API calls)
-            est_cost_eur = 0.0
-            est_cost_usd = 0.0
+            # Claude Haiku cost: ~€0.00015-0.0002 per article for terminology replacement
+            est_cost_eur = articles * 0.00015
+            est_cost_usd = est_cost_eur * 1.10
 
             return jsonify({
                 "batch_id": batch_id,
                 "articles_processed": int(articles),
-                "estimated_cost_eur": est_cost_eur,
-                "estimated_cost_usd": est_cost_usd,
-                "cost_summary": f"€0.00 (fuzzy matching - no API costs)",
-                "note": "Fuzzy matching uses local terminology replacement, no Claude API calls",
+                "estimated_cost_eur": round(est_cost_eur, 4),
+                "estimated_cost_usd": round(est_cost_usd, 4),
+                "cost_summary": f"~€{round(est_cost_eur, 4)} (Claude Haiku - terminology replacement only)",
+                "note": "Cost reflects Claude Haiku API calls for exact term replacement (no regeneration)",
                 "timestamp": str(timestamp) if timestamp else None,
             })
 
@@ -1228,10 +1228,10 @@ def api_costs_summary():
 
             batch_count, article_count = summary
 
-            # Cost is €0 since we use fuzzy matching (no Claude API calls)
-            est_total_eur = 0.0
-            est_total_usd = 0.0
-            avg_cost_per_article = 0.0
+            # Claude Haiku cost: ~€0.00015 per article
+            est_total_eur = article_count * 0.00015
+            est_total_usd = est_total_eur * 1.10
+            avg_cost_per_article = 0.00015
 
             # Get recent batches
             batches = conn.execute(sql_text("""
@@ -1249,13 +1249,13 @@ def api_costs_summary():
 
             recent_batches = []
             for batch_id, articles, ts in batches:
-                batch_est_eur = 0.0
-                batch_est_usd = 0.0
+                batch_est_eur = articles * 0.00015
+                batch_est_usd = batch_est_eur * 1.10
                 recent_batches.append({
                     "batch_id": batch_id,
                     "articles": int(articles),
-                    "estimated_cost_eur": batch_est_eur,
-                    "estimated_cost_usd": batch_est_usd,
+                    "estimated_cost_eur": round(batch_est_eur, 4),
+                    "estimated_cost_usd": round(batch_est_usd, 4),
                     "timestamp": str(ts) if ts else None,
                 })
 
@@ -1263,10 +1263,10 @@ def api_costs_summary():
                 "period_days": days,
                 "total_batches": int(batch_count),
                 "total_articles": int(article_count),
-                "estimated_total_eur": est_total_eur,
-                "estimated_total_usd": est_total_usd,
-                "avg_estimated_cost_per_article": avg_cost_per_article,
-                "note": "Fuzzy matching uses local terminology replacement, no Claude API calls (€0 cost)",
+                "estimated_total_eur": round(est_total_eur, 4),
+                "estimated_total_usd": round(est_total_usd, 4),
+                "avg_estimated_cost_per_article": round(avg_cost_per_article, 6),
+                "note": "Cost reflects Claude Haiku API for exact terminology replacement (structure preserved)",
                 "recent_batches": recent_batches,
             })
 

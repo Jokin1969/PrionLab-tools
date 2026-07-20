@@ -14,109 +14,41 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from typing import Optional
 from datetime import datetime
 
 from sqlalchemy import text as sql_text
-from difflib import get_close_matches
 
 logger = logging.getLogger(__name__)
 
-_FUZZY_MATCH_THRESHOLD = 0.80  # 80% similarity required
 
+def _build_replacement_list():
+    """Build list of (term_to_avoid, term_recommended) tuples from glossary.
 
-def _build_glossary_lookup():
-    """Build a dict of Spanish recommended → English terms for fuzzy matching.
-
-    Returns: {spanish_recommended: english_term}
+    Returns: [(avoid1, recommended1), (avoid2, recommended2), ...]
     """
     from . import glossary_manager
     try:
         terms = glossary_manager.get_all_terms()
-        return {term['term_es_recommended']: term['term_en'] for term in terms}
-    except Exception as e:
-        logger.warning(f"Failed to build glossary lookup for fuzzy matching: {e}")
-        return {}
+        replacements = []
 
+        for term in terms:
+            es_recommended = term.get('term_es_recommended')
+            avoided_terms = term.get('term_es_avoid')
 
-def _apply_fuzzy_normalization(text: str, glossary: dict) -> tuple[str, list[dict]]:
-    """Apply fuzzy matching to detect and normalize terminology variations.
-
-    Finds Spanish terms that closely match "avoid" variants and replaces with
-    recommended terminology. Returns: (normalized_text, changes_list)
-
-    Args:
-        text: Text to normalize
-        glossary: {spanish_recommended: english_term} dict
-
-    Returns:
-        (normalized_text, changes) where changes is list of dicts with:
-        {original, corrected, similarity}
-    """
-    if not glossary:
-        return text, []
-
-    # Build reverse lookup of avoided terms for fuzzy matching
-    avoided_to_recommended = {}
-    try:
-        from . import glossary_manager
-        terms = glossary_manager.get_all_terms()
-        for t in terms:
-            es_rec = t.get('term_es_recommended')
-            if es_rec and t.get('term_es_avoid'):
-                for avoided in t['term_es_avoid'].split('|'):
+            if es_recommended and avoided_terms and avoided_terms.strip() != '-':
+                # Split multiple avoided terms by '|'
+                for avoided in avoided_terms.split('|'):
                     avoided = avoided.strip()
-                    if avoided:
-                        avoided_to_recommended[avoided] = es_rec
+                    if avoided and avoided != '-':
+                        replacements.append((avoided, es_recommended))
+
+        logger.info(f"Built replacement list with {len(replacements)} term pairs")
+        return replacements
+
     except Exception as e:
-        logger.warning(f"Failed to build avoided terms lookup for fuzzy matching: {e}")
-
-    if not avoided_to_recommended:
-        logger.debug(f"No avoided terms found in glossary for fuzzy normalization")
-        return text, []
-
-    changes = []
-    normalized = text
-
-    # Sort avoided terms by length (longest first) to match multi-word phrases first
-    sorted_avoided = sorted(avoided_to_recommended.items(), key=lambda x: len(x[0]), reverse=True)
-
-    # For each avoided term, try to find and replace it in the text
-    for avoided_term, recommended_term in sorted_avoided:
-        if len(avoided_term) < 3:  # Skip very short terms
-            continue
-
-        # Split text into words to find n-grams
-        words = normalized.split()
-        term_words = avoided_term.split()
-        n = len(term_words)
-
-        # Build list of all possible n-grams from text
-        found_match = False
-        for i in range(len(words) - n + 1):
-            ngram = ' '.join(words[i:i+n])
-
-            # Check fuzzy match similarity
-            ratio = SequenceMatcher(None, ngram.lower(), avoided_term.lower()).ratio()
-
-            if ratio >= _FUZZY_MATCH_THRESHOLD:
-                # Found a match - replace it
-                original_ngram = ngram
-                words[i:i+n] = recommended_term.split()
-
-                changes.append({
-                    'original': original_ngram,
-                    'corrected': recommended_term,
-                    'avoided_term': avoided_term,
-                    'recommended_term': recommended_term,
-                    'similarity': ratio,
-                })
-                normalized = ' '.join(words)
-                found_match = True
-                break
-
-    return normalized, changes
+        logger.warning(f"Failed to build replacement list: {e}")
+        return []
 
 
 def _get_engine():
@@ -147,16 +79,19 @@ def improve_summary(
     glossary_context: str,
     use_fuzzy_matching: bool = True,
 ) -> ImprovementResult:
-    """Improve a single summary using glossary via direct terminology replacement.
+    """Improve summary by having Claude search and replace glossary terms only.
 
-    Applies fuzzy matching to detect and normalize terminology variations WITHOUT
-    regenerating the summary. Preserves original structure, length, and meaning.
+    Claude is given explicit instructions to:
+    - ONLY replace glossary terms (don't summarize, don't rewrite)
+    - Preserve structure, length, and meaning exactly
+    - If term doesn't appear in summary, skip it
+    - Return ONLY the improved summary with no explanation
 
     Args:
         article_id: Article UUID
         original_summary: Summary text to improve
-        glossary_context: Formatted glossary (not used, kept for compatibility)
-        use_fuzzy_matching: If True, apply fuzzy matching for terminology replacement
+        glossary_context: Formatted glossary with terms to search/replace
+        use_fuzzy_matching: Ignored (kept for compatibility)
 
     Returns:
         ImprovementResult with improvement details
@@ -171,15 +106,57 @@ def improve_summary(
         )
 
     try:
-        # Apply fuzzy normalization to replace terminology only (no regeneration)
-        glossary_lookup = _build_glossary_lookup()
-        improved_summary, changes = _apply_fuzzy_normalization(
-            original_summary, glossary_lookup
+        import anthropic
+
+        # Build list of exact replacements from glossary
+        replacements = _build_replacement_list()
+        if not replacements:
+            return ImprovementResult(
+                article_id=article_id,
+                success=True,
+                original_length=len(original_summary),
+                improved_length=len(original_summary),
+                improved_summary=original_summary,
+                tokens_used=0,
+                input_tokens=0,
+                output_tokens=0,
+                model_used="claude-haiku-4-5-20251001",
+            )
+
+        # Format replacements for Claude
+        replacements_text = "\n".join(
+            [f"  - '{old}' → '{new}'" for old, new in replacements]
         )
 
-        # If no changes, return original
-        if not changes:
-            improved_summary = original_summary
+        prompt = f"""You are a terminology replacement tool. Your ONLY task is to search for specific terms in the text and replace them.
+
+STRICT RULES:
+1. ONLY replace the terms listed below
+2. DO NOT summarize the text
+3. DO NOT rewrite or improve the text
+4. DO NOT change the structure or length
+5. If a term is not found in the text, ignore it
+6. Return ONLY the modified text with no explanation, commentary, or metadata
+
+Original text:
+{original_summary}
+
+Terms to replace:
+{replacements_text}
+
+Return the text with only those replacements made:"""
+
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        improved_summary = response.content[0].text.strip()
+
+        # Extract changes by comparing original vs improved
+        change_count, changes = _extract_changes(original_summary, improved_summary, article_id)
 
         return ImprovementResult(
             article_id=article_id,
@@ -187,10 +164,11 @@ def improve_summary(
             original_length=len(original_summary),
             improved_length=len(improved_summary),
             improved_summary=improved_summary,
-            tokens_used=0,
-            input_tokens=0,
-            output_tokens=0,
-            model_used="fuzzy-matching",
+            tokens_used=response.usage.input_tokens + response.usage.output_tokens,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            model_used="claude-haiku-4-5-20251001",
+            changes_detected=change_count,
         )
 
     except Exception as e:
