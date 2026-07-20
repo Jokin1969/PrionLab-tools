@@ -3,9 +3,14 @@
 {% block title %}📚 {{ _('Glossary Management') }} — PrionLab Tools{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>📚 {{ _('Glossary Management') }}</h1>
-  <p class="subtitle">{{ _('Biomedical terminology & summary improvement control center') }}</p>
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
+  <div>
+    <h1>📚 {{ _('Glossary Management') }}</h1>
+    <p class="subtitle">{{ _('Biomedical terminology & summary improvement control center') }}</p>
+  </div>
+  <a href="/prionvault/" class="btn btn--secondary" style="align-self: flex-start; margin-top: 4px; white-space: nowrap;">
+    ← {{ _('Back to PrionVault') }}
+  </a>
 </div>
 
 {# ── Tab Navigation ───────────────────────────────────────────────────────── #}
