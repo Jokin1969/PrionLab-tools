@@ -1035,7 +1035,7 @@ async function loadOutdated() {
     selectedArticleIds = [];
 
     document.getElementById('preview-results').style.display = 'block';
-    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total_outdated} {{ _("outdated articles") }} ({{ _("improved with v") }}<${data.current_glossary_version})`;
+    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total_outdated} {{ _("outdated articles") }} ({{ _("improved with v") }}${data.current_glossary_version})`;
 
     renderPreviewTable();
     status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length} {{ _("outdated") }}`;
