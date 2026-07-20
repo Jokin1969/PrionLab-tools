@@ -371,6 +371,7 @@
       <label for="history-batch-filter">{{ _('Filter by batch ID:') }}</label>
       <input type="text" id="history-batch-filter" placeholder="UUID or leave empty for all" style="width: 300px; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px" />
       <button class="btn btn--secondary" onclick="loadHistory()">{{ _('Filter') }}</button>
+      <button class="btn btn--success" onclick="downloadAllChanges()" style="margin-left: 10px;">📊 Descargar Excel</button>
     </div>
 
     <div class="stats-grid" style="margin-bottom: 20px">
