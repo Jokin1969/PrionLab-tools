@@ -330,9 +330,10 @@
       <h3>{{ _('Run improvement') }}</h3>
       <div class="form-group">
         <label>
-          <input type="checkbox" id="dry-run-checkbox" checked />
+          <input type="checkbox" id="dry-run-checkbox" />
           {{ _('Dry run (preview only, don\'t save)') }}
         </label>
+        <p style="font-size:11px;color:#16a34a;margin-top:5px">✓ {{ _('By default, improvements will be saved to the database') }}</p>
       </div>
       <button id="btn-improve-batch" class="btn btn--primary" onclick="improveBatch()" disabled>
         ✨ {{ _('Improve selected summaries') }}
