@@ -397,22 +397,23 @@ def api_glossary_batch_export(batch_id):
                 WHERE batch_id = :batch_id
             """), {"batch_id": batch_id}).mappings().first()
 
-            # Get all corrections
+            # Get all corrections with article info
             rows = conn.execute(sql_text("""
                 SELECT
+                    sil.article_id::text,
+                    a.title,
                     scd.original_text,
                     scd.corrected_text,
                     scd.term_en,
                     scd.recommended_es,
                     scd.correction_type,
-                    COUNT(*) as change_count,
-                    AVG(CAST(scd.confidence_score AS DECIMAL)) as avg_confidence
+                    scd.confidence_score,
+                    sil.improved_at
                 FROM summary_correction_detail scd
                 JOIN summary_improvement_log sil ON scd.improvement_log_id = sil.id
+                JOIN articles a ON sil.article_id = a.id
                 WHERE sil.batch_id = :batch_id
-                GROUP BY scd.original_text, scd.corrected_text, scd.term_en,
-                         scd.recommended_es, scd.correction_type
-                ORDER BY change_count DESC, scd.original_text
+                ORDER BY sil.improved_at DESC, a.title, scd.original_text
             """), {"batch_id": batch_id}).mappings().all()
 
             changes = [dict(r) for r in rows]
@@ -461,60 +462,76 @@ def api_glossary_batch_export(batch_id):
 
         row += 1
         ws[f'A{row}'] = f"Total de cambios:"
-        ws[f'B{row}'] = sum(c["change_count"] for c in changes)
-        ws[f'A{row}'].font = Font(bold=True)
-
-        row += 1
-        ws[f'A{row}'] = f"Cambios únicos:"
         ws[f'B{row}'] = len(changes)
         ws[f'A{row}'].font = Font(bold=True)
 
-        # Data table header
-        row = 10
-        headers = ["Texto Original", "Texto Corregido", "Repeticiones", "Término EN", "Recomendado ES", "Confianza (%)"]
-        for col_idx, header in enumerate(headers, 1):
-            cell = ws.cell(row=row, column=col_idx, value=header)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = center_align
-            cell.border = border
-
         # Set column widths
-        ws.column_dimensions['A'].width = 25
-        ws.column_dimensions['B'].width = 25
-        ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 18
-        ws.column_dimensions['E'].width = 20
-        ws.column_dimensions['F'].width = 12
+        ws.column_dimensions['A'].width = 35
+        ws.column_dimensions['B'].width = 35
+        ws.column_dimensions['C'].width = 15
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 12
 
-        # Add data rows
-        row = 11
+        # Group changes by article
+        from collections import defaultdict
+        by_article = defaultdict(list)
         for change in changes:
-            confidence = f"{int(change['avg_confidence'] * 100)}" if change['avg_confidence'] else "-"
+            key = (change['article_id'], change['title'])
+            by_article[key].append(change)
 
-            cells_data = [
-                change['original_text'],
-                change['corrected_text'],
-                change['change_count'],
-                change['term_en'] or "-",
-                change['recommended_es'] or "-",
-                confidence,
-            ]
+        # Add data grouped by article
+        row = 10
+        for (article_id, article_title), article_changes in sorted(by_article.items()):
+            # Article header with link to PrionVault
+            ws[f'A{row}'] = f"📄 {article_title[:60]}"
+            ws[f'A{row}'].font = article_font
+            ws[f'A{row}'].fill = article_fill
 
-            for col_idx, value in enumerate(cells_data, 1):
-                cell = ws.cell(row=row, column=col_idx, value=value)
+            # Create hyperlink to PrionVault
+            prionvault_url = f"/prionvault/?id={article_id}"
+            ws[f'A{row}'].hyperlink = prionvault_url
+            ws[f'A{row}'].font = Font(bold=True, color="0563C1", underline="single")
+
+            ws.merge_cells(f'A{row}:E{row}')
+            row += 1
+
+            # Column headers for this article's changes
+            headers = ["Texto Original", "Texto Corregido", "Término EN", "Recomendado ES", "Confianza (%)"]
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=row, column=col_idx, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_align
                 cell.border = border
-                cell.alignment = left_align if col_idx <= 2 else center_align
-                # Alternate row colors for readability
-                if row % 2 == 0:
-                    cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
 
             row += 1
 
-        # Auto-filter on header row
-        ws.auto_filter.ref = f"A10:F{row-1}"
+            # Data rows for this article
+            for change in article_changes:
+                confidence = f"{int(change['confidence_score'] * 100)}%" if change['confidence_score'] else "-"
 
-        # Freeze panes
+                cells_data = [
+                    change['original_text'],
+                    change['corrected_text'],
+                    change['term_en'] or "-",
+                    change['recommended_es'] or "-",
+                    confidence,
+                ]
+
+                for col_idx, value in enumerate(cells_data, 1):
+                    cell = ws.cell(row=row, column=col_idx, value=value)
+                    cell.border = border
+                    cell.alignment = left_align if col_idx <= 2 else center_align
+                    # Alternate row colors for readability
+                    if row % 2 == 0:
+                        cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+
+                row += 1
+
+            # Blank row between articles
+            row += 1
+
+        # Freeze panes at header
         ws.freeze_panes = "A11"
 
         # Save to BytesIO
@@ -564,11 +581,10 @@ def api_glossary_export_all_changes():
             changes = [dict(r) for r in rows]
 
         # Group by article for better organization
-        by_article = {}
+        from collections import defaultdict
+        by_article = defaultdict(list)
         for change in changes:
-            article_key = f"{change['article_id'][:8]} - {change['title'][:50]}"
-            if article_key not in by_article:
-                by_article[article_key] = []
+            article_key = (change['article_id'], change['title'])
             by_article[article_key].append(change)
 
         # Create Excel workbook
@@ -616,13 +632,18 @@ def api_glossary_export_all_changes():
         current_row = 6
 
         # Add data grouped by article
-        for article_key in sorted(by_article.keys()):
-            article_changes = by_article[article_key]
+        for (article_id, article_title) in sorted(by_article.keys(), key=lambda x: x[1]):
+            article_changes = by_article[(article_id, article_title)]
 
-            # Article header
-            ws[f'A{current_row}'] = f"📄 {article_key}"
-            ws[f'A{current_row}'].font = article_font
+            # Article header with link to PrionVault
+            ws[f'A{current_row}'] = f"📄 {article_title[:60]}"
+            ws[f'A{current_row}'].font = Font(bold=True, size=11, color="0563C1", underline="single")
             ws[f'A{current_row}'].fill = article_fill
+
+            # Create hyperlink to PrionVault
+            prionvault_url = f"/prionvault/?id={article_id}"
+            ws[f'A{current_row}'].hyperlink = prionvault_url
+
             ws.merge_cells(f'A{current_row}:G{current_row}')
             current_row += 1
 
