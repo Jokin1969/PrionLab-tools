@@ -993,62 +993,62 @@ async function loadDiff() {
 async function loadAllArticles() {
   improveMode = 'all';
   const limit = document.getElementById('preview-limit').value;
-  const btn = document.querySelector('[onclick="loadAllArticles()"]');
   const status = document.getElementById('preview-status');
 
-  btn.disabled = true;
   status.textContent = '{{ _("Loading...") }}';
 
   try {
-    const response = await fetch(`/prionvault/api/admin/summaries/preview-improvement?limit=${limit}&offset=0`, {
+    const response = await fetch(`/prionvault/api/glossary/outdated?limit=${limit}&offset=0`, {
       credentials: 'same-origin',
     });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
     const data = await response.json();
 
     previewArticles = data.articles || [];
     selectedArticleIds = [];
 
     document.getElementById('preview-results').style.display = 'block';
-    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total} {{ _("articles with summaries") }}`;
+    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total || previewArticles.length} {{ _("articles with summaries") }}`;
 
     renderPreviewTable();
     status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length}`;
 
   } catch (e) {
     status.textContent = `✗ {{ _("Error:") }} ${e.message}`;
-  } finally {
-    btn.disabled = false;
+    console.error('loadAllArticles error:', e);
   }
 }
 
 async function loadOutdated() {
   improveMode = 'outdated';
   const limit = document.getElementById('preview-limit').value;
-  const btn = document.querySelector('[onclick="loadOutdated()"]');
   const status = document.getElementById('preview-status');
 
-  btn.disabled = true;
   status.textContent = '{{ _("Loading outdated...") }}';
 
   try {
-    const response = await fetch(`/prionvault/api/admin/summaries/outdated?limit=${limit}&offset=0`, {
+    const response = await fetch(`/prionvault/api/glossary/outdated?limit=${limit}&offset=0`, {
       credentials: 'same-origin',
     });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
     const data = await response.json();
 
     previewArticles = data.articles || [];
     selectedArticleIds = [];
 
     document.getElementById('preview-results').style.display = 'block';
-    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total_outdated} {{ _("outdated articles") }} ({{ _("improved with v") }}${data.current_glossary_version})`;
+    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total_outdated || previewArticles.length} {{ _("outdated articles") }} ({{ _("improved with v") }}${data.current_glossary_version || '—'})`;
 
     renderPreviewTable();
     status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length} {{ _("outdated") }}`;
 
   } catch (e) {
     status.textContent = `✗ {{ _("Error:") }} ${e.message}`;
-  } finally {
-    btn.disabled = false;
+    console.error('loadOutdated error:', e);
   }
 }
 
@@ -1103,7 +1103,7 @@ async function improveBatch() {
   status.textContent = '{{ _("Queued...") }}';
 
   try {
-    const response = await fetch('/prionvault/api/admin/summaries/improve-batch', {
+    const response = await fetch('/prionvault/api/glossary/improve-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -1146,7 +1146,7 @@ async function loadHistory() {
   const limit = 50;
 
   try {
-    const url = new URL('/prionvault/api/admin/summaries/log', window.location.origin);
+    const url = new URL('/prionvault/api/glossary/log', window.location.origin);
     if (batchId) url.searchParams.append('batch_id', batchId);
     url.searchParams.append('limit', limit);
 
