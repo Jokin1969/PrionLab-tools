@@ -1194,6 +1194,19 @@ function downloadBatchExcel(batchId) {
   }
 }
 
+function downloadAllChanges() {
+  try {
+    const link = document.createElement('a');
+    link.href = '/prionvault/api/glossary/export-all-changes';
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    link.download = `cambios-completos-${dateStr}.xlsx`;
+    link.click();
+  } catch (e) {
+    alert('Error al descargar: ' + e.message);
+  }
+}
+
 function exportDashboardData() {
   alert('{{ _("Export feature coming soon. Check browser console for raw data.") }}');
   console.log({ currentTerms, previewArticles });
