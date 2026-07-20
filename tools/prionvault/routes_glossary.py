@@ -300,12 +300,20 @@ def api_glossary_improve_next():
             logger.info(f"🚀 THREAD STARTED: Batch thread beginning execution")
             try:
                 logger.info(f"📋 Calling batch_improve_summaries with {len(article_ids)} articles")
+                def progress_callback(count, article_title="", status="processing"):
+                    _batch_state.update({
+                        "processed": count,
+                        "current_article": article_title,
+                        "current_status": status,
+                    })
+                    logger.info(f"[PROGRESS] {count}/{len(article_ids)}: {article_title} - {status}")
+
                 result = summary_improver.batch_improve_summaries(
                     article_ids=article_ids,
                     glossary_context=glossary_context,
                     glossary_version=glossary_version,
                     dry_run=dry_run,
-                    progress_callback=lambda count: _batch_state.update({"processed": count}),
+                    progress_callback=progress_callback,
                 )
                 logger.info(f"✅ batch_improve_summaries returned successfully")
                 _batch_state["status"] = "completed"
@@ -343,6 +351,8 @@ def api_glossary_batch_status():
         "queued": _batch_state.get("queued", 0),
         "processed": _batch_state.get("processed", 0),
         "batch_id": _batch_state.get("batch_id"),
+        "current_article": _batch_state.get("current_article", ""),
+        "current_status": _batch_state.get("current_status", ""),
     })
 
 

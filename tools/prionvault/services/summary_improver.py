@@ -30,24 +30,36 @@ def _build_replacement_list():
     from . import glossary_manager
     try:
         terms = glossary_manager.get_all_terms()
+        logger.info(f"[REPLACEMENT_LIST] Total glossary terms loaded: {len(terms)}")
+
         replacements = []
 
-        for term in terms:
+        for i, term in enumerate(terms):
             es_recommended = term.get('term_es_recommended')
             avoided_terms = term.get('term_es_avoid')
 
-            if es_recommended and avoided_terms and avoided_terms.strip() != '-':
-                # Split multiple avoided terms by '|'
-                for avoided in avoided_terms.split('|'):
-                    avoided = avoided.strip()
-                    if avoided and avoided != '-':
-                        replacements.append((avoided, es_recommended))
+            if not es_recommended:
+                logger.debug(f"[REPLACEMENT_LIST] Term {i}: no es_recommended")
+                continue
 
-        logger.info(f"Built replacement list with {len(replacements)} term pairs")
+            if not avoided_terms or avoided_terms.strip() == '-':
+                logger.debug(f"[REPLACEMENT_LIST] Term {i} '{es_recommended}': no avoided terms")
+                continue
+
+            # Split multiple avoided terms by '|'
+            for avoided in avoided_terms.split('|'):
+                avoided = avoided.strip()
+                if avoided and avoided != '-':
+                    replacements.append((avoided, es_recommended))
+                    logger.debug(f"[REPLACEMENT_LIST] Added: '{avoided}' → '{es_recommended}'")
+
+        logger.info(f"[REPLACEMENT_LIST] ✅ Built with {len(replacements)} term pairs")
+        if replacements:
+            logger.info(f"[REPLACEMENT_LIST] First 3: {replacements[:3]}")
         return replacements
 
     except Exception as e:
-        logger.warning(f"Failed to build replacement list: {e}")
+        logger.exception(f"[REPLACEMENT_LIST] ❌ Failed to build replacement list: {e}")
         return []
 
 
@@ -110,7 +122,10 @@ def improve_summary(
 
         # Build list of exact replacements from glossary
         replacements = _build_replacement_list()
+        logger.info(f"[IMPROVE] Article {article_id[:8]}: Found {len(replacements)} replacement terms")
+
         if not replacements:
+            logger.warning(f"[IMPROVE] Article {article_id[:8]}: ⚠️  NO REPLACEMENT TERMS FOUND - returning unchanged")
             return ImprovementResult(
                 article_id=article_id,
                 success=True,
@@ -146,6 +161,7 @@ Terms to replace:
 
 Return the text with only those replacements made:"""
 
+        logger.info(f"[IMPROVE] Article {article_id[:8]}: Calling Claude Haiku...")
         client = anthropic.Anthropic()
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -154,9 +170,11 @@ Return the text with only those replacements made:"""
         )
 
         improved_summary = response.content[0].text.strip()
+        logger.info(f"[IMPROVE] Article {article_id[:8]}: Claude returned {len(improved_summary)} chars")
 
         # Extract changes by comparing original vs improved
         change_count, changes = _extract_changes(original_summary, improved_summary, article_id)
+        logger.info(f"[IMPROVE] Article {article_id[:8]}: ✅ Found {change_count} changes in summary")
 
         return ImprovementResult(
             article_id=article_id,
@@ -329,31 +347,34 @@ def batch_improve_summaries(
     for idx, aid in enumerate(article_ids):
         try:
             # Fetch article + summary
-            logger.info(f"[{idx+1}/{len(article_ids)}] 🔌 Attempting to get DB connection...")
+            logger.info(f"[{idx+1}/{len(article_ids)}] 🔌 Attempting to get DB connection for article {aid[:8]}...")
             with eng.connect() as conn:
                 logger.info(f"[{idx+1}/{len(article_ids)}] ✅ Connection obtained")
                 row = conn.execute(sql_text(
-                    "SELECT summary_ai FROM articles WHERE id = :aid"
+                    "SELECT summary_ai, title FROM articles WHERE id = :aid"
                 ), {"aid": aid}).first()
             logger.info(f"[{idx+1}/{len(article_ids)}] 🔓 Connection closed, row={row is not None}")
 
+            article_title = row[1] if row and len(row) > 1 else "Unknown"
+
             if not row or not row[0]:
-                logger.warning(f"[{idx+1}/{len(article_ids)}] No summary found for {aid}")
-                results["errors"].append(f"{aid}: No summary found")
+                logger.warning(f"[{idx+1}/{len(article_ids)}] ❌ No summary found for {aid[:8]} - {article_title}")
+                results["errors"].append(f"{article_title}: No summary found")
                 results["failed"] += 1
                 results["processed"] += 1
                 if progress_callback:
-                    progress_callback(results["processed"])
+                    progress_callback(results["processed"], article_title, "error")
                 continue
 
             original_summary = row[0]
             results["summary_lengths_before"].append(len(original_summary))
+            logger.info(f"[{idx+1}/{len(article_ids)}] 📄 Processing: {article_title[:60]}")
             logger.info(f"[{idx+1}/{len(article_ids)}] Summary length: {len(original_summary)} chars")
 
             # Improve
-            logger.info(f"[{idx+1}/{len(article_ids)}] Calling improve_summary()...")
+            logger.info(f"[{idx+1}/{len(article_ids)}] 🚀 Calling improve_summary()...")
             improvement = improve_summary(aid, original_summary, glossary_context)
-            logger.info(f"[{idx+1}/{len(article_ids)}] Result: success={improvement.success}, error={improvement.error}")
+            logger.info(f"[{idx+1}/{len(article_ids)}] ✅ Improve result: success={improvement.success}, changes={improvement.changes_detected}")
 
             if improvement.success:
                 improved_summary = improvement.improved_summary
@@ -405,18 +426,19 @@ def batch_improve_summaries(
 
             results["processed"] += 1
             if progress_callback:
-                progress_callback(results["processed"])
+                status = "success" if improvement.success and improvement.changes_detected > 0 else "no_changes"
+                progress_callback(results["processed"], article_title, status)
 
             # Polite rate limiting
             time.sleep(0.5)
 
         except Exception as e:
-            logger.exception(f"[{idx+1}/{len(article_ids)}] batch_improve_summaries: error for {aid}")
+            logger.exception(f"[{idx+1}/{len(article_ids)}] batch_improve_summaries: error for {aid[:8]} - {article_title}")
             results["failed"] += 1
-            results["errors"].append(f"{aid}: {str(e)[:200]}")
+            results["errors"].append(f"{article_title}: {str(e)[:200]}")
             results["processed"] += 1
             if progress_callback:
-                progress_callback(results["processed"])
+                progress_callback(results["processed"], article_title, "error")
 
     # Estimate cost based on successful improvements
     # Average: ~€0.0005 per article (rough estimate)
