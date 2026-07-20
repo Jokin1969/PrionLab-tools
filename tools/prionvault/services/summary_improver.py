@@ -137,90 +137,50 @@ def improve_summary(
     glossary_context: str,
     use_fuzzy_matching: bool = True,
 ) -> ImprovementResult:
-    """Improve a single summary using glossary.
+    """Improve a single summary using glossary via direct terminology replacement.
 
-    Uses Claude Haiku (3.5) for cost efficiency. Optionally applies fuzzy
-    matching to detect and normalize terminology variations before Claude processes.
+    Applies fuzzy matching to detect and normalize terminology variations WITHOUT
+    regenerating the summary. Preserves original structure, length, and meaning.
 
     Args:
         article_id: Article UUID
         original_summary: Summary text to improve
-        glossary_context: Formatted glossary for prompt injection
-        use_fuzzy_matching: If True, apply fuzzy matching as preprocessing step
+        glossary_context: Formatted glossary (not used, kept for compatibility)
+        use_fuzzy_matching: If True, apply fuzzy matching for terminology replacement
 
     Returns:
         ImprovementResult with improvement details
     """
-    if not original_summary or not glossary_context:
+    if not original_summary:
         return ImprovementResult(
             article_id=article_id,
             success=False,
             original_length=len(original_summary or ""),
             improved_length=0,
-            error="Empty summary or glossary",
-        )
-
-    # Apply fuzzy normalization as preprocessing
-    summary_to_improve = original_summary
-    if use_fuzzy_matching:
-        glossary_lookup = _build_glossary_lookup()
-        summary_to_improve, _fuzzy_changes = _apply_fuzzy_normalization(
-            original_summary, glossary_lookup
+            error="Empty summary",
         )
 
     try:
-        from anthropic import Anthropic
-        client = Anthropic()
-
-        system_prompt = (
-            "You are a scientific terminology expert. Your task is to improve Spanish-language "
-            "biomedical summaries by applying standardized terminology from a glossary.\n\n"
-            "CRITICAL RULES:\n"
-            "1. Keep the exact same meaning and length (±10%)\n"
-            "2. Only change terminology to match the glossary when appropriate\n"
-            "3. Do NOT add new information or change the structure\n"
-            "4. Do NOT translate anything — the summary is already in Spanish\n"
-            "5. Return ONLY the improved summary, nothing else\n"
-            f"\nGLOSSARY:\n{glossary_context}"
+        # Apply fuzzy normalization to replace terminology only (no regeneration)
+        glossary_lookup = _build_glossary_lookup()
+        improved_summary, changes = _apply_fuzzy_normalization(
+            original_summary, glossary_lookup
         )
 
-        user_prompt = (
-            f"Original summary:\n\n{summary_to_improve}\n\n"
-            "Please improve this summary by applying the glossary terminology. "
-            "Remember: ONLY terminology improvements, same meaning, same length."
-        )
-
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2000,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-
-        improved = response.content[0].text.strip() if response.content else ""
-        if not improved:
-            return ImprovementResult(
-                article_id=article_id,
-                success=False,
-                original_length=len(original_summary),
-                improved_length=0,
-                error="Empty response from Claude",
-            )
-
-        input_tokens = response.usage.input_tokens if hasattr(response, "usage") else 0
-        output_tokens = response.usage.output_tokens if hasattr(response, "usage") else 0
-        tokens_used = input_tokens + output_tokens
+        # If no changes, return original
+        if not changes:
+            improved_summary = original_summary
 
         return ImprovementResult(
             article_id=article_id,
             success=True,
             original_length=len(original_summary),
-            improved_length=len(improved),
-            improved_summary=improved,
-            tokens_used=tokens_used,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            model_used="claude-haiku-4-5-20251001",
+            improved_length=len(improved_summary),
+            improved_summary=improved_summary,
+            tokens_used=0,
+            input_tokens=0,
+            output_tokens=0,
+            model_used="fuzzy-matching",
         )
 
     except Exception as e:
