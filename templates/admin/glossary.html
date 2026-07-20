@@ -1162,7 +1162,11 @@ async function loadHistory() {
     tbody.innerHTML = data.improvements.map(imp => `
       <tr>
         <td>${new Date(imp.improved_at).toLocaleString()}</td>
-        <td><strong>${escapeHtml((imp.title || '').substring(0, 60))}</strong></td>
+        <td>
+          <a href="/prionvault/?id=${imp.article_id}" target="_blank" rel="noopener" style="color:#0F3460;text-decoration:none;cursor:pointer;">
+            <strong>${escapeHtml((imp.title || '').substring(0, 60))}</strong>
+          </a>
+        </td>
         <td>v${imp.glossary_version}</td>
         <td><strong>${imp.changes_count}</strong></td>
         <td><code style="font-size: 11px">${imp.batch_id.substring(0, 12)}...</code></td>
