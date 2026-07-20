@@ -1304,3 +1304,110 @@ def api_costs_summary():
     except Exception as e:
         logger.exception("Failed to fetch cost summary")
         return jsonify({"error": str(e)[:300]}), 500
+
+
+# ── Public glossary API (for other modules: PrionRead, PrionPacks, etc.) ─────
+@prionvault_bp.route("/api/glossary/public/version", methods=["GET"])
+@login_required
+def api_glossary_public_version():
+    """Get current glossary version (public API for other modules)."""
+    from .services import glossary_manager
+    try:
+        version = glossary_manager.get_current_glossary_version()
+        return jsonify({"version": version})
+    except Exception as e:
+        logger.exception("Failed to fetch glossary version")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/api/glossary/public/terms", methods=["GET"])
+@login_required
+def api_glossary_public_terms():
+    """Get all glossary terms (public API for other modules).
+
+    Optional query params:
+    - category: Filter by category
+    - limit: Max results (default 1000)
+    - offset: Pagination offset (default 0)
+    """
+    from .services import glossary_manager
+
+    try:
+        category = request.args.get("category", "").strip() or None
+        limit = min(int(request.args.get("limit", 1000)), 5000)
+        offset = int(request.args.get("offset", 0))
+
+        terms = glossary_manager.get_all_terms(category=category)
+        total = len(terms)
+        paginated = terms[offset:offset + limit]
+
+        return jsonify({
+            "version": glossary_manager.get_current_glossary_version(),
+            "total": total,
+            "returned": len(paginated),
+            "offset": offset,
+            "limit": limit,
+            "terms": [
+                {
+                    "term_en": t.get("term_en", "").lower(),
+                    "term_es_recommended": t.get("term_es_recommended", ""),
+                    "term_es_avoid": t.get("term_es_avoid"),
+                    "category": t.get("category"),
+                    "notes": t.get("notes"),
+                }
+                for t in paginated
+            ]
+        })
+    except Exception as e:
+        logger.exception("Failed to fetch glossary terms")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/api/glossary/public/search", methods=["GET"])
+@login_required
+def api_glossary_public_search():
+    """Search glossary terms by English or Spanish (public API).
+
+    Query params:
+    - q: Search query (required)
+    - limit: Max results (default 50)
+    """
+    from .services import glossary_manager
+
+    try:
+        query = request.args.get("q", "").strip().lower()
+        if not query:
+            return jsonify({"error": "Missing 'q' parameter"}), 400
+
+        limit = min(int(request.args.get("limit", 50)), 500)
+
+        all_terms = glossary_manager.get_all_terms()
+        matches = []
+
+        for term in all_terms:
+            term_en = (term.get("term_en") or "").lower()
+            term_es = (term.get("term_es_recommended") or "").lower()
+            avoid = (term.get("term_es_avoid") or "").lower()
+
+            # Simple substring match (can be improved with fuzzy matching)
+            if query in term_en or query in term_es or (avoid and query in avoid):
+                matches.append({
+                    "term_en": term.get("term_en", ""),
+                    "term_es_recommended": term.get("term_es_recommended", ""),
+                    "term_es_avoid": term.get("term_es_avoid"),
+                    "category": term.get("category"),
+                    "notes": term.get("notes"),
+                })
+
+            if len(matches) >= limit:
+                break
+
+        return jsonify({
+            "query": query,
+            "found": len(matches),
+            "limited_to": limit if len(matches) >= limit else None,
+            "results": matches[:limit]
+        })
+    except Exception as e:
+        logger.exception("Failed to search glossary")
+        return jsonify({"error": str(e)[:300]}), 500
