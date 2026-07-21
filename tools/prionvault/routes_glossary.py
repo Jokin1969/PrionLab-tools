@@ -499,7 +499,7 @@ def api_glossary_batch_export(batch_id):
             ws[f'A{row}'].fill = article_fill
 
             # Create hyperlink to PrionVault
-            prionvault_url = f"/prionvault/?id={article_id}"
+            prionvault_url = f"/prionvault/?open={article_id}"
             ws[f'A{row}'].hyperlink = prionvault_url
             ws[f'A{row}'].font = Font(bold=True, color="0563C1", underline="single")
 
@@ -652,7 +652,7 @@ def api_glossary_export_all_changes():
             ws[f'A{current_row}'].fill = article_fill
 
             # Create hyperlink to PrionVault
-            prionvault_url = f"/prionvault/?id={article_id}"
+            prionvault_url = f"/prionvault/?open={article_id}"
             ws[f'A{current_row}'].hyperlink = prionvault_url
 
             ws.merge_cells(f'A{current_row}:G{current_row}')
@@ -1560,11 +1560,6 @@ def api_glossary_regenerate_summary(article_id):
             extracted_text=extracted_text,
         )
 
-        if not result.success:
-            return jsonify({
-                "error": f"Failed to generate summary: {result.error}"
-            }), 500
-
         # Save regenerated summary to database
         with db.engine.begin() as conn:
             conn.execute(sql_text(
@@ -1574,7 +1569,7 @@ def api_glossary_regenerate_summary(article_id):
                        updated_at = NOW()
                    WHERE id = :aid"""
             ), {
-                "summary": result.summary,
+                "summary": result.text,
                 "ver": glossary_version,
                 "aid": article_id,
             })
@@ -1585,12 +1580,15 @@ def api_glossary_regenerate_summary(article_id):
             "ok": True,
             "article_id": article_id,
             "glossary_version": glossary_version,
-            "new_summary_length": len(result.summary),
-            "model_used": result.model_used,
-            "tokens_used": result.tokens_used,
+            "new_summary_length": len(result.text),
+            "model_used": result.model,
+            "tokens_used": (result.tokens_in or 0) + (result.tokens_out or 0),
             "message": "Summary regenerated and glossary applied successfully"
         })
 
+    except ai_summary.NotConfigured as e:
+        logger.error(f"AI provider not configured: {e}")
+        return jsonify({"error": f"AI provider not available: {str(e)[:200]}"}), 503
     except Exception as e:
         logger.exception(f"Failed to regenerate summary for {article_id}")
         return jsonify({"error": str(e)[:300]}), 500
