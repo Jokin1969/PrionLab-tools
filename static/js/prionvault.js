@@ -7606,7 +7606,7 @@
       wireSidebarGroups();
       wireAIStatus();
       wireQueryExpansion();
-      wireGlossary();
+      // wireGlossary(); // Moved to dedicated /prionvault/admin/glossary page
       wireScimago();
       wireSidebarResize();
       wireMobileDrawer();
