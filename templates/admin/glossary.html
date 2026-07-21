@@ -758,27 +758,40 @@
 </style>
 
 <script>
+// DIAGNOSTIC: Log that the script is running
+console.log("🚀 glossary.html script starting at " + new Date().toISOString());
+
 let currentCategories = [];
 let currentTerms = [];
 let previewArticles = [];
 let selectedArticleIds = [];
 let improveMode = 'all'; // 'all' or 'outdated'
 
+console.log("✅ Global variables initialized");
+
 // ── Tab switching ──────────────────────────────────────────────────────────
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('tab-content--active'));
+try {
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  console.log("✅ Found " + tabBtns.length + " tab buttons");
 
-    e.target.classList.add('tab-btn--active');
-    const tabId = 'tab-' + e.target.dataset.tab;
-    document.getElementById(tabId).classList.add('tab-content--active');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('tab-content--active'));
 
-    if (e.target.dataset.tab === 'dashboard') loadDashboard();
-    else if (e.target.dataset.tab === 'browse') loadBrowse();
-    else if (e.target.dataset.tab === 'diff') loadDiff();
+      e.target.classList.add('tab-btn--active');
+      const tabId = 'tab-' + e.target.dataset.tab;
+      document.getElementById(tabId).classList.add('tab-content--active');
+
+      if (e.target.dataset.tab === 'dashboard') loadDashboard();
+      else if (e.target.dataset.tab === 'browse') loadBrowse();
+      else if (e.target.dataset.tab === 'diff') loadDiff();
+    });
   });
-});
+  console.log("✅ Tab switching initialized");
+} catch (e) {
+  console.error("❌ ERROR during tab setup:", e.message, e.stack);
+}
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 async function loadDashboard() {
