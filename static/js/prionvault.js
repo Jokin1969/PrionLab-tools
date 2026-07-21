@@ -13782,7 +13782,6 @@
   // Admin-added entries persist across deploys; seed entries refresh
   // automatically when the code's _SEED_DICTIONARY changes.
   // Glossary management moved to dedicated admin page at /prionvault/admin/glossary
-  }
 
   // ── SCImago (SJR) admin modal ────────────────────────────────────────
   function wireScimago() {
