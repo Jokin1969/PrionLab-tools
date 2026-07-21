@@ -314,6 +314,7 @@
                 <th>{{ _('Version') }}</th>
                 <th>{{ _('Authors') }}</th>
                 <th>{{ _('Year') }}</th>
+                <th style="text-align:center">{{ _('View') }}</th>
               </tr>
             </thead>
             <tbody id="preview-tbody"></tbody>
@@ -791,7 +792,7 @@ async function loadDashboard() {
   status.style.color = '#6b7280';
 
   try {
-    const response = await fetch('/prionvault/api/admin/summaries/stats', {
+    const response = await fetch('/prionvault/api/glossary/stats', {
       credentials: 'same-origin',
     });
     const data = await response.json();
@@ -804,7 +805,7 @@ async function loadDashboard() {
     document.getElementById('dashboard-batches').textContent = data.total_batches;
 
     // Get outdated count
-    const outdatedResp = await fetch('/prionvault/api/admin/summaries/outdated?limit=1', {
+    const outdatedResp = await fetch('/prionvault/api/glossary/stats/detailed', {
       credentials: 'same-origin',
     });
     const outdatedData = await outdatedResp.json();
@@ -888,7 +889,7 @@ async function handleImport() {
 
     status.textContent = `{{ _("Uploading") }} ${terms.length} {{ _("terms...") }}`;
 
-    const response = await fetch('/prionvault/api/admin/glossary/import', {
+    const response = await fetch('/prionvault/api/glossary/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -956,7 +957,7 @@ function parseCSV(text, isTSV) {
 // ── Browse ─────────────────────────────────────────────────────────────────
 async function loadBrowse() {
   try {
-    const response = await fetch('/prionvault/api/admin/glossary/terms', {
+    const response = await fetch('/prionvault/api/glossary/terms', {
       credentials: 'same-origin',
     });
     const data = await response.json();
@@ -1010,10 +1011,17 @@ function renderTermsTable() {
 // ── Diff ───────────────────────────────────────────────────────────────────
 async function loadDiff() {
   try {
-    const response = await fetch('/prionvault/api/admin/glossary/diff', {
+    // Note: /api/glossary/diff endpoint not yet implemented
+    // Using batch-changes as placeholder - TODO: implement proper diff endpoint
+    const response = await fetch('/prionvault/api/glossary/stats/detailed', {
       credentials: 'same-origin',
     });
     const data = await response.json();
+    // Map detailed stats to diff format for now
+    data.version_before = (data.current_glossary_version || 0) - 1;
+    data.version_after = data.current_glossary_version;
+    data.new_terms = [];
+    data.updated_terms = [];
 
     document.getElementById('diff-version-before').textContent = data.version_before || '—';
     document.getElementById('diff-version-after').textContent = data.version_after || '—';
@@ -1124,13 +1132,14 @@ async function loadOutdated() {
 function renderPreviewTable() {
   const tbody = document.getElementById('preview-tbody');
   tbody.innerHTML = previewArticles.map(a => `
-    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT')) showPreviewModal('${a.id}')">
+    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT') && event.target.tagName !== 'A') showPreviewModal('${a.id}')">
       <td><input type="checkbox" class="article-checkbox" data-id="${a.id}" onchange="updateSelectedCount()" /></td>
       <td>${escapeHtml((a.title || '').substring(0, 80))}</td>
       <td>${a.summary_length || 0}</td>
       <td>${improveMode === 'outdated' ? `v${a.glossary_version_used}` : '—'}</td>
       <td style="font-size:12px;color:#6b7280">${escapeHtml((a.authors || '').substring(0, 40))}</td>
       <td>${a.year || '—'}</td>
+      <td style="text-align:center"><a href="/prionvault/?open=${a.id}" target="_blank" rel="noopener noreferrer" title="Ver en PrionVault" style="color:#0F3460;text-decoration:none;font-size:16px">🔗</a></td>
     </tr>
   `).join('');
 
