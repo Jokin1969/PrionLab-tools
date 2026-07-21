@@ -1120,7 +1120,7 @@ async function loadOutdated() {
 function renderPreviewTable() {
   const tbody = document.getElementById('preview-tbody');
   tbody.innerHTML = previewArticles.map(a => `
-    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT')) showPreviewModal('${a.id}')"
+    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT')) showPreviewModal('${a.id}')">
       <td><input type="checkbox" class="article-checkbox" data-id="${a.id}" onchange="updateSelectedCount()" /></td>
       <td>${escapeHtml((a.title || '').substring(0, 80))}</td>
       <td>${a.summary_length || 0}</td>
