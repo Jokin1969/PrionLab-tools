@@ -1357,7 +1357,7 @@ async function loadHistory() {
       <tr>
         <td>${new Date(imp.improved_at).toLocaleString()}</td>
         <td>
-          <a href="/prionvault/?id=${imp.article_id}" target="_blank" rel="noopener" style="color:#0F3460;text-decoration:none;cursor:pointer;">
+          <a href="/prionvault/?open=${imp.article_id}" target="_blank" rel="noopener" style="color:#0F3460;text-decoration:none;cursor:pointer;">
             <strong>${escapeHtml((imp.title || '').substring(0, 60))}</strong>
           </a>
         </td>
