@@ -314,6 +314,7 @@
                 <th>{{ _('Version') }}</th>
                 <th>{{ _('Authors') }}</th>
                 <th>{{ _('Year') }}</th>
+                <th style="text-align:center">{{ _('View') }}</th>
               </tr>
             </thead>
             <tbody id="preview-tbody"></tbody>
@@ -417,9 +418,22 @@
       </div>
     </div>
 
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button onclick="closePreviewModal()" class="btn btn--secondary">{{ _('Close') }}</button>
-      <button id="modal-btn-improve" onclick="improveArticlePreview()" class="btn btn--primary">✨ {{ _('Improve this summary') }}</button>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-bottom:15px">
+      <a id="modal-link-prionvault" href="#" target="_blank" class="btn btn--secondary" style="text-decoration:none">
+        🔗 {{ _('View in PrionVault') }}
+      </a>
+      <div style="display:flex;gap:10px">
+        <button onclick="closePreviewModal()" class="btn btn--secondary">{{ _('Close') }}</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button id="modal-btn-regenerate" onclick="regenerateArticleSummary()" class="btn btn--primary" title="Complete AI regeneration of summary">
+        🔄 {{ _('Regenerate Summary') }}
+      </button>
+      <button id="modal-btn-improve" onclick="improveArticlePreview()" class="btn btn--primary">
+        ✨ {{ _('Improve with Glossary') }}
+      </button>
     </div>
 
     <div id="modal-status" style="margin-top:15px;font-size:12px;color:#6b7280;text-align:center"></div>
@@ -1133,13 +1147,14 @@ async function loadOutdated() {
 function renderPreviewTable() {
   const tbody = document.getElementById('preview-tbody');
   tbody.innerHTML = previewArticles.map(a => `
-    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT')) showPreviewModal('${a.id}')">
+    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT') && !event.target.tagName.includes('A')) showPreviewModal('${a.id}')">
       <td><input type="checkbox" class="article-checkbox" data-id="${a.id}" onchange="updateSelectedCount()" /></td>
       <td>${escapeHtml((a.title || '').substring(0, 80))}</td>
       <td>${a.summary_length || 0}</td>
       <td>${improveMode === 'outdated' ? `v${a.glossary_version_used}` : '—'}</td>
       <td style="font-size:12px;color:#6b7280">${escapeHtml((a.authors || '').substring(0, 40))}</td>
       <td>${a.year || '—'}</td>
+      <td style="text-align:center"><a href="/prionvault/?id=${a.id}" target="_blank" onclick="event.stopPropagation()" class="btn btn--sm" style="padding:4px 8px;font-size:11px;text-decoration:none">🔗</a></td>
     </tr>
   `).join('');
 
@@ -1288,8 +1303,12 @@ function showPreviewModal(articleId) {
   const summaryText = article.summary_ai || '(sin resumen)';
   document.getElementById('modal-original').textContent = summaryText;
 
+  // Set link to PrionVault
+  document.getElementById('modal-link-prionvault').href = `/prionvault/?id=${articleId}`;
+
   document.getElementById('improved-container').style.display = 'none';
   document.getElementById('modal-btn-improve').dataset.articleId = articleId;
+  document.getElementById('modal-btn-regenerate').dataset.articleId = articleId;
   document.getElementById('modal-status').textContent = '';
 
   document.getElementById('preview-modal').style.display = 'block';
@@ -1317,7 +1336,7 @@ async function improveArticlePreview() {
       credentials: 'same-origin',
       body: JSON.stringify({
         article_ids: [articleId],
-        dry_run: true,
+        dry_run: false, // Save the improvement
       }),
     });
 
@@ -1327,18 +1346,58 @@ async function improveArticlePreview() {
       throw new Error(data.error || 'Error desconocido');
     }
 
-    status.textContent = '⏳ Procesando en background (puede tomar 30-60 segundos)...';
-    // En un caso real, aquí se vería el resultado mejorado
-    // Por ahora, solo cerramos el modal después de 3 segundos
+    status.textContent = '✅ Improvement saved. Reloading article list...';
     setTimeout(() => {
       closePreviewModal();
-      alert('✅ Resumen mejorado. Verifica el resultado en la tabla de historial.');
-    }, 3000);
+      // Reload articles list to remove this article if it's now processed
+      if (improveMode === 'all') loadAllArticles();
+      else loadOutdated();
+    }, 1500);
 
   } catch (e) {
     status.textContent = `❌ Error: ${e.message}`;
     btn.disabled = false;
-    btn.textContent = '✨ {{ _("Improve this summary") }}';
+    btn.textContent = '✨ {{ _("Improve with Glossary") }}';
+  }
+}
+
+async function regenerateArticleSummary() {
+  const btn = document.getElementById('modal-btn-regenerate');
+  const articleId = btn.dataset.articleId;
+  const status = document.getElementById('modal-status');
+
+  if (!articleId) return;
+
+  if (!confirm('Regenerate complete AI summary? This will replace the current summary.')) return;
+
+  btn.disabled = true;
+  btn.textContent = '🔄 {{ _("Regenerating...") }}';
+  status.textContent = '⏳ {{ _("Generating new summary...") }}';
+
+  try {
+    const response = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Error generating summary');
+    }
+
+    status.textContent = '✅ Summary regenerated and glossary applied. Reloading...';
+    setTimeout(() => {
+      closePreviewModal();
+      if (improveMode === 'all') loadAllArticles();
+      else loadOutdated();
+    }, 1500);
+
+  } catch (e) {
+    status.textContent = `❌ Error: ${e.message}`;
+    btn.disabled = false;
+    btn.textContent = '🔄 {{ _("Regenerate Summary") }}';
   }
 }
 

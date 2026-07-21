@@ -1516,3 +1516,81 @@ def api_glossary_public_search():
     except Exception as e:
         logger.exception("Failed to search glossary")
         return jsonify({"error": str(e)[:300]}), 500
+
+
+# ── Regenerate complete summary with glossary ──────────────────────────────
+@prionvault_bp.route("/api/glossary/regenerate-summary/<article_id>", methods=["POST"])
+@admin_required
+def api_glossary_regenerate_summary(article_id):
+    """Regenerate a complete AI summary for an article with glossary applied.
+
+    This generates a brand new summary from scratch (using title, authors, year, etc.)
+    rather than just improving the existing one. The new summary automatically
+    includes glossary terminology.
+
+    After successful regeneration, marks the article as processed by current
+    glossary version so it won't appear in "Choose articles to improve" list.
+    """
+    from .services import ai_summary, glossary_manager
+
+    try:
+        glossary_version = glossary_manager.get_current_glossary_version()
+
+        # Fetch article metadata
+        with db.engine.connect() as conn:
+            row = conn.execute(sql_text(
+                """SELECT id, title, authors, year, journal, doi, pubmed_id, extracted_text
+                   FROM articles WHERE id = :aid"""
+            ), {"aid": article_id}).first()
+
+        if not row:
+            return jsonify({"error": "Article not found"}), 404
+
+        article_id_val, title, authors, year, journal, doi, pubmed_id, extracted_text = row
+
+        # Generate new summary with glossary (automatically applied in system prompt)
+        logger.info(f"Regenerating summary for article {article_id} with glossary v{glossary_version}")
+        result = ai_summary.generate_summary(
+            title=title,
+            authors=authors,
+            year=year,
+            journal=journal,
+            doi=doi,
+            pubmed_id=pubmed_id,
+            extracted_text=extracted_text,
+        )
+
+        if not result.success:
+            return jsonify({
+                "error": f"Failed to generate summary: {result.error}"
+            }), 500
+
+        # Save regenerated summary to database
+        with db.engine.begin() as conn:
+            conn.execute(sql_text(
+                """UPDATE articles
+                   SET summary_ai = :summary,
+                       ai_summary_glossary_version = :ver,
+                       updated_at = NOW()
+                   WHERE id = :aid"""
+            ), {
+                "summary": result.summary,
+                "ver": glossary_version,
+                "aid": article_id,
+            })
+
+        logger.info(f"Successfully regenerated summary for article {article_id}")
+
+        return jsonify({
+            "ok": True,
+            "article_id": article_id,
+            "glossary_version": glossary_version,
+            "new_summary_length": len(result.summary),
+            "model_used": result.model_used,
+            "tokens_used": result.tokens_used,
+            "message": "Summary regenerated and glossary applied successfully"
+        })
+
+    except Exception as e:
+        logger.exception(f"Failed to regenerate summary for {article_id}")
+        return jsonify({"error": str(e)[:300]}), 500
