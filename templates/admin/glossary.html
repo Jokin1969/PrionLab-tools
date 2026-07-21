@@ -417,9 +417,13 @@
       </div>
     </div>
 
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button onclick="closePreviewModal()" class="btn btn--secondary">{{ _('Close') }}</button>
-      <button id="modal-btn-improve" onclick="improveArticlePreview()" class="btn btn--primary">✨ {{ _('Improve this summary') }}</button>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center">
+      <a id="modal-link-prionvault" href="/prionvault/" target="_blank" rel="noopener noreferrer" class="btn btn--secondary" style="text-decoration:none">🔗 {{ _('View in PrionVault') }}</a>
+      <div style="display:flex;gap:10px">
+        <button onclick="closePreviewModal()" class="btn btn--secondary">{{ _('Close') }}</button>
+        <button id="modal-btn-regenerate" onclick="regenerateArticleSummary()" class="btn btn--warning">🔄 {{ _('Regenerate Summary') }}</button>
+        <button id="modal-btn-improve" onclick="improveArticlePreview()" class="btn btn--primary">✨ {{ _('Improve with Glossary') }}</button>
+      </div>
     </div>
 
     <div id="modal-status" style="margin-top:15px;font-size:12px;color:#6b7280;text-align:center"></div>
@@ -1277,6 +1281,8 @@ function showPreviewModal(articleId) {
 
   document.getElementById('improved-container').style.display = 'none';
   document.getElementById('modal-btn-improve').dataset.articleId = articleId;
+  document.getElementById('modal-btn-regenerate').dataset.articleId = articleId;
+  document.getElementById('modal-link-prionvault').href = `/prionvault/?open=${articleId}`;
   document.getElementById('modal-status').textContent = '';
 
   document.getElementById('preview-modal').style.display = 'block';
@@ -1304,7 +1310,7 @@ async function improveArticlePreview() {
       credentials: 'same-origin',
       body: JSON.stringify({
         article_ids: [articleId],
-        dry_run: true,
+        dry_run: false,
       }),
     });
 
@@ -1314,18 +1320,59 @@ async function improveArticlePreview() {
       throw new Error(data.error || 'Error desconocido');
     }
 
-    status.textContent = '⏳ Procesando en background (puede tomar 30-60 segundos)...';
-    // En un caso real, aquí se vería el resultado mejorado
-    // Por ahora, solo cerramos el modal después de 3 segundos
+    status.textContent = '⏳ {{ _("Processing in background (30-60 seconds)...") }}';
     setTimeout(() => {
       closePreviewModal();
-      alert('✅ Resumen mejorado. Verifica el resultado en la tabla de historial.');
+      improveMode === 'outdated' ? loadOutdated() : loadAllArticles();
+      alert('✅ {{ _("Summary improved with glossary. The article has been removed from the list.") }}');
     }, 3000);
 
   } catch (e) {
-    status.textContent = `❌ Error: ${e.message}`;
+    status.textContent = `❌ {{ _("Error:") }} ${e.message}`;
     btn.disabled = false;
-    btn.textContent = '✨ {{ _("Improve this summary") }}';
+    btn.textContent = '✨ {{ _("Improve with Glossary") }}';
+  }
+}
+
+async function regenerateArticleSummary() {
+  const btn = document.getElementById('modal-btn-regenerate');
+  const articleId = btn.dataset.articleId;
+  const status = document.getElementById('modal-status');
+
+  if (!articleId) return;
+
+  if (!confirm('{{ _("Regenerate the complete AI summary from scratch? This will replace the current summary.") }}')) {
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '🔄 {{ _("Regenerating...") }}';
+  status.textContent = '⏳ {{ _("Regenerating summary (30-60 seconds)...") }}';
+
+  try {
+    const response = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Error desconocido');
+    }
+
+    status.textContent = '✅ {{ _("Summary regenerated successfully!") }}';
+    setTimeout(() => {
+      closePreviewModal();
+      improveMode === 'outdated' ? loadOutdated() : loadAllArticles();
+      alert('✅ {{ _("Summary regenerated with glossary applied. The article has been removed from the list.") }}');
+    }, 1500);
+
+  } catch (e) {
+    status.textContent = `❌ {{ _("Error:") }} ${e.message}`;
+    btn.disabled = false;
+    btn.textContent = '🔄 {{ _("Regenerate Summary") }}';
   }
 }
 
