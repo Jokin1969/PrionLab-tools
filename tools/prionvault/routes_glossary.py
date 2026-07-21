@@ -1534,22 +1534,26 @@ def api_glossary_regenerate_summary(article_id):
     from .services import ai_summary, glossary_manager
 
     try:
+        logger.info(f"📖 Starting regenerate for article {article_id}")
         glossary_version = glossary_manager.get_current_glossary_version()
+        logger.info(f"🔖 Using glossary version {glossary_version}")
 
         # Fetch article metadata
         with db.engine.connect() as conn:
             row = conn.execute(sql_text(
                 """SELECT id, title, authors, year, journal, doi, pubmed_id, extracted_text
-                   FROM articles WHERE id = :aid"""
-            ), {"aid": article_id}).first()
+                   FROM articles WHERE id = CAST(:aid AS UUID)"""
+            ), {"aid": str(article_id)}).first()
 
         if not row:
+            logger.error(f"❌ Article not found: {article_id}")
             return jsonify({"error": "Article not found"}), 404
 
         article_id_val, title, authors, year, journal, doi, pubmed_id, extracted_text = row
+        logger.info(f"✓ Found article: {title[:50]}")
 
         # Generate new summary with glossary (automatically applied in system prompt)
-        logger.info(f"Regenerating summary for article {article_id} with glossary v{glossary_version}")
+        logger.info(f"🤖 Calling generate_summary for article {article_id}")
         result = ai_summary.generate_summary(
             title=title,
             authors=authors,
@@ -1559,26 +1563,36 @@ def api_glossary_regenerate_summary(article_id):
             pubmed_id=pubmed_id,
             extracted_text=extracted_text,
         )
+        logger.info(f"✓ Generated summary: {len(result.text)} chars")
 
         # Save regenerated summary to database
+        logger.info(f"💾 Updating database with new summary and glossary_version={glossary_version}")
         with db.engine.begin() as conn:
-            conn.execute(sql_text(
+            update_result = conn.execute(sql_text(
                 """UPDATE articles
                    SET summary_ai = :summary,
                        ai_summary_glossary_version = :ver,
                        updated_at = NOW()
-                   WHERE id = :aid"""
+                   WHERE id = CAST(:aid AS UUID)"""
             ), {
                 "summary": result.text,
                 "ver": glossary_version,
-                "aid": article_id,
+                "aid": str(article_id),
             })
+            logger.info(f"✓ Updated {update_result.rowcount} rows in articles table")
 
-        logger.info(f"Successfully regenerated summary for article {article_id}")
+        # Verify the update
+        with db.engine.connect() as conn:
+            verify = conn.execute(sql_text(
+                """SELECT ai_summary_glossary_version FROM articles WHERE id = CAST(:aid AS UUID)"""
+            ), {"aid": str(article_id)}).scalar()
+            logger.info(f"✓ Verified: ai_summary_glossary_version = {verify}")
+
+        logger.info(f"✅ Successfully regenerated summary for article {article_id}")
 
         return jsonify({
             "ok": True,
-            "article_id": article_id,
+            "article_id": str(article_id),
             "glossary_version": glossary_version,
             "new_summary_length": len(result.text),
             "model_used": result.model,
@@ -1587,8 +1601,8 @@ def api_glossary_regenerate_summary(article_id):
         })
 
     except ai_summary.NotConfigured as e:
-        logger.error(f"AI provider not configured: {e}")
+        logger.error(f"❌ AI provider not configured: {e}")
         return jsonify({"error": f"AI provider not available: {str(e)[:200]}"}), 503
     except Exception as e:
-        logger.exception(f"Failed to regenerate summary for {article_id}")
+        logger.exception(f"❌ Failed to regenerate summary for {article_id}: {e}")
         return jsonify({"error": str(e)[:300]}), 500

@@ -1304,6 +1304,7 @@ async function improveArticlePreview() {
   status.textContent = '⏳ {{ _("Processing...") }}';
 
   try {
+    console.log('🚀 Improving article with glossary:', articleId);
     const response = await fetch('/prionvault/api/glossary/improve-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1315,19 +1316,39 @@ async function improveArticlePreview() {
     });
 
     const data = await response.json();
+    console.log('📦 Response:', data);
 
     if (!response.ok) {
-      throw new Error(data.error || 'Error desconocido');
+      console.error('❌ API error:', data);
+      throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
     }
 
+    if (!data.ok) {
+      console.error('❌ Response not ok:', data);
+      throw new Error(data.error || 'Batch queued but check server logs');
+    }
+
+    console.log('✅ Improvement batch queued, waiting for processing...');
     status.textContent = '⏳ {{ _("Processing in background (30-60 seconds)...") }}';
-    setTimeout(() => {
-      closePreviewModal();
-      improveMode === 'outdated' ? loadOutdated() : loadAllArticles();
-      alert('✅ {{ _("Summary improved with glossary. The article has been removed from the list.") }}');
-    }, 3000);
+
+    // Wait for processing to complete
+    await new Promise(r => setTimeout(r, 4000));
+
+    const reloadMode = improveMode === 'outdated' ? 'outdated' : 'all';
+    console.log(`🔄 Reloading ${reloadMode} articles list...`);
+
+    closePreviewModal();
+    if (improveMode === 'outdated') {
+      await loadOutdated();
+    } else {
+      await loadAllArticles();
+    }
+
+    console.log('✓ List reloaded');
+    alert('✅ {{ _("Summary improved with glossary. The article has been removed from the list.") }}');
 
   } catch (e) {
+    console.error('❌ Error in improveArticlePreview:', e);
     status.textContent = `❌ {{ _("Error:") }} ${e.message}`;
     btn.disabled = false;
     btn.textContent = '✨ {{ _("Improve with Glossary") }}';
@@ -1350,6 +1371,7 @@ async function regenerateArticleSummary() {
   status.textContent = '⏳ {{ _("Regenerating summary (30-60 seconds)...") }}';
 
   try {
+    console.log('🚀 Regenerating summary for article:', articleId);
     const response = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1357,19 +1379,39 @@ async function regenerateArticleSummary() {
     });
 
     const data = await response.json();
+    console.log('📦 Response:', data);
 
     if (!response.ok) {
-      throw new Error(data.error || 'Error desconocido');
+      console.error('❌ API error:', data);
+      throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
     }
 
-    status.textContent = '✅ {{ _("Summary regenerated successfully!") }}';
-    setTimeout(() => {
-      closePreviewModal();
-      improveMode === 'outdated' ? loadOutdated() : loadAllArticles();
-      alert('✅ {{ _("Summary regenerated with glossary applied. The article has been removed from the list.") }}');
-    }, 1500);
+    if (!data.ok) {
+      console.error('❌ Response not ok:', data);
+      throw new Error(data.error || 'Unknown error from server');
+    }
+
+    console.log('✅ Regeneration successful, reloading list...');
+    status.textContent = '✅ {{ _("Summary regenerated! Refreshing list...") }}';
+
+    // Wait a bit then reload the list
+    await new Promise(r => setTimeout(r, 2000));
+
+    const reloadMode = improveMode === 'outdated' ? 'outdated' : 'all';
+    console.log(`🔄 Reloading ${reloadMode} articles list...`);
+
+    closePreviewModal();
+    if (improveMode === 'outdated') {
+      await loadOutdated();
+    } else {
+      await loadAllArticles();
+    }
+
+    console.log('✓ List reloaded');
+    alert('✅ {{ _("Summary regenerated with glossary applied. The article has been removed from the list.") }}');
 
   } catch (e) {
+    console.error('❌ Error in regenerateArticleSummary:', e);
     status.textContent = `❌ {{ _("Error:") }} ${e.message}`;
     btn.disabled = false;
     btn.textContent = '🔄 {{ _("Regenerate Summary") }}';
