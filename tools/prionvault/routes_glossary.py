@@ -804,54 +804,139 @@ def api_glossary_test_single():
 @prionvault_bp.route("/glossary/test-single", methods=["GET"])
 @admin_required
 def glossary_test_single_page():
-    """Page to test single article improvement."""
+    """Page to test single article improvement and regeneration."""
     html = """
-    <h1>Prueba de Mejora Individual</h1>
-    <style>body{font-family:sans-serif;margin:20px}button{padding:10px 20px;font-size:16px;background:#0066cc;color:white;border:none;cursor:pointer;border-radius:4px}button:hover{background:#0052a3}#result{margin-top:20px;padding:15px;background:#f5f5f5;border-radius:4px;white-space:pre-wrap;font-family:monospace}#loading{display:none;color:#666;margin-top:10px}.ok{color:green;font-weight:bold}.error{color:red;font-weight:bold}</style>
-    <p>Haz clic para probar mejorar un artículo individual:</p>
-    <button onclick="testSingle()">Probar Mejora</button>
-    <div id="loading" style="display:none">⏳ Procesando... esto puede tomar 30 segundos o más</div>
-    <div id="result"></div>
+    <h1>🧪 Prueba de Regeneración de Resumen</h1>
+    <style>
+    body { font-family: sans-serif; margin: 20px; }
+    .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+    .section h2 { margin-top: 0; }
+    button { padding: 10px 20px; font-size: 14px; background: #0066cc; color: white; border: none; cursor: pointer; border-radius: 4px; margin: 5px; }
+    button:hover { background: #0052a3; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    input { padding: 8px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; width: 300px; }
+    #result { margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; }
+    #loading { display: none; color: #666; margin-top: 10px; }
+    .ok { color: green; font-weight: bold; }
+    .error { color: red; font-weight: bold; }
+    .warning { color: orange; font-weight: bold; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    table td, table th { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    table th { background: #f0f0f0; font-weight: bold; }
+    </style>
+
+    <div class="section">
+      <h2>📋 Diagnóstico de Artículo</h2>
+      <p>Ingresa el ID de un artículo para ver su estado:</p>
+      <input type="text" id="articleId" placeholder="UUID del artículo (ej: 123e4567-e89b-12d3-a456-426614174000)" />
+      <button onclick="diagnoseArticle()">🔍 Diagnosticar</button>
+      <div id="diagResult"></div>
+    </div>
+
+    <div class="section">
+      <h2>🔄 Regenerar Resumen</h2>
+      <p>Regenera el resumen de un artículo específico:</p>
+      <input type="text" id="regenerateId" placeholder="UUID del artículo" value="" />
+      <button onclick="testRegenerate()">🚀 Regenerar Resumen</button>
+      <div id="loading" style="display:none">⏳ Procesando... esto puede tomar 30-60 segundos</div>
+      <div id="result"></div>
+    </div>
 
     <script>
-    async function testSingle() {
-        const btn = event.target;
-        const loading = document.getElementById('loading');
-        const result = document.getElementById('result');
+    async function diagnoseArticle() {
+      const articleId = document.getElementById('articleId').value.trim();
+      const result = document.getElementById('diagResult');
 
-        btn.disabled = true;
-        loading.style.display = 'block';
-        result.innerHTML = '';
+      if (!articleId) {
+        result.innerHTML = '<span class="error">❌ Por favor ingresa un article ID</span>';
+        return;
+      }
 
-        try {
-            const res = await fetch('/prionvault/api/glossary/test-single', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {'Content-Type': 'application/json'}
-            });
+      result.innerHTML = '<span class="warning">⏳ Diagnosticando...</span>';
 
-            const data = await res.json();
+      try {
+        const res = await fetch(`/prionvault/api/glossary/diagnose-article/${articleId}`);
+        const data = await res.json();
 
-            if (res.ok && data.ok) {
-                result.innerHTML = `<span class="ok">✓ Éxito</span>
-Artículo: ${data.article_id}
-Tiempo: ${data.elapsed_seconds.toFixed(2)}s
-Original: ${data.original_length} chars
-Mejorado: ${data.improved_length} chars
-Success: ${data.success}
-Error: ${data.error || 'ninguno'}`;
-            } else {
-                result.innerHTML = `<span class="error">✗ Error</span>
-${JSON.stringify(data, null, 2)}`;
-            }
-        } catch (e) {
-            result.innerHTML = `<span class="error">✗ Error de conexión</span>
-${e.message}`;
-        } finally {
-            btn.disabled = false;
-            loading.style.display = 'none';
+        if (!res.ok) {
+          result.innerHTML = `<span class="error">❌ Error: ${data.error}</span>`;
+          return;
         }
+
+        const art = data.article;
+        const html = `
+<span class="ok">✓ Artículo encontrado</span>
+<table>
+  <tr><th>Campo</th><th>Valor</th></tr>
+  <tr><td>ID</td><td>${art.id}</td></tr>
+  <tr><td>Título</td><td>${art.title}</td></tr>
+  <tr><td>Tiene Resumen</td><td>${art.has_summary ? '✓ Sí' : '✗ No'}</td></tr>
+  <tr><td>Longitud Resumen</td><td>${art.summary_length} caracteres</td></tr>
+  <tr><td>ai_summary_glossary_version</td><td><strong>${art.ai_summary_glossary_version || 'NULL (no procesado)'}</strong></td></tr>
+  <tr><td>Versión Actual Glosario</td><td>${data.current_glossary_version}</td></tr>
+  <tr><td>¿Necesita Procesamiento?</td><td>${art.has_summary && data.needs_processing ? '<span class="error">✓ SÍ</span>' : '✗ No'}</td></tr>
+  <tr><td>¿Está Desactualizado?</td><td>${data.is_outdated ? '<span class="warning">✓ SÍ</span>' : '✗ No'}</td></tr>
+  <tr><td>Actualizado</td><td>${new Date(art.updated_at).toLocaleString()}</td></tr>
+</table>
+        `;
+        result.innerHTML = html;
+      } catch (e) {
+        result.innerHTML = `<span class="error">❌ Error de conexión: ${e.message}</span>`;
+      }
     }
+
+    async function testRegenerate() {
+      const articleId = document.getElementById('regenerateId').value.trim();
+      const loading = document.getElementById('loading');
+      const result = document.getElementById('result');
+
+      if (!articleId) {
+        result.innerHTML = '<span class="error">❌ Por favor ingresa un article ID</span>';
+        return;
+      }
+
+      loading.style.display = 'block';
+      result.innerHTML = '';
+
+      try {
+        console.log('🚀 Regenerating article:', articleId);
+        const res = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await res.json();
+        console.log('📦 Response:', data);
+
+        if (res.ok && data.ok) {
+          result.innerHTML = `<span class="ok">✅ Regeneración Exitosa</span>
+Artículo: ${data.article_id}
+Versión Glosario: ${data.glossary_version}
+Longitud Nuevo Resumen: ${data.new_summary_length} chars
+Modelo: ${data.model_used}
+Tokens: ${data.tokens_used}
+
+Ahora diagnostica para verificar que ai_summary_glossary_version se actualizó:`;
+          document.getElementById('articleId').value = articleId;
+          setTimeout(() => diagnoseArticle(), 1500);
+        } else {
+          result.innerHTML = `<span class="error">❌ Error</span>
+${JSON.stringify(data, null, 2)}`;
+        }
+      } catch (e) {
+        console.error('Error:', e);
+        result.innerHTML = `<span class="error">❌ Error de conexión</span>
+${e.message}`;
+      } finally {
+        loading.style.display = 'none';
+      }
+    }
+
+    // Auto-populate regenerateId from articleId when user types
+    document.getElementById('articleId').addEventListener('change', () => {
+      document.getElementById('regenerateId').value = document.getElementById('articleId').value;
+    });
     </script>
     """
     return Response(html, mimetype='text/html')
@@ -906,6 +991,47 @@ def glossary_diagnose():
     html += "</table>"
 
     return Response(html, mimetype='text/html')
+
+
+@prionvault_bp.route("/api/glossary/diagnose-article/<article_id>", methods=["GET"])
+@admin_required
+def api_glossary_diagnose_article(article_id):
+    """Diagnose the state of a specific article."""
+    try:
+        with db.engine.connect() as conn:
+            row = conn.execute(sql_text("""
+                SELECT
+                    id::text,
+                    title,
+                    summary_ai IS NOT NULL as has_summary,
+                    COALESCE(char_length(summary_ai), 0) as summary_length,
+                    ai_summary_glossary_version,
+                    updated_at,
+                    created_at
+                FROM articles
+                WHERE id = CAST(:aid AS UUID)
+            """), {"aid": str(article_id)}).mappings().first()
+
+        if not row:
+            return jsonify({"error": "Article not found"}), 404
+
+        row_dict = dict(row)
+        current_version = None
+        from .services import glossary_manager
+        try:
+            current_version = glossary_manager.get_current_glossary_version()
+        except:
+            pass
+
+        return jsonify({
+            "article": row_dict,
+            "current_glossary_version": current_version,
+            "needs_processing": row_dict['ai_summary_glossary_version'] is None if row_dict['has_summary'] else False,
+            "is_outdated": row_dict['ai_summary_glossary_version'] is not None and current_version and row_dict['ai_summary_glossary_version'] < current_version if row_dict['ai_summary_glossary_version'] else None,
+        })
+    except Exception as e:
+        logger.exception(f"Failed to diagnose article {article_id}")
+        return jsonify({"error": str(e)[:300]}), 500
 
 
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
