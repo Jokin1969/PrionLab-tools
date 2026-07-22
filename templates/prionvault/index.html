@@ -611,6 +611,11 @@
         </div>
       </details>
 
+      <button class="pv-nav-btn" id="btn-rag-history" style="display:none;"
+              title="Historial de búsquedas IA — haz clic para recuperar una búsqueda anterior"
+              onclick="toggleRagHistoryPanel()">
+      </button>
+
       <button class="pv-nav-btn" id="btn-library-health" onclick="openLibraryHealth()"
               title="Vista general del estado de la biblioteca: PDFs, metadatos, extracción, indexación y resúmenes.">
         <span><i class="fas fa-heartbeat" style="width:13px;margin-right:6px;opacity:0.7;"></i>Salud biblioteca</span>
@@ -990,6 +995,20 @@
           Referencias citadas
         </div>
         <div id="pv-rag-citations" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+    </div>
+
+    <!-- RAG History Panel (dropdown) -->
+    <div id="pv-rag-history-panel" style="display:none;position:fixed;left:8px;top:80px;width:280px;
+                max-height:400px;background:white;border:1px solid #e5e7eb;border-radius:10px;
+                box-shadow:0 10px 25px rgba(0,0,0,0.15);z-index:100;overflow-y:auto;">
+      <div style="padding:12px;border-bottom:1px solid #f3f4f6;">
+        <div style="font-size:12px;font-weight:600;color:#374151;">Historial de búsquedas IA</div>
+      </div>
+      <div id="pv-rag-history-list" style="padding:0;"></div>
+      <div style="padding:10px;border-top:1px solid #f3f4f6;text-align:center;">
+        <button onclick="clearRagHistory()" style="font-size:11px;color:#6b7280;background:none;border:none;
+               cursor:pointer;text-decoration:underline;padding:4px 0;">Limpiar historial</button>
       </div>
     </div>
 

@@ -7349,6 +7349,18 @@
 
     document.getElementById('pv-rag-close').addEventListener('click', closeRagPanel);
 
+    // Close RAG history panel when clicking outside
+    document.addEventListener('click', (e) => {
+      const histPanel = document.getElementById('pv-rag-history-panel');
+      const histBtn = document.getElementById('btn-rag-history');
+      if (histPanel && !histPanel.contains(e.target) && e.target !== histBtn && !histBtn?.contains(e.target)) {
+        histPanel.style.display = 'none';
+      }
+    });
+
+    // Initialize RAG history button
+    _updateRagHistoryButton();
+
     // Provider picker inside the RAG panel — shares the preference
     // with the bulk-summary modal via pv-summary-provider.
     const ragProv = document.getElementById('pv-rag-provider');
@@ -10736,39 +10748,96 @@
     });
   }
 
-  // ── Last-RAG-search persistence ──────────────────────────────────
-  // Keep the most recent successful semantic-search result around so
-  // returning to PrionVault (after viewing a PDF in another tab, or
-  // navigating to another tool and back) doesn't drop the user on a
-  // blank dashboard. We persist the entire payload — the model
-  // response, not just the query — because re-issuing the call would
-  // cost tokens, take 5-15 s and could yield a different answer.
-  const _RAG_LS_KEY  = 'pv-rag-last';
-  const _RAG_TTL_MS  = 6 * 60 * 60 * 1000;   // 6 h — long enough to
-  // cover "open PDF, get distracted, come back after a meeting" but
-  // short enough that an answer from this morning won't surprise the
-  // user when they sit down tomorrow.
+  // ── RAG search history and persistence ─────────────────────────────
+  // Keep search results and maintain a history so users can recover
+  // accidentally-closed searches. We persist the entire payload — the
+  // model response, not just the query — because re-issuing would cost
+  // tokens, take 5-15 s, and could yield a different answer.
+  const _RAG_LS_KEY       = 'pv-rag-last';
+  const _RAG_HISTORY_KEY  = 'pv-rag-history';
+  const _RAG_TTL_MS       = 6 * 60 * 60 * 1000;   // 6 h
+  const _RAG_HISTORY_MAX  = 10;                   // max entries
 
   function _persistRagState(query, provider, topK, r) {
     try {
-      // The response can be large with top_k = 200 (lots of citations
-      // and extracts). LocalStorage has a ~5 MB hard cap; if our
-      // payload happens to overflow we silently skip persistence
-      // rather than wipe the user's other settings.
       const payload = {
         v: 1, ts: Date.now(),
         query, provider, topK,
         result: r,
       };
       localStorage.setItem(_RAG_LS_KEY, JSON.stringify(payload));
+      _addToRagHistory(query, provider, topK, r);
     } catch (err) {
-      // QuotaExceededError or serialization issue. Non-fatal.
-      console.warn('rag: could not persist last result', err);
+      console.warn('rag: could not persist result', err);
+    }
+  }
+
+  function _addToRagHistory(query, provider, topK, r) {
+    try {
+      let history = [];
+      const raw = localStorage.getItem(_RAG_HISTORY_KEY);
+      if (raw) {
+        try { history = JSON.parse(raw); } catch (_) {}
+      }
+      // Add to front
+      history.unshift({
+        v: 1, ts: Date.now(),
+        query, provider, topK,
+        result: r,
+      });
+      // Keep only latest N
+      history = history.slice(0, _RAG_HISTORY_MAX);
+      localStorage.setItem(_RAG_HISTORY_KEY, JSON.stringify(history));
+      _updateRagHistoryButton();
+    } catch (err) {
+      console.warn('rag: could not add to history', err);
+    }
+  }
+
+  function _getRagHistory() {
+    try {
+      const raw = localStorage.getItem(_RAG_HISTORY_KEY);
+      if (!raw) return [];
+      const history = JSON.parse(raw);
+      return Array.isArray(history) ? history : [];
+    } catch (_) {
+      return [];
     }
   }
 
   function _clearRagState() {
+    // When user explicitly closes, move to history instead of deleting
+    const current = localStorage.getItem(_RAG_LS_KEY);
+    if (current) {
+      try {
+        const payload = JSON.parse(current);
+        if (payload && payload.query) {
+          _addToRagHistory(payload.query, payload.provider, payload.topK, payload.result);
+        }
+      } catch (_) {}
+    }
     try { localStorage.removeItem(_RAG_LS_KEY); } catch (_) {}
+  }
+
+  function _updateRagHistoryButton() {
+    const btn = document.getElementById('btn-rag-history');
+    if (!btn) return;
+    const history = _getRagHistory();
+    const current = localStorage.getItem(_RAG_LS_KEY);
+    let last = null;
+    if (current) {
+      try { last = JSON.parse(current).query; } catch (_) {}
+    }
+    if (!last && history.length > 0) {
+      last = history[0].query;
+    }
+    if (last) {
+      const preview = last.substring(0, 40) + (last.length > 40 ? '…' : '');
+      btn.innerHTML = `🔍 ${esc(preview)}`;
+      btn.style.display = '';
+    } else {
+      btn.style.display = 'none';
+    }
   }
 
   function _restoreRagStateIfFresh() {
@@ -10960,6 +11029,79 @@
     // answer" signal — drop the persisted copy so it doesn't pop
     // back up next time they reload.
     _clearRagState();
+  }
+
+  function toggleRagHistoryPanel() {
+    const panel = document.getElementById('pv-rag-history-panel');
+    if (!panel) return;
+    const isVisible = panel.style.display !== 'none';
+    if (isVisible) {
+      panel.style.display = 'none';
+    } else {
+      _renderRagHistory();
+      panel.style.display = 'block';
+    }
+  }
+
+  function _renderRagHistory() {
+    const list = document.getElementById('pv-rag-history-list');
+    if (!list) return;
+    const history = _getRagHistory();
+    if (!history || history.length === 0) {
+      list.innerHTML = '<div style="padding:12px;color:#9ca3af;font-size:13px;text-align:center;">No hay búsquedas</div>';
+      return;
+    }
+    list.innerHTML = history.map((item, idx) => {
+      const query = item.query || '';
+      const preview = query.substring(0, 50) + (query.length > 50 ? '…' : '');
+      const date = new Date(item.ts).toLocaleTimeString('es-ES', {
+        hour: '2-digit', minute: '2-digit'
+      });
+      return `
+        <div onclick="recoverRagSearch(${idx})" style="padding:10px 12px;cursor:pointer;
+             border-bottom:1px solid #f3f4f6;transition:background 0.15s;min-height:44px;
+             display:flex;flex-direction:column;justify-content:center;">
+          <div style="font-size:12.5px;color:#111827;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${esc(preview)}
+          </div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
+            ${esc(date)}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function recoverRagSearch(idx) {
+    const history = _getRagHistory();
+    if (!history || !history[idx]) return;
+    const item = history[idx];
+    const panel = document.getElementById('pv-rag-history-panel');
+    if (panel) panel.style.display = 'none';
+    // Restore the search
+    const ragPanel = document.getElementById('pv-rag-panel');
+    if (ragPanel) {
+      const resultsMeta = document.getElementById('pv-results-meta');
+      const resultsGrid = document.getElementById('pv-results-grid');
+      const pagination  = document.getElementById('pv-pagination');
+      if (resultsMeta) resultsMeta.style.display = 'none';
+      if (resultsGrid) resultsGrid.style.display = 'none';
+      if (pagination)  pagination.style.display  = 'none';
+      ragPanel.style.display = 'block';
+    }
+    const provEl = document.getElementById('pv-rag-provider');
+    if (provEl) provEl.value = item.provider;
+    _renderRagResult(item.query, item.provider, item.topK || 50, item.result, /*fromCache=*/true);
+    _lastRagQuery = item.query;
+    _lastRagTopK  = item.topK || 50;
+  }
+
+  function clearRagHistory() {
+    if (!confirm('¿Borrar todo el historial de búsquedas IA?')) return;
+    try { localStorage.removeItem(_RAG_HISTORY_KEY); } catch (_) {}
+    _updateRagHistoryButton();
+    const panel = document.getElementById('pv-rag-history-panel');
+    if (panel) panel.style.display = 'none';
   }
 
   // ── Batch indexing modal (Phase 4) ───────────────────────────────────
