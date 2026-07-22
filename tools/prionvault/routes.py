@@ -110,6 +110,8 @@ def api_list_articles():
     has_pp_raw       = request.args.get("has_pp")
     has_pp           = True if has_pp_raw == "1" else (False if has_pp_raw == "0" else None)
     pp_id            = (request.args.get("pp_id") or "").strip() or None
+    has_glossary_raw = request.args.get("has_glossary")
+    has_glossary     = True if has_glossary_raw == "1" else (False if has_glossary_raw == "0" else None)
     abstract_status  = (request.args.get("abstract_status") or "").strip().lower() or None
     indexed_status   = (request.args.get("indexed_status") or "").strip().lower() or None
     color_label = (request.args.get("color_label") or "").strip().lower() or None
@@ -219,6 +221,7 @@ def api_list_articles():
             collection_subgroup=collection_subgroup,
             has_jc=has_jc, jc_presenter=jc_presenter, jc_year=jc_year,
             has_pp=has_pp, pp_id=pp_id,
+            has_glossary=has_glossary,
             abstract_status=abstract_status,
             indexed_status=indexed_status,
             ids_filter=ids_filter,
@@ -404,6 +407,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         collection_group=None, collection_subgroup=None,
                         has_jc=None, jc_presenter=None, jc_year=None,
                         has_pp=None, pp_id=None,
+                        has_glossary=None,
                         abstract_status=None,
                         indexed_status=None,
                         ids_filter=None,
@@ -585,6 +589,12 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             params["pp_all_dois"] = all_pp_dois or [""]
             params["pp_all_aids"] = all_pp_aids or [""]
         # If there are no PrionPacks at all, "sin PrionPack" matches everything → no filter.
+
+    # ── Glossary version filter ────────────────────────────────────────────
+    if has_glossary is True:
+        conditions.append("ai_summary_glossary_version IS NOT NULL")
+    elif has_glossary is False:
+        conditions.append("ai_summary_glossary_version IS NULL")
 
     # Per-user marks: read from prionvault_user_state via _pus join.
     if color_label in _VALID_COLOR_LABELS:
