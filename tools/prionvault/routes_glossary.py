@@ -801,6 +801,205 @@ def api_glossary_test_single():
         return jsonify({"error": str(e)[:500]}), 500
 
 
+@prionvault_bp.route("/glossary/quick-test", methods=["GET"])
+@admin_required
+def glossary_quick_test():
+    """Quick test page showing article status and regeneration results."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>🧪 Prueba Rápida - Glosario</title>
+        <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { margin-bottom: 30px; color: #1f2937; }
+        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .status-card { background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6; }
+        .status-card strong { display: block; color: #6b7280; font-size: 12px; margin-bottom: 5px; }
+        .status-card .value { font-size: 24px; font-weight: bold; color: #1f2937; }
+        .article-list { background: white; border-radius: 8px; overflow: hidden; margin-bottom: 30px; }
+        .article-item { border-bottom: 1px solid #e5e7eb; padding: 15px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 15px; align-items: center; }
+        .article-item:last-child { border-bottom: none; }
+        .article-info { min-width: 0; }
+        .article-title { font-weight: 600; color: #1f2937; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .article-meta { font-size: 12px; color: #6b7280; }
+        .version-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .version-null { background: #fee2e2; color: #991b1b; }
+        .version-set { background: #dcfce7; color: #166534; }
+        .action-buttons { display: flex; gap: 8px; white-space: nowrap; }
+        button { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; }
+        .btn-regenerate { background: #f59e0b; color: white; }
+        .btn-regenerate:hover { background: #d97706; }
+        .btn-regenerate:disabled { background: #d1d5db; cursor: not-allowed; }
+        .btn-check { background: #3b82f6; color: white; }
+        .btn-check:hover { background: #2563eb; }
+        .btn-check:disabled { background: #d1d5db; cursor: not-allowed; }
+        .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #3b82f6; border-top: 2px solid transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .alert-info { background: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; }
+        .alert-success { background: #dcfce7; color: #166534; border-left: 4px solid #16a34a; }
+        .alert-error { background: #fee2e2; color: #991b1b; border-left: 4px solid #dc2626; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🧪 Prueba Rápida - Estado de Artículos</h1>
+
+            <div id="alerts"></div>
+
+            <div class="status-grid">
+                <div class="status-card">
+                    <strong>Artículos Sin Procesar</strong>
+                    <div class="value" id="count-unreviewed">—</div>
+                </div>
+                <div class="status-card">
+                    <strong>Versión Glosario</strong>
+                    <div class="value" id="glossary-version">—</div>
+                </div>
+            </div>
+
+            <div class="article-list" id="article-list">
+                <div style="padding: 20px; text-align: center; color: #6b7280;">
+                    <div class="loading"></div> Cargando artículos...
+                </div>
+            </div>
+        </div>
+
+        <script>
+        async function loadArticles() {
+            const alerts = document.getElementById('alerts');
+            alerts.innerHTML = '';
+
+            try {
+                const resp = await fetch('/prionvault/api/glossary/unreviewed?limit=100');
+                const data = await resp.json();
+
+                if (!resp.ok) throw new Error(data.error);
+
+                document.getElementById('count-unreviewed').textContent = data.total;
+
+                // Get glossary version
+                const vresp = await fetch('/prionvault/api/glossary/version');
+                const vdata = await vresp.json();
+                document.getElementById('glossary-version').textContent = vdata.version;
+
+                if (data.articles.length === 0) {
+                    document.getElementById('article-list').innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">✓ No hay artículos sin procesar</div>';
+                    return;
+                }
+
+                const html = data.articles.map(a => `
+                    <div class="article-item" id="article-${a.id}">
+                        <div class="article-info">
+                            <div class="article-title">${escapeHtml(a.title)}</div>
+                            <div class="article-meta">${a.summary_length} chars • ${a.authors || '—'}</div>
+                        </div>
+                        <span class="version-badge version-null" id="badge-${a.id}">NULL</span>
+                        <div class="action-buttons">
+                            <button class="btn-regenerate" onclick="regenerate('${a.id}')" id="btn-regen-${a.id}">🚀 Regenerar</button>
+                            <button class="btn-check" onclick="checkStatus('${a.id}')" id="btn-check-${a.id}">✓ Verificar</button>
+                        </div>
+                    </div>
+                `).join('');
+
+                document.getElementById('article-list').innerHTML = html;
+            } catch (e) {
+                document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ Error: ${e.message}</div>`;
+            }
+        }
+
+        async function regenerate(articleId) {
+            const btn = document.getElementById(`btn-regen-${articleId}`);
+            const badge = document.getElementById(`badge-${articleId}`);
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Regenerando...';
+            badge.textContent = '⏳';
+
+            try {
+                const resp = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) throw new Error(data.error);
+
+                document.getElementById('alerts').innerHTML = `<div class="alert alert-success">✅ Artículo regenerado. Verificando estado...</div>`;
+
+                // Verificar automáticamente después de 2 segundos
+                setTimeout(() => checkStatus(articleId), 2000);
+            } catch (e) {
+                badge.textContent = '❌';
+                btn.disabled = false;
+                btn.innerHTML = '🚀 Regenerar';
+                document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ Error en regeneración: ${e.message}</div>`;
+            }
+        }
+
+        async function checkStatus(articleId) {
+            const badge = document.getElementById(`badge-${articleId}`);
+            const btn = document.getElementById(`btn-check-${articleId}`);
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span>';
+
+            try {
+                const resp = await fetch(`/prionvault/api/glossary/diagnose-article/${articleId}`);
+                const data = await resp.json();
+
+                if (!resp.ok) throw new Error(data.error);
+
+                const art = data.article;
+                const version = art.ai_summary_glossary_version;
+
+                if (version === null) {
+                    badge.className = 'version-badge version-null';
+                    badge.textContent = 'NULL ❌';
+                    document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ ai_summary_glossary_version sigue siendo NULL - El UPDATE no funcionó</div>`;
+                } else {
+                    badge.className = 'version-badge version-set';
+                    badge.textContent = `v${version} ✓`;
+                    document.getElementById('alerts').innerHTML = `<div class="alert alert-success">✅ ai_summary_glossary_version = ${version} - ¡Actualizado correctamente!</div>`;
+
+                    // Recargar lista en 3 segundos
+                    setTimeout(() => {
+                        document.getElementById(`article-${articleId}`).style.opacity = '0.5';
+                        document.getElementById(`article-${articleId}`).style.textDecoration = 'line-through';
+                    }, 500);
+                }
+
+                btn.disabled = false;
+                btn.innerHTML = '✓ Verificar';
+            } catch (e) {
+                btn.disabled = false;
+                btn.innerHTML = '✓ Verificar';
+                document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ Error en verificación: ${e.message}</div>`;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Cargar al iniciar
+        loadArticles();
+
+        // Recargar cada 30 segundos para ver cambios
+        setInterval(loadArticles, 30000);
+        </script>
+    </body>
+    </html>
+    """
+    return Response(html, mimetype='text/html')
+
+
 @prionvault_bp.route("/glossary/test-single", methods=["GET"])
 @admin_required
 def glossary_test_single_page():
