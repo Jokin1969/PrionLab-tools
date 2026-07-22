@@ -1233,6 +1233,144 @@ def api_glossary_diagnose_article(article_id):
         return jsonify({"error": str(e)[:300]}), 500
 
 
+@prionvault_bp.route("/api/glossary/test-regenerate-batch", methods=["POST"])
+@admin_required
+def api_glossary_test_regenerate_batch():
+    """Test regeneration on first N unreviewed articles and return detailed report."""
+    from .services import ai_summary, glossary_manager
+
+    limit = request.args.get("limit", 3, type=int)
+    limit = max(1, min(10, limit))  # Clamp to 1-10
+
+    try:
+        glossary_version = glossary_manager.get_current_glossary_version()
+        logger.info(f"🧪 Starting batch test regeneration for {limit} articles, glossary v{glossary_version}")
+
+        # Get unreviewed articles
+        with db.engine.connect() as conn:
+            articles = conn.execute(sql_text("""
+                SELECT id::text, title, authors, year, journal, doi, pubmed_id, extracted_text,
+                       ai_summary_glossary_version
+                FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+                ORDER BY updated_at DESC
+                LIMIT :lim
+            """), {"lim": limit}).mappings().all()
+
+        if not articles:
+            return jsonify({
+                "ok": True,
+                "message": "No unreviewed articles found",
+                "results": [],
+                "glossary_version": glossary_version,
+            })
+
+        results = []
+
+        for article in articles:
+            article_id = article['id']
+            title = article['title']
+
+            logger.info(f"📖 Testing article {article_id}: {title[:50]}")
+
+            result = {
+                "article_id": article_id,
+                "title": title,
+                "authors": article['authors'],
+                "status_before": article['ai_summary_glossary_version'],  # Should be NULL
+                "status_after": None,
+                "success": False,
+                "error": None,
+                "summary_length": 0,
+                "model": None,
+                "tokens": 0,
+            }
+
+            try:
+                # Generate new summary
+                logger.info(f"🤖 Generating summary for {article_id}")
+                ai_result = ai_summary.generate_summary(
+                    title=article['title'],
+                    authors=article['authors'],
+                    year=article['year'],
+                    journal=article['journal'],
+                    doi=article['doi'],
+                    pubmed_id=article['pubmed_id'],
+                    extracted_text=article['extracted_text'],
+                )
+
+                result["summary_length"] = len(ai_result.text)
+                result["model"] = ai_result.model
+                result["tokens"] = (ai_result.tokens_in or 0) + (ai_result.tokens_out or 0)
+
+                # Update database
+                logger.info(f"💾 Updating database for {article_id}")
+                with db.engine.begin() as conn:
+                    update_result = conn.execute(sql_text("""
+                        UPDATE articles
+                        SET summary_ai = :summary,
+                            ai_summary_glossary_version = :ver,
+                            updated_at = NOW()
+                        WHERE id = CAST(:aid AS UUID)
+                    """), {
+                        "summary": ai_result.text,
+                        "ver": glossary_version,
+                        "aid": article_id,
+                    })
+                    logger.info(f"✓ Updated {update_result.rowcount} rows for {article_id}")
+
+                # Verify update
+                logger.info(f"🔍 Verifying update for {article_id}")
+                with db.engine.connect() as conn:
+                    verify = conn.execute(sql_text(
+                        """SELECT ai_summary_glossary_version FROM articles WHERE id = CAST(:aid AS UUID)"""
+                    ), {"aid": article_id}).scalar()
+
+                    result["status_after"] = verify
+                    result["success"] = (verify == glossary_version)
+
+                    if result["success"]:
+                        logger.info(f"✅ SUCCESS: Article {article_id} now has glossary_version={verify}")
+                    else:
+                        logger.error(f"❌ FAILED: Article {article_id} glossary_version is {verify}, expected {glossary_version}")
+                        result["error"] = f"Verification failed: got {verify}, expected {glossary_version}"
+
+            except ai_summary.NotConfigured as e:
+                result["error"] = f"AI not configured: {str(e)[:100]}"
+                logger.error(f"❌ AI not configured for {article_id}")
+            except Exception as e:
+                result["error"] = str(e)[:200]
+                logger.exception(f"❌ Error regenerating {article_id}")
+
+            results.append(result)
+
+        # Summary stats
+        successful = sum(1 for r in results if r["success"])
+        failed = len(results) - successful
+
+        logger.info(f"🧪 Batch test complete: {successful} successful, {failed} failed")
+
+        return jsonify({
+            "ok": True,
+            "glossary_version": glossary_version,
+            "total": len(results),
+            "successful": successful,
+            "failed": failed,
+            "results": results,
+            "summary": f"{successful}/{len(results)} articles regenerated successfully. " +
+                      (f"{failed} failed." if failed > 0 else "All succeeded!")
+        })
+
+    except Exception as e:
+        logger.exception("Test regeneration batch failed")
+        return jsonify({
+            "ok": False,
+            "error": str(e)[:300]
+        }), 500
+
+
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
 @admin_required
 def api_glossary_improve_batch():
