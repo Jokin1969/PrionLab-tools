@@ -801,341 +801,57 @@ def api_glossary_test_single():
         return jsonify({"error": str(e)[:500]}), 500
 
 
-@prionvault_bp.route("/glossary/quick-test", methods=["GET"])
-@admin_required
-def glossary_quick_test():
-    """Quick test page showing article status and regeneration results."""
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>🧪 Prueba Rápida - Glosario</title>
-        <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h1 { margin-bottom: 30px; color: #1f2937; }
-        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px; }
-        .status-card { background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6; }
-        .status-card strong { display: block; color: #6b7280; font-size: 12px; margin-bottom: 5px; }
-        .status-card .value { font-size: 24px; font-weight: bold; color: #1f2937; }
-        .article-list { background: white; border-radius: 8px; overflow: hidden; margin-bottom: 30px; }
-        .article-item { border-bottom: 1px solid #e5e7eb; padding: 15px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 15px; align-items: center; }
-        .article-item:last-child { border-bottom: none; }
-        .article-info { min-width: 0; }
-        .article-title { font-weight: 600; color: #1f2937; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .article-meta { font-size: 12px; color: #6b7280; }
-        .version-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .version-null { background: #fee2e2; color: #991b1b; }
-        .version-set { background: #dcfce7; color: #166534; }
-        .action-buttons { display: flex; gap: 8px; white-space: nowrap; }
-        button { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; }
-        .btn-regenerate { background: #f59e0b; color: white; }
-        .btn-regenerate:hover { background: #d97706; }
-        .btn-regenerate:disabled { background: #d1d5db; cursor: not-allowed; }
-        .btn-check { background: #3b82f6; color: white; }
-        .btn-check:hover { background: #2563eb; }
-        .btn-check:disabled { background: #d1d5db; cursor: not-allowed; }
-        .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #3b82f6; border-top: 2px solid transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        .alert-info { background: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; }
-        .alert-success { background: #dcfce7; color: #166534; border-left: 4px solid #16a34a; }
-        .alert-error { background: #fee2e2; color: #991b1b; border-left: 4px solid #dc2626; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🧪 Prueba Rápida - Estado de Artículos</h1>
-
-            <div id="alerts"></div>
-
-            <div class="status-grid">
-                <div class="status-card">
-                    <strong>Artículos Sin Procesar</strong>
-                    <div class="value" id="count-unreviewed">—</div>
-                </div>
-                <div class="status-card">
-                    <strong>Versión Glosario</strong>
-                    <div class="value" id="glossary-version">—</div>
-                </div>
-            </div>
-
-            <div class="article-list" id="article-list">
-                <div style="padding: 20px; text-align: center; color: #6b7280;">
-                    <div class="loading"></div> Cargando artículos...
-                </div>
-            </div>
-        </div>
-
-        <script>
-        async function loadArticles() {
-            const alerts = document.getElementById('alerts');
-            alerts.innerHTML = '';
-
-            try {
-                const resp = await fetch('/prionvault/api/glossary/unreviewed?limit=100');
-                const data = await resp.json();
-
-                if (!resp.ok) throw new Error(data.error);
-
-                document.getElementById('count-unreviewed').textContent = data.total;
-
-                // Get glossary version
-                const vresp = await fetch('/prionvault/api/glossary/version');
-                const vdata = await vresp.json();
-                document.getElementById('glossary-version').textContent = vdata.version;
-
-                if (data.articles.length === 0) {
-                    document.getElementById('article-list').innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">✓ No hay artículos sin procesar</div>';
-                    return;
-                }
-
-                const html = data.articles.map(a => `
-                    <div class="article-item" id="article-${a.id}">
-                        <div class="article-info">
-                            <div class="article-title">${escapeHtml(a.title)}</div>
-                            <div class="article-meta">${a.summary_length} chars • ${a.authors || '—'}</div>
-                        </div>
-                        <span class="version-badge version-null" id="badge-${a.id}">NULL</span>
-                        <div class="action-buttons">
-                            <button class="btn-regenerate" onclick="regenerate('${a.id}')" id="btn-regen-${a.id}">🚀 Regenerar</button>
-                            <button class="btn-check" onclick="checkStatus('${a.id}')" id="btn-check-${a.id}">✓ Verificar</button>
-                        </div>
-                    </div>
-                `).join('');
-
-                document.getElementById('article-list').innerHTML = html;
-            } catch (e) {
-                document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ Error: ${e.message}</div>`;
-            }
-        }
-
-        async function regenerate(articleId) {
-            const btn = document.getElementById(`btn-regen-${articleId}`);
-            const badge = document.getElementById(`badge-${articleId}`);
-
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading"></span> Regenerando...';
-            badge.textContent = '⏳';
-
-            try {
-                const resp = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-
-                const data = await resp.json();
-
-                if (!resp.ok) throw new Error(data.error);
-
-                document.getElementById('alerts').innerHTML = `<div class="alert alert-success">✅ Artículo regenerado. Verificando estado...</div>`;
-
-                // Verificar automáticamente después de 2 segundos
-                setTimeout(() => checkStatus(articleId), 2000);
-            } catch (e) {
-                badge.textContent = '❌';
-                btn.disabled = false;
-                btn.innerHTML = '🚀 Regenerar';
-                document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ Error en regeneración: ${e.message}</div>`;
-            }
-        }
-
-        async function checkStatus(articleId) {
-            const badge = document.getElementById(`badge-${articleId}`);
-            const btn = document.getElementById(`btn-check-${articleId}`);
-
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading"></span>';
-
-            try {
-                const resp = await fetch(`/prionvault/api/glossary/diagnose-article/${articleId}`);
-                const data = await resp.json();
-
-                if (!resp.ok) throw new Error(data.error);
-
-                const art = data.article;
-                const version = art.ai_summary_glossary_version;
-
-                if (version === null) {
-                    badge.className = 'version-badge version-null';
-                    badge.textContent = 'NULL ❌';
-                    document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ ai_summary_glossary_version sigue siendo NULL - El UPDATE no funcionó</div>`;
-                } else {
-                    badge.className = 'version-badge version-set';
-                    badge.textContent = `v${version} ✓`;
-                    document.getElementById('alerts').innerHTML = `<div class="alert alert-success">✅ ai_summary_glossary_version = ${version} - ¡Actualizado correctamente!</div>`;
-
-                    // Recargar lista en 3 segundos
-                    setTimeout(() => {
-                        document.getElementById(`article-${articleId}`).style.opacity = '0.5';
-                        document.getElementById(`article-${articleId}`).style.textDecoration = 'line-through';
-                    }, 500);
-                }
-
-                btn.disabled = false;
-                btn.innerHTML = '✓ Verificar';
-            } catch (e) {
-                btn.disabled = false;
-                btn.innerHTML = '✓ Verificar';
-                document.getElementById('alerts').innerHTML = `<div class="alert alert-error">❌ Error en verificación: ${e.message}</div>`;
-            }
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Cargar al iniciar
-        loadArticles();
-
-        // Recargar cada 30 segundos para ver cambios
-        setInterval(loadArticles, 30000);
-        </script>
-    </body>
-    </html>
-    """
-    return Response(html, mimetype='text/html')
-
-
 @prionvault_bp.route("/glossary/test-single", methods=["GET"])
 @admin_required
 def glossary_test_single_page():
-    """Page to test single article improvement and regeneration."""
+    """Page to test single article improvement."""
     html = """
-    <h1>🧪 Prueba de Regeneración de Resumen</h1>
-    <style>
-    body { font-family: sans-serif; margin: 20px; }
-    .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
-    .section h2 { margin-top: 0; }
-    button { padding: 10px 20px; font-size: 14px; background: #0066cc; color: white; border: none; cursor: pointer; border-radius: 4px; margin: 5px; }
-    button:hover { background: #0052a3; }
-    button:disabled { background: #ccc; cursor: not-allowed; }
-    input { padding: 8px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; width: 300px; }
-    #result { margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; }
-    #loading { display: none; color: #666; margin-top: 10px; }
-    .ok { color: green; font-weight: bold; }
-    .error { color: red; font-weight: bold; }
-    .warning { color: orange; font-weight: bold; }
-    table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-    table td, table th { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    table th { background: #f0f0f0; font-weight: bold; }
-    </style>
-
-    <div class="section">
-      <h2>📋 Diagnóstico de Artículo</h2>
-      <p>Ingresa el ID de un artículo para ver su estado:</p>
-      <input type="text" id="articleId" placeholder="UUID del artículo (ej: 123e4567-e89b-12d3-a456-426614174000)" />
-      <button onclick="diagnoseArticle()">🔍 Diagnosticar</button>
-      <div id="diagResult"></div>
-    </div>
-
-    <div class="section">
-      <h2>🔄 Regenerar Resumen</h2>
-      <p>Regenera el resumen de un artículo específico:</p>
-      <input type="text" id="regenerateId" placeholder="UUID del artículo" value="" />
-      <button onclick="testRegenerate()">🚀 Regenerar Resumen</button>
-      <div id="loading" style="display:none">⏳ Procesando... esto puede tomar 30-60 segundos</div>
-      <div id="result"></div>
-    </div>
+    <h1>Prueba de Mejora Individual</h1>
+    <style>body{font-family:sans-serif;margin:20px}button{padding:10px 20px;font-size:16px;background:#0066cc;color:white;border:none;cursor:pointer;border-radius:4px}button:hover{background:#0052a3}#result{margin-top:20px;padding:15px;background:#f5f5f5;border-radius:4px;white-space:pre-wrap;font-family:monospace}#loading{display:none;color:#666;margin-top:10px}.ok{color:green;font-weight:bold}.error{color:red;font-weight:bold}</style>
+    <p>Haz clic para probar mejorar un artículo individual:</p>
+    <button onclick="testSingle()">Probar Mejora</button>
+    <div id="loading" style="display:none">⏳ Procesando... esto puede tomar 30 segundos o más</div>
+    <div id="result"></div>
 
     <script>
-    async function diagnoseArticle() {
-      const articleId = document.getElementById('articleId').value.trim();
-      const result = document.getElementById('diagResult');
+    async function testSingle() {
+        const btn = event.target;
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
 
-      if (!articleId) {
-        result.innerHTML = '<span class="error">❌ Por favor ingresa un article ID</span>';
-        return;
-      }
+        btn.disabled = true;
+        loading.style.display = 'block';
+        result.innerHTML = '';
 
-      result.innerHTML = '<span class="warning">⏳ Diagnosticando...</span>';
+        try {
+            const res = await fetch('/prionvault/api/glossary/test-single', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'}
+            });
 
-      try {
-        const res = await fetch(`/prionvault/api/glossary/diagnose-article/${articleId}`);
-        const data = await res.json();
+            const data = await res.json();
 
-        if (!res.ok) {
-          result.innerHTML = `<span class="error">❌ Error: ${data.error}</span>`;
-          return;
-        }
-
-        const art = data.article;
-        const html = `
-<span class="ok">✓ Artículo encontrado</span>
-<table>
-  <tr><th>Campo</th><th>Valor</th></tr>
-  <tr><td>ID</td><td>${art.id}</td></tr>
-  <tr><td>Título</td><td>${art.title}</td></tr>
-  <tr><td>Tiene Resumen</td><td>${art.has_summary ? '✓ Sí' : '✗ No'}</td></tr>
-  <tr><td>Longitud Resumen</td><td>${art.summary_length} caracteres</td></tr>
-  <tr><td>ai_summary_glossary_version</td><td><strong>${art.ai_summary_glossary_version || 'NULL (no procesado)'}</strong></td></tr>
-  <tr><td>Versión Actual Glosario</td><td>${data.current_glossary_version}</td></tr>
-  <tr><td>¿Necesita Procesamiento?</td><td>${art.has_summary && data.needs_processing ? '<span class="error">✓ SÍ</span>' : '✗ No'}</td></tr>
-  <tr><td>¿Está Desactualizado?</td><td>${data.is_outdated ? '<span class="warning">✓ SÍ</span>' : '✗ No'}</td></tr>
-  <tr><td>Actualizado</td><td>${new Date(art.updated_at).toLocaleString()}</td></tr>
-</table>
-        `;
-        result.innerHTML = html;
-      } catch (e) {
-        result.innerHTML = `<span class="error">❌ Error de conexión: ${e.message}</span>`;
-      }
-    }
-
-    async function testRegenerate() {
-      const articleId = document.getElementById('regenerateId').value.trim();
-      const loading = document.getElementById('loading');
-      const result = document.getElementById('result');
-
-      if (!articleId) {
-        result.innerHTML = '<span class="error">❌ Por favor ingresa un article ID</span>';
-        return;
-      }
-
-      loading.style.display = 'block';
-      result.innerHTML = '';
-
-      try {
-        console.log('🚀 Regenerating article:', articleId);
-        const res = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' }
-        });
-
-        const data = await res.json();
-        console.log('📦 Response:', data);
-
-        if (res.ok && data.ok) {
-          result.innerHTML = `<span class="ok">✅ Regeneración Exitosa</span>
+            if (res.ok && data.ok) {
+                result.innerHTML = `<span class="ok">✓ Éxito</span>
 Artículo: ${data.article_id}
-Versión Glosario: ${data.glossary_version}
-Longitud Nuevo Resumen: ${data.new_summary_length} chars
-Modelo: ${data.model_used}
-Tokens: ${data.tokens_used}
-
-Ahora diagnostica para verificar que ai_summary_glossary_version se actualizó:`;
-          document.getElementById('articleId').value = articleId;
-          setTimeout(() => diagnoseArticle(), 1500);
-        } else {
-          result.innerHTML = `<span class="error">❌ Error</span>
+Tiempo: ${data.elapsed_seconds.toFixed(2)}s
+Original: ${data.original_length} chars
+Mejorado: ${data.improved_length} chars
+Success: ${data.success}
+Error: ${data.error || 'ninguno'}`;
+            } else {
+                result.innerHTML = `<span class="error">✗ Error</span>
 ${JSON.stringify(data, null, 2)}`;
-        }
-      } catch (e) {
-        console.error('Error:', e);
-        result.innerHTML = `<span class="error">❌ Error de conexión</span>
+            }
+        } catch (e) {
+            result.innerHTML = `<span class="error">✗ Error de conexión</span>
 ${e.message}`;
-      } finally {
-        loading.style.display = 'none';
-      }
+        } finally {
+            btn.disabled = false;
+            loading.style.display = 'none';
+        }
     }
-
-    // Auto-populate regenerateId from articleId when user types
-    document.getElementById('articleId').addEventListener('change', () => {
-      document.getElementById('regenerateId').value = document.getElementById('articleId').value;
-    });
     </script>
     """
     return Response(html, mimetype='text/html')
@@ -1231,6 +947,153 @@ def api_glossary_diagnose_article(article_id):
     except Exception as e:
         logger.exception(f"Failed to diagnose article {article_id}")
         return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/glossary/test-regenerate", methods=["GET"])
+@admin_required
+def glossary_test_regenerate_page():
+    """Web page to test regeneration - makes the POST automatically."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>🧪 Prueba Regeneración Glosario</title>
+        <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .container { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 40px; max-width: 600px; width: 100%; }
+        h1 { color: #1f2937; margin-bottom: 10px; text-align: center; }
+        .subtitle { text-align: center; color: #6b7280; margin-bottom: 30px; }
+        .loading { text-align: center; }
+        .spinner { width: 50px; height: 50px; border: 4px solid #e5e7eb; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status { text-align: center; color: #6b7280; font-size: 16px; }
+        .results { display: none; }
+        .result-card { background: #f9fafb; border-radius: 8px; padding: 20px; margin-top: 20px; }
+        .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #6b7280; font-weight: 500; }
+        .stat-value { font-weight: bold; color: #1f2937; }
+        .summary { background: #ecfdf5; color: #166534; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center; font-weight: 600; display: none; }
+        .summary.error { background: #fee2e2; color: #991b1b; }
+        .article-list { margin-top: 20px; }
+        .article-item { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+        .article-title { font-weight: 600; color: #1f2937; margin-bottom: 8px; }
+        .article-meta { font-size: 13px; color: #6b7280; margin-bottom: 10px; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; }
+        .status-success { background: #dcfce7; color: #166534; }
+        .status-error { background: #fee2e2; color: #991b1b; }
+        .error-message { color: #991b1b; font-size: 13px; margin-top: 8px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🧪 Prueba Regeneración</h1>
+            <p class="subtitle">Regenerando artículos sin procesar...</p>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p class="status">Regenerando 3 artículos. Esto puede tomar 1-2 minutos...</p>
+            </div>
+
+            <div class="results" id="results">
+                <div class="result-card">
+                    <div class="stat-row">
+                        <span class="stat-label">📊 Versión Glosario</span>
+                        <span class="stat-value" id="glossary-version">—</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">✅ Exitosos</span>
+                        <span class="stat-value" id="successful-count">—</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">❌ Fallidos</span>
+                        <span class="stat-value" id="failed-count">—</span>
+                    </div>
+                </div>
+
+                <div class="article-list" id="article-list"></div>
+
+                <div class="summary" id="summary"></div>
+            </div>
+        </div>
+
+        <script>
+        async function runTest() {
+            try {
+                console.log('Starting test...');
+                const response = await fetch('/prionvault/api/glossary/test-regenerate-batch?limit=3', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin'
+                });
+
+                const data = await response.json();
+                console.log('Response:', data);
+
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
+
+                // Show stats
+                document.getElementById('glossary-version').textContent = data.glossary_version || '—';
+                document.getElementById('successful-count').textContent = data.successful || 0;
+                document.getElementById('failed-count').textContent = data.failed || 0;
+
+                // Show articles
+                const articleList = document.getElementById('article-list');
+                if (data.results && data.results.length > 0) {
+                    articleList.innerHTML = data.results.map((result, idx) => `
+                        <div class="article-item">
+                            <div class="article-title">${idx + 1}. ${escapeHtml(result.title)}</div>
+                            <div class="article-meta">
+                                ID: ${result.article_id.substring(0, 8)}...
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <strong>Antes:</strong> ${result.status_before === null ? 'NULL ❌' : 'v' + result.status_before}
+                                <strong style="margin-left: 15px;">Después:</strong> ${result.status_after === null ? 'NULL ❌' : 'v' + result.status_after}
+                            </div>
+                            <span class="status-badge ${result.success ? 'status-success' : 'status-error'}">
+                                ${result.success ? '✓ ÉXITO' : '✗ FALLO'}
+                            </span>
+                            ${!result.success && result.error ? `<div class="error-message">Error: ${result.error}</div>` : ''}
+                            ${result.success ? `<div style="font-size: 12px; color: #6b7280; margin-top: 8px;">${result.summary_length} chars • ${result.model} • ${result.tokens} tokens</div>` : ''}
+                        </div>
+                    `).join('');
+                }
+
+                // Show summary
+                const summary = document.getElementById('summary');
+                summary.textContent = data.summary;
+                summary.className = 'summary' + (data.failed > 0 ? ' error' : '');
+                summary.style.display = 'block';
+
+            } catch (e) {
+                console.error('Error:', e);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
+                const summary = document.getElementById('summary');
+                summary.textContent = '❌ Error: ' + e.message;
+                summary.className = 'summary error';
+                summary.style.display = 'block';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Start test when page loads
+        runTest();
+        </script>
+    </body>
+    </html>
+    """
+    return Response(html, mimetype='text/html')
 
 
 @prionvault_bp.route("/api/glossary/test-regenerate-batch", methods=["POST"])
@@ -1369,8 +1232,6 @@ def api_glossary_test_regenerate_batch():
             "ok": False,
             "error": str(e)[:300]
         }), 500
-
-
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
 @admin_required
 def api_glossary_improve_batch():
@@ -1997,26 +1858,22 @@ def api_glossary_regenerate_summary(article_id):
     from .services import ai_summary, glossary_manager
 
     try:
-        logger.info(f"📖 Starting regenerate for article {article_id}")
         glossary_version = glossary_manager.get_current_glossary_version()
-        logger.info(f"🔖 Using glossary version {glossary_version}")
 
         # Fetch article metadata
         with db.engine.connect() as conn:
             row = conn.execute(sql_text(
                 """SELECT id, title, authors, year, journal, doi, pubmed_id, extracted_text
-                   FROM articles WHERE id = CAST(:aid AS UUID)"""
-            ), {"aid": str(article_id)}).first()
+                   FROM articles WHERE id = :aid"""
+            ), {"aid": article_id}).first()
 
         if not row:
-            logger.error(f"❌ Article not found: {article_id}")
             return jsonify({"error": "Article not found"}), 404
 
         article_id_val, title, authors, year, journal, doi, pubmed_id, extracted_text = row
-        logger.info(f"✓ Found article: {title[:50]}")
 
         # Generate new summary with glossary (automatically applied in system prompt)
-        logger.info(f"🤖 Calling generate_summary for article {article_id}")
+        logger.info(f"Regenerating summary for article {article_id} with glossary v{glossary_version}")
         result = ai_summary.generate_summary(
             title=title,
             authors=authors,
@@ -2026,36 +1883,26 @@ def api_glossary_regenerate_summary(article_id):
             pubmed_id=pubmed_id,
             extracted_text=extracted_text,
         )
-        logger.info(f"✓ Generated summary: {len(result.text)} chars")
 
         # Save regenerated summary to database
-        logger.info(f"💾 Updating database with new summary and glossary_version={glossary_version}")
         with db.engine.begin() as conn:
-            update_result = conn.execute(sql_text(
+            conn.execute(sql_text(
                 """UPDATE articles
                    SET summary_ai = :summary,
                        ai_summary_glossary_version = :ver,
                        updated_at = NOW()
-                   WHERE id = CAST(:aid AS UUID)"""
+                   WHERE id = :aid"""
             ), {
                 "summary": result.text,
                 "ver": glossary_version,
-                "aid": str(article_id),
+                "aid": article_id,
             })
-            logger.info(f"✓ Updated {update_result.rowcount} rows in articles table")
 
-        # Verify the update
-        with db.engine.connect() as conn:
-            verify = conn.execute(sql_text(
-                """SELECT ai_summary_glossary_version FROM articles WHERE id = CAST(:aid AS UUID)"""
-            ), {"aid": str(article_id)}).scalar()
-            logger.info(f"✓ Verified: ai_summary_glossary_version = {verify}")
-
-        logger.info(f"✅ Successfully regenerated summary for article {article_id}")
+        logger.info(f"Successfully regenerated summary for article {article_id}")
 
         return jsonify({
             "ok": True,
-            "article_id": str(article_id),
+            "article_id": article_id,
             "glossary_version": glossary_version,
             "new_summary_length": len(result.text),
             "model_used": result.model,
@@ -2064,8 +1911,8 @@ def api_glossary_regenerate_summary(article_id):
         })
 
     except ai_summary.NotConfigured as e:
-        logger.error(f"❌ AI provider not configured: {e}")
+        logger.error(f"AI provider not configured: {e}")
         return jsonify({"error": f"AI provider not available: {str(e)[:200]}"}), 503
     except Exception as e:
-        logger.exception(f"❌ Failed to regenerate summary for {article_id}: {e}")
+        logger.exception(f"Failed to regenerate summary for {article_id}")
         return jsonify({"error": str(e)[:300]}), 500
