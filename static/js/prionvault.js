@@ -3607,6 +3607,16 @@
         };
       }
 
+      // Wire email button in detail modal nav bar
+      const detailEmailBtn = document.getElementById('pv-detail-email-btn');
+      if (detailEmailBtn) {
+        detailEmailBtn.onclick = () => {
+          if (typeof PVEmailShare !== 'undefined' && PVEmailShare.open) {
+            PVEmailShare.open(a);
+          }
+        };
+      }
+
       const tagHtml = (a.tags && a.tags.length)
         ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;">
             ${a.tags.map(t =>
