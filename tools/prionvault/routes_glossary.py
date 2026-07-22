@@ -1232,6 +1232,8 @@ def api_glossary_test_regenerate_batch():
             "ok": False,
             "error": str(e)[:300]
         }), 500
+
+
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
 @admin_required
 def api_glossary_improve_batch():
