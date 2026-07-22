@@ -50,6 +50,7 @@
     jcYear: null,        // year of JC presentation
     hasPp: null,         // null = all, true = en algún PrionPack, false = sin pack
     ppId: '',            // specific PrionPack id (e.g. "PRP-001") or ''
+    hasGlossary: null,   // null = all, true = with glossary, false = without
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     indexedStatus:  '',  // '' | 'yes' | 'no'
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
@@ -2550,6 +2551,7 @@
     if (state.jcYear)              params.set('jc_year', state.jcYear);
     if (state.hasPp !== null)      params.set('has_pp', state.hasPp ? '1' : '0');
     if (state.ppId)                params.set('pp_id', state.ppId);
+    if (state.hasGlossary !== null) params.set('has_glossary', state.hasGlossary ? '1' : '0');
     if (state.abstractStatus)      params.set('abstract_status', state.abstractStatus);
     if (state.indexedStatus)       params.set('indexed_status', state.indexedStatus);
     if (state.searchFields && state.searchFields.length)
@@ -2834,6 +2836,9 @@
             if (p === 'gemini')    return '<span title="Resumen generado por Gemini (Google)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">◈ Gemini</span>';
             return '<span title="Resumen IA (proveedor desconocido)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#f3f4f6;color:#374151;">AI ✓</span>';
           })()
+        : '',
+      a.ai_summary_glossary_version
+        ? `<span title="Resumen mejorado con Glosario v${esc(a.ai_summary_glossary_version)}" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#f0fdf4;color:#166534;">📖 v${esc(a.ai_summary_glossary_version)}</span>`
         : '',
       (IS_ADMIN && a.has_summary_ai && (a.summary_tokens_in || a.summary_tokens_out))
         ? (() => {

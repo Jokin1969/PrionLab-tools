@@ -776,7 +776,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
          "abstract_unavailable", "pdf_oa_status",
          "pdf_metadata_match_status", "summary_ai_provider",
          "summary_ai_model",
-         "summary_tokens_in", "summary_tokens_out"]
+         "summary_tokens_in", "summary_tokens_out",
+         "ai_summary_glossary_version"]
         if c in pv_cols
     )
     # has_summary_* are computed booleans — cheaper than transferring full text.
