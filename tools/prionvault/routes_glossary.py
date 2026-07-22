@@ -1030,6 +1030,15 @@ def glossary_test_regenerate_page():
                     credentials: 'same-origin'
                 });
 
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    console.error('Error response:', text);
+                    throw new Error(`Server error ${response.status}: ${text.substring(0, 200)}`);
+                }
+
                 const data = await response.json();
                 console.log('Response:', data);
 
