@@ -908,6 +908,330 @@ def glossary_diagnose():
     return Response(html, mimetype='text/html')
 
 
+@prionvault_bp.route("/api/glossary/diagnose-article/<article_id>", methods=["GET"])
+@admin_required
+def api_glossary_diagnose_article(article_id):
+    """Diagnose the state of a specific article."""
+    try:
+        with db.engine.connect() as conn:
+            row = conn.execute(sql_text("""
+                SELECT
+                    id::text,
+                    title,
+                    summary_ai IS NOT NULL as has_summary,
+                    COALESCE(char_length(summary_ai), 0) as summary_length,
+                    ai_summary_glossary_version,
+                    updated_at,
+                    created_at
+                FROM articles
+                WHERE id = CAST(:aid AS UUID)
+            """), {"aid": str(article_id)}).mappings().first()
+
+        if not row:
+            return jsonify({"error": "Article not found"}), 404
+
+        row_dict = dict(row)
+        current_version = None
+        from .services import glossary_manager
+        try:
+            current_version = glossary_manager.get_current_glossary_version()
+        except:
+            pass
+
+        return jsonify({
+            "article": row_dict,
+            "current_glossary_version": current_version,
+            "needs_processing": row_dict['ai_summary_glossary_version'] is None if row_dict['has_summary'] else False,
+            "is_outdated": row_dict['ai_summary_glossary_version'] is not None and current_version and row_dict['ai_summary_glossary_version'] < current_version if row_dict['ai_summary_glossary_version'] else None,
+        })
+    except Exception as e:
+        logger.exception(f"Failed to diagnose article {article_id}")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+@prionvault_bp.route("/glossary/test-regenerate", methods=["GET"])
+@admin_required
+def glossary_test_regenerate_page():
+    """Web page to test regeneration - makes the POST automatically."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>🧪 Prueba Regeneración Glosario</title>
+        <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .container { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 40px; max-width: 600px; width: 100%; }
+        h1 { color: #1f2937; margin-bottom: 10px; text-align: center; }
+        .subtitle { text-align: center; color: #6b7280; margin-bottom: 30px; }
+        .loading { text-align: center; }
+        .spinner { width: 50px; height: 50px; border: 4px solid #e5e7eb; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status { text-align: center; color: #6b7280; font-size: 16px; }
+        .results { display: none; }
+        .result-card { background: #f9fafb; border-radius: 8px; padding: 20px; margin-top: 20px; }
+        .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #6b7280; font-weight: 500; }
+        .stat-value { font-weight: bold; color: #1f2937; }
+        .summary { background: #ecfdf5; color: #166534; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center; font-weight: 600; display: none; }
+        .summary.error { background: #fee2e2; color: #991b1b; }
+        .article-list { margin-top: 20px; }
+        .article-item { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+        .article-title { font-weight: 600; color: #1f2937; margin-bottom: 8px; }
+        .article-meta { font-size: 13px; color: #6b7280; margin-bottom: 10px; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; }
+        .status-success { background: #dcfce7; color: #166534; }
+        .status-error { background: #fee2e2; color: #991b1b; }
+        .error-message { color: #991b1b; font-size: 13px; margin-top: 8px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🧪 Prueba Regeneración</h1>
+            <p class="subtitle">Regenerando artículos sin procesar...</p>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p class="status">Regenerando 3 artículos. Esto puede tomar 1-2 minutos...</p>
+            </div>
+
+            <div class="results" id="results">
+                <div class="result-card">
+                    <div class="stat-row">
+                        <span class="stat-label">📊 Versión Glosario</span>
+                        <span class="stat-value" id="glossary-version">—</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">✅ Exitosos</span>
+                        <span class="stat-value" id="successful-count">—</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">❌ Fallidos</span>
+                        <span class="stat-value" id="failed-count">—</span>
+                    </div>
+                </div>
+
+                <div class="article-list" id="article-list"></div>
+
+                <div class="summary" id="summary"></div>
+            </div>
+        </div>
+
+        <script>
+        async function runTest() {
+            try {
+                console.log('Starting test...');
+                const response = await fetch('/prionvault/api/glossary/test-regenerate-batch?limit=3', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin'
+                });
+
+                const data = await response.json();
+                console.log('Response:', data);
+
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
+
+                // Show stats
+                document.getElementById('glossary-version').textContent = data.glossary_version || '—';
+                document.getElementById('successful-count').textContent = data.successful || 0;
+                document.getElementById('failed-count').textContent = data.failed || 0;
+
+                // Show articles
+                const articleList = document.getElementById('article-list');
+                if (data.results && data.results.length > 0) {
+                    articleList.innerHTML = data.results.map((result, idx) => `
+                        <div class="article-item">
+                            <div class="article-title">${idx + 1}. ${escapeHtml(result.title)}</div>
+                            <div class="article-meta">
+                                ID: ${result.article_id.substring(0, 8)}...
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <strong>Antes:</strong> ${result.status_before === null ? 'NULL ❌' : 'v' + result.status_before}
+                                <strong style="margin-left: 15px;">Después:</strong> ${result.status_after === null ? 'NULL ❌' : 'v' + result.status_after}
+                            </div>
+                            <span class="status-badge ${result.success ? 'status-success' : 'status-error'}">
+                                ${result.success ? '✓ ÉXITO' : '✗ FALLO'}
+                            </span>
+                            ${!result.success && result.error ? `<div class="error-message">Error: ${result.error}</div>` : ''}
+                            ${result.success ? `<div style="font-size: 12px; color: #6b7280; margin-top: 8px;">${result.summary_length} chars • ${result.model} • ${result.tokens} tokens</div>` : ''}
+                        </div>
+                    `).join('');
+                }
+
+                // Show summary
+                const summary = document.getElementById('summary');
+                summary.textContent = data.summary;
+                summary.className = 'summary' + (data.failed > 0 ? ' error' : '');
+                summary.style.display = 'block';
+
+            } catch (e) {
+                console.error('Error:', e);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
+                const summary = document.getElementById('summary');
+                summary.textContent = '❌ Error: ' + e.message;
+                summary.className = 'summary error';
+                summary.style.display = 'block';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Start test when page loads
+        runTest();
+        </script>
+    </body>
+    </html>
+    """
+    return Response(html, mimetype='text/html')
+
+
+@prionvault_bp.route("/api/glossary/test-regenerate-batch", methods=["POST"])
+@admin_required
+def api_glossary_test_regenerate_batch():
+    """Test regeneration on first N unreviewed articles and return detailed report."""
+    from .services import ai_summary, glossary_manager
+
+    limit = request.args.get("limit", 3, type=int)
+    limit = max(1, min(10, limit))  # Clamp to 1-10
+
+    try:
+        glossary_version = glossary_manager.get_current_glossary_version()
+        logger.info(f"🧪 Starting batch test regeneration for {limit} articles, glossary v{glossary_version}")
+
+        # Get unreviewed articles
+        with db.engine.connect() as conn:
+            articles = conn.execute(sql_text("""
+                SELECT id::text, title, authors, year, journal, doi, pubmed_id, extracted_text,
+                       ai_summary_glossary_version
+                FROM articles
+                WHERE summary_ai IS NOT NULL
+                  AND ai_summary_glossary_version IS NULL
+                  AND char_length(summary_ai) > 50
+                ORDER BY updated_at DESC
+                LIMIT :lim
+            """), {"lim": limit}).mappings().all()
+
+        if not articles:
+            return jsonify({
+                "ok": True,
+                "message": "No unreviewed articles found",
+                "results": [],
+                "glossary_version": glossary_version,
+            })
+
+        results = []
+
+        for article in articles:
+            article_id = article['id']
+            title = article['title']
+
+            logger.info(f"📖 Testing article {article_id}: {title[:50]}")
+
+            result = {
+                "article_id": article_id,
+                "title": title,
+                "authors": article['authors'],
+                "status_before": article['ai_summary_glossary_version'],  # Should be NULL
+                "status_after": None,
+                "success": False,
+                "error": None,
+                "summary_length": 0,
+                "model": None,
+                "tokens": 0,
+            }
+
+            try:
+                # Generate new summary
+                logger.info(f"🤖 Generating summary for {article_id}")
+                ai_result = ai_summary.generate_summary(
+                    title=article['title'],
+                    authors=article['authors'],
+                    year=article['year'],
+                    journal=article['journal'],
+                    doi=article['doi'],
+                    pubmed_id=article['pubmed_id'],
+                    extracted_text=article['extracted_text'],
+                )
+
+                result["summary_length"] = len(ai_result.text)
+                result["model"] = ai_result.model
+                result["tokens"] = (ai_result.tokens_in or 0) + (ai_result.tokens_out or 0)
+
+                # Update database
+                logger.info(f"💾 Updating database for {article_id}")
+                with db.engine.begin() as conn:
+                    update_result = conn.execute(sql_text("""
+                        UPDATE articles
+                        SET summary_ai = :summary,
+                            ai_summary_glossary_version = :ver,
+                            updated_at = NOW()
+                        WHERE id = CAST(:aid AS UUID)
+                    """), {
+                        "summary": ai_result.text,
+                        "ver": glossary_version,
+                        "aid": article_id,
+                    })
+                    logger.info(f"✓ Updated {update_result.rowcount} rows for {article_id}")
+
+                # Verify update
+                logger.info(f"🔍 Verifying update for {article_id}")
+                with db.engine.connect() as conn:
+                    verify = conn.execute(sql_text(
+                        """SELECT ai_summary_glossary_version FROM articles WHERE id = CAST(:aid AS UUID)"""
+                    ), {"aid": article_id}).scalar()
+
+                    result["status_after"] = verify
+                    result["success"] = (verify == glossary_version)
+
+                    if result["success"]:
+                        logger.info(f"✅ SUCCESS: Article {article_id} now has glossary_version={verify}")
+                    else:
+                        logger.error(f"❌ FAILED: Article {article_id} glossary_version is {verify}, expected {glossary_version}")
+                        result["error"] = f"Verification failed: got {verify}, expected {glossary_version}"
+
+            except ai_summary.NotConfigured as e:
+                result["error"] = f"AI not configured: {str(e)[:100]}"
+                logger.error(f"❌ AI not configured for {article_id}")
+            except Exception as e:
+                result["error"] = str(e)[:200]
+                logger.exception(f"❌ Error regenerating {article_id}")
+
+            results.append(result)
+
+        # Summary stats
+        successful = sum(1 for r in results if r["success"])
+        failed = len(results) - successful
+
+        logger.info(f"🧪 Batch test complete: {successful} successful, {failed} failed")
+
+        return jsonify({
+            "ok": True,
+            "glossary_version": glossary_version,
+            "total": len(results),
+            "successful": successful,
+            "failed": failed,
+            "results": results,
+            "summary": f"{successful}/{len(results)} articles regenerated successfully. " +
+                      (f"{failed} failed." if failed > 0 else "All succeeded!")
+        })
+
+    except Exception as e:
+        logger.exception("Test regeneration batch failed")
+        return jsonify({
+            "ok": False,
+            "error": str(e)[:300]
+        }), 500
 @prionvault_bp.route("/api/glossary/improve-batch", methods=["POST"])
 @admin_required
 def api_glossary_improve_batch():
