@@ -1085,6 +1085,7 @@ async function loadAllArticles() {
 
     previewArticles = data.articles || [];
     selectedArticleIds = [];
+    window.glossaryCurrentVersion = data.current_glossary_version;
 
     document.getElementById('preview-results').style.display = 'block';
     document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total || previewArticles.length} {{ _("articles with unreviewed summaries") }}`;
@@ -1116,6 +1117,7 @@ async function loadOutdated() {
 
     previewArticles = data.articles || [];
     selectedArticleIds = [];
+    window.glossaryCurrentVersion = data.current_glossary_version;
 
     document.getElementById('preview-results').style.display = 'block';
     document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total_outdated || previewArticles.length} {{ _("outdated articles") }} ({{ _("improved with v") }}${data.current_glossary_version || '—'})`;
@@ -1131,20 +1133,45 @@ async function loadOutdated() {
 
 function renderPreviewTable() {
   const tbody = document.getElementById('preview-tbody');
-  tbody.innerHTML = previewArticles.map(a => `
-    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT') && event.target.tagName !== 'A') showPreviewModal('${a.id}')">
+  tbody.innerHTML = previewArticles.map(a => {
+    const glossaryBtn = getGlossaryButtonHtml(a);
+    return `
+    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT') && event.target.tagName !== 'A' && event.target.tagName !== 'BUTTON') showPreviewModal('${a.id}')">
       <td><input type="checkbox" class="article-checkbox" data-id="${a.id}" onchange="updateSelectedCount()" /></td>
-      <td>${escapeHtml((a.title || '').substring(0, 80))}</td>
+      <td>
+        <div>${escapeHtml((a.title || '').substring(0, 80))}</div>
+        <div style="margin-top:6px">${glossaryBtn}</div>
+      </td>
       <td>${a.summary_length || 0}</td>
       <td>${improveMode === 'outdated' ? `v${a.glossary_version_used}` : '—'}</td>
       <td style="font-size:12px;color:#6b7280">${escapeHtml((a.authors || '').substring(0, 40))}</td>
       <td>${a.year || '—'}</td>
       <td style="text-align:center"><a href="/prionvault/?open=${a.id}" target="_blank" rel="noopener noreferrer" title="Ver en PrionVault" style="color:#0F3460;text-decoration:none;font-size:16px">🔗</a></td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   document.getElementById('select-all-checkbox').checked = false;
   updateSelectedCount();
+}
+
+function getGlossaryButtonHtml(article) {
+  const currentVersion = window.glossaryCurrentVersion || null;
+  const aiVersion = article.ai_summary_glossary_version;
+
+  if (aiVersion === null || aiVersion === undefined) {
+    return '';
+  }
+
+  const isUpdated = aiVersion === currentVersion;
+  const status = isUpdated ? 'updated' : 'outdated';
+  const btnClass = isUpdated ? 'btn-glossary-updated' : 'btn-glossary-outdated';
+  const btnTitle = isUpdated ? 'Actualizado con versión ' + currentVersion : 'Necesita actualización';
+  const indicator = isUpdated ? '✓' : '⟳';
+
+  return `<button class="btn-glossary ${btnClass}" onclick="showGlossaryModal('${article.id}')" title="${btnTitle}">
+    ${indicator} Glosario v${aiVersion}
+  </button>`;
 }
 
 function toggleSelectAll() {
@@ -1548,6 +1575,196 @@ function escapeHtml(text) {
     console.error("❌ downloadBatchExcel is NOT a function!");
   }
 })();
+</script>
+
+{# ── Glossary Info Modal ───────────────────────────────────────────────── #}
+<div id="glossary-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:12px;padding:40px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideUp 0.3s ease">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;color:#1f2937">📖 Estado del Glosario</h2>
+      <button onclick="closeGlossaryModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280">✕</button>
+    </div>
+
+    <div style="background:#f3f4f6;border-radius:8px;padding:16px;margin-bottom:20px">
+      <div style="margin-bottom:12px">
+        <span style="color:#6b7280;font-size:14px">Resumen generado con</span>
+        <div style="margin-top:4px">
+          <strong style="font-size:16px;color:#1f2937">Glosario v<span id="modal-summary-version">—</span></strong>
+        </div>
+      </div>
+      <div style="border-top:1px solid #e5e7eb;padding-top:12px;margin-top:12px">
+        <span style="color:#6b7280;font-size:14px">Fecha de generación</span>
+        <div style="margin-top:4px">
+          <span id="modal-generation-date" style="font-size:14px;color:#374151">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px;border-radius:4px;margin-bottom:20px">
+      <div style="color:#166534;font-size:14px">
+        <strong>Versión actual del glosario:</strong>
+        <span id="modal-current-version" style="font-weight:bold">—</span>
+      </div>
+    </div>
+
+    <div id="outdated-warning" style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px;border-radius:4px;margin-bottom:20px;display:none">
+      <div style="color:#991b1b;font-size:14px">
+        <strong>⚠️ Versión antigua</strong><br>
+        <span style="font-size:13px">Hay una versión más nueva del glosario disponible. Puedes regenerar el resumen para obtener mejoras.</span>
+      </div>
+    </div>
+
+    <div id="updated-info" style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px;border-radius:4px;margin-bottom:20px;display:none">
+      <div style="color:#166534;font-size:14px">
+        <strong>✓ Actualizado</strong><br>
+        <span style="font-size:13px">Este resumen ya utiliza la versión más reciente del glosario.</span>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;justify-content:flex-end">
+      <button onclick="closeGlossaryModal()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:white;color:#374151;font-weight:500;cursor:pointer;transition:all 0.2s">
+        Cerrar
+      </button>
+      <button id="modal-regenerate-btn" onclick="regenerateFromModal()" style="padding:10px 20px;border:none;border-radius:6px;background:#3b82f6;color:white;font-weight:500;cursor:pointer;transition:all 0.2s" disabled>
+        ↻ Regenerar con v<span id="modal-new-version">—</span>
+      </button>
+    </div>
+    <div id="modal-status" style="margin-top:12px;text-align:center;font-size:13px;color:#6b7280"></div>
+  </div>
+</div>
+
+<style>
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.btn-glossary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+  white-space: nowrap;
+}
+
+.btn-glossary:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transform: translateY(-1px);
+}
+
+.btn-glossary-updated {
+  color: #166534;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.btn-glossary-updated:hover {
+  background: #dcfce7;
+  border-color: #6ee7b7;
+}
+
+.btn-glossary-outdated {
+  color: #92400e;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.btn-glossary-outdated:hover {
+  background: #fef3c7;
+  border-color: #fbbf24;
+}
+
+#glossary-modal {
+  display: flex !important;
+}
+
+#glossary-modal[style*="display: none"] {
+  display: none !important;
+}
+</style>
+
+<script>
+let currentGlossaryArticleId = null;
+window.glossaryCurrentVersion = null;
+
+function showGlossaryModal(articleId) {
+  const article = previewArticles.find(a => a.id === articleId);
+  if (!article || !article.ai_summary_glossary_version) return;
+
+  currentGlossaryArticleId = articleId;
+  const modal = document.getElementById('glossary-modal');
+  const currentVer = window.glossaryCurrentVersion;
+  const summaryVer = article.ai_summary_glossary_version;
+  const isUpdated = summaryVer === currentVer;
+
+  document.getElementById('modal-summary-version').textContent = summaryVer;
+  document.getElementById('modal-current-version').textContent = currentVer || '—';
+  document.getElementById('modal-generation-date').textContent = article.ai_summary_updated_at || '—';
+  document.getElementById('modal-new-version').textContent = currentVer || '—';
+
+  document.getElementById('outdated-warning').style.display = isUpdated ? 'none' : 'block';
+  document.getElementById('updated-info').style.display = isUpdated ? 'block' : 'none';
+
+  const regenerateBtn = document.getElementById('modal-regenerate-btn');
+  regenerateBtn.disabled = isUpdated || !currentVer;
+  regenerateBtn.style.opacity = regenerateBtn.disabled ? '0.5' : '1';
+
+  document.getElementById('modal-status').textContent = '';
+  modal.style.display = 'flex';
+}
+
+function closeGlossaryModal() {
+  document.getElementById('glossary-modal').style.display = 'none';
+  currentGlossaryArticleId = null;
+}
+
+async function regenerateFromModal() {
+  if (!currentGlossaryArticleId) return;
+
+  const btn = document.getElementById('modal-regenerate-btn');
+  const status = document.getElementById('modal-status');
+
+  btn.disabled = true;
+  status.textContent = '⏳ Regenerando...';
+
+  try {
+    const response = await fetch(`/prionvault/api/glossary/regenerate-summary/${currentGlossaryArticleId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    status.textContent = '✅ ¡Regenerado exitosamente!';
+    setTimeout(() => {
+      closeGlossaryModal();
+      if (improveMode === 'outdated') {
+        loadOutdated();
+      } else {
+        loadAllArticles();
+      }
+    }, 1000);
+
+  } catch (e) {
+    status.textContent = '❌ Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+window.closeGlossaryModal = closeGlossaryModal;
 </script>
 
 {% endblock %}
