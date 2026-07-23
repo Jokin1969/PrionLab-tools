@@ -2836,6 +2836,11 @@
       : '';
 
     const badges = [
+      `<button type="button" class="pv-isolate-row-btn" data-aid="${esc(a.id)}"
+                title="Mostrar solo este artículo en el listado"
+                style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
+                       font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;
+                       border:none;cursor:pointer;line-height:1.2;">📍</button>`,
       `<button type="button" class="pv-email-row-btn" data-aid="${esc(a.id)}"
                 title="Enviar este artículo por email (datos + resumen IA)"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
@@ -3318,6 +3323,13 @@
           fetchAbsBtn.disabled = false;
           fetchAbsBtn.innerHTML = original;
         }
+      });
+
+      const isolateRowBtn = row.querySelector('.pv-isolate-row-btn');
+      if (isolateRowBtn) isolateRowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _setIsolatedArticleId(a.id);
+        loadArticles();
       });
 
       const emailRowBtn = row.querySelector('.pv-email-row-btn');
@@ -7252,6 +7264,17 @@
       let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
     };
     const onSearch = debounce(() => { state.page = 1; loadArticles(); }, 200);
+
+    // Wire up the clear isolation button
+    const clearIsolationBtn = document.getElementById('pv-clear-isolation-btn');
+    if (clearIsolationBtn) {
+      clearIsolationBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _clearArticleIsolation();
+        loadArticles();
+      });
+    }
 
     const searchInput = document.getElementById('pv-search-input');
     const searchModeBtn = document.getElementById('btn-search-mode');
