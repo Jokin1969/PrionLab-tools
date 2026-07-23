@@ -484,8 +484,12 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
 
     if has_summary == "ai" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NOT NULL")
-    elif has_summary == "human" and "summary_human" in pv_cols:
-        conditions.append("summary_human IS NOT NULL")
+    elif has_summary == "human":
+        # Filter by user's sticky notes (not human summary)
+        viewer_uid = _viewer_id()
+        if viewer_uid:
+            conditions.append("articles.id IN (SELECT DISTINCT article_id FROM prionvault_article_note WHERE user_id = :has_summary_viewer_uid)")
+            params["has_summary_viewer_uid"] = viewer_uid
     elif has_summary == "none" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NULL AND summary_human IS NULL")
 
@@ -1261,16 +1265,17 @@ def api_article_stats():
     try:
         # Try the full query first (requires migration 001 columns).
         try:
+            viewer_uid = _viewer_id()
             row = s.execute(sql_text("""
                 SELECT
                   COUNT(*)                                       AS total,
                   COUNT(*) FILTER (WHERE summary_ai IS NOT NULL) AS with_summary_ai,
                   COUNT(*) FILTER (WHERE extraction_status = 'extracted') AS with_extraction,
                   COUNT(*) FILTER (WHERE indexed_at IS NOT NULL) AS indexed,
-                  COUNT(*) FILTER (WHERE summary_human IS NOT NULL
-                                     AND summary_human <> '') AS with_notes
-                FROM articles
-            """)).first()
+                  COUNT(DISTINCT a.id) FILTER (WHERE an.id IS NOT NULL) AS with_notes
+                FROM articles a
+                LEFT JOIN prionvault_article_note an ON a.id = an.article_id AND an.user_id = :viewer_id
+            """).bindparams(viewer_id=viewer_uid)).first()
             return jsonify({
                 "total":           row[0] if row else 0,
                 "with_summary_ai": row[1] if row else 0,

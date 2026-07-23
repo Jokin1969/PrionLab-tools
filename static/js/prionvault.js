@@ -7667,7 +7667,7 @@
         el.style.background = active ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)';
         el.style.color      = active ? 'white' : 'rgba(255,255,255,0.5)';
         el.title = active ? 'Mostrando solo artículos con notas — clic para quitar el filtro'
-                          : (id === 'btn-filter-notes' ? 'Mostrar solo artículos con notas personales (Human notes)'
+                          : (id === 'btn-filter-notes' ? 'Mostrar solo artículos con notas (sticky notes)'
                                                         : 'Filtrar por artículos con notas en esta sección');
       });
     }
