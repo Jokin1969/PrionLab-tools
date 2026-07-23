@@ -71,6 +71,7 @@
     // across modal opens/closes (e.g. picking articles inside the PMID
     // manual list and then surfacing them in the main grid).
     filterSelectedOnly: false,
+    isolatedArticleId: null, // null = show all, else only show this article
     lastTotal:   0,          // last seen total count of the current filter
   };
 
@@ -2524,7 +2525,9 @@
   // For ≤50 IDs the ids=... query param is short enough for a GET.
   function buildListParams() {
     const params = new URLSearchParams();
-    if (state.filterSelectedOnly && state.selectedIds.size <= 50) {
+    if (state.isolatedArticleId) {
+      params.set('ids', state.isolatedArticleId);
+    } else if (state.filterSelectedOnly && state.selectedIds.size <= 50) {
       params.set('ids', Array.from(state.selectedIds).join(','));
     }
     if (state.q)                   params.set('q', state.q);
@@ -2565,6 +2568,18 @@
     params.set('page', state.page);
     params.set('size', state.size);
     return params;
+  }
+
+  // Isolate the listing to show only a single article
+  function _setIsolatedArticleId(aid) {
+    state.isolatedArticleId = aid;
+    state.page = 1;
+  }
+
+  // Clear article isolation to show all articles again
+  function _clearArticleIsolation() {
+    state.isolatedArticleId = null;
+    state.page = 1;
   }
 
   // Inline SVG flag icon mirroring PrionRead's FlagIcon (small staff + triangle).
@@ -3614,6 +3629,26 @@
           if (typeof PVEmailShare !== 'undefined' && PVEmailShare.open) {
             PVEmailShare.open(a);
           }
+        };
+      }
+
+      // Wire Notes cluster in detail modal nav bar
+      const detailNotesCluster = document.getElementById('pv-detail-notes-cluster');
+      if (detailNotesCluster) {
+        detailNotesCluster.innerHTML = _noteClusterInner(a.notes || []);
+        _wireNoteCluster(detailNotesCluster, a);
+      }
+
+      // Wire isolation button in detail modal nav bar
+      const detailIsolateBtn = document.getElementById('pv-detail-isolate-btn');
+      if (detailIsolateBtn) {
+        detailIsolateBtn.onclick = () => {
+          // Filter the listing to show only this article
+          _setIsolatedArticleId(a.id);
+          // Reload the listing with isolation filter
+          loadArticles();
+          // Close the detail modal
+          closeDetail();
         };
       }
 

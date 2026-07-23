@@ -1106,33 +1106,45 @@
   <div class="pv-modal-inner" style="max-width:680px;padding-top:0;">
     <!-- Sticky nav bar: always visible even when scrolled down -->
     <div style="position:sticky;top:0;z-index:10;background:white;
-                display:flex;align-items:center;justify-content:flex-end;gap:8px;
+                display:flex;align-items:center;justify-content:space-between;gap:8px;
                 padding:12px 0 10px;border-bottom:1px solid #f3f4f6;margin-bottom:16px;">
-      <button id="pv-detail-cart-btn" type="button"
-              title="Añadir al carrito de PrionPacks"
-              style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
-                     background:white;font-size:14px;color:#374151;cursor:pointer;line-height:1.4;">
-        🛒
-      </button>
-      <button id="pv-detail-email-btn" type="button"
-              title="Enviar este artículo por email"
-              style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
-                     background:white;font-size:14px;color:#374151;cursor:pointer;line-height:1.4;">
-        ✉️
-      </button>
-      <button id="pv-detail-prev" aria-label="Anterior"
-              style="padding:4px 14px;border-radius:6px;border:1px solid #d1d5db;
-                     background:white;font-size:17px;color:#374151;cursor:pointer;line-height:1.4;"
-              title="Artículo anterior">‹</button>
-      <button id="pv-detail-next" aria-label="Siguiente"
-              style="padding:4px 14px;border-radius:6px;border:1px solid #d1d5db;
-                     background:white;font-size:17px;color:#374151;cursor:pointer;line-height:1.4;"
-              title="Artículo siguiente">›</button>
-      <button id="pv-detail-close" aria-label="Close"
-              style="width:28px;height:28px;border-radius:50%;border:1px solid #e5e7eb;
-                     background:white;font-size:17px;cursor:pointer;display:flex;
-                     align-items:center;justify-content:center;color:#6b7280;line-height:1;
-                     transition:background 0.15s;flex-shrink:0;">×</button>
+      <!-- Left: Notes cluster -->
+      <div id="pv-detail-notes-cluster" style="display:flex;gap:4px;"></div>
+      <!-- Right: Action buttons -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="pv-detail-cart-btn" type="button"
+                title="Añadir al carrito de PrionPacks"
+                style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
+                       background:white;font-size:14px;color:#374151;cursor:pointer;line-height:1.4;">
+          🛒
+        </button>
+        <button id="pv-detail-email-btn" type="button"
+                title="Enviar este artículo por email"
+                style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
+                       background:white;font-size:14px;color:#374151;cursor:pointer;line-height:1.4;">
+          ✉️
+        </button>
+        <button id="pv-detail-prev" aria-label="Anterior"
+                style="padding:4px 14px;border-radius:6px;border:1px solid #d1d5db;
+                       background:white;font-size:17px;color:#374151;cursor:pointer;line-height:1.4;"
+                title="Artículo anterior">‹</button>
+        <button id="pv-detail-next" aria-label="Siguiente"
+                style="padding:4px 14px;border-radius:6px;border:1px solid #d1d5db;
+                       background:white;font-size:17px;color:#374151;cursor:pointer;line-height:1.4;"
+                title="Artículo siguiente">›</button>
+        <button id="pv-detail-isolate-btn" type="button"
+                title="Seleccionar solo este artículo en el listado"
+                style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
+                       background:white;font-size:13px;color:#374151;cursor:pointer;line-height:1.4;
+                       white-space:nowrap;">
+          📍
+        </button>
+        <button id="pv-detail-close" aria-label="Close"
+                style="width:28px;height:28px;border-radius:50%;border:1px solid #e5e7eb;
+                       background:white;font-size:17px;cursor:pointer;display:flex;
+                       align-items:center;justify-content:center;color:#6b7280;line-height:1;
+                       transition:background 0.15s;flex-shrink:0;">×</button>
+      </div>
     </div>
     <div id="pv-detail-content">…</div>
   </div>
