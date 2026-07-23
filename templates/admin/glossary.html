@@ -37,11 +37,19 @@
           <span class="stat-label">{{ _('Current Glossary Version') }}</span>
           <span class="stat-value" id="dashboard-current-version">—</span>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" style="cursor: pointer; transition: all 0.2s; border: 2px solid transparent;"
+             onmouseover="this.style.borderColor='#0F3460';this.style.backgroundColor='#f0f4ff';"
+             onmouseout="this.style.borderColor='transparent';this.style.backgroundColor='';"
+             onclick="goToImprovedArticles()"
+             title="Click para ver los artículos mejorados en PrionVault">
           <span class="stat-label">{{ _('Summaries Improved') }}</span>
           <span class="stat-value" id="dashboard-articles-improved">0</span>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" style="cursor: pointer; transition: all 0.2s; border: 2px solid transparent;"
+             onmouseover="this.style.borderColor='#0F3460';this.style.backgroundColor='#f0f4ff';"
+             onmouseout="this.style.borderColor='transparent';this.style.backgroundColor='';"
+             onclick="openChangesModal()"
+             title="Click para ver los cambios en detalle">
           <span class="stat-label">{{ _('Total Changes') }}</span>
           <span class="stat-value" id="dashboard-total-changes">0</span>
         </div>
@@ -837,16 +845,20 @@ async function loadDashboard() {
 
     // Render corrections
     const correctionsBody = document.getElementById('dashboard-corrections-tbody');
-    if (data.most_common_corrections.length === 0) {
+    if (!data.most_common_corrections || data.most_common_corrections.length === 0) {
       correctionsBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">{{ _("No corrections yet") }}</td></tr>';
     } else {
-      correctionsBody.innerHTML = data.most_common_corrections.map(c => `
-        <tr>
-          <td><code style="color: #dc2626">${escapeHtml(c.original)}</code></td>
-          <td><strong style="color: #16a34a">${escapeHtml(c.corrected)}</strong></td>
-          <td><strong>${c.frequency}</strong></td>
-        </tr>
-      `).join('');
+      correctionsBody.innerHTML = data.most_common_corrections.map(c => {
+        const original = c.original && c.original.trim() ? escapeHtml(c.original) : '<em style="color:#9ca3af">(vacío)</em>';
+        const corrected = c.corrected && c.corrected.trim() ? escapeHtml(c.corrected) : '<em style="color:#9ca3af">(vacío)</em>';
+        return `
+          <tr>
+            <td><code style="color: #dc2626">${original}</code></td>
+            <td><strong style="color: #16a34a">${corrected}</strong></td>
+            <td><strong>${c.frequency}</strong></td>
+          </tr>
+        `;
+      }).join('');
     }
 
     status.textContent = '✓ {{ _("Dashboard updated") }}';
@@ -1541,6 +1553,87 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
+// ── Dashboard interaction functions ────────────────────────────────────
+function goToImprovedArticles() {
+  const count = document.getElementById('dashboard-articles-improved').textContent;
+  if (count === '0' || count === '—') {
+    alert('No hay artículos mejorados aún');
+    return;
+  }
+  // Navigate to PrionVault and filter by glossary version
+  window.location.href = '/prionvault/?has_glossary=1';
+}
+
+async function openChangesModal() {
+  const modal = document.getElementById('changes-modal');
+  const content = document.getElementById('changes-content');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+  content.innerHTML = '<p style="text-align:center;color:#9ca3af;">Cargando cambios...</p>';
+
+  try {
+    const response = await fetch('/prionvault/api/glossary/stats', {
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+
+    const byVersion = data.by_version || [];
+    if (byVersion.length === 0) {
+      content.innerHTML = '<p class="text-center text-muted">No hay cambios registrados</p>';
+      return;
+    }
+
+    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:20px">';
+    byVersion.forEach(v => {
+      html += `
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#f9fafb">
+          <div style="font-weight:600;margin-bottom:12px;font-size:14px">Glosario v${v.glossary_version}</div>
+          <div style="display:grid;gap:8px;font-size:13px">
+            <div><strong>${v.articles_improved}</strong> artículos mejorados</div>
+            <div><strong>${v.total_changes}</strong> cambios totales</div>
+            <div><strong>${(v.total_changes / (v.articles_improved || 1)).toFixed(1)}</strong> cambios/artículo</div>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    // Mostrar tabla de correcciones más comunes
+    if (data.most_common_corrections && data.most_common_corrections.length > 0) {
+      html += '<h3 style="margin-top:20px;margin-bottom:12px">Correcciones Más Comunes</h3>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+      html += '<thead style="background:#f3f4f6"><tr><th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Original</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Corregido a</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb">Frecuencia</th></tr></thead>';
+      html += '<tbody>';
+      data.most_common_corrections.forEach(c => {
+        html += `<tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:8px"><code style="color:#dc2626">${escapeHtml(c.original || '—')}</code></td>
+          <td style="padding:8px"><strong style="color:#16a34a">${escapeHtml(c.corrected || '—')}</strong></td>
+          <td style="padding:8px;text-align:right"><strong>${c.frequency}</strong></td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+    }
+
+    content.innerHTML = html;
+  } catch (e) {
+    content.innerHTML = `<p style="color:#dc2626">Error: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function closeChangesModal() {
+  const modal = document.getElementById('changes-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Close modals when clicking outside
+document.addEventListener('click', (e) => {
+  const changesModal = document.getElementById('changes-modal');
+  if (changesModal && e.target === changesModal) {
+    closeChangesModal();
+  }
+});
+
 // ── Diagnostic script for debugging button visibility ──────────────────
 (function() {
   console.log("✅ glossary.html loaded successfully");
@@ -1576,6 +1669,19 @@ function escapeHtml(text) {
   }
 })();
 </script>
+
+{# ── Changes Detail Modal ──────────────────────────────────────────────── #}
+<div id="changes-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9998;align-items:center;justify-content:center;padding:20px">
+  <div style="background:white;border-radius:12px;max-width:800px;width:100%;max-height:80vh;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:20px;border-bottom:1px solid #e5e7eb">
+      <h2 style="margin:0;color:#1f2937">📊 Cambios Totales - Detalles</h2>
+      <button onclick="closeChangesModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px">
+      <div id="changes-content" style="min-height:200px"></div>
+    </div>
+  </div>
+</div>
 
 {# ── Glossary Info Modal ───────────────────────────────────────────────── #}
 <div id="glossary-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">

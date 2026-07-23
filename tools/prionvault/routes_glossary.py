@@ -87,16 +87,26 @@ def api_glossary_stats_detailed():
                 """)).scalar() or 0
 
                 total_reviewed = reviewed_with_changes + reviewed_without_changes
+
+                # Outdated: articles improved with older glossary versions
+                total_outdated = conn.execute(sql_text("""
+                    SELECT COUNT(DISTINCT article_id)
+                    FROM summary_improvement_log
+                    WHERE glossary_version_used < :current
+                      AND dry_run = FALSE
+                """), {"current": current_version}).scalar() or 0
             else:
                 reviewed_with_changes = 0
                 reviewed_without_changes = 0
                 total_reviewed = 0
+                total_outdated = 0
 
         return jsonify({
             "pending": int(pending),
             "reviewed_with_changes": int(reviewed_with_changes),
             "reviewed_without_changes": int(reviewed_without_changes),
             "total_reviewed": int(total_reviewed),
+            "total_outdated": int(total_outdated),
             "current_glossary_version": current_version,
         })
     except Exception as e:
