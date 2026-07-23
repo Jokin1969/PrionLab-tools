@@ -3620,6 +3620,17 @@
     try {
       const a = await api('/articles/' + aid);
 
+      // Fetch notes separately (not included in main article endpoint)
+      try {
+        const notesResp = await api('/articles/' + aid + '/notes');
+        if (notesResp && notesResp.notes) {
+          a.notes = notesResp.notes;
+        }
+      } catch (e) {
+        // If notes endpoint fails, continue without notes
+        a.notes = [];
+      }
+
       // Wire cart button in detail modal nav bar
       const detailCartBtn = document.getElementById('pv-detail-cart-btn');
       if (detailCartBtn) {
