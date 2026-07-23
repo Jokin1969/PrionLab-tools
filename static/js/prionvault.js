@@ -2574,12 +2574,22 @@
   function _setIsolatedArticleId(aid) {
     state.isolatedArticleId = aid;
     state.page = 1;
+    _updateIsolationIndicator();
   }
 
   // Clear article isolation to show all articles again
   function _clearArticleIsolation() {
     state.isolatedArticleId = null;
     state.page = 1;
+    _updateIsolationIndicator();
+  }
+
+  // Update the isolation indicator visibility
+  function _updateIsolationIndicator() {
+    const indicator = document.getElementById('pv-isolation-indicator');
+    if (indicator) {
+      indicator.style.display = state.isolatedArticleId ? 'inline-block' : 'none';
+    }
   }
 
   // Inline SVG flag icon mirroring PrionRead's FlagIcon (small staff + triangle).
