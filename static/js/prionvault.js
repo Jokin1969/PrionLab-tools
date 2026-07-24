@@ -3441,16 +3441,26 @@
       if (cartBtn) cartBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (!window.PPCart) return;
-        window.PPCart.add({
-          id: a.id, title: a.title || '', authors: a.authors || '',
-          year: a.year || null, journal: a.journal || '',
-          doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
-        });
-        cartBtn.classList.add('pv-cart-btn--in');
-        cartBtn.style.background = '#d1fae5';
-        cartBtn.style.color = '#065f46';
-        cartBtn.title = 'En el carrito';
-        cartBtn.innerHTML = '🛒 ✓';
+        const inCart = window.PPCart.has(a.id);
+        if (inCart) {
+          window.PPCart.remove(a.id);
+          cartBtn.classList.remove('pv-cart-btn--in');
+          cartBtn.style.background = 'white';
+          cartBtn.style.color = '#374151';
+          cartBtn.title = 'Añadir al carrito de PrionPacks';
+          cartBtn.innerHTML = '🛒';
+        } else {
+          window.PPCart.add({
+            id: a.id, title: a.title || '', authors: a.authors || '',
+            year: a.year || null, journal: a.journal || '',
+            doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
+          });
+          cartBtn.classList.add('pv-cart-btn--in');
+          cartBtn.style.background = '#d1fae5';
+          cartBtn.style.color = '#065f46';
+          cartBtn.title = 'En el carrito';
+          cartBtn.innerHTML = '🛒 ✓';
+        }
       });
     }
 
@@ -3642,16 +3652,26 @@
         detailCartBtn.title = inCart ? 'En el carrito' : 'Añadir al carrito de PrionPacks';
         detailCartBtn.onclick = () => {
           if (!window.PPCart) return;
-          window.PPCart.add({
-            id: a.id, title: a.title || '', authors: a.authors || '',
-            year: a.year || null, journal: a.journal || '',
-            doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
-          });
-          detailCartBtn.innerHTML = '🛒 ✓';
-          detailCartBtn.style.background  = '#d1fae5';
-          detailCartBtn.style.color       = '#065f46';
-          detailCartBtn.style.borderColor = '#6ee7b7';
-          detailCartBtn.title = 'En el carrito';
+          const isInCart = window.PPCart.has(a.id);
+          if (isInCart) {
+            window.PPCart.remove(a.id);
+            detailCartBtn.innerHTML = '🛒';
+            detailCartBtn.style.background  = 'white';
+            detailCartBtn.style.color       = '#374151';
+            detailCartBtn.style.borderColor = '#d1d5db';
+            detailCartBtn.title = 'Añadir al carrito de PrionPacks';
+          } else {
+            window.PPCart.add({
+              id: a.id, title: a.title || '', authors: a.authors || '',
+              year: a.year || null, journal: a.journal || '',
+              doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
+            });
+            detailCartBtn.innerHTML = '🛒 ✓';
+            detailCartBtn.style.background  = '#d1fae5';
+            detailCartBtn.style.color       = '#065f46';
+            detailCartBtn.style.borderColor = '#6ee7b7';
+            detailCartBtn.title = 'En el carrito';
+          }
         };
       }
 
