@@ -24,7 +24,7 @@ class MaintenanceScheduler:
             from apscheduler.schedulers.background import BackgroundScheduler
             from apscheduler.triggers.cron import CronTrigger
             from apscheduler.triggers.interval import IntervalTrigger
-            sched = BackgroundScheduler(daemon=True, timezone="UTC")
+            sched = BackgroundScheduler(daemon=True, timezone="UTC", misfire_grace_time=300)
             app = self.app
 
             def _run(fn):
@@ -49,10 +49,14 @@ class MaintenanceScheduler:
             sched.add_job(lambda: _run(self.vacuum_analyze),
                           CronTrigger(day_of_week="sun", hour=4), id="vacuum",
                           replace_existing=True)
+            # Every 15 min: fire pending email digest subscriptions
+            sched.add_job(lambda: _run(self.run_email_digests),
+                          IntervalTrigger(minutes=15), id="email_digests",
+                          replace_existing=True)
 
             sched.start()
             self._scheduler = sched
-            logger.info("Maintenance scheduler started (5 jobs)")
+            logger.info("Maintenance scheduler started (6 jobs)")
             return True
         except Exception as e:
             logger.warning("Could not start maintenance scheduler: %s", e)
@@ -141,3 +145,11 @@ class MaintenanceScheduler:
         except Exception as e:
             logger.error("vacuum_analyze: %s", e)
             return False
+
+    def run_email_digests(self) -> None:
+        """Fire any pending PrionVault email digest subscriptions."""
+        try:
+            from tools.prionvault.services.email_digest import run_pending_digests
+            run_pending_digests()
+        except Exception as exc:
+            logger.warning("Email digest scheduler error: %s", exc)

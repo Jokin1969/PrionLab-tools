@@ -1,0 +1,1449 @@
+{% extends "base.html" %}
+
+{% block title %}PrionPacks Manager – PrionLab Tools{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="{{ asset_url('css/prionpacks.css') }}" />
+{% endblock %}
+
+{# Skip the .container wrapper so PrionPacks is full-width #}
+{% block main_body %}
+<div id="prionpacks-app">
+
+  <!-- ── Mobile top bar (hidden on desktop) ──────────────────────────────────────────── -->
+  <div class="pp-mobile-topbar" id="pp-mobile-topbar">
+    <button class="pp-mobile-hamburger" id="btn-mobile-hamburger" aria-label="Abrir menú">
+      <i class="fas fa-bars"></i>
+    </button>
+    <span class="pp-mobile-brand"><i class="fas fa-cube"></i> PrionPacks</span>
+    <button class="pp-btn pp-btn-primary pp-mobile-new-btn" id="btn-mobile-new" aria-label="Nuevo package">
+      <i class="fas fa-plus"></i>
+    </button>
+  </div>
+
+  <!-- ── Mobile overlay backdrop ─────────────────────────────────────────────────────── -->
+  <div class="pp-mobile-overlay" id="pp-mobile-overlay"></div>
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────────────────── -->
+  <aside class="pp-sidebar" id="pp-sidebar">
+    <div class="pp-sidebar-header">
+      <div class="pp-sidebar-brand">
+        <i class="fas fa-cube pp-brand-icon"></i>
+        <div>
+          <span class="pp-brand-name">PrionPacks</span>
+          <span class="pp-brand-sub">Research Packages</span>
+        </div>
+      </div>
+      <button class="pp-sidebar-close" id="btn-sidebar-close" aria-label="Cerrar menú">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="pp-sidebar-search">
+      <div class="pp-search-wrap">
+        <i class="fas fa-search pp-search-icon"></i>
+        <input type="text" id="pp-search" class="pp-search-input" placeholder="Search all fields…" autocomplete="off" />
+        <button type="button" class="pp-search-mode-btn" id="btn-search-mode" title="Toggle advanced multi-token search (paste DOIs separated by commas, tabs, spaces or new lines)">
+          <i class="fas fa-bolt"></i>
+        </button>
+      </div>
+      <div id="pp-search-hint" class="pp-search-hint" style="display:none;"></div>
+    </div>
+
+    <div class="pp-sidebar-filters">
+      <div class="pp-filter-group">
+        <label class="pp-filter-label">Status</label>
+        <select id="filter-status" class="pp-select">
+          <option value="all">All</option>
+          <option value="initial">Initial (&lt;50%)</option>
+          <option value="progress">In Progress (50–89%)</option>
+          <option value="complete">Complete (≥90%)</option>
+        </select>
+      </div>
+      <div class="pp-filter-group">
+        <label class="pp-filter-label">Priority</label>
+        <select id="filter-priority" class="pp-select">
+          <option value="all">All</option>
+          <option value="high">🔴 High</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="low">🟢 Low</option>
+          <option value="none">⚪ Unprioritized</option>
+        </select>
+      </div>
+      <div class="pp-filter-group pp-filter-group-inline">
+        <label class="pp-filter-label">Resp.</label>
+        <div class="pp-resp-chips" id="filter-responsible-chips">
+          <!-- rendered dynamically by JS from members list -->
+        </div>
+      </div>
+    </div>
+
+    <div class="pp-package-list" id="pp-package-list"></div>
+
+    <div class="pp-sidebar-footer">
+      <button class="pp-btn pp-btn-primary pp-btn-full" id="btn-new-package">
+        <i class="fas fa-plus"></i> New Package
+      </button>
+      <hr class="pp-footer-sep" />
+      <button class="pp-btn pp-btn-secondary pp-btn-full pp-btn-docs" id="btn-show-docs" title="Documentación general de PrionPacks">
+        <i class="fas fa-book"></i> Documentation
+      </button>
+      <button class="pp-btn pp-btn-ghost pp-btn-full pp-btn-members" id="btn-show-members">
+        <i class="fas fa-users"></i> Equipo
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main Area ─────────────────────────────────────────────────────────────────────── -->
+  <main class="pp-main">
+
+    <!-- Dashboard view -->
+    <div id="view-dashboard" class="pp-view active">
+      <div class="pp-page-header">
+        <div>
+          <h1 class="pp-page-title">Dashboard</h1>
+          <p class="pp-page-sub">Overview of your research packages</p>
+        </div>
+        <div class="pp-page-actions">
+          <button class="pp-btn pp-btn-secondary" id="btn-backup-dropbox" title="Guardar copia de seguridad en Dropbox ahora">
+            <i class="fas fa-cloud-upload-alt"></i> Backup Dropbox
+          </button>
+          <button class="pp-btn pp-btn-ghost pp-btn-restore-open" id="btn-open-restore" title="Restaurar datos desde un backup de Dropbox">
+            <i class="fas fa-history"></i> Restaurar
+          </button>
+          <a class="pp-btn pp-btn-secondary" id="btn-list-packages-docx" href="/prionpacks/api/packages/list-docx">
+            <i class="fas fa-file-word"></i> Lista PrionPacks
+          </a>
+          <button class="pp-btn pp-btn-ghost" id="btn-pv-search-dash" type="button" title="Buscar artículos en PrionVault con IA">
+            <i class="fas fa-search"></i> PrionVault
+          </button>
+          <button class="pp-btn pp-btn-ghost pp-cart-btn" id="btn-open-cart-dash" type="button" title="Carrito de artículos">
+            <i class="fas fa-shopping-cart"></i>
+            <span class="pp-cart-badge" id="pp-cart-badge-dash" style="display:none">0</span>
+          </button>
+          <button class="pp-btn pp-btn-primary" id="btn-new-package-main">
+            <i class="fas fa-plus"></i> New Package
+          </button>
+        </div>
+      </div>
+
+      <div class="pp-metrics-grid">
+        <button class="pp-metric-card pp-metric-btn" data-filter="all">
+          <div class="pp-metric-icon pp-metric-icon-total"><i class="fas fa-cube"></i></div>
+          <div class="pp-metric-body">
+            <div class="pp-metric-value" id="metric-total">0</div>
+            <div class="pp-metric-label">Total Packages</div>
+          </div>
+        </button>
+        <button class="pp-metric-card pp-metric-btn" data-filter="complete">
+          <div class="pp-metric-icon pp-metric-icon-complete"><i class="fas fa-check-circle"></i></div>
+          <div class="pp-metric-body">
+            <div class="pp-metric-value" id="metric-complete">0</div>
+            <div class="pp-metric-label">Completed (≥90%)</div>
+          </div>
+        </button>
+        <button class="pp-metric-card pp-metric-btn" data-filter="progress">
+          <div class="pp-metric-icon pp-metric-icon-progress"><i class="fas fa-spinner"></i></div>
+          <div class="pp-metric-body">
+            <div class="pp-metric-value" id="metric-progress">0</div>
+            <div class="pp-metric-label">In Progress</div>
+          </div>
+        </button>
+        <button class="pp-metric-card pp-metric-btn" data-filter="initial">
+          <div class="pp-metric-icon pp-metric-icon-avg"><i class="fas fa-chart-bar"></i></div>
+          <div class="pp-metric-body">
+            <div class="pp-metric-value" id="metric-avg">0%</div>
+            <div class="pp-metric-label">Avg Completeness</div>
+          </div>
+        </button>
+      </div>
+
+      <div class="pp-cards-grid" id="pp-cards-grid"></div>
+
+      <div class="pp-empty-state" id="pp-empty-state" style="display:none;">
+        <i class="fas fa-cube pp-empty-icon"></i>
+        <h3>No packages found</h3>
+        <p>Try adjusting your filters or create a new package.</p>
+        <button class="pp-btn pp-btn-primary" id="btn-first-package">
+          <i class="fas fa-plus"></i> Create Package
+        </button>
+      </div>
+    </div>
+
+    <!-- Editor view -->
+    <div id="view-editor" class="pp-view">
+
+      <!-- Editor toolbar -->
+      <div class="pp-editor-toolbar">
+        <div class="pp-editor-toolbar-left">
+          <span class="pp-editor-pkg-id" id="editor-id-badge">PRP-NEW</span>
+          <h1 id="title-display" class="pp-title-display pp-title-display-empty pp-editor-inline-title">Untitled package</h1>
+          <span class="pp-autosave-status" id="autosave-status"></span>
+        </div>
+        <div class="pp-editor-toolbar-actions">
+          <button class="pp-active-toggle is-active" id="btn-active-toggle" type="button" title="Activo">
+            <i class="fas fa-toggle-on"></i> <span class="pp-active-toggle-label">Activo</span>
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-notes-editor" id="btn-editor-notes" style="display:none;" title="Ver notas / tareas pendientes">
+            <i class="fas fa-sticky-note"></i> <span id="editor-notes-label">Notas</span>
+          </button>
+          <span class="pp-version-badge" id="editor-version-badge" style="display:none;"></span>
+          <a class="pp-btn pp-btn-sm pp-btn-word" id="btn-download-word" href="#" download style="display:none;">
+            <i class="fas fa-file-word"></i> Descargar Word
+          </a>
+          <button class="pp-btn pp-btn-sm pp-btn-send" id="btn-send-review" style="display:none;">
+            <i class="fas fa-paper-plane"></i> Enviar para revisar
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-delete" id="btn-delete-package" style="display:none;">
+            <i class="fas fa-trash"></i> Borrar
+          </button>
+          <button class="pp-btn pp-btn-sm" id="btn-suggest-articles" style="display:none;"
+                  title="La IA busca artículos relacionados con este pack — primero dentro de PrionVault, luego en PubMed">
+            <i class="fas fa-magic"></i> Sugerir más artículos
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-pv-search" type="button" title="Buscar artículos en PrionVault con IA">
+            <i class="fas fa-search"></i> PrionVault
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-ghost pp-cart-btn" id="btn-open-cart" type="button" title="Carrito de artículos">
+            <i class="fas fa-shopping-cart"></i>
+            <span class="pp-cart-badge" id="pp-cart-badge" style="display:none">0</span>
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-ai-project" style="display:none;"
+                  title="Genera los textos para crear un proyecto Claude con este PrionPack">
+            <i class="fas fa-robot"></i> Proyecto IA
+          </button>
+          <button class="pp-btn pp-btn-sm pp-btn-primary" id="btn-save-package">
+            <i class="fas fa-save"></i> Guardar
+          </button>
+        </div>
+        <button class="pp-btn-dashboard" id="btn-back-dashboard">
+          <i class="fas fa-th-large"></i> Dashboard
+        </button>
+      </div>
+
+      <div class="pp-editor-layout">
+
+        <!-- Left: form -->
+        <div class="pp-editor-form">
+
+          <!-- Basic Information card -->
+          <div class="pp-card pp-card-section" id="section-basic">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-info-circle"></i> Basic Information</h2>
+              <div class="pp-priority-selector" id="priority-selector">
+                <button class="pp-priority-btn active" data-priority="none" style="background:var(--pp-priority-none);" title="Sin prioridad"></button>
+                <button class="pp-priority-btn" data-priority="low" style="background:var(--pp-priority-low);" title="Baja"></button>
+                <button class="pp-priority-btn" data-priority="medium" style="background:var(--pp-priority-medium);" title="Media"></button>
+                <button class="pp-priority-btn" data-priority="high" style="background:var(--pp-priority-high);" title="Alta"></button>
+              </div>
+              <select id="field-responsible" class="pp-select pp-select-responsible"></select>
+            </div>
+            <div class="pp-form-group">
+              <div class="pp-label-ai-row">
+                <label class="pp-label">Title</label>
+                <div class="pp-field-ai-actions">
+                  <button class="pp-ai-btn" data-field-id="field-title" data-ai-label="Título del paquete" title="Incluir como contexto para Claude">AI</button>
+                  <button class="pp-claude-ask-btn" data-source-id="field-title" data-source-label="Título del paquete" title="Preguntar a Claude">
+                    <i class="fas fa-robot"></i> IA
+                  </button>
+                </div>
+              </div>
+              <textarea id="field-title" class="pp-textarea" rows="2" placeholder="Package title…" autocomplete="off"></textarea>
+            </div>
+            <div class="pp-form-group pp-alt-titles-editor" id="alt-titles-group">
+              <div class="pp-label-ai-row">
+                <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--empty" id="btn-toggle-alt-titles" title="Collapse / expand alternative titles"></button>
+                <label class="pp-label pp-label-sm">Alternative titles</label>
+                <button type="button" class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-add-alt-title">
+                  <i class="fas fa-plus"></i> Add alternative title
+                </button>
+              </div>
+              <div id="alt-titles-list" class="pp-alt-titles-list"></div>
+              <button type="button" id="btn-copy-alt-titles" style="display:none;margin-top:6px;
+                      padding:3px 10px;font-size:11px;border-radius:5px;border:1px solid #d1d5db;
+                      background:#fff;color:#6b7280;cursor:pointer;" title="Copiar todos los títulos alternativos">
+                <i class="fas fa-copy"></i> Copiar todos
+              </button>
+            </div>
+            <div class="pp-form-group pp-description-editor" id="description-group">
+              <div class="pp-label-ai-row">
+                <span class="pp-label-collapse-group">
+                  <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--empty" id="btn-toggle-description" title="Collapse / expand general description"></button>
+                  <label class="pp-label">General description</label>
+                </span>
+                <button class="pp-ai-btn" data-field-id="field-description" data-ai-label="Descripción general" title="Incluir como contexto para Claude">AI</button>
+              </div>
+              <textarea id="field-description" class="pp-textarea" rows="3" placeholder="Brief description of this research package…"></textarea>
+            </div>
+          </div>
+
+          <!-- Investigations card -->
+          <div class="pp-card pp-card-section" id="section-investigations">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-search"></i> Investigations</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-investigations-text" data-ai-label="Investigations" title="Incluir como contexto para Claude">AI</button>
+              </div>
+            </div>
+            <textarea id="field-investigations-text" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Contexto de la investigación, experimentos previos, datos preliminares…"></textarea>
+            <div class="pp-inv-files-area">
+              <div id="investigations-files" class="pp-inv-files-list"></div>
+              <label class="pp-btn pp-btn-sm pp-btn-ghost pp-inv-attach-btn" for="pp-inv-file-input">
+                <i class="fas fa-paperclip"></i> Adjuntar documento
+              </label>
+              <input type="file" id="pp-inv-file-input" accept=".pdf,.doc,.docx" style="display:none" multiple />
+            </div>
+          </div>
+
+          <!-- Optional sections toggle row (basic info group) -->
+          <div class="pp-toggle-field-row pp-toggle-row-standalone">
+            <button class="pp-toggle-field-btn" id="btn-toggle-coauthors"><i class="fas fa-users"></i> Co-authors</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-affiliations"><i class="fas fa-university"></i> Affiliations</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-abstract"><i class="fas fa-align-left"></i> Abstract</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-authorsummary"><i class="fas fa-user-edit"></i> Author Summary</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-introduction"><i class="fas fa-book-open"></i> Introduction</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-methods"><i class="fas fa-flask-vial"></i> Methods</button>
+          </div>
+
+          <!-- Co-authors section -->
+          <div class="pp-card pp-card-section" id="section-coauthors" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-users"></i> Co-authors</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-coauthors" data-ai-label="Co-autores" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-coauthors" data-source-label="Co-autores" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-coauthors" class="pp-textarea pp-textarea-lg" rows="3" placeholder="List co-authors…"></textarea>
+          </div>
+
+          <!-- Affiliations section -->
+          <div class="pp-card pp-card-section" id="section-affiliations" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-university"></i> Affiliations</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-affiliations" data-ai-label="Afiliaciones" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-affiliations" data-source-label="Afiliaciones" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-affiliations" class="pp-textarea pp-textarea-lg" rows="3" placeholder="List affiliations…"></textarea>
+          </div>
+
+          <!-- Abstract section -->
+          <div class="pp-card pp-card-section" id="section-abstract" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-align-left"></i> Abstract</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-abstract" data-ai-label="Abstract" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-abstract" data-source-label="Abstract" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-abstract" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Write the abstract…"></textarea>
+          </div>
+
+          <!-- Author Summary section -->
+          <div class="pp-card pp-card-section" id="section-authorsummary" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-user-edit"></i> Author Summary</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-authorsummary" data-ai-label="Resumen de autor" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-authorsummary" data-source-label="Resumen de autor" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-authorsummary" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Write the author summary…"></textarea>
+          </div>
+
+          <!-- Introduction section -->
+          <div class="pp-card pp-card-section" id="section-introduction" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-book-open"></i> Introduction</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-introduction" data-ai-label="Introducción" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-introduction" data-source-label="Introducción" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-introduction" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Write the introduction…"></textarea>
+
+            <!-- Introduction References sub-section -->
+            <div class="pp-intro-refs-sub" id="intro-refs-sub">
+              <div class="pp-intro-refs-sub-header">
+                <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-intro-refs-collapse-btn" title="Collapse / expand introduction references"></button>
+                <span class="pp-intro-refs-sub-label">
+                  <i class="fas fa-bookmark"></i> References
+                  <span class="pp-section-count" id="intro-references-count"></span>
+                </span>
+                <button class="pp-section-clip-btn pp-intro-refs-clip-btn" id="btn-clip-intro-refs" type="button" title="Copy introduction references to clipboard">
+                  <i class="fas fa-paperclip"></i>
+                </button>
+                <div class="pp-section-jump" id="intro-references-jump"></div>
+                <span class="pp-ref-search-wrap">
+                  <i class="fas fa-search pp-ref-search-icon"></i>
+                  <input type="search" class="pp-ref-search" id="intro-refs-search" placeholder="Buscar…" autocomplete="off">
+                </span>
+                <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-collapse-all-intro-refs" type="button" style="display:none;">
+                  <i class="fas fa-compress-alt"></i> Collapse all
+                </button>
+                <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-pv-import-intro" type="button"
+                        title="Buscar y traer un artículo desde PrionVault">
+                  <i class="fas fa-database"></i> From PrionVault
+                </button>
+                <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-idea-search-intro" type="button"
+                        title="Buscar artículos en PrionVault que apoyen o contradigan una idea">
+                  <i class="fas fa-lightbulb"></i> Idea search
+                </button>
+                <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-intro-reference" type="button">
+                  <i class="fas fa-plus"></i> Add Reference
+                </button>
+              </div>
+              <div id="intro-references-list" class="pp-references-list pp-intro-references-list"></div>
+            </div>
+          </div>
+
+          <!-- Methods section — multi-field -->
+          <div class="pp-card pp-card-section" id="section-methods" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-flask-vial"></i> Methods</h2>
+              <div class="pp-section-jump" id="methods-jump"></div>
+              <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-method" type="button">
+                <i class="fas fa-plus"></i> Add Method
+              </button>
+            </div>
+            <div id="methods-list" class="pp-methods-list"></div>
+          </div>
+
+          <!-- Main Findings card -->
+          <div class="pp-card pp-card-section" id="section-findings">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-microscope"></i> Main Findings</h2>
+              <div class="pp-section-jump" id="findings-jump"></div>
+              <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-finding">
+                <i class="fas fa-plus"></i> Add Finding
+              </button>
+            </div>
+            <div id="findings-container" class="pp-findings-list"></div>
+            <div class="pp-findings-empty" id="findings-empty">
+              <i class="fas fa-flask"></i>
+              <span>No findings yet. Click "Add Finding" to start.</span>
+            </div>
+          </div>
+
+          <!-- Gaps & Next Steps card -->
+          <div class="pp-card pp-card-section" id="section-gaps">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-exclamation-triangle"></i> Gaps &amp; Next Steps</h2>
+              <div class="pp-section-jump" id="gaps-jump"></div>
+              <button class="pp-btn pp-btn-sm pp-btn-secondary" onclick="PrionPacks.addGapItem('missing')" type="button">
+                <i class="fas fa-plus"></i> Add Item
+              </button>
+            </div>
+            <div id="gaps-missing-list" class="pp-dynamic-list"></div>
+          </div>
+
+          <!-- Toggle row for the gaps / closing group — sits between Gaps card
+               and the optional sections, mirroring the basic-info toggle row -->
+          <div class="pp-toggle-field-row pp-toggle-row-standalone">
+            <button class="pp-toggle-field-btn" id="btn-toggle-credit"><i class="fas fa-list-check"></i> CReDiT</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-references"><i class="fas fa-list"></i> References</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-conflicts"><i class="fas fa-balance-scale"></i> Conflicts of interest</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-funding"><i class="fas fa-coins"></i> Funding</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-acknowledgments"><i class="fas fa-heart"></i> Acknowledgments</button>
+            <button class="pp-toggle-field-btn" id="btn-toggle-discussion"><i class="fas fa-comments"></i> Discussion</button>
+          </div>
+
+          <!-- Discussion section -->
+          <div class="pp-card pp-card-section" id="section-discussion" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-comments"></i> Discussion</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-discussion" data-ai-label="Discussion" title="Include as context for Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-discussion" data-source-label="Discussion" title="Ask Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-discussion" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Write the discussion…"></textarea>
+          </div>
+
+          <!-- Acknowledgments section -->
+          <div class="pp-card pp-card-section" id="section-acknowledgments" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-heart"></i> Acknowledgments</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-acknowledgments" data-ai-label="Agradecimientos" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-acknowledgments" data-source-label="Agradecimientos" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-acknowledgments" class="pp-textarea pp-textarea-lg" rows="4" placeholder="Escribe los agradecimientos…"></textarea>
+          </div>
+
+          <!-- Funding section -->
+          <div class="pp-card pp-card-section" id="section-funding" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-coins"></i> Funding</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-funding" data-ai-label="Financiación" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-funding" data-source-label="Financiación" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-funding" class="pp-textarea pp-textarea-lg" rows="3" placeholder="Escribe información de financiación…"></textarea>
+          </div>
+
+          <!-- Conflicts of Interest section -->
+          <div class="pp-card pp-card-section" id="section-conflicts" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-balance-scale"></i> Conflicts of Interest</h2>
+              <div class="pp-field-ai-actions">
+                <button class="pp-ai-btn" data-field-id="field-conflictsofinterest" data-ai-label="Conflictos de interés" title="Incluir como contexto para Claude">AI</button>
+                <button class="pp-claude-ask-btn" data-source-id="field-conflictsofinterest" data-source-label="Conflictos de interés" title="Preguntar a Claude">
+                  <i class="fas fa-robot"></i> Claude
+                </button>
+              </div>
+            </div>
+            <textarea id="field-conflictsofinterest" class="pp-textarea pp-textarea-lg" rows="3" placeholder="Declara conflictos de interés…"></textarea>
+          </div>
+
+          <!-- CReDiT section (no AI / Claude buttons) -->
+          <div class="pp-card pp-card-section" id="section-credit" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-list-check"></i> CReDiT</h2>
+            </div>
+            <textarea id="field-credit" class="pp-textarea pp-textarea-lg" rows="5" placeholder="Contribución de autoría (CReDiT)…"></textarea>
+          </div>
+
+          <!-- References section — multi-field -->
+          <div class="pp-card pp-card-section" id="section-references" style="display:none;">
+            <div class="pp-section-header">
+              <h2 class="pp-section-title"><i class="fas fa-list"></i> References <span class="pp-section-count" id="references-count"></span></h2>
+              <div class="pp-section-jump" id="references-jump"></div>
+              <span class="pp-ref-search-wrap">
+                <i class="fas fa-search pp-ref-search-icon"></i>
+                <input type="search" class="pp-ref-search" id="refs-search" placeholder="Buscar…" autocomplete="off">
+              </span>
+              <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-collapse-all-refs" type="button" style="display:none;">
+                <i class="fas fa-compress-alt"></i> Collapse all
+              </button>
+              <button class="pp-btn pp-btn-sm pp-claude-ask-btn" id="btn-discuss-claude" type="button" title="Ask Claude to suggest Discussion topics based on the references">
+                <i class="fas fa-robot"></i> IA Discusión
+              </button>
+              <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-pv-import-general" type="button"
+                      title="Buscar y traer un artículo desde PrionVault">
+                <i class="fas fa-database"></i> From PrionVault
+              </button>
+              <button class="pp-btn pp-btn-sm pp-btn-ghost" id="btn-idea-search" type="button"
+                      title="Buscar artículos en PrionVault que apoyen o contradigan una idea">
+                <i class="fas fa-lightbulb"></i> Idea search
+              </button>
+              <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-add-reference" type="button">
+                <i class="fas fa-plus"></i> Add Reference
+              </button>
+            </div>
+            <div id="references-list" class="pp-references-list"></div>
+          </div>
+
+        </div>
+
+        <!-- Right: score panel -->
+        <div class="pp-editor-sidebar">
+          <div class="pp-card pp-score-card">
+            <h3 class="pp-score-title">Completeness Score</h3>
+            <div class="pp-score-circle-wrap">
+              <svg class="pp-score-circle" viewBox="0 0 100 100">
+                <circle class="pp-score-track" cx="50" cy="50" r="40" />
+                <circle class="pp-score-fill" id="score-circle-fill" cx="50" cy="50" r="40"
+                  stroke-dasharray="251.2" stroke-dashoffset="251.2" transform="rotate(-90 50 50)" />
+              </svg>
+              <div class="pp-score-center">
+                <span class="pp-score-pct" id="score-pct">0%</span>
+              </div>
+            </div>
+            <div class="pp-score-breakdown">
+              <div class="pp-score-row" title="Hallazgos con título y descripción · 30 % del total">
+                <span class="pp-score-row-label">Findings <small>30%</small></span>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-findings"></div></div>
+                <span class="pp-score-row-val" id="score-val-findings">0%</span>
+              </div>
+              <div class="pp-score-row" title="Figuras y tablas con descripción · 15 % del total">
+                <span class="pp-score-row-label">Figures &amp; Tables <small>15%</small></span>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-figures"></div></div>
+                <span class="pp-score-row-val" id="score-val-figures">0%</span>
+              </div>
+              <div class="pp-score-row" title="Title, Description, Investigations, Abstract, Author Summary, Introduction, Methods, Discussion · 35 % del total">
+                <span class="pp-score-row-label">Manuscript <small>35%</small></span>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-manuscript"></div></div>
+                <span class="pp-score-row-val" id="score-val-manuscript">0%</span>
+              </div>
+              <div class="pp-score-row" title="Acknowledgments, Funding, Conflicts, References, CReDiT y salud de gaps · 20 % del total">
+                <span class="pp-score-row-label">Closing &amp; Gaps <small>20%</small></span>
+                <div class="pp-score-bar-wrap"><div class="pp-score-bar" id="score-bar-closing"></div></div>
+                <span class="pp-score-row-val" id="score-val-closing">0%</span>
+              </div>
+            </div>
+            <div class="pp-score-recommendation">
+              <i class="fas fa-info-circle"></i>
+              <span id="score-rec-text">Fill in the form to see your score.</span>
+            </div>
+          </div>
+
+          <div class="pp-card pp-meta-card">
+            <h3 class="pp-meta-title">Package Info</h3>
+            <div class="pp-meta-row"><span class="pp-meta-key">ID</span><span class="pp-meta-val pp-mono" id="meta-id">—</span></div>
+            <div class="pp-meta-row"><span class="pp-meta-key">Created</span><span class="pp-meta-val" id="meta-created">—</span></div>
+            <div class="pp-meta-row"><span class="pp-meta-key">Modified</span><span class="pp-meta-val" id="meta-modified">—</span></div>
+            <div class="pp-meta-row"><span class="pp-meta-key">Findings</span><span class="pp-meta-val" id="meta-findings-count">0</span></div>
+          </div>
+
+          <div class="pp-card pp-api-card">
+            <h3 class="pp-api-title"><i class="fas fa-robot"></i> Claude API</h3>
+            <p class="pp-api-desc">Necesaria para usar Claude como modelo de IA. (ChatGPT y Gemini no requieren clave — abren su web directamente.)</p>
+            <div class="pp-form-group">
+              <input type="password" id="field-api-key" class="pp-input pp-input-sm" placeholder="sk-ant-…" autocomplete="off" />
+            </div>
+            <button class="pp-btn pp-btn-sm pp-btn-secondary" id="btn-save-api-key">
+              <i class="fas fa-key"></i> Save Key
+            </button>
+            <span class="pp-api-status" id="api-key-status"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Documentation view -->
+    <div id="view-docs" class="pp-view">
+      <div class="pp-page-header">
+        <div>
+          <h1 class="pp-page-title"><i class="fas fa-book"></i> PrionPacks Documentation</h1>
+          <p class="pp-page-subtitle">Prompts y descripciones reutilizables — copia y pega en cualquier asistente de IA.</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="pp-btn pp-btn-secondary" id="btn-docs-back" title="Volver al dashboard">
+            <i class="fas fa-arrow-left"></i> Back
+          </button>
+        </div>
+      </div>
+
+      <div class="pp-docs-wrapper">
+
+        <!-- Doc 1 — PrionPacks general overview -->
+        <div class="pp-doc-block" id="doc-block-overview">
+          <div class="pp-doc-block-header">
+            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Collapse / expand this document"></button>
+            <h2 class="pp-doc-block-title"><i class="fas fa-cube"></i> Contexto general de PrionPacks</h2>
+            <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-prionpacks-overview" title="Copiar este texto al portapapeles">
+              <i class="fas fa-copy"></i> Copy to clipboard
+            </button>
+          </div>
+          <p class="pp-doc-block-desc">Descripción completa de PrionPacks (campos, flujos, salidas) para dar contexto a una IA antes de pedirle ayuda.</p>
+          <pre class=”pp-docs-content” id=”doc-prionpacks-overview”># PrionPacks — Manual de contexto para asistentes de IA
+
+## Qué es
+
+PrionPacks es una herramienta web (Flask + JavaScript vanilla) diseñada para organizar y desarrollar paquetes de investigación científica en el campo de las enfermedades priónicas y la neurodegeneración. Cada “paquete” (PrionPack) es un contenedor estructurado de información que representa un trabajo de investigación en curso: un manuscrito, una revisión, un caso clínico, un proyecto experimental, etc.
+
+La idea central es que un paquete agrupa todo el material conceptual y textual de un trabajo —desde la idea inicial hasta el borrador del manuscrito— de modo que el investigador pueda: (1) ir rellenando secciones de forma progresiva, (2) usar IA (Claude) como copiloto sobre cualquier campo, y (3) exportar en cualquier momento a Word para revisión.
+
+## Estructura de un paquete
+
+Cada paquete tiene un ID único (PRP-001, PRP-002...), un estado activo/inactivo, una prioridad (none / low / medium / high), un tipo (research / review / case / methods) y los siguientes campos:
+
+### Campos básicos (siempre visibles)
+- Title: título del paquete o trabajo. Editable, con botones AI y Claude.
+- Description: descripción breve de qué trata el paquete.
+- Investigations: campo de texto + adjuntos PDF/Word (hasta 25 MB cada uno) para guardar información de partida — bibliografía, notas, papers leídos, ideas iniciales. Los PDFs se pueden enviar como contexto a Claude (vision) usando el botón AI por archivo.
+
+### Campos opcionales — Información de manuscrito (toggle on/off)
+- Co-authors: lista de coautores en orden de firma.
+- Affiliations: afiliaciones numeradas correspondientes a los coautores.
+- Abstract: resumen del manuscrito.
+- Author Summary: resumen para no expertos (estilo PLoS).
+- Introduction: texto de la introducción.
+- Methods: texto de materiales y métodos.
+
+### Main Findings (siempre visible)
+Lista ordenable (drag &amp; drop) de hallazgos del trabajo. Cada finding tiene:
+- Title: título corto del hallazgo (botón “Translate with Claude” para versión en inglés).
+- Description: descripción detallada.
+- Figures: lista de figuras asociadas. Cada figura tiene una descripción (input), una imagen subida (drop, browse, o paste con Ctrl+V) y un pie de figura (textarea con botones AI y Claude — Claude puede ver la imagen y generar el caption).
+- Tables: lista de tablas asociadas con descripción.
+
+### Gaps &amp; Next Steps (siempre visible)
+Lista de lagunas o información que falta para cerrar el trabajo. Cada gap tiene:
+- Missing info: qué falta.
+- Needed experiment (sub-campo desplegable): qué experimento concreto resolvería esa laguna.
+- Linked finding (selector): se puede asociar el gap a un finding concreto.
+
+### Campos opcionales — Cierre del manuscrito (toggle on/off)
+- CReDiT: declaración de contribución de autoría (CRediT taxonomy).
+- References: lista bibliográfica con detección automática de DOIs: cualquier patrón 10.xxxx/yyyy que aparezca en el texto se renderiza como un chip clicable que enlaza a https://doi.org/...
+- Conflicts of Interest.
+- Funding.
+- Acknowledgments.
+- Discussion.
+
+## Formato de texto: superíndice
+
+Cualquier texto entre marcadores ^...^ se renderiza como superíndice tanto en el título principal del editor, como en las tarjetas de paquete del dashboard, en la barra lateral y en el documento Word exportado. Ejemplos:
+- PrP^Sc^   →   PrP[Sc en superíndice]
+- PrP^C^    →   PrP[C en superíndice]
+- Ca^2+^    →   Ca[2+ en superíndice]
+
+Esto permite escribir notación bioquímica/molecular correctamente sin necesidad de estilos manuales. En los textareas de edición se ven los marcadores tal cual; en los lugares de visualización (read-only) y en el Word, el superíndice se renderiza automáticamente.
+
+## Sistema de plegado e indicadores visuales
+
+Cada sección tiene un triángulo en la esquina superior izquierda que pliega/despliega su contenido. El color del triángulo indica el estado:
+- Verde fijo: la sección tiene contenido.
+- Naranja parpadeante: la sección está vacía (invitación a rellenarla).
+
+## Integración con Claude (IA)
+
+El sistema usa la API de Anthropic (clave que el usuario configura). Hay dos tipos de botones:
+
+1. Botones “AI” (toggle): marcan un campo como contexto para una pregunta posterior. Se pueden activar varios.
+2. Botones “Claude”: lanzan una pregunta a Claude. La pregunta envía:
+   - Todos los campos con AI activo como contexto.
+   - El campo donde está el botón Claude como objetivo de la pregunta.
+   - Opcionalmente, la imagen de una figura (vision) o PDFs de Investigations (document blocks).
+
+El resultado se muestra en un modal para copiarlo al campo si interesa.
+
+## Integración con PrionVault
+
+PrionVault es la biblioteca de artículos científicos del laboratorio. Desde PrionPacks se puede acceder a ella de dos formas:
+
+1. Botón “PrionVault” (en la barra del editor y en el Dashboard): abre un modal de búsqueda semántica sobre la biblioteca. Los resultados muestran artículo, autores, año, resumen y disponibilidad de PDF. Cada artículo se puede añadir directamente a la sección General o Introduction del paquete abierto, o al carrito.
+
+2. Botón “Sugerir más artículos”: aparece en la barra del editor cuando el paquete ya está guardado. Usa IA para sugerir artículos de PrionVault que sean relevantes para el paquete actual, basándose en su título, descripción y referencias ya añadidas. Los resultados muestran el grado de similitud y permiten añadir el artículo a General, a Introduction o al carrito.
+
+### Carrito de artículos
+El icono de carrito (barra del editor y Dashboard) acumula artículos de PrionVault seleccionados durante la sesión. Desde el panel de carrito se puede ver el listado, comprobar si cada artículo ya está en alguna sección del paquete abierto, añadirlo a General o Introduction, o eliminarlo del carrito. El contador del icono muestra cuántos artículos hay acumulados.
+
+## Notas y tareas del paquete
+
+El botón “nota(s)” (barra del editor, visible cuando hay al menos una nota) abre un panel de notas y tareas pendientes asociadas al paquete. Permite registrar recordatorios, pendientes experimentales o cualquier información que no encaje en los campos estructurados. La presencia de notas se indica con un contador en el botón.
+
+## Score y estado activo
+
+- Score: puntuación 0-100 calculada a partir del grado de completitud de findings, figuras y gaps. Sirve como indicador de madurez del paquete.
+- Active/Inactive toggle: paquete inactivo se bloquea visualmente (opaco, no editable). Útil para archivar trabajos concluidos sin perderlos.
+
+## Salidas
+
+- Word (.docx): genera el documento completo del paquete con todas las secciones, figuras embebidas con sus pies, tablas, gaps formateados, etc. Versionado automático (v1, v2…) cada vez que se envía para revisión.
+- Email para revisión: envío del Word generado por SMTP a uno o varios “colegas” predefinidos (Hasier Eraña, Carlos Díaz, Jorge Moreno).
+- Lista PrionPacks (.docx): botón en el Dashboard que genera un Word con la lista de todos los paquetes activos — útil para reuniones de seguimiento o informes de progreso.
+- Export ManuscriptForge → PrionPack: la herramienta hermana ManuscriptForge genera secciones administrativas estandarizadas (Author Order, Funding, Acknowledgments, Competing Interests, CReDiT, Introduction, Methods) a partir del directorio de miembros y grants, y permite exportarlas directamente a un campo del paquete vía botón “📦 Exportar a PrionPacks”.
+
+## Backup y restauración
+
+Desde el Dashboard se puede lanzar un backup manual a Dropbox (botón “Backup Dropbox”) y restaurar datos desde un backup previo (botón “Restaurar”). Los backups se guardan en la carpeta configurada de Dropbox con retención automática (diaria + mensual).
+
+## Para qué se usa
+
+El usuario es investigador en biología de priones / neurodegeneración (CIC bioGUNE). Usa PrionPacks para:
+
+1. Capturar ideas en bruto en Investigations (papers leídos, notas).
+2. Estructurar findings a medida que se generan datos experimentales, asociándoles figuras (gels, IHC, imágenes de microscopía, gráficos).
+3. Identificar gaps que requieren más experimentos antes de poder publicar.
+4. Buscar artículos relevantes de la biblioteca PrionVault para enriquecer el contexto del paquete.
+5. Redactar cada sección del manuscrito con apoyo de Claude (Abstract, Introduction, Methods, Discussion…), usando como contexto los findings y la información de partida.
+6. Iterar con coautores generando Word con versionado, recibiendo comentarios, y reincorporándolos.
+7. Cerrar el paquete con CReDiT, References (con DOIs auto-detectados), Funding y Acknowledgments antes de la submission.
+
+El asistente debe asumir que el contenido suele estar en español o inglés científico, que los temas son técnicos (α-synuclein, tau, PrPsc, ECJ, RT-QuIC, modelos transgénicos, IHC, EM…) y que el tono buscado es el de un manuscrito científico en revistas de neurociencia/neurodegeneración.</pre>
+        </div>
+
+        <!-- Doc 2 — Article summarizer prompt -->
+        <div class="pp-doc-block" id="doc-block-summary">
+          <div class="pp-doc-block-header">
+            <button type="button" class="pp-collapse-btn pp-collapse-btn--inline pp-collapse-btn--filled pp-doc-collapse-btn" title="Collapse / expand this document"></button>
+            <h2 class="pp-doc-block-title"><i class="fas fa-file-alt"></i> Resumen de artículo científico</h2>
+            <button class="pp-btn pp-btn-primary pp-doc-copy-btn" data-target="doc-article-summary" title="Copiar este prompt al portapapeles">
+              <i class="fas fa-copy"></i> Copy to clipboard
+            </button>
+          </div>
+          <p class=”pp-doc-block-desc”>Pega este prompt en un asistente de IA y a continuación el texto / PDF del artículo. Devolverá la cabecera bibliográfica y un resumen en cinco secciones en español, con el mismo formato que genera PrionVault automáticamente, listo para pegarlo en el campo Investigations de un PrionPack.</p>
+          <pre class=”pp-docs-content” id=”doc-article-summary”>Eres un asistente científico especializado en biología de priones, neurodegeneración y neurociencia traslacional. Voy a pasarte el texto completo (o el PDF) de un artículo científico y necesito que me devuelvas un resumen estructurado en español.
+
+# Reglas obligatorias
+
+- Responde SIEMPRE en español de España.
+- Conserva en su forma original toda la terminología técnica y siglas: PrP, PrPSc, PrPC, PrPres, CJD (o ECJ), sCJD, vCJD, fCJD, iCJD, GSS, FFI, RT-QuIC, PMCA, RML, ME7, octarrepetido, OPRI, OPRD, gen PRNP, codón 129, codón 178, codón 200, M/V, V/V, M/M, α-Syn, SNCA, ATV, SNpc, AAV, prionoide. No traduzcas siglas, nombres de genes, nombres de modelos animales ni nombres de técnicas.
+- Sé específico con cifras, p-valores, mutaciones, regiones cerebrales, anticuerpos, líneas celulares, modelos transgénicos, dosis y edades / tiempos de supervivencia.
+- No inventes datos que no estén en el material proporcionado. Si una sección no se puede inferir, indícalo brevemente en lugar de rellenarla con generalidades.
+- Tono de manuscrito científico. No uses viñetas dentro del resumen narrativo; sí puedes usarlas en Métodos / Resultados si los datos son muchos y enumerables.
+- No añadas saludos, meta-comentarios ni líneas del tipo “espero que te sirva”. Solo la cabecera y el resumen.
+- Si el texto que te paso es solo el abstract o partes sueltas, haz el mejor resumen posible con lo que hay.
+- Si encuentras varios DOI en el texto, devuelve únicamente el del artículo principal (no el de las referencias).
+
+# Formato de salida (obligatorio)
+
+La salida debe empezar SIEMPRE con esta cabecera bibliográfica, exactamente en este formato y orden, sin viñetas y sin comillas:
+
+Título: &lt;título completo del artículo, en su idioma original&gt;
+Autores: &lt;lista de autores tal y como aparecen en el artículo, separados por punto y coma&gt;
+Revista: &lt;nombre completo de la revista en su forma oficial (p. ej. “Brain”, “PLOS Pathogens”). Si solo aparece la abreviatura, expándela. Si no aparece, escribe literalmente: “El texto proporcionado no indica la revista.”&gt;
+Año: &lt;año de publicación con cuatro cifras. Si no aparece, escribe literalmente: “El texto proporcionado no indica el año.”&gt;
+DOI: &lt;DOI en formato 10.xxxx/yyyy. Si no aparece, escribe literalmente: “El texto proporcionado no incluye el DOI del artículo.”&gt;
+
+A continuación deja una línea en blanco y produce el resumen estructurado con estas cinco secciones, en este orden, cada una encabezada con ## :
+
+## Objetivos
+Qué pregunta, hipótesis o problema aborda el estudio. Incluye el contexto inmediato y los antecedentes relevantes que cite el propio artículo.
+
+## Métodos
+Modelos experimentales, técnicas y enfoques principales. Cita reactivos, líneas celulares, cohortes humanas, anticuerpos, modelos animales (incluyendo cepas y genotipo), dosis y tiempos.
+
+## Resultados
+Hallazgos cuantitativos y cualitativos más importantes, en orden de relevancia. Sé específico con cifras, porcentajes, p-valores, nombres de mutaciones, regiones cerebrales, días postinoculación, etc.
+
+## Discusión
+Interpretación de los autores. Comparación con la literatura previa citada. Limitaciones reconocidas explícitamente.
+
+## Conclusiones e implicaciones
+Mensaje principal y su relevancia para el campo de los priones / neurodegeneración. Implicaciones diagnósticas, terapéuticas o mecanísticas concretas.</pre>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Members view -->
+    <div id="view-members" class="pp-view">
+      <div class="pp-page-header">
+        <div>
+          <h1 class="pp-page-title"><i class="fas fa-users"></i> Equipo</h1>
+          <p class="pp-page-sub">Miembros del grupo y sus colores de responsable</p>
+        </div>
+        <div class="pp-page-actions">
+          <button class="pp-btn pp-btn-ghost" id="btn-members-back">
+            <i class="fas fa-arrow-left"></i> Dashboard
+          </button>
+          <button class="pp-btn pp-btn-primary" id="btn-add-member">
+            <i class="fas fa-user-plus"></i> Añadir miembro
+          </button>
+        </div>
+      </div>
+      <div id="pp-members-grid" class="pp-members-grid">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- AI Confirm Modal -->
+<div id="pp-ai-confirm-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-ai-confirm-title">
+  <div class="pp-modal-backdrop" id="pp-ai-confirm-backdrop"></div>
+  <div class="pp-claude-modal-card" style="max-width:480px">
+    <div class="pp-claude-modal-header">
+      <span class="pp-claude-modal-title" id="pp-ai-confirm-title">
+        <i class="fas fa-robot"></i> <span id="pp-ai-confirm-heading">Consultar IA</span>
+      </span>
+      <button id="pp-ai-confirm-close" class="pp-btn-icon" aria-label="Cerrar"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;">
+      <p id="pp-ai-confirm-desc" style="margin:0;font-size:0.92rem;line-height:1.5;color:var(--pp-text-secondary)"></p>
+      <div>
+        <label style="font-size:0.82rem;font-weight:600;color:var(--pp-text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block;">Modelo</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <label class="pp-ai-model-opt" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border:1.5px solid var(--pp-border);border-radius:6px;font-size:0.88rem;">
+            <input type="radio" name="pp-ai-model" value="claude" checked style="accent-color:#c07000;"> Claude
+          </label>
+          <label class="pp-ai-model-opt" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border:1.5px solid var(--pp-border);border-radius:6px;font-size:0.88rem;">
+            <input type="radio" name="pp-ai-model" value="chatgpt" style="accent-color:#10a37f;"> ChatGPT
+          </label>
+          <label class="pp-ai-model-opt" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border:1.5px solid var(--pp-border);border-radius:6px;font-size:0.88rem;">
+            <input type="radio" name="pp-ai-model" value="gemini" style="accent-color:#1a73e8;"> Gemini
+          </label>
+        </div>
+      </div>
+      <p style="margin:0;font-size:0.8rem;color:var(--pp-text-secondary);opacity:.75;">ChatGPT y Gemini copiarán el prompt al portapapeles y abrirán la web del modelo.</p>
+    </div>
+    <div class="pp-claude-modal-footer" style="display:flex!important;justify-content:flex-end;gap:8px;padding:12px 20px;">
+      <button id="pp-ai-confirm-cancel" class="pp-btn pp-btn-ghost" type="button">Cancelar</button>
+      <button id="pp-ai-confirm-ok" class="pp-btn pp-btn-primary" type="button"><i class="fas fa-paper-plane"></i> Enviar consulta</button>
+    </div>
+  </div>
+</div>
+
+<!-- Claude Response Modal -->
+<div id="pp-claude-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-claude-modal-title">
+  <div class="pp-modal-backdrop" id="pp-claude-modal-backdrop"></div>
+  <div class="pp-claude-modal-card">
+    <div class="pp-claude-modal-header">
+      <span class="pp-claude-modal-title" id="pp-claude-modal-title">
+        <i class="fas fa-robot"></i> Respuesta de la IA
+      </span>
+      <button id="pp-claude-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div id="pp-claude-response-body" class="pp-claude-response-body">
+      <div class="pp-claude-loading" id="pp-claude-loading">
+        <i class="fas fa-spinner fa-spin"></i> La IA está pensando…
+      </div>
+      <div id="pp-claude-response-text" class="pp-claude-response-text" style="display:none"></div>
+    </div>
+    <div class="pp-claude-modal-footer" id="pp-claude-modal-footer" style="display:none">
+      <span class="pp-claude-field-hint" id="pp-claude-field-hint"></span>
+      <div style="display:flex;gap:8px;">
+        <button id="pp-claude-modal-discard" class="pp-btn pp-btn-ghost" type="button">Descartar</button>
+        <button id="pp-claude-modal-apply" class="pp-btn pp-btn-primary" type="button">
+          <i class="fas fa-check"></i> Aplicar al campo
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Send for Review Modal -->
+<div id="pp-send-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-send-modal-title">
+  <div class="pp-modal-backdrop" id="pp-send-backdrop"></div>
+  <div class="pp-send-modal-card">
+    <div class="pp-send-modal-header">
+      <span class="pp-send-modal-title" id="pp-send-modal-title">
+        <i class="fas fa-paper-plane"></i> Enviar para revisar
+      </span>
+      <button id="pp-send-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <p class="pp-send-modal-desc">Selecciona <strong>uno o varios</strong> destinatarios. Se generará un Word con la versión actualizada y se enviará por email a cada uno.</p>
+    <div class="pp-colleague-grid">
+      <button class="pp-colleague-card" data-key="herana" type="button" aria-pressed="false">
+        <div class="pp-colleague-avatar">HE</div>
+        <div class="pp-colleague-name">Hasier Eraña</div>
+        <div class="pp-colleague-email">herana@cicbiogune.es</div>
+        <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
+      </button>
+      <button class="pp-colleague-card" data-key="cdiza" type="button" aria-pressed="false">
+        <div class="pp-colleague-avatar">CD</div>
+        <div class="pp-colleague-name">Carlos Díaz</div>
+        <div class="pp-colleague-email">cdiza@cicbiogune.es</div>
+        <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
+      </button>
+      <button class="pp-colleague-card" data-key="jmoreno" type="button" aria-pressed="false">
+        <div class="pp-colleague-avatar">JM</div>
+        <div class="pp-colleague-name">Jorge Moreno</div>
+        <div class="pp-colleague-email">jmoreno@cicbiogune.es</div>
+        <div class="pp-colleague-check"><i class="fas fa-check-circle"></i></div>
+      </button>
+    </div>
+
+    <div class="pp-send-modal-divider"><span>o</span></div>
+
+    <a id="pp-send-download-link" class="pp-btn-download-only" href="#" download>
+      <i class="fas fa-file-word"></i>
+      <span class="pp-btn-download-only-text">
+        <strong>Solo descargar el Word</strong>
+        <small>sin enviar email a nadie · revisión personal</small>
+      </span>
+      <i class="fas fa-download pp-btn-download-only-arrow"></i>
+    </a>
+
+    <div class="pp-send-modal-footer">
+      <button id="pp-send-cancel" class="pp-btn pp-btn-ghost" type="button">Cancelar</button>
+      <button id="pp-send-btn" class="pp-btn pp-btn-primary" type="button" disabled>
+        <i class="fas fa-paper-plane"></i> <span id="pp-send-btn-label">Enviar documento</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Image Upload Modal -->
+<div id="pp-img-upload-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-img-modal-title">
+  <div class="pp-modal-backdrop" id="pp-img-modal-backdrop"></div>
+  <div class="pp-img-modal-card">
+    <div class="pp-img-modal-header">
+      <span class="pp-img-modal-title" id="pp-img-modal-title">
+        <i class="fas fa-image"></i> Add Figure Image
+      </span>
+      <button id="pp-img-modal-close" class="pp-btn-icon" aria-label="Close">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="pp-img-drop-zone" id="pp-img-drop-zone" tabindex="0" aria-label="Drop image, paste with Ctrl+V, or click 'browse files'">
+      <i class="fas fa-cloud-upload-alt pp-img-drop-icon"></i>
+      <div class="pp-img-drop-text">Drop image here or <span class="pp-img-browse-link">browse files</span></div>
+      <div class="pp-img-drop-formats">PNG &nbsp;·&nbsp; JPG / JPEG &nbsp;·&nbsp; TIFF &nbsp;·&nbsp; SVG &nbsp;&nbsp;max 10 MB</div>
+    </div>
+    <div class="pp-img-paste-hint">
+      <i class="fas fa-paste"></i>&nbsp; Or press <kbd>Ctrl+V</kbd> / <kbd>⌘V</kbd> to paste an image from clipboard
+    </div>
+    <input type="file" id="pp-img-file-input" accept=".png,.jpg,.jpeg,.tif,.tiff,.svg,image/*" style="display:none" />
+  </div>
+</div>
+
+<!-- Figure Viewer Modal -->
+<div id="pp-fig-view-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true">
+  <div class="pp-modal-backdrop" id="pp-fig-view-backdrop"></div>
+  <div class="pp-fig-view-card">
+    <button id="pp-fig-view-close" class="pp-btn-icon pp-fig-view-close-btn" aria-label="Close figure">
+      <i class="fas fa-times"></i>
+    </button>
+    <div class="pp-fig-view-img-wrap">
+      <img id="pp-fig-view-img" class="pp-fig-view-img" alt="Figure" />
+    </div>
+    <div id="pp-fig-view-caption" class="pp-fig-view-caption" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Member create/edit modal -->
+<div id="pp-member-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-member-modal-title">
+  <div class="pp-modal-backdrop" id="pp-member-backdrop"></div>
+  <div class="pp-member-modal-card">
+    <div class="pp-send-modal-header">
+      <span class="pp-send-modal-title" id="pp-member-modal-title">
+        <i class="fas fa-user-plus"></i> Añadir miembro
+      </span>
+      <button id="pp-member-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="pp-member-form">
+      <div class="pp-member-form-row">
+        <div class="pp-form-group">
+          <label class="pp-label">Nombre <span class="pp-required">*</span></label>
+          <input type="text" id="member-name" class="pp-input" placeholder="Joaquín" autocomplete="off" />
+        </div>
+        <div class="pp-form-group">
+          <label class="pp-label">Apellidos <span class="pp-required">*</span></label>
+          <input type="text" id="member-surname" class="pp-input" placeholder="Castilla" autocomplete="off" />
+        </div>
+      </div>
+      <div class="pp-member-form-row">
+        <div class="pp-form-group pp-form-group-narrow">
+          <label class="pp-label">Iniciales</label>
+          <input type="text" id="member-initials" class="pp-input pp-input-mono" maxlength="3" placeholder="JC" autocomplete="off" />
+        </div>
+        <div class="pp-form-group">
+          <label class="pp-label">Email</label>
+          <input type="email" id="member-email" class="pp-input" placeholder="jcastilla@cicbiogune.es" autocomplete="off" />
+        </div>
+      </div>
+      <div class="pp-form-group">
+        <label class="pp-label">Contraseña
+          <span class="pp-hint" id="member-pwd-hint">(vacío = no cambiar)</span>
+        </label>
+        <div class="pp-input-wrap">
+          <input type="password" id="member-password" class="pp-input" placeholder="Nueva contraseña…" autocomplete="new-password" />
+          <button type="button" class="pp-btn-icon pp-input-reveal" id="btn-member-pwd-toggle" title="Mostrar/ocultar">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
+      </div>
+      <div class="pp-form-group">
+        <label class="pp-label">Color</label>
+        <div class="pp-color-palette" id="member-color-palette">
+          <!-- rendered by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="pp-member-error" id="pp-member-error" style="display:none"></div>
+
+    <div class="pp-send-modal-footer">
+      <button class="pp-btn pp-btn-ghost" id="pp-member-modal-cancel">Cancelar</button>
+      <button class="pp-btn pp-btn-primary" id="pp-member-modal-save">
+        <i class="fas fa-save"></i> Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="pp-toast-container" class="pp-toast-container"></div>
+
+<!-- Restore from backup modal -->
+<div id="pp-restore-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-restore-modal-title">
+  <div class="pp-modal-backdrop" id="pp-restore-backdrop"></div>
+  <div class="pp-restore-modal-card">
+    <div class="pp-send-modal-header">
+      <span class="pp-send-modal-title" id="pp-restore-modal-title">
+        <i class="fas fa-history" style="color:#7c3aed;"></i> Restaurar desde backup
+      </span>
+      <button id="pp-restore-modal-close" class="pp-btn-icon" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <p class="pp-send-modal-desc" style="margin-bottom:16px;">
+      Selecciona el backup que quieres restaurar. <strong>Se sustituirán todos los datos actuales</strong> por los del backup elegido. Se guardará una copia local de seguridad antes de sobreescribir.
+    </p>
+    <div id="pp-restore-list" class="pp-restore-list">
+      <div class="pp-restore-loading"><i class="fas fa-spinner fa-spin"></i> Cargando backups…</div>
+    </div>
+    <div class="pp-send-modal-footer">
+      <button class="pp-btn pp-btn-ghost" id="pp-restore-modal-cancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Floating Action Button (mobile only) ────────────────────────────────────────── -->
+<button class="pp-fab" id="btn-fab-new" title="Nuevo Package" aria-label="Nuevo Package">
+  <i class="fas fa-plus"></i>
+</button>
+
+<!-- ── Notes Panel ──────────────────────────────────────────────────────────────────── -->
+<div class="pp-notes-backdrop" id="pp-notes-backdrop"></div>
+<div class="pp-notes-panel" id="pp-notes-panel" role="dialog" aria-modal="true" aria-label="Notas">
+  <div class="pp-notes-panel-header" id="pp-notes-drag-handle">
+    <div class="pp-notes-panel-header-left">
+      <i class="fas fa-grip-vertical pp-notes-drag-icon" title="Arrastra para mover"></i>
+      <i class="fas fa-sticky-note pp-notes-panel-icon"></i>
+      <span class="pp-notes-panel-pkg-id" id="notes-panel-pkg-id"></span>
+      <span class="pp-notes-panel-label">Notas rápidas</span>
+    </div>
+    <button class="pp-btn-icon" id="btn-notes-close" aria-label="Cerrar notas">
+      <i class="fas fa-times"></i>
+    </button>
+  </div>
+  <div class="pp-notes-body">
+    <div class="pp-notes-grid" id="pp-notes-grid">
+      <!-- rendered dynamically -->
+    </div>
+    <div class="pp-notes-add">
+      <div class="pp-notes-colors" id="pp-notes-colors">
+        <!-- color swatches rendered by JS -->
+      </div>
+      <div class="pp-notes-input-row">
+        <textarea id="pp-notes-textarea" class="pp-notes-textarea" placeholder="Escribe tu nota… o usa el micrófono 🎤" rows="3"></textarea>
+        <button class="pp-notes-mic" id="btn-notes-mic" title="Dictar nota con voz" type="button" aria-label="Dictar nota">
+          <i class="fas fa-microphone"></i>
+        </button>
+      </div>
+      <button class="pp-btn pp-btn-primary pp-btn-full" id="btn-notes-add" type="button">
+        <i class="fas fa-plus"></i> Añadir nota
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Note detail / edit modal ─────────────────────────────────────────────────────────── -->
+<div class="pp-note-detail-backdrop" id="pp-note-detail-backdrop"></div>
+<div class="pp-note-detail-modal" id="pp-note-detail-modal" role="dialog" aria-modal="true">
+  <div class="pp-note-detail-header" id="pp-note-detail-header">
+    <div class="pp-note-detail-colors" id="pp-note-detail-colors"></div>
+    <div class="pp-note-detail-actions">
+      <button class="pp-btn pp-btn-sm pp-note-detail-delete" id="btn-note-detail-delete" title="Eliminar nota">
+        <i class="fas fa-trash-alt"></i> Borrar
+      </button>
+      <button class="pp-btn-icon" id="btn-note-detail-close" aria-label="Cerrar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+  </div>
+  <textarea id="pp-note-detail-textarea" class="pp-note-detail-textarea" placeholder="Escribe aquí tu nota…" style="display:none"></textarea>
+  <div id="pp-note-detail-content" class="pp-note-detail-textarea pp-note-detail-content" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true"></div>
+  <div class="pp-note-detail-footer">
+    <span class="pp-note-detail-date" id="pp-note-detail-date"></span>
+    <button class="pp-btn pp-btn-primary" id="btn-note-detail-save">
+      <i class="fas fa-save"></i> Guardar
+    </button>
+  </div>
+</div>
+
+<!-- ── AI Suggest more articles for this pack ──────────────────────── -->
+<div id="pp-suggest-modal" class="pp-modal" style="display:none;position:fixed;inset:0;z-index:1100;
+            align-items:flex-start;justify-content:center;padding-top:60px;">
+  <div class="pp-suggest-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,0.45);"></div>
+  <div style="position:relative;background:white;border-radius:14px;width:calc(100% - 32px);max-width:880px;
+              max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,0.22);">
+    <div style="padding:18px 24px 14px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;">
+      <i class="fas fa-magic" style="color:#0F3460;"></i>
+      <h2 style="margin:0;font-size:17px;font-weight:700;color:#111827;flex:1;">
+        Sugerir más artículos para <span id="pp-sg-packid" style="color:#6b7280;font-weight:500;">—</span>
+      </h2>
+      <button id="pp-sg-close" type="button" aria-label="Cerrar"
+              style="background:none;border:none;font-size:20px;color:#6b7280;cursor:pointer;line-height:1;">×</button>
+    </div>
+
+    <!-- Tabs + scope + provider selector + Run button -->
+    <div style="padding:12px 24px;border-bottom:1px solid #f3f4f6;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <div role="tablist" style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:8px;">
+        <button id="pp-sg-tab-internal" role="tab"
+                style="padding:6px 14px;border:none;background:white;color:#111827;font-size:12.5px;font-weight:600;border-radius:6px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+          📚 Mi catálogo (PrionVault)
+        </button>
+        <button id="pp-sg-tab-pubmed" role="tab"
+                style="padding:6px 14px;border:none;background:transparent;color:#374151;font-size:12.5px;font-weight:600;border-radius:6px;cursor:pointer;">
+          🌐 PubMed
+        </button>
+      </div>
+      <!-- Scope: which section of the pack drives the search AND where
+           accepted suggestions are added. Defaults to Introducción so
+           the operator can chain "fill the intro first → then refs". -->
+      <div role="tablist" title="Ámbito: condiciona el contexto enviado a la IA y dónde se guardarán los artículos aceptados."
+           style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:8px;">
+        <button id="pp-sg-scope-title" role="tab"
+                style="padding:6px 12px;border:none;background:white;color:#111827;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);"
+                title="Busca artículos relacionados con el título y los títulos alternativos del pack">
+          🏷️ Título
+        </button>
+        <button id="pp-sg-scope-intro" role="tab"
+                style="padding:6px 12px;border:none;background:transparent;color:#374151;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;"
+                title="Busca artículos que encajen en la Introducción, teniendo en cuenta los que ya están en ella">
+          📝 Introducción
+        </button>
+        <button id="pp-sg-scope-discussion" role="tab"
+                style="padding:6px 12px;border:none;background:transparent;color:#374151;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;"
+                title="Busca artículos para la Discusión, teniendo en cuenta los que ya están en ella">
+          💬 Discusión
+        </button>
+      </div>
+      <label style="font-size:12px;color:#6b7280;display:flex;align-items:center;gap:6px;">
+        Modelo
+        <select id="pp-sg-provider"
+                style="padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12.5px;background:white;">
+          <option value="anthropic">Claude Sonnet 4.6</option>
+          <option value="openai">GPT-4o mini</option>
+          <option value="gemini">Gemini 2.0 Flash</option>
+        </select>
+      </label>
+      <button id="pp-sg-run"
+              style="padding:7px 16px;border-radius:7px;border:none;background:#0F3460;color:white;font-size:12.5px;font-weight:600;cursor:pointer;margin-left:auto;">
+        Buscar
+      </button>
+    </div>
+
+    <!-- Profile summary (collapsed by default) -->
+    <details id="pp-sg-profile-wrap" style="border-bottom:1px solid #f3f4f6;background:#fafafa;">
+      <summary style="cursor:pointer;padding:8px 24px;font-size:12px;color:#374151;">
+        <strong>Perfil enviado a la IA</strong>
+        <span id="pp-sg-profile-meta" style="color:#9ca3af;font-weight:normal;margin-left:8px;">—</span>
+      </summary>
+      <pre id="pp-sg-profile-text"
+           style="margin:0;padding:12px 24px;max-height:200px;overflow:auto;
+                  font-size:11.5px;line-height:1.55;background:white;
+                  border-top:1px solid #e5e7eb;color:#374151;white-space:pre-wrap;"></pre>
+    </details>
+
+    <!-- Results panel -->
+    <div id="pp-sg-results"
+         style="flex:1;overflow-y:auto;padding:14px 24px;background:#fafafa;">
+      <div style="color:#9ca3af;text-align:center;padding:32px 12px;font-size:13px;">
+        Pulsa <strong>Buscar</strong> para que la IA proponga artículos relacionados con este pack.
+      </div>
+    </div>
+
+    <div id="pp-sg-footer" style="padding:10px 24px;border-top:1px solid #e5e7eb;font-size:11.5px;color:#9ca3af;">
+      Coste aprox.: ~0,005-0,02 USD por búsqueda (Voyage embed + rerank + un LLM call). PubMed gratis.
+    </div>
+  </div>
+</div>
+
+<!-- ── PrionVault article picker modal ──────────────────────────────── -->
+<div id="pp-pv-picker-modal" class="pp-modal" style="display:none;position:fixed;inset:0;z-index:1000;
+            align-items:flex-start;justify-content:center;padding-top:80px;">
+  <div class="pp-pv-picker-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,0.45);"></div>
+  <div style="position:relative;background:white;border-radius:12px;width:min(720px,92vw);max-height:78vh;
+              display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,0.2);">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px 8px;
+                border-bottom:1px solid #e5e7eb;">
+      <div>
+        <h3 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
+          <i class="fas fa-database" style="color:#0F3460;margin-right:6px;"></i>
+          Importar artículo desde PrionVault
+        </h3>
+        <p id="pp-pv-picker-target" style="margin:0;font-size:12px;color:#6b7280;"></p>
+      </div>
+      <button id="pp-pv-picker-close" type="button" aria-label="Close"
+              style="background:none;border:none;font-size:22px;color:#9ca3af;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div style="padding:12px 18px 8px;border-bottom:1px solid #e5e7eb;background:#f9fafb;">
+      <input type="search" id="pp-pv-picker-search"
+             placeholder="Buscar por título, autor, DOI, abstract…"
+             autocomplete="off"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">
+    </div>
+    <div id="pp-pv-picker-results" style="flex:1;overflow-y:auto;padding:8px 14px;"></div>
+    <div id="pp-pv-picker-status" style="font-size:12px;color:#6b7280;padding:6px 18px;border-top:1px solid #e5e7eb;
+                                          background:#fafafa;min-height:24px;"></div>
+  </div>
+</div>
+
+<!-- Cart panel -->
+<div id="pp-cart-panel" style="display:none;" class="pp-modal-overlay" role="dialog" aria-modal="true">
+  <div id="pp-cart-backdrop" class="pp-modal-backdrop"></div>
+  <div class="pp-modal-card pp-cart-panel-card">
+    <div class="pp-modal-header">
+      <h3><i class="fas fa-shopping-cart"></i> Carrito de artículos</h3>
+      <button id="pp-cart-panel-close" class="pp-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="pp-cart-panel-toolbar">
+      <span id="pp-cart-count-label" class="pp-idea-subtitle"></span>
+      <button id="pp-cart-clear-btn" class="btn btn--sm btn--danger" style="margin-left:auto">
+        <i class="fas fa-trash"></i> Vaciar carrito
+      </button>
+    </div>
+    <div id="pp-cart-list" class="pp-cart-list"></div>
+  </div>
+</div>
+
+<!-- PrionVault Search modal -->
+<div id="pp-pv-search-modal" style="display:none;" class="pp-modal-overlay" role="dialog" aria-modal="true">
+  <div id="pp-pv-search-backdrop" class="pp-modal-backdrop"></div>
+  <div class="pp-modal-card pp-pv-search-modal-card">
+    <div class="pp-modal-header">
+      <h3>Buscar en PrionVault</h3>
+      <button id="pp-pv-search-modal-close" class="pp-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="pp-pv-search-body">
+      <div class="pp-pv-search-row">
+        <input id="pp-pv-search-input" type="search" class="pp-pv-search-field" placeholder="Título, autores, revista… (busca en inglés)" autocomplete="off">
+        <button id="pp-pv-search-btn" class="btn btn--primary"><i class="fas fa-search"></i> Buscar</button>
+      </div>
+      <p style="margin:6px 0 0;font-size:0.8rem;color:#6b7280;line-height:1.45;">
+        💡 Escribe <strong>palabras clave en inglés</strong> — la búsqueda compara por significado, no por texto exacto. Por ejemplo: <em>prion aggregation cerebellar</em> o <em>tau phosphorylation mice</em>.
+      </p>
+      <p id="pp-pv-search-subtitle" class="pp-idea-subtitle"></p>
+    </div>
+    <div id="pp-pv-search-list" class="pp-similar-modal-list pp-idea-modal-list"></div>
+  </div>
+</div>
+
+<!-- Idea search modal -->
+<div id="pp-idea-search-modal" style="display:none;" class="pp-modal-overlay" role="dialog" aria-modal="true">
+  <div id="pp-idea-backdrop" class="pp-modal-backdrop"></div>
+  <div class="pp-modal-card pp-idea-modal-card">
+    <div class="pp-modal-header">
+      <h3 id="pp-idea-modal-title">Buscar en PrionVault</h3>
+      <button id="pp-idea-modal-close" class="pp-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="pp-idea-modal-body">
+      <label class="pp-idea-label">Describe la idea que quieres contrastar:</label>
+      <textarea id="pp-idea-input" class="pp-idea-textarea" rows="4" placeholder="Escribe aquí la idea, hipótesis o afirmación que quieres buscar en PrionVault…"></textarea>
+      <div class="pp-idea-actions">
+        <button id="pp-idea-btn-support" class="btn btn--primary">
+          <i class="fas fa-thumbs-up"></i> Artículos a favor
+        </button>
+        <button id="pp-idea-btn-contradict" class="btn btn--secondary">
+          <i class="fas fa-thumbs-down"></i> Artículos en contra
+        </button>
+      </div>
+      <p id="pp-idea-modal-subtitle" class="pp-idea-subtitle"></p>
+    </div>
+    <div id="pp-idea-modal-list" class="pp-similar-modal-list pp-idea-modal-list"></div>
+  </div>
+</div>
+
+<!-- Similar articles modal -->
+<div id="pp-similar-modal" class="pp-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pp-similar-modal-title">
+  <div class="pp-modal-backdrop" id="pp-similar-backdrop"></div>
+  <div class="pp-similar-modal-card">
+    <div class="pp-similar-modal-header">
+      <span class="pp-similar-modal-title" id="pp-similar-modal-title">Artículos recomendados</span>
+      <button id="pp-similar-modal-close" class="pp-btn-icon" aria-label="Cerrar"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="pp-similar-modal-subtitle" id="pp-similar-modal-subtitle"></div>
+    <div class="pp-similar-modal-body" id="pp-similar-modal-list">
+      <div class="pp-similar-loading"><i class="fas fa-spinner fa-spin"></i> Buscando artículos similares…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Generar proyecto IA modal ─────────────────────────────────── -->
+<div id="pp-ai-project-modal" style="display:none;position:fixed;inset:0;z-index:2000;
+     background:rgba(0,0,0,0.55);overflow-y:auto;padding:24px 16px;" role="dialog" aria-modal="true">
+  <div style="max-width:820px;margin:0 auto;background:#fff;border-radius:12px;
+              box-shadow:0 12px 48px rgba(0,0,0,0.28);padding:32px 32px 28px;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div>
+        <h2 style="margin:0 0 4px;font-size:18px;font-weight:700;color:#111827;">
+          <i class="fas fa-robot" style="color:#7c3aed;margin-right:8px;"></i>Generar proyecto IA
+        </h2>
+        <p style="margin:0;font-size:12px;color:#6b7280;">
+          Copia cada bloque en Claude (en orden) para crear y arrancar el proyecto.
+        </p>
+      </div>
+      <button id="pp-ai-project-close"
+              style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;"
+              title="Cerrar">×</button>
+    </div>
+
+    <!-- Step guide -->
+    <div style="display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;">
+      <span style="font-size:11px;background:#f3f4f6;border-radius:20px;padding:4px 12px;color:#374151;">
+        <b>1–3</b> → Crear proyecto en Claude
+      </span>
+      <span style="font-size:11px;background:#ede9fe;border-radius:20px;padding:4px 12px;color:#5b21b6;">
+        <b>4</b> → Primer mensaje del chat
+      </span>
+    </div>
+
+    <!-- Block 1: Título -->
+    <div class="pp-aip-block" id="pp-aip-block-1">
+      <div class="pp-aip-block-header">
+        <span class="pp-aip-step">1</span>
+        <span class="pp-aip-label">Nombre del proyecto</span>
+        <span class="pp-aip-hint">Campo "Name" al crear el proyecto en Claude</span>
+        <button class="pp-aip-copy-btn" data-block="1"><i class="fas fa-copy"></i> Copiar</button>
+      </div>
+      <textarea class="pp-aip-textarea" id="pp-aip-text-1" rows="2"></textarea>
+    </div>
+
+    <!-- Block 2: Descripción breve -->
+    <div class="pp-aip-block" id="pp-aip-block-2">
+      <div class="pp-aip-block-header">
+        <span class="pp-aip-step">2</span>
+        <span class="pp-aip-label">Descripción breve</span>
+        <span class="pp-aip-hint">Campo "Description" del proyecto</span>
+        <button class="pp-aip-copy-btn" data-block="2"><i class="fas fa-copy"></i> Copiar</button>
+      </div>
+      <textarea class="pp-aip-textarea" id="pp-aip-text-2" rows="4"></textarea>
+    </div>
+
+    <!-- Block 3: Instrucciones del proyecto -->
+    <div class="pp-aip-block" id="pp-aip-block-3">
+      <div class="pp-aip-block-header">
+        <span class="pp-aip-step">3</span>
+        <span class="pp-aip-label">Instrucciones del proyecto</span>
+        <span class="pp-aip-hint">Campo "Custom instructions" del proyecto — incluye el contexto completo de PrionPacks</span>
+        <button class="pp-aip-copy-btn" data-block="3"><i class="fas fa-copy"></i> Copiar</button>
+      </div>
+      <textarea class="pp-aip-textarea" id="pp-aip-text-3" rows="10"></textarea>
+    </div>
+
+    <!-- Block 4: Primer chat -->
+    <div class="pp-aip-block" id="pp-aip-block-4"
+         style="border-color:#7c3aed;background:#faf5ff;">
+      <div class="pp-aip-block-header">
+        <span class="pp-aip-step" style="background:#7c3aed;">4</span>
+        <span class="pp-aip-label">Primer mensaje del chat</span>
+        <span class="pp-aip-hint">Pégalo en el chat del proyecto ya creado — incluye el estado actual del PrionPack</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a id="pp-aip-word-link" href="#" download
+             style="display:none;font-size:12px;padding:5px 10px;border-radius:6px;
+                    background:#dcfce7;border:1px solid #86efac;color:#166534;
+                    text-decoration:none;white-space:nowrap;">
+            <i class="fas fa-file-word"></i> Descargar Word
+          </a>
+          <button class="pp-aip-copy-btn" data-block="4"><i class="fas fa-copy"></i> Copiar</button>
+        </div>
+      </div>
+      <textarea class="pp-aip-textarea" id="pp-aip-text-4" rows="12"></textarea>
+    </div>
+
+  </div>
+</div>
+
+<script src="{{ asset_url('js/prionpacks-storage.js') }}"></script>
+<script src="{{ asset_url('js/prionpacks-api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pp-cart.js') }}"></script>
+<script src="{{ asset_url('js/prionpacks.js') }}"></script>
+{% endblock %}

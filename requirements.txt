@@ -1,4 +1,5 @@
 Flask>=3.0
+Flask-Limiter>=3.5
 gunicorn>=21
 dropbox>=11.36
 python-dotenv>=1.0
@@ -16,8 +17,33 @@ psycopg2-binary==2.9.9
 SQLAlchemy==2.0.23
 alembic==1.12.1
 anthropic>=0.40.0
+openai>=1.40.0
+google-genai>=0.5.0
 
 # External API dependencies
 aiohttp>=3.8.0
 redis>=4.5.0
 lxml>=4.9.0
+
+# PrionVault — PDF text extraction for the bulk-ingest pipeline
+pdfplumber>=0.11.0
+
+# PrionVault — vector search (Phase 4)
+pgvector>=0.2.5
+voyageai>=0.2.0
+tiktoken>=0.7.0
+
+# PrionVault — OCR fallback for scanned PDFs (Phase 6)
+pymupdf>=1.24.0
+pytesseract>=0.3.10
+Pillow>=10.0
+
+# PrionVault — embed an invisible text layer into scanned PDFs so
+# Ctrl+F and external tools (Spotlight, Zotero, screen readers) work.
+# Needs ghostscript + qpdf at the system level (see nixpacks.toml).
+ocrmypdf>=15.4.0
+
+# Error tracking. The Flask integration is auto-detected by sentry-sdk
+# v2 when Flask is importable. No-op when SENTRY_DSN is unset, so local
+# dev stays untouched.
+sentry-sdk>=2.0

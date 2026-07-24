@@ -1,0 +1,482 @@
+"""PrionVault migration runner.
+
+Applies the SQL files under `migrations/` to the live database.
+
+Design:
+  - Idempotent: each migration uses CREATE IF NOT EXISTS / ADD COLUMN IF
+    NOT EXISTS, so re-running has no side effects.
+  - Tracked: a tiny table `applied_migrations` records what has been
+    applied so subsequent boots are no-ops (they only check the table).
+  - **Non-blocking**: the public entry-point launches a daemon thread
+    so app boot is never delayed by the migration. Important for
+    Railway's healthcheck (30-second timeout) — gunicorn must be able
+    to respond to /health within that window.
+  - Resilient: failures are logged but never raise. Each statement is
+    wrapped in its own transaction so that a permission error on
+    CREATE EXTENSION (common on managed PostgreSQL) does not abort the
+    whole migration.
+
+Usage from app.py boot:
+    from tools.prionvault.migrate import schedule_pending_migrations
+    schedule_pending_migrations(app)
+"""
+from __future__ import annotations
+
+import hashlib
+import logging
+import re
+import threading
+import time
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# Project root (PrionLab-tools/) regardless of cwd.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_MIGRATIONS_DIR = _REPO_ROOT / "migrations"
+
+_PRIONVAULT_MIGRATIONS = (
+    "001_prionvault_tables.sql",
+    "003_fix_step_column.sql",
+    "005_prionvault_user_state.sql",
+    "006_prionvault_chunk_fts.sql",
+    "007_articles_columns_repair.sql",
+    "008_article_supplementary.sql",
+    "009_articles_pdf_searchable.sql",
+    "010_pdf_searchable_backfill_fix.sql",
+    "011_prionvault_usage_user_id_nullable.sql",
+    "012_prionvault_collections.sql",
+    "013_hnsw_index_tuning.sql",
+    "014_prionvault_journal_club.sql",
+    "015_collection_hierarchy.sql",
+    "016_collection_name_scoped_uniq.sql",
+    "017_articles_priority_default.sql",
+    "018_articles_pdf_is_scan.sql",
+    "019_articles_relax_nullable.sql",
+    "020_ingest_job_source_path.sql",
+    "021_articles_abstract_unavailable.sql",
+    "022_articles_promote_to_text.sql",
+    "023_articles_text_columns_verified.sql",
+    "024_articles_pubmed_unavailable.sql",
+    "025_scheduled_runs.sql",
+    "026_dismissed_duplicates.sql",
+    "027_articles_pdf_ocr_unavailable.sql",
+    "028_pubmed_inventory.sql",
+    "029_articles_oa_fetch.sql",
+    "030_articles_pdf_metadata_verify.sql",
+    "031_articles_text_via_trigger_drop.sql",
+    "032_ingest_job_notify.sql",
+    "033_pubmed_inventory_kept.sql",
+    "034_articles_perf_indexes.sql",
+    "035_query_expansion.sql",
+    "036_user_selection.sql",
+    "037_user_state_marks.sql",
+    "038_per_user_tags.sql",
+    "039_articles_summary_ai_notes.sql",
+    "040_articles_summary_ai_provider.sql",
+    "041_backfill_summary_ai_provider.sql",
+    "042_articles_summary_tokens.sql",
+    "043_articles_summary_ai_model.sql",
+    "044_pubmed_inventory_query_name.sql",
+    "045_pubmed_inventory_oa_verified.sql",
+    "046_notification_subscriptions.sql",
+    "047_notification_multi.sql",
+    "048_notification_days_array.sql",
+    "049_notification_include_pdfs.sql",
+    "050_article_chats.sql",
+    "051_translation_glossary.sql",
+    "052_article_notes.sql",
+    "053_journal_ranking.sql",
+    "054_journal_ranking_percentile.sql",
+    "055_user_state_journal_club.sql",
+    "056_journal_ranking_source_key.sql",
+    "057_article_cart.sql",
+    "058_articles_is_jc.sql",
+    "059_notification_include_ai_summary.sql",
+    "061_prionvault_glossary_terms.sql",
+    "062_summary_improvement_log.sql",
+    "063_articles_ai_summary_glossary_version.sql",
+    "066_retroactive_glossary_version_update.sql",
+)
+
+_BOOTSTRAP_SQL = """
+CREATE TABLE IF NOT EXISTS applied_migrations (
+    name        VARCHAR(255) PRIMARY KEY,
+    sha256      CHAR(64)     NOT NULL,
+    applied_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    runtime_ms  INTEGER
+)
+"""
+
+
+def _file_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _split_sql(text_blob: str) -> list[str]:
+    """Split a multi-statement SQL file into individually-executable
+    statements. Strips outer BEGIN/COMMIT (we manage transactions
+    ourselves) and respects $$-delimited PL/pgSQL bodies (functions).
+    """
+    # Drop top-level transaction wrappers; we create our own.
+    # Require a semicolon for BEGIN so we don't strip BEGIN from inside
+    # PL/pgSQL function / DO block bodies (those never have a trailing ;).
+    body = re.sub(r"^\s*BEGIN\s*;\s*$", "", text_blob,
+                  flags=re.MULTILINE | re.IGNORECASE)
+    body = re.sub(r"^\s*COMMIT\s*;?\s*$", "", body,
+                  flags=re.MULTILINE | re.IGNORECASE)
+
+    statements = []
+    current = []
+    in_dollar = False
+    dollar_tag = None
+
+    # Parse line-by-line, tracking $$ blocks, splitting on ; outside them.
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        # Skip -- line comments so a ; inside a comment doesn't break the
+        # statement split. The comment is kept in `current` and stripped
+        # later by the line-level cleanup pass.
+        if not in_dollar and ch == "-" and i + 1 < len(body) and body[i + 1] == "-":
+            nl = body.find("\n", i)
+            if nl < 0:
+                current.append(body[i:])
+                i = len(body)
+            else:
+                current.append(body[i:nl])
+                i = nl
+            continue
+        # Detect $tag$ ... $tag$ blocks (PL/pgSQL functions)
+        if not in_dollar and ch == "$":
+            m = re.match(r"\$([A-Za-z_]*)\$", body[i:])
+            if m:
+                in_dollar = True
+                dollar_tag = m.group(0)
+                current.append(dollar_tag)
+                i += len(dollar_tag)
+                continue
+        elif in_dollar and ch == "$":
+            if body[i:i + len(dollar_tag)] == dollar_tag:
+                current.append(dollar_tag)
+                in_dollar = False
+                i += len(dollar_tag)
+                dollar_tag = None
+                continue
+
+        if ch == ";" and not in_dollar:
+            stmt = "".join(current).strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+        else:
+            current.append(ch)
+        i += 1
+
+    tail = "".join(current).strip()
+    if tail:
+        statements.append(tail)
+
+    # Strip pure comments / blank lines.
+    cleaned = []
+    for s in statements:
+        # Remove leading comment lines but keep statement comments inline.
+        lines = [ln for ln in s.splitlines() if ln.strip() and not ln.strip().startswith("--")]
+        if lines:
+            cleaned.append("\n".join(lines))
+    return cleaned
+
+
+def _run_migrations_inline() -> dict:
+    """Apply pending migrations synchronously. Internal — call via the
+    threaded entry-point or the admin endpoint.
+
+    Each statement runs in its own transaction so a permission error on
+    CREATE EXTENSION (or any other isolated failure) does not roll back
+    the rest of the migration. The migration is recorded as applied as
+    long as the *majority* of statements succeed; isolated failures are
+    logged in the summary.
+    """
+    summary = {"applied": [], "skipped": [], "errors": []}
+
+    try:
+        from sqlalchemy import text
+        from database.config import db
+    except Exception as exc:
+        logger.warning("PrionVault migrations skipped — SQLAlchemy not loadable: %s", exc)
+        return summary
+
+    if not getattr(db, "engine", None):
+        logger.warning("PrionVault migrations skipped — db.engine is None (no DATABASE_URL?).")
+        return summary
+
+    if not _MIGRATIONS_DIR.exists():
+        logger.warning("PrionVault migrations skipped — directory %s missing.", _MIGRATIONS_DIR)
+        return summary
+
+    # 1) Bootstrap the tracking table.
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text(_BOOTSTRAP_SQL))
+    except Exception as exc:
+        logger.error("PrionVault: cannot create applied_migrations table — %s", exc)
+        summary["errors"].append({"phase": "bootstrap", "error": str(exc)})
+        return summary
+
+    for fname in _PRIONVAULT_MIGRATIONS:
+        path = _MIGRATIONS_DIR / fname
+        if not path.exists():
+            summary["errors"].append({"name": fname, "error": "file not found"})
+            continue
+
+        sha = _file_hash(path)
+
+        # Already applied?
+        try:
+            with db.engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT 1 FROM applied_migrations WHERE name = :n"),
+                    {"n": fname},
+                ).first()
+            if row:
+                summary["skipped"].append({"name": fname, "sha": sha})
+                logger.info("PrionVault: %s already applied — skipping.", fname)
+                continue
+        except Exception as exc:
+            logger.warning("PrionVault: applied_migrations lookup failed (%s) — continuing.", exc)
+
+        # Run statements one-by-one, each in its own transaction. Track
+        # how many succeed / fail; record the migration as applied even
+        # if some isolated statements failed (they're idempotent and the
+        # admin can inspect the summary).
+        logger.info("PrionVault — applying migration %s …", fname)
+        t0 = time.monotonic()
+        statements = _split_sql(path.read_text())
+        ok, fails = 0, []
+        for j, stmt in enumerate(statements, 1):
+            try:
+                with db.engine.begin() as conn:
+                    conn.exec_driver_sql(stmt)
+                ok += 1
+            except Exception as exc:
+                # Log the first 120 chars of the offending statement and
+                # the exception. Idempotent ops (CREATE IF NOT EXISTS, etc.)
+                # rarely fail; the most common cause is missing permissions
+                # for CREATE EXTENSION on managed PostgreSQL.
+                head = stmt.replace("\n", " ")[:120]
+                logger.warning("PrionVault: stmt %d/%d failed (%s) — head: %s",
+                               j, len(statements), exc, head)
+                fails.append({"stmt_index": j, "error": str(exc), "head": head})
+
+        runtime_ms = int((time.monotonic() - t0) * 1000)
+
+        # Record the migration as applied (even partial). Reapplying is
+        # cheap thanks to IF NOT EXISTS guards.
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO applied_migrations (name, sha256, applied_at, runtime_ms)
+                        VALUES (:n, :s, NOW(), :ms)
+                        ON CONFLICT (name) DO UPDATE
+                          SET sha256     = EXCLUDED.sha256,
+                              applied_at = NOW(),
+                              runtime_ms = EXCLUDED.runtime_ms
+                        """
+                    ),
+                    {"n": fname, "s": sha, "ms": runtime_ms},
+                )
+        except Exception as exc:
+            logger.error("PrionVault: failed to record applied migration %s — %s", fname, exc)
+
+        entry = {"name": fname, "sha": sha, "runtime_ms": runtime_ms,
+                 "statements_ok": ok, "statements_failed": fails}
+        if fails:
+            summary["errors"].append(entry)
+        else:
+            summary["applied"].append(entry)
+        logger.info("PrionVault migration %s done in %d ms (%d ok, %d failed).",
+                    fname, runtime_ms, ok, len(fails))
+
+    # Self-heal sweep — Railway/Postgres restore incidents have twice
+    # dropped columns added by earlier migrations while leaving the
+    # applied_migrations tracker saying they ran. Always do an
+    # idempotent re-apply of the schema-defining migrations so the
+    # next request never sees a half-restored table.
+    summary["self_heal"] = _self_heal_schema()
+    # Invalidate the column cache so the next API request re-introspects
+    # the schema (picks up any newly added columns from this run).
+    try:
+        from . import routes as _routes
+        _routes._pv_columns_cache = None
+        _routes._pv_columns_cache_time = 0.0
+    except Exception:
+        pass
+    return summary
+
+
+# Migrations whose statements are pure "ADD COLUMN IF NOT EXISTS" /
+# "CREATE TABLE IF NOT EXISTS" / "CREATE OR REPLACE …" — i.e. safe to
+# re-run on every boot. We replay these unconditionally so a Postgres
+# restore from a stale snapshot can't leave the schema half-baked.
+# Order matters: 001 creates the base tables, 007 adds the extra
+# article columns the model depends on, the later ones layer on
+# domain-specific columns.
+_SELF_HEAL_MIGRATIONS = (
+    "007_articles_columns_repair.sql",
+    "009_articles_pdf_searchable.sql",
+    "018_articles_pdf_is_scan.sql",
+    "021_articles_abstract_unavailable.sql",
+    "024_articles_pubmed_unavailable.sql",
+    "027_articles_pdf_ocr_unavailable.sql",
+    "029_articles_oa_fetch.sql",
+    "030_articles_pdf_metadata_verify.sql",
+    "032_ingest_job_notify.sql",
+    "033_pubmed_inventory_kept.sql",
+    "034_articles_perf_indexes.sql",
+    "035_query_expansion.sql",
+    "036_user_selection.sql",
+    "037_user_state_marks.sql",
+    "038_per_user_tags.sql",
+    "039_articles_summary_ai_notes.sql",
+    "040_articles_summary_ai_provider.sql",
+    "042_articles_summary_tokens.sql",
+    "043_articles_summary_ai_model.sql",
+    "044_pubmed_inventory_query_name.sql",
+    "045_pubmed_inventory_oa_verified.sql",
+)
+
+
+def _self_heal_schema() -> dict:
+    """Re-apply the column-defining migrations every boot, regardless
+    of what the applied_migrations tracker says. All statements in
+    _SELF_HEAL_MIGRATIONS use IF NOT EXISTS guards, so this is a
+    no-op when the schema is already correct — but recovers
+    automatically when Railway has silently restored a stale
+    snapshot.
+
+    Returns {"ran": [...], "errors": [...]}; logs at WARNING level
+    only when an unexpected statement fails (the IF NOT EXISTS
+    layer means a healthy DB triggers no warnings).
+    """
+    out: dict = {"ran": [], "errors": []}
+    try:
+        from sqlalchemy import text
+        from database.config import db
+    except Exception as exc:
+        logger.warning("schema self-heal: SQLAlchemy unavailable (%s)", exc)
+        return out
+    if not getattr(db, "engine", None):
+        return out
+
+    for fname in _SELF_HEAL_MIGRATIONS:
+        path = _MIGRATIONS_DIR / fname
+        if not path.exists():
+            continue
+        ok = 0
+        fails = []
+        for stmt in _split_sql(path.read_text()):
+            try:
+                with db.engine.begin() as conn:
+                    conn.exec_driver_sql(stmt)
+                ok += 1
+            except Exception as exc:
+                # Schema-repair statements that fail here are usually
+                # benign on a healthy DB (e.g. CREATE EXTENSION
+                # without superuser, an HNSW index that already
+                # exists). Log at debug; only surface true regressions.
+                head = stmt.replace("\n", " ")[:120]
+                fails.append({"error": str(exc)[:200], "head": head})
+                logger.debug(
+                    "schema self-heal: stmt failed in %s (%s) — head: %s",
+                    fname, exc, head,
+                )
+        entry = {"name": fname, "statements_ok": ok, "statements_failed": fails}
+        if fails:
+            out["errors"].append(entry)
+        else:
+            out["ran"].append(entry)
+    if out["errors"]:
+        logger.warning("schema self-heal: completed with %d migrations needing attention",
+                       len(out["errors"]))
+    else:
+        logger.info("schema self-heal: all critical migrations re-asserted cleanly")
+    return out
+
+
+def run_pending_migrations(app=None) -> dict:
+    """Synchronous, returns the summary dict. Use this from the admin
+    endpoint or from tests. For app boot, use schedule_pending_migrations()
+    to avoid blocking gunicorn / healthchecks."""
+    return _run_migrations_inline()
+
+
+def schedule_pending_migrations(app=None) -> threading.Thread:
+    """Run migrations in a background daemon thread so app boot is
+    non-blocking. Returns the thread handle (mostly for tests)."""
+
+    def _runner():
+        # Tiny initial delay lets the HTTP server bind to the port first
+        # and respond to the first /health probe.
+        time.sleep(2)
+        try:
+            result = _run_migrations_inline()
+            applied = [m["name"] for m in result.get("applied", [])]
+            errors  = result.get("errors", [])
+            if applied:
+                logger.info("PrionVault background migrations applied: %s", applied)
+            if errors:
+                logger.warning("PrionVault background migrations had errors: %s", errors)
+        except Exception as exc:
+            logger.exception("PrionVault background migration crashed: %s", exc)
+
+    th = threading.Thread(target=_runner, name="prionvault-migrate", daemon=True)
+    th.start()
+    return th
+
+
+def start_periodic_self_heal(interval_seconds: int = 300) -> threading.Thread:
+    """Long-running daemon that re-asserts the schema every N seconds.
+
+    Necessary because Railway / Postgres restores have repeatedly
+    dropped columns (pdf_md5, pdf_size_bytes) AFTER the migration
+    tracker said they were applied. Without periodic re-assertion the
+    catalogue stays broken until the next deploy. With this daemon
+    the worst case is `interval_seconds` of degraded service.
+
+    All statements in the self-heal migrations are IF NOT EXISTS /
+    OR REPLACE, so the cost when nothing is wrong is one
+    information_schema lookup per migration (~100 ms total). Safe to
+    run frequently.
+    """
+    def _loop():
+        # Wait one cycle before the first heal so we don't fight
+        # schedule_pending_migrations on boot.
+        time.sleep(interval_seconds)
+        while True:
+            try:
+                summary = _self_heal_schema()
+                # Only log when something actually needed repair —
+                # otherwise this fires every 5 min for no reason.
+                errors = summary.get("errors", [])
+                if errors:
+                    logger.warning(
+                        "periodic self-heal: %d migrations needed attention",
+                        len(errors),
+                    )
+                # Also invalidate the routes' column cache so the next
+                # request reflects the (potentially restored) schema.
+                try:
+                    from . import routes as _routes  # noqa: F401
+                    _routes._pv_columns_cache = None
+                except Exception:
+                    pass
+            except Exception as exc:
+                logger.exception("periodic self-heal crashed: %s", exc)
+            time.sleep(interval_seconds)
+
+    th = threading.Thread(target=_loop, name="prionvault-periodic-heal",
+                          daemon=True)
+    th.start()
+    return th

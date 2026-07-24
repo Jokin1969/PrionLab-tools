@@ -246,21 +246,39 @@ def database_dashboard():
     health = DatabaseHealthService.get_metrics()
     table_stats = DatabaseHealthService.get_table_stats() if health.get("connected") else []
     from database.backup import BackupManager
-    backups = BackupManager().list_backups()
+    bm = BackupManager()
+    backups = bm.list_backups()
+    dropbox_backups = bm.list_dropbox_backups()
+    dropbox_base_dir = bm._dropbox_base_dir() if bm._dropbox_configured() else None
     return render_template("admin/database.html",
-                           health=health, table_stats=table_stats, backups=backups)
+                           health=health, table_stats=table_stats,
+                           backups=backups,
+                           dropbox_backups=dropbox_backups,
+                           dropbox_base_dir=dropbox_base_dir)
 
 
 @admin_bp.route("/database/backup", methods=["POST"])
 @admin_required
 def trigger_backup():
+    import threading
     from database.backup import BackupManager
-    result = BackupManager().create_backup()
-    if result.get("success"):
-        flash(_("Backup created: %(f)s (%(s)s MB)",
-                f=result["filename"], s=result["size_mb"]), "success")
-    else:
-        flash(_("Backup failed: %(e)s", e=result.get("error", "unknown")), "danger")
+
+    def _run():
+        import logging
+        _log = logging.getLogger(__name__)
+        try:
+            result = BackupManager().create_backup()
+            if result.get("success"):
+                _log.info("Background backup completed: %s (%.1f MB)",
+                          result.get("filename"), result.get("size_mb"))
+            else:
+                _log.error("Background backup failed: %s", result.get("error"))
+        except Exception as exc:
+            _log.exception("Background backup crashed: %s", exc)
+
+    t = threading.Thread(target=_run, daemon=True, name="db-backup")
+    t.start()
+    flash(_("Backup iniciado en segundo plano."), "success")
     return redirect(url_for("admin.database_dashboard"))
 
 

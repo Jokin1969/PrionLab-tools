@@ -1,0 +1,1876 @@
+{% extends "base.html" %}
+
+{% block title %}📚 {{ _('Glossary Management') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
+  <div>
+    <h1>📚 {{ _('Glossary Management') }}</h1>
+    <p class="subtitle">{{ _('Biomedical terminology & summary improvement control center') }}</p>
+  </div>
+  <a href="/prionvault/" class="btn btn--secondary" style="align-self: flex-start; margin-top: 4px; white-space: nowrap;">
+    ← {{ _('Back to PrionVault') }}
+  </a>
+</div>
+
+{# ── Tab Navigation ───────────────────────────────────────────────────────── #}
+<div class="admin-tabs">
+  <button class="tab-btn tab-btn--active" data-tab="dashboard">📊 {{ _('Dashboard') }}</button>
+  <button class="tab-btn" data-tab="import">📥 {{ _('Import') }}</button>
+  <button class="tab-btn" data-tab="browse">📖 {{ _('Browse') }}</button>
+  <button class="tab-btn" data-tab="diff">🔄 {{ _('Changes') }}</button>
+  <button class="tab-btn" data-tab="improve">✨ {{ _('Improve Summaries') }}</button>
+  <button class="tab-btn" data-tab="history">📋 {{ _('History') }}</button>
+</div>
+
+{# ── Tab 0: Dashboard ───────────────────────────────────────────────────────── #}
+<div class="tab-content tab-content--active" id="tab-dashboard">
+  <section class="admin-section">
+    <h2>{{ _('Control Center') }}</h2>
+    <p class="help-text">{{ _('Complete overview of glossary management and summary improvements') }}</p>
+
+    {# ── Overview Stats ──────────────────────────────────────────────────── #}
+    <div style="margin-bottom: 30px">
+      <h3>📈 {{ _('Overall Statistics') }}</h3>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Current Glossary Version') }}</span>
+          <span class="stat-value" id="dashboard-current-version">—</span>
+        </div>
+        <div class="stat-card" style="cursor: pointer; transition: all 0.2s; border: 2px solid transparent;"
+             onmouseover="this.style.borderColor='#0F3460';this.style.backgroundColor='#f0f4ff';"
+             onmouseout="this.style.borderColor='transparent';this.style.backgroundColor='';"
+             onclick="goToImprovedArticles()"
+             title="Click para ver los artículos mejorados en PrionVault">
+          <span class="stat-label">{{ _('Summaries Improved') }}</span>
+          <span class="stat-value" id="dashboard-articles-improved">0</span>
+        </div>
+        <div class="stat-card" style="cursor: pointer; transition: all 0.2s; border: 2px solid transparent;"
+             onmouseover="this.style.borderColor='#0F3460';this.style.backgroundColor='#f0f4ff';"
+             onmouseout="this.style.borderColor='transparent';this.style.backgroundColor='';"
+             onclick="openChangesModal()"
+             title="Click para ver los cambios en detalle">
+          <span class="stat-label">{{ _('Total Changes') }}</span>
+          <span class="stat-value" id="dashboard-total-changes">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Avg Changes/Article') }}</span>
+          <span class="stat-value" id="dashboard-avg-changes">0.0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Batches Processed') }}</span>
+          <span class="stat-value" id="dashboard-batches">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Outdated Summaries') }}</span>
+          <span class="stat-value outdated-badge" id="dashboard-outdated-count">0</span>
+        </div>
+      </div>
+    </div>
+
+    {# ── Improvements by Version ──────────────────────────────────────────── #}
+    <div style="margin-bottom: 30px">
+      <h3>📚 {{ _('Summaries by Glossary Version') }}</h3>
+      <div id="dashboard-by-version" class="version-breakdown">
+        <p class="help-text">{{ _('Loading...') }}</p>
+      </div>
+    </div>
+
+    {# ── Most Common Corrections ─────────────────────────────────────────── #}
+    <div style="margin-bottom: 30px">
+      <h3>🔝 {{ _('Most Common Corrections (Top 10)') }}</h3>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ _('Original') }}</th>
+              <th>{{ _('Corrected To') }}</th>
+              <th>{{ _('Frequency') }}</th>
+            </tr>
+          </thead>
+          <tbody id="dashboard-corrections-tbody">
+            <tr><td colspan="3" class="text-center text-muted">{{ _('Loading...') }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Quick Actions ────────────────────────────────────────────────────── #}
+    <div style="background: #f0f4ff; padding: 20px; border-radius: 8px">
+      <h3>⚡ {{ _('Quick Actions') }}</h3>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap">
+        <button class="btn btn--primary" onclick="document.querySelector('[data-tab=\"improve\"]').click(); loadOutdated()">
+          ↻ {{ _('Re-improve with new version') }}
+        </button>
+        <button class="btn btn--secondary" onclick="document.querySelector('[data-tab=\"history\"]').click(); loadHistory()">
+          📋 {{ _('View improvement history') }}
+        </button>
+        <button class="btn btn--secondary" onclick="exportDashboardData()">
+          📥 {{ _('Export statistics') }}
+        </button>
+        <button class="btn btn--success" onclick="downloadAllChanges()">
+          📊 {{ _('Descargar todos los cambios') }}
+        </button>
+      </div>
+    </div>
+
+    <div id="dashboard-status" class="status-text" style="margin-top: 20px"></div>
+  </section>
+</div>
+
+{# ── Tab 1: Import ───────────────────────────────────────────────────────── #}
+<div class="tab-content" id="tab-import">
+  <section class="admin-section">
+    <h2>{{ _('Import glossary terms') }}</h2>
+    <p class="help-text">
+      {{ _('Upload a JSON or CSV file with glossary terms. Each term should have:') }}
+      <code>term_en</code>, <code>term_es_recommended</code>, and optionally:
+      <code>term_es_avoid</code>, <code>notes</code>, <code>category</code>.
+    </p>
+
+    <div class="form-group">
+      <label for="file-upload">{{ _('Select file:') }}</label>
+      <input type="file" id="file-upload" accept=".json,.csv,.tsv,.txt" />
+      <small class="help-text">{{ _('Supported formats: JSON, CSV, TSV') }}</small>
+    </div>
+
+    <div class="form-group">
+      <button id="btn-import" class="btn btn--primary" onclick="handleImport()">
+        📥 {{ _('Import terms') }}
+      </button>
+      <span id="import-status" class="status-text"></span>
+    </div>
+
+    <div id="import-results" class="import-results" style="display:none">
+      <div class="alert alert--success" id="import-success" style="display:none"></div>
+      <div class="alert alert--warning" id="import-warning" style="display:none"></div>
+      <div class="alert alert--error" id="import-error" style="display:none"></div>
+
+      <div class="stats-grid" id="import-stats" style="display:none">
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Imported') }}</span>
+          <span class="stat-value" id="stat-imported">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Updated') }}</span>
+          <span class="stat-value" id="stat-updated">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Skipped') }}</span>
+          <span class="stat-value" id="stat-skipped">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Version') }}</span>
+          <span class="stat-value" id="stat-version">1</span>
+        </div>
+      </div>
+
+      <div id="import-errors" style="display:none">
+        <h3>{{ _('Errors (first 20):') }}</h3>
+        <ul id="errors-list" style="color:#dc2626;font-size:12px;max-height:200px;overflow-y:auto"></ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+{# ── Tab 2: Browse ───────────────────────────────────────────────────────── #}
+<div class="tab-content" id="tab-browse">
+  <section class="admin-section">
+    <h2>{{ _('Browse glossary terms') }}</h2>
+
+    <div class="form-group" style="margin-bottom:20px">
+      <label for="category-filter">{{ _('Filter by category:') }}</label>
+      <select id="category-filter" onchange="filterByCategory()">
+        <option value="">{{ _('All categories') }}</option>
+      </select>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Total terms') }}</span>
+        <span class="stat-value" id="browse-total">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Categories') }}</span>
+        <span class="stat-value" id="browse-categories">0</span>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _('English') }}</th>
+            <th>{{ _('Spanish (recommended)') }}</th>
+            <th>{{ _('Avoid') }}</th>
+            <th>{{ _('Category') }}</th>
+            <th>{{ _('Notes') }}</th>
+          </tr>
+        </thead>
+        <tbody id="terms-tbody">
+          <tr><td colspan="5" class="text-center text-muted">{{ _('Loading...') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+{# ── Tab 3: Changes (Diff) ────────────────────────────────────────────────── #}
+<div class="tab-content" id="tab-diff">
+  <section class="admin-section">
+    <h2>{{ _('Recent glossary changes') }}</h2>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Version before') }}</span>
+        <span class="stat-value" id="diff-version-before">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Version after') }}</span>
+        <span class="stat-value" id="diff-version-after">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">{{ _('New terms') }}</span>
+        <span class="stat-value" id="diff-new-count">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Updated terms') }}</span>
+        <span class="stat-value" id="diff-updated-count">0</span>
+      </div>
+    </div>
+
+    <div id="diff-results">
+      <div id="new-terms-section" style="display:none">
+        <h3>✨ {{ _('New terms') }}</h3>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>{{ _('English') }}</th>
+                <th>{{ _('Spanish') }}</th>
+                <th>{{ _('Category') }}</th>
+                <th>{{ _('Notes') }}</th>
+              </tr>
+            </thead>
+            <tbody id="new-terms-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="updated-terms-section" style="display:none;margin-top:30px">
+        <h3>🔄 {{ _('Updated terms') }}</h3>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>{{ _('English') }}</th>
+                <th>{{ _('Old → New') }}</th>
+                <th>{{ _('Notes') }}</th>
+              </tr>
+            </thead>
+            <tbody id="updated-terms-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+{# ── Tab 4: Improve Summaries ──────────────────────────────────────────────── #}
+<div class="tab-content" id="tab-improve">
+  <section class="admin-section">
+    <h2>✨ {{ _('Improve summaries with glossary') }}</h2>
+    <p class="help-text">
+      {{ _('Use the current glossary to improve existing article summaries. This will:') }}<br/>
+      • {{ _('Keep the original summary unchanged') }}<br/>
+      • {{ _('Update terminology to match glossary') }}<br/>
+      • {{ _('Preserve meaning and length') }}<br/>
+      • {{ _('Use cost-efficient Claude Haiku model') }}
+    </p>
+
+    <div style="background:#f3f4f6;padding:20px;border-radius:8px;margin-bottom:20px">
+      <h3>{{ _('Choose articles to improve') }}</h3>
+      <div style="display: flex; gap: 12px; margin-bottom: 15px">
+        <button class="btn btn--secondary" onclick="loadAllArticles()">
+          📰 {{ _('Load all articles') }}
+        </button>
+        <button class="btn btn--secondary" onclick="loadOutdated()">
+          ⚠️ {{ _('Load outdated (v<current)') }}
+        </button>
+      </div>
+
+      <div class="form-group">
+        <label for="preview-limit">{{ _('Show:') }}</label>
+        <select id="preview-limit" style="width:100px">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+        </select>
+        <span id="preview-status" class="status-text"></span>
+      </div>
+
+      <div id="preview-results" style="display:none">
+        <p id="preview-count" style="font-size:12px;color:#6b7280;margin-bottom:10px"></p>
+        <p style="font-size:11px;color:#6b7280;margin-bottom:8px;">💡 {{ _('Tip: Click on a row to preview the article summary before improving') }}</p>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll()" /></th>
+                <th>{{ _('Title') }}</th>
+                <th>{{ _('Summary length') }}</th>
+                <th>{{ _('Version') }}</th>
+                <th>{{ _('Authors') }}</th>
+                <th>{{ _('Year') }}</th>
+                <th style="text-align:center">{{ _('View') }}</th>
+              </tr>
+            </thead>
+            <tbody id="preview-tbody"></tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:20px">
+          <span id="selected-count" style="font-size:12px;color:#6b7280">0 {{ _('selected') }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#ecfdf5;padding:20px;border-radius:8px;margin-bottom:20px">
+      <h3>{{ _('Run improvement') }}</h3>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="dry-run-checkbox" />
+          {{ _('Dry run (preview only, don\'t save)') }}
+        </label>
+        <p style="font-size:11px;color:#16a34a;margin-top:5px">✓ {{ _('By default, improvements will be saved to the database') }}</p>
+      </div>
+      <button id="btn-improve-batch" class="btn btn--primary" onclick="improveBatch()" disabled>
+        ✨ {{ _('Improve selected summaries') }}
+      </button>
+      <span id="batch-status" class="status-text"></span>
+    </div>
+
+    {# Progress monitoring #}
+    <div id="batch-progress" style="display:none;background:#e0e7ff;padding:20px;border-radius:8px;margin-bottom:20px">
+      <h3>📊 {{ _('Progress') }}</h3>
+      <div style="margin-bottom:15px">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:5px">
+          <span id="progress-count">0</span> / <span id="progress-total">0</span>
+        </div>
+        <div style="width:100%;height:20px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+          <div id="progress-bar" style="height:100%;background:#10b981;width:0%;transition:width 0.3s ease;display:flex;align-items:center;justify-content:center">
+            <span id="progress-percent" style="font-size:11px;color:white;font-weight:bold"></span>
+          </div>
+        </div>
+      </div>
+      <div id="progress-current" style="font-size:12px;color:#6b7280;margin-bottom:10px;font-style:italic">
+        {{ _('Waiting to start...') }}
+      </div>
+
+      {# Debug logs #}
+      <details style="margin-top:15px;border-top:1px solid #c7d2fe;padding-top:10px">
+        <summary style="cursor:pointer;color:#6366f1;font-weight:bold;user-select:none">
+          🔍 {{ _('Debug Logs') }}
+        </summary>
+        <div id="batch-logs" style="background:white;border:1px solid #e5e7eb;border-radius:4px;padding:10px;margin-top:10px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;color:#374151"></div>
+      </details>
+    </div>
+
+    <div id="batch-results" style="display:none;margin-top:30px">
+      <div class="alert alert--success" id="batch-success" style="display:none"></div>
+      <div class="alert alert--error" id="batch-error" style="display:none"></div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Processed') }}</span>
+          <span class="stat-value" id="stat-processed">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Successful') }}</span>
+          <span class="stat-value" id="stat-successful">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">{{ _('Failed') }}</span>
+          <span class="stat-value" id="stat-failed">0</span>
+        </div>
+      </div>
+
+      <div id="batch-errors" style="display:none;margin-top:20px">
+        <h3>{{ _('Errors:') }}</h3>
+        <ul id="batch-errors-list" style="color:#dc2626;font-size:12px;max-height:300px;overflow-y:auto"></ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+{# ── Modal: Article Preview ────────────────────────────────────────────── #}
+<div id="preview-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;overflow-y:auto">
+  <div style="background:white;border-radius:8px;max-width:90%;width:900px;margin:40px auto;padding:30px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div>
+        <h2 id="modal-title" style="margin:0;font-size:20px"></h2>
+        <p id="modal-subtitle" style="color:#6b7280;font-size:12px;margin:5px 0 0 0"></p>
+      </div>
+      <button onclick="closePreviewModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280">&times;</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;max-height:500px;overflow-y:auto">
+      <div style="border:1px solid #e5e7eb;border-radius:6px;padding:15px;background:#f9fafb;overflow-y:auto">
+        <h3 style="margin:0 0 12px 0;font-size:14px;font-weight:600;color:#1f2937">📝 {{ _('Original Summary') }}</h3>
+        <div id="modal-original" style="margin:0;font-size:13px;line-height:1.8;color:#374151;white-space:pre-wrap;word-wrap:break-word;font-family:system-ui,-apple-system,sans-serif"></div>
+      </div>
+
+      <div id="improved-container" style="display:none;border:1px solid #d1fae5;border-radius:6px;padding:15px;background:#f0fdf4;overflow-y:auto">
+        <h3 style="margin:0 0 12px 0;font-size:14px;font-weight:600;color:#065f46">✨ {{ _('Improved Summary') }}</h3>
+        <div id="modal-improved" style="margin:0;font-size:13px;line-height:1.8;color:#047857;white-space:pre-wrap;word-wrap:break-word;font-family:system-ui,-apple-system,sans-serif"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center">
+      <a id="modal-link-prionvault" href="/prionvault/" target="_blank" rel="noopener noreferrer" class="btn btn--secondary" style="text-decoration:none">🔗 {{ _('View in PrionVault') }}</a>
+      <div style="display:flex;gap:10px">
+        <button onclick="closePreviewModal()" class="btn btn--secondary">{{ _('Close') }}</button>
+        <button id="modal-btn-regenerate" onclick="regenerateArticleSummary()" class="btn btn--warning">🔄 {{ _('Regenerate Summary') }}</button>
+        <button id="modal-btn-improve" onclick="improveArticlePreview()" class="btn btn--primary">✨ {{ _('Improve with Glossary') }}</button>
+      </div>
+    </div>
+
+    <div id="modal-status" style="margin-top:15px;font-size:12px;color:#6b7280;text-align:center"></div>
+  </div>
+</div>
+
+{# ── Tab 5: History ────────────────────────────────────────────────────────── #}
+<div class="tab-content" id="tab-history">
+  <section class="admin-section">
+    <h2>📋 {{ _('Improvement History') }}</h2>
+    <p class="help-text">{{ _('Complete audit trail of all summary improvements') }}</p>
+
+    <div class="form-group" style="margin-bottom: 15px">
+      <label for="history-batch-filter">{{ _('Filter by batch ID:') }}</label>
+      <input type="text" id="history-batch-filter" placeholder="UUID or leave empty for all" style="width: 300px; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px" />
+      <button class="btn btn--secondary" onclick="loadHistory()">{{ _('Filter') }}</button>
+      <button class="btn btn--success" onclick="downloadAllChanges()" style="margin-left: 10px;">📊 Descargar Excel</button>
+    </div>
+
+    <div class="stats-grid" style="margin-bottom: 20px">
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Total Improvements') }}</span>
+        <span class="stat-value" id="history-total">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">{{ _('Last Improvement') }}</span>
+        <span class="stat-value" id="history-last">—</span>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _('Date') }}</th>
+            <th>{{ _('Article') }}</th>
+            <th>{{ _('Glossary Version') }}</th>
+            <th>{{ _('Changes') }}</th>
+            <th>{{ _('Batch ID') }}</th>
+            <th>{{ _('Details') }}</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody">
+          <tr><td colspan="6" class="text-center text-muted">{{ _('Loading...') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<style>
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: #374151;
+}
+
+.tab-btn--active {
+  color: #1f2937;
+  border-bottom-color: #3b82f6;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content--active {
+  display: block;
+}
+
+.subtitle {
+  color: #6b7280;
+  margin: 5px 0 0 0;
+  font-size: 14px;
+}
+
+.help-text {
+  color: #6b7280;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.form-group input[type="file"],
+.form-group select,
+.form-group input[type="text"] {
+  display: block;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.form-group input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.stat-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+.stat-value.outdated-badge {
+  color: #dc2626;
+  font-size: 28px;
+}
+
+.status-text {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.alert {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  display: none;
+}
+
+.alert--success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #d1fae5;
+}
+
+.alert--error {
+  background: #fef2f2;
+  color: #7f1d1d;
+  border: 1px solid #fee2e2;
+}
+
+.alert--warning {
+  background: #fffbeb;
+  color: #78350f;
+  border: 1px solid #fef3c7;
+}
+
+.import-results {
+  margin-top: 20px;
+  padding: 20px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.table-responsive {
+  overflow-x: auto;
+  margin: 15px 0;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table thead {
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.data-table th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+}
+
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.data-table tbody tr:hover {
+  background: #fafafa;
+}
+
+.clickable-row:hover {
+  background: #f0f4f8;
+  opacity: 0.9;
+}
+
+#errors-list,
+#batch-errors-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#errors-list li,
+#batch-errors-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid #fee2e2;
+}
+
+.version-breakdown {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin: 15px 0;
+}
+
+.version-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.version-card h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #374151;
+}
+
+.version-card .metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.version-card .metric:last-child {
+  border-bottom: none;
+}
+
+.version-card .metric label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.version-card .metric value {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-block;
+}
+
+.btn--primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn--primary:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+.btn--secondary {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.btn--secondary:hover {
+  background: #d1d5db;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: #9ca3af;
+}
+</style>
+
+<script>
+let currentCategories = [];
+let currentTerms = [];
+let previewArticles = [];
+let selectedArticleIds = [];
+let improveMode = 'all'; // 'all' or 'outdated'
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('tab-content--active'));
+
+    e.target.classList.add('tab-btn--active');
+    const tabId = 'tab-' + e.target.dataset.tab;
+    document.getElementById(tabId).classList.add('tab-content--active');
+
+    if (e.target.dataset.tab === 'dashboard') loadDashboard();
+    else if (e.target.dataset.tab === 'browse') loadBrowse();
+    else if (e.target.dataset.tab === 'diff') loadDiff();
+  });
+});
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const status = document.getElementById('dashboard-status');
+  status.textContent = '{{ _("Loading...") }}';
+  status.style.color = '#6b7280';
+
+  try {
+    const response = await fetch('/prionvault/api/glossary/stats', {
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+
+    // Update stats
+    document.getElementById('dashboard-current-version').textContent = data.current_glossary_version;
+    document.getElementById('dashboard-articles-improved').textContent = data.total_articles_improved;
+    document.getElementById('dashboard-total-changes').textContent = data.total_changes;
+    document.getElementById('dashboard-avg-changes').textContent = data.avg_changes_per_article.toFixed(1);
+    document.getElementById('dashboard-batches').textContent = data.total_batches;
+
+    // Get outdated count
+    const outdatedResp = await fetch('/prionvault/api/glossary/stats/detailed', {
+      credentials: 'same-origin',
+    });
+    const outdatedData = await outdatedResp.json();
+    document.getElementById('dashboard-outdated-count').textContent = outdatedData.total_outdated;
+
+    // Render by version breakdown
+    const versionDiv = document.getElementById('dashboard-by-version');
+    if (data.by_version.length === 0) {
+      versionDiv.innerHTML = '<p class="help-text">{{ _("No improvements yet") }}</p>';
+    } else {
+      versionDiv.innerHTML = data.by_version.map(v => `
+        <div class="version-card">
+          <h4>Version ${v.glossary_version}</h4>
+          <div class="metric">
+            <label>{{ _('Articles') }}</label>
+            <value>${v.articles_improved}</value>
+          </div>
+          <div class="metric">
+            <label>{{ _('Changes') }}</label>
+            <value>${v.total_changes}</value>
+          </div>
+          <div class="metric">
+            <label>{{ _('Avg/Article') }}</label>
+            <value>${(v.total_changes / (v.articles_improved || 1)).toFixed(1)}</value>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Render corrections
+    const correctionsBody = document.getElementById('dashboard-corrections-tbody');
+    if (!data.most_common_corrections || data.most_common_corrections.length === 0) {
+      correctionsBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">{{ _("No corrections yet") }}</td></tr>';
+    } else {
+      correctionsBody.innerHTML = data.most_common_corrections.map(c => {
+        const original = c.original && c.original.trim() ? escapeHtml(c.original) : '<em style="color:#9ca3af">(vacío)</em>';
+        const corrected = c.corrected && c.corrected.trim() ? escapeHtml(c.corrected) : '<em style="color:#9ca3af">(vacío)</em>';
+        return `
+          <tr>
+            <td><code style="color: #dc2626">${original}</code></td>
+            <td><strong style="color: #16a34a">${corrected}</strong></td>
+            <td><strong>${c.frequency}</strong></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    status.textContent = '✓ {{ _("Dashboard updated") }}';
+    status.style.color = '#16a34a';
+  } catch (e) {
+    status.textContent = `✗ ${e.message}`;
+    status.style.color = '#dc2626';
+  }
+}
+
+// ── Import ────────────────────────────────────────────────────────────────
+async function handleImport() {
+  const fileInput = document.getElementById('file-upload');
+  const file = fileInput.files[0];
+
+  if (!file) {
+    alert('{{ _("Please select a file") }}');
+    return;
+  }
+
+  const btn = document.getElementById('btn-import');
+  btn.disabled = true;
+  btn.textContent = '{{ _("Importing...") }}';
+
+  const status = document.getElementById('import-status');
+  status.textContent = '{{ _("Reading file...") }}';
+
+  try {
+    const text = await file.text();
+    let terms = [];
+
+    if (file.name.endsWith('.json')) {
+      terms = JSON.parse(text);
+      if (!Array.isArray(terms)) terms = [terms];
+    } else if (file.name.endsWith('.csv') || file.name.endsWith('.tsv')) {
+      terms = parseCSV(text, file.name.endsWith('.tsv'));
+    } else {
+      throw new Error('{{ _("Unsupported file format") }}');
+    }
+
+    status.textContent = `{{ _("Uploading") }} ${terms.length} {{ _("terms...") }}`;
+
+    const response = await fetch('/prionvault/api/glossary/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ terms }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    document.getElementById('import-results').style.display = 'block';
+    document.getElementById('import-stats').style.display = 'grid';
+    document.getElementById('stat-imported').textContent = data.imported;
+    document.getElementById('stat-updated').textContent = data.updated;
+    document.getElementById('stat-skipped').textContent = data.skipped;
+    document.getElementById('stat-version').textContent = data.new_version;
+
+    if (data.errors && data.errors.length > 0) {
+      document.getElementById('import-errors').style.display = 'block';
+      const errorsList = document.getElementById('errors-list');
+      errorsList.innerHTML = data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('');
+      document.getElementById('import-warning').textContent = `⚠️ {{ _("Import completed with") }} ${data.errors.length} {{ _("errors") }}`;
+      document.getElementById('import-warning').style.display = 'block';
+    } else {
+      document.getElementById('import-success').textContent = `✓ {{ _("Successfully imported") }} ${data.imported} {{ _("terms") }}`;
+      document.getElementById('import-success').style.display = 'block';
+    }
+
+    status.textContent = '✓ {{ _("Import complete") }}';
+    fileInput.value = '';
+
+  } catch (e) {
+    status.textContent = '✗ {{ _("Import failed") }}';
+    document.getElementById('import-results').style.display = 'block';
+    document.getElementById('import-error').textContent = `✗ {{ _("Error:") }} ${e.message}`;
+    document.getElementById('import-error').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📥 {{ _("Import terms") }}';
+  }
+}
+
+function parseCSV(text, isTSV) {
+  const delimiter = isTSV ? '\t' : ',';
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
+  const terms = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(delimiter).map(v => v.trim());
+    if (values.length < 2) continue;
+
+    const term = {};
+    headers.forEach((h, idx) => {
+      if (values[idx]) term[h] = values[idx];
+    });
+    terms.push(term);
+  }
+
+  return terms;
+}
+
+// ── Browse ─────────────────────────────────────────────────────────────────
+async function loadBrowse() {
+  try {
+    const response = await fetch('/prionvault/api/glossary/terms', {
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+
+    currentTerms = data.terms || [];
+    currentCategories = data.categories || [];
+
+    document.getElementById('browse-total').textContent = data.total || 0;
+    document.getElementById('browse-categories').textContent = currentCategories.length;
+
+    const filter = document.getElementById('category-filter');
+    filter.innerHTML = '<option value="">{{ _("All categories") }}</option>';
+    currentCategories.forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat || '';
+      opt.textContent = cat || '{{ _("Uncategorized") }}';
+      filter.appendChild(opt);
+    });
+
+    renderTermsTable();
+  } catch (e) {
+    alert('{{ _("Error loading glossary:") }} ' + e.message);
+  }
+}
+
+function filterByCategory() {
+  renderTermsTable();
+}
+
+function renderTermsTable() {
+  const filter = document.getElementById('category-filter').value;
+  const terms = filter ? currentTerms.filter(t => t.category === filter) : currentTerms;
+
+  const tbody = document.getElementById('terms-tbody');
+  if (terms.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">{{ _("No terms") }}</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = terms.map(t => `
+    <tr>
+      <td><code>${escapeHtml(t.term_en)}</code></td>
+      <td><strong>${escapeHtml(t.term_es_recommended)}</strong></td>
+      <td>${t.term_es_avoid ? escapeHtml(t.term_es_avoid) : '—'}</td>
+      <td>${t.category || '—'}</td>
+      <td style="font-size:12px;color:#6b7280">${t.notes ? escapeHtml(t.notes) : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Diff ───────────────────────────────────────────────────────────────────
+async function loadDiff() {
+  try {
+    // Note: /api/glossary/diff endpoint not yet implemented
+    // Using batch-changes as placeholder - TODO: implement proper diff endpoint
+    const response = await fetch('/prionvault/api/glossary/stats/detailed', {
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+    // Map detailed stats to diff format for now
+    data.version_before = (data.current_glossary_version || 0) - 1;
+    data.version_after = data.current_glossary_version;
+    data.new_terms = [];
+    data.updated_terms = [];
+
+    document.getElementById('diff-version-before').textContent = data.version_before || '—';
+    document.getElementById('diff-version-after').textContent = data.version_after || '—';
+    document.getElementById('diff-new-count').textContent = data.new_terms.length;
+    document.getElementById('diff-updated-count').textContent = data.updated_terms.length;
+
+    if (data.new_terms.length > 0) {
+      document.getElementById('new-terms-section').style.display = 'block';
+      const tbody = document.getElementById('new-terms-tbody');
+      tbody.innerHTML = data.new_terms.map(t => `
+        <tr>
+          <td><code>${escapeHtml(t.term_en)}</code></td>
+          <td><strong>${escapeHtml(t.term_es_recommended)}</strong></td>
+          <td>${t.category || '—'}</td>
+          <td style="font-size:12px;color:#6b7280">${t.notes ? escapeHtml(t.notes) : '—'}</td>
+        </tr>
+      `).join('');
+    } else {
+      document.getElementById('new-terms-section').style.display = 'none';
+    }
+
+    if (data.updated_terms.length > 0) {
+      document.getElementById('updated-terms-section').style.display = 'block';
+      const tbody = document.getElementById('updated-terms-tbody');
+      tbody.innerHTML = data.updated_terms.map(t => `
+        <tr>
+          <td><code>${escapeHtml(t.term_en)}</code></td>
+          <td>
+            <code style="color:#dc2626;text-decoration:line-through">${escapeHtml(t.old)}</code>
+            <span style="margin:0 8px">→</span>
+            <code style="color:#16a34a">${escapeHtml(t.new)}</code>
+          </td>
+          <td style="font-size:12px;color:#6b7280">${t.notes ? escapeHtml(t.notes) : '—'}</td>
+        </tr>
+      `).join('');
+    } else {
+      document.getElementById('updated-terms-section').style.display = 'none';
+    }
+
+  } catch (e) {
+    alert('{{ _("Error loading diff:") }} ' + e.message);
+  }
+}
+
+// ── Improve Summaries ──────────────────────────────────────────────────────
+async function loadAllArticles() {
+  improveMode = 'all';
+  const limit = document.getElementById('preview-limit').value;
+  const status = document.getElementById('preview-status');
+
+  status.textContent = '{{ _("Loading...") }}';
+
+  try {
+    const response = await fetch(`/prionvault/api/glossary/unreviewed?limit=${limit}&offset=0`, {
+      credentials: 'same-origin',
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const data = await response.json();
+
+    previewArticles = data.articles || [];
+    selectedArticleIds = [];
+    window.glossaryCurrentVersion = data.current_glossary_version;
+
+    document.getElementById('preview-results').style.display = 'block';
+    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total || previewArticles.length} {{ _("articles with unreviewed summaries") }}`;
+
+    renderPreviewTable();
+    status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length}`;
+
+  } catch (e) {
+    status.textContent = `✗ {{ _("Error:") }} ${e.message}`;
+    console.error('loadAllArticles error:', e);
+  }
+}
+
+async function loadOutdated() {
+  improveMode = 'outdated';
+  const limit = document.getElementById('preview-limit').value;
+  const status = document.getElementById('preview-status');
+
+  status.textContent = '{{ _("Loading outdated...") }}';
+
+  try {
+    const response = await fetch(`/prionvault/api/glossary/outdated?limit=${limit}&offset=0`, {
+      credentials: 'same-origin',
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const data = await response.json();
+
+    previewArticles = data.articles || [];
+    selectedArticleIds = [];
+    window.glossaryCurrentVersion = data.current_glossary_version;
+
+    document.getElementById('preview-results').style.display = 'block';
+    document.getElementById('preview-count').textContent = `{{ _("Found") }} ${data.total_outdated || previewArticles.length} {{ _("outdated articles") }} ({{ _("improved with v") }}${data.current_glossary_version || '—'})`;
+
+    renderPreviewTable();
+    status.textContent = `✓ {{ _("Loaded") }} ${previewArticles.length} {{ _("outdated") }}`;
+
+  } catch (e) {
+    status.textContent = `✗ {{ _("Error:") }} ${e.message}`;
+    console.error('loadOutdated error:', e);
+  }
+}
+
+function renderPreviewTable() {
+  const tbody = document.getElementById('preview-tbody');
+  tbody.innerHTML = previewArticles.map(a => {
+    const glossaryBtn = getGlossaryButtonHtml(a);
+    return `
+    <tr style="cursor:pointer" class="clickable-row" onclick="if(!event.target.tagName.includes('INPUT') && event.target.tagName !== 'A' && event.target.tagName !== 'BUTTON') showPreviewModal('${a.id}')">
+      <td><input type="checkbox" class="article-checkbox" data-id="${a.id}" onchange="updateSelectedCount()" /></td>
+      <td>
+        <div>${escapeHtml((a.title || '').substring(0, 80))}</div>
+        <div style="margin-top:6px">${glossaryBtn}</div>
+      </td>
+      <td>${a.summary_length || 0}</td>
+      <td>${improveMode === 'outdated' ? `v${a.glossary_version_used}` : '—'}</td>
+      <td style="font-size:12px;color:#6b7280">${escapeHtml((a.authors || '').substring(0, 40))}</td>
+      <td>${a.year || '—'}</td>
+      <td style="text-align:center"><a href="/prionvault/?open=${a.id}" target="_blank" rel="noopener noreferrer" title="Ver en PrionVault" style="color:#0F3460;text-decoration:none;font-size:16px">🔗</a></td>
+    </tr>
+  `;
+  }).join('');
+
+  document.getElementById('select-all-checkbox').checked = false;
+  updateSelectedCount();
+}
+
+function getGlossaryButtonHtml(article) {
+  const currentVersion = window.glossaryCurrentVersion || null;
+  const aiVersion = article.ai_summary_glossary_version;
+
+  if (aiVersion === null || aiVersion === undefined) {
+    return '';
+  }
+
+  const isUpdated = aiVersion === currentVersion;
+  const status = isUpdated ? 'updated' : 'outdated';
+  const btnClass = isUpdated ? 'btn-glossary-updated' : 'btn-glossary-outdated';
+  const btnTitle = isUpdated ? 'Actualizado con versión ' + currentVersion : 'Necesita actualización';
+  const indicator = isUpdated ? '✓' : '⟳';
+
+  return `<button class="btn-glossary ${btnClass}" onclick="showGlossaryModal('${article.id}')" title="${btnTitle}">
+    ${indicator} Glosario v${aiVersion}
+  </button>`;
+}
+
+function toggleSelectAll() {
+  const allChecked = document.getElementById('select-all-checkbox').checked;
+  document.querySelectorAll('.article-checkbox').forEach(cb => {
+    cb.checked = allChecked;
+  });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  selectedArticleIds = Array.from(document.querySelectorAll('.article-checkbox:checked'))
+    .map(cb => cb.dataset.id);
+  document.getElementById('selected-count').textContent = `${selectedArticleIds.length} {{ _("selected") }}`;
+  document.getElementById('btn-improve-batch').disabled = selectedArticleIds.length === 0;
+}
+
+let batchPollInterval = null;
+let currentBatchSize = 0;
+
+async function improveBatch() {
+  if (selectedArticleIds.length === 0) {
+    alert('{{ _("Please select at least one article") }}');
+    return;
+  }
+
+  const dryRun = document.getElementById('dry-run-checkbox').checked;
+  const btn = document.getElementById('btn-improve-batch');
+  const status = document.getElementById('batch-status');
+
+  if (!confirm(`{{ _("Improve") }} ${selectedArticleIds.length} {{ _("summaries?") }} ${dryRun ? '({{ _("Dry run") }})' : ''}`)) {
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '✨ {{ _("Running...") }}';
+  status.textContent = '{{ _("Queued...") }}';
+
+  // Clear logs
+  document.getElementById('batch-logs').innerHTML = '';
+  addLog('📤 Enviando solicitud al servidor...');
+
+  try {
+    addLog(`📋 Artículos seleccionados: ${selectedArticleIds.length}`);
+    addLog(`🔧 Dry run: ${dryRun ? 'Sí (solo preview)' : 'No (guardará cambios)'}`);
+
+    const response = await fetch('/prionvault/api/glossary/improve-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        article_ids: selectedArticleIds,
+        dry_run: dryRun,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    addLog('✅ Lote enviado al servidor con éxito');
+    addLog(`🔢 ID de batch: ${data.batch_id || 'pendiente'}`);
+
+    currentBatchSize = data.queued;
+    document.getElementById('batch-results').style.display = 'block';
+    document.getElementById('batch-success').textContent = `✓ {{ _("Queued") }} ${data.queued} {{ _("summaries for improvement") }}`;
+    document.getElementById('batch-success').style.display = 'block';
+
+    status.textContent = `✓ {{ _("Batch queued") }} ({{ _("running in background") }})`;
+
+    // Show progress bar
+    document.getElementById('batch-progress').style.display = 'block';
+    document.getElementById('progress-total').textContent = data.queued;
+
+    // Start polling for progress
+    pollBatchProgress();
+
+  } catch (e) {
+    addLog(`❌ Error: ${e.message}`);
+    document.getElementById('batch-results').style.display = 'block';
+    document.getElementById('batch-error').textContent = `✗ {{ _("Error:") }} ${e.message}`;
+    document.getElementById('batch-error').style.display = 'block';
+    status.textContent = '✗ {{ _("Error") }}';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ {{ _("Improve selected summaries") }}';
+  }
+}
+
+function addLog(message) {
+  const logsDiv = document.getElementById('batch-logs');
+  const timestamp = new Date().toLocaleTimeString();
+  logsDiv.innerHTML += `<div>[${timestamp}] ${escapeHtml(message)}</div>`;
+  logsDiv.scrollTop = logsDiv.scrollHeight;
+}
+
+async function pollBatchProgress() {
+  if (batchPollInterval) clearInterval(batchPollInterval);
+
+  batchPollInterval = setInterval(async () => {
+    try {
+      const response = await fetch('/prionvault/api/glossary/batch-status', {
+        credentials: 'same-origin',
+      });
+      const status = await response.json();
+
+      if (status.processed !== undefined) {
+        const percent = Math.round((status.processed / status.queued) * 100);
+        document.getElementById('progress-count').textContent = status.processed;
+        document.getElementById('progress-bar').style.width = percent + '%';
+        document.getElementById('progress-percent').textContent = percent + '%';
+
+        if (status.current_article) {
+          document.getElementById('progress-current').textContent = `⏳ ${escapeHtml(status.current_article.substring(0, 60))}...`;
+        }
+
+        if (status.status === 'completed') {
+          addLog('✅ ¡Lote completado!');
+          clearInterval(batchPollInterval);
+        } else if (status.status === 'error') {
+          addLog(`⚠️ Error en el servidor: ${status.error}`);
+          clearInterval(batchPollInterval);
+        }
+      }
+    } catch (e) {
+      console.error('Poll error:', e);
+    }
+  }, 1000); // Poll every 1 second
+}
+
+function showPreviewModal(articleId) {
+  const article = previewArticles.find(a => a.id === articleId);
+  if (!article) return;
+
+  document.getElementById('modal-title').textContent = (article.title || '').substring(0, 100);
+  document.getElementById('modal-subtitle').textContent = `${article.authors || '—'} • ${article.year || '—'} • ${article.summary_length || 0} chars`;
+
+  // Display summary with proper formatting preserved
+  const summaryText = article.summary_ai || '(sin resumen)';
+  document.getElementById('modal-original').textContent = summaryText;
+
+  document.getElementById('improved-container').style.display = 'none';
+  document.getElementById('modal-btn-improve').dataset.articleId = articleId;
+  document.getElementById('modal-btn-regenerate').dataset.articleId = articleId;
+  document.getElementById('modal-link-prionvault').href = `/prionvault/?open=${articleId}`;
+  document.getElementById('modal-status').textContent = '';
+
+  document.getElementById('preview-modal').style.display = 'block';
+}
+
+function closePreviewModal() {
+  document.getElementById('preview-modal').style.display = 'none';
+}
+
+async function improveArticlePreview() {
+  const btn = document.getElementById('modal-btn-improve');
+  const articleId = btn.dataset.articleId;
+  const status = document.getElementById('modal-status');
+
+  if (!articleId) return;
+
+  btn.disabled = true;
+  btn.textContent = '✨ {{ _("Improving...") }}';
+  status.textContent = '⏳ {{ _("Processing...") }}';
+
+  try {
+    console.log('🚀 Improving article with glossary:', articleId);
+    const response = await fetch('/prionvault/api/glossary/improve-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        article_ids: [articleId],
+        dry_run: false,
+      }),
+    });
+
+    const data = await response.json();
+    console.log('📦 Response:', data);
+
+    if (!response.ok) {
+      console.error('❌ API error:', data);
+      throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    if (!data.ok) {
+      console.error('❌ Response not ok:', data);
+      throw new Error(data.error || 'Batch queued but check server logs');
+    }
+
+    console.log('✅ Improvement batch queued, waiting for processing...');
+    status.textContent = '⏳ {{ _("Processing in background (30-60 seconds)...") }}';
+
+    // Wait for processing to complete
+    await new Promise(r => setTimeout(r, 4000));
+
+    const reloadMode = improveMode === 'outdated' ? 'outdated' : 'all';
+    console.log(`🔄 Reloading ${reloadMode} articles list...`);
+
+    closePreviewModal();
+    if (improveMode === 'outdated') {
+      await loadOutdated();
+    } else {
+      await loadAllArticles();
+    }
+
+    console.log('✓ List reloaded');
+    alert('✅ {{ _("Summary improved with glossary. The article has been removed from the list.") }}');
+
+  } catch (e) {
+    console.error('❌ Error in improveArticlePreview:', e);
+    status.textContent = `❌ {{ _("Error:") }} ${e.message}`;
+    btn.disabled = false;
+    btn.textContent = '✨ {{ _("Improve with Glossary") }}';
+  }
+}
+
+async function regenerateArticleSummary() {
+  const btn = document.getElementById('modal-btn-regenerate');
+  const articleId = btn.dataset.articleId;
+  const status = document.getElementById('modal-status');
+
+  if (!articleId) return;
+
+  if (!confirm('{{ _("Regenerate the complete AI summary from scratch? This will replace the current summary.") }}')) {
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '🔄 {{ _("Regenerating...") }}';
+  status.textContent = '⏳ {{ _("Regenerating summary (30-60 seconds)...") }}';
+
+  try {
+    console.log('🚀 Regenerating summary for article:', articleId);
+    const response = await fetch(`/prionvault/api/glossary/regenerate-summary/${articleId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+    });
+
+    const data = await response.json();
+    console.log('📦 Response:', data);
+
+    if (!response.ok) {
+      console.error('❌ API error:', data);
+      throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    if (!data.ok) {
+      console.error('❌ Response not ok:', data);
+      throw new Error(data.error || 'Unknown error from server');
+    }
+
+    console.log('✅ Regeneration successful, reloading list...');
+    status.textContent = '✅ {{ _("Summary regenerated! Refreshing list...") }}';
+
+    // Wait a bit then reload the list
+    await new Promise(r => setTimeout(r, 2000));
+
+    const reloadMode = improveMode === 'outdated' ? 'outdated' : 'all';
+    console.log(`🔄 Reloading ${reloadMode} articles list...`);
+
+    closePreviewModal();
+    if (improveMode === 'outdated') {
+      await loadOutdated();
+    } else {
+      await loadAllArticles();
+    }
+
+    console.log('✓ List reloaded');
+    alert('✅ {{ _("Summary regenerated with glossary applied. The article has been removed from the list.") }}');
+
+  } catch (e) {
+    console.error('❌ Error in regenerateArticleSummary:', e);
+    status.textContent = `❌ {{ _("Error:") }} ${e.message}`;
+    btn.disabled = false;
+    btn.textContent = '🔄 {{ _("Regenerate Summary") }}';
+  }
+}
+
+// ── History ────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const batchId = document.getElementById('history-batch-filter').value || null;
+  const limit = 50;
+
+  try {
+    const url = new URL('/prionvault/api/glossary/log', window.location.origin);
+    if (batchId) url.searchParams.append('batch_id', batchId);
+    url.searchParams.append('limit', limit);
+
+    const response = await fetch(url, { credentials: 'same-origin' });
+    const data = await response.json();
+
+    document.getElementById('history-total').textContent = data.total;
+    document.getElementById('history-last').textContent = data.improvements[0]?.improved_at
+      ? new Date(data.improvements[0].improved_at).toLocaleDateString()
+      : '—';
+
+    const tbody = document.getElementById('history-tbody');
+    if (data.improvements.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">{{ _("No history") }}</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.improvements.map(imp => `
+      <tr>
+        <td>${new Date(imp.improved_at).toLocaleString()}</td>
+        <td>
+          <a href="/prionvault/?open=${imp.article_id}" target="_blank" rel="noopener" style="color:#0F3460;text-decoration:none;cursor:pointer;">
+            <strong>${escapeHtml((imp.title || '').substring(0, 60))}</strong>
+          </a>
+        </td>
+        <td>v${imp.glossary_version}</td>
+        <td><strong>${imp.changes_count}</strong></td>
+        <td><code style="font-size: 11px">${imp.batch_id.substring(0, 12)}...</code></td>
+        <td>
+          <button class="btn btn--sm btn--primary" onclick="downloadBatchExcel('${imp.batch_id}')" title="Download Excel with changes from this batch">
+            📥 Excel
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+  } catch (e) {
+    alert('{{ _("Error loading history:") }} ' + e.message);
+  }
+}
+
+function downloadBatchExcel(batchId) {
+  try {
+    const link = document.createElement('a');
+    link.href = `/prionvault/api/glossary/batch-export/${batchId}`;
+    link.download = `batch-${batchId.slice(0, 8)}-cambios.xlsx`;
+    link.click();
+  } catch (e) {
+    alert('Error al descargar: ' + e.message);
+  }
+}
+
+function downloadAllChanges() {
+  try {
+    const link = document.createElement('a');
+    link.href = '/prionvault/api/glossary/export-all-changes';
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    link.download = `cambios-completos-${dateStr}.xlsx`;
+    link.click();
+  } catch (e) {
+    alert('Error al descargar: ' + e.message);
+  }
+}
+
+function exportDashboardData() {
+  alert('{{ _("Export feature coming soon. Check browser console for raw data.") }}');
+  console.log({ currentTerms, previewArticles });
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ── Dashboard interaction functions ────────────────────────────────────
+function goToImprovedArticles() {
+  const count = document.getElementById('dashboard-articles-improved').textContent;
+  if (count === '0' || count === '—') {
+    alert('No hay artículos mejorados aún');
+    return;
+  }
+  // Navigate to PrionVault and filter by glossary version
+  window.location.href = '/prionvault/?has_glossary=1';
+}
+
+async function openChangesModal() {
+  const modal = document.getElementById('changes-modal');
+  const content = document.getElementById('changes-content');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+  content.innerHTML = '<p style="text-align:center;color:#9ca3af;">Cargando cambios...</p>';
+
+  try {
+    const response = await fetch('/prionvault/api/glossary/stats', {
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+
+    const byVersion = data.by_version || [];
+    if (byVersion.length === 0) {
+      content.innerHTML = '<p class="text-center text-muted">No hay cambios registrados</p>';
+      return;
+    }
+
+    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:20px">';
+    byVersion.forEach(v => {
+      html += `
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#f9fafb">
+          <div style="font-weight:600;margin-bottom:12px;font-size:14px">Glosario v${v.glossary_version}</div>
+          <div style="display:grid;gap:8px;font-size:13px">
+            <div><strong>${v.articles_improved}</strong> artículos mejorados</div>
+            <div><strong>${v.total_changes}</strong> cambios totales</div>
+            <div><strong>${(v.total_changes / (v.articles_improved || 1)).toFixed(1)}</strong> cambios/artículo</div>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    // Mostrar tabla de correcciones más comunes
+    if (data.most_common_corrections && data.most_common_corrections.length > 0) {
+      html += '<h3 style="margin-top:20px;margin-bottom:12px">Correcciones Más Comunes</h3>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+      html += '<thead style="background:#f3f4f6"><tr><th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Original</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Corregido a</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb">Frecuencia</th></tr></thead>';
+      html += '<tbody>';
+      data.most_common_corrections.forEach(c => {
+        html += `<tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:8px"><code style="color:#dc2626">${escapeHtml(c.original || '—')}</code></td>
+          <td style="padding:8px"><strong style="color:#16a34a">${escapeHtml(c.corrected || '—')}</strong></td>
+          <td style="padding:8px;text-align:right"><strong>${c.frequency}</strong></td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+    }
+
+    content.innerHTML = html;
+  } catch (e) {
+    content.innerHTML = `<p style="color:#dc2626">Error: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function closeChangesModal() {
+  const modal = document.getElementById('changes-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Close modals when clicking outside
+document.addEventListener('click', (e) => {
+  const changesModal = document.getElementById('changes-modal');
+  if (changesModal && e.target === changesModal) {
+    closeChangesModal();
+  }
+});
+
+// ── Diagnostic script for debugging button visibility ──────────────────
+(function() {
+  console.log("✅ glossary.html loaded successfully");
+  console.log("downloadAllChanges function exists:", typeof downloadAllChanges);
+  console.log("downloadBatchExcel function exists:", typeof downloadBatchExcel);
+
+  // Try to find the buttons
+  const allButtons = document.querySelectorAll('[onclick*="downloadAllChanges"]');
+  console.log("📊 Download Excel buttons found in DOM:", allButtons.length);
+
+  allButtons.forEach((btn, i) => {
+    const isVisible = btn.offsetHeight > 0 && btn.offsetWidth > 0;
+    const text = btn.textContent.trim().substring(0, 30);
+    const style = window.getComputedStyle(btn);
+    console.log(`  Button ${i+1}: "${text}" | visible: ${isVisible} | display: ${style.display} | visibility: ${style.visibility}`);
+  });
+
+  // Check for batch buttons too
+  const batchButtons = document.querySelectorAll('[onclick*="downloadBatchExcel"]');
+  console.log("📥 Per-batch Excel buttons found in DOM:", batchButtons.length);
+
+  // Check if functions are callable
+  if (typeof downloadAllChanges === 'function') {
+    console.log("✅ downloadAllChanges is callable");
+  } else {
+    console.error("❌ downloadAllChanges is NOT a function!");
+  }
+
+  if (typeof downloadBatchExcel === 'function') {
+    console.log("✅ downloadBatchExcel is callable");
+  } else {
+    console.error("❌ downloadBatchExcel is NOT a function!");
+  }
+})();
+</script>
+
+{# ── Changes Detail Modal ──────────────────────────────────────────────── #}
+<div id="changes-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9998;align-items:center;justify-content:center;padding:20px">
+  <div style="background:white;border-radius:12px;max-width:800px;width:100%;max-height:80vh;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:20px;border-bottom:1px solid #e5e7eb">
+      <h2 style="margin:0;color:#1f2937">📊 Cambios Totales - Detalles</h2>
+      <button onclick="closeChangesModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px">
+      <div id="changes-content" style="min-height:200px"></div>
+    </div>
+  </div>
+</div>
+
+{# ── Glossary Info Modal ───────────────────────────────────────────────── #}
+<div id="glossary-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:12px;padding:40px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideUp 0.3s ease">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;color:#1f2937">📖 Estado del Glosario</h2>
+      <button onclick="closeGlossaryModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280">✕</button>
+    </div>
+
+    <div style="background:#f3f4f6;border-radius:8px;padding:16px;margin-bottom:20px">
+      <div style="margin-bottom:12px">
+        <span style="color:#6b7280;font-size:14px">Resumen generado con</span>
+        <div style="margin-top:4px">
+          <strong style="font-size:16px;color:#1f2937">Glosario v<span id="modal-summary-version">—</span></strong>
+        </div>
+      </div>
+      <div style="border-top:1px solid #e5e7eb;padding-top:12px;margin-top:12px">
+        <span style="color:#6b7280;font-size:14px">Fecha de generación</span>
+        <div style="margin-top:4px">
+          <span id="modal-generation-date" style="font-size:14px;color:#374151">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px;border-radius:4px;margin-bottom:20px">
+      <div style="color:#166534;font-size:14px">
+        <strong>Versión actual del glosario:</strong>
+        <span id="modal-current-version" style="font-weight:bold">—</span>
+      </div>
+    </div>
+
+    <div id="outdated-warning" style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px;border-radius:4px;margin-bottom:20px;display:none">
+      <div style="color:#991b1b;font-size:14px">
+        <strong>⚠️ Versión antigua</strong><br>
+        <span style="font-size:13px">Hay una versión más nueva del glosario disponible. Puedes regenerar el resumen para obtener mejoras.</span>
+      </div>
+    </div>
+
+    <div id="updated-info" style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px;border-radius:4px;margin-bottom:20px;display:none">
+      <div style="color:#166534;font-size:14px">
+        <strong>✓ Actualizado</strong><br>
+        <span style="font-size:13px">Este resumen ya utiliza la versión más reciente del glosario.</span>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;justify-content:flex-end">
+      <button onclick="closeGlossaryModal()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:white;color:#374151;font-weight:500;cursor:pointer;transition:all 0.2s">
+        Cerrar
+      </button>
+      <button id="modal-regenerate-btn" onclick="regenerateFromModal()" style="padding:10px 20px;border:none;border-radius:6px;background:#3b82f6;color:white;font-weight:500;cursor:pointer;transition:all 0.2s" disabled>
+        ↻ Regenerar con v<span id="modal-new-version">—</span>
+      </button>
+    </div>
+    <div id="modal-status" style="margin-top:12px;text-align:center;font-size:13px;color:#6b7280"></div>
+  </div>
+</div>
+
+<style>
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.btn-glossary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+  white-space: nowrap;
+}
+
+.btn-glossary:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transform: translateY(-1px);
+}
+
+.btn-glossary-updated {
+  color: #166534;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.btn-glossary-updated:hover {
+  background: #dcfce7;
+  border-color: #6ee7b7;
+}
+
+.btn-glossary-outdated {
+  color: #92400e;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.btn-glossary-outdated:hover {
+  background: #fef3c7;
+  border-color: #fbbf24;
+}
+
+#glossary-modal[style*="display: flex"] {
+  display: flex !important;
+}
+
+#glossary-modal[style*="display: none"] {
+  display: none !important;
+}
+</style>
+
+<script>
+let currentGlossaryArticleId = null;
+window.glossaryCurrentVersion = null;
+
+function showGlossaryModal(articleId) {
+  const article = previewArticles.find(a => a.id === articleId);
+  if (!article || !article.ai_summary_glossary_version) return;
+
+  currentGlossaryArticleId = articleId;
+  const modal = document.getElementById('glossary-modal');
+  const currentVer = window.glossaryCurrentVersion;
+  const summaryVer = article.ai_summary_glossary_version;
+  const isUpdated = summaryVer === currentVer;
+
+  document.getElementById('modal-summary-version').textContent = summaryVer;
+  document.getElementById('modal-current-version').textContent = currentVer || '—';
+  document.getElementById('modal-generation-date').textContent = article.ai_summary_updated_at || '—';
+  document.getElementById('modal-new-version').textContent = currentVer || '—';
+
+  document.getElementById('outdated-warning').style.display = isUpdated ? 'none' : 'block';
+  document.getElementById('updated-info').style.display = isUpdated ? 'block' : 'none';
+
+  const regenerateBtn = document.getElementById('modal-regenerate-btn');
+  regenerateBtn.disabled = isUpdated || !currentVer;
+  regenerateBtn.style.opacity = regenerateBtn.disabled ? '0.5' : '1';
+
+  document.getElementById('modal-status').textContent = '';
+  modal.style.display = 'flex';
+}
+
+function closeGlossaryModal() {
+  document.getElementById('glossary-modal').style.display = 'none';
+  currentGlossaryArticleId = null;
+}
+
+async function regenerateFromModal() {
+  if (!currentGlossaryArticleId) return;
+
+  const btn = document.getElementById('modal-regenerate-btn');
+  const status = document.getElementById('modal-status');
+
+  btn.disabled = true;
+  status.textContent = '⏳ Regenerando...';
+
+  try {
+    const response = await fetch(`/prionvault/api/glossary/regenerate-summary/${currentGlossaryArticleId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    status.textContent = '✅ ¡Regenerado exitosamente!';
+    setTimeout(() => {
+      closeGlossaryModal();
+      if (improveMode === 'outdated') {
+        loadOutdated();
+      } else {
+        loadAllArticles();
+      }
+    }, 1000);
+
+  } catch (e) {
+    status.textContent = '❌ Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+window.closeGlossaryModal = closeGlossaryModal;
+</script>
+
+{% endblock %}
