@@ -182,39 +182,6 @@ class BackupManager:
             with gzip.open(path, "rb") as gz:
                 content = gz.read().decode("utf-8")
 
-            # Split by table markers
-            tables_raw = re.split(r"^-- TABLE: (\w+)$", content, flags=re.MULTILINE)
-
-            # Parse every table's CSV content up front (skipping empty
-            # tables) so we know the full set before truncating or
-            # inserting anything — needed to compute a safe, FK-aware
-            # restore order below.
-            parsed = {}
-            for i in range(1, len(tables_raw), 2):
-                if i + 1 >= len(tables_raw):
-                    break
-                table_name = tables_raw[i].strip()
-                csv_content = tables_raw[i + 1].strip()
-                if not csv_content:
-                    continue
-                # Parse CSV directly from the text so the csv module can
-                # correctly handle quoted fields containing embedded
-                # newlines (e.g. multi-line AI summaries) — splitting on
-                # '\n' first would break those rows apart.
-                csv_reader = csv.reader(io.StringIO(csv_content))
-                try:
-                    header = next(csv_reader)
-                except StopIteration:
-                    continue
-                data_rows = list(csv_reader)
-                if not header or not data_rows:
-                    logger.info("Table %s is empty, skipping", table_name)
-                    continue
-                parsed[table_name] = (header, data_rows)
-
-            if not parsed:
-                return {"success": False, "error": "No non-empty tables found in backup"}
-
             # Connect directly with psycopg2 (not through SQLAlchemy)
             try:
                 import psycopg2
@@ -224,30 +191,90 @@ class BackupManager:
             psycopg2_conn = psycopg2.connect(db.database_url)
             cell_warnings = []
             try:
+                # Look up real table names up front so a "-- TABLE: name"
+                # marker line is only ever recognized as a genuine table
+                # boundary when `name` is an actual table.
                 with psycopg2_conn.cursor() as cursor:
-                    # The backup may contain tables that no longer exist in
-                    # the current schema (renamed/dropped by a later
-                    # migration) — skip those rather than fail the whole
-                    # restore on a missing relation.
                     cursor.execute(
                         "SELECT table_name FROM information_schema.tables "
                         "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
                     )
-                    existing_tables = {r[0] for r in cursor.fetchall()}
-                    missing_tables = [t for t in parsed if t not in existing_tables]
-                    for t in missing_tables:
-                        logger.warning(
-                            "Skipping table %s from backup: no longer exists in current schema", t
-                        )
-                        del parsed[t]
-                    if not parsed:
-                        return {"success": False,
-                                "error": "No backup tables match the current schema"}
+                    real_tables = {r[0] for r in cursor.fetchall()}
 
-                    # Determine a foreign-key-safe restore order: parent
-                    # tables (FK targets) before the child tables that
-                    # reference them, among just the tables present in
-                    # this backup.
+                if not real_tables:
+                    return {"success": False, "error": "Could not introspect current schema tables"}
+
+                # Parse the ENTIRE backup with a single csv.reader pass
+                # instead of regex-splitting the raw text on "-- TABLE:"
+                # marker lines. This matters because tables with large
+                # free-text columns (e.g. AI-generated article summaries)
+                # can contain a line that looks exactly like a marker —
+                # a plain text/regex split would cut that table's data in
+                # half and misattribute the rest, silently discarding real
+                # rows (this is what emptied the `articles` table in a
+                # previous run). Feeding the whole file through csv.reader
+                # instead means quote state is tracked character-by-
+                # character across the entire stream: a marker-like line
+                # that occurs *inside* an open quoted field is correctly
+                # treated as part of that field's text, never as a
+                # standalone row, so it can never be mistaken for a real
+                # boundary.
+                marker_re = re.compile(r"^-- TABLE: (.+)$")
+                parsed = {}
+                current_table = None
+                current_header = None
+                current_rows = []
+
+                def _flush_current():
+                    if current_table and current_header and current_rows:
+                        parsed[current_table] = (current_header, list(current_rows))
+
+                for row in csv.reader(io.StringIO(content)):
+                    if len(row) == 1:
+                        m = marker_re.match(row[0])
+                        if m:
+                            # Any marker-shaped row ends the previous
+                            # table's block, whether or not its name is a
+                            # table we currently recognize — an
+                            # unrecognized name (e.g. one renamed/dropped
+                            # by a later migration) must NOT fall through
+                            # and have its rows misattributed as extra
+                            # data for whatever table came before it.
+                            _flush_current()
+                            name = m.group(1)
+                            if name in real_tables:
+                                current_table = name
+                            else:
+                                logger.info(
+                                    "Table %s from backup no longer exists "
+                                    "in current schema, skipping", name
+                                )
+                                current_table = None
+                            current_header = None
+                            current_rows = []
+                            continue
+                    if current_table is None:
+                        continue
+                    if not row or (len(row) == 1 and row[0] == ''):
+                        continue  # blank separator line between table blocks
+                    if current_header is None:
+                        current_header = row
+                    else:
+                        current_rows.append(row)
+                _flush_current()
+
+                for table_name in real_tables:
+                    if table_name not in parsed:
+                        logger.info("Table %s is empty or absent, skipping", table_name)
+
+                if not parsed:
+                    return {"success": False, "error": "No non-empty tables found in backup"}
+
+                with psycopg2_conn.cursor() as cursor:
+                    # Fetch FK relationships across the WHOLE schema (not
+                    # just backup tables) — needed both to order the
+                    # restore and to check what TRUNCATE CASCADE would
+                    # actually reach.
                     cursor.execute(
                         "SELECT tc.table_name AS child, ccu.table_name AS parent "
                         "FROM information_schema.table_constraints tc "
@@ -256,9 +283,43 @@ class BackupManager:
                         " AND tc.table_schema = ccu.table_schema "
                         "WHERE tc.constraint_type = 'FOREIGN KEY'"
                     )
-                    edges = [(child, parent) for child, parent in cursor.fetchall()
-                             if child in parsed and parent in parsed and child != parent]
-                    order = _topological_table_order(list(parsed.keys()), edges)
+                    all_edges = [(c, p) for c, p in cursor.fetchall() if c != p]
+
+                    # Determine a foreign-key-safe restore order: parent
+                    # tables (FK targets) before the child tables that
+                    # reference them, among just the tables present in
+                    # this backup.
+                    backup_edges = [(c, p) for c, p in all_edges if c in parsed and p in parsed]
+                    order = _topological_table_order(list(parsed.keys()), backup_edges)
+
+                    # Safety check: TRUNCATE ... CASCADE also empties any
+                    # table that (transitively) references one of the
+                    # tables we're about to truncate — even tables that
+                    # aren't part of this backup. Refuse to proceed if
+                    # that would happen, rather than silently wiping data
+                    # we have no way to reload (this is exactly how the
+                    # `articles` table was emptied in a previous run).
+                    children_of = {}
+                    for child, parent in all_edges:
+                        children_of.setdefault(parent, set()).add(child)
+                    closure = set(order)
+                    frontier = list(order)
+                    while frontier:
+                        t = frontier.pop()
+                        for c in children_of.get(t, ()):
+                            if c not in closure:
+                                closure.add(c)
+                                frontier.append(c)
+                    unreloadable = sorted(closure - set(parsed.keys()))
+                    if unreloadable:
+                        return {
+                            "success": False,
+                            "error": (
+                                "Refusing to restore: TRUNCATE CASCADE would also "
+                                f"empty {unreloadable}, which have no data in this "
+                                "backup to reload afterward."
+                            ),
+                        }
 
                     # Truncate every table in ONE statement so a later
                     # table's CASCADE can't wipe out rows already loaded
