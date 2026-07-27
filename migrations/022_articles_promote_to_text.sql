@@ -20,9 +20,34 @@
 
 BEGIN;
 
+-- Drop trigger that references these columns (cannot change column type while trigger is active)
+DROP TRIGGER IF EXISTS articles_search_vector_trg ON articles;
+
+-- Promote columns to TEXT
 ALTER TABLE articles ALTER COLUMN title         TYPE TEXT;
 ALTER TABLE articles ALTER COLUMN journal       TYPE TEXT;
 ALTER TABLE articles ALTER COLUMN doi           TYPE TEXT;
 ALTER TABLE articles ALTER COLUMN dropbox_path  TYPE TEXT;
+
+-- Recreate the trigger
+CREATE OR REPLACE FUNCTION articles_search_vector_update() RETURNS trigger AS $$
+BEGIN
+  NEW.search_vector :=
+    setweight(to_tsvector('simple', coalesce(NEW.title, '')), 'A') ||
+    setweight(to_tsvector('simple', coalesce(NEW.abstract, '')), 'B') ||
+    setweight(to_tsvector('simple', coalesce(NEW.summary_ai, '')), 'B') ||
+    setweight(to_tsvector('simple', coalesce(NEW.summary_human, '')), 'B') ||
+    setweight(to_tsvector('simple', coalesce(NEW.authors, '')), 'B') ||
+    setweight(to_tsvector('simple', coalesce(NEW.journal, '')), 'C') ||
+    setweight(to_tsvector('simple', coalesce(NEW.extracted_text, '')), 'D');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER articles_search_vector_trg
+  BEFORE INSERT OR UPDATE OF title, abstract, summary_ai, summary_human,
+                              authors, journal, extracted_text
+  ON articles
+  FOR EACH ROW EXECUTE FUNCTION articles_search_vector_update();
 
 COMMIT;

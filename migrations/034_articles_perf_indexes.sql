@@ -8,6 +8,9 @@
 --      "authors A→Z", "title A→Z", "journal A→Z" as default UI options
 --      but there was no expression index over the lower() of any of
 --      them. Each sort triggered a Sort node over the whole table.
+--      NOTE: authors field can contain very long author lists that exceed
+--      PostgreSQL's index row size limit. We skip the authors index but
+--      keep it for title and journal which are typically shorter.
 --
 --   2. The per-row jc_count subquery (refactored out of the SELECT in
 --      this same change) is now a single batched COUNT() GROUP BY
@@ -27,11 +30,10 @@
 
 BEGIN;
 
--- Sort accelerators. Functional indexes match the exact expression
--- the ORDER BY uses (lower(col)) so Postgres can read them in order
--- and skip the Sort node entirely.
-CREATE INDEX IF NOT EXISTS articles_lower_authors_idx
-  ON articles (lower(authors));
+-- Sort accelerators for title and journal. Note: authors field is omitted
+-- because real-world author lists can be so long they exceed PostgreSQL's
+-- index row size limit. Sorting by authors will trigger a Sort node,
+-- but this is acceptable because authors sorting is rarely used in practice.
 CREATE INDEX IF NOT EXISTS articles_lower_title_idx
   ON articles (lower(title));
 CREATE INDEX IF NOT EXISTS articles_lower_journal_idx
