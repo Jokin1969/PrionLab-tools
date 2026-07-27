@@ -178,6 +178,15 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("DB init failed: %s", e)
 
+    # Run PostgreSQL migrations automatically on startup
+    try:
+        from database.config import db
+        if db.is_configured():
+            db.run_migrations()
+            app.logger.info("Database migrations completed")
+    except Exception as e:
+        app.logger.warning("Database migrations failed: %s", e)
+
     # Pull CSVs from Dropbox, bootstrap admin user, ensure CSV schemas exist
     initial_sync()
     bootstrap_admin_user()
