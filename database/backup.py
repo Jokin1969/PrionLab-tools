@@ -208,11 +208,11 @@ class BackupManager:
                         cols = ",".join(header)
                         insert_sql = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
 
-                        # Insert all rows
+                        # Insert all rows using raw driver SQL (supports list parameters)
                         for row in data_rows:
                             # Handle NULLs: empty strings become None
                             values = [None if v == '' else v for v in row]
-                            conn.execute(_text(insert_sql), values)
+                            conn.exec_driver_sql(insert_sql, values)
 
                         rows_restored += len(data_rows)
                         tables_restored += 1
