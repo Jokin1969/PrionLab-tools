@@ -64,7 +64,8 @@ Do EXACTLY this:
 
 Be concise. For biomedical terms, preserve the meaning precisely."""
                 }
-            ]
+            ],
+            cache_control={"type": "ephemeral"},
         )
 
         result = response.content[0].text.strip()

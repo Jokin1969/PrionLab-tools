@@ -303,6 +303,7 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
             model=model, max_tokens=anthropic_max_out,
             system=system,
             messages=[{"role": "user", "content": user}],
+            cache_control={"type": "ephemeral"},
         )
         text = "".join(b.text for b in msg.content
                        if getattr(b, "type", None) == "text").strip()

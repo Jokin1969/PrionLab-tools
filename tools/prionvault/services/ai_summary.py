@@ -337,6 +337,7 @@ def _call_anthropic(api_key: str, user_prompt: str, extracted_text,
         max_tokens=max_tokens,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
+        cache_control={"type": "ephemeral"},
     )
     elapsed_ms = int((time.monotonic() - start) * 1000)
 

@@ -168,6 +168,7 @@ Return the text with only those replacements made:"""
             model="claude-haiku-4-5-20251001",
             max_tokens=4000,
             messages=[{"role": "user", "content": prompt}],
+            cache_control={"type": "ephemeral"},
         )
 
         improved_summary = response.content[0].text.strip()
