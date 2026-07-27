@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -27,6 +28,15 @@ from typing import Optional
 import config
 
 logger = logging.getLogger(__name__)
+
+# The csv module's default per-field size cap (128 KiB) is too small for
+# long article fields (e.g. extraction_text, summary_ai) — raise it so
+# CSV export/restore doesn't choke on a single oversized cell. sys.maxsize
+# can overflow the platform C long on some systems; fall back if so.
+try:
+    csv.field_size_limit(sys.maxsize)
+except OverflowError:
+    csv.field_size_limit(2**31 - 1)
 
 BACKUP_DIR = Path(config.DATA_DIR) / "backups"
 
