@@ -311,6 +311,76 @@ def delete_backup(filename):
     return redirect(url_for("admin.database_dashboard"))
 
 
+@admin_bp.route("/database/backups/restore", methods=["POST"])
+@admin_required
+def restore_backup_from_dropbox():
+    """Restore database from a Dropbox backup.
+
+    Requires POST with JSON: {"filename": "pgdump_YYYYMMDD_HHMMSS.sql.gz"}
+    """
+    import re
+    import logging
+    from pathlib import Path
+    from database.backup import BackupManager, BACKUP_DIR
+
+    logger = logging.getLogger(__name__)
+
+    filename = request.get_json(silent=True, force=True).get('filename', '').strip()
+    if not filename or not re.match(r"^pgdump_\d{8}_\d{6}\.sql\.gz$", filename):
+        flash(_("Invalid backup filename."), "danger")
+        return redirect(url_for("admin.database_dashboard"))
+
+    bm = BackupManager()
+    try:
+        # Get Dropbox backups
+        dropbox_backups = bm.list_dropbox_backups()
+        backup_in_dropbox = any(b['filename'] == filename for b in dropbox_backups)
+
+        if not backup_in_dropbox:
+            flash(_("Backup not found in Dropbox."), "warning")
+            return redirect(url_for("admin.database_dashboard"))
+
+        # Download from Dropbox
+        from core.dropbox_client import get_client
+        client = get_client()
+        if not client:
+            flash(_("Dropbox not configured."), "danger")
+            return redirect(url_for("admin.database_dashboard"))
+
+        backup_path = BACKUP_DIR / filename
+        try:
+            backup_dropbox = next(
+                b for b in dropbox_backups if b['filename'] == filename
+            )
+            logger.info("Downloading backup from Dropbox: %s", filename)
+            metadata, response = client.files_download(backup_dropbox['path'])
+            backup_path.write_bytes(response.content)
+            logger.info("Downloaded %s (%.1f MB)", filename, backup_path.stat().st_size / (1024*1024))
+        except Exception as e:
+            logger.error("Failed to download backup from Dropbox: %s", e)
+            flash(_("Failed to download backup from Dropbox: %(error)s", error=str(e)[:100]), "danger")
+            return redirect(url_for("admin.database_dashboard"))
+
+        # Restore database
+        logger.warning("Restoring database from backup: %s", filename)
+        result = bm.restore_from_backup(str(backup_path))
+
+        if result.get('success'):
+            logger.info("Database restored successfully from %s", filename)
+            flash(_("✅ Database restored from %(backup)s. Data before this backup point is lost.",
+                    backup=filename), "success")
+        else:
+            logger.error("Database restore failed: %s", result.get('error'))
+            flash(_("Restore failed: %(error)s",
+                    error=result.get('error', 'Unknown error')[:200]), "danger")
+
+        return redirect(url_for("admin.database_dashboard"))
+    except Exception as exc:
+        logger.exception("Restore endpoint error")
+        flash(_("Unexpected error: %(error)s", error=str(exc)[:100]), "danger")
+        return redirect(url_for("admin.database_dashboard"))
+
+
 @admin_bp.route("/apis")
 @admin_required
 def api_dashboard():
