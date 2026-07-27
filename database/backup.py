@@ -151,7 +151,8 @@ class BackupManager:
             logger.error("Restore failed: %s", e)
             return {"success": False, "error": str(e)}
 
-    def restore_from_csv_export(self, backup_path: str) -> dict:
+    def restore_from_csv_export(self, backup_path: str, only_tables: Optional[set] = None,
+                                 acknowledge_data_loss: Optional[set] = None) -> dict:
         """Restore from a CSV export .gz backup.
 
         CSV exports are structured as:
@@ -164,6 +165,22 @@ class BackupManager:
           ...
 
         Uses PostgreSQL COPY for robust, fast bulk restoration.
+
+        `only_tables`, if given, restricts the restore to that subset of
+        table names — every other table in the backup is ignored
+        entirely (not truncated, not touched). Use this for a surgical
+        recovery of specific tables rather than rolling the whole
+        database back to the backup's point in time, which would also
+        overwrite any table's *current* data with no relation to the
+        problem being fixed (e.g. user sessions/preferences, labs,
+        publications) with day(s)-old data, silently destroying
+        everything users did since the backup was taken.
+
+        `acknowledge_data_loss`, if given, is a set of table names the
+        caller explicitly accepts losing via TRUNCATE CASCADE even
+        though they have no data queued to reload afterward (e.g.
+        regenerable embeddings tables deliberately excluded from the
+        export). Without this, any such table blocks the whole restore.
         """
         from database.config import db
         if not db.is_configured():
@@ -267,6 +284,15 @@ class BackupManager:
                     if table_name not in parsed:
                         logger.info("Table %s is empty or absent, skipping", table_name)
 
+                if only_tables is not None:
+                    requested_missing = sorted(set(only_tables) - set(parsed.keys()))
+                    if requested_missing:
+                        logger.warning(
+                            "Requested tables not found (or empty) in backup: %s",
+                            requested_missing,
+                        )
+                    parsed = {t: v for t, v in parsed.items() if t in only_tables}
+
                 if not parsed:
                     return {"success": False, "error": "No non-empty tables found in backup"}
 
@@ -310,13 +336,21 @@ class BackupManager:
                             if c not in closure:
                                 closure.add(c)
                                 frontier.append(c)
-                    unreloadable = sorted(closure - set(parsed.keys()))
-                    if unreloadable:
+                    unreloadable = closure - set(parsed.keys())
+                    acknowledged = unreloadable & (acknowledge_data_loss or set())
+                    blocking = sorted(unreloadable - acknowledged)
+                    if acknowledged:
+                        logger.warning(
+                            "Restore will empty %s via CASCADE with no data to "
+                            "reload — explicitly acknowledged, proceeding",
+                            sorted(acknowledged),
+                        )
+                    if blocking:
                         return {
                             "success": False,
                             "error": (
                                 "Refusing to restore: TRUNCATE CASCADE would also "
-                                f"empty {unreloadable}, which have no data in this "
+                                f"empty {blocking}, which have no data in this "
                                 "backup to reload afterward."
                             ),
                         }

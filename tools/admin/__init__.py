@@ -545,6 +545,10 @@ def api_db_restore_backup():
         filename = data.get("filename", "").strip()
         if not filename:
             return jsonify({"success": False, "error": "filename is required"}), 400
+        tables = data.get("tables")
+        only_tables = set(tables) if tables else None
+        acknowledge = data.get("acknowledge_data_loss")
+        acknowledge_data_loss = set(acknowledge) if acknowledge else None
 
         bm = BackupManager()
         local_backups = [b["filename"] for b in bm.list_backups()]
@@ -558,7 +562,10 @@ def api_db_restore_backup():
         if filename.startswith("pgdump_"):
             result = bm.restore_from_backup(backup_path)
         elif filename.startswith("csv_export_"):
-            result = bm.restore_from_csv_export(backup_path)
+            result = bm.restore_from_csv_export(
+                backup_path, only_tables=only_tables,
+                acknowledge_data_loss=acknowledge_data_loss,
+            )
         else:
             return jsonify({"success": False, "error": "Unknown backup type"}), 400
 
@@ -571,10 +578,25 @@ def api_db_restore_backup():
 @admin_bp.route("/api/db/emergency-restore", methods=["POST"])
 @admin_required
 def api_db_emergency_restore():
-    """Emergency restore from the most recent CSV export backup in Dropbox."""
+    """Emergency restore from the most recent CSV export backup in Dropbox.
+
+    Accepts an optional JSON body {"tables": [...]} to restrict the
+    restore to a specific subset of tables, leaving everything else in
+    the current database untouched. Strongly recommended: restoring the
+    full backup rolls every table back to the backup's point in time,
+    which would silently overwrite unrelated tables' *current* data
+    (e.g. user sessions, preferences, labs, publications) with day(s)-old
+    data — destroying anything users did since the backup was taken.
+    """
     from flask import jsonify
     from database.backup import BackupManager
     try:
+        data = request.get_json(silent=True) or {}
+        tables = data.get("tables")
+        only_tables = set(tables) if tables else None
+        acknowledge = data.get("acknowledge_data_loss")
+        acknowledge_data_loss = set(acknowledge) if acknowledge else None
+
         bm = BackupManager()
 
         # Get CSV backups from Dropbox
@@ -607,8 +629,11 @@ def api_db_emergency_restore():
             return jsonify({"success": False, "error": f"Dropbox download failed: {str(e)[:200]}"}), 500
 
         # Restore from the downloaded backup
-        logger.warning("Starting emergency restore...")
-        result = bm.restore_from_csv_export(str(backup_path))
+        logger.warning("Starting emergency restore... (tables=%s)", sorted(only_tables) if only_tables else "ALL")
+        result = bm.restore_from_csv_export(
+            str(backup_path), only_tables=only_tables,
+            acknowledge_data_loss=acknowledge_data_loss,
+        )
 
         if result.get("success"):
             logger.info("Emergency restore successful: %d tables, %d rows",
