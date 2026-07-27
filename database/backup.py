@@ -139,6 +139,101 @@ class BackupManager:
             logger.error("Restore failed: %s", e)
             return {"success": False, "error": str(e)}
 
+    def restore_from_csv_export(self, backup_path: str) -> dict:
+        """Restore from a CSV export .gz backup.
+
+        CSV exports are structured as:
+          -- TABLE: table_name
+          col1,col2,col3
+          val1,val2,val3
+          ...
+
+          -- TABLE: another_table
+          ...
+        """
+        from database.config import db
+        if not db.is_configured():
+            return {"success": False, "error": "Database not configured"}
+        path = Path(backup_path)
+        if not path.exists():
+            return {"success": False, "error": f"Backup file not found: {backup_path}"}
+        if not path.name.startswith("csv_export_"):
+            return {"success": False, "error": "Only csv_export backups can be restored here"}
+
+        try:
+            logger.warning("Starting CSV restore from %s", path.name)
+            tables_restored = 0
+            rows_restored = 0
+
+            with gzip.open(path, "rb") as gz:
+                content = gz.read().decode("utf-8")
+
+            # Split by table markers
+            import re
+            tables = re.split(r"^-- TABLE: (\w+)$", content, flags=re.MULTILINE)
+
+            # Process pairs of (table_name, csv_content)
+            for i in range(1, len(tables), 2):
+                if i + 1 >= len(tables):
+                    break
+                table_name = tables[i].strip()
+                csv_content = tables[i + 1].strip()
+                if not csv_content:
+                    continue
+
+                lines = csv_content.split('\n')
+                if len(lines) < 2:
+                    continue
+
+                # Parse CSV: first line is header, rest are data
+                csv_reader = csv.reader(lines)
+                header = next(csv_reader)
+                data_rows = list(csv_reader)
+
+                if not header or not data_rows:
+                    logger.info("Table %s is empty, skipping", table_name)
+                    continue
+
+                logger.info("Restoring table %s (%d rows)", table_name, len(data_rows))
+
+                # Restore this table
+                with db.engine.begin() as conn:
+                    from sqlalchemy import text as _text
+                    try:
+                        # Truncate table
+                        conn.execute(_text(f"TRUNCATE TABLE {table_name} CASCADE"))
+
+                        # Build INSERT statement
+                        placeholders = ",".join(["%s"] * len(header))
+                        cols = ",".join(header)
+                        insert_sql = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
+
+                        # Insert all rows
+                        for row in data_rows:
+                            # Handle NULLs: empty strings become None
+                            values = [None if v == '' else v for v in row]
+                            conn.execute(_text(insert_sql), values)
+
+                        rows_restored += len(data_rows)
+                        tables_restored += 1
+                    except Exception as e:
+                        logger.error("Failed to restore table %s: %s", table_name, e)
+                        raise
+
+            logger.info(
+                "CSV restore completed: %d tables, %d rows",
+                tables_restored, rows_restored
+            )
+            return {
+                "success": True,
+                "backup": path.name,
+                "tables_restored": tables_restored,
+                "rows_restored": rows_restored,
+            }
+        except Exception as e:
+            logger.error("CSV restore failed: %s", e)
+            return {"success": False, "error": str(e)[:500]}
+
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _pg_dump_backup(self, url: str, ts: str) -> dict:

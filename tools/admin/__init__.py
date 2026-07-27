@@ -314,9 +314,9 @@ def delete_backup(filename):
 @admin_bp.route("/database/backups/restore", methods=["POST"])
 @admin_required
 def restore_backup_from_dropbox():
-    """Restore database from a Dropbox backup.
+    """Restore database from a Dropbox backup (pg_dump or CSV export).
 
-    Requires POST with JSON: {"filename": "pgdump_YYYYMMDD_HHMMSS.sql.gz"}
+    Requires POST with JSON: {"filename": "pgdump_YYYYMMDD_HHMMSS.sql.gz" or "csv_export_YYYYMMDD_HHMMSS.gz"}
     """
     import re
     import logging
@@ -326,7 +326,12 @@ def restore_backup_from_dropbox():
     logger = logging.getLogger(__name__)
 
     filename = request.get_json(silent=True, force=True).get('filename', '').strip()
-    if not filename or not re.match(r"^pgdump_\d{8}_\d{6}\.sql\.gz$", filename):
+
+    # Validate filename format (pgdump or csv_export)
+    is_pgdump = re.match(r"^pgdump_\d{8}_\d{6}\.sql\.gz$", filename)
+    is_csv = re.match(r"^csv_export_\d{8}_\d{6}\.gz$", filename)
+
+    if not filename or not (is_pgdump or is_csv):
         flash(_("Invalid backup filename."), "danger")
         return redirect(url_for("admin.database_dashboard"))
 
@@ -361,14 +366,22 @@ def restore_backup_from_dropbox():
             flash(_("Failed to download backup from Dropbox: %(error)s", error=str(e)[:100]), "danger")
             return redirect(url_for("admin.database_dashboard"))
 
-        # Restore database
-        logger.warning("Restoring database from backup: %s", filename)
-        result = bm.restore_from_backup(str(backup_path))
+        # Restore database (choose method based on backup type)
+        logger.warning("Restoring database from backup: %s (type: %s)",
+                      filename, "pg_dump" if is_pgdump else "CSV export")
+
+        if is_pgdump:
+            result = bm.restore_from_backup(str(backup_path))
+        else:  # is_csv
+            result = bm.restore_from_csv_export(str(backup_path))
 
         if result.get('success'):
+            detail = ""
+            if is_csv and result.get('tables_restored'):
+                detail = f" ({result['tables_restored']} tables, {result['rows_restored']} rows)"
             logger.info("Database restored successfully from %s", filename)
-            flash(_("✅ Database restored from %(backup)s. Data before this backup point is lost.",
-                    backup=filename), "success")
+            flash(_("✅ Database restored from %(backup)s%(detail)s. Data before this backup is lost.",
+                    backup=filename, detail=detail), "success")
         else:
             logger.error("Database restore failed: %s", result.get('error'))
             flash(_("Restore failed: %(error)s",
