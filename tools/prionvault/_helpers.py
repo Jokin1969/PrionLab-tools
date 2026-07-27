@@ -21,30 +21,58 @@ _pv_columns_cache: Optional[Set[str]] = None
 _pv_columns_cache_time: float = 0.0
 _PV_COLUMNS_TTL_S = 120.0
 
+# Fallback set of columns we know exist, used if introspection fails.
+# Updated whenever migrations add new columns; prevents dashboard breakage
+# if the information_schema query temporarily fails.
+_PV_COLUMNS_FALLBACK = {
+    "id", "title", "authors", "year", "journal", "doi", "pubmed_id",
+    "abstract", "abstract_unavailable",
+    "dropbox_path", "pdf_is_scan", "pdf_searchable", "pdf_ocr_unavailable",
+    "pdf_pages", "pdf_metadata_match_status", "pdf_metadata_match_score",
+    "pdf_metadata_match_checked_at", "pdf_metadata_match_detail",
+    "extraction_status", "extraction_text", "extraction_error",
+    "index_vector", "index_version", "index_checked_at",
+    "summary_ai", "summary_ai_provider", "summary_tokens_in", "summary_tokens_out",
+    "summary_human", "summary_ai_notes",
+    "source", "created_at", "updated_at", "is_jc",
+}
+
 
 def _get_pv_columns(s: SASession) -> Set[str]:
     """Return the set of column names that currently exist in `articles`.
 
     TTL-cached so newly added columns (from migrations applied after process
     start) are picked up within _PV_COLUMNS_TTL_S seconds without a restart.
-    Fixes cache corruption when introspection query fails.
+
+    Design:
+    - On success: cache the result and use it.
+    - On failure (network issue, BD down, etc): use fallback set but DON'T
+      cache it, so the next request tries the query again. This prevents
+      cache corruption from temporary DB outages.
     """
     global _pv_columns_cache, _pv_columns_cache_time
+    now = _time.monotonic()
     if (_pv_columns_cache is not None
-            and (_time.monotonic() - _pv_columns_cache_time) < _PV_COLUMNS_TTL_S):
+            and (now - _pv_columns_cache_time) < _PV_COLUMNS_TTL_S):
         return _pv_columns_cache
     try:
         rows = s.execute(sql_text(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'articles'"
-        )).all()
-        _pv_columns_cache = {r[0] for r in rows}
-        _pv_columns_cache_time = _time.monotonic()
+            "WHERE table_name = 'articles' LIMIT 1000"
+        ), execution_options={"timeout": 5}).all()
+        if rows:
+            _pv_columns_cache = {r[0] for r in rows}
+            _pv_columns_cache_time = now
+            logger.debug("Introspected %d columns from articles table", len(_pv_columns_cache))
+            return _pv_columns_cache
+        else:
+            logger.error("information_schema returned empty for articles table")
+            return _PV_COLUMNS_FALLBACK
     except Exception as exc:
-        logger.warning("Could not introspect articles columns: %s", exc)
-        _pv_columns_cache = set()
-        _pv_columns_cache_time = _time.monotonic()
-    return _pv_columns_cache
+        logger.warning(
+            "Could not introspect articles columns (will retry next request): %s", exc
+        )
+        return _PV_COLUMNS_FALLBACK
 
 # Type alias for the (response, status_code) guard return type.
 _GuardResult = Optional[Tuple[Response, int]]
