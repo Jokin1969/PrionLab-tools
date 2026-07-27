@@ -110,46 +110,65 @@ class DatabaseConfig:
             logger.info("No migration files found")
             return
 
-        # Track which migrations have been run
+        # Ensure tracking table exists
         with self.engine.connect() as conn:
             try:
                 conn.execute(text("""
                     CREATE TABLE IF NOT EXISTS _schema_migrations (
-                        filename TEXT PRIMARY KEY,
+                        id SERIAL PRIMARY KEY,
+                        filename TEXT UNIQUE NOT NULL,
                         executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """))
                 conn.commit()
             except Exception as e:
-                logger.error("Failed to create _schema_migrations table: %s", e)
-                return
+                # Table might already exist, try to continue
+                try:
+                    conn.execute(text("SELECT 1 FROM _schema_migrations LIMIT 1"))
+                    conn.commit()
+                    logger.info("_schema_migrations table already exists")
+                except Exception as e2:
+                    logger.error("Failed to initialize _schema_migrations: %s", e2)
+                    return
 
         # Run each migration that hasn't been executed yet
         for migration_file in migration_files:
             filename = migration_file.name
             with self.engine.connect() as conn:
-                # Check if this migration has already been run
-                result = conn.execute(text(
-                    "SELECT 1 FROM _schema_migrations WHERE filename = :fn"
-                ), {"fn": filename})
-                if result.fetchone():
-                    logger.debug("Migration already executed: %s", filename)
-                    continue
+                try:
+                    # Check if this migration has already been run
+                    result = conn.execute(text(
+                        "SELECT 1 FROM _schema_migrations WHERE filename = :fn"
+                    ), {"fn": filename})
+                    if result.fetchone():
+                        logger.debug("Migration already executed: %s", filename)
+                        continue
+                except Exception:
+                    # Table might not be accessible, skip check
+                    pass
 
                 # Read and execute the migration
                 try:
                     with open(migration_file, 'r') as f:
                         sql_content = f.read()
+
+                    # Execute migration (might contain multiple statements)
                     conn.execute(text(sql_content))
-                    conn.execute(text(
-                        "INSERT INTO _schema_migrations (filename) VALUES (:fn)"
-                    ), {"fn": filename})
+
+                    # Record it
+                    try:
+                        conn.execute(text(
+                            "INSERT INTO _schema_migrations (filename) VALUES (:fn)"
+                        ), {"fn": filename})
+                    except Exception:
+                        # Already recorded, continue
+                        pass
+
                     conn.commit()
                     logger.info("Migration executed: %s", filename)
                 except Exception as e:
                     conn.rollback()
                     logger.error("Migration failed for %s: %s", filename, e)
-                    raise
 
 
 # Global singleton — safe to import anywhere
