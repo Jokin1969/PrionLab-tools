@@ -173,34 +173,41 @@ class BackupManager:
             # Split by table markers
             tables = re.split(r"^-- TABLE: (\w+)$", content, flags=re.MULTILINE)
 
-            # Process pairs of (table_name, csv_content)
-            for i in range(1, len(tables), 2):
-                if i + 1 >= len(tables):
-                    break
-                table_name = tables[i].strip()
-                csv_content = tables[i + 1].strip()
-                if not csv_content:
-                    continue
+            # Connect directly with psycopg2 (not through SQLAlchemy)
+            try:
+                import psycopg2
+            except ImportError:
+                return {"success": False, "error": "psycopg2 not available"}
 
-                lines = csv_content.split('\n')
-                if len(lines) < 2:
-                    continue
+            psycopg2_conn = psycopg2.connect(db.database_url)
+            try:
+                # Process pairs of (table_name, csv_content)
+                for i in range(1, len(tables), 2):
+                    if i + 1 >= len(tables):
+                        break
+                    table_name = tables[i].strip()
+                    csv_content = tables[i + 1].strip()
+                    if not csv_content:
+                        continue
 
-                # Parse CSV: first line is header, rest are data
-                csv_reader = csv.reader(lines)
-                header = next(csv_reader)
-                data_rows = list(csv_reader)
+                    lines = csv_content.split('\n')
+                    if len(lines) < 2:
+                        continue
 
-                if not header or not data_rows:
-                    logger.info("Table %s is empty, skipping", table_name)
-                    continue
+                    # Parse CSV: first line is header, rest are data
+                    csv_reader = csv.reader(lines)
+                    header = next(csv_reader)
+                    data_rows = list(csv_reader)
 
-                logger.info("Restoring table %s (%d rows)", table_name, len(data_rows))
+                    if not header or not data_rows:
+                        logger.info("Table %s is empty, skipping", table_name)
+                        continue
 
-                # Restore this table using COPY (much faster and more reliable)
-                try:
-                    with db.engine.raw_connection() as raw_conn:
-                        with raw_conn.cursor() as cursor:
+                    logger.info("Restoring table %s (%d rows)", table_name, len(data_rows))
+
+                    # Restore this table using COPY
+                    try:
+                        with psycopg2_conn.cursor() as cursor:
                             # Truncate table
                             cursor.execute(f"TRUNCATE TABLE {table_name} CASCADE")
 
@@ -223,15 +230,18 @@ class BackupManager:
                                 copy_data.write('\t'.join(escaped_row) + '\n')
                             copy_data.seek(0)
 
-                            # Execute COPY FROM STDIN
+                            # Execute COPY FROM STDIN using raw psycopg2
                             cursor.copy_expert(copy_sql, copy_data)
-                            raw_conn.commit()
 
+                        psycopg2_conn.commit()
                         rows_restored += len(data_rows)
                         tables_restored += 1
-                except Exception as e:
-                    logger.error("Failed to restore table %s: %s", table_name, e)
-                    raise
+                    except Exception as e:
+                        psycopg2_conn.rollback()
+                        logger.error("Failed to restore table %s: %s", table_name, e)
+                        raise
+            finally:
+                psycopg2_conn.close()
 
             logger.info(
                 "CSV restore completed: %d tables, %d rows",
