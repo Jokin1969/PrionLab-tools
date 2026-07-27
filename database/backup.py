@@ -225,6 +225,25 @@ class BackupManager:
             cell_warnings = []
             try:
                 with psycopg2_conn.cursor() as cursor:
+                    # The backup may contain tables that no longer exist in
+                    # the current schema (renamed/dropped by a later
+                    # migration) — skip those rather than fail the whole
+                    # restore on a missing relation.
+                    cursor.execute(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+                    )
+                    existing_tables = {r[0] for r in cursor.fetchall()}
+                    missing_tables = [t for t in parsed if t not in existing_tables]
+                    for t in missing_tables:
+                        logger.warning(
+                            "Skipping table %s from backup: no longer exists in current schema", t
+                        )
+                        del parsed[t]
+                    if not parsed:
+                        return {"success": False,
+                                "error": "No backup tables match the current schema"}
+
                     # Determine a foreign-key-safe restore order: parent
                     # tables (FK targets) before the child tables that
                     # reference them, among just the tables present in
