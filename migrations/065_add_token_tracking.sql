@@ -5,3 +5,5 @@
 -- Migration 067 correctly implements the same functionality with proper idempotency.
 -- This file is kept as a no-op for compatibility—systems that already attempted this
 -- migration need to mark it as executed without duplicating the work of 067.
+
+SELECT 1;

@@ -10,7 +10,16 @@
 
 BEGIN;
 
-ALTER TABLE prionvault_ingest_job
-  ALTER COLUMN step TYPE TEXT;
+-- Check if table exists before trying to alter it
+-- (migration 001 should create it, but this ensures idempotency)
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_name = 'prionvault_ingest_job'
+  ) THEN
+    ALTER TABLE prionvault_ingest_job
+      ALTER COLUMN step TYPE TEXT;
+  END IF;
+END $$;
 
 COMMIT;
