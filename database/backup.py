@@ -150,6 +150,8 @@ class BackupManager:
 
           -- TABLE: another_table
           ...
+
+        Uses PostgreSQL COPY for robust, fast bulk restoration.
         """
         from database.config import db
         if not db.is_configured():
@@ -169,56 +171,77 @@ class BackupManager:
                 content = gz.read().decode("utf-8")
 
             # Split by table markers
-            import re
             tables = re.split(r"^-- TABLE: (\w+)$", content, flags=re.MULTILINE)
 
-            # Process pairs of (table_name, csv_content)
-            for i in range(1, len(tables), 2):
-                if i + 1 >= len(tables):
-                    break
-                table_name = tables[i].strip()
-                csv_content = tables[i + 1].strip()
-                if not csv_content:
-                    continue
+            # Connect directly with psycopg2 (not through SQLAlchemy)
+            try:
+                import psycopg2
+            except ImportError:
+                return {"success": False, "error": "psycopg2 not available"}
 
-                lines = csv_content.split('\n')
-                if len(lines) < 2:
-                    continue
+            psycopg2_conn = psycopg2.connect(db.database_url)
+            try:
+                # Process pairs of (table_name, csv_content)
+                for i in range(1, len(tables), 2):
+                    if i + 1 >= len(tables):
+                        break
+                    table_name = tables[i].strip()
+                    csv_content = tables[i + 1].strip()
+                    if not csv_content:
+                        continue
 
-                # Parse CSV: first line is header, rest are data
-                csv_reader = csv.reader(lines)
-                header = next(csv_reader)
-                data_rows = list(csv_reader)
+                    lines = csv_content.split('\n')
+                    if len(lines) < 2:
+                        continue
 
-                if not header or not data_rows:
-                    logger.info("Table %s is empty, skipping", table_name)
-                    continue
+                    # Parse CSV: first line is header, rest are data
+                    csv_reader = csv.reader(lines)
+                    header = next(csv_reader)
+                    data_rows = list(csv_reader)
 
-                logger.info("Restoring table %s (%d rows)", table_name, len(data_rows))
+                    if not header or not data_rows:
+                        logger.info("Table %s is empty, skipping", table_name)
+                        continue
 
-                # Restore this table
-                with db.engine.begin() as conn:
-                    from sqlalchemy import text as _text
+                    logger.info("Restoring table %s (%d rows)", table_name, len(data_rows))
+
+                    # Restore this table using COPY
                     try:
-                        # Truncate table
-                        conn.execute(_text(f"TRUNCATE TABLE {table_name} CASCADE"))
+                        with psycopg2_conn.cursor() as cursor:
+                            # Truncate table
+                            cursor.execute(f"TRUNCATE TABLE {table_name} CASCADE")
 
-                        # Build INSERT statement
-                        placeholders = ",".join(["%s"] * len(header))
-                        cols = ",".join(header)
-                        insert_sql = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
+                            # Use COPY with escape format to properly handle NULLs
+                            # In escape format: \N represents NULL, \\ represents backslash
+                            cols = ",".join(header)
+                            copy_sql = f"COPY {table_name} ({cols}) FROM STDIN WITH (FORMAT text, NULL as '\\N')"
 
-                        # Insert all rows using raw driver SQL (supports list parameters)
-                        for row in data_rows:
-                            # Handle NULLs: empty strings become None
-                            values = [None if v == '' else v for v in row]
-                            conn.exec_driver_sql(insert_sql, values)
+                            # Convert CSV rows to escape format with \N for empty strings (NULLs)
+                            copy_data = io.StringIO()
+                            for row in data_rows:
+                                escaped_row = []
+                                for val in row:
+                                    if val == '':
+                                        escaped_row.append('\\N')
+                                    else:
+                                        # Escape backslashes and tabs
+                                        escaped_val = val.replace('\\', '\\\\').replace('\t', '\\t')
+                                        escaped_row.append(escaped_val)
+                                copy_data.write('\t'.join(escaped_row) + '\n')
+                            copy_data.seek(0)
 
+                            # Execute COPY FROM STDIN using raw psycopg2
+                            cursor.copy_expert(copy_sql, copy_data)
+
+                        psycopg2_conn.commit()
                         rows_restored += len(data_rows)
                         tables_restored += 1
                     except Exception as e:
+                        psycopg2_conn.rollback()
                         logger.error("Failed to restore table %s: %s", table_name, e)
                         raise
+            finally:
+                psycopg2_conn.close()
 
             logger.info(
                 "CSV restore completed: %d tables, %d rows",
