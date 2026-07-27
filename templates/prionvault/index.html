@@ -1286,6 +1286,28 @@
       Incluir el resumen de la IA (si lo tiene)
     </label>
 
+    <!-- Schedule for later -->
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#374151;
+                  cursor:pointer;margin-top:12px;">
+      <input type="checkbox" id="pv-email-schedule-toggle" style="accent-color:#0F3460;cursor:pointer;">
+      Programar para más tarde
+    </label>
+
+    <!-- Scheduled date/time inputs (initially hidden) -->
+    <div id="pv-email-schedule-controls" style="display:none;margin-top:12px;padding:12px;background:#f9fafb;
+              border:1px solid #e5e7eb;border-radius:7px;">
+      <label style="font-size:11.5px;font-weight:600;color:#6b7280;display:block;margin-bottom:6px;">Fecha</label>
+      <input id="pv-email-schedule-date" type="date"
+             style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13.5px;
+                    margin-bottom:10px;">
+      <label style="font-size:11.5px;font-weight:600;color:#6b7280;display:block;margin-bottom:6px;">Hora</label>
+      <input id="pv-email-schedule-time" type="time" value="09:00"
+             style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13.5px;">
+      <div style="font-size:11px;color:#9ca3af;margin-top:8px;">
+        El email se enviará automáticamente en la fecha y hora indicadas.
+      </div>
+    </div>
+
     <div style="display:flex;align-items:center;gap:10px;margin-top:16px;">
       <button id="pv-email-send" type="button"
               style="padding:8px 18px;border-radius:8px;border:none;background:#0F3460;color:#fff;

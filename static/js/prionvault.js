@@ -6555,6 +6555,28 @@
         ta.style.display = ctog.checked ? 'block' : 'none';
         if (ctog.checked) ta.focus();
       });
+      // Schedule for later toggle
+      const stog = $('pv-email-schedule-toggle');
+      stog?.addEventListener('change', () => {
+        const controls = $('pv-email-schedule-controls');
+        const btn = $('pv-email-send');
+        if (controls) {
+          controls.style.display = stog.checked ? 'block' : 'none';
+          if (stog.checked) {
+            // Set default date to tomorrow
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const dateStr = tomorrow.toISOString().split('T')[0];
+            $('pv-email-schedule-date').value = dateStr;
+            $('pv-email-schedule-date').focus();
+            // Update button text
+            if (btn) btn.innerHTML = '<i class="fas fa-calendar"></i> Programar';
+          } else {
+            // Update button text back to send
+            if (btn) btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar';
+          }
+        }
+      });
       // Preview modal close.
       $('pv-email-preview-close')?.addEventListener('click', () => {
         const m = $('pv-email-preview-modal'); if (m) m.style.display = 'none';
@@ -6630,6 +6652,13 @@
       if (ctog) ctog.checked = !!lastComment;
       const incS = $('pv-email-include-summary');
       if (incS) incS.checked = true;
+      // Reset schedule toggle
+      const stog = $('pv-email-schedule-toggle');
+      if (stog) {
+        stog.checked = false;
+        const controls = $('pv-email-schedule-controls');
+        if (controls) controls.style.display = 'none';
+      }
       modal.style.display = 'flex';
       loadDirectory();
       const toEl = $('pv-email-to');
@@ -6654,13 +6683,32 @@
       if (!to) { status.style.color = '#b91c1c'; status.textContent = 'Indica una dirección de email.'; return; }
       const btn = $('pv-email-send');
       btn.disabled = true;
-      status.style.color = '#9ca3af';
-      status.textContent = 'Enviando…';
       const opts = currentOptions();
+
+      // Check if scheduled
+      const isScheduled = $('pv-email-schedule-toggle')?.checked;
+      let scheduledAt = null;
+      if (isScheduled) {
+        const dateVal = $('pv-email-schedule-date').value;
+        const timeVal = $('pv-email-schedule-time').value || '09:00';
+        if (!dateVal) {
+          status.style.color = '#b91c1c'; status.textContent = 'Indica una fecha.'; btn.disabled = false; return;
+        }
+        // Combine date and time into ISO datetime (UTC)
+        scheduledAt = new Date(`${dateVal}T${timeVal}:00Z`).toISOString();
+        status.style.color = '#9ca3af';
+        status.textContent = 'Programando…';
+      } else {
+        status.style.color = '#9ca3af';
+        status.textContent = 'Enviando…';
+      }
+
       try {
+        const payload = { to, ...opts };
+        if (scheduledAt) payload.scheduled_at = scheduledAt;
         const r = await api(`/articles/${_article.id}/email`, {
           method: 'POST',
-          body: JSON.stringify({ to, ...opts }),
+          body: JSON.stringify(payload),
         });
         try {
           localStorage.setItem(LAST_KEY, to);
@@ -6668,9 +6716,13 @@
           else localStorage.removeItem(COMMENT_KEY);
         } catch (e) { /* ignore */ }
         status.style.color = '#15803d';
-        const pdfNote = r.attached_pdf ? ' (con PDF adjunto)'
-          : (r.has_pdf ? ' (sin PDF: no disponible o demasiado grande)' : ' (este artículo no tiene PDF)');
-        status.textContent = '✓ Enviado' + pdfNote;
+        if (isScheduled) {
+          status.textContent = '✓ ' + (r.message || 'Programado correctamente');
+        } else {
+          const pdfNote = r.attached_pdf ? ' (con PDF adjunto)'
+            : (r.has_pdf ? ' (sin PDF: no disponible o demasiado grande)' : ' (este artículo no tiene PDF)');
+          status.textContent = '✓ Enviado' + pdfNote;
+        }
         setTimeout(close, 1800);
       } catch (e) {
         status.style.color = '#b91c1c';

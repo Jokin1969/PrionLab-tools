@@ -53,10 +53,14 @@ class MaintenanceScheduler:
             sched.add_job(lambda: _run(self.run_email_digests),
                           IntervalTrigger(minutes=15), id="email_digests",
                           replace_existing=True)
+            # Every minute: send pending scheduled email shares
+            sched.add_job(lambda: _run(self.run_scheduled_emails),
+                          IntervalTrigger(minutes=1), id="scheduled_emails",
+                          replace_existing=True)
 
             sched.start()
             self._scheduler = sched
-            logger.info("Maintenance scheduler started (6 jobs)")
+            logger.info("Maintenance scheduler started (7 jobs)")
             return True
         except Exception as e:
             logger.warning("Could not start maintenance scheduler: %s", e)
@@ -153,3 +157,11 @@ class MaintenanceScheduler:
             run_pending_digests()
         except Exception as exc:
             logger.warning("Email digest scheduler error: %s", exc)
+
+    def run_scheduled_emails(self) -> None:
+        """Send any pending scheduled article email shares."""
+        try:
+            from tools.prionvault.services.scheduled_email import send_pending_scheduled_emails
+            send_pending_scheduled_emails()
+        except Exception as exc:
+            logger.warning("Scheduled email send error: %s", exc)
