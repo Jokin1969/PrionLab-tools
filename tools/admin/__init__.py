@@ -366,3 +366,92 @@ def api_db_tables():
         return jsonify({"success": True, "tables": tables, "indexes": index_stats})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/db/backups/restore", methods=["POST"])
+@admin_required
+def api_db_restore_backup():
+    """Restore from a specified backup file (pgdump or csv_export)."""
+    from flask import jsonify
+    from database.backup import BackupManager
+    try:
+        data = request.get_json() or {}
+        filename = data.get("filename", "").strip()
+        if not filename:
+            return jsonify({"success": False, "error": "filename is required"}), 400
+
+        bm = BackupManager()
+        local_backups = [b["filename"] for b in bm.list_backups()]
+
+        if filename not in local_backups:
+            return jsonify({"success": False, "error": f"Backup not found: {filename}"}), 404
+
+        from database.backup import BACKUP_DIR
+        backup_path = str(BACKUP_DIR / filename)
+
+        if filename.startswith("pgdump_"):
+            result = bm.restore_from_backup(backup_path)
+        elif filename.startswith("csv_export_"):
+            result = bm.restore_from_csv_export(backup_path)
+        else:
+            return jsonify({"success": False, "error": "Unknown backup type"}), 400
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error("Backup restore failed: %s", e)
+        return jsonify({"success": False, "error": str(e)[:500]}), 500
+
+
+@admin_bp.route("/api/db/emergency-restore", methods=["POST"])
+@admin_required
+def api_db_emergency_restore():
+    """Emergency restore from the most recent CSV export backup in Dropbox."""
+    from flask import jsonify
+    from database.backup import BackupManager
+    try:
+        bm = BackupManager()
+
+        # Get CSV backups from Dropbox
+        dropbox_backups = bm.list_dropbox_backups()
+        csv_backups = [b for b in dropbox_backups if b["type"] == "csv_export"]
+
+        if not csv_backups:
+            return jsonify({"success": False, "error": "No CSV backups found in Dropbox"}), 404
+
+        latest = csv_backups[0]  # Already sorted newest first
+        logger.warning("Emergency restore: downloading %s from Dropbox", latest["filename"])
+
+        # Download from Dropbox
+        from pathlib import Path
+        from database.backup import BACKUP_DIR
+        backup_path = BACKUP_DIR / latest["filename"]
+
+        try:
+            from core.dropbox_client import get_client
+            client = get_client()
+            if client is None:
+                return jsonify({"success": False, "error": "Dropbox not configured"}), 500
+
+            logger.info("Downloading %s from Dropbox...", latest["filename"])
+            metadata, response = client.files_download(latest["path"])
+            backup_path.write_bytes(response.content)
+            logger.info("Downloaded %.1f MB", backup_path.stat().st_size / (1024*1024))
+        except Exception as e:
+            logger.error("Dropbox download failed: %s", e)
+            return jsonify({"success": False, "error": f"Dropbox download failed: {str(e)[:200]}"}), 500
+
+        # Restore from the downloaded backup
+        logger.warning("Starting emergency restore...")
+        result = bm.restore_from_csv_export(str(backup_path))
+
+        if result.get("success"):
+            logger.info("Emergency restore successful: %d tables, %d rows",
+                       result.get("tables_restored", 0),
+                       result.get("rows_restored", 0))
+        else:
+            logger.error("Emergency restore failed: %s", result.get("error"))
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error("Emergency restore failed: %s", e)
+        return jsonify({"success": False, "error": str(e)[:500]}), 500
