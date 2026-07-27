@@ -90,6 +90,67 @@ class DatabaseConfig:
         Base.metadata.create_all(self.engine)
         logger.info("Database tables created successfully")
 
+    def run_migrations(self) -> None:
+        """Execute all SQL migration files in order."""
+        if not self.is_configured():
+            logger.warning("Database not configured — skipping migrations")
+            return
+
+        import os
+        from pathlib import Path
+
+        migrations_dir = Path(__file__).parent.parent / "migrations"
+        if not migrations_dir.exists():
+            logger.warning("Migrations directory not found at %s", migrations_dir)
+            return
+
+        # Get all .sql files, sorted by filename (which includes sequential numbers)
+        migration_files = sorted([f for f in migrations_dir.glob("*.sql")])
+        if not migration_files:
+            logger.info("No migration files found")
+            return
+
+        # Track which migrations have been run
+        with self.engine.connect() as conn:
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS _schema_migrations (
+                        filename TEXT PRIMARY KEY,
+                        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                conn.commit()
+            except Exception as e:
+                logger.error("Failed to create _schema_migrations table: %s", e)
+                return
+
+        # Run each migration that hasn't been executed yet
+        for migration_file in migration_files:
+            filename = migration_file.name
+            with self.engine.connect() as conn:
+                # Check if this migration has already been run
+                result = conn.execute(text(
+                    "SELECT 1 FROM _schema_migrations WHERE filename = :fn"
+                ), {"fn": filename})
+                if result.fetchone():
+                    logger.debug("Migration already executed: %s", filename)
+                    continue
+
+                # Read and execute the migration
+                try:
+                    with open(migration_file, 'r') as f:
+                        sql_content = f.read()
+                    conn.execute(text(sql_content))
+                    conn.execute(text(
+                        "INSERT INTO _schema_migrations (filename) VALUES (:fn)"
+                    ), {"fn": filename})
+                    conn.commit()
+                    logger.info("Migration executed: %s", filename)
+                except Exception as e:
+                    conn.rollback()
+                    logger.error("Migration failed for %s: %s", filename, e)
+                    raise
+
 
 # Global singleton — safe to import anywhere
 db = DatabaseConfig()
