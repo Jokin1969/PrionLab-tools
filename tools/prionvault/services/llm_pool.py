@@ -188,9 +188,14 @@ def _call_anthropic(api_key: str, system: str, user: str,
     start = time.monotonic()
     message = client.messages.create(
         model=model, max_tokens=max_tokens, temperature=temperature,
-        system=system,
+        system=[
+            {
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
         messages=[{"role": "user", "content": user}],
-        cache_control={"type": "ephemeral"},
     )
     elapsed_ms = int((time.monotonic() - start) * 1000)
     text = "".join(
