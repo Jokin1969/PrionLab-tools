@@ -301,9 +301,14 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
         anthropic_max_out = max(MAX_OUTPUT_TOKENS * 4, 4096)
         msg = client.messages.create(
             model=model, max_tokens=anthropic_max_out,
-            system=system,
+            system=[
+                {
+                    "type": "text",
+                    "text": system,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
             messages=[{"role": "user", "content": user}],
-            cache_control={"type": "ephemeral"},
         )
         text = "".join(b.text for b in msg.content
                        if getattr(b, "type", None) == "text").strip()
