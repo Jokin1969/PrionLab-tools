@@ -10,9 +10,11 @@ applies a daily+monthly retention policy on that folder, configurable
 via ``PRIONLAB_BACKUP_RETAIN_DAILY`` (default 90) and
 ``PRIONLAB_BACKUP_RETAIN_MONTHLY`` (default 24).
 """
+import ast
 import csv
 import gzip
 import io
+import json
 import logging
 import os
 import re
@@ -180,6 +182,7 @@ class BackupManager:
                 return {"success": False, "error": "psycopg2 not available"}
 
             psycopg2_conn = psycopg2.connect(db.database_url)
+            cell_warnings = []
             try:
                 # Process pairs of (table_name, csv_content)
                 for i in range(1, len(tables), 2):
@@ -190,13 +193,15 @@ class BackupManager:
                     if not csv_content:
                         continue
 
-                    lines = csv_content.split('\n')
-                    if len(lines) < 2:
+                    # Parse CSV directly from the text so the csv module can
+                    # correctly handle quoted fields containing embedded
+                    # newlines (e.g. multi-line AI summaries) — splitting on
+                    # '\n' first would break those rows apart.
+                    csv_reader = csv.reader(io.StringIO(csv_content))
+                    try:
+                        header = next(csv_reader)
+                    except StopIteration:
                         continue
-
-                    # Parse CSV: first line is header, rest are data
-                    csv_reader = csv.reader(lines)
-                    header = next(csv_reader)
                     data_rows = list(csv_reader)
 
                     if not header or not data_rows:
@@ -208,6 +213,30 @@ class BackupManager:
                     # Restore this table using COPY
                     try:
                         with psycopg2_conn.cursor() as cursor:
+                            # Some older CSV exports serialized json/jsonb
+                            # and array column values with Python's str()/
+                            # repr() (single-quoted dict/list syntax) instead
+                            # of valid JSON / Postgres array literals. Detect
+                            # those columns and repair affected cells before
+                            # COPY, so one bad cell doesn't abort the whole
+                            # table.
+                            cursor.execute(
+                                "SELECT column_name, data_type FROM information_schema.columns "
+                                "WHERE table_name = %s", (table_name,)
+                            )
+                            col_types = dict(cursor.fetchall())
+                            json_cols = {c for c in header if col_types.get(c) in ("json", "jsonb")}
+                            array_cols = {c for c in header if col_types.get(c) == "ARRAY"}
+
+                            if json_cols or array_cols:
+                                data_rows, nulled = _repair_json_and_array_cells(
+                                    header, data_rows, json_cols, array_cols
+                                )
+                                if nulled:
+                                    msg = f"{table_name}: nulled {nulled} malformed json/array cell(s)"
+                                    logger.warning(msg)
+                                    cell_warnings.append(msg)
+
                             # Truncate table
                             cursor.execute(f"TRUNCATE TABLE {table_name} CASCADE")
 
@@ -224,8 +253,19 @@ class BackupManager:
                                     if val == '':
                                         escaped_row.append('\\N')
                                     else:
-                                        # Escape backslashes and tabs
-                                        escaped_val = val.replace('\\', '\\\\').replace('\t', '\\t')
+                                        # Escape backslashes, tabs and embedded
+                                        # newlines/carriage returns — text
+                                        # format COPY uses newlines as row
+                                        # terminators, so real newlines in a
+                                        # field (e.g. multi-line summaries)
+                                        # must be escaped or they'd split
+                                        # the row prematurely.
+                                        escaped_val = (
+                                            val.replace('\\', '\\\\')
+                                               .replace('\t', '\\t')
+                                               .replace('\n', '\\n')
+                                               .replace('\r', '\\r')
+                                        )
                                         escaped_row.append(escaped_val)
                                 copy_data.write('\t'.join(escaped_row) + '\n')
                             copy_data.seek(0)
@@ -247,12 +287,15 @@ class BackupManager:
                 "CSV restore completed: %d tables, %d rows",
                 tables_restored, rows_restored
             )
-            return {
+            result = {
                 "success": True,
                 "backup": path.name,
                 "tables_restored": tables_restored,
                 "rows_restored": rows_restored,
             }
+            if cell_warnings:
+                result["warnings"] = cell_warnings
+            return result
         except Exception as e:
             logger.error("CSV restore failed: %s", e)
             return {"success": False, "error": str(e)[:500]}
@@ -280,11 +323,21 @@ class BackupManager:
             return {"success": False, "error": str(e)}
 
     def _csv_export_backup(self, db, ts: str) -> dict:
-        """Export each table to CSV inside a .gz archive."""
+        """Export each table to CSV inside a .gz archive.
+
+        Every column is selected with an explicit ``::text`` cast so
+        PostgreSQL's own type output functions render json/jsonb, arrays,
+        timestamps, etc. into the exact textual form its input functions
+        expect back on restore. Without this, the raw Python driver values
+        for json/array columns (dicts/lists) get passed through csv.writer's
+        str()/repr(), producing single-quoted Python literal syntax that is
+        NOT valid JSON or a valid Postgres array literal.
+        """
         out_path = BACKUP_DIR / f"csv_export_{ts}.gz"
         try:
             import database.models as _m
             from sqlalchemy import inspect
+            from sqlalchemy import text as _text
             # Tables with large regenerable data (embeddings, etc.) are skipped
             _SKIP_TABLES = {"article_chunk"}
             inspector = inspect(db.engine)
@@ -293,11 +346,14 @@ class BackupManager:
                 for table_name in inspector.get_table_names():
                     if table_name in _SKIP_TABLES:
                         continue
+                    columns = [c["name"] for c in inspector.get_columns(table_name)]
+                    if not columns:
+                        continue
+                    select_cols = ", ".join(f'"{c}"::text AS "{c}"' for c in columns)
                     csv_buf = io.StringIO()
                     writer = csv.writer(csv_buf)
                     with db.engine.connect() as conn:
-                        from sqlalchemy import text as _text
-                        result = conn.execute(_text(f"SELECT * FROM {table_name}"))
+                        result = conn.execute(_text(f'SELECT {select_cols} FROM "{table_name}"'))
                         writer.writerow(result.keys())
                         for row in result:
                             writer.writerow(list(row))
@@ -496,6 +552,68 @@ class BackupManager:
 
 
 # ── Module-level helpers ─────────────────────────────────────────────────────
+
+def _repair_json_and_array_cells(header, data_rows, json_cols, array_cols):
+    """Repair json/jsonb and array cells serialized with Python's str()/
+    repr() (single-quoted dict/list syntax, e.g. "[{'a': 1}]") instead of
+    valid JSON or Postgres array literals — an artifact of an older,
+    buggy CSV export that ran `csv.writer` over raw driver values without
+    explicit serialization.
+
+    Returns (fixed_rows, nulled_count). A cell that cannot be repaired is
+    set to NULL (empty string) and counted, rather than aborting the
+    restore of the entire table over a handful of rows.
+    """
+    idx_json = [header.index(c) for c in json_cols]
+    idx_array = [header.index(c) for c in array_cols]
+    nulled = 0
+    fixed_rows = []
+    for row in data_rows:
+        row = list(row)
+        for idx in idx_json:
+            val = row[idx]
+            if not val:
+                continue
+            try:
+                json.loads(val)
+                continue  # already valid JSON — leave untouched
+            except (ValueError, TypeError):
+                pass
+            try:
+                parsed = ast.literal_eval(val)
+                row[idx] = json.dumps(parsed, ensure_ascii=False)
+            except (ValueError, SyntaxError):
+                row[idx] = ''
+                nulled += 1
+        for idx in idx_array:
+            val = row[idx]
+            if not val:
+                continue
+            if val.startswith('{') and val.endswith('}'):
+                continue  # already a Postgres array literal
+            try:
+                parsed = ast.literal_eval(val)
+                row[idx] = _pg_array_literal(parsed)
+            except (ValueError, SyntaxError):
+                row[idx] = ''
+                nulled += 1
+        fixed_rows.append(row)
+    return fixed_rows, nulled
+
+
+def _pg_array_literal(items) -> str:
+    """Render a Python list as a Postgres array literal, e.g.
+    ['a', 'b,c'] -> '{a,"b,c"}'."""
+    def fmt(v):
+        if v is None:
+            return 'NULL'
+        s = str(v)
+        if s == '' or re.search(r'[{}",\\\s]', s):
+            s = s.replace('\\', '\\\\').replace('"', '\\"')
+            return f'"{s}"'
+        return s
+    return '{' + ','.join(fmt(v) for v in items) + '}'
+
 
 def _env_int(name: str, default: int) -> int:
     raw = os.getenv(name)
