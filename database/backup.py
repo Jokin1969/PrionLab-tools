@@ -204,21 +204,27 @@ class BackupManager:
                             # Truncate table
                             cursor.execute(f"TRUNCATE TABLE {table_name} CASCADE")
 
-                            # Use COPY to load data efficiently
+                            # Use COPY with escape format to properly handle NULLs
+                            # In escape format: \N represents NULL, \\ represents backslash
                             cols = ",".join(header)
-                            copy_sql = f"COPY {table_name} ({cols}) FROM STDIN WITH (FORMAT csv)"
+                            copy_sql = f"COPY {table_name} ({cols}) FROM STDIN WITH (FORMAT text, NULL as '\\N')"
 
-                            # Prepare CSV data for COPY, handling NULL empty strings
-                            csv_data = io.StringIO()
-                            writer = csv.writer(csv_data)
+                            # Convert CSV rows to escape format with \N for empty strings (NULLs)
+                            copy_data = io.StringIO()
                             for row in data_rows:
-                                # COPY treats empty string as empty, not NULL
-                                # We need to use actual NULLs where needed
-                                writer.writerow(row)
-                            csv_data.seek(0)
+                                escaped_row = []
+                                for val in row:
+                                    if val == '':
+                                        escaped_row.append('\\N')
+                                    else:
+                                        # Escape backslashes and tabs
+                                        escaped_val = val.replace('\\', '\\\\').replace('\t', '\\t')
+                                        escaped_row.append(escaped_val)
+                                copy_data.write('\t'.join(escaped_row) + '\n')
+                            copy_data.seek(0)
 
                             # Execute COPY FROM STDIN
-                            cursor.copy_expert(copy_sql, csv_data)
+                            cursor.copy_expert(copy_sql, copy_data)
                             raw_conn.commit()
 
                         rows_restored += len(data_rows)
