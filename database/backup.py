@@ -173,7 +173,37 @@ class BackupManager:
                 content = gz.read().decode("utf-8")
 
             # Split by table markers
-            tables = re.split(r"^-- TABLE: (\w+)$", content, flags=re.MULTILINE)
+            tables_raw = re.split(r"^-- TABLE: (\w+)$", content, flags=re.MULTILINE)
+
+            # Parse every table's CSV content up front (skipping empty
+            # tables) so we know the full set before truncating or
+            # inserting anything — needed to compute a safe, FK-aware
+            # restore order below.
+            parsed = {}
+            for i in range(1, len(tables_raw), 2):
+                if i + 1 >= len(tables_raw):
+                    break
+                table_name = tables_raw[i].strip()
+                csv_content = tables_raw[i + 1].strip()
+                if not csv_content:
+                    continue
+                # Parse CSV directly from the text so the csv module can
+                # correctly handle quoted fields containing embedded
+                # newlines (e.g. multi-line AI summaries) — splitting on
+                # '\n' first would break those rows apart.
+                csv_reader = csv.reader(io.StringIO(csv_content))
+                try:
+                    header = next(csv_reader)
+                except StopIteration:
+                    continue
+                data_rows = list(csv_reader)
+                if not header or not data_rows:
+                    logger.info("Table %s is empty, skipping", table_name)
+                    continue
+                parsed[table_name] = (header, data_rows)
+
+            if not parsed:
+                return {"success": False, "error": "No non-empty tables found in backup"}
 
             # Connect directly with psycopg2 (not through SQLAlchemy)
             try:
@@ -184,30 +214,33 @@ class BackupManager:
             psycopg2_conn = psycopg2.connect(db.database_url)
             cell_warnings = []
             try:
-                # Process pairs of (table_name, csv_content)
-                for i in range(1, len(tables), 2):
-                    if i + 1 >= len(tables):
-                        break
-                    table_name = tables[i].strip()
-                    csv_content = tables[i + 1].strip()
-                    if not csv_content:
-                        continue
+                with psycopg2_conn.cursor() as cursor:
+                    # Determine a foreign-key-safe restore order: parent
+                    # tables (FK targets) before the child tables that
+                    # reference them, among just the tables present in
+                    # this backup.
+                    cursor.execute(
+                        "SELECT tc.table_name AS child, ccu.table_name AS parent "
+                        "FROM information_schema.table_constraints tc "
+                        "JOIN information_schema.constraint_column_usage ccu "
+                        "  ON tc.constraint_name = ccu.constraint_name "
+                        " AND tc.table_schema = ccu.table_schema "
+                        "WHERE tc.constraint_type = 'FOREIGN KEY'"
+                    )
+                    edges = [(child, parent) for child, parent in cursor.fetchall()
+                             if child in parsed and parent in parsed and child != parent]
+                    order = _topological_table_order(list(parsed.keys()), edges)
 
-                    # Parse CSV directly from the text so the csv module can
-                    # correctly handle quoted fields containing embedded
-                    # newlines (e.g. multi-line AI summaries) — splitting on
-                    # '\n' first would break those rows apart.
-                    csv_reader = csv.reader(io.StringIO(csv_content))
-                    try:
-                        header = next(csv_reader)
-                    except StopIteration:
-                        continue
-                    data_rows = list(csv_reader)
+                    # Truncate every table in ONE statement so a later
+                    # table's CASCADE can't wipe out rows already loaded
+                    # into an earlier table — all truncation happens
+                    # before any insertion starts.
+                    quoted = ", ".join(f'"{t}"' for t in order)
+                    cursor.execute(f"TRUNCATE TABLE {quoted} CASCADE")
+                psycopg2_conn.commit()
 
-                    if not header or not data_rows:
-                        logger.info("Table %s is empty, skipping", table_name)
-                        continue
-
+                for table_name in order:
+                    header, data_rows = parsed[table_name]
                     logger.info("Restoring table %s (%d rows)", table_name, len(data_rows))
 
                     # Restore this table using COPY
@@ -237,13 +270,10 @@ class BackupManager:
                                     logger.warning(msg)
                                     cell_warnings.append(msg)
 
-                            # Truncate table
-                            cursor.execute(f"TRUNCATE TABLE {table_name} CASCADE")
-
                             # Use COPY with escape format to properly handle NULLs
                             # In escape format: \N represents NULL, \\ represents backslash
                             cols = ",".join(header)
-                            copy_sql = f"COPY {table_name} ({cols}) FROM STDIN WITH (FORMAT text, NULL '\\N')"
+                            copy_sql = f'COPY "{table_name}" ({cols}) FROM STDIN WITH (FORMAT text, NULL \'\\N\')'
 
                             # Convert CSV rows to escape format with \N for empty strings (NULLs)
                             copy_data = io.StringIO()
@@ -552,6 +582,40 @@ class BackupManager:
 
 
 # ── Module-level helpers ─────────────────────────────────────────────────────
+
+def _topological_table_order(tables, edges):
+    """Order `tables` so a parent (FK target) always precedes any child
+    that references it. `edges` is a list of (child, parent) pairs.
+
+    Needed because restoring tables independently in file order can try
+    to insert a child row (e.g. article_tag_link) before its parent
+    table (article_tag) has been reloaded, violating the FK constraint.
+
+    Falls back to appending any tables stuck in an unresolved dependency
+    (e.g. a genuine cycle) in their original order, rather than looping
+    forever — a handful of FK errors on a real cycle is preferable to
+    hanging the restore.
+    """
+    depends_on = {t: set() for t in tables}
+    for child, parent in edges:
+        depends_on.setdefault(child, set()).add(parent)
+
+    remaining = list(tables)
+    placed = []
+    placed_set = set()
+    while remaining:
+        progressed = False
+        for t in list(remaining):
+            if depends_on.get(t, set()) <= placed_set:
+                placed.append(t)
+                placed_set.add(t)
+                remaining.remove(t)
+                progressed = True
+        if not progressed:
+            placed.extend(remaining)
+            break
+    return placed
+
 
 def _repair_json_and_array_cells(header, data_rows, json_cols, array_cols):
     """Repair json/jsonb and array cells serialized with Python's str()/
