@@ -27,6 +27,7 @@ def _get_pv_columns(s: SASession) -> Set[str]:
 
     TTL-cached so newly added columns (from migrations applied after process
     start) are picked up within _PV_COLUMNS_TTL_S seconds without a restart.
+    Fixes cache corruption when introspection query fails.
     """
     global _pv_columns_cache, _pv_columns_cache_time
     if (_pv_columns_cache is not None
