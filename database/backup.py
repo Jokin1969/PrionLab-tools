@@ -214,7 +214,7 @@ class BackupManager:
                             # Use COPY with escape format to properly handle NULLs
                             # In escape format: \N represents NULL, \\ represents backslash
                             cols = ",".join(header)
-                            copy_sql = f"COPY {table_name} ({cols}) FROM STDIN WITH (FORMAT text, NULL as '\\N')"
+                            copy_sql = f"COPY {table_name} ({cols}) FROM STDIN WITH (FORMAT text, NULL '\\N')"
 
                             # Convert CSV rows to escape format with \N for empty strings (NULLs)
                             copy_data = io.StringIO()
