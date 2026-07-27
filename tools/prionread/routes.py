@@ -37,7 +37,7 @@ def proxy_api(path):
             params=request.args,
             cookies=request.cookies,
             allow_redirects=False,
-            timeout=30,
+            timeout=60,
         )
         response_headers = {
             k: v for k, v in resp.headers.items()
