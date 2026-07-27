@@ -1949,12 +1949,33 @@ def api_article_email_preview(aid):
 @login_required
 def api_article_email(aid):
     """Email the article's full data + AI summary to a chosen recipient,
-    using the same aesthetic as the ingest-confirmation email."""
+    using the same aesthetic as the ingest-confirmation email.
+
+    Request body:
+      to: email address (required)
+      scheduled_at: ISO datetime string (optional; if absent, send now)
+      include_summary: bool (default true)
+      comment: string (default "")
+    """
     body = request.get_json(silent=True) or {}
     to = (body.get("to") or "").strip()
-    from .services import article_share
+    scheduled_at_str = body.get("scheduled_at")
+    from .services import article_share, scheduled_email
+    from datetime import datetime
+
     me = _current_user_contact()
     try:
+        # If scheduled_at is provided, defer the send
+        if scheduled_at_str:
+            scheduled_at = datetime.fromisoformat(scheduled_at_str)
+            result = scheduled_email.schedule_article_email(
+                str(aid), to, scheduled_at,
+                sender_name=me.get("name") or "",
+                include_summary=body.get("include_summary", True) is not False,
+                comment=body.get("comment", ""))
+            return jsonify({"ok": True, **result})
+
+        # Otherwise send now
         result = article_share.send_article_email(
             str(aid), to, sender_name=me.get("name") or "",
             include_summary=body.get("include_summary", True) is not False,
