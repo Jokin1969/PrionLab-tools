@@ -394,6 +394,89 @@ def restore_backup_from_dropbox():
         return redirect(url_for("admin.database_dashboard"))
 
 
+@admin_bp.route("/database/emergency-restore", methods=["POST"])
+@admin_required
+def emergency_restore():
+    """Emergency restore from most recent CSV backup in Dropbox.
+
+    No parameters needed - restores from the latest CSV export automatically.
+    Use this when data loss occurs and you need to recover ASAP.
+    """
+    import logging
+    from pathlib import Path
+    from database.backup import BackupManager, BACKUP_DIR
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        bm = BackupManager()
+        dropbox_backups = bm.list_dropbox_backups()
+
+        # Find most recent CSV export
+        csv_backups = [b for b in dropbox_backups if b['filename'].startswith('csv_export_')]
+        if not csv_backups:
+            flash(_("No CSV backups found in Dropbox."), "danger")
+            return redirect(url_for("admin.database_dashboard"))
+
+        latest_csv = csv_backups[0]  # Already sorted by date, newest first
+        filename = latest_csv['filename']
+
+        logger.warning("Emergency restore triggered: downloading %s", filename)
+        flash(_("⏳ Restoring from %(backup)s... This may take a few minutes.",
+                backup=filename), "info")
+
+        # Download from Dropbox
+        from core.dropbox_client import get_client
+        client = get_client()
+        if not client:
+            flash(_("Dropbox not configured."), "danger")
+            return redirect(url_for("admin.database_dashboard"))
+
+        backup_path = BACKUP_DIR / filename
+        try:
+            logger.info("Downloading from Dropbox: %s", filename)
+            metadata, response = client.files_download(latest_csv['path'])
+            backup_path.write_bytes(response.content)
+            logger.info("Downloaded %s (%.1f MB)", filename, backup_path.stat().st_size / (1024*1024))
+        except Exception as e:
+            logger.error("Download failed: %s", e)
+            flash(_("Failed to download from Dropbox: %(error)s", error=str(e)[:100]), "danger")
+            return redirect(url_for("admin.database_dashboard"))
+
+        # Restore CSV
+        logger.warning("Starting emergency restore from CSV: %s", filename)
+        result = bm.restore_from_csv_export(str(backup_path))
+
+        if result.get('success'):
+            logger.info(
+                "Emergency restore COMPLETE: %d tables, %d rows from %s",
+                result.get('tables_restored'), result.get('rows_restored'), filename
+            )
+            flash(
+                _("✅ <b>RESTORE SUCCESS!</b><br>"
+                  "Restored from %(backup)s<br>"
+                  "%(tables)d tables, %(rows)d rows<br>"
+                  "Refresh the page to see the recovered data.",
+                  backup=filename,
+                  tables=result.get('tables_restored', '?'),
+                  rows=result.get('rows_restored', '?')),
+                "success"
+            )
+        else:
+            logger.error("Restore FAILED: %s", result.get('error'))
+            flash(
+                _("❌ Restore failed: %(error)s",
+                  error=result.get('error', 'Unknown error')[:200]),
+                "danger"
+            )
+
+        return redirect(url_for("admin.database_dashboard"))
+    except Exception as exc:
+        logger.exception("Emergency restore error")
+        flash(_("Unexpected error: %(error)s", error=str(exc)[:100]), "danger")
+        return redirect(url_for("admin.database_dashboard"))
+
+
 @admin_bp.route("/apis")
 @admin_required
 def api_dashboard():
