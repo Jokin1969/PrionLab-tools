@@ -3356,6 +3356,14 @@
       de datos entera de golpe.
     </p>
 
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#92400e;line-height:1.5;">
+      <strong>⚠ No incluido en estos backups:</strong> la tabla <code>article_chunk</code>
+      (los vectores de la Indexación IA) se excluye a propósito — son datos grandes y
+      100% regenerables. Si algún día tienes que restaurar y ves que la búsqueda IA no
+      encuentra nada, no es una restauración incompleta: solo hace falta volver a
+      <em>Index for AI search</em> → <em>Reset + reindex completo</em> (~$0.001/artículo).
+    </div>
+
     <!-- Tabs -->
     <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
       <button id="pv-bk-tab-list" class="pv-bk-tab pv-bk-tab-active" type="button">📦 Copias</button>
