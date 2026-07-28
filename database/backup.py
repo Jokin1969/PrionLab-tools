@@ -427,6 +427,32 @@ class BackupManager:
                             # Execute COPY FROM STDIN using raw psycopg2
                             cursor.copy_expert(copy_sql, copy_data)
 
+                            # COPY inserts explicit primary key values from
+                            # the backup as-is. For an integer PK backed by
+                            # a sequence (SERIAL/IDENTITY — e.g. an
+                            # auto-increment "id"), Postgres does NOT
+                            # advance that sequence to match, since COPY
+                            # never calls nextval(). The next ordinary
+                            # INSERT (no explicit id) then collides with an
+                            # id the restore just (re)introduced. Bring the
+                            # sequence forward to MAX(id)+1 right after
+                            # loading — a no-op for UUID/text primary keys,
+                            # since pg_get_serial_sequence returns NULL for
+                            # those.
+                            if 'id' in header:
+                                cursor.execute(
+                                    "SELECT pg_get_serial_sequence(%s, 'id')",
+                                    (table_name,)
+                                )
+                                seq = cursor.fetchone()[0]
+                                if seq:
+                                    cursor.execute(
+                                        f'SELECT setval(%s, '
+                                        f'COALESCE((SELECT MAX(id) FROM "{table_name}"), 0) + 1, '
+                                        f'false)',
+                                        (seq,)
+                                    )
+
                         psycopg2_conn.commit()
                         rows_restored += len(data_rows)
                         tables_restored += 1

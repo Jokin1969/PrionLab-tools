@@ -604,6 +604,67 @@ def api_db_tables():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_bp.route("/api/db/fix-sequences", methods=["POST"])
+@admin_required
+def api_db_fix_sequences():
+    """Bring every SERIAL/IDENTITY "id" sequence forward to MAX(id)+1.
+
+    A restore that used COPY to reload rows with explicit primary key
+    values (from an old backup) does not advance the table's id sequence
+    to match, since COPY never calls nextval(). The next ordinary INSERT
+    then collides with an id the restore just (re)introduced — this is
+    what caused the "duplicate key value ... prionvault_usage_pkey"
+    error. Safe to run any time: a no-op for UUID/text primary keys
+    (pg_get_serial_sequence returns NULL for those) and for tables whose
+    sequence is already correctly ahead of MAX(id).
+    """
+    from flask import jsonify
+    from database.config import db
+    from sqlalchemy import text as sql_text
+    if not db.is_configured():
+        return jsonify({"success": False, "error": "Database not configured"}), 500
+    try:
+        fixed = []
+        s = db.Session()
+        try:
+            tables = s.execute(sql_text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+            )).scalars().all()
+            for table_name in tables:
+                cols = {r[0] for r in s.execute(sql_text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = :t"
+                ), {"t": table_name}).all()}
+                if "id" not in cols:
+                    continue
+                seq = s.execute(sql_text(
+                    "SELECT pg_get_serial_sequence(:t, 'id')"
+                ), {"t": table_name}).scalar()
+                if not seq:
+                    continue
+                before = s.execute(sql_text(
+                    "SELECT last_value FROM " + seq
+                )).scalar()
+                s.execute(sql_text(
+                    f'SELECT setval(:seq, '
+                    f'COALESCE((SELECT MAX(id) FROM "{table_name}"), 0) + 1, false)'
+                ), {"seq": seq})
+                after = s.execute(sql_text(
+                    "SELECT last_value FROM " + seq
+                )).scalar()
+                if before != after:
+                    fixed.append({"table": table_name, "sequence": seq,
+                                 "before": before, "after": after})
+            s.commit()
+        finally:
+            s.close()
+        return jsonify({"success": True, "fixed": fixed})
+    except Exception as e:
+        logger.error("fix-sequences failed: %s", e)
+        return jsonify({"success": False, "error": str(e)[:500]}), 500
+
+
 @admin_bp.route("/api/db/backups/restore", methods=["POST"])
 @admin_required
 def api_db_restore_backup():
