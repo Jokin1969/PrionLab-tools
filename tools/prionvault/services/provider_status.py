@@ -1,10 +1,19 @@
-"""In-memory health tracker for the external AI / metadata providers.
+"""DB-backed health tracker for the external AI / metadata providers.
 
 Every LLM / Voyage / Unpaywall call funnels through one of the wrappers
 under tools/prionvault/services/. Each wrapper calls record_success() on
 success and record_error() on failure; this module classifies the error
 text and stores a snapshot per provider (anthropic, openai, gemini,
-voyage, unpaywall, …).
+voyage, unpaywall, …) in prionvault_provider_status (migration 072).
+
+Why DB-backed and not a module-level dict: Railway runs several gunicorn
+worker processes (and background/scheduler work may live in yet another
+process). A plain in-memory dict is process-local, so the worker that
+happens to serve the "Estado IA" GET request almost never is the one
+that made the actual LLM call — the modal showed "Sin datos" for every
+provider essentially permanently, not because nothing was happening but
+because the status lived somewhere else. Persisting to Postgres makes
+every worker see the same state.
 
 The snapshot powers two surfaces:
 
@@ -14,25 +23,23 @@ The snapshot powers two surfaces:
                   invalid_key) so the operator notices before pulling
                   their hair out wondering why summaries stopped.
 
-The tracker is process-local. With multiple gunicorn workers each holds
-its own copy — that's fine for UX (one worker's status is
-representative) and avoids the complexity of shared state.
-
 Error classifications:
   ok                — last call succeeded.
   quota_exhausted   — provider says no credit / billing issue.
   invalid_key       — API key rejected (401 / auth error).
   rate_limited      — 429 with a rate-limit message (recoverable).
   transient         — 5xx / network / timeout (will likely self-heal).
-  unknown           — error doesn't match any pattern.
+  unknown           — error doesn't match any pattern, or no calls yet.
 """
 from __future__ import annotations
 
+import logging
 import re
-import threading
-from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import text as sql_text
+
+logger = logging.getLogger(__name__)
 
 KNOWN_PROVIDERS = ("anthropic", "openai", "gemini", "voyage", "unpaywall")
 
@@ -51,15 +58,14 @@ def _empty_entry() -> dict:
         "last_error":         None,
         "last_error_kind":    None,
         "last_error_action":  None,
-        # Running totals so the operator can spot a flaky provider even
-        # when the latest call happened to succeed.
         "success_count":      0,
         "error_count":        0,
     }
 
 
-_state: dict[str, dict] = {p: _empty_entry() for p in KNOWN_PROVIDERS}
-_lock = threading.Lock()
+def _engine():
+    from database.config import db
+    return db.engine
 
 
 # ── Error classification ────────────────────────────────────────────────────
@@ -138,6 +144,8 @@ def classify(err_text: str) -> str:
 
 
 # ── Recording ───────────────────────────────────────────────────────────────
+# Both functions swallow DB errors — a status-tracking hiccup must never
+# break the actual LLM/embedding call that triggered it.
 
 def record_success(provider: str, *, action: Optional[str] = None) -> None:
     """Stamp a successful call against `provider`. Clears any prior
@@ -146,13 +154,22 @@ def record_success(provider: str, *, action: Optional[str] = None) -> None:
     p = (provider or "").strip().lower()
     if not p:
         return
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    with _lock:
-        s = _state.setdefault(p, _empty_entry())
-        s["status"]              = "ok"
-        s["last_success_at"]     = now
-        s["last_success_action"] = action
-        s["success_count"]      += 1
+    try:
+        with _engine().begin() as conn:
+            conn.execute(sql_text(
+                """
+                INSERT INTO prionvault_provider_status
+                    (provider, status, last_success_at, last_success_action, success_count)
+                VALUES (:p, 'ok', NOW(), :action, 1)
+                ON CONFLICT (provider) DO UPDATE SET
+                    status               = 'ok',
+                    last_success_at      = NOW(),
+                    last_success_action  = :action,
+                    success_count        = prionvault_provider_status.success_count + 1
+                """
+            ), {"p": p, "action": action})
+    except Exception:
+        logger.debug("provider_status.record_success(%s) failed", p, exc_info=True)
 
 
 def record_error(provider: str, err_text: str, *,
@@ -170,20 +187,31 @@ def record_error(provider: str, err_text: str, *,
         return "unknown"
     text = (err_text or "")[:400]
     kind = classify(text)
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    with _lock:
-        s = _state.setdefault(p, _empty_entry())
-        s["last_error_at"]     = now
-        s["last_error"]        = text
-        s["last_error_kind"]   = kind
-        s["last_error_action"] = action
-        s["error_count"]      += 1
-        # Don't downgrade a sticky-alert state to a softer one — we
-        # want the operator to keep seeing the banner until success.
-        if kind in ALERTING_KINDS:
-            s["status"] = kind
-        elif s["status"] not in ALERTING_KINDS:
-            s["status"] = kind
+    try:
+        with _engine().begin() as conn:
+            conn.execute(sql_text(
+                """
+                INSERT INTO prionvault_provider_status
+                    (provider, status, last_error_at, last_error, last_error_kind,
+                     last_error_action, error_count)
+                VALUES (:p, :kind, NOW(), :text, :kind, :action, 1)
+                ON CONFLICT (provider) DO UPDATE SET
+                    last_error_at     = NOW(),
+                    last_error        = :text,
+                    last_error_kind   = :kind,
+                    last_error_action = :action,
+                    error_count       = prionvault_provider_status.error_count + 1,
+                    status = CASE
+                        WHEN :kind = ANY(:alerting) THEN :kind
+                        WHEN prionvault_provider_status.status = ANY(:alerting)
+                            THEN prionvault_provider_status.status
+                        ELSE :kind
+                    END
+                """
+            ), {"p": p, "kind": kind, "text": text, "action": action,
+                "alerting": list(ALERTING_KINDS)})
+    except Exception:
+        logger.debug("provider_status.record_error(%s) failed", p, exc_info=True)
     return kind
 
 
@@ -192,8 +220,28 @@ def record_error(provider: str, err_text: str, *,
 def get_snapshot() -> dict:
     """Full per-provider state plus a top-level convenience field
     `alerting` = list of providers in a banner-worthy state."""
-    with _lock:
-        snap = {p: dict(v) for p, v in _state.items()}
+    snap = {p: _empty_entry() for p in KNOWN_PROVIDERS}
+    try:
+        with _engine().connect() as conn:
+            rows = conn.execute(sql_text(
+                "SELECT provider, status, last_success_at, last_success_action, "
+                "last_error_at, last_error, last_error_kind, last_error_action, "
+                "success_count, error_count FROM prionvault_provider_status"
+            )).all()
+        for r in rows:
+            snap[r.provider] = {
+                "status":              r.status,
+                "last_success_at":     r.last_success_at.isoformat() if r.last_success_at else None,
+                "last_success_action": r.last_success_action,
+                "last_error_at":       r.last_error_at.isoformat() if r.last_error_at else None,
+                "last_error":          r.last_error,
+                "last_error_kind":     r.last_error_kind,
+                "last_error_action":   r.last_error_action,
+                "success_count":       int(r.success_count or 0),
+                "error_count":         int(r.error_count or 0),
+            }
+    except Exception:
+        logger.debug("provider_status.get_snapshot failed", exc_info=True)
     alerting = [p for p, v in snap.items() if v.get("status") in ALERTING_KINDS]
     return {"providers": snap, "alerting": alerting}
 
@@ -203,14 +251,19 @@ def reset(provider: Optional[str] = None) -> int:
     a name, clears just that one. Useful from an admin endpoint when
     the operator has just topped up their credit and wants the banner
     to go away without waiting for the next call to succeed."""
-    with _lock:
-        if provider is None:
-            n = len(_state)
-            for k in list(_state):
-                _state[k] = _empty_entry()
-            return n
-        p = provider.strip().lower()
-        if p in _state:
-            _state[p] = _empty_entry()
-            return 1
+    try:
+        with _engine().begin() as conn:
+            if provider is None:
+                n = conn.execute(sql_text(
+                    "SELECT COUNT(*) FROM prionvault_provider_status"
+                )).scalar() or 0
+                conn.execute(sql_text("DELETE FROM prionvault_provider_status"))
+                return int(n)
+            p = provider.strip().lower()
+            res = conn.execute(sql_text(
+                "DELETE FROM prionvault_provider_status WHERE provider = :p"
+            ), {"p": p})
+            return res.rowcount or 0
+    except Exception:
+        logger.debug("provider_status.reset failed", exc_info=True)
         return 0
