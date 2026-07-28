@@ -11,6 +11,7 @@ Improves existing AI summaries by:
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -202,24 +203,48 @@ Return the text with only those replacements made:"""
         )
 
 
+def _tokenize_words(text: str) -> list[str]:
+    """Split text into a list of word/punctuation runs and whitespace
+    runs, so ''.join(tokens) reconstructs the original text exactly.
+    Used so diffing operates on whole words instead of raw characters.
+    """
+    return re.findall(r'\S+|\s+', text)
+
+
 def _extract_changes(original: str, improved: str, article_id: str) -> tuple[int, list[dict]]:
     """Extract individual changes from original → improved text using diff.
+
+    Diffs word-level tokens rather than raw characters — character-level
+    SequenceMatcher happily finds a "replace" opcode that starts or ends
+    in the middle of a word (e.g. "número" → "n" / "úmero" once the
+    common "n" prefix and other matching fragments are factored out),
+    producing correction pairs that are unreadable garbage instead of
+    the actual term that changed. Diffing whole words/phrases fixes
+    that at the source.
 
     Returns: (change_count, changes_list)
     """
     changes = []
     change_count = 0
 
-    # Use SequenceMatcher to find changed blocks
-    for tag, i1, i2, j1, j2 in SequenceMatcher(None, original, improved).get_opcodes():
+    orig_tokens = _tokenize_words(original)
+    impr_tokens = _tokenize_words(improved)
+
+    for tag, i1, i2, j1, j2 in SequenceMatcher(None, orig_tokens, impr_tokens).get_opcodes():
         if tag == 'replace':
-            original_chunk = original[i1:i2]
-            improved_chunk = improved[j1:j2]
+            original_chunk = ''.join(orig_tokens[i1:i2]).strip()
+            improved_chunk = ''.join(impr_tokens[j1:j2]).strip()
+            if not original_chunk and not improved_chunk:
+                continue
             change_count += 1
 
-            # Get context (50 chars before/after)
-            context_before = original[max(0, i1-50):i1]
-            context_after = improved[j2:min(len(improved), j2+50)]
+            # Context in characters, computed from the token boundary
+            # (token indices aren't character offsets, so translate via
+            # the length of the joined tokens before/after the change).
+            char_i1 = len(''.join(orig_tokens[:i1]))
+            char_j2 = len(''.join(impr_tokens[:j2]))
+            context_before = original[max(0, char_i1 - 50):char_i1]
+            context_after = improved[char_j2:min(len(improved), char_j2 + 50)]
 
             changes.append({
                 'original_text': original_chunk,

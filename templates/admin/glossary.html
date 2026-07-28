@@ -793,6 +793,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+// Dashboard is the default active tab, so it never receives a tab-click
+// event on page load — without this, its stats stay stuck at the
+// template's placeholder zeros until the user clicks away and back.
+loadDashboard();
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 async function loadDashboard() {
   const status = document.getElementById('dashboard-status');
