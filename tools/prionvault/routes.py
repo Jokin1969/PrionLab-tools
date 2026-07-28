@@ -492,6 +492,12 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             params["has_summary_viewer_uid"] = viewer_uid
     elif has_summary == "none" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NULL AND summary_human IS NULL")
+    elif has_summary == "outdated" and "summary_ai" in pv_cols:
+        # Older AI summaries were generated before the "OBJETIVOS" section
+        # was added to the prompt template — its absence is a reliable
+        # signal the summary predates the current format and should be
+        # regenerated.
+        conditions.append("summary_ai IS NOT NULL AND summary_ai NOT ILIKE '%OBJETIVOS%'")
 
     # Abstract filter — `pending` is the one the admin actually wants
     # to chase (no abstract yet, never asked PubMed). `unavailable`
@@ -1272,16 +1278,21 @@ def api_article_stats():
                   COUNT(*) FILTER (WHERE summary_ai IS NOT NULL) AS with_summary_ai,
                   COUNT(*) FILTER (WHERE extraction_status = 'extracted') AS with_extraction,
                   COUNT(*) FILTER (WHERE indexed_at IS NOT NULL) AS indexed,
-                  COUNT(DISTINCT a.id) FILTER (WHERE an.id IS NOT NULL) AS with_notes
+                  COUNT(DISTINCT a.id) FILTER (WHERE an.id IS NOT NULL) AS with_notes,
+                  COUNT(*) FILTER (
+                    WHERE summary_ai IS NOT NULL
+                      AND summary_ai NOT ILIKE '%OBJETIVOS%'
+                  ) AS outdated_summary
                 FROM articles a
                 LEFT JOIN prionvault_article_note an ON a.id = an.article_id AND an.user_id = :viewer_id
             """).bindparams(viewer_id=viewer_uid)).first()
             return jsonify({
-                "total":           row[0] if row else 0,
-                "with_summary_ai": row[1] if row else 0,
-                "with_extraction": row[2] if row else 0,
-                "indexed":         row[3] if row else 0,
-                "with_notes":      row[4] if row else 0,
+                "total":            row[0] if row else 0,
+                "with_summary_ai":  row[1] if row else 0,
+                "with_extraction":  row[2] if row else 0,
+                "indexed":          row[3] if row else 0,
+                "with_notes":       row[4] if row else 0,
+                "outdated_summary": row[5] if row else 0,
             })
         except Exception as col_exc:
             # Migration 001 columns not yet present — fall back to simple count.
@@ -1293,6 +1304,7 @@ def api_article_stats():
                 "with_summary_ai": 0,
                 "with_extraction": 0,
                 "indexed": 0,
+                "outdated_summary": 0,
                 "_migration_pending": True,
             })
     except Exception as exc:

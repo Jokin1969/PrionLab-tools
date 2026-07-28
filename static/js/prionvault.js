@@ -102,6 +102,29 @@
                                   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const supHtml = s => esc(s).replace(/\^(\S[^\^\n]*?)\^/g, '<sup>$1</sup>');
 
+  // Wire a "copy this text to clipboard" button: reads `data-title` (or
+  // falls back to `getValue()` if given, for inputs), copies it, and
+  // briefly swaps the icon for a checkmark as feedback. `stopProp: true`
+  // (the default) is needed for buttons sitting inside a clickable row
+  // so the click doesn't also trigger the row's own click handler.
+  function _wireCopyBtn(btn, { getValue, stopProp = true } = {}) {
+    if (!btn) return;
+    btn.addEventListener('click', (e) => {
+      if (stopProp) e.stopPropagation();
+      const text = getValue ? getValue() : (btn.dataset.title || '');
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        const icon = btn.querySelector('i');
+        const prevClass = icon ? icon.className : null;
+        if (icon) icon.className = 'fas fa-check';
+        else btn.textContent = '✓';
+        setTimeout(() => {
+          if (icon && prevClass) icon.className = prevClass;
+        }, 1200);
+      });
+    });
+  }
+
   // Lightweight Markdown rendering for AI summaries.
   // Handles the three constructs the model actually produces:
   //   ## Heading       → coloured uppercase block
@@ -225,6 +248,7 @@
       set('count-no-summary', s.total - s.with_summary_ai);
       set('count-indexed',    s.indexed);
       set('count-notes',      s.with_notes ?? 0);
+      set('count-outdated-summary', s.outdated_summary ?? 0);
     } catch (e) { console.error(e); }
   }
 
@@ -3076,7 +3100,12 @@
       <td class="pv-row-open" style="padding:8px 12px;vertical-align:middle;width:100%;overflow:hidden;cursor:pointer;">
         <div style="font-size:14px;font-weight:600;color:#111827;line-height:1.35;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-             title="${esc(titleTooltip)}">${supHtml(a.title || '(no title)')}</div>
+             title="${esc(titleTooltip)}">${supHtml(a.title || '(no title)')}<button
+               type="button" class="pv-copy-title-btn" data-title="${esc(a.title || '')}"
+               title="Copiar título"
+               style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
+                      cursor:pointer;color:#9ca3af;font-size:10px;line-height:1;"
+               ><i class="far fa-copy"></i></button></div>
         <div style="margin-top:2px;font-size:12px;color:#6b7280;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${authors}${journal}</div>
         ${(tags || badges) ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;overflow:hidden;">${badges}${tags}</div>` : ''}
@@ -3436,6 +3465,8 @@
 
       const manualUploadBtn = row.querySelector('.pv-oa-manual-btn');
       if (manualUploadBtn) _wireManualUploadBtn(manualUploadBtn, a);
+
+      _wireCopyBtn(row.querySelector('.pv-copy-title-btn'));
 
       const cartBtn = row.querySelector('.pv-cart-btn');
       if (cartBtn) cartBtn.addEventListener('click', (e) => {
@@ -5668,6 +5699,10 @@
     document.getElementById('pv-edit-close') ?.addEventListener('click', close);
     document.getElementById('pv-edit-cancel')?.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+    _wireCopyBtn(document.getElementById('pv-edit-title-copy'), {
+      stopProp: false,
+      getValue: () => document.getElementById('pv-edit-title').value.trim(),
+    });
     document.getElementById('pv-edit-doi-copy')?.addEventListener('click', () => {
       const val = document.getElementById('pv-edit-doi').value.trim();
       if (!val) return;
@@ -7708,6 +7743,9 @@
           if (f === 'notes') {
             // Toggle: clicking again deactivates the notes filter
             state.hasSummary = state.hasSummary === 'human' ? null : 'human';
+          } else if (f === 'outdated-summary') {
+            // Toggle: clicking again deactivates the outdated filter
+            state.hasSummary = state.hasSummary === 'outdated' ? null : 'outdated';
           } else {
             state.hasSummary = (f === 'no-summary') ? 'none' : null;
           }
