@@ -386,6 +386,12 @@ def _process_one(row: dict) -> str:
         _log_event(aid, title, "failed", via=via, reason=str(exc))
         return "failed"
 
+    try:
+        from ..routes_ingestion import _invalidate_thumb_cache
+        _invalidate_thumb_cache(aid)
+    except Exception:
+        pass  # thumbnail cache is best-effort; never fail the fetch over it
+
     with _lock:
         _state["fetched"] += 1
     _log_event(aid, title, "fetched", via=via)

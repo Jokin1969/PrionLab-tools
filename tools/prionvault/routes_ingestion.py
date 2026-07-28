@@ -733,6 +733,7 @@ def api_article_upload_pdf(aid):
                         "detail": str(exc)[:300]}), 500
     finally:
         s.close()
+    _invalidate_thumb_cache(aid)
     return jsonify({
         "ok":           True,
         "dropbox_path": dropbox_path,
@@ -934,6 +935,17 @@ def api_articles_search_by_idea():
 _thumb_cache: OrderedDict = OrderedDict()   # aid → jpeg_bytes
 _thumb_cache_lock = threading.Lock()
 _THUMB_CACHE_MAX = 200                       # max entries (~5 MB at ~25 KB each)
+
+
+def _invalidate_thumb_cache(aid) -> None:
+    """Drop any cached thumbnail for `aid`. Must be called whenever an
+    article's dropbox_path changes (new/replaced/detached PDF) — the
+    in-process cache below has no TTL, so without this it keeps serving
+    the old PDF's rendered first page indefinitely (compounded by the
+    7-day browser Cache-Control on the response, since its ETag is
+    derived from the same stale cached bytes)."""
+    with _thumb_cache_lock:
+        _thumb_cache.pop(str(aid), None)
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/thumbnail", methods=["GET"])
@@ -1344,6 +1356,7 @@ def api_article_identify_pmid(aid):
                 s.commit()
             finally:
                 s.close()
+            _invalidate_thumb_cache(aid)
 
         return jsonify({
             "pmid":         pmid,

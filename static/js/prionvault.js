@@ -2836,6 +2836,7 @@
   function renderRow(a) {
     const row = document.createElement('tr');
     row.className = 'pv-article-row';
+    row.dataset.aid = a.id;
     // Cursor lives on the two clickable cells (Article + Year), not on
     // the whole row — clicking the left-side mark buttons or the
     // right-side action chips used to fire openDetail by accident.
@@ -3828,7 +3829,12 @@
 
       content.innerHTML = `
         <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;line-height:1.35;padding-right:24px;">
-          ${supHtml(a.title)}
+          ${supHtml(a.title)}<button
+            type="button" id="pv-detail-title-copy" data-title="${esc(a.title || '')}"
+            title="Copiar título"
+            style="all:unset;display:inline-flex;vertical-align:super;margin-left:4px;
+                   cursor:pointer;color:#9ca3af;font-size:13px;line-height:1;"
+            ><i class="far fa-copy"></i></button>
         </h2>
         ${prionreadBadge}
         ${personalChips}
@@ -3928,6 +3934,7 @@
           ${a.indexed_at ? ' · Indexed: ' + esc(a.indexed_at.slice(0, 10)) : ''}
         </div>
       `;
+      _wireCopyBtn(document.getElementById('pv-detail-title-copy'), { stopProp: false });
       renderRatingsSection(a);
       wirePdfViewer(a);
       wirePersonalState(a);
@@ -5461,6 +5468,17 @@
         _editTarget.dropbox_path = d.dropbox_path;
         _editRenderPdfPreview(_editTarget);
         _editSyncPdfAttach(true);
+        // Refresh the listing row's thumbnail too — it caches by URL,
+        // so without a fresh cache-busting query string it keeps
+        // showing the previous PDF's first page even after this upload.
+        {
+          const listingRow = document.querySelector(
+            `tr.pv-article-row[data-aid="${CSS.escape(_editTarget.id)}"]`);
+          const thumbImg = listingRow?.querySelector('img.pv-thumb');
+          if (thumbImg) {
+            thumbImg.src = `/prionvault/api/articles/${encodeURIComponent(_editTarget.id)}/thumbnail?_=${Date.now()}`;
+          }
+        }
         // Re-enable the "🤖 Buscar PMID con IA" button — it greys
         // out when there's no PDF.
         const aiBtn = document.getElementById('pv-edit-identify-ai');
