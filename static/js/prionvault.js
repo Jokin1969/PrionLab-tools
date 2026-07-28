@@ -13735,14 +13735,19 @@
       finally { b.disabled = false; b.textContent = orig; }
     }
 
-    function openEdit(aid) {
-      // Hand off to the existing Edit-modal wiring so the operator can
-      // fix the metadata or repoint the DOI/PMID in one place.
-      const trigger = document.querySelector(`.pv-edit-row-btn[data-aid="${CSS.escape(aid)}"]`);
-      if (trigger) { trigger.click(); return; }
-      // If the row isn't visible in the main listing right now, just
-      // open the article detail (clicking the listing's row).
-      window.open(`/prionvault/articles/${aid}`, '_blank');
+    async function openEdit(aid) {
+      // Fetch the article fresh and open the real Edit modal directly —
+      // this used to look for a `.pv-edit-row-btn` for this id in the
+      // main listing and, if the row wasn't currently on-screen (the
+      // common case, since verify-metadata mismatches are rarely on the
+      // visible page), fall back to a `/prionvault/articles/<id>` page
+      // that was never a real route, landing on a 404.
+      try {
+        const fresh = await api(`/articles/${aid}`);
+        openEditModal(fresh);
+      } catch (err) {
+        alert('No se pudo abrir el editor: ' + err.message);
+      }
     }
 
     startBtn.addEventListener('click', async () => {
