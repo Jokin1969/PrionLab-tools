@@ -9039,7 +9039,10 @@
         });
         const more = r.remaining > 0
           ? `\n\nQuedan ${r.remaining} sin abstract. Vuelve a pulsar para procesar otros 250.`
-          : '\n\n✓ Sin artículos pendientes.';
+          : '\n\n✓ Sin artículos pendientes de reintentar ahora mismo.';
+        const confirmedLine = r.confirmed_unavailable_total
+          ? `\n\n(${r.confirmed_unavailable_total} artículo(s) están confirmados sin abstract disponible en PubMed/CrossRef — no se reintentan en cada clic, solo cada 24h por si la fuente se actualiza.)`
+          : '';
         const conflictsLine = r.pmid_conflicts
           ? `\n⚠ PMID encontrado pero ya pertenecía a otro artículo (no se asignó, abstract sí): ${r.pmid_conflicts}`
           : '';
@@ -9050,7 +9053,8 @@
           `Aún sin abstract (marcados como confirmados): ${r.still_missing}\n` +
           `PMIDs descubiertos por el camino: ${r.learned_pmids}` +
           conflictsLine +
-          more
+          more +
+          confirmedLine
         );
         loadArticles();
       } catch (e) {

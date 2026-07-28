@@ -1420,9 +1420,12 @@ def api_count_pdf_pages(aid):
 @admin_required
 def api_admin_retry_abstracts():
     """Re-attempt the abstract lookup for articles that still don't
-    have one but carry a DOI or PMID. Includes the rows we previously
-    marked as 'abstract_unavailable', so a parser improvement (e.g.
-    pubmed_efetch_abstract) can rescue them.
+    have one but carry a DOI or PMID. Includes rows we previously
+    marked as 'abstract_unavailable' — but only once the cooldown below
+    has elapsed since the last check — so a parser improvement (e.g.
+    pubmed_efetch_abstract) can eventually rescue them without the
+    operator hammering the exact same handful of confirmed-empty rows
+    on every click (they'll never change until PubMed/CrossRef does).
 
     Body (optional): {"limit": 250}. Default 250, capped at 500.
 
@@ -1445,6 +1448,13 @@ def api_admin_retry_abstracts():
         "PRIONVAULT_RETRY_ABSTRACTS_BUDGET_S", "25"))
     started_at = _time.monotonic()
 
+    # Rows already confirmed unavailable get skipped for this many hours
+    # since their last check — otherwise a stuck handful (dead DOI, no
+    # abstract ever published) gets reprocessed identically on every
+    # click forever, always reporting the exact same "0 recovered".
+    _RECHECK_COOLDOWN_H = float(os.environ.get(
+        "PRIONVAULT_ABSTRACT_RECHECK_COOLDOWN_H", "24"))
+
     data  = request.get_json(silent=True) or {}
     try:
         limit = int(data.get("limit", 250))
@@ -1454,13 +1464,18 @@ def api_admin_retry_abstracts():
 
     s = _session()
     try:
-        rows = s.execute(sql_text(
-            """SELECT id, doi, pubmed_id FROM articles
+        eligible_clause = """
                WHERE coalesce(abstract, '') = ''
                  AND (doi IS NOT NULL OR pubmed_id IS NOT NULL)
-               ORDER BY abstract_unavailable DESC, updated_at ASC
+                 AND (abstract_unavailable = FALSE
+                      OR updated_at < NOW() - (:cooldown_h * INTERVAL '1 hour'))
+        """
+        rows = s.execute(sql_text(
+            f"""SELECT id, doi, pubmed_id FROM articles
+               {eligible_clause}
+               ORDER BY abstract_unavailable ASC, updated_at ASC
                LIMIT :limit"""
-        ), {"limit": limit}).mappings().all()
+        ), {"limit": limit, "cooldown_h": _RECHECK_COOLDOWN_H}).mappings().all()
 
         recovered    = 0
         still_missing = 0
@@ -1568,12 +1583,23 @@ def api_admin_retry_abstracts():
             # doesn't lose work that already succeeded.
             s.commit()
 
-        # Quick "how much is left?" count so the UI can suggest
-        # another run when the batch is full.
+        # Quick "how much is left?" count — same eligibility clause as
+        # the batch query above, so this genuinely means "worth another
+        # click right now" rather than including confirmed-unavailable
+        # rows stuck in cooldown that would just repeat this exact
+        # result.
         remaining = s.execute(sql_text(
+            f"SELECT COUNT(*) FROM articles {eligible_clause}"
+        ), {"cooldown_h": _RECHECK_COOLDOWN_H}).scalar() or 0
+
+        # Separately: how many are confirmed-unavailable but currently
+        # in cooldown, so the UI can explain why "remaining" dropped to
+        # 0 even though not every missing abstract was recovered.
+        confirmed_unavailable_total = s.execute(sql_text(
             """SELECT COUNT(*) FROM articles
                WHERE coalesce(abstract, '') = ''
-                 AND (doi IS NOT NULL OR pubmed_id IS NOT NULL)"""
+                 AND (doi IS NOT NULL OR pubmed_id IS NOT NULL)
+                 AND abstract_unavailable = TRUE"""
         )).scalar() or 0
 
         s.commit()
@@ -1589,6 +1615,7 @@ def api_admin_retry_abstracts():
             "learned_pmids":   learned_pmids,
             "pmid_conflicts":  pmid_conflicts,
             "remaining":       int(remaining),
+            "confirmed_unavailable_total": int(confirmed_unavailable_total),
             "time_exhausted":  time_exhausted,
         })
     except Exception as exc:
