@@ -7762,9 +7762,6 @@
           if (f === 'notes') {
             // Toggle: clicking again deactivates the notes filter
             state.hasSummary = state.hasSummary === 'human' ? null : 'human';
-          } else if (f === 'outdated-summary') {
-            // Toggle: clicking again deactivates the outdated filter
-            state.hasSummary = state.hasSummary === 'outdated' ? null : 'outdated';
           } else {
             state.hasSummary = (f === 'no-summary') ? 'none' : null;
           }
