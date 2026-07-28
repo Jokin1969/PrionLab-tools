@@ -6,9 +6,10 @@ a per-table CSV export. Supports optional S3 upload when configured.
 
 Also mirrors each successful backup to Dropbox under
 ``$PRIONLAB_BACKUP_DIR`` (default ``/PrionLab tools/Backups``) and
-applies a daily+monthly retention policy on that folder, configurable
-via ``PRIONLAB_BACKUP_RETAIN_DAILY`` (default 90) and
-``PRIONLAB_BACKUP_RETAIN_MONTHLY`` (default 24).
+applies a count+monthly retention policy on that folder. Schedule and
+retention are configurable at runtime via the `backup_settings` table
+(see migrations/070_backup_settings.sql) rather than env vars, editable
+from the admin "Backups" panel.
 """
 import ast
 import csv
@@ -80,9 +81,10 @@ class BackupManager:
                     dbx_path = self._upload_to_dropbox(result["path"])
                     if dbx_path:
                         result["dropbox_path"] = dbx_path
+                    settings = get_backup_settings()
                     pruned = self._apply_dropbox_retention(
-                        daily=_env_int("PRIONLAB_BACKUP_RETAIN_DAILY", 90),
-                        monthly=_env_int("PRIONLAB_BACKUP_RETAIN_MONTHLY", 24),
+                        retain_count=settings["retain_count"],
+                        monthly=settings["retain_monthly"],
                     )
                     if pruned:
                         result["dropbox_pruned"] = pruned
@@ -208,81 +210,12 @@ class BackupManager:
             psycopg2_conn = psycopg2.connect(db.database_url)
             cell_warnings = []
             try:
-                # Look up real table names up front so a "-- TABLE: name"
-                # marker line is only ever recognized as a genuine table
-                # boundary when `name` is an actual table.
                 with psycopg2_conn.cursor() as cursor:
-                    cursor.execute(
-                        "SELECT table_name FROM information_schema.tables "
-                        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
-                    )
-                    real_tables = {r[0] for r in cursor.fetchall()}
-
+                    real_tables = _get_real_tables(cursor)
                 if not real_tables:
                     return {"success": False, "error": "Could not introspect current schema tables"}
 
-                # Parse the ENTIRE backup with a single csv.reader pass
-                # instead of regex-splitting the raw text on "-- TABLE:"
-                # marker lines. This matters because tables with large
-                # free-text columns (e.g. AI-generated article summaries)
-                # can contain a line that looks exactly like a marker —
-                # a plain text/regex split would cut that table's data in
-                # half and misattribute the rest, silently discarding real
-                # rows (this is what emptied the `articles` table in a
-                # previous run). Feeding the whole file through csv.reader
-                # instead means quote state is tracked character-by-
-                # character across the entire stream: a marker-like line
-                # that occurs *inside* an open quoted field is correctly
-                # treated as part of that field's text, never as a
-                # standalone row, so it can never be mistaken for a real
-                # boundary.
-                marker_re = re.compile(r"^-- TABLE: (.+)$")
-                parsed = {}
-                current_table = None
-                current_header = None
-                current_rows = []
-
-                def _flush_current():
-                    if current_table and current_header and current_rows:
-                        parsed[current_table] = (current_header, list(current_rows))
-
-                for row in csv.reader(io.StringIO(content)):
-                    if len(row) == 1:
-                        m = marker_re.match(row[0])
-                        if m:
-                            # Any marker-shaped row ends the previous
-                            # table's block, whether or not its name is a
-                            # table we currently recognize — an
-                            # unrecognized name (e.g. one renamed/dropped
-                            # by a later migration) must NOT fall through
-                            # and have its rows misattributed as extra
-                            # data for whatever table came before it.
-                            _flush_current()
-                            name = m.group(1)
-                            if name in real_tables:
-                                current_table = name
-                            else:
-                                logger.info(
-                                    "Table %s from backup no longer exists "
-                                    "in current schema, skipping", name
-                                )
-                                current_table = None
-                            current_header = None
-                            current_rows = []
-                            continue
-                    if current_table is None:
-                        continue
-                    if not row or (len(row) == 1 and row[0] == ''):
-                        continue  # blank separator line between table blocks
-                    if current_header is None:
-                        current_header = row
-                    else:
-                        current_rows.append(row)
-                _flush_current()
-
-                for table_name in real_tables:
-                    if table_name not in parsed:
-                        logger.info("Table %s is empty or absent, skipping", table_name)
+                parsed = _parse_csv_backup(content, real_tables)
 
                 if only_tables is not None:
                     requested_missing = sorted(set(only_tables) - set(parsed.keys()))
@@ -297,64 +230,29 @@ class BackupManager:
                     return {"success": False, "error": "No non-empty tables found in backup"}
 
                 with psycopg2_conn.cursor() as cursor:
-                    # Fetch FK relationships across the WHOLE schema (not
-                    # just backup tables) — needed both to order the
-                    # restore and to check what TRUNCATE CASCADE would
-                    # actually reach.
-                    cursor.execute(
-                        "SELECT tc.table_name AS child, ccu.table_name AS parent "
-                        "FROM information_schema.table_constraints tc "
-                        "JOIN information_schema.constraint_column_usage ccu "
-                        "  ON tc.constraint_name = ccu.constraint_name "
-                        " AND tc.table_schema = ccu.table_schema "
-                        "WHERE tc.constraint_type = 'FOREIGN KEY'"
+                    all_edges = _get_all_fk_edges(cursor)
+
+                plan = _compute_restore_plan(parsed, all_edges, acknowledge_data_loss)
+                order = plan["order"]
+                blocking = plan["blocking"]
+                acknowledged = plan["acknowledged"]
+                if acknowledged:
+                    logger.warning(
+                        "Restore will empty %s via CASCADE with no data to "
+                        "reload — explicitly acknowledged, proceeding",
+                        sorted(acknowledged),
                     )
-                    all_edges = [(c, p) for c, p in cursor.fetchall() if c != p]
+                if blocking:
+                    return {
+                        "success": False,
+                        "error": (
+                            "Refusing to restore: TRUNCATE CASCADE would also "
+                            f"empty {blocking}, which have no data in this "
+                            "backup to reload afterward."
+                        ),
+                    }
 
-                    # Determine a foreign-key-safe restore order: parent
-                    # tables (FK targets) before the child tables that
-                    # reference them, among just the tables present in
-                    # this backup.
-                    backup_edges = [(c, p) for c, p in all_edges if c in parsed and p in parsed]
-                    order = _topological_table_order(list(parsed.keys()), backup_edges)
-
-                    # Safety check: TRUNCATE ... CASCADE also empties any
-                    # table that (transitively) references one of the
-                    # tables we're about to truncate — even tables that
-                    # aren't part of this backup. Refuse to proceed if
-                    # that would happen, rather than silently wiping data
-                    # we have no way to reload (this is exactly how the
-                    # `articles` table was emptied in a previous run).
-                    children_of = {}
-                    for child, parent in all_edges:
-                        children_of.setdefault(parent, set()).add(child)
-                    closure = set(order)
-                    frontier = list(order)
-                    while frontier:
-                        t = frontier.pop()
-                        for c in children_of.get(t, ()):
-                            if c not in closure:
-                                closure.add(c)
-                                frontier.append(c)
-                    unreloadable = closure - set(parsed.keys())
-                    acknowledged = unreloadable & (acknowledge_data_loss or set())
-                    blocking = sorted(unreloadable - acknowledged)
-                    if acknowledged:
-                        logger.warning(
-                            "Restore will empty %s via CASCADE with no data to "
-                            "reload — explicitly acknowledged, proceeding",
-                            sorted(acknowledged),
-                        )
-                    if blocking:
-                        return {
-                            "success": False,
-                            "error": (
-                                "Refusing to restore: TRUNCATE CASCADE would also "
-                                f"empty {blocking}, which have no data in this "
-                                "backup to reload afterward."
-                            ),
-                        }
-
+                with psycopg2_conn.cursor() as cursor:
                     # Truncate every table in ONE statement so a later
                     # table's CASCADE can't wipe out rows already loaded
                     # into an earlier table — all truncation happens
@@ -479,6 +377,106 @@ class BackupManager:
         except Exception as e:
             logger.error("CSV restore failed: %s", e)
             return {"success": False, "error": str(e)[:500]}
+
+    def verify_csv_export(self, backup_path: str, only_tables: Optional[set] = None) -> dict:
+        """Read-only dry run of a csv_export restore: parses the backup
+        and computes exactly what restore_from_csv_export would do,
+        WITHOUT touching the database (no TRUNCATE, no COPY, no writes
+        of any kind — every query is a SELECT).
+
+        Returns a report: per-table row counts found in the backup,
+        tables in the backup no longer present in the current schema,
+        the computed restore order, any table that TRUNCATE CASCADE
+        would empty with no data to reload (the same check
+        restore_from_csv_export enforces), and a best-effort count of
+        json/array cells that look like they'd need repair. Use this to
+        confirm a backup is restorable *before* an emergency, not
+        during one.
+        """
+        from database.config import db
+        if not db.is_configured():
+            return {"success": False, "error": "Database not configured"}
+        path = Path(backup_path)
+        if not path.exists():
+            return {"success": False, "error": f"Backup file not found: {backup_path}"}
+        if not path.name.startswith("csv_export_"):
+            return {"success": False, "error": "Only csv_export backups can be verified here"}
+
+        try:
+            with gzip.open(path, "rb") as gz:
+                content = gz.read().decode("utf-8")
+        except Exception as e:
+            return {"success": False, "error": f"Could not read/decompress backup: {e}"}
+
+        try:
+            import psycopg2
+        except ImportError:
+            return {"success": False, "error": "psycopg2 not available"}
+
+        try:
+            conn = psycopg2.connect(db.database_url)
+        except Exception as e:
+            return {"success": False, "error": f"Could not connect to database: {e}"}
+        try:
+            with conn.cursor() as cursor:
+                real_tables = _get_real_tables(cursor)
+            if not real_tables:
+                return {"success": False, "error": "Could not introspect current schema tables"}
+
+            parsed = _parse_csv_backup(content, real_tables)
+            backup_table_names = set(parsed.keys())
+
+            considered = parsed
+            if only_tables is not None:
+                considered = {t: v for t, v in parsed.items() if t in only_tables}
+
+            with conn.cursor() as cursor:
+                all_edges = _get_all_fk_edges(cursor)
+            plan = _compute_restore_plan(considered, all_edges, acknowledge_data_loss=None)
+
+            # Best-effort scan for json/array cells that would need
+            # repair (Python-repr artifacts from an older, buggy
+            # export) — read-only, no mutation.
+            repair_estimate = {}
+            with conn.cursor() as cursor:
+                for table_name, (header, data_rows) in considered.items():
+                    cursor.execute(
+                        "SELECT column_name, data_type FROM information_schema.columns "
+                        "WHERE table_name = %s", (table_name,)
+                    )
+                    col_types = dict(cursor.fetchall())
+                    json_cols = {c for c in header if col_types.get(c) in ("json", "jsonb")}
+                    array_cols = {c for c in header if col_types.get(c) == "ARRAY"}
+                    if not json_cols and not array_cols:
+                        continue
+                    _, nulled = _repair_json_and_array_cells(
+                        header, data_rows, json_cols, array_cols
+                    )
+                    if nulled:
+                        repair_estimate[table_name] = nulled
+
+            tables_report = [
+                {"table": t, "rows": len(rows), "columns": len(header)}
+                for t, (header, rows) in sorted(parsed.items())
+            ]
+            size_mb = round(path.stat().st_size / (1024 * 1024), 2)
+
+            return {
+                "success": True,
+                "backup": path.name,
+                "size_mb": size_mb,
+                "tables_found": len(backup_table_names),
+                "total_rows": sum(len(rows) for _, rows in parsed.values()),
+                "tables": tables_report,
+                "restore_order": plan["order"],
+                "would_block": plan["blocking"],
+                "unrepairable_json_array_cells": repair_estimate,
+            }
+        except Exception as e:
+            logger.error("Backup verification failed: %s", e)
+            return {"success": False, "error": str(e)[:500]}
+        finally:
+            conn.close()
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
@@ -695,9 +693,9 @@ class BackupManager:
         return items
 
     @classmethod
-    def _apply_dropbox_retention(cls, *, daily: int, monthly: int) -> int:
+    def _apply_dropbox_retention(cls, *, retain_count: int, monthly: int) -> int:
         """Prune old backups in the Dropbox folder. Returns count
-        deleted. The newest `daily` daily backups are always kept,
+        deleted. The newest `retain_count` backups are always kept,
         plus the chronologically-first backup of each of the last
         `monthly` months."""
         try:
@@ -713,7 +711,7 @@ class BackupManager:
             return 0
         keep = _select_keep(
             [(e["name"], e["ts"]) for e in entries],
-            daily=daily, monthly=monthly,
+            retain_count=retain_count, monthly=monthly,
         )
         deleted = 0
         for e in entries:
@@ -732,6 +730,130 @@ class BackupManager:
 
 
 # ── Module-level helpers ─────────────────────────────────────────────────────
+
+def _get_real_tables(cursor) -> set:
+    """Return the set of base table names in the current public schema."""
+    cursor.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+    )
+    return {r[0] for r in cursor.fetchall()}
+
+
+def _get_all_fk_edges(cursor) -> list:
+    """Return every (child_table, parent_table) FK relationship in the
+    current schema, self-references excluded."""
+    cursor.execute(
+        "SELECT tc.table_name AS child, ccu.table_name AS parent "
+        "FROM information_schema.table_constraints tc "
+        "JOIN information_schema.constraint_column_usage ccu "
+        "  ON tc.constraint_name = ccu.constraint_name "
+        " AND tc.table_schema = ccu.table_schema "
+        "WHERE tc.constraint_type = 'FOREIGN KEY'"
+    )
+    return [(c, p) for c, p in cursor.fetchall() if c != p]
+
+
+def _parse_csv_backup(content: str, real_tables: set) -> dict:
+    """Parse a csv_export backup's decompressed text into
+    {table_name: (header, data_rows)}, skipping empty tables.
+
+    Parses the ENTIRE backup with a single csv.reader pass instead of
+    regex-splitting the raw text on "-- TABLE:" marker lines. This
+    matters because tables with large free-text columns (e.g.
+    AI-generated article summaries) can contain a line that looks
+    exactly like a marker — a plain text/regex split would cut that
+    table's data in half and misattribute the rest, silently discarding
+    real rows (this is what emptied the `articles` table in a previous
+    run). Feeding the whole file through csv.reader instead means quote
+    state is tracked character-by-character across the entire stream: a
+    marker-like line that occurs *inside* an open quoted field is
+    correctly treated as part of that field's text, never as a
+    standalone row, so it can never be mistaken for a real boundary.
+
+    Any marker-shaped row ends the previous table's block, whether or
+    not its name is a table we currently recognize — an unrecognized
+    name (e.g. one renamed/dropped by a later migration) must NOT fall
+    through and have its rows misattributed as extra data for whatever
+    table came before it.
+    """
+    marker_re = re.compile(r"^-- TABLE: (.+)$")
+    parsed = {}
+    current_table = None
+    current_header = None
+    current_rows = []
+
+    def _flush_current():
+        if current_table and current_header and current_rows:
+            parsed[current_table] = (current_header, list(current_rows))
+
+    for row in csv.reader(io.StringIO(content)):
+        if len(row) == 1:
+            m = marker_re.match(row[0])
+            if m:
+                _flush_current()
+                name = m.group(1)
+                if name in real_tables:
+                    current_table = name
+                else:
+                    logger.info(
+                        "Table %s from backup no longer exists "
+                        "in current schema, skipping", name
+                    )
+                    current_table = None
+                current_header = None
+                current_rows = []
+                continue
+        if current_table is None:
+            continue
+        if not row or (len(row) == 1 and row[0] == ''):
+            continue  # blank separator line between table blocks
+        if current_header is None:
+            current_header = row
+        else:
+            current_rows.append(row)
+    _flush_current()
+
+    for table_name in real_tables:
+        if table_name not in parsed:
+            logger.info("Table %s is empty or absent, skipping", table_name)
+    return parsed
+
+
+def _compute_restore_plan(parsed: dict, all_edges: list,
+                          acknowledge_data_loss: Optional[set] = None) -> dict:
+    """Given the parsed backup tables and the current schema's FK edges,
+    compute a safe restore order and detect any CASCADE-closure risk.
+
+    Returns {"order": [...], "blocking": [...], "acknowledged": {...}}.
+    `blocking` is non-empty when TRUNCATE ... CASCADE would empty a
+    table outside `parsed` with no data queued to reload it (unless the
+    caller pre-acknowledged that specific table via
+    `acknowledge_data_loss`) — restoring must not proceed in that case.
+    """
+    backup_edges = [(c, p) for c, p in all_edges if c in parsed and p in parsed]
+    order = _topological_table_order(list(parsed.keys()), backup_edges)
+
+    # TRUNCATE ... CASCADE also empties any table that (transitively)
+    # references one of the tables about to be truncated — even tables
+    # that aren't part of this backup. This is exactly the mechanism
+    # that emptied the `articles` table in a previous incident.
+    children_of = {}
+    for child, parent in all_edges:
+        children_of.setdefault(parent, set()).add(child)
+    closure = set(order)
+    frontier = list(order)
+    while frontier:
+        t = frontier.pop()
+        for c in children_of.get(t, ()):
+            if c not in closure:
+                closure.add(c)
+                frontier.append(c)
+    unreloadable = closure - set(parsed.keys())
+    acknowledged = unreloadable & (acknowledge_data_loss or set())
+    blocking = sorted(unreloadable - acknowledged)
+    return {"order": order, "blocking": blocking, "acknowledged": acknowledged}
+
 
 def _topological_table_order(tables, edges):
     """Order `tables` so a parent (FK target) always precedes any child
@@ -829,18 +951,6 @@ def _pg_array_literal(items) -> str:
     return '{' + ','.join(fmt(v) for v in items) + '}'
 
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None or raw == "":
-        return default
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        logger.warning("Invalid int for %s=%r — using default %d",
-                       name, raw, default)
-        return default
-
-
 def _parse_backup_ts(name: str) -> Optional[datetime]:
     m = _BACKUP_TS_RE.match(name)
     if not m:
@@ -852,26 +962,27 @@ def _parse_backup_ts(name: str) -> Optional[datetime]:
 
 
 def _select_keep(entries: list[tuple[str, datetime]],
-                 *, daily: int, monthly: int) -> set[str]:
+                 *, retain_count: int, monthly: int) -> set[str]:
     """Decide which backups to keep.
 
     Keep:
-      • every entry within the last `daily` days, AND
+      • the `retain_count` most recent entries, AND
       • the chronologically-earliest entry of each calendar month
         for the most recent `monthly` distinct months.
 
+    Count-based (rather than day-based) so retention makes sense
+    regardless of how often backups actually run (weekly by default,
+    but configurable) — "keep the last N backups" means the same thing
+    whether that's N days or N weeks of history.
+
     Returns the set of filenames to keep.
     """
-    now = datetime.utcnow()
     keep: set[str] = set()
 
-    # 1) Last `daily` days
-    if daily > 0:
-        from datetime import timedelta
-        cutoff = now - timedelta(days=daily)
-        for name, ts in entries:
-            if ts >= cutoff:
-                keep.add(name)
+    # 1) `retain_count` most recent entries
+    if retain_count > 0:
+        for name, _ts in sorted(entries, key=lambda e: e[1], reverse=True)[:retain_count]:
+            keep.add(name)
 
     # 2) First-of-month for the last `monthly` months
     if monthly > 0:
@@ -883,3 +994,63 @@ def _select_keep(entries: list[tuple[str, datetime]],
         for key in sorted(earliest.keys(), reverse=True)[:monthly]:
             keep.add(earliest[key][0])
     return keep
+
+
+# ── Configurable schedule + retention (backup_settings table) ───────────────
+
+_DEFAULT_BACKUP_SETTINGS = {
+    "frequency":      "weekly",
+    "day_of_week":    "sun",
+    "day_of_month":   1,
+    "hour_utc":       3,
+    "retain_count":   12,
+    "retain_monthly": 24,
+}
+
+
+def get_backup_settings() -> dict:
+    """Return the current backup schedule/retention settings, creating
+    the default row if the database has none yet. Falls back to
+    in-memory defaults (never raises) if the DB isn't reachable, so
+    scheduling code always has something usable."""
+    try:
+        from database.config import db
+        from sqlalchemy import text as sql_text
+        if not db.is_configured():
+            return dict(_DEFAULT_BACKUP_SETTINGS)
+        s = db.Session()
+        try:
+            row = s.execute(sql_text(
+                "SELECT frequency, day_of_week, day_of_month, hour_utc, "
+                "       retain_count, retain_monthly "
+                "FROM backup_settings WHERE id = TRUE"
+            )).mappings().first()
+            if row is None:
+                return dict(_DEFAULT_BACKUP_SETTINGS)
+            return dict(row)
+        finally:
+            s.close()
+    except Exception as exc:
+        logger.warning("get_backup_settings: falling back to defaults: %s", exc)
+        return dict(_DEFAULT_BACKUP_SETTINGS)
+
+
+def set_backup_settings(**fields) -> dict:
+    """Update backup schedule/retention settings. Only known columns in
+    `fields` are applied; returns the settings row after the update."""
+    from database.config import db
+    from sqlalchemy import text as sql_text
+    allowed = set(_DEFAULT_BACKUP_SETTINGS.keys())
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return get_backup_settings()
+    cols = ", ".join(f"{k} = :{k}" for k in updates)
+    s = db.Session()
+    try:
+        s.execute(sql_text(
+            f"UPDATE backup_settings SET {cols}, updated_at = NOW() WHERE id = TRUE"
+        ), updates)
+        s.commit()
+    finally:
+        s.close()
+    return get_backup_settings()

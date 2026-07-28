@@ -9,6 +9,19 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 
+def _backup_cron_kwargs(settings: dict) -> dict:
+    """Build CronTrigger kwargs from a backup_settings dict. Falls back
+    to the historical weekly-Sunday-3am schedule for any unrecognized
+    `frequency` value, rather than silently not scheduling anything."""
+    hour = settings.get("hour_utc", 3)
+    freq = settings.get("frequency", "weekly")
+    if freq == "daily":
+        return {"hour": hour}
+    if freq == "monthly":
+        return {"day": settings.get("day_of_month", 1), "hour": hour}
+    return {"day_of_week": settings.get("day_of_week", "sun"), "hour": hour}
+
+
 class MaintenanceScheduler:
 
     def __init__(self, app):
@@ -42,10 +55,14 @@ class MaintenanceScheduler:
             sched.add_job(lambda: _run(self.update_search_vectors),
                           CronTrigger(hour=2, minute=30), id="search_vectors",
                           replace_existing=True)
-            # Weekly Sunday 03:00 UTC: backup + vacuum
+            # Backup: schedule is configurable (default weekly Sunday
+            # 03:00 UTC) — see backup_settings / the admin Backups panel.
+            with app.app_context():
+                from database.backup import get_backup_settings
+                backup_settings = get_backup_settings()
             sched.add_job(lambda: _run(self.weekly_backup),
-                          CronTrigger(day_of_week="sun", hour=3), id="weekly_backup",
-                          replace_existing=True)
+                          CronTrigger(**_backup_cron_kwargs(backup_settings)),
+                          id="weekly_backup", replace_existing=True)
             sched.add_job(lambda: _run(self.vacuum_analyze),
                           CronTrigger(day_of_week="sun", hour=4), id="vacuum",
                           replace_existing=True)
@@ -70,6 +87,28 @@ class MaintenanceScheduler:
         if self._scheduler and self._scheduler.running:
             self._scheduler.shutdown(wait=False)
             logger.info("Maintenance scheduler stopped")
+
+    def reschedule_backup_job(self) -> bool:
+        """Re-read backup_settings and apply the new schedule to the
+        already-running "weekly_backup" job — called by the admin
+        Backups panel right after a frequency/schedule change, so it
+        takes effect immediately instead of waiting for the next
+        process restart."""
+        if not self._scheduler or not self._scheduler.running:
+            return False
+        try:
+            from apscheduler.triggers.cron import CronTrigger
+            from database.backup import get_backup_settings
+            settings = get_backup_settings()
+            self._scheduler.reschedule_job(
+                "weekly_backup",
+                trigger=CronTrigger(**_backup_cron_kwargs(settings)),
+            )
+            logger.info("Backup job rescheduled: %s", settings)
+            return True
+        except Exception as e:
+            logger.error("reschedule_backup_job failed: %s", e)
+            return False
 
     # ── Scheduled tasks ───────────────────────────────────────────────────────
 

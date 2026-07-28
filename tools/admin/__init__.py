@@ -706,11 +706,11 @@ def api_db_restore_backup():
         return jsonify({"success": False, "error": str(e)[:500]}), 500
 
 
-def _run_emergency_restore_job(job_id, only_tables, acknowledge_data_loss):
-    """Worker body — runs in a background thread, persists progress/result
-    to the admin_background_job table. Never raises: all exceptions are
-    caught and recorded so the job always reaches a terminal state."""
-    from database.backup import BackupManager
+def _job_setter(job_id, label):
+    """Return a `_set(**kw)` closure that persists fields to
+    admin_background_job, converting a `finished_at=<anything truthy>`
+    kwarg into a real timestamp. Shared by every background job worker
+    below so they all update state identically."""
     from datetime import datetime, timezone
 
     def _set(**kw):
@@ -719,38 +719,62 @@ def _run_emergency_restore_job(job_id, only_tables, acknowledge_data_loss):
         try:
             _update_background_job(job_id, **kw)
         except Exception:
-            logger.exception("Emergency restore [%s]: failed to persist job update", job_id)
+            logger.exception("%s [%s]: failed to persist job update", label, job_id)
+    return _set
+
+
+def _pick_dropbox_backup(bm, filename=None):
+    """Return the Dropbox backup entry to use: the named one if given,
+    otherwise the most recent csv_export. Returns None if not found."""
+    dropbox_backups = bm.list_dropbox_backups()
+    csv_backups = [b for b in dropbox_backups if b["type"] == "csv_export"]
+    if filename:
+        return next((b for b in csv_backups if b["filename"] == filename), None)
+    return csv_backups[0] if csv_backups else None
+
+
+def _download_dropbox_backup(entry, _set):
+    """Download a Dropbox backup entry to BACKUP_DIR. Returns the local
+    Path, or raises on failure (caller is expected to catch)."""
+    from database.backup import BACKUP_DIR
+    from core.dropbox_client import get_client
+    client = get_client()
+    if client is None:
+        raise RuntimeError("Dropbox not configured")
+    backup_path = BACKUP_DIR / entry["filename"]
+    _set(stage="downloading", filename=entry["filename"])
+    metadata, response = client.files_download(entry["path"])
+    backup_path.write_bytes(response.content)
+    size_mb = backup_path.stat().st_size / (1024 * 1024)
+    _set(downloaded_mb=round(size_mb, 1))
+    return backup_path
+
+
+def _run_emergency_restore_job(job_id, only_tables, acknowledge_data_loss, filename=None):
+    """Worker body — runs in a background thread, persists progress/result
+    to the admin_background_job table. Never raises: all exceptions are
+    caught and recorded so the job always reaches a terminal state."""
+    from database.backup import BackupManager
+    _set = _job_setter(job_id, "Emergency restore")
 
     try:
         bm = BackupManager()
 
         _set(stage="listing_dropbox_backups")
-        dropbox_backups = bm.list_dropbox_backups()
-        csv_backups = [b for b in dropbox_backups if b["type"] == "csv_export"]
-        if not csv_backups:
-            _set(status="error", error="No CSV backups found in Dropbox",
+        entry = _pick_dropbox_backup(bm, filename)
+        if entry is None:
+            _set(status="error",
+                 error=(f"Backup {filename!r} not found in Dropbox" if filename
+                        else "No CSV backups found in Dropbox"),
                  finished_at=time.time())
             return
 
-        latest = csv_backups[0]  # Already sorted newest first
         logger.warning("Emergency restore [%s]: downloading %s from Dropbox",
-                       job_id, latest["filename"])
-
-        from database.backup import BACKUP_DIR
-        backup_path = BACKUP_DIR / latest["filename"]
-
-        _set(stage="downloading", filename=latest["filename"])
+                       job_id, entry["filename"])
         try:
-            from core.dropbox_client import get_client
-            client = get_client()
-            if client is None:
-                _set(status="error", error="Dropbox not configured", finished_at=time.time())
-                return
-            metadata, response = client.files_download(latest["path"])
-            backup_path.write_bytes(response.content)
-            size_mb = backup_path.stat().st_size / (1024 * 1024)
-            logger.info("Emergency restore [%s]: downloaded %.1f MB", job_id, size_mb)
-            _set(downloaded_mb=round(size_mb, 1))
+            backup_path = _download_dropbox_backup(entry, _set)
+            logger.info("Emergency restore [%s]: downloaded %.1f MB",
+                       job_id, backup_path.stat().st_size / (1024 * 1024))
         except Exception as e:
             logger.error("Emergency restore [%s]: Dropbox download failed: %s", job_id, e)
             _set(status="error", error=f"Dropbox download failed: {str(e)[:200]}",
@@ -800,6 +824,9 @@ def api_db_emergency_restore():
 
     Also accepts {"acknowledge_data_loss": [...]} — see
     BackupManager.restore_from_csv_export for what this means.
+
+    Also accepts {"filename": "csv_export_..."} to restore a specific
+    Dropbox backup instead of the most recent one.
     """
     from flask import jsonify
     data = request.get_json(silent=True) or {}
@@ -807,18 +834,32 @@ def api_db_emergency_restore():
     only_tables = set(tables) if tables else None
     acknowledge = data.get("acknowledge_data_loss")
     acknowledge_data_loss = set(acknowledge) if acknowledge else None
+    filename = data.get("filename")
 
     job_id = uuid.uuid4().hex
     _create_background_job(job_id, kind="emergency_restore")
 
     thread = threading.Thread(
         target=_run_emergency_restore_job,
-        args=(job_id, only_tables, acknowledge_data_loss),
+        args=(job_id, only_tables, acknowledge_data_loss, filename),
         daemon=True,
     )
     thread.start()
 
     return jsonify({"job_id": job_id, "status": "running"}), 202
+
+
+def _job_status_payload(job_id):
+    job = _get_background_job(job_id)
+    if job is None:
+        return None
+    if job.get("downloaded_mb") is not None:
+        job["downloaded_mb"] = float(job["downloaded_mb"])
+    if job.get("started_at") is not None:
+        job["started_at"] = job["started_at"].isoformat()
+    if job.get("finished_at") is not None:
+        job["finished_at"] = job["finished_at"].isoformat()
+    return job
 
 
 @admin_bp.route("/api/db/emergency-restore/status/<job_id>")
@@ -827,13 +868,164 @@ def api_db_emergency_restore_status(job_id):
     """Poll the status of a background restore job started by
     POST /admin/api/db/emergency-restore."""
     from flask import jsonify
-    job = _get_background_job(job_id)
+    job = _job_status_payload(job_id)
     if job is None:
         return jsonify({"error": "Unknown job_id (may have expired)"}), 404
-    if job.get("downloaded_mb") is not None:
-        job["downloaded_mb"] = float(job["downloaded_mb"])
-    if job.get("started_at") is not None:
-        job["started_at"] = job["started_at"].isoformat()
-    if job.get("finished_at") is not None:
-        job["finished_at"] = job["finished_at"].isoformat()
     return jsonify(job)
+
+
+@admin_bp.route("/api/db/jobs/status/<job_id>")
+@admin_required
+def api_db_job_status(job_id):
+    """Poll the status of any background admin job (backup create,
+    backup verify, restore, ...) by id. Same underlying registry as
+    /api/db/emergency-restore/status/<job_id>, exposed under a
+    kind-agnostic path for the Backups panel."""
+    from flask import jsonify
+    job = _job_status_payload(job_id)
+    if job is None:
+        return jsonify({"error": "Unknown job_id (may have expired)"}), 404
+    return jsonify(job)
+
+
+# ── Backups panel: list / create / verify / settings ────────────────────────
+
+@admin_bp.route("/api/db/backups/list")
+@admin_required
+def api_db_backups_list():
+    """List available backups. Dropbox is the durable source of truth
+    (survives redeploys/restarts); local BACKUP_DIR entries are merged
+    in and flagged so the UI can show "already downloaded locally"."""
+    from flask import jsonify
+    from database.backup import BackupManager
+    try:
+        bm = BackupManager()
+        dropbox_backups = bm.list_dropbox_backups()
+        local_names = {b["filename"] for b in bm.list_backups()}
+        for b in dropbox_backups:
+            b["cached_locally"] = b["filename"] in local_names
+        return jsonify({"success": True, "backups": dropbox_backups})
+    except Exception as e:
+        logger.error("backups/list failed: %s", e)
+        return jsonify({"success": False, "error": str(e)[:500]}), 500
+
+
+def _run_backup_create_job(job_id):
+    from database.backup import BackupManager
+    _set = _job_setter(job_id, "Backup create")
+    try:
+        _set(stage="creating_backup")
+        result = BackupManager().create_backup()
+        if result.get("success"):
+            logger.info("Backup create [%s]: success — %s", job_id, result.get("filename"))
+            _set(status="success", result=result, finished_at=time.time())
+        else:
+            logger.error("Backup create [%s]: failed — %s", job_id, result.get("error"))
+            _set(status="error", error=result.get("error"), result=result, finished_at=time.time())
+    except Exception as e:
+        logger.exception("Backup create [%s]: unexpected failure", job_id)
+        _set(status="error", error=str(e)[:500], finished_at=time.time())
+
+
+@admin_bp.route("/api/db/backups/create", methods=["POST"])
+@admin_required
+def api_db_backups_create():
+    """Trigger a manual backup right now (in addition to the scheduled
+    ones), running in a background thread. Poll
+    GET /api/db/jobs/status/<job_id> for the result."""
+    from flask import jsonify
+    job_id = uuid.uuid4().hex
+    _create_background_job(job_id, kind="backup_create")
+    threading.Thread(target=_run_backup_create_job, args=(job_id,), daemon=True).start()
+    return jsonify({"job_id": job_id, "status": "running"}), 202
+
+
+def _run_backup_verify_job(job_id, filename, only_tables):
+    from database.backup import BackupManager, BACKUP_DIR
+    _set = _job_setter(job_id, "Backup verify")
+    try:
+        bm = BackupManager()
+        local_path = BACKUP_DIR / filename
+        if not local_path.exists():
+            _set(stage="listing_dropbox_backups")
+            entry = _pick_dropbox_backup(bm, filename)
+            if entry is None:
+                _set(status="error", error=f"Backup {filename!r} not found in Dropbox",
+                     finished_at=time.time())
+                return
+            logger.info("Backup verify [%s]: downloading %s from Dropbox", job_id, filename)
+            try:
+                local_path = _download_dropbox_backup(entry, _set)
+            except Exception as e:
+                _set(status="error", error=f"Dropbox download failed: {str(e)[:200]}",
+                     finished_at=time.time())
+                return
+
+        _set(stage="verifying")
+        result = bm.verify_csv_export(str(local_path), only_tables=only_tables)
+        if result.get("success"):
+            logger.info("Backup verify [%s]: OK — %d tables, %d rows",
+                       job_id, result.get("tables_found", 0), result.get("total_rows", 0))
+            _set(status="success", result=result, finished_at=time.time())
+        else:
+            logger.warning("Backup verify [%s]: failed — %s", job_id, result.get("error"))
+            _set(status="error", error=result.get("error"), result=result, finished_at=time.time())
+    except Exception as e:
+        logger.exception("Backup verify [%s]: unexpected failure", job_id)
+        _set(status="error", error=str(e)[:500], finished_at=time.time())
+
+
+@admin_bp.route("/api/db/backups/verify", methods=["POST"])
+@admin_required
+def api_db_backups_verify():
+    """Dry-run verification of a backup: downloads it if not already
+    cached locally, parses it, and reports exactly what a restore would
+    do — WITHOUT touching the database. Body: {"filename": "..."}
+    (required), optional {"tables": [...]} to scope the check the same
+    way a real restore could be scoped. Poll
+    GET /api/db/jobs/status/<job_id> for the report."""
+    from flask import jsonify
+    data = request.get_json(silent=True) or {}
+    filename = (data.get("filename") or "").strip()
+    if not filename:
+        return jsonify({"success": False, "error": "filename is required"}), 400
+    tables = data.get("tables")
+    only_tables = set(tables) if tables else None
+
+    job_id = uuid.uuid4().hex
+    _create_background_job(job_id, kind="backup_verify")
+    threading.Thread(
+        target=_run_backup_verify_job, args=(job_id, filename, only_tables), daemon=True,
+    ).start()
+    return jsonify({"job_id": job_id, "status": "running"}), 202
+
+
+@admin_bp.route("/api/db/backups/settings", methods=["GET", "POST"])
+@admin_required
+def api_db_backups_settings():
+    """GET the current backup schedule/retention config, or POST to
+    update it. A successful POST also reschedules the live backup job
+    immediately (no process restart needed)."""
+    from flask import jsonify, current_app
+    from database.backup import get_backup_settings, set_backup_settings
+    if request.method == "GET":
+        return jsonify({"success": True, "settings": get_backup_settings()})
+
+    data = request.get_json(silent=True) or {}
+    allowed = {"frequency", "day_of_week", "day_of_month", "hour_utc",
+              "retain_count", "retain_monthly"}
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if data.get("frequency") not in (None, "daily", "weekly", "monthly"):
+        return jsonify({"success": False,
+                        "error": "frequency must be one of: daily, weekly, monthly"}), 400
+    try:
+        settings = set_backup_settings(**updates)
+    except Exception as e:
+        logger.error("backups/settings update failed: %s", e)
+        return jsonify({"success": False, "error": str(e)[:500]}), 500
+
+    rescheduled = False
+    scheduler = getattr(current_app, "_maintenance_scheduler", None)
+    if scheduler is not None:
+        rescheduled = scheduler.reschedule_backup_job()
+    return jsonify({"success": True, "settings": settings, "rescheduled": rescheduled})

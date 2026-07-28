@@ -81,6 +81,19 @@
   }
   .pv-help-tab:hover { background: #f3f4f6; color: #374151; }
   .pv-help-tab-active { background: #0F3460 !important; color: white !important; border-color: #0F3460 !important; }
+
+  /* ── Backups modal tabs (same look as help tabs) ─────────────────────── */
+  .pv-bk-tab {
+    padding: 6px 14px; font-size: 13px; font-weight: 600; border-radius: 20px;
+    border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .pv-bk-tab:hover { background: #f3f4f6; color: #374151; }
+  .pv-bk-tab-active { background: #0F3460 !important; color: white !important; border-color: #0F3460 !important; }
+  @keyframes pv-bk-indeterminate {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
   .pv-help-section { margin-bottom: 28px; }
   .pv-help-section h3 { font-size: 15px; font-weight: 700; color: #111827; margin: 0 0 10px; }
   .pv-help-section h4 { font-size: 13px; font-weight: 700; color: #374151; margin: 16px 0 6px; }
@@ -607,6 +620,10 @@
           <button class="pv-nav-btn" id="btn-export-refs"
                   title="Exporta el listado de referencias visible como documento Word con formato personalizable.">
             <span><i class="fas fa-file-word" style="width:13px;margin-right:6px;opacity:0.7;"></i>Exportar referencias</span>
+          </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-backups"
+                  title="Backups de la base de datos: ver copias existentes, verificarlas, restaurarlas y configurar frecuencia/retención.">
+            <span><i class="fas fa-database" style="width:13px;margin-right:6px;opacity:0.7;"></i>Backups</span>
           </button>
         </div>
       </details>
@@ -3313,6 +3330,126 @@
     <div id="pv-health-body">
       <p style="color:#6b7280;text-align:center;padding:2rem;">Cargando…</p>
     </div>
+  </div>
+</div>
+
+<!-- ── Backups modal ──────────────────────────────────────────────────────
+     Everything here is rendered by JS (wireBackups() in prionvault.js) —
+     this is just the static shell + mount points, so the list/settings/
+     restore-flow markup can iterate without touching this template. -->
+<div id="pv-backups-modal" class="pv-modal" style="display:none;" role="dialog"
+     aria-modal="true" aria-labelledby="pv-backups-title">
+  <div class="pv-modal-backdrop"
+       onclick="document.getElementById('pv-backups-modal').style.display='none'"></div>
+  <div class="pv-modal-inner" style="max-width:920px;width:94vw;max-height:90vh;overflow-y:auto;">
+    <button class="pv-modal-close" aria-label="Close"
+            onclick="document.getElementById('pv-backups-modal').style.display='none'">×</button>
+    <h2 id="pv-backups-title" style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-database" style="color:#0F3460;margin-right:8px;"></i>Backups de la base de datos
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 16px;">
+      Copias completas de PostgreSQL guardadas en Dropbox. Verifica una copia antes de
+      necesitarla de verdad, y restaura solo las tablas que hagan falta — nunca la base
+      de datos entera de golpe.
+    </p>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+      <button id="pv-bk-tab-list" class="pv-bk-tab pv-bk-tab-active" type="button">📦 Copias</button>
+      <button id="pv-bk-tab-settings" class="pv-bk-tab" type="button">⚙️ Frecuencia y retención</button>
+    </div>
+
+    <div id="pv-bk-pane-list">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+        <button id="pv-bk-create-now" type="button"
+                style="padding:7px 14px;border-radius:8px;border:none;background:#0F3460;color:white;
+                       font-size:12.5px;font-weight:600;cursor:pointer;">
+          <i class="fas fa-plus"></i> Crear backup ahora
+        </button>
+        <button id="pv-bk-refresh" type="button"
+                style="padding:7px 12px;border-radius:8px;border:1px solid #d1d5db;background:white;
+                       color:#374151;font-size:12.5px;cursor:pointer;">
+          ↻ Refrescar
+        </button>
+        <span id="pv-bk-create-status" style="font-size:12px;color:#6b7280;"></span>
+      </div>
+      <div id="pv-bk-list"
+           style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <p style="color:#9ca3af;text-align:center;padding:24px;font-size:13px;">Cargando…</p>
+      </div>
+    </div>
+
+    <div id="pv-bk-pane-settings" style="display:none;">
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <label style="font-size:11.5px;font-weight:600;color:#6b7280;">
+            Frecuencia
+            <select id="pv-bk-frequency" style="width:100%;margin-top:4px;padding:7px 9px;
+                    border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:white;">
+              <option value="daily">Diaria</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensual</option>
+            </select>
+          </label>
+          <label style="font-size:11.5px;font-weight:600;color:#6b7280;">
+            Hora (UTC)
+            <input id="pv-bk-hour" type="number" min="0" max="23"
+                   style="width:100%;margin-top:4px;padding:7px 9px;border:1px solid #d1d5db;
+                          border-radius:6px;font-size:13px;">
+          </label>
+          <label id="pv-bk-dow-wrap" style="font-size:11.5px;font-weight:600;color:#6b7280;">
+            Día de la semana
+            <select id="pv-bk-dow" style="width:100%;margin-top:4px;padding:7px 9px;
+                    border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:white;">
+              <option value="mon">Lunes</option><option value="tue">Martes</option>
+              <option value="wed">Miércoles</option><option value="thu">Jueves</option>
+              <option value="fri">Viernes</option><option value="sat">Sábado</option>
+              <option value="sun">Domingo</option>
+            </select>
+          </label>
+          <label id="pv-bk-dom-wrap" style="font-size:11.5px;font-weight:600;color:#6b7280;display:none;">
+            Día del mes
+            <input id="pv-bk-dom" type="number" min="1" max="28"
+                   style="width:100%;margin-top:4px;padding:7px 9px;border:1px solid #d1d5db;
+                          border-radius:6px;font-size:13px;">
+          </label>
+          <label style="font-size:11.5px;font-weight:600;color:#6b7280;">
+            Retener las últimas
+            <input id="pv-bk-retain-count" type="number" min="1"
+                   style="width:100%;margin-top:4px;padding:7px 9px;border:1px solid #d1d5db;
+                          border-radius:6px;font-size:13px;">
+            <span style="font-weight:400;color:#9ca3af;">copias, siempre</span>
+          </label>
+          <label style="font-size:11.5px;font-weight:600;color:#6b7280;">
+            + primera copia de cada mes, durante
+            <input id="pv-bk-retain-monthly" type="number" min="0"
+                   style="width:100%;margin-top:4px;padding:7px 9px;border:1px solid #d1d5db;
+                          border-radius:6px;font-size:13px;">
+            <span style="font-weight:400;color:#9ca3af;">meses</span>
+          </label>
+        </div>
+        <div style="font-size:11.5px;color:#9ca3af;margin-bottom:12px;line-height:1.5;">
+          Localización: Dropbox, carpeta configurada en el servidor
+          (<code id="pv-bk-location">…</code>). Los backups son copias completas de
+          PostgreSQL exportadas tabla a tabla; la tabla <code>article_chunk</code>
+          (embeddings de búsqueda) se excluye a propósito — es regenerable.
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button id="pv-bk-save-settings" type="button"
+                  style="padding:7px 16px;border-radius:8px;border:none;background:#0F3460;
+                         color:white;font-size:12.5px;font-weight:600;cursor:pointer;">
+            Guardar
+          </button>
+          <span id="pv-bk-settings-status" style="font-size:12px;color:#6b7280;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verify result panel -->
+    <div id="pv-bk-verify-panel" style="display:none;margin-top:16px;"></div>
+
+    <!-- Restore flow panel -->
+    <div id="pv-bk-restore-panel" style="display:none;margin-top:16px;"></div>
   </div>
 </div>
 

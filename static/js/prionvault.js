@@ -7786,6 +7786,7 @@
       wireQueryExpansion();
       // wireGlossary(); // Moved to dedicated /prionvault/admin/glossary page
       wireScimago();
+      wireBackups();
       wireSidebarResize();
       wireMobileDrawer();
       wireBulkBar();
@@ -14385,6 +14386,477 @@
       } finally { scanBtn.disabled = false; }
     });
 
+  }
+
+  // ── Backups panel ──────────────────────────────────────────────────────
+  function wireBackups() {
+    const openBtn = document.getElementById('btn-backups');
+    const modal   = document.getElementById('pv-backups-modal');
+    if (!openBtn || !modal) return;
+
+    const tabList     = document.getElementById('pv-bk-tab-list');
+    const tabSettings = document.getElementById('pv-bk-tab-settings');
+    const paneList     = document.getElementById('pv-bk-pane-list');
+    const paneSettings = document.getElementById('pv-bk-pane-settings');
+    const listEl        = document.getElementById('pv-bk-list');
+    const createBtn      = document.getElementById('pv-bk-create-now');
+    const createStatusEl = document.getElementById('pv-bk-create-status');
+    const refreshBtn     = document.getElementById('pv-bk-refresh');
+    const verifyPanel  = document.getElementById('pv-bk-verify-panel');
+    const restorePanel = document.getElementById('pv-bk-restore-panel');
+
+    async function adminApi(path, opts = {}) {
+      const res = await fetch('/admin' + path, {
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 202) {
+        throw new Error(body.error || ('HTTP ' + res.status));
+      }
+      return body;
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toLocaleString('es-ES', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        });
+      } catch { return iso; }
+    }
+
+    // Poll a background job (create/verify/restore) until it reaches a
+    // terminal status. Calls onTick(job) on every poll, resolves with
+    // the final job payload.
+    function pollJob(jobId, { intervalMs = 2000, onTick } = {}) {
+      return new Promise((resolve, reject) => {
+        const tick = async () => {
+          let job;
+          try {
+            job = await adminApi(`/api/db/jobs/status/${jobId}`);
+          } catch (e) {
+            reject(e);
+            return;
+          }
+          if (onTick) onTick(job);
+          if (job.status === 'running') {
+            setTimeout(tick, intervalMs);
+          } else {
+            resolve(job);
+          }
+        };
+        tick();
+      });
+    }
+
+    function stageLabel(stage) {
+      const labels = {
+        starting: 'Iniciando…',
+        listing_dropbox_backups: 'Listando copias en Dropbox…',
+        downloading: 'Descargando desde Dropbox…',
+        creating_backup: 'Creando backup…',
+        verifying: 'Verificando…',
+        restoring: 'Restaurando…',
+      };
+      return labels[stage] || stage || '…';
+    }
+
+    // ── Tabs ──────────────────────────────────────────────────────────
+    function showTab(which) {
+      const isList = which === 'list';
+      paneList.style.display = isList ? '' : 'none';
+      paneSettings.style.display = isList ? 'none' : '';
+      tabList.classList.toggle('pv-bk-tab-active', isList);
+      tabSettings.classList.toggle('pv-bk-tab-active', !isList);
+    }
+    tabList.addEventListener('click', () => showTab('list'));
+    tabSettings.addEventListener('click', () => showTab('settings'));
+
+    // ── List backups ──────────────────────────────────────────────────
+    async function loadList() {
+      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:24px;font-size:13px;">Cargando…</p>';
+      let data;
+      try {
+        data = await adminApi('/api/db/backups/list');
+      } catch (e) {
+        listEl.innerHTML = `<div style="color:#b91c1c;padding:16px;font-size:12.5px;">Error: ${esc(e.message)}</div>`;
+        return;
+      }
+      const backups = data.backups || [];
+      const locationEl = document.getElementById('pv-bk-location');
+      if (locationEl && backups[0]?.path) {
+        locationEl.textContent = backups[0].path.replace(/\/[^/]+$/, '') || backups[0].path;
+      }
+      if (!backups.length) {
+        listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:24px;font-size:13px;">No hay backups en Dropbox todavía.</p>';
+        return;
+      }
+      listEl.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+          <thead style="background:#f9fafb;">
+            <tr>
+              <th style="text-align:left;padding:8px 12px;color:#6b7280;font-weight:600;">Archivo</th>
+              <th style="text-align:left;padding:8px 12px;color:#6b7280;font-weight:600;">Fecha</th>
+              <th style="text-align:right;padding:8px 12px;color:#6b7280;font-weight:600;">Tamaño</th>
+              <th style="text-align:left;padding:8px 12px;color:#6b7280;font-weight:600;">Tipo</th>
+              <th style="text-align:right;padding:8px 12px;color:#6b7280;font-weight:600;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${backups.map((b, i) => `
+              <tr style="border-top:1px solid #f3f4f6;">
+                <td style="padding:8px 12px;font-family:ui-monospace,monospace;font-size:11.5px;color:#111827;">
+                  ${esc(b.filename)}
+                  ${b.cached_locally ? '<span title="Ya descargado en el servidor" style="margin-left:6px;font-size:10px;color:#15803d;">●</span>' : ''}
+                </td>
+                <td style="padding:8px 12px;color:#374151;white-space:nowrap;">${esc(fmtDate(b.created_at))}</td>
+                <td style="padding:8px 12px;color:#374151;text-align:right;white-space:nowrap;">${b.size_mb} MB</td>
+                <td style="padding:8px 12px;color:#6b7280;">${esc(b.type)}</td>
+                <td style="padding:8px 12px;text-align:right;white-space:nowrap;">
+                  <button class="pv-bk-verify-btn" data-filename="${escAttrJs(b.filename)}"
+                          style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                                 color:#374151;font-size:11.5px;cursor:pointer;margin-right:4px;">
+                    🔍 Verificar
+                  </button>
+                  <button class="pv-bk-restore-btn" data-filename="${escAttrJs(b.filename)}"
+                          style="padding:4px 10px;border-radius:6px;border:1px solid #fca5a5;background:#fff5f5;
+                                 color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
+                    ♻ Restaurar
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      listEl.querySelectorAll('.pv-bk-verify-btn').forEach(b =>
+        b.addEventListener('click', () => runVerify(b.dataset.filename)));
+      listEl.querySelectorAll('.pv-bk-restore-btn').forEach(b =>
+        b.addEventListener('click', () => openRestoreFlow(b.dataset.filename)));
+    }
+    function escAttrJs(s) { return esc(String(s || '')).replace(/"/g, '&quot;'); }
+
+    refreshBtn.addEventListener('click', loadList);
+
+    createBtn.addEventListener('click', async () => {
+      createBtn.disabled = true;
+      createStatusEl.textContent = 'Creando…';
+      try {
+        const { job_id } = await adminApi('/api/db/backups/create', { method: 'POST' });
+        const job = await pollJob(job_id, {
+          onTick: j => { createStatusEl.textContent = stageLabel(j.stage); },
+        });
+        if (job.status === 'success') {
+          createStatusEl.textContent = `✓ Backup creado (${job.result?.size_mb ?? '?'} MB)`;
+          loadList();
+        } else {
+          createStatusEl.textContent = '✗ ' + (job.error || 'Error desconocido');
+        }
+      } catch (e) {
+        createStatusEl.textContent = '✗ ' + e.message;
+      } finally {
+        createBtn.disabled = false;
+      }
+    });
+
+    // ── Verify flow ───────────────────────────────────────────────────
+    async function runVerify(filename) {
+      restorePanel.style.display = 'none';
+      verifyPanel.style.display = '';
+      verifyPanel.innerHTML = `
+        <div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:14px 16px;">
+          <div style="font-weight:700;color:#1e40af;font-size:13px;margin-bottom:6px;">
+            🔍 Verificando ${esc(filename)}…
+          </div>
+          <div id="pv-bk-verify-status" style="font-size:12.5px;color:#1e40af;">Iniciando…</div>
+        </div>
+      `;
+      const statusEl = document.getElementById('pv-bk-verify-status');
+      try {
+        const { job_id } = await adminApi('/api/db/backups/verify', {
+          method: 'POST', body: JSON.stringify({ filename }),
+        });
+        const job = await pollJob(job_id, {
+          onTick: j => { statusEl.textContent = stageLabel(j.stage); },
+        });
+        renderVerifyResult(filename, job);
+      } catch (e) {
+        verifyPanel.innerHTML = `<div style="color:#b91c1c;font-size:12.5px;padding:12px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    function renderVerifyResult(filename, job) {
+      if (job.status !== 'success') {
+        verifyPanel.innerHTML = `
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:14px 16px;">
+            <div style="font-weight:700;color:#991b1b;font-size:13px;margin-bottom:6px;">✗ Verificación fallida</div>
+            <div style="font-size:12.5px;color:#7f1d1d;">${esc(job.error || 'Error desconocido')}</div>
+          </div>`;
+        return;
+      }
+      const r = job.result || {};
+      const tables = (r.tables || []).slice().sort((a, b) => b.rows - a.rows);
+      const blockRows = r.would_block || [];
+      const repair = r.unrepairable_json_array_cells || {};
+      const repairEntries = Object.entries(repair);
+      verifyPanel.innerHTML = `
+        <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:14px 16px;">
+          <div style="font-weight:700;color:#166534;font-size:13px;margin-bottom:8px;">
+            ✓ ${esc(filename)} es restaurable — ${r.tables_found} tablas, ${r.total_rows.toLocaleString('es-ES')} filas, ${r.size_mb} MB
+          </div>
+          ${blockRows.length ? `
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#92400e;">
+              ⚠ Restaurar TODAS las tablas de este backup vaciaría, sin datos para recargar:
+              <strong>${blockRows.map(esc).join(', ')}</strong>. Si restauras solo un subconjunto de tablas,
+              esto puede no aplicar — se recalcula en el momento de restaurar.
+            </div>` : ''}
+          ${repairEntries.length ? `
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#92400e;">
+              ⚠ Celdas JSON/array con formato antiguo que se repararán automáticamente:
+              ${repairEntries.map(([t, n]) => `${esc(t)} (${n})`).join(', ')}
+            </div>` : ''}
+          <details>
+            <summary style="cursor:pointer;font-size:12px;color:#166534;font-weight:600;">Ver ${tables.length} tablas</summary>
+            <div style="max-height:220px;overflow-y:auto;margin-top:8px;">
+              <table style="width:100%;font-size:11.5px;border-collapse:collapse;">
+                ${tables.map(t => `
+                  <tr style="border-top:1px solid #dcfce7;">
+                    <td style="padding:3px 8px;font-family:ui-monospace,monospace;">${esc(t.table)}</td>
+                    <td style="padding:3px 8px;text-align:right;color:#374151;">${t.rows.toLocaleString('es-ES')} filas</td>
+                  </tr>`).join('')}
+              </table>
+            </div>
+          </details>
+          <div style="margin-top:10px;">
+            <button class="pv-bk-restore-from-verify" style="padding:6px 14px;border-radius:7px;border:1px solid #fca5a5;
+                    background:#fff5f5;color:#b91c1c;font-size:12px;font-weight:600;cursor:pointer;">
+              ♻ Restaurar desde aquí
+            </button>
+          </div>
+        </div>
+      `;
+      verifyPanel.querySelector('.pv-bk-restore-from-verify')
+        .addEventListener('click', () => openRestoreFlow(filename, tables.map(t => t.table)));
+    }
+
+    // ── Restore flow ──────────────────────────────────────────────────
+    // Tables that are almost always safe to include (article-domain
+    // PrionVault data) — pre-checked by default. Foundational/shared
+    // tables (users, labs, sessions, publications, notification_logs,
+    // system_logs, ...) are deliberately left OUT of the default
+    // selection: restoring them rolls back *current* unrelated data to
+    // the backup's point in time, which is almost never what an
+    // emergency restore should do.
+    const SAFE_DEFAULT_PREFIXES = ['article', 'evaluations', 'user_articles',
+      'prionvault_article', 'prionvault_query_expansion', 'prionvault_collection_article',
+      'prionvault_dismissed_duplicates', 'prionvault_user_selection', 'prionvault_user_state',
+      'prionvault_jc_', 'prionvault_scheduled_email', 'summary_correction_detail',
+      'summary_improvement_log', 'citation_references'];
+    const KNOWN_REGENERABLE = ['article_chunk'];
+
+    function openRestoreFlow(filename, knownTables) {
+      verifyPanel.style.display = 'none';
+      restorePanel.style.display = '';
+      const tables = knownTables || [];
+      const checklistHtml = tables.length ? tables.sort().map(t => {
+        const checked = SAFE_DEFAULT_PREFIXES.some(p => t.startsWith(p)) && !KNOWN_REGENERABLE.includes(t);
+        return `
+          <label style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:11.5px;
+                        font-family:ui-monospace,monospace;color:#374151;">
+            <input type="checkbox" class="pv-bk-table-cb" value="${escAttrJs(t)}" ${checked ? 'checked' : ''}>
+            ${esc(t)}
+          </label>`;
+      }).join('') : '<p style="font-size:12px;color:#9ca3af;">Verifica el backup primero para ver la lista de tablas disponibles.</p>';
+
+      restorePanel.innerHTML = `
+        <div style="border:2px solid #fca5a5;background:#fff5f5;border-radius:10px;padding:16px 18px;">
+          <div style="font-weight:700;color:#991b1b;font-size:14px;margin-bottom:4px;">
+            ♻ Restaurar desde ${esc(filename)}
+          </div>
+          <p style="font-size:12px;color:#7f1d1d;margin:0 0 10px;line-height:1.5;">
+            Solo se tocan las tablas marcadas — todo lo demás en la base de datos actual
+            se queda como está. Revisa la selección antes de continuar.
+          </p>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button id="pv-bk-select-safe" type="button" style="padding:4px 10px;border-radius:6px;
+                    border:1px solid #d1d5db;background:white;color:#374151;font-size:11px;cursor:pointer;">
+              Selección recomendada
+            </button>
+            <button id="pv-bk-select-none" type="button" style="padding:4px 10px;border-radius:6px;
+                    border:1px solid #d1d5db;background:white;color:#374151;font-size:11px;cursor:pointer;">
+              Ninguna
+            </button>
+          </div>
+          <div style="max-height:220px;overflow-y:auto;background:white;border:1px solid #fecaca;
+                      border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+            ${checklistHtml}
+          </div>
+          <div id="pv-bk-restore-ack-wrap" style="display:none;margin-bottom:12px;"></div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button id="pv-bk-restore-go" type="button" style="padding:8px 18px;border-radius:8px;border:none;
+                    background:#b91c1c;color:white;font-size:13px;font-weight:700;cursor:pointer;">
+              Restaurar tablas seleccionadas
+            </button>
+            <button id="pv-bk-restore-cancel" type="button" style="padding:8px 14px;border-radius:8px;
+                    border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;cursor:pointer;">
+              Cancelar
+            </button>
+            <span id="pv-bk-restore-status" style="font-size:12px;color:#7f1d1d;"></span>
+          </div>
+          <div id="pv-bk-restore-progress" style="display:none;margin-top:10px;">
+            <div style="height:8px;background:#fecaca;border-radius:4px;overflow:hidden;">
+              <div id="pv-bk-restore-bar" style="height:100%;width:30%;background:#b91c1c;
+                   animation:pv-bk-indeterminate 1.4s infinite;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const ackWrap = document.getElementById('pv-bk-restore-ack-wrap');
+      let acknowledged = new Set(KNOWN_REGENERABLE);
+
+      document.getElementById('pv-bk-select-safe').addEventListener('click', () => {
+        restorePanel.querySelectorAll('.pv-bk-table-cb').forEach(cb => {
+          cb.checked = SAFE_DEFAULT_PREFIXES.some(p => cb.value.startsWith(p)) && !KNOWN_REGENERABLE.includes(cb.value);
+        });
+      });
+      document.getElementById('pv-bk-select-none').addEventListener('click', () => {
+        restorePanel.querySelectorAll('.pv-bk-table-cb').forEach(cb => { cb.checked = false; });
+      });
+      document.getElementById('pv-bk-restore-cancel').addEventListener('click', () => {
+        restorePanel.style.display = 'none';
+      });
+
+      async function attemptRestore() {
+        const selected = Array.from(restorePanel.querySelectorAll('.pv-bk-table-cb:checked')).map(cb => cb.value);
+        if (!selected.length) {
+          document.getElementById('pv-bk-restore-status').textContent = 'Selecciona al menos una tabla.';
+          return;
+        }
+        const goBtn = document.getElementById('pv-bk-restore-go');
+        const statusEl = document.getElementById('pv-bk-restore-status');
+        const progressEl = document.getElementById('pv-bk-restore-progress');
+        goBtn.disabled = true;
+        progressEl.style.display = '';
+        statusEl.textContent = 'Iniciando…';
+        try {
+          const { job_id } = await adminApi('/api/db/emergency-restore', {
+            method: 'POST',
+            body: JSON.stringify({
+              filename, tables: selected,
+              acknowledge_data_loss: Array.from(acknowledged),
+            }),
+          });
+          const job = await pollJob(job_id, {
+            onTick: j => { statusEl.textContent = stageLabel(j.stage); },
+          });
+          progressEl.style.display = 'none';
+          if (job.status === 'success') {
+            const r = job.result || {};
+            statusEl.textContent = '';
+            restorePanel.querySelector('div').insertAdjacentHTML('beforeend', `
+              <div style="margin-top:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;
+                          border-radius:8px;font-size:12.5px;color:#166534;">
+                ✓ Restaurado: ${r.tables_restored} tablas, ${r.rows_restored?.toLocaleString('es-ES')} filas.
+                ${r.warnings?.length ? `<br>⚠ ${r.warnings.length} aviso(s) — revisa los logs.` : ''}
+              </div>`);
+            loadList();
+            return;
+          }
+          // Detect the CASCADE-would-empty message and offer one-click
+          // acknowledge + retry, instead of making the admin re-type
+          // the table list by hand like we had to do by chat this week.
+          const m = /would also empty \[(.*?)\]/.exec(job.error || '');
+          if (m) {
+            const extra = m[1].split(',').map(s => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+            ackWrap.style.display = '';
+            ackWrap.innerHTML = `
+              <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;">
+                <div style="font-size:12px;color:#92400e;margin-bottom:6px;">
+                  Restaurar esto vaciaría estas tablas sin datos para recargarlas: <strong>${extra.map(esc).join(', ')}</strong>.
+                  Añádelas a la selección si quieres restaurarlas, o acepta perderlas para continuar.
+                </div>
+                <button id="pv-bk-ack-and-retry" type="button" style="padding:5px 12px;border-radius:6px;
+                        border:1px solid #fbbf24;background:white;color:#92400e;font-size:11.5px;font-weight:600;cursor:pointer;">
+                  Aceptar pérdida de estas tablas y reintentar
+                </button>
+              </div>`;
+            document.getElementById('pv-bk-ack-and-retry').addEventListener('click', () => {
+              extra.forEach(t => acknowledged.add(t));
+              attemptRestore();
+            });
+            statusEl.textContent = '';
+          } else {
+            statusEl.textContent = '✗ ' + (job.error || 'Error desconocido');
+          }
+        } catch (e) {
+          progressEl.style.display = 'none';
+          statusEl.textContent = '✗ ' + e.message;
+        } finally {
+          goBtn.disabled = false;
+        }
+      }
+      document.getElementById('pv-bk-restore-go').addEventListener('click', attemptRestore);
+    }
+
+    // ── Settings ──────────────────────────────────────────────────────
+    async function loadSettings() {
+      let data;
+      try {
+        data = await adminApi('/api/db/backups/settings');
+      } catch (e) {
+        document.getElementById('pv-bk-settings-status').textContent = 'Error: ' + e.message;
+        return;
+      }
+      const s = data.settings || {};
+      document.getElementById('pv-bk-frequency').value = s.frequency || 'weekly';
+      document.getElementById('pv-bk-hour').value = s.hour_utc ?? 3;
+      document.getElementById('pv-bk-dow').value = s.day_of_week || 'sun';
+      document.getElementById('pv-bk-dom').value = s.day_of_month ?? 1;
+      document.getElementById('pv-bk-retain-count').value = s.retain_count ?? 12;
+      document.getElementById('pv-bk-retain-monthly').value = s.retain_monthly ?? 24;
+      updateFrequencyFields();
+    }
+    function updateFrequencyFields() {
+      const freq = document.getElementById('pv-bk-frequency').value;
+      document.getElementById('pv-bk-dow-wrap').style.display = freq === 'weekly' ? '' : 'none';
+      document.getElementById('pv-bk-dom-wrap').style.display = freq === 'monthly' ? '' : 'none';
+    }
+    document.getElementById('pv-bk-frequency').addEventListener('change', updateFrequencyFields);
+    document.getElementById('pv-bk-save-settings').addEventListener('click', async () => {
+      const statusEl = document.getElementById('pv-bk-settings-status');
+      statusEl.textContent = 'Guardando…';
+      try {
+        const payload = {
+          frequency: document.getElementById('pv-bk-frequency').value,
+          day_of_week: document.getElementById('pv-bk-dow').value,
+          day_of_month: parseInt(document.getElementById('pv-bk-dom').value, 10) || 1,
+          hour_utc: parseInt(document.getElementById('pv-bk-hour').value, 10) || 0,
+          retain_count: parseInt(document.getElementById('pv-bk-retain-count').value, 10) || 1,
+          retain_monthly: parseInt(document.getElementById('pv-bk-retain-monthly').value, 10) || 0,
+        };
+        const res = await adminApi('/api/db/backups/settings', {
+          method: 'POST', body: JSON.stringify(payload),
+        });
+        statusEl.textContent = res.rescheduled
+          ? '✓ Guardado y aplicado de inmediato.'
+          : '✓ Guardado (se aplicará en el próximo reinicio).';
+      } catch (e) {
+        statusEl.textContent = '✗ ' + e.message;
+      }
+    });
+
+    openBtn.addEventListener('click', () => {
+      modal.style.display = '';
+      verifyPanel.style.display = 'none';
+      restorePanel.style.display = 'none';
+      showTab('list');
+      loadList();
+      loadSettings();
+    });
   }
 
   function wireQueryExpansion() {
