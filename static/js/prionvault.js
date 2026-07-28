@@ -14739,7 +14739,7 @@
       restorePanel.style.display = '';
       const tables = knownTables || [];
       const checklistHtml = tables.length ? tables.sort().map(t => {
-        const checked = SAFE_DEFAULT_PREFIXES.some(p => t.startsWith(p)) && !KNOWN_REGENERABLE.includes(t);
+        const checked = SAFE_DEFAULT_PREFIXES.some(p => t.startsWith(p));
         return `
           <label style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:11.5px;
                         font-family:ui-monospace,monospace;color:#374151;">
@@ -14797,7 +14797,7 @@
 
       document.getElementById('pv-bk-select-safe').addEventListener('click', () => {
         restorePanel.querySelectorAll('.pv-bk-table-cb').forEach(cb => {
-          cb.checked = SAFE_DEFAULT_PREFIXES.some(p => cb.value.startsWith(p)) && !KNOWN_REGENERABLE.includes(cb.value);
+          cb.checked = SAFE_DEFAULT_PREFIXES.some(p => cb.value.startsWith(p));
         });
       });
       document.getElementById('pv-bk-select-none').addEventListener('click', () => {
