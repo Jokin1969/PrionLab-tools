@@ -15437,7 +15437,7 @@
       section('PDF & OCR', [
         row(3, [card('PDFs escaneados (OCR)',  d.pdf_ocr,              true, {pdf_is_scan:'true'},    ''),
                 card('PDFs buscables',         d.pdf_searchable,       true, {pdf_searchable:'true'}, 'good'),
-                card('Necesitan buscable',     d.pdf_needs_searchable, true, {pdf_searchable:'false'},'warn')]),
+                card('Necesitan buscable',     d.pdf_needs_searchable, true, {pdf_searchable:'needs'},'warn')]),
         row(2, [card('Con nº de páginas', d.with_page_count,    true, null, ''),
                 card('Sin nº de páginas', d.missing_page_count, true, null, 'warn')]),
         row(2, [card('Fuente: PubMed Inventory', d.from_inventory, true, {source:'pubmed_inventory'}, ''),
@@ -15455,7 +15455,7 @@
       section('Resúmenes IA', (() => {
         // Always show total pair
         let html = row(2, [card('Con resumen IA',     d.with_summary_ai,    true, {has_summary:'ai'},    'good'),
-                           card('Con resumen humano', d.with_summary_human, true, {has_summary:'human'}, 'good')]);
+                           card('Con resumen humano', d.with_summary_human, true, {has_summary_human:'true'}, 'good')]);
         // Per-provider breakdown (only if at least one has data)
         const provRows = [];
         if (d.summary_by_claude > 0) provRows.push(provCard('anthropic', d.summary_by_claude, 'anthropic'));
@@ -15574,7 +15574,7 @@
       const extra = {};
       for (const k of ['has_pdf','has_doi','has_pmid','has_title','has_authors','has_journal','has_year',
                         'pdf_is_scan','pdf_searchable',
-                        'source','needs_indexing','has_summary_ai','has_summary_notes',
+                        'source','needs_indexing','has_summary_ai','has_summary_human','has_summary_notes',
                         'pdf_verify_status','summary_ai_provider']) {
         if (params[k] !== undefined) extra[k] = params[k];
       }

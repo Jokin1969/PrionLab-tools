@@ -74,6 +74,25 @@ def _get_pv_columns(s: SASession) -> Set[str]:
         )
         return _PV_COLUMNS_FALLBACK
 
+def _current_embed_model(pv_cols: Set[str]) -> Optional[str]:
+    """Return the active embedding model name, or None if unavailable.
+
+    Shared by the Library Health stats endpoint and the article-listing
+    filter builder so "Indexados" / "Necesitan indexación" always mean
+    the same thing in both places — they used to drift (health counted
+    only the current model's index_version, the listing filter counted
+    any indexed_at IS NOT NULL) which made the health card's number
+    disagree with what clicking through to it actually showed.
+    """
+    if "index_version" not in pv_cols:
+        return None
+    try:
+        from .embeddings.embedder import MODEL as _EMBED_MODEL
+        return _EMBED_MODEL
+    except Exception:
+        return None
+
+
 # Type alias for the (response, status_code) guard return type.
 _GuardResult = Optional[Tuple[Response, int]]
 

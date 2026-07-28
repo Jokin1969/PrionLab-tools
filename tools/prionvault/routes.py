@@ -24,7 +24,7 @@ from database.config import db
 from . import prionvault_bp
 from . import models
 from ._helpers import (_viewer_role, _viewer_id, _session, _ensure_can_modify,  # noqa: F401
-                       _get_pv_columns)
+                       _get_pv_columns, _current_embed_model)
 
 logger = logging.getLogger(__name__)
 
@@ -134,13 +134,18 @@ def api_list_articles():
     has_pmid = True if has_pmid_raw == "true" else (False if has_pmid_raw == "false" else None)
     pdf_source_filter = (request.args.get("source") or "").strip() or None
     pdf_searchable_raw = request.args.get("pdf_searchable")
-    pdf_searchable_filter = True if pdf_searchable_raw == "true" else (False if pdf_searchable_raw == "false" else None)
+    pdf_searchable_filter = (True if pdf_searchable_raw == "true"
+                              else False if pdf_searchable_raw == "false"
+                              else "needs" if pdf_searchable_raw == "needs"
+                              else None)
     pdf_is_scan_raw = request.args.get("pdf_is_scan")
     pdf_is_scan_filter = True if pdf_is_scan_raw == "true" else (False if pdf_is_scan_raw == "false" else None)
     needs_indexing_raw = request.args.get("needs_indexing")
     needs_indexing = True if needs_indexing_raw == "true" else None
     has_summary_ai_raw = request.args.get("has_summary_ai")
     has_summary_ai = True if has_summary_ai_raw == "true" else (False if has_summary_ai_raw == "false" else None)
+    has_summary_human_raw = request.args.get("has_summary_human")
+    has_summary_human = True if has_summary_human_raw == "true" else (False if has_summary_human_raw == "false" else None)
     has_summary_notes_raw = request.args.get("has_summary_notes")
     has_summary_notes = True if has_summary_notes_raw == "true" else None
     pdf_verify_status = (request.args.get("pdf_verify_status") or "").strip() or None
@@ -236,6 +241,7 @@ def api_list_articles():
             pdf_is_scan_filter=pdf_is_scan_filter,
             needs_indexing=needs_indexing,
             has_summary_ai=has_summary_ai,
+            has_summary_human=has_summary_human,
             has_summary_notes=has_summary_notes,
             pdf_verify_status=pdf_verify_status,
             summary_ai_provider=summary_ai_provider,
@@ -418,7 +424,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         has_title=None, has_authors=None, has_journal=None, has_year=None,
                         pdf_source_filter=None, pdf_searchable_filter=None,
                         pdf_is_scan_filter=None, needs_indexing=None,
-                        has_summary_ai=None, has_summary_notes=None,
+                        has_summary_ai=None, has_summary_human=None, has_summary_notes=None,
                         pdf_verify_status=None, summary_ai_provider=None):
     """Core of api_list_articles. Separated so the caller can cleanly catch
     all exceptions and still run the finally/remove."""
@@ -486,7 +492,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         params["authors_q"] = f"%{authors_q}%"
 
     if has_summary == "ai" and "summary_ai" in pv_cols:
-        conditions.append("summary_ai IS NOT NULL")
+        conditions.append("summary_ai IS NOT NULL AND summary_ai <> ''")
     elif has_summary == "human":
         # Filter by user's sticky notes (not human summary)
         viewer_uid = _viewer_id()
@@ -509,8 +515,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     if abstract_status == "has":
         conditions.append("coalesce(abstract, '') <> ''")
     elif abstract_status == "pending" and "abstract_unavailable" in pv_cols:
+        # IS NOT TRUE (not "= FALSE") so rows where the flag was never
+        # set (NULL) count as pending too — matches the Library Health
+        # "Sin abstract" count, which treats NULL the same way.
         conditions.append(
-            "coalesce(abstract, '') = '' AND abstract_unavailable = FALSE"
+            "coalesce(abstract, '') = '' AND abstract_unavailable IS NOT TRUE"
         )
     elif abstract_status == "unavailable" and "abstract_unavailable" in pv_cols:
         # Defensive: a row may carry abstract_unavailable=TRUE from
@@ -522,10 +531,20 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "abstract_unavailable = TRUE AND coalesce(abstract, '') = ''"
         )
 
-    if indexed_status == "yes" and "indexed_at" in pv_cols:
-        conditions.append("indexed_at IS NOT NULL")
-    elif indexed_status == "no" and "indexed_at" in pv_cols:
-        conditions.append("indexed_at IS NULL")
+    if indexed_status in ("yes", "no") and "indexed_at" in pv_cols:
+        _embed_model = _current_embed_model(pv_cols)
+        if indexed_status == "yes":
+            if _embed_model:
+                conditions.append("indexed_at IS NOT NULL AND index_version = :embed_model")
+                params["embed_model"] = _embed_model
+            else:
+                conditions.append("indexed_at IS NOT NULL")
+        else:
+            if _embed_model:
+                conditions.append("(indexed_at IS NULL OR index_version IS DISTINCT FROM :embed_model)")
+                params["embed_model"] = _embed_model
+            else:
+                conditions.append("indexed_at IS NULL")
 
     if in_prionread is True:
         conditions.append(
@@ -686,6 +705,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("pdf_searchable = TRUE")
     elif pdf_searchable_filter is False and "pdf_searchable" in pv_cols:
         conditions.append("pdf_searchable = FALSE")
+    elif pdf_searchable_filter == "needs" and "pdf_searchable" in pv_cols:
+        # Matches the Library Health "Necesitan buscable" count exactly
+        # (see api_article_health's pdf_needs_searchable_expr): has a PDF,
+        # isn't searchable yet, and OCR hasn't already been marked
+        # unavailable for it.
+        conditions.append(
+            "dropbox_path IS NOT NULL AND pdf_searchable = FALSE"
+            + (" AND pdf_ocr_unavailable = FALSE" if "pdf_ocr_unavailable" in pv_cols else "")
+        )
 
     if pdf_is_scan_filter is True and "pdf_is_scan" in pv_cols:
         conditions.append("pdf_is_scan = TRUE")
@@ -693,12 +721,32 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("pdf_is_scan = FALSE")
 
     if needs_indexing is True and "indexed_at" in pv_cols:
-        conditions.append("indexed_at IS NULL AND extraction_status = 'extracted'")
+        # Mirrors the Library Health "Necesitan indexación" count exactly
+        # (see api_article_health) — has extractable content AND is not
+        # indexed with the current embedding model.
+        _embed_model = _current_embed_model(pv_cols)
+        has_content_clause = (
+            "((extracted_text IS NOT NULL AND length(extracted_text) > 200) "
+            "OR (summary_ai IS NOT NULL AND length(summary_ai) > 100) "
+            "OR (abstract IS NOT NULL AND length(abstract) > 100)) AND "
+        ) if "extraction_status" in pv_cols else ""
+        if _embed_model:
+            conditions.append(
+                f"{has_content_clause}(indexed_at IS NULL OR index_version IS DISTINCT FROM :embed_model)"
+            )
+            params["embed_model"] = _embed_model
+        else:
+            conditions.append(f"{has_content_clause}indexed_at IS NULL")
 
     if has_summary_ai is True and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NOT NULL AND summary_ai <> ''")
     elif has_summary_ai is False and "summary_ai" in pv_cols:
         conditions.append("(summary_ai IS NULL OR summary_ai = '')")
+
+    if has_summary_human is True and "summary_human" in pv_cols:
+        conditions.append("summary_human IS NOT NULL AND summary_human <> ''")
+    elif has_summary_human is False and "summary_human" in pv_cols:
+        conditions.append("(summary_human IS NULL OR summary_human = '')")
 
     if has_summary_notes is True and "summary_ai_notes" in pv_cols:
         conditions.append("summary_ai_notes IS NOT NULL AND summary_ai_notes <> ''")
@@ -707,7 +755,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         if pdf_verify_status == "ok_any":
             conditions.append("pdf_metadata_match_status IN ('ok', 'manual_ok')")
         elif pdf_verify_status == "unverified":
-            conditions.append("pdf_metadata_match_status IS NULL")
+            conditions.append("pdf_metadata_match_status IS NULL AND dropbox_path IS NOT NULL")
         else:
             conditions.append("pdf_metadata_match_status = :pdf_verify_status")
             params["pdf_verify_status"] = pdf_verify_status
@@ -1354,14 +1402,9 @@ def api_article_health():
 
         # Resolve the active embedding model — needed to distinguish
         # "indexed with current model" from "indexed with old model".
-        # We import lazily so a missing voyager key doesn't crash the page.
-        current_embed_model = None
-        if "index_version" in pv_cols:
-            try:
-                from .embeddings.embedder import MODEL as _EMBED_MODEL
-                current_embed_model = _EMBED_MODEL
-            except Exception:
-                pass
+        # Shared with the listing filter builder (see api_list_articles)
+        # so this count and clicking through to it always agree.
+        current_embed_model = _current_embed_model(pv_cols)
 
         if current_embed_model and "index_version" in pv_cols:
             indexed_expr = (
@@ -1474,7 +1517,9 @@ def api_article_health():
               COUNT(*) FILTER (WHERE authors IS NULL OR authors = '')                AS missing_authors,
               COUNT(*) FILTER (WHERE journal IS NULL OR journal = '')                AS missing_journal,
               COUNT(*) FILTER (WHERE year IS NULL)                                   AS missing_year,
-              COUNT(*) FILTER (WHERE abstract IS NULL OR abstract = '')              AS missing_abstract,
+              {_col("abstract_unavailable",
+                    "COUNT(*) FILTER (WHERE (abstract IS NULL OR abstract = '') AND abstract_unavailable IS NOT TRUE)",
+                    "COUNT(*) FILTER (WHERE abstract IS NULL OR abstract = '')")} AS missing_abstract,
               COUNT(*) FILTER (WHERE doi IS NULL OR doi = '')                        AS missing_doi,
               COUNT(*) FILTER (WHERE pubmed_id IS NULL OR pubmed_id = '')            AS missing_pmid
             FROM articles
