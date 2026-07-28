@@ -1565,8 +1565,11 @@ function goToImprovedArticles() {
     alert('No hay artículos mejorados aún');
     return;
   }
-  // Navigate to PrionVault and filter by glossary version
-  window.location.href = '/prionvault/?has_glossary=1';
+  // Navigate to PrionVault filtered to exactly the articles counted
+  // above: has_glossary=1 would match "reviewed at all" (with or
+  // without changes), a much larger and different set than what this
+  // card actually counts.
+  window.location.href = '/prionvault/?has_glossary=improved';
 }
 
 async function openChangesModal() {

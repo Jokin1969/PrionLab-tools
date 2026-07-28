@@ -111,7 +111,10 @@ def api_list_articles():
     has_pp           = True if has_pp_raw == "1" else (False if has_pp_raw == "0" else None)
     pp_id            = (request.args.get("pp_id") or "").strip() or None
     has_glossary_raw = request.args.get("has_glossary")
-    has_glossary     = True if has_glossary_raw == "1" else (False if has_glossary_raw == "0" else None)
+    has_glossary     = (True if has_glossary_raw == "1"
+                        else False if has_glossary_raw == "0"
+                        else "improved" if has_glossary_raw == "improved"
+                        else None)
     abstract_status  = (request.args.get("abstract_status") or "").strip().lower() or None
     indexed_status   = (request.args.get("indexed_status") or "").strip().lower() or None
     color_label = (request.args.get("color_label") or "").strip().lower() or None
@@ -605,6 +608,20 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("ai_summary_glossary_version IS NOT NULL")
     elif has_glossary is False:
         conditions.append("ai_summary_glossary_version IS NULL")
+    elif has_glossary == "improved":
+        # Distinct from the boolean above: that just means "has been
+        # reviewed against some glossary version" (with or without
+        # actual changes). This is specifically the articles that came
+        # out of a real (non-dry-run) improvement pass with at least one
+        # change applied — matches exactly what the glossary dashboard's
+        # "Summaries improved" count measures, so clicking through to
+        # that count lands on the same set it counted.
+        conditions.append("""
+            articles.id IN (
+                SELECT DISTINCT article_id FROM summary_improvement_log
+                WHERE changes_count > 0 AND dry_run = FALSE
+            )
+        """)
 
     # Per-user marks: read from prionvault_user_state via _pus join.
     if color_label in _VALID_COLOR_LABELS:

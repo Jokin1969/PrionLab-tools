@@ -50,7 +50,7 @@
     jcYear: null,        // year of JC presentation
     hasPp: null,         // null = all, true = en algún PrionPack, false = sin pack
     ppId: '',            // specific PrionPack id (e.g. "PRP-001") or ''
-    hasGlossary: null,   // null = all, true = with glossary, false = without
+    hasGlossary: null,   // null = all, true = reviewed (any), false = not reviewed, 'improved' = has actual glossary-driven changes
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     indexedStatus:  '',  // '' | 'yes' | 'no'
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
@@ -2578,7 +2578,8 @@
     if (state.jcYear)              params.set('jc_year', state.jcYear);
     if (state.hasPp !== null)      params.set('has_pp', state.hasPp ? '1' : '0');
     if (state.ppId)                params.set('pp_id', state.ppId);
-    if (state.hasGlossary !== null) params.set('has_glossary', state.hasGlossary ? '1' : '0');
+    if (state.hasGlossary !== null)
+      params.set('has_glossary', state.hasGlossary === 'improved' ? 'improved' : (state.hasGlossary ? '1' : '0'));
     if (state.abstractStatus)      params.set('abstract_status', state.abstractStatus);
     if (state.indexedStatus)       params.set('indexed_status', state.indexedStatus);
     if (state.searchFields && state.searchFields.length)
@@ -7940,6 +7941,20 @@
 
     // Wire focus trapping for every modal in the page. Safe / idempotent.
     document.querySelectorAll('.pv-modal').forEach(m => wireModalFocusTrap(m));
+
+    // Apply any incoming ?has_glossary= filter (e.g. from the Glossary
+    // Management dashboard's "Summaries improved" card) BEFORE the
+    // first loadArticles() call below — buildListParams() only reads
+    // from `state`, so without this the query string was silently
+    // ignored and the listing always loaded unfiltered regardless of
+    // what the link asked for.
+    {
+      const hg = new URLSearchParams(window.location.search).get('has_glossary');
+      if (hg === 'improved') state.hasGlossary = 'improved';
+      else if (hg === '1')   state.hasGlossary = true;
+      else if (hg === '0')   state.hasGlossary = false;
+    }
+
     // Pull the user's previously-ticked checkboxes from the server
     // BEFORE the first render so loadArticles paints them correctly.
     // _hydrateSelection never throws; the worst case is an empty
