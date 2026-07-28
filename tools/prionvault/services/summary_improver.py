@@ -684,6 +684,42 @@ def get_improvement_stats() -> dict:
         }
 
 
+def reset_improvement_tracking() -> dict:
+    """Wipe all glossary-improvement tracking/audit data so the whole
+    dashboard starts from zero, and un-mark every article so the next
+    "improve" pass re-processes it from scratch.
+
+    Does NOT touch `articles.summary_ai` — the improved summary text
+    already written back to articles is left exactly as-is. This only
+    resets the audit trail (summary_improvement_log,
+    summary_correction_detail, glossary_improvement_stats) and the
+    per-article `ai_summary_glossary_version` marker, so re-running the
+    improver is a clean way to verify the diff/correction-quality fix
+    on real data without losing any content.
+    """
+    eng = _get_engine()
+    with eng.begin() as conn:
+        marked = conn.execute(sql_text(
+            "SELECT COUNT(*) FROM articles WHERE ai_summary_glossary_version IS NOT NULL"
+        )).scalar() or 0
+        log_rows = conn.execute(sql_text(
+            "SELECT COUNT(*) FROM summary_improvement_log"
+        )).scalar() or 0
+
+        conn.execute(sql_text(
+            "TRUNCATE TABLE summary_correction_detail, summary_improvement_log RESTART IDENTITY CASCADE"
+        ))
+        conn.execute(sql_text(
+            "TRUNCATE TABLE glossary_improvement_stats RESTART IDENTITY"
+        ))
+        conn.execute(sql_text(
+            "UPDATE articles SET ai_summary_glossary_version = NULL "
+            "WHERE ai_summary_glossary_version IS NOT NULL"
+        ))
+
+    return {"articles_unmarked": int(marked), "log_entries_deleted": int(log_rows)}
+
+
 def get_improvement_log(
     batch_id: Optional[str] = None,
     limit: int = 50,

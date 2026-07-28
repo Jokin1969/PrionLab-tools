@@ -111,6 +111,9 @@
         <button class="btn btn--success" onclick="downloadAllChanges()">
           📊 {{ _('Descargar todos los cambios') }}
         </button>
+        <button class="btn btn--danger" onclick="resetGlossaryTracking()">
+          🔄 {{ _('Resetear seguimiento') }}
+        </button>
       </div>
     </div>
 
@@ -797,6 +800,32 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // event on page load — without this, its stats stay stuck at the
 // template's placeholder zeros until the user clicks away and back.
 loadDashboard();
+
+async function resetGlossaryTracking() {
+  if (!confirm(
+    '{{ _("Esto borrará todo el historial de mejoras (Total changes, Corrections, versiones registradas) y marcará todos los artículos como pendientes de mejora de nuevo.\\n\\nNO se tocará el texto de los resúmenes IA ya guardados en los artículos, solo el seguimiento/estadísticas.\\n\\n¿Continuar?") }}'
+  )) return;
+
+  const status = document.getElementById('dashboard-status');
+  status.textContent = '{{ _("Reseteando...") }}';
+  status.style.color = '#6b7280';
+
+  try {
+    const response = await fetch('/prionvault/api/glossary/reset-tracking', {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || 'HTTP ' + response.status);
+
+    status.textContent = `{{ _("Reseteado: ") }}${data.log_entries_deleted} {{ _("entradas de log borradas, ") }}${data.articles_unmarked} {{ _("artículos desmarcados.") }}`;
+    status.style.color = '#059669';
+    loadDashboard();
+  } catch (e) {
+    status.textContent = '{{ _("Error: ") }}' + e.message;
+    status.style.color = '#dc2626';
+  }
+}
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 async function loadDashboard() {

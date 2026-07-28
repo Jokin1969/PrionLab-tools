@@ -37,6 +37,22 @@ def api_glossary_stats():
         return jsonify({"error": str(e)[:300]}), 500
 
 
+@prionvault_bp.route("/api/glossary/reset-tracking", methods=["POST"])
+@admin_required
+def api_glossary_reset_tracking():
+    """Wipe improvement tracking/stats and unmark all articles so the
+    dashboard and correction history start clean. Does not touch the
+    actual summary_ai text stored on articles."""
+    from .services import summary_improver
+
+    try:
+        result = summary_improver.reset_improvement_tracking()
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        logger.exception("Failed to reset glossary tracking")
+        return jsonify({"error": str(e)[:300]}), 500
+
+
 @prionvault_bp.route("/api/glossary/stats/detailed", methods=["GET"])
 @admin_required
 def api_glossary_stats_detailed():
