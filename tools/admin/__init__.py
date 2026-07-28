@@ -2,6 +2,9 @@ import logging
 import os
 import secrets
 import string
+import threading
+import time
+import uuid
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
@@ -14,6 +17,24 @@ from core.users import (create_user, delete_user, get_user, load_users,
 
 logger = logging.getLogger(__name__)
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+# ── Background job registry for long-running admin operations ──────────────
+# Restoring a large backup (Dropbox download + multi-table COPY) can easily
+# take longer than Railway's edge proxy request timeout, which returns a
+# 502 "Application failed to respond" while the work may (or may not) still
+# be running server-side — leaving no reliable way to know the outcome.
+# Running it in a background thread and polling a job id sidesteps that
+# entirely: the POST returns immediately, and the client polls for status.
+_restore_jobs: dict = {}
+_restore_jobs_lock = threading.Lock()
+_RESTORE_JOB_TTL_S = 3600  # prune finished jobs after an hour
+
+
+def _prune_restore_jobs():
+    cutoff = time.time() - _RESTORE_JOB_TTL_S
+    for jid in [j for j, v in _restore_jobs.items()
+                if v.get("finished_at") and v["finished_at"] < cutoff]:
+        del _restore_jobs[jid]
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -575,10 +596,84 @@ def api_db_restore_backup():
         return jsonify({"success": False, "error": str(e)[:500]}), 500
 
 
+def _run_emergency_restore_job(job_id, only_tables, acknowledge_data_loss):
+    """Worker body — runs in a background thread, writes progress/result
+    into _restore_jobs[job_id]. Never raises: all exceptions are caught
+    and recorded so the job always reaches a terminal state."""
+    from database.backup import BackupManager
+
+    def _set(**kw):
+        with _restore_jobs_lock:
+            _restore_jobs[job_id].update(kw)
+
+    try:
+        bm = BackupManager()
+
+        _set(stage="listing_dropbox_backups")
+        dropbox_backups = bm.list_dropbox_backups()
+        csv_backups = [b for b in dropbox_backups if b["type"] == "csv_export"]
+        if not csv_backups:
+            _set(status="error", error="No CSV backups found in Dropbox",
+                 finished_at=time.time())
+            return
+
+        latest = csv_backups[0]  # Already sorted newest first
+        logger.warning("Emergency restore [%s]: downloading %s from Dropbox",
+                       job_id, latest["filename"])
+
+        from database.backup import BACKUP_DIR
+        backup_path = BACKUP_DIR / latest["filename"]
+
+        _set(stage="downloading", filename=latest["filename"])
+        try:
+            from core.dropbox_client import get_client
+            client = get_client()
+            if client is None:
+                _set(status="error", error="Dropbox not configured", finished_at=time.time())
+                return
+            metadata, response = client.files_download(latest["path"])
+            backup_path.write_bytes(response.content)
+            size_mb = backup_path.stat().st_size / (1024 * 1024)
+            logger.info("Emergency restore [%s]: downloaded %.1f MB", job_id, size_mb)
+            _set(downloaded_mb=round(size_mb, 1))
+        except Exception as e:
+            logger.error("Emergency restore [%s]: Dropbox download failed: %s", job_id, e)
+            _set(status="error", error=f"Dropbox download failed: {str(e)[:200]}",
+                 finished_at=time.time())
+            return
+
+        _set(stage="restoring")
+        logger.warning("Emergency restore [%s]: starting restore (tables=%s)",
+                       job_id, sorted(only_tables) if only_tables else "ALL")
+        result = bm.restore_from_csv_export(
+            str(backup_path), only_tables=only_tables,
+            acknowledge_data_loss=acknowledge_data_loss,
+        )
+
+        if result.get("success"):
+            logger.info("Emergency restore [%s]: success — %d tables, %d rows",
+                       job_id, result.get("tables_restored", 0), result.get("rows_restored", 0))
+            _set(status="success", result=result, finished_at=time.time())
+        else:
+            logger.error("Emergency restore [%s]: failed — %s", job_id, result.get("error"))
+            _set(status="error", error=result.get("error"), result=result, finished_at=time.time())
+    except Exception as e:
+        logger.exception("Emergency restore [%s]: unexpected failure", job_id)
+        _set(status="error", error=str(e)[:500], finished_at=time.time())
+
+
 @admin_bp.route("/api/db/emergency-restore", methods=["POST"])
 @admin_required
 def api_db_emergency_restore():
-    """Emergency restore from the most recent CSV export backup in Dropbox.
+    """Kick off an emergency restore from the most recent CSV export
+    backup in Dropbox, running in a background thread.
+
+    Returns immediately with {"job_id": ...} — poll
+    GET /admin/api/db/emergency-restore/status/<job_id> for progress and
+    the final result. This is necessary because the full operation
+    (Dropbox download + multi-table COPY) routinely takes longer than
+    Railway's edge proxy request timeout, which would otherwise kill the
+    connection with a 502 while leaving the actual outcome unknown.
 
     Accepts an optional JSON body {"tables": [...]} to restrict the
     restore to a specific subset of tables, leaving everything else in
@@ -587,62 +682,45 @@ def api_db_emergency_restore():
     which would silently overwrite unrelated tables' *current* data
     (e.g. user sessions, preferences, labs, publications) with day(s)-old
     data — destroying anything users did since the backup was taken.
+
+    Also accepts {"acknowledge_data_loss": [...]} — see
+    BackupManager.restore_from_csv_export for what this means.
     """
     from flask import jsonify
-    from database.backup import BackupManager
-    try:
-        data = request.get_json(silent=True) or {}
-        tables = data.get("tables")
-        only_tables = set(tables) if tables else None
-        acknowledge = data.get("acknowledge_data_loss")
-        acknowledge_data_loss = set(acknowledge) if acknowledge else None
+    data = request.get_json(silent=True) or {}
+    tables = data.get("tables")
+    only_tables = set(tables) if tables else None
+    acknowledge = data.get("acknowledge_data_loss")
+    acknowledge_data_loss = set(acknowledge) if acknowledge else None
 
-        bm = BackupManager()
+    job_id = uuid.uuid4().hex
+    with _restore_jobs_lock:
+        _prune_restore_jobs()
+        _restore_jobs[job_id] = {
+            "status": "running",
+            "stage": "starting",
+            "started_at": time.time(),
+            "finished_at": None,
+        }
 
-        # Get CSV backups from Dropbox
-        dropbox_backups = bm.list_dropbox_backups()
-        csv_backups = [b for b in dropbox_backups if b["type"] == "csv_export"]
+    thread = threading.Thread(
+        target=_run_emergency_restore_job,
+        args=(job_id, only_tables, acknowledge_data_loss),
+        daemon=True,
+    )
+    thread.start()
 
-        if not csv_backups:
-            return jsonify({"success": False, "error": "No CSV backups found in Dropbox"}), 404
+    return jsonify({"job_id": job_id, "status": "running"}), 202
 
-        latest = csv_backups[0]  # Already sorted newest first
-        logger.warning("Emergency restore: downloading %s from Dropbox", latest["filename"])
 
-        # Download from Dropbox
-        from pathlib import Path
-        from database.backup import BACKUP_DIR
-        backup_path = BACKUP_DIR / latest["filename"]
-
-        try:
-            from core.dropbox_client import get_client
-            client = get_client()
-            if client is None:
-                return jsonify({"success": False, "error": "Dropbox not configured"}), 500
-
-            logger.info("Downloading %s from Dropbox...", latest["filename"])
-            metadata, response = client.files_download(latest["path"])
-            backup_path.write_bytes(response.content)
-            logger.info("Downloaded %.1f MB", backup_path.stat().st_size / (1024*1024))
-        except Exception as e:
-            logger.error("Dropbox download failed: %s", e)
-            return jsonify({"success": False, "error": f"Dropbox download failed: {str(e)[:200]}"}), 500
-
-        # Restore from the downloaded backup
-        logger.warning("Starting emergency restore... (tables=%s)", sorted(only_tables) if only_tables else "ALL")
-        result = bm.restore_from_csv_export(
-            str(backup_path), only_tables=only_tables,
-            acknowledge_data_loss=acknowledge_data_loss,
-        )
-
-        if result.get("success"):
-            logger.info("Emergency restore successful: %d tables, %d rows",
-                       result.get("tables_restored", 0),
-                       result.get("rows_restored", 0))
-        else:
-            logger.error("Emergency restore failed: %s", result.get("error"))
-
-        return jsonify(result)
-    except Exception as e:
-        logger.error("Emergency restore failed: %s", e)
-        return jsonify({"success": False, "error": str(e)[:500]}), 500
+@admin_bp.route("/api/db/emergency-restore/status/<job_id>")
+@admin_required
+def api_db_emergency_restore_status(job_id):
+    """Poll the status of a background restore job started by
+    POST /admin/api/db/emergency-restore."""
+    from flask import jsonify
+    with _restore_jobs_lock:
+        job = _restore_jobs.get(job_id)
+    if job is None:
+        return jsonify({"error": "Unknown job_id (may have expired)"}), 404
+    return jsonify(job)
