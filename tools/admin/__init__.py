@@ -23,18 +23,67 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 # take longer than Railway's edge proxy request timeout, which returns a
 # 502 "Application failed to respond" while the work may (or may not) still
 # be running server-side — leaving no reliable way to know the outcome.
-# Running it in a background thread and polling a job id sidesteps that
-# entirely: the POST returns immediately, and the client polls for status.
-_restore_jobs: dict = {}
-_restore_jobs_lock = threading.Lock()
-_RESTORE_JOB_TTL_S = 3600  # prune finished jobs after an hour
+# Running it in a background thread and polling a job id sidesteps that.
+#
+# Job state is persisted to the `admin_background_job` table (see
+# migrations/069_admin_background_jobs.sql) rather than kept in an
+# in-process dict — Railway runs multiple app workers, and a status-poll
+# request can land on a different worker than the one that started the
+# background thread, which would never see an in-memory-only registry.
+def _create_background_job(job_id: str, kind: str) -> None:
+    from database.config import db
+    from sqlalchemy import text as sql_text
+    s = db.Session()
+    try:
+        s.execute(sql_text(
+            "DELETE FROM admin_background_job "
+            "WHERE finished_at IS NOT NULL AND finished_at < NOW() - INTERVAL '1 hour'"
+        ))
+        s.execute(sql_text(
+            "INSERT INTO admin_background_job (id, kind, status, stage) "
+            "VALUES (:id, :kind, 'running', 'starting')"
+        ), {"id": job_id, "kind": kind})
+        s.commit()
+    finally:
+        s.close()
 
 
-def _prune_restore_jobs():
-    cutoff = time.time() - _RESTORE_JOB_TTL_S
-    for jid in [j for j, v in _restore_jobs.items()
-                if v.get("finished_at") and v["finished_at"] < cutoff]:
-        del _restore_jobs[jid]
+def _update_background_job(job_id: str, **fields) -> None:
+    from database.config import db
+    from sqlalchemy import text as sql_text
+    import json as _json
+    if not fields:
+        return
+    cols = []
+    params = {"id": job_id}
+    for k, v in fields.items():
+        if k == "result" and v is not None:
+            v = _json.dumps(v)
+        cols.append(f"{k} = :{k}")
+        params[k] = v
+    s = db.Session()
+    try:
+        s.execute(sql_text(
+            f"UPDATE admin_background_job SET {', '.join(cols)} WHERE id = :id"
+        ), params)
+        s.commit()
+    finally:
+        s.close()
+
+
+def _get_background_job(job_id: str):
+    from database.config import db
+    from sqlalchemy import text as sql_text
+    s = db.Session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT id, kind, status, stage, filename, downloaded_mb, result, error, "
+            "started_at, finished_at "
+            "FROM admin_background_job WHERE id = :id"
+        ), {"id": job_id}).mappings().first()
+        return dict(row) if row else None
+    finally:
+        s.close()
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -597,14 +646,19 @@ def api_db_restore_backup():
 
 
 def _run_emergency_restore_job(job_id, only_tables, acknowledge_data_loss):
-    """Worker body — runs in a background thread, writes progress/result
-    into _restore_jobs[job_id]. Never raises: all exceptions are caught
-    and recorded so the job always reaches a terminal state."""
+    """Worker body — runs in a background thread, persists progress/result
+    to the admin_background_job table. Never raises: all exceptions are
+    caught and recorded so the job always reaches a terminal state."""
     from database.backup import BackupManager
+    from datetime import datetime, timezone
 
     def _set(**kw):
-        with _restore_jobs_lock:
-            _restore_jobs[job_id].update(kw)
+        if "finished_at" in kw and kw["finished_at"] is not None:
+            kw["finished_at"] = datetime.now(timezone.utc)
+        try:
+            _update_background_job(job_id, **kw)
+        except Exception:
+            logger.exception("Emergency restore [%s]: failed to persist job update", job_id)
 
     try:
         bm = BackupManager()
@@ -694,14 +748,7 @@ def api_db_emergency_restore():
     acknowledge_data_loss = set(acknowledge) if acknowledge else None
 
     job_id = uuid.uuid4().hex
-    with _restore_jobs_lock:
-        _prune_restore_jobs()
-        _restore_jobs[job_id] = {
-            "status": "running",
-            "stage": "starting",
-            "started_at": time.time(),
-            "finished_at": None,
-        }
+    _create_background_job(job_id, kind="emergency_restore")
 
     thread = threading.Thread(
         target=_run_emergency_restore_job,
@@ -719,8 +766,13 @@ def api_db_emergency_restore_status(job_id):
     """Poll the status of a background restore job started by
     POST /admin/api/db/emergency-restore."""
     from flask import jsonify
-    with _restore_jobs_lock:
-        job = _restore_jobs.get(job_id)
+    job = _get_background_job(job_id)
     if job is None:
         return jsonify({"error": "Unknown job_id (may have expired)"}), 404
+    if job.get("downloaded_mb") is not None:
+        job["downloaded_mb"] = float(job["downloaded_mb"])
+    if job.get("started_at") is not None:
+        job["started_at"] = job["started_at"].isoformat()
+    if job.get("finished_at") is not None:
+        job["finished_at"] = job["finished_at"].isoformat()
     return jsonify(job)
