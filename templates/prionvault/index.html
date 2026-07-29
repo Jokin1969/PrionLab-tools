@@ -458,7 +458,7 @@
            Wraps the five buttons that bring new papers into the
            catalogue. JS persists the open/closed state in
            localStorage so the operator's choice survives reloads. -->
-      <details id="pv-group-entry" class="pv-admin-only pv-sidebar-group">
+      <details id="pv-group-entry" class="pv-sidebar-group">
         <summary class="pv-sidebar-group-summary"
                  style="list-style:none;cursor:pointer;
                         padding:7px 10px;border-radius:8px;
@@ -495,17 +495,17 @@
           <button class="pv-nav-btn pv-admin-only" id="btn-manage-queue">
             <span><i class="fas fa-list-check" style="width:13px;margin-right:6px;opacity:0.7;"></i>Ingest queue</span>
           </button>
+          <!-- Open to every role (readers included) — the group itself
+               is no longer pv-admin-only (each sibling button above
+               carries its own pv-admin-only instead) specifically so
+               this one can live inside "Entrada de artículos" while
+               staying visible to everyone. -->
+          <button class="pv-nav-btn" id="btn-add-jc"
+                  title="Busca un artículo ya existente en la biblioteca y añádele una presentación de Journal Club.">
+            <span><i class="fas fa-chalkboard-teacher" style="width:13px;margin-right:6px;opacity:0.7;"></i>Añadir Journal clubs</span>
+          </button>
         </div>
       </details>
-
-      <!-- Open to every role (readers included) — placed right below
-           "Entrada de artículos" but deliberately NOT inside that
-           pv-admin-only group, since anyone should be able to log a
-           Journal Club presentation. -->
-      <button class="pv-nav-btn" id="btn-add-jc"
-              title="Busca un artículo ya existente en la biblioteca y añádele una presentación de Journal Club.">
-        <span><i class="fas fa-chalkboard-teacher" style="width:13px;margin-right:6px;opacity:0.7;"></i>Añadir Journal clubs</span>
-      </button>
 
       <!-- ── "Procesado de artículos" group ───────────────────────────
            Operations that enrich / clean / normalise the catalogue's
