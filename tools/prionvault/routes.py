@@ -958,7 +958,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     note_stubs = {}         # aid(str) -> [{"id","color_index"}, ...] for viewer
     # jc_count was previously a correlated subquery in the main SELECT.
     # Now batched here as one GROUP BY scan over the JC table.
-    jc_counts: dict = {}    # aid -> int
+    jc_counts: dict = {}      # aid -> int
+    jc_presenters: dict = {}  # aid -> "Name1, Name2" (comma-joined, for the JC pill tooltip)
     if rows:
         try:
             import uuid as _uuid
@@ -977,13 +978,17 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                 # indexed via 034_articles_perf_indexes.sql. Articles
                 # with no presentation simply don't appear in the
                 # result map — _row_to_dict defaults missing keys to 0.
+                # Presenter names ride along in the same query (for the
+                # "JC" pill's hover tooltip) rather than a second scan.
                 jc_rows = _s2.execute(sql_text(
-                    "SELECT article_id, COUNT(*) "
+                    "SELECT article_id, COUNT(*), "
+                    "       STRING_AGG(DISTINCT presenter_name, ', ' ORDER BY presenter_name) "
                     "  FROM prionvault_jc_presentation "
                     " WHERE article_id = ANY(CAST(:ids AS uuid[])) "
                     " GROUP BY article_id"
                 ), {"ids": [str(i) for i in item_ids]}).all()
                 jc_counts = {r[0]: int(r[1]) for r in jc_rows}
+                jc_presenters = {r[0]: r[2] for r in jc_rows}
 
                 # Aggregate ratings: avg + count per article id
                 rating_rows = _s2.query(
@@ -1071,6 +1076,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "pdf_oa_status": d.get("pdf_oa_status"),
             "jc_count":      int(jc_counts.get(aid, 0)),
             "has_jc":        bool(jc_counts.get(aid, 0)),
+            "jc_presenters": jc_presenters.get(aid),
             "extraction_status": d.get("extraction_status") or "pending",
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,

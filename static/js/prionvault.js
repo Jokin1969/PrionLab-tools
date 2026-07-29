@@ -2961,9 +2961,11 @@
           : '',
       a.has_jc
         ? `<button type="button" class="pv-row-jc-btn" data-aid="${esc(a.id)}"
-                title="${a.jc_count > 1
-                    ? esc(a.jc_count + ' presentaciones en Journal Club — clic para abrir el documento')
-                    : 'Presentado en Journal Club — clic para abrir el documento'}"
+                title="${a.jc_presenters
+                    ? esc(`Presentado por ${a.jc_presenters} en Journal Club — clic para abrir el documento`)
+                    : (a.jc_count > 1
+                        ? esc(a.jc_count + ' presentaciones en Journal Club — clic para abrir el documento')
+                        : 'Presentado en Journal Club — clic para abrir el documento')}"
                 style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;
                        background:#fce7f3;color:#be185d;border:none;cursor:pointer;">JC${a.jc_count > 1 ? ' ' + a.jc_count : ''}</button>`
         : '',
