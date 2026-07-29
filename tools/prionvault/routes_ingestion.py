@@ -1906,6 +1906,79 @@ def api_delete_summary(aid):
         s.close()
 
 
+_USER_NOTES_HEADING = "## Notas del usuario"
+
+
+def _strip_user_notes_section(summary_ai: str) -> str:
+    """Return `summary_ai` with any existing '## Notas del usuario'
+    section (always appended last, after Conclusiones) removed, so a
+    re-edit replaces it instead of stacking duplicate headers."""
+    idx = (summary_ai or "").find(_USER_NOTES_HEADING)
+    if idx == -1:
+        return (summary_ai or "").rstrip()
+    return summary_ai[:idx].rstrip()
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/summary/user-notes", methods=["PATCH"])
+@admin_required
+def api_set_summary_user_notes(aid):
+    """Append (or replace/clear) a '## Notas del usuario' section at the
+    end of the AI summary — after Conclusiones, since that's always the
+    last of the five generated sections. Marks the article's summary_ai
+    chunk stale so the next 'Index for AI search' pass re-embeds it with
+    the new text.
+
+    Body: {"text": "..."}. Empty text removes the section entirely."""
+    data = request.get_json(force=True, silent=True) or {}
+    text = (data.get("text") or "").strip()
+
+    s = _session()
+    try:
+        a = s.get(models.Article, aid)
+        if not a:
+            return jsonify({"error": "not found"}), 404
+        if not (a.summary_ai or "").strip():
+            return jsonify({"error": "no_summary",
+                            "detail": "El artículo no tiene resumen IA todavía."}), 400
+
+        base = _strip_user_notes_section(a.summary_ai)
+        new_summary = f"{base}\n\n{_USER_NOTES_HEADING}\n{text}" if text else base
+
+        a.summary_ai = new_summary
+        a.updated_at = datetime.utcnow()
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("api_set_summary_user_notes failed for %s", aid)
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+    # Re-embed the summary_ai chunk in the background so the search
+    # index picks up the new text — the HTTP response doesn't wait on
+    # the Voyage call.
+    def _reindex():
+        try:
+            from .embeddings.indexer import index_article_source, clear_source
+            if new_summary.strip():
+                result = index_article_source(
+                    article_id=str(aid), source_field="summary_ai",
+                    source_text=new_summary,
+                )
+                if result.error:
+                    logger.warning("summary user-notes reindex (article=%s): %s",
+                                   aid, result.error)
+            else:
+                clear_source(str(aid), "summary_ai")
+        except Exception:
+            logger.exception("summary user-notes reindex failed for %s", aid)
+
+    threading.Thread(target=_reindex, name="pv-summary-notes-reindex",
+                     daemon=True).start()
+
+    return jsonify({"ok": True, "summary_ai": new_summary})
+
+
 
 # ── Share an article by email ─────────────────────────────────────────────────
 

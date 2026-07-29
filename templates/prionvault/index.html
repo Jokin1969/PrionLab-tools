@@ -1391,6 +1391,11 @@
                 border-top:1px solid #f3f4f6;">
       <span id="pv-note-date" style="font-size:11.5px;color:#9ca3af;"></span>
       <span id="pv-note-status" style="font-size:12px;color:#9ca3af;margin-left:auto;"></span>
+      <button id="pv-note-to-summary" type="button"
+              title="Añadir el contenido de esta nota como 'Notas del usuario' al final del resumen IA (si lo hay)"
+              style="display:none;align-items:center;gap:5px;padding:7px 12px;border-radius:7px;
+                     border:1px solid #ddd6fe;background:#fff;color:#6d28d9;font-size:12px;
+                     font-weight:600;cursor:pointer;"><i class="fas fa-file-import"></i> Añadir a Resumen IA</button>
       <button id="pv-note-delete" type="button"
               style="display:none;align-items:center;gap:5px;padding:7px 13px;border-radius:7px;
                      border:1px solid #fecaca;background:#fff;color:#b91c1c;font-size:12.5px;
@@ -1401,6 +1406,34 @@
     </div>
     <div style="font-size:10.5px;color:#9ca3af;padding:0 20px 12px;background:#fff;">
       Puedes pegar imágenes directamente. Máximo 5 notas por artículo; el color es automático.
+    </div>
+  </div>
+</div>
+
+<!-- ── Resumen IA — Notas del usuario modal ─────────────────────────────── -->
+<div id="pv-summary-notes-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:560px;">
+    <button class="pv-modal-close" id="pv-summary-notes-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
+      <i class="fas fa-pen" style="color:#0F3460;margin-right:6px;"></i>Notas del usuario — Resumen IA
+    </h2>
+    <p style="color:#6b7280;font-size:12px;margin:0 0 12px;line-height:1.5;">
+      Se añade como sección <strong>"Notas del usuario"</strong> al final del resumen IA (después
+      de Conclusiones). El resumen se re-vectoriza automáticamente en segundo plano para que la
+      búsqueda IA tenga en cuenta este texto. Déjalo vacío y guarda para quitar la sección.
+    </p>
+    <textarea id="pv-summary-notes-text" rows="9"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d1d5db;
+                     border-radius:8px;font-size:13.5px;font-family:inherit;resize:vertical;"></textarea>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px;">
+      <span id="pv-summary-notes-status" style="font-size:12px;color:#9ca3af;margin-right:auto;"></span>
+      <button id="pv-summary-notes-cancel" type="button"
+              style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                     color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Cancelar</button>
+      <button id="pv-summary-notes-save" type="button"
+              style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">Guardar</button>
     </div>
   </div>
 </div>

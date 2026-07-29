@@ -6980,6 +6980,8 @@
       applyColor();
       const delBtn = $('pv-note-delete');
       if (delBtn) delBtn.style.display = _activeId != null ? 'inline-flex' : 'none';
+      const toSummaryBtn = $('pv-note-to-summary');
+      if (toSummaryBtn) toSummaryBtn.style.display = _activeId != null ? 'inline-flex' : 'none';
       const dateEl = $('pv-note-date');
       if (dateEl) dateEl.textContent = (note && note.updated_at)
         ? new Date(note.updated_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -7082,6 +7084,14 @@
       document.querySelector('#pv-note-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-note-save')?.addEventListener('click', save);
       $('pv-note-delete')?.addEventListener('click', del);
+      $('pv-note-to-summary')?.addEventListener('click', () => {
+        if (_activeId == null) return;
+        const note = _notes.find(n => n.id === _activeId);
+        if (!note) return;
+        const plain = htmlToText(sanitize(note.body || '')).trim();
+        if (!plain) { alert('Esta nota está vacía.'); return; }
+        PVSummaryNotes.open(_article.id, { appendText: plain });
+      });
       const ed = $('pv-note-editor');
       ed?.addEventListener('paste', handlePaste);
       ed?.addEventListener('keydown', e => {
@@ -7123,6 +7133,93 @@
     return { open, close };
   })();
 
+  // ── Resumen IA — Notas del usuario modal ────────────────────────────────
+  // Lets an admin append a "## Notas del usuario" section at the end of an
+  // article's AI summary (always after Conclusiones, since that's the last
+  // of the five generated sections). Re-editing replaces the section
+  // instead of stacking duplicates; the backend re-embeds the summary_ai
+  // chunk in the background so AI search picks up the new text.
+  const PVSummaryNotes = (() => {
+    let _articleId = null;
+    let _onSaved = null;
+    let _wired = false;
+
+    function extractCurrentNotes(summaryAi) {
+      const marker = '## Notas del usuario';
+      const idx = (summaryAi || '').indexOf(marker);
+      if (idx === -1) return '';
+      return (summaryAi || '').slice(idx + marker.length).replace(/^\s*\n/, '').trim();
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      const modal = document.getElementById('pv-summary-notes-modal');
+      if (!modal) return;
+      const close = () => { modal.style.display = 'none'; };
+      document.getElementById('pv-summary-notes-close')?.addEventListener('click', close);
+      document.getElementById('pv-summary-notes-cancel')?.addEventListener('click', close);
+      modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+      document.getElementById('pv-summary-notes-save')?.addEventListener('click', async () => {
+        const statusEl = document.getElementById('pv-summary-notes-status');
+        const saveBtn  = document.getElementById('pv-summary-notes-save');
+        const text = document.getElementById('pv-summary-notes-text').value;
+        saveBtn.disabled = true;
+        if (statusEl) { statusEl.style.color = '#9ca3af'; statusEl.textContent = 'Guardando…'; }
+        try {
+          const r = await api(`/articles/${_articleId}/summary/user-notes`, {
+            method: 'PATCH', body: JSON.stringify({ text }),
+          });
+          if (statusEl) { statusEl.style.color = '#15803d'; statusEl.textContent = '✓ Guardado — re-indexando en segundo plano.'; }
+          if (_onSaved) _onSaved(r.summary_ai);
+          setTimeout(close, 700);
+        } catch (e) {
+          if (statusEl) { statusEl.style.color = '#b91c1c'; statusEl.textContent = 'Error: ' + e.message; }
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+    }
+
+    // opts.appendText: extra text to seed the textarea with (from a
+    // sticky note), on top of whatever "Notas del usuario" already had.
+    async function open(articleId, opts = {}) {
+      wireOnce();
+      _articleId = articleId;
+      _onSaved = opts.onSaved || null;
+      const modal = document.getElementById('pv-summary-notes-modal');
+      const textEl = document.getElementById('pv-summary-notes-text');
+      const statusEl = document.getElementById('pv-summary-notes-status');
+      if (!modal || !textEl) return;
+      statusEl.textContent = '';
+      textEl.value = 'Cargando…';
+      textEl.disabled = true;
+      modal.style.display = 'flex';
+      try {
+        const fresh = await api(`/articles/${articleId}`);
+        if (!fresh.summary_ai || !fresh.summary_ai.trim()) {
+          modal.style.display = 'none';
+          alert('Este artículo no tiene resumen IA todavía.');
+          return;
+        }
+        let current = extractCurrentNotes(fresh.summary_ai);
+        if (opts.appendText) {
+          current = current ? `${current}\n\n${opts.appendText}` : opts.appendText;
+        }
+        textEl.value = current;
+      } catch (e) {
+        textEl.value = '';
+        statusEl.style.color = '#b91c1c';
+        statusEl.textContent = 'Error cargando el resumen: ' + e.message;
+      } finally {
+        textEl.disabled = false;
+        textEl.focus();
+      }
+    }
+
+    return { open };
+  })();
+
   function renderAiSummary(a) {
     const block = document.getElementById('pv-ai-summary-block');
     if (!block) return;
@@ -7152,6 +7249,13 @@
                            font-size:11.5px;font-weight:600;color:#0F3460;cursor:pointer;">
               ${a.summary_ai ? '↻ Regenerate' : '✨ Generate'}
             </button>
+            ${a.summary_ai ? `
+              <button id="pv-ai-edit-notes"
+                      title="Añadir/editar una sección 'Notas del usuario' al final del resumen"
+                      style="padding:4px 10px;border-radius:6px;border:1px solid #ddd6fe;background:white;
+                             font-size:11.5px;font-weight:600;color:#6d28d9;cursor:pointer;">
+                ✎ Notas del usuario
+              </button>` : ''}
             ${a.summary_ai ? `
               <button id="pv-ai-clear"
                       title="Borrar el resumen IA"
@@ -7211,10 +7315,22 @@
       });
     }
 
-    const genBtn   = document.getElementById('pv-ai-generate');
-    const clearBtn = document.getElementById('pv-ai-clear');
-    const statusEl = document.getElementById('pv-ai-status');
-    const provEl   = document.getElementById('pv-ai-provider');
+    const genBtn      = document.getElementById('pv-ai-generate');
+    const clearBtn    = document.getElementById('pv-ai-clear');
+    const editNotesBtn = document.getElementById('pv-ai-edit-notes');
+    const statusEl    = document.getElementById('pv-ai-status');
+    const provEl      = document.getElementById('pv-ai-provider');
+
+    if (editNotesBtn) editNotesBtn.addEventListener('click', () => {
+      PVSummaryNotes.open(a.id, {
+        onSaved: (newSummary) => {
+          a.summary_ai = newSummary;
+          renderAiSummary(a);
+          const s = document.getElementById('pv-ai-status');
+          if (s) { s.style.color = '#15803d'; s.textContent = '✓ Notas del usuario actualizadas.'; }
+        },
+      });
+    });
 
     // Populate the provider dropdown. Default to the value persisted
     // by the bulk-summary modal so the detail picker stays in sync.
@@ -10677,6 +10793,16 @@
            </a>`
         );
       }
+      linkChips.push(
+        `<button type="button" class="pv-rag-isolate-btn" data-aid="${escAttr(c.article_id)}"
+                 title="Mostrar solo este artículo en el listado de PrionVault"
+                 style="font-size:10.5px;background:#fef3c7;color:#92400e;
+                        border:1px solid #fde68a;padding:2px 8px;border-radius:5px;
+                        font-weight:600;cursor:pointer;">
+           📍 Aislar
+         </button>`
+      );
+
       const inCart = window.PPCart?.has(c.article_id);
       const cartChip = `<button type="button"
           class="pv-rag-cart-btn ${inCart ? 'pv-rag-cart-btn--in' : ''}"
@@ -10763,6 +10889,14 @@
       a.addEventListener('click', e => {
         e.preventDefault();
         openDetail(a.dataset.aid);
+      });
+    });
+
+    container.querySelectorAll('.pv-rag-isolate-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        _setIsolatedArticleId(btn.dataset.aid);
+        loadArticles();
       });
     });
 
