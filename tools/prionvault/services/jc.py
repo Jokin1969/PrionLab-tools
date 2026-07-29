@@ -2,8 +2,9 @@
 
 Tracks who presented which paper in the lab's internal journal club
 sessions, with their slides / handouts attached. Files live under
-    /PrionLab tools/PrionVault/JC/<year>/<doi-slug>__<presenter>__<hex>.<ext>
-in Dropbox, separate from the canonical paper PDFs.
+    /PrionLab tools/Journal clubs/<responsable>/<yyyymmdd>/<filename>
+in Dropbox, one folder per presenter and one subfolder per session date,
+separate from the canonical paper PDFs.
 
 A presentation row is purely metadata; the files hang off it in
 prionvault_jc_file and are deleted in cascade when the presentation
@@ -15,9 +16,8 @@ from __future__ import annotations
 
 import logging
 import re
-import secrets
 import uuid
-from datetime import date as _date
+from datetime import date as _date, datetime as _datetime
 from typing import List, Optional
 
 from sqlalchemy import text as sql_text
@@ -31,10 +31,12 @@ logger = logging.getLogger(__name__)
 MAX_FILE_BYTES = 200 * 1024 * 1024
 
 _KIND_BY_EXT = {
-    "pptx": "pptx", "ppt": "pptx",
+    "pptx": "pptx", "ppt": "pptx", "odp": "pptx", "key": "keynote",
     "pdf":  "pdf",
-    "key":  "keynote",
-    "odp":  "pptx",
+    "doc":  "word",  "docx": "word",  "odt": "word",
+    "xls":  "excel", "xlsx": "excel", "ods": "excel", "csv": "excel",
+    "png":  "image", "jpg":  "image", "jpeg": "image",
+    "gif":  "image", "webp": "image", "heic": "image", "bmp": "image", "tiff": "image",
 }
 
 
@@ -53,16 +55,41 @@ def _slug(s: str, n: int = 60) -> str:
     return s[:n] or "x"
 
 
+# Matches an 8-digit YYYYMMDD run anywhere in a filename, e.g.
+# "20260415_prion_talk.pptx" or "slides-20260415-v2.pdf". Validated as
+# a real calendar date before being trusted.
+_FILENAME_DATE_RE = re.compile(r"(20\d{2})(\d{2})(\d{2})")
+
+
+def infer_date_from_filenames(filenames: List[str]) -> _date:
+    """Return the date encoded in the first filename that carries a
+    valid YYYYMMDD run, else today. This is how a JC session's date is
+    decided when the operator doesn't type one explicitly — the file
+    naming convention already carries it."""
+    for fn in filenames:
+        for m in _FILENAME_DATE_RE.finditer(fn or ""):
+            try:
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                return _date(y, mo, d)
+            except ValueError:
+                continue
+    return _datetime.utcnow().date()
+
+
+def _safe_path_segment(s: str) -> str:
+    """Sanitize a string for use as a Dropbox path segment. Keeps
+    spaces/accents (Dropbox handles UTF-8 fine) — only strips
+    characters that would break the path structure itself."""
+    s = re.sub(r'[\/\\:*?"<>|]', "_", (s or "").strip())
+    return s.strip(" .") or "x"
+
+
 def _build_dropbox_path(*, presented_at: _date, presenter_name: str,
-                        doi: Optional[str], article_id: str,
                         filename: str) -> str:
-    year = str(presented_at.year)
-    base = _slug(doi) if doi else _slug(article_id.replace("-", ""))[:16]
-    pres = _slug(presenter_name, 30)
-    ext  = _ext_of(filename) or "bin"
-    short = secrets.token_hex(3)
-    name = f"{base}__{pres}__{short}.{ext}"
-    return f"/PrionLab tools/PrionVault/JC/{year}/{name}"
+    folder = _safe_path_segment(presenter_name) or "Sin_asignar"
+    yyyymmdd = presented_at.strftime("%Y%m%d")
+    safe_filename = _safe_path_segment(filename)
+    return f"/PrionLab tools/Journal clubs/{folder}/{yyyymmdd}/{safe_filename}"
 
 
 # ── Presentations CRUD ──────────────────────────────────────────────────────
@@ -214,18 +241,15 @@ def add_file(presentation_id, *, content: bytes, filename: str) -> dict:
     eng = _get_engine()
     with eng.connect() as conn:
         meta = conn.execute(sql_text(
-            """SELECT p.presented_at, p.presenter_name, p.article_id, a.doi
-               FROM prionvault_jc_presentation p
-               JOIN articles a ON a.id = p.article_id
-               WHERE p.id = :pid"""
+            """SELECT presented_at, presenter_name
+               FROM prionvault_jc_presentation WHERE id = :pid"""
         ), {"pid": str(presentation_id)}).first()
     if not meta:
         raise LookupError("presentation not found")
-    presented_at, presenter_name, article_id, doi = meta
+    presented_at, presenter_name = meta
 
     target = _build_dropbox_path(presented_at=presented_at,
                                  presenter_name=presenter_name,
-                                 doi=doi, article_id=str(article_id),
                                  filename=filename)
     # Upload to Dropbox.
     try:

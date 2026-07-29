@@ -1438,6 +1438,89 @@
   </div>
 </div>
 
+<!-- ── Journal Club — upload modal ──────────────────────────────────────── -->
+<div id="pv-jc-upload-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:520px;">
+    <button class="pv-modal-close" id="pv-jc-upload-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
+      <i class="fas fa-chalkboard-teacher" style="color:#be185d;margin-right:6px;"></i>Añadir presentación de Journal Club
+    </h2>
+    <p style="color:#6b7280;font-size:12px;margin:0 0 14px;line-height:1.5;">
+      La fecha se toma del nombre del fichero si sigue el formato <code>yyyymmdd</code>;
+      si no, se usa la fecha de hoy.
+    </p>
+
+    <div style="font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
+                letter-spacing:0.05em;margin-bottom:6px;">Tipo de documento</div>
+    <div id="pv-jc-type-picker" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;">
+      <button type="button" class="pv-jc-type-btn" data-type="pptx" data-exts=".pptx,.ppt,.odp,.key"
+              style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;
+                     border-radius:9px;border:2px solid #c2410c;background:#fff7ed;color:#c2410c;
+                     cursor:pointer;font-size:10.5px;font-weight:600;">
+        <i class="fas fa-file-powerpoint" style="font-size:20px;"></i>PowerPoint
+      </button>
+      <button type="button" class="pv-jc-type-btn" data-type="word" data-exts=".docx,.doc,.odt"
+              style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;
+                     border-radius:9px;border:2px solid #e5e7eb;background:#fff;color:#1d4ed8;
+                     cursor:pointer;font-size:10.5px;font-weight:600;">
+        <i class="fas fa-file-word" style="font-size:20px;"></i>Word
+      </button>
+      <button type="button" class="pv-jc-type-btn" data-type="excel" data-exts=".xlsx,.xls,.ods,.csv"
+              style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;
+                     border-radius:9px;border:2px solid #e5e7eb;background:#fff;color:#15803d;
+                     cursor:pointer;font-size:10.5px;font-weight:600;">
+        <i class="fas fa-file-excel" style="font-size:20px;"></i>Excel
+      </button>
+      <button type="button" class="pv-jc-type-btn" data-type="pdf" data-exts=".pdf"
+              style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;
+                     border-radius:9px;border:2px solid #e5e7eb;background:#fff;color:#b91c1c;
+                     cursor:pointer;font-size:10.5px;font-weight:600;">
+        <i class="fas fa-file-pdf" style="font-size:20px;"></i>PDF
+      </button>
+      <button type="button" class="pv-jc-type-btn" data-type="image" data-exts=".png,.jpg,.jpeg,.gif,.webp,.heic,.bmp,.tiff"
+              style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;
+                     border-radius:9px;border:2px solid #e5e7eb;background:#fff;color:#7c3aed;
+                     cursor:pointer;font-size:10.5px;font-weight:600;">
+        <i class="fas fa-file-image" style="font-size:20px;"></i>Imágenes
+      </button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button id="pv-jc-pick-files" type="button"
+              style="flex:1;padding:9px 12px;border-radius:8px;border:1px dashed #be185d;
+                     background:#fdf2f8;color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-folder-open"></i> Seleccionar archivos…
+      </button>
+      <button id="pv-jc-add-more" type="button" style="display:none;
+              padding:9px 12px;border-radius:8px;border:1px solid #d1d5db;
+              background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-plus"></i> Añadir + documentos
+      </button>
+    </div>
+    <div id="pv-jc-file-list" style="margin-bottom:14px;"></div>
+
+    <div style="font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
+                letter-spacing:0.05em;margin-bottom:6px;">Responsable</div>
+    <div id="pv-jc-presenter-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;max-height:140px;overflow-y:auto;">
+      <span style="font-size:12px;color:#9ca3af;">Cargando usuarios…</span>
+    </div>
+    <input id="pv-jc-presenter-other" type="text" placeholder="Nombre del responsable"
+           style="display:none;width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;
+                  border-radius:8px;font-size:13px;margin-bottom:14px;">
+
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+      <span id="pv-jc-upload-status" style="font-size:12px;color:#9ca3af;margin-right:auto;"></span>
+      <button id="pv-jc-upload-cancel" type="button"
+              style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                     color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Cancelar</button>
+      <button id="pv-jc-upload-confirm" type="button" disabled
+              style="padding:7px 18px;border-radius:7px;border:none;background:#be185d;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:not-allowed;opacity:0.5;">Aceptar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── SCImago (SJR) modal ───────────────────────────────────────────── -->
 <div id="pv-scimago-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>

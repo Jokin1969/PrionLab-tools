@@ -3909,8 +3909,13 @@ def _parse_iso_date(s):
 def api_jc_create(aid):
     """Create a JC presentation row + optionally attach files in the
     same multipart request. Body fields:
-       presented_at (YYYY-MM-DD), presenter_name, presenter_id?,
+       presented_at (YYYY-MM-DD, optional), presenter_name, presenter_id?,
        file (one or many, optional).
+
+    `presented_at` is optional: when omitted, it's inferred from the
+    first uploaded filename that carries a YYYYMMDD run (the upload
+    modal's naming convention), falling back to today if none match or
+    no files were attached — so the operator is never asked for a date.
 
     Open to any logged-in user — `created_by` records who registered
     the presentation so PATCH and DELETE can enforce a creator-or-
@@ -3921,13 +3926,22 @@ def api_jc_create(aid):
     presented_at = (data.get("presented_at") or "").strip()
     presenter_name = (data.get("presenter_name") or "").strip()
     presenter_id   = (data.get("presenter_id") or "").strip() or None
-    if not presented_at or not presenter_name:
+    if not presenter_name:
         return jsonify({"error": "missing_fields",
-                        "detail": "presented_at and presenter_name are required."}), 400
-    try:
-        date_obj = _parse_iso_date(presented_at)
-    except ValueError as exc:
-        return jsonify({"error": "invalid_date", "detail": str(exc)}), 400
+                        "detail": "presenter_name is required."}), 400
+
+    # Optional initial files (one form field "file" can repeat).
+    files = (request.files.getlist("file") +
+             request.files.getlist("files"))
+    files = [f for f in files if f and f.filename]
+
+    if presented_at:
+        try:
+            date_obj = _parse_iso_date(presented_at)
+        except ValueError as exc:
+            return jsonify({"error": "invalid_date", "detail": str(exc)}), 400
+    else:
+        date_obj = _jc.infer_date_from_filenames([f.filename for f in files])
 
     try:
         pres = _jc.create(
@@ -3943,11 +3957,6 @@ def api_jc_create(aid):
         logger.exception("jc create failed for %s", aid)
         return jsonify({"error": "internal_error",
                         "detail": str(exc)[:300]}), 500
-
-    # Optional initial files (one form field "file" can repeat).
-    files = (request.files.getlist("file") +
-             request.files.getlist("files"))
-    files = [f for f in files if f and f.filename]
     file_results = []
     for f in files:
         try:

@@ -4681,12 +4681,15 @@
   const JC_FILE_ICONS = {
     pptx:    'fa-file-powerpoint',
     pdf:     'fa-file-pdf',
+    word:    'fa-file-word',
+    excel:   'fa-file-excel',
+    image:   'fa-file-image',
     keynote: 'fa-file-image',
     other:   'fa-file',
   };
   const JC_FILE_COLORS = {
-    pptx: '#c2410c', pdf: '#b91c1c',
-    keynote: '#0e7490', other: '#6b7280',
+    pptx: '#c2410c', pdf: '#b91c1c', word: '#1d4ed8', excel: '#15803d',
+    image: '#7c3aed', keynote: '#0e7490', other: '#6b7280',
   };
 
   async function renderJcSection(a) {
@@ -4854,65 +4857,236 @@
     const btn = document.getElementById('pv-jc-add-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
-      const today = new Date().toISOString().slice(0, 10);
-      const dateStr = prompt('Fecha de la presentación (YYYY-MM-DD):', today);
-      if (!dateStr) return;
-      const presenter = prompt('Nombre del presentador:');
-      if (!presenter || !presenter.trim()) return;
+      PVJcUpload.open(a, () => { renderJcSection(a); loadArticles(); });
+    });
+  }
 
-      // Optional file picker — same multipart endpoint as "create".
+  // ── Journal Club — upload modal ─────────────────────────────────────────
+  // Replaces the old prompt()-based flow (asked for a date + presenter via
+  // two browser prompt() dialogs). Now: pick document type(s), pick files
+  // (accumulating across multiple picker opens), pick a responsable from
+  // the user directory (or type one in), and the date is inferred from the
+  // filename (yyyymmdd) — never asked.
+  const PVJcUpload = (() => {
+    let _article = null;
+    let _onDone = null;
+    let _wired = false;
+    let _selectedTypes = new Set(['pptx']);
+    let _pendingFiles = [];
+    let _selectedPresenter = null;   // string or null
+    let _usersLoaded = false;
+
+    const fmtSize = (n) => n < 1024 * 1024
+      ? `${Math.round(n / 1024)} KB`
+      : `${(n / (1024 * 1024)).toFixed(1)} MB`;
+
+    function acceptAttr() {
+      const picker = document.getElementById('pv-jc-type-picker');
+      const exts = [];
+      picker.querySelectorAll('.pv-jc-type-btn').forEach(b => {
+        if (_selectedTypes.has(b.dataset.type)) exts.push(...b.dataset.exts.split(','));
+      });
+      return exts.join(',');
+    }
+
+    const _TYPE_ACCENT = { pptx: '#c2410c', word: '#1d4ed8', excel: '#15803d',
+                           pdf: '#b91c1c', image: '#7c3aed' };
+
+    function paintTypeButtons() {
+      document.querySelectorAll('.pv-jc-type-btn').forEach(b => {
+        const on = _selectedTypes.has(b.dataset.type);
+        const accent = _TYPE_ACCENT[b.dataset.type] || '#6b7280';
+        b.style.borderColor = on ? accent : '#e5e7eb';
+        b.style.background  = on ? (accent + '14') : '#fff';
+        b.style.color       = on ? accent : '#6b7280';
+      });
+    }
+
+    function renderFileList() {
+      const box = document.getElementById('pv-jc-file-list');
+      const addMoreBtn = document.getElementById('pv-jc-add-more');
+      if (!_pendingFiles.length) {
+        box.innerHTML = '';
+        addMoreBtn.style.display = 'none';
+      } else {
+        box.innerHTML = _pendingFiles.map((f, i) => `
+          <div data-i="${i}" style="display:flex;align-items:center;gap:8px;padding:5px 9px;
+                      background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:5px;">
+            <span style="flex:1;min-width:0;font-size:12px;color:#374151;overflow:hidden;
+                        text-overflow:ellipsis;white-space:nowrap;">${esc(f.name)}</span>
+            <span style="font-size:10.5px;color:#9ca3af;flex-shrink:0;">${fmtSize(f.size)}</span>
+            <button type="button" class="pv-jc-file-remove" data-i="${i}"
+                    style="flex-shrink:0;background:none;border:none;color:#b91c1c;cursor:pointer;
+                           font-size:13px;padding:0 2px;">✕</button>
+          </div>`).join('');
+        addMoreBtn.style.display = 'inline-flex';
+        box.querySelectorAll('.pv-jc-file-remove').forEach(b => {
+          b.addEventListener('click', () => {
+            _pendingFiles.splice(parseInt(b.dataset.i, 10), 1);
+            renderFileList();
+            validate();
+          });
+        });
+      }
+      validate();
+    }
+
+    function openPicker() {
       const input = document.createElement('input');
       input.type = 'file';
       input.multiple = true;
-      input.accept = '.pptx,.ppt,.pdf,.key,.odp';
+      input.accept = acceptAttr();
       input.style.display = 'none';
-      input.addEventListener('change', async () => {
-        const fd = new FormData();
-        fd.append('presented_at', dateStr.trim());
-        fd.append('presenter_name', presenter.trim());
-        for (const f of input.files || []) fd.append('file', f, f.name);
+      input.addEventListener('change', () => {
+        for (const f of input.files || []) _pendingFiles.push(f);
+        renderFileList();
+        input.remove();
+      });
+      document.body.appendChild(input);
+      input.click();
+    }
 
-        btn.disabled = true;
-        const original = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subiendo…';
+    async function loadPresenters() {
+      const list = document.getElementById('pv-jc-presenter-list');
+      try {
+        const r = await api('/users-directory');
+        const users = r.users || [];
+        list.innerHTML = users.map(u => `
+          <button type="button" class="pv-jc-presenter-btn" data-name="${esc(u.name || u.email)}"
+                  style="padding:5px 11px;border-radius:16px;border:1.5px solid #e5e7eb;background:#fff;
+                         color:#374151;font-size:12px;font-weight:600;cursor:pointer;">
+            ${esc(u.name || u.email)}
+          </button>`).join('') +
+          `<button type="button" id="pv-jc-presenter-btn-other"
+                   style="padding:5px 11px;border-radius:16px;border:1.5px dashed #9ca3af;background:#fff;
+                          color:#6b7280;font-size:12px;font-weight:600;cursor:pointer;">
+             Otro…
+           </button>`;
+        list.querySelectorAll('.pv-jc-presenter-btn').forEach(b => {
+          b.addEventListener('click', () => selectPresenter(b.dataset.name, b));
+        });
+        document.getElementById('pv-jc-presenter-btn-other').addEventListener('click', () => {
+          const other = document.getElementById('pv-jc-presenter-other');
+          other.style.display = 'block';
+          other.focus();
+          selectPresenter(null, null);   // deselect until they type something
+        });
+        _usersLoaded = true;
+      } catch (e) {
+        list.innerHTML = `<span style="font-size:12px;color:#b91c1c;">Error cargando usuarios: ${esc(e.message)}</span>`;
+      }
+    }
+
+    function selectPresenter(name, btnEl) {
+      _selectedPresenter = name;
+      document.querySelectorAll('.pv-jc-presenter-btn').forEach(b => {
+        const on = b === btnEl;
+        b.style.borderColor = on ? '#be185d' : '#e5e7eb';
+        b.style.background  = on ? '#fdf2f8' : '#fff';
+        b.style.color       = on ? '#be185d' : '#374151';
+      });
+      const otherBtn = document.getElementById('pv-jc-presenter-btn-other');
+      if (otherBtn) {
+        const onOther = btnEl === null;
+        otherBtn.style.borderColor = onOther ? '#be185d' : '#9ca3af';
+        otherBtn.style.color = onOther ? '#be185d' : '#6b7280';
+      }
+      validate();
+    }
+
+    function currentPresenterName() {
+      const otherInput = document.getElementById('pv-jc-presenter-other');
+      if (otherInput && otherInput.style.display !== 'none') {
+        return otherInput.value.trim();
+      }
+      return (_selectedPresenter || '').trim();
+    }
+
+    function validate() {
+      const confirmBtn = document.getElementById('pv-jc-upload-confirm');
+      const ok = _pendingFiles.length > 0 && currentPresenterName().length > 0;
+      confirmBtn.disabled = !ok;
+      confirmBtn.style.opacity = ok ? '1' : '0.5';
+      confirmBtn.style.cursor = ok ? 'pointer' : 'not-allowed';
+    }
+
+    function reset() {
+      _selectedTypes = new Set(['pptx']);
+      _pendingFiles = [];
+      _selectedPresenter = null;
+      paintTypeButtons();
+      renderFileList();
+      const other = document.getElementById('pv-jc-presenter-other');
+      if (other) { other.style.display = 'none'; other.value = ''; }
+      const status = document.getElementById('pv-jc-upload-status');
+      if (status) status.textContent = '';
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      const modal = document.getElementById('pv-jc-upload-modal');
+      const close = () => { modal.style.display = 'none'; };
+      document.getElementById('pv-jc-upload-close')?.addEventListener('click', close);
+      document.getElementById('pv-jc-upload-cancel')?.addEventListener('click', close);
+      modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+
+      document.querySelectorAll('.pv-jc-type-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          const t = b.dataset.type;
+          if (_selectedTypes.has(t)) {
+            if (_selectedTypes.size > 1) _selectedTypes.delete(t);  // keep >=1 selected
+          } else {
+            _selectedTypes.add(t);
+          }
+          paintTypeButtons();
+        });
+      });
+
+      document.getElementById('pv-jc-pick-files')?.addEventListener('click', openPicker);
+      document.getElementById('pv-jc-add-more')?.addEventListener('click', openPicker);
+      document.getElementById('pv-jc-presenter-other')?.addEventListener('input', validate);
+
+      document.getElementById('pv-jc-upload-confirm')?.addEventListener('click', async () => {
+        const confirmBtn = document.getElementById('pv-jc-upload-confirm');
+        const status = document.getElementById('pv-jc-upload-status');
+        const presenterName = currentPresenterName();
+        if (!_pendingFiles.length || !presenterName) return;
+        confirmBtn.disabled = true;
+        status.style.color = '#9ca3af';
+        status.textContent = `Subiendo ${_pendingFiles.length} documento(s)…`;
         try {
-          const r = await fetch(API + `/articles/${a.id}/jc`, {
+          const fd = new FormData();
+          fd.append('presenter_name', presenterName);
+          for (const f of _pendingFiles) fd.append('file', f, f.name);
+          const r = await fetch(API + `/articles/${_article.id}/jc`, {
             method: 'POST', credentials: 'same-origin', body: fd,
           });
           if (!r.ok) {
             const err = await r.json().catch(() => ({}));
             throw new Error(err.detail || err.error || ('HTTP ' + r.status));
           }
-          renderJcSection(a);
-          loadArticles();
+          close();
+          if (_onDone) _onDone();
         } catch (e) {
-          alert('Error: ' + e.message);
-        } finally {
-          btn.disabled = false;
-          btn.innerHTML = original;
+          status.style.color = '#b91c1c';
+          status.textContent = 'Error: ' + e.message;
+          confirmBtn.disabled = false;
         }
       });
-      // If the user clicks Cancel on the file picker, fall back to a
-      // file-less POST so the metadata-only presentation still lands.
-      document.body.appendChild(input);
-      input.addEventListener('cancel', async () => {
-        try {
-          await api(`/articles/${a.id}/jc`, {
-            method: 'POST',
-            body: JSON.stringify({
-              presented_at:   dateStr.trim(),
-              presenter_name: presenter.trim(),
-            }),
-            headers: { 'Content-Type': 'application/json' },
-          });
-          renderJcSection(a);
-          loadArticles();
-        } catch (e) { alert('Error: ' + e.message); }
-      });
-      input.click();
-      setTimeout(() => input.remove(), 60000);
-    });
-  }
+    }
+
+    function open(article, onDone) {
+      wireOnce();
+      _article = article;
+      _onDone = onDone;
+      reset();
+      document.getElementById('pv-jc-upload-modal').style.display = 'flex';
+      loadPresenters();
+    }
+
+    return { open };
+  })();
 
   function addJcFilesViaPicker(a, presentationId) {
     const input = document.createElement('input');
