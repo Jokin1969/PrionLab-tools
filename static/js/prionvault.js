@@ -5332,6 +5332,21 @@
         `${r2.presentations_created} presentación(es) nueva(s), ${r2.presentations_reused} ya existían · ` +
         `${r2.files_attached} archivo(s) adjuntado(s)</div>`,
       ];
+      if (r2.matched && r2.matched.length) {
+        lines.push(`
+          <details style="margin-top:6px;">
+            <summary style="cursor:pointer;font-weight:600;color:#166534;">
+              Importados correctamente (${r2.matched.length})
+            </summary>
+            <ul style="margin:6px 0 0;padding-left:18px;">` +
+              r2.matched.map(x => `<li><code>${esc(x.folder)}</code> → ` +
+                `${esc(x.article_title || x.article_id)} ` +
+                `<span style="color:#6b7280;">(presentación ${esc(x.presentation_status)}` +
+                (x.files_attached ? `, ${x.files_attached} archivo(s)` : ', sin archivos nuevos') +
+                (x.matched_by ? `, emparejado por ${esc(x.matched_by)}` : '') +
+                `)</span></li>`).join('') +
+            '</ul></details>');
+      }
       if (r2.unmatched && r2.unmatched.length) {
         lines.push(`<div style="font-weight:600;color:#92400e;margin-top:6px;">No identificados (${r2.unmatched.length}):</div>`);
         lines.push('<ul style="margin:4px 0 0;padding-left:18px;">' + r2.unmatched.map(u =>

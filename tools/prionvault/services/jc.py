@@ -402,6 +402,20 @@ def tag_journal_club_ok(article_id, viewer_uid) -> None:
         ), {"aid": str(article_id), "tid": tag_id, "uid": str(viewer_uid)})
 
 
+def _article_title(article_id) -> Optional[str]:
+    """Best-effort title lookup for the bulk-import report — a folder
+    the operator can recognize is a lot more useful than a bare UUID."""
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(sql_text(
+                "SELECT title FROM articles WHERE id = :aid"
+            ), {"aid": str(article_id)}).first()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
 _BULK_DATE_FOLDER_RE = re.compile(r"^(20\d{2})(\d{2})(\d{2})$")
 
 
@@ -498,6 +512,7 @@ def bulk_import(presenter_name: str, *, created_by=None,
     created = 0
     reused = 0
     files_attached = 0
+    matched = []            # [{folder, article_id, article_title, ...}] — the "went well" report
     unmatched = []          # [{folder, reason}]
     errors = []             # [{folder, error}]
     tagged_article_ids = set()   # articles that got a JC file attached — for "Journal Club – Ok"
@@ -550,12 +565,23 @@ def bulk_import(presenter_name: str, *, created_by=None,
                 reused += 1
 
             other_files = [f for f in files if f is not article_file]
+            n_attached = 0
             for f in other_files:
                 if _attach_existing_dropbox_file(
                         pres_id, dropbox_path=f.path_display,
                         filename=f.name, size_bytes=f.size):
                     files_attached += 1
+                    n_attached += 1
                     tagged_article_ids.add(str(aid))
+
+            matched.append({
+                "folder": folder_label,
+                "article_id": str(aid),
+                "article_title": _article_title(aid),
+                "matched_by": _reason,
+                "presentation_status": "creada" if was_created else "ya existía",
+                "files_attached": n_attached,
+            })
         except Exception as exc:
             logger.exception("jc bulk_import: folder %s failed", folder_label)
             errors.append({"folder": folder_label, "error": str(exc)[:300]})
@@ -568,6 +594,7 @@ def bulk_import(presenter_name: str, *, created_by=None,
         "presentations_created": created,
         "presentations_reused": reused,
         "files_attached": files_attached,
+        "matched": matched,
         "unmatched": unmatched,
         "errors": errors,
         "tagged_article_ids": sorted(tagged_article_ids),
