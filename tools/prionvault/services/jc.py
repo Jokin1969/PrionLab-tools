@@ -382,6 +382,50 @@ def get_file_info(file_id) -> Optional[dict]:
     return {"filename": row[0], "kind": row[1]}
 
 
+def get_or_convert_pdf(file_id) -> Optional[bytes]:
+    """PDF bytes for a Word/Excel/PowerPoint JC file, converting via
+    LibreOffice on first view and caching the result at
+    "<dropbox_path>.pdf" so later opens skip the (few-second)
+    conversion. Returns None if the file can't be fetched or
+    converted."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text(
+            "SELECT dropbox_path, filename FROM prionvault_jc_file WHERE id = :fid"
+        ), {"fid": str(file_id)}).first()
+    if not row:
+        return None
+    dropbox_path, filename = row
+    cache_path = dropbox_path + ".pdf"
+
+    try:
+        from core.dropbox_client import get_client
+        client = get_client()
+    except Exception:
+        client = None
+
+    if client is not None:
+        try:
+            _meta, resp = client.files_download(cache_path)
+            return resp.content
+        except Exception:
+            pass   # not cached yet (or cache missing) — fall through to convert
+
+    result = get_file_bytes(file_id)
+    if not result:
+        return None
+    _, _, content = result
+    pdf_bytes = convert_office_to_pdf(content, filename)
+    if pdf_bytes and client is not None:
+        try:
+            import dropbox
+            client.files_upload(pdf_bytes, cache_path,
+                               mode=dropbox.files.WriteMode.overwrite, mute=True)
+        except Exception as exc:
+            logger.warning("get_or_convert_pdf: could not cache %s: %s", cache_path, exc)
+    return pdf_bytes
+
+
 def get_file_bytes(file_id) -> Optional[tuple]:
     """Download a JC file's bytes from Dropbox. Returns
     (filename, kind, content) or None on any failure."""
@@ -403,6 +447,49 @@ def get_file_bytes(file_id) -> Optional[tuple]:
     except Exception as exc:
         logger.warning("jc: download failed for %s: %s", dropbox_path, exc)
         return None
+
+
+def convert_office_to_pdf(content: bytes, filename: str) -> Optional[bytes]:
+    """Render a Word/Excel/PowerPoint file to PDF via headless
+    LibreOffice, so it can go through the same PDF.js viewer already
+    used for real PDFs — external viewers (Office Online, Google Docs
+    Viewer) turned out unreliable for arbitrary hosted files. Returns
+    None on any failure (missing binary, corrupt file, timeout); the
+    caller falls back to a download link.
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    ext = _ext_of(filename) or "bin"
+    with tempfile.TemporaryDirectory(prefix="jc-oaconv-") as tmpdir:
+        src = os.path.join(tmpdir, f"input.{ext}")
+        with open(src, "wb") as f:
+            f.write(content)
+        profile_dir = os.path.join(tmpdir, "profile")
+        try:
+            subprocess.run(
+                ["soffice", "--headless", "--norestore", "--nolockcheck",
+                 f"-env:UserInstallation=file://{profile_dir}",
+                 "--convert-to", "pdf", "--outdir", tmpdir, src],
+                check=True, timeout=90, capture_output=True,
+            )
+        except FileNotFoundError:
+            logger.warning("convert_office_to_pdf: soffice binary not found")
+            return None
+        except subprocess.TimeoutExpired:
+            logger.warning("convert_office_to_pdf: timed out converting %s", filename)
+            return None
+        except subprocess.CalledProcessError as exc:
+            logger.warning("convert_office_to_pdf: soffice failed for %s: %s",
+                           filename, (exc.stderr or b"")[:500])
+            return None
+        out_path = os.path.join(tmpdir, "input.pdf")
+        if not os.path.exists(out_path):
+            logger.warning("convert_office_to_pdf: no output for %s", filename)
+            return None
+        with open(out_path, "rb") as f:
+            return f.read()
 
 
 def temporary_link(file_id) -> Optional[str]:
