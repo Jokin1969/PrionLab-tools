@@ -3882,6 +3882,55 @@ def api_admin_whoami():
 
 
 # ── Journal Club presentations ──────────────────────────────────────────────
+@prionvault_bp.route("/api/jc/find-article", methods=["POST"])
+@login_required
+def api_jc_find_article():
+    """Find an EXISTING article by DOI/PMID or by a PDF's content —
+    powers the 'Añadir Journal clubs' sidebar entry point's article
+    finder. Never creates anything; 404s when there's no match.
+
+    Body: either JSON {"identifier": "<doi or pmid>"} or a multipart
+    upload with a "file" field (the PDF to match by MD5)."""
+    from .ingestion.deduplicator import find_duplicate, md5_of
+
+    doi = pmid = pdf_md5 = None
+    if request.files.get("file"):
+        content = request.files["file"].read()
+        if not content:
+            return jsonify({"error": "empty_file"}), 400
+        pdf_md5 = md5_of(content)
+    else:
+        data = request.get_json(silent=True) or {}
+        identifier = (data.get("identifier") or "").strip()
+        if not identifier:
+            return jsonify({"error": "missing_identifier",
+                            "detail": "Escribe un DOI o un PMID."}), 400
+        m = re.search(r"10\.\d{4,}[^\s\"'<>]+", identifier)
+        if m:
+            doi = m.group(0).rstrip(".,;)")
+        elif re.fullmatch(r"\d{5,9}", identifier):
+            pmid = identifier
+        else:
+            doi = identifier   # best-effort: let the DOI lookup try/fail
+
+    aid, reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=pdf_md5)
+    if not aid:
+        return jsonify({"found": False}), 404
+
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            """SELECT id::text, title, authors, year, journal, doi, pubmed_id,
+                      (dropbox_path IS NOT NULL) AS has_pdf
+                 FROM articles WHERE id = :aid"""
+        ), {"aid": str(aid)}).mappings().first()
+    finally:
+        s.close()
+    if not row:
+        return jsonify({"found": False}), 404
+    return jsonify({"found": True, "matched_by": reason, "article": dict(row)})
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/jc", methods=["GET"])
 @login_required
 def api_jc_list(aid):
@@ -3967,7 +4016,53 @@ def api_jc_create(aid):
             file_results.append({"filename": f.filename, "error": str(exc)})
     pres["files"] = [x for x in file_results if "error" not in x]
     pres["file_errors"] = [x for x in file_results if "error" in x]
+
+    # Tag the article "Journal Club – Ok" once a presentation actually
+    # has a document attached — distinct from the shared is_jc mark
+    # (📖 "Marcar para Journal Club"), which means "candidate for a
+    # future session" and shouldn't be conflated with "already
+    # presented". Best-effort: a tagging hiccup shouldn't fail the
+    # presentation that was just successfully created.
+    if pres["files"]:
+        try:
+            _tag_journal_club_ok(aid, _viewer_id())
+        except Exception:
+            logger.exception("jc create: failed to tag 'Journal Club – Ok' for %s", aid)
+
     return jsonify(pres), 201
+
+
+_JC_OK_TAG_NAME = "Journal Club – Ok"
+
+
+def _tag_journal_club_ok(article_id, viewer_uid) -> None:
+    """Ensure the shared 'Journal Club – Ok' tag exists and is attached
+    to `article_id` for `viewer_uid`. No-op if there's no viewer."""
+    if not viewer_uid:
+        return
+    s = _session()
+    try:
+        tag = s.execute(sql_text(
+            "SELECT id FROM article_tag WHERE lower(name) = lower(:n)"
+        ), {"n": _JC_OK_TAG_NAME}).first()
+        if tag:
+            tag_id = tag[0]
+        else:
+            row = s.execute(sql_text(
+                """INSERT INTO article_tag (name, color, created_by)
+                   VALUES (:n, :c, CAST(:uid AS uuid))
+                   ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                   RETURNING id"""
+            ), {"n": _JC_OK_TAG_NAME, "c": "#be185d", "uid": str(viewer_uid)}).first()
+            tag_id = row[0]
+        s.execute(sql_text(
+            """INSERT INTO article_tag_link (article_id, tag_id, added_by)
+               VALUES (:aid, :tid, CAST(:uid AS uuid))
+               ON CONFLICT (article_id, tag_id, added_by) DO NOTHING"""
+        ), {"aid": str(article_id), "tid": tag_id, "uid": str(viewer_uid)})
+        s.commit()
+    finally:
+        s.close()
 
 
 @prionvault_bp.route("/api/jc/<uuid:pid>", methods=["PATCH"])

@@ -197,33 +197,3 @@ def bootstrap_team_users() -> None:
         logger.info("Team bootstrap: created %d new user(s)", created)
 
 
-def bootstrap_demo_users() -> None:
-    """Ensure demo accounts exist (idempotent — safe to call on every startup)."""
-    demo_accounts = [
-        {"username": "jcastilla", "full_name": "Javier Castilla", "role": "admin",
-         "email": "jcastilla@prionlab.org", "affiliation": "CReSA-IRTA",
-         "position": "PI", "research_areas": "prion diseases; neurodegeneration"},
-        {"username": "herana", "full_name": "Hasier Erana", "role": "editor",
-         "email": "herana@prionlab.org", "affiliation": "CReSA-IRTA",
-         "position": "Postdoc", "research_areas": "prion strains; PMCA"},
-        {"username": "jcharco", "full_name": "Jorge Charco", "role": "editor",
-         "email": "jcharco@prionlab.org", "affiliation": "CReSA-IRTA",
-         "position": "PhD student", "research_areas": "prion diagnostics; biomarkers"},
-    ]
-    for demo in demo_accounts:
-        if not user_exists(demo["username"]):
-            try:
-                create_user({
-                    **demo,
-                    "password_hash": hash_password("demo123"),
-                    "language": "es",
-                    "active": "true",
-                    "created_at": date.today().isoformat(),
-                    "last_login": "",
-                    "bio": "",
-                    "orcid": "",
-                    "lab_id": "",
-                }, sync=False)
-                logger.info("Demo user created: %s", demo["username"])
-            except Exception as e:
-                logger.warning("Failed to create demo user %s: %s", demo["username"], e)

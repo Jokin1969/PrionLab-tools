@@ -226,12 +226,6 @@ def create_app() -> Flask:
     except Exception as e:
         app.logger.warning("Lab schema bootstrap failed: %s", e)
 
-    try:
-        from core.users import bootstrap_demo_users
-        bootstrap_demo_users()
-    except Exception as e:
-        app.logger.warning("Demo users bootstrap failed: %s", e)
-
     # Seed the prion-lab team accounts (Jun 2026) with the shared
     # starter password "12345678" + must_change_pw=true so each user
     # picks their own on first login. Idempotent — skips emails

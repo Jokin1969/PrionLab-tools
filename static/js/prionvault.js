@@ -4931,26 +4931,35 @@
       validate();
     }
 
+    // Uses the static #pv-jc-file-input in the modal (not a dynamically
+    // created-and-clicked <input>) — matches the one other file picker
+    // in this modal set (pv-add-pdf) that's known to work reliably.
     function openPicker() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.multiple = true;
+      const input = document.getElementById('pv-jc-file-input');
+      if (!input) return;
       input.accept = acceptAttr();
-      input.style.display = 'none';
-      input.addEventListener('change', () => {
-        for (const f of input.files || []) _pendingFiles.push(f);
-        renderFileList();
-        input.remove();
-      });
-      document.body.appendChild(input);
+      input.value = '';   // so picking the same file twice still fires 'change'
       input.click();
     }
 
     async function loadPresenters() {
       const list = document.getElementById('pv-jc-presenter-list');
       try {
-        const r = await api('/users-directory');
-        const users = r.users || [];
+        const [dirR, meR] = await Promise.all([
+          api('/users-directory'),
+          api('/me').catch(() => null),
+        ]);
+        const users = dirR.users || [];
+        const myName = (meR && meR.name) || '';
+        const myEmail = (meR && meR.email || '').toLowerCase();
+        // The logged-in user goes first — they're almost always the one
+        // presenting, so it should be preselected, not something they
+        // have to hunt for in an alphabetical list.
+        if (myEmail) {
+          const i = users.findIndex(u => (u.email || '').toLowerCase() === myEmail);
+          if (i > 0) users.unshift(users.splice(i, 1)[0]);
+          else if (i === -1 && myName) users.unshift({ name: myName, email: myEmail });
+        }
         list.innerHTML = users.map(u => `
           <button type="button" class="pv-jc-presenter-btn" data-name="${esc(u.name || u.email)}"
                   style="padding:5px 11px;border-radius:16px;border:1.5px solid #e5e7eb;background:#fff;
@@ -4971,6 +4980,9 @@
           other.focus();
           selectPresenter(null, null);   // deselect until they type something
         });
+        // Preselect the logged-in user (first button) by default.
+        const firstBtn = list.querySelector('.pv-jc-presenter-btn');
+        if (firstBtn) selectPresenter(firstBtn.dataset.name, firstBtn);
         _usersLoaded = true;
       } catch (e) {
         list.innerHTML = `<span style="font-size:12px;color:#b91c1c;">Error cargando usuarios: ${esc(e.message)}</span>`;
@@ -5045,6 +5057,10 @@
 
       document.getElementById('pv-jc-pick-files')?.addEventListener('click', openPicker);
       document.getElementById('pv-jc-add-more')?.addEventListener('click', openPicker);
+      document.getElementById('pv-jc-file-input')?.addEventListener('change', (e) => {
+        for (const f of e.target.files || []) _pendingFiles.push(f);
+        renderFileList();
+      });
       document.getElementById('pv-jc-presenter-other')?.addEventListener('input', validate);
 
       document.getElementById('pv-jc-upload-confirm')?.addEventListener('click', async () => {
@@ -5087,6 +5103,120 @@
 
     return { open };
   })();
+
+  // ── Journal Club — find-article modal ───────────────────────────────────
+  // Entry point for the sidebar "Añadir Journal clubs" link (open to every
+  // role). Locates an EXISTING article by DOI/PMID or by matching a PDF's
+  // content, shows a preview, and on confirmation hands off to
+  // PVJcUpload — the same modal used from inside an article's detail view.
+  const PVJcFind = (() => {
+    let _wired = false;
+    let _matched = null;
+
+    function showPreview(article) {
+      const box  = document.getElementById('pv-jc-find-preview');
+      const body = document.getElementById('pv-jc-find-preview-body');
+      const form = document.getElementById('pv-jc-find-form');
+      _matched = article;
+      form.style.display = 'none';
+      box.style.display = 'block';
+      const bits = [article.authors, article.year, article.journal].filter(Boolean).join(' · ');
+      const ids = [article.doi ? `DOI: ${esc(article.doi)}` : '',
+                   article.pubmed_id ? `PMID: ${esc(article.pubmed_id)}` : '']
+                  .filter(Boolean).join(' · ');
+      body.innerHTML = `
+        <div style="font-weight:700;">${esc(article.title || '(sin título)')}</div>
+        ${bits ? `<div style="color:#6b7280;font-size:12px;margin-top:2px;">${esc(bits)}</div>` : ''}
+        ${ids  ? `<div style="margin-top:6px;font-size:11px;color:#9ca3af;">${ids}</div>` : ''}`;
+    }
+
+    function reset() {
+      document.getElementById('pv-jc-find-form').style.display = '';
+      document.getElementById('pv-jc-find-preview').style.display = 'none';
+      document.getElementById('pv-jc-find-identifier').value = '';
+      const status = document.getElementById('pv-jc-find-status');
+      status.textContent = '';
+      status.style.color = '#9ca3af';
+      _matched = null;
+    }
+
+    async function doSearch(payload, isMultipart) {
+      const status = document.getElementById('pv-jc-find-status');
+      status.style.color = '#6b7280';
+      status.textContent = 'Buscando…';
+      try {
+        const opts = isMultipart
+          ? { method: 'POST', credentials: 'same-origin', body: payload }
+          : { method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload) };
+        const r = await fetch(API + '/jc/find-article', opts);
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 404 || data.found === false) {
+          status.style.color = '#b91c1c';
+          status.textContent = 'No se ha encontrado ningún artículo en PrionVault con ese dato.';
+          return;
+        }
+        if (!r.ok) throw new Error(data.detail || data.error || ('HTTP ' + r.status));
+        status.textContent = '';
+        showPreview(data.article);
+      } catch (e) {
+        status.style.color = '#b91c1c';
+        status.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      const modal = document.getElementById('pv-jc-find-modal');
+      const close = () => { modal.style.display = 'none'; };
+      document.getElementById('pv-jc-find-close')?.addEventListener('click', close);
+      modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+
+      const searchBtn = document.getElementById('pv-jc-find-search');
+      searchBtn?.addEventListener('click', () => {
+        const id = document.getElementById('pv-jc-find-identifier').value.trim();
+        if (!id) return;
+        doSearch({ identifier: id }, false);
+      });
+      document.getElementById('pv-jc-find-identifier')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); searchBtn?.click(); }
+      });
+
+      document.getElementById('pv-jc-find-pdf-btn')?.addEventListener('click', () => {
+        document.getElementById('pv-jc-find-pdf-input')?.click();
+      });
+      document.getElementById('pv-jc-find-pdf-input')?.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!f) return;
+        const fd = new FormData();
+        fd.append('file', f, f.name);
+        doSearch(fd, true);
+      });
+
+      document.getElementById('pv-jc-find-retry')?.addEventListener('click', reset);
+      document.getElementById('pv-jc-find-ok')?.addEventListener('click', () => {
+        if (!_matched) return;
+        close();
+        PVJcUpload.open(_matched, () => loadArticles());
+      });
+    }
+
+    function open() {
+      wireOnce();
+      reset();
+      document.getElementById('pv-jc-find-modal').style.display = 'flex';
+      setTimeout(() => document.getElementById('pv-jc-find-identifier')?.focus(), 50);
+    }
+
+    return { open };
+  })();
+
+  function wireJcFindButton() {
+    document.getElementById('btn-add-jc')?.addEventListener('click', () => PVJcFind.open());
+  }
 
   function addJcFilesViaPicker(a, presentationId) {
     const input = document.createElement('input');
@@ -8107,6 +8237,7 @@
       wireImport();
       wireQueue();
       wireAddByDoi();
+      wireJcFindButton();
       wireEditModal();
       wireBatchImport();
       wireScanFolder();
