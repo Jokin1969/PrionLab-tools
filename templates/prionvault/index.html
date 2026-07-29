@@ -1493,6 +1493,33 @@
         </button>
       </div>
       <input type="file" id="pv-jc-find-pdf-input" accept="application/pdf,.pdf" style="display:none;">
+
+      <div style="display:flex;align-items:center;gap:10px;margin:16px 0 14px;">
+        <div style="flex:1;height:1px;background:#e5e7eb;"></div>
+        <span style="font-size:11px;color:#9ca3af;font-weight:600;">O</span>
+        <div style="flex:1;height:1px;background:#e5e7eb;"></div>
+      </div>
+
+      <div style="font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
+                  letter-spacing:0.05em;margin-bottom:6px;">Importar carpeta completa de un responsable</div>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:8px;line-height:1.4;">
+        Digiere de golpe todas las presentaciones ya subidas a Dropbox en
+        <code>Journal clubs/&lt;responsable&gt;/yyyymmdd/</code>, emparejando cada
+        <code>Article yyyymmdd.pdf</code> con su artículo en PrionVault.
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input id="pv-jc-find-bulk-presenter" type="text" placeholder="Nombre del responsable, tal cual la carpeta de Dropbox"
+               style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">
+        <button id="pv-jc-find-bulk-btn" type="button"
+                style="padding:8px 14px;border-radius:8px;border:1px solid #be185d;
+                       background:#fff;color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          <i class="fas fa-folder-tree"></i> Importar
+        </button>
+      </div>
+      <div id="pv-jc-find-bulk-progress" style="display:none;margin-top:8px;font-size:12px;color:#374151;"></div>
+      <div id="pv-jc-find-bulk-result" style="display:none;margin-top:10px;font-size:12px;
+                  color:#374151;line-height:1.6;max-height:220px;overflow-y:auto;
+                  background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;"></div>
     </div>
 
     <div id="pv-jc-find-status" style="font-size:12px;color:#9ca3af;margin-top:10px;"></div>
@@ -1599,25 +1626,6 @@
     <input id="pv-jc-presenter-other" type="text" placeholder="Nombre del responsable"
            style="display:none;width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;
                   border-radius:8px;font-size:13px;margin-bottom:14px;">
-
-    <div style="border-top:1px solid #f3f4f6;padding-top:12px;margin-bottom:14px;">
-      <button id="pv-jc-bulk-import-btn" type="button"
-              style="padding:7px 12px;border-radius:7px;border:1px dashed #9ca3af;background:#fff;
-                     color:#6b7280;font-size:12px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-folder-tree"></i> Importar carpeta de este responsable…
-      </button>
-      <div style="font-size:11px;color:#9ca3af;margin-top:5px;line-height:1.4;">
-        Digiere de golpe todas las carpetas de fecha ya subidas a Dropbox en
-        <code>Journal clubs/&lt;responsable&gt;/yyyymmdd/</code>, emparejando cada
-        <code>Article yyyymmdd.pdf</code> con su artículo en PrionVault.
-      </div>
-      <div id="pv-jc-bulk-import-progress" style="display:none;margin-top:8px;">
-        <div style="font-size:12px;color:#374151;" id="pv-jc-bulk-import-progress-text"></div>
-      </div>
-      <div id="pv-jc-bulk-import-result" style="display:none;margin-top:10px;font-size:12px;
-                  color:#374151;line-height:1.6;max-height:220px;overflow-y:auto;
-                  background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;"></div>
-    </div>
 
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
       <span id="pv-jc-upload-status" style="font-size:12px;color:#9ca3af;margin-right:auto;"></span>
