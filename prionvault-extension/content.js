@@ -71,9 +71,18 @@
       if (m) { result.doi = decodeURIComponent(m[1]); break; }
     }
 
-    // PDF link: look for anchor text containing "PDF" or "Download"
+    // PDF link: look for anchor text containing "PDF" or "Download".
+    // href*="=pdf"/"type=pdf" doesn't cover every publisher — PLOS's
+    // actual download link is e.g.
+    //   .../article/file?id=10.1371/journal.pone.0123456&type=printable
+    // which matches none of those (no ".pdf" suffix, no "/pdf/" segment,
+    // and the query param is "printable"/"manuscript", not "pdf"). Add
+    // those patterns explicitly so PLOS (and other publishers using the
+    // same "printable version" convention, e.g. some BMC/Frontiers
+    // pages) are recognized as downloadable.
     const pdfCandidates = document.querySelectorAll(
-      'a[href$=".pdf"], a[href*="/pdf/"], a[href*="=pdf"], a[href*="type=pdf"]'
+      'a[href$=".pdf"], a[href*="/pdf/"], a[href*="=pdf"], a[href*="type=pdf"], ' +
+      'a[href*="type=printable"], a[href*="type=manuscript"], a[href*="/article/file"]'
     );
     for (const a of pdfCandidates) {
       const text = (a.textContent || '').toLowerCase();
@@ -83,9 +92,25 @@
         break;
       }
     }
-    // Fallback: any .pdf link
+    // Fallback: any link matching the href patterns above, even
+    // without matching link text.
     if (!result.pdfUrl && pdfCandidates.length > 0) {
       result.pdfUrl = pdfCandidates[0].href;
+    }
+    // Last-resort fallback: some publishers (PLOS included, on some
+    // page templates) render the download control as a plain link
+    // whose visible text says "Download PDF" / "PDF" but whose href
+    // doesn't match any of the patterns above (e.g. a relative path
+    // with no telltale query string). Scan every link on the page for
+    // that wording instead of relying on the URL shape at all.
+    if (!result.pdfUrl) {
+      for (const a of document.querySelectorAll('a[href]')) {
+        const text = (a.textContent || '').trim().toLowerCase();
+        if (/^(download\s+)?pdf$/.test(text) || text === 'download pdf') {
+          result.pdfUrl = a.href;
+          break;
+        }
+      }
     }
 
     // DOI from page text (first 6000 chars)
