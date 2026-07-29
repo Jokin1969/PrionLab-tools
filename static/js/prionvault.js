@@ -4717,6 +4717,12 @@
     image: '#7c3aed', keynote: '#0e7490', other: '#6b7280',
   };
 
+  // Sort direction persists across re-renders of the same modal session
+  // (add/edit/delete all re-fetch and re-render) but always starts at
+  // "newest first" — matches what the backend already returns by default.
+  let _jcSortAsc = false;
+  let _jcCurrentItems = [];
+
   async function renderJcSection(a) {
     const sec = document.getElementById('pv-jc-section');
     if (!sec) return;
@@ -4728,6 +4734,14 @@
                        font-size:11px;font-weight:600;background:#fce7f3;color:#be185d;
                        vertical-align:middle;margin-right:6px;">JC</span>
           Journal Club
+          <button id="pv-jc-sort-btn" type="button"
+                  title="${_jcSortAsc ? 'Ordenado del más antiguo al más reciente — clic para invertir' : 'Ordenado del más reciente al más antiguo — clic para invertir'}"
+                  style="margin-left:6px;padding:2px 7px;font-size:10.5px;font-weight:600;
+                         border-radius:5px;border:1px solid #fce7f3;background:white;
+                         color:#be185d;cursor:pointer;text-transform:none;letter-spacing:normal;
+                         vertical-align:middle;">
+            <i class="fas ${_jcSortAsc ? 'fa-arrow-up-short-wide' : 'fa-arrow-down-wide-short'}"></i> Fecha
+          </button>
         </h3>
         <button id="pv-jc-add-btn" type="button"
                 style="padding:4px 10px;font-size:12px;border-radius:6px;
@@ -4742,6 +4756,10 @@
     // JC presentations are open to any logged-in user; the server's
     // creator-or-admin gate handles per-row edit / delete safety.
     wireJcAddButton(a);
+    document.getElementById('pv-jc-sort-btn')?.addEventListener('click', () => {
+      _jcSortAsc = !_jcSortAsc;
+      renderJcSection(a);
+    });
 
     let data;
     try {
@@ -4751,12 +4769,18 @@
         `<div style="color:#b91c1c;">Error: ${esc(e.message)}</div>`;
       return;
     }
-    renderJcList(a, data.items || []);
+    _jcCurrentItems = data.items || [];
+    renderJcList(a, _jcCurrentItems);
   }
 
   function renderJcList(a, items) {
     const list = document.getElementById('pv-jc-list');
     if (!list) return;
+    items = [...items].sort((x, y) => {
+      const dx = x.presented_at ? new Date(x.presented_at).getTime() : 0;
+      const dy = y.presented_at ? new Date(y.presented_at).getTime() : 0;
+      return _jcSortAsc ? dx - dy : dy - dx;
+    });
     if (!items.length) {
       list.innerHTML = `
         <div style="font-size:12.5px;color:#9ca3af;font-style:italic;
