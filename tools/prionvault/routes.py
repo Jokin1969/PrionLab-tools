@@ -16,7 +16,7 @@ import mimetypes
 from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
-from flask import jsonify, render_template, request, session, Response, current_app
+from flask import jsonify, render_template, request, session, Response, current_app, url_for
 from sqlalchemy import or_, func, text as sql_text
 from sqlalchemy.exc import IntegrityError, DataError
 
@@ -4253,16 +4253,23 @@ def api_jc_file_view(fid):
         )
         return Response(html, mimetype="text/html")
 
-    # Office formats.
-    temp_url = _jc.temporary_link(fid)
-    if not temp_url:
-        html = (
-            f'<!doctype html><html><body style="font-family:sans-serif;padding:24px;">'
-            f'<p>No se pudo generar la vista previa de <strong>{esc_name}</strong>.</p>'
-            f'<p><a href="{raw_url}">Descargar el fichero</a></p></body></html>'
-        )
-        return Response(html, mimetype="text/html"), 502
-    viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(temp_url, safe="")
+    # Office formats: Microsoft's Office Online viewer can't carry our
+    # session cookie, so it needs a URL it can fetch unauthenticated.
+    # The raw Dropbox temporary link turned out unreliable there (shows
+    # its own "something went wrong" sad-cloud error) — likely Dropbox's
+    # redirect/URL shape confusing MS's fetcher. A short-lived signed
+    # token on OUR OWN /raw-public endpoint is more predictable: a plain
+    # GET, correct Content-Type, no redirects.
+    # Force https: Railway terminates TLS at its edge and forwards plain
+    # HTTP to the container, and this app doesn't run behind ProxyFix,
+    # so request.url_root would otherwise report "http://" even though
+    # the app is only ever served over https — which an external HTTPS
+    # page (Office Online) may refuse to fetch as mixed content.
+    base = request.url_root.rstrip("/").replace("http://", "https://", 1)
+    public_url = (base +
+                  url_for("prionvault.api_jc_file_raw_public", fid=fid,
+                          t=_make_jc_public_token(fid)))
+    viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(public_url, safe="")
     html = (
         '<!doctype html><html><head><meta charset="utf-8">'
         f'<title>{esc_name}</title>'
@@ -4271,6 +4278,51 @@ def api_jc_file_view(fid):
         f'<body><iframe src="{viewer_src}" title="{esc_name}"></iframe></body></html>'
     )
     return Response(html, mimetype="text/html")
+
+
+# ── Signed, short-lived public URL for embedding Office files in an
+# external viewer (view.officeapps.live.com), which can't send our
+# session cookie. Scoped to one file id and expires quickly. ────────────────
+_JC_PUBLIC_TOKEN_SALT = "jc-public-file"
+_JC_PUBLIC_TOKEN_MAX_AGE_S = 600
+
+
+def _make_jc_public_token(fid) -> str:
+    from itsdangerous import URLSafeTimedSerializer
+    s = URLSafeTimedSerializer(current_app.secret_key, salt=_JC_PUBLIC_TOKEN_SALT)
+    return s.dumps(str(fid))
+
+
+def _verify_jc_public_token(token: str, fid) -> bool:
+    from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+    s = URLSafeTimedSerializer(current_app.secret_key, salt=_JC_PUBLIC_TOKEN_SALT)
+    try:
+        return s.loads(token, max_age=_JC_PUBLIC_TOKEN_MAX_AGE_S) == str(fid)
+    except (BadSignature, SignatureExpired):
+        return False
+
+
+@prionvault_bp.route("/api/jc/files/<uuid:fid>/raw-public", methods=["GET"])
+def api_jc_file_raw_public(fid):
+    """Unauthenticated but token-gated file stream — ONLY meant to be
+    fetched by an external embedding service (see api_jc_file_view),
+    never linked to directly from the app. Deliberately outside
+    @login_required: the whole point is that Office's viewer can't
+    carry our session cookie."""
+    token = request.args.get("t", "")
+    if not _verify_jc_public_token(token, fid):
+        return jsonify({"error": "invalid_or_expired_token"}), 403
+    from .services import jc as _jc
+    result = _jc.get_file_bytes(fid)
+    if not result:
+        return jsonify({"error": "unavailable"}), 502
+    filename, kind, content = result
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    safe_name = filename.replace('"', "")
+    return Response(content, mimetype=mime, headers={
+        "Content-Disposition": f'inline; filename="{safe_name}"',
+        "Cache-Control": "no-store",
+    })
 
 
 _JC_PDF_VIEW_TEMPLATE = (
