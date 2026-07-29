@@ -4257,9 +4257,44 @@ def api_jc_file_view(fid):
         )
         return Response(html, mimetype="text/html")
 
-    # Office formats.
-    office_pdf_url = f"/prionvault/api/jc/files/{fid}/office-pdf"
-    html = _JC_PDF_VIEW_TEMPLATE.format(title=esc_name, pdf_url=office_pdf_url)
+    # Office formats: convert to PDF (cached after the first view) and
+    # show through the same PDF.js viewer. If the conversion itself
+    # fails — LibreOffice missing/crashed, corrupt file — fall back to
+    # a plain page offering the original download and, if Dropbox can
+    # hand out a temporary link, Microsoft's own Office Online viewer
+    # as a last resort (full fidelity, but an external, unauthenticated
+    # service — not something we can rely on as the primary path, see
+    # get_or_convert_pdf docstring).
+    if _jc.get_or_convert_pdf(fid):
+        office_pdf_url = f"/prionvault/api/jc/files/{fid}/office-pdf"
+        html = _JC_PDF_VIEW_TEMPLATE.format(title=esc_name, pdf_url=office_pdf_url)
+        return Response(html, mimetype="text/html")
+
+    from urllib.parse import quote as _urlquote
+    temp_link = _jc.temporary_link(fid)
+    online_viewer_html = ""
+    if temp_link:
+        viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(temp_link, safe="")
+        online_viewer_html = (
+            f'<a href="{viewer_src}" target="_blank" rel="noopener" class="pv-jc-fallback-btn">'
+            'Ver en Office Online (visor externo)</a>'
+        )
+    html = (
+        '<!doctype html><html><head><meta charset="utf-8">'
+        f'<title>{esc_name}</title>'
+        '<style>html,body{margin:0;height:100%;background:#222;color:#eee;'
+        'font-family:system-ui,sans-serif;display:flex;flex-direction:column;'
+        'align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;'
+        'box-sizing:border-box;}'
+        '.pv-jc-fallback-btn{display:inline-block;padding:10px 20px;border-radius:6px;'
+        'background:#3a6ea5;color:#fff;text-decoration:none;font-size:14px;}'
+        '.pv-jc-fallback-btn:hover{background:#4a80bb;}</style></head>'
+        f'<body><p>No se ha podido generar una vista previa de «{esc_name}».</p>'
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">'
+        f'<a href="{raw_url}" class="pv-jc-fallback-btn">Descargar original</a>'
+        f'{online_viewer_html}'
+        '</div></body></html>'
+    )
     return Response(html, mimetype="text/html")
 
 
