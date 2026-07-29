@@ -208,7 +208,11 @@ def update(presentation_id, *, presented_at: Optional[_date] = None,
 
 def delete(presentation_id) -> bool:
     """Delete the presentation row (cascades to files) and best-effort
-    remove the Dropbox files. Returns True if the row existed."""
+    remove the Dropbox files. Returns True if the row existed.
+
+    A path shared with another presentation's file row (same document
+    covering several articles — see add_file) is left alone in
+    Dropbox; only paths that become fully orphaned are removed."""
     eng = _get_engine()
     with eng.connect() as conn:
         paths = [r[0] for r in conn.execute(sql_text(
@@ -223,14 +227,40 @@ def delete(presentation_id) -> bool:
         if (res.rowcount or 0) == 0:
             return False
 
-    _dropbox_delete_paths(paths)
+    # By this point the presentation's own file rows are already gone
+    # (deleted above / via CASCADE), so any remaining match is truly a
+    # different presentation still using the path.
+    _dropbox_delete_paths(_orphaned_paths(paths))
     return True
+
+
+def _orphaned_paths(paths: List[str]) -> List[str]:
+    """Filter `paths` down to the ones no prionvault_jc_file row still
+    references — safe to actually delete from Dropbox. Call this AFTER
+    the row(s) being removed are already gone from the table."""
+    paths = [p for p in paths if p]
+    if not paths:
+        return []
+    eng = _get_engine()
+    with eng.connect() as conn:
+        still_used = {r[0] for r in conn.execute(sql_text(
+            "SELECT DISTINCT dropbox_path FROM prionvault_jc_file WHERE dropbox_path = ANY(:paths)"
+        ), {"paths": paths}).all()}
+    return [p for p in paths if p not in still_used]
 
 
 # ── Files (multipart upload + temp link) ────────────────────────────────────
 
 def add_file(presentation_id, *, content: bytes, filename: str) -> dict:
-    """Upload one file and attach it to a presentation."""
+    """Upload one file and attach it to a presentation.
+
+    Same presenter + same session date + same filename all hashing to
+    the same Dropbox path (see _build_dropbox_path) is exactly what
+    happens when one JC document covers several articles — a legitimate
+    case, not a collision. When that path is already tracked by an
+    earlier presentation, we skip re-uploading identical bytes to
+    Dropbox and just add a new prionvault_jc_file row pointing at the
+    same file, so every article keeps its own association."""
     if not content:
         raise ValueError("empty file")
     if len(content) > MAX_FILE_BYTES:
@@ -251,7 +281,33 @@ def add_file(presentation_id, *, content: bytes, filename: str) -> dict:
     target = _build_dropbox_path(presented_at=presented_at,
                                  presenter_name=presenter_name,
                                  filename=filename)
-    # Upload to Dropbox.
+
+    with eng.connect() as conn:
+        existing = conn.execute(sql_text(
+            """SELECT id, presentation_id, size_bytes, kind
+                 FROM prionvault_jc_file WHERE dropbox_path = :dpath LIMIT 1"""
+        ), {"dpath": target}).first()
+
+    if existing:
+        if str(existing.presentation_id) == str(presentation_id):
+            # Already attached to this exact presentation — idempotent,
+            # not an error (e.g. a retried request).
+            return {"id": str(existing.id), "filename": filename,
+                    "dropbox_path": target, "size_bytes": existing.size_bytes,
+                    "kind": existing.kind}
+        fid = str(uuid.uuid4())
+        with eng.begin() as conn:
+            conn.execute(sql_text(
+                """INSERT INTO prionvault_jc_file
+                   (id, presentation_id, filename, dropbox_path,
+                    size_bytes, kind, uploaded_at)
+                   VALUES (:id, :pid, :filename, :dpath, :size, :kind, NOW())"""
+            ), {"id": fid, "pid": str(presentation_id), "filename": filename,
+                "dpath": target, "size": existing.size_bytes, "kind": existing.kind})
+        return {"id": fid, "filename": filename, "dropbox_path": target,
+                "size_bytes": existing.size_bytes, "kind": existing.kind}
+
+    # No existing row for this path — upload for real.
     try:
         from core.dropbox_client import get_client
         import dropbox
@@ -271,7 +327,6 @@ def add_file(presentation_id, *, content: bytes, filename: str) -> dict:
 
     fid = str(uuid.uuid4())
     kind = _kind_for(filename)
-    eng = _get_engine()
     with eng.begin() as conn:
         conn.execute(sql_text(
             """INSERT INTO prionvault_jc_file
@@ -296,6 +351,9 @@ def add_file(presentation_id, *, content: bytes, filename: str) -> dict:
 
 
 def delete_file(file_id) -> bool:
+    """Delete one file's DB row. Only removes it from Dropbox once no
+    OTHER row (a different article's presentation sharing the same
+    document — see add_file) still points at that path."""
     eng = _get_engine()
     with eng.connect() as conn:
         row = conn.execute(sql_text(
@@ -307,7 +365,7 @@ def delete_file(file_id) -> bool:
         conn.execute(sql_text(
             "DELETE FROM prionvault_jc_file WHERE id = :fid"
         ), {"fid": str(file_id)})
-    _dropbox_delete_paths([row[0]] if row[0] else [])
+    _dropbox_delete_paths(_orphaned_paths([row[0]] if row[0] else []))
     return True
 
 
