@@ -4025,9 +4025,13 @@ def api_jc_create(aid):
         try:
             row = _jc.add_file(pres["id"], content=f.read(), filename=f.filename)
             file_results.append(row)
-        except (ValueError, RuntimeError) as exc:
-            logger.warning("jc create: file %s rejected: %s", f.filename, exc)
-            file_results.append({"filename": f.filename, "error": str(exc)})
+        except Exception as exc:
+            # Catch-all, not just ValueError/RuntimeError: any single bad
+            # file (a Dropbox hiccup, an unexpected exception type) must
+            # never 500 the whole batch and lose the files that already
+            # uploaded fine — it shows up in file_errors instead.
+            logger.warning("jc create: file %s rejected: %s", f.filename, exc, exc_info=True)
+            file_results.append({"filename": f.filename, "error": str(exc)[:300]})
     pres["files"] = [x for x in file_results if "error" not in x]
     pres["file_errors"] = [x for x in file_results if "error" in x]
 
@@ -4148,10 +4152,11 @@ def api_jc_add_files(pid):
             results.append(row)
         except LookupError:
             return jsonify({"error": "not_found"}), 404
-        except ValueError as exc:
-            results.append({"filename": f.filename, "error": str(exc)})
-        except RuntimeError as exc:
-            results.append({"filename": f.filename, "error": str(exc)})
+        except Exception as exc:
+            # Broad catch (not just ValueError/RuntimeError) so one bad
+            # file never 500s the rest of an already-succeeding batch.
+            logger.warning("jc add-files: file %s rejected: %s", f.filename, exc, exc_info=True)
+            results.append({"filename": f.filename, "error": str(exc)[:300]})
     return jsonify({"ok": True, "files": results})
 
 
@@ -4266,8 +4271,13 @@ def api_jc_file_view(fid):
     # the app is only ever served over https — which an external HTTPS
     # page (Office Online) may refuse to fetch as mixed content.
     base = request.url_root.rstrip("/").replace("http://", "https://", 1)
+    # The filename segment is purely cosmetic (the file is looked up by
+    # fid; anything after it in the path is ignored) — Office Online's
+    # viewer needs to see a recognizable extension in the URL itself to
+    # know how to render the document, a bare query-string won't do.
     public_url = (base +
                   url_for("prionvault.api_jc_file_raw_public", fid=fid,
+                          filename=filename,
                           t=_make_jc_public_token(fid)))
     viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(public_url, safe="")
     html = (
@@ -4302,13 +4312,14 @@ def _verify_jc_public_token(token: str, fid) -> bool:
         return False
 
 
-@prionvault_bp.route("/api/jc/files/<uuid:fid>/raw-public", methods=["GET"])
-def api_jc_file_raw_public(fid):
+@prionvault_bp.route("/api/jc/files/<uuid:fid>/raw-public/<path:filename>", methods=["GET"])
+def api_jc_file_raw_public(fid, filename=None):
     """Unauthenticated but token-gated file stream — ONLY meant to be
     fetched by an external embedding service (see api_jc_file_view),
     never linked to directly from the app. Deliberately outside
     @login_required: the whole point is that Office's viewer can't
-    carry our session cookie."""
+    carry our session cookie. `filename` in the path is cosmetic (see
+    api_jc_file_view) — the file is always looked up by `fid`."""
     token = request.args.get("t", "")
     if not _verify_jc_public_token(token, fid):
         return jsonify({"error": "invalid_or_expired_token"}), 403

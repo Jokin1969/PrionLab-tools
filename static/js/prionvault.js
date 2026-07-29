@@ -5115,15 +5115,23 @@
           const r = await fetch(API + `/articles/${_article.id}/jc`, {
             method: 'POST', credentials: 'same-origin', body: fd,
           });
+          const data = await r.json().catch(() => ({}));
           if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            throw new Error(err.detail || err.error || ('HTTP ' + r.status));
+            throw new Error(data.detail || data.error || ('HTTP ' + r.status));
           }
           close();
           // A successful upload tags the article "Journal Club – Ok"
           // server-side — refresh the sidebar tag list so it (and its
           // count) shows up without needing a full page reload.
           refreshTags();
+          if (data.file_errors && data.file_errors.length) {
+            alert(
+              `Presentación guardada, pero ${data.file_errors.length} de ` +
+              `${_pendingFiles.length} documento(s) no se pudieron subir:\n\n` +
+              data.file_errors.map(x => `• ${x.filename}: ${x.error}`).join('\n') +
+              '\n\nPuedes añadirlos de nuevo con el clip (📎) junto a la presentación.'
+            );
+          }
           if (_onDone) _onDone();
         } catch (e) {
           status.style.color = '#b91c1c';
