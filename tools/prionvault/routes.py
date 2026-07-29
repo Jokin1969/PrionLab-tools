@@ -12,6 +12,7 @@ import time
 import os
 import re
 import hashlib
+import mimetypes
 from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
@@ -3899,6 +3900,19 @@ def api_jc_find_article():
         if not content:
             return jsonify({"error": "empty_file"}), 400
         pdf_md5 = md5_of(content)
+        # MD5 only matches an EXACT byte-for-byte duplicate of the file we
+        # already have — the same paper downloaded on a different day, or
+        # re-exported, produces different bytes despite being the same
+        # article. Extract the DOI/PMID from the PDF's own text too (same
+        # extractor Import PDFs uses), and prefer that for the match since
+        # it's what actually identifies the article.
+        try:
+            from .ingestion.pdf_extractor import extract_pdf
+            extracted = extract_pdf(content)
+            doi = extracted.doi
+            pmid = extracted.pmid
+        except Exception as exc:
+            logger.warning("jc find-article: PDF text extraction failed: %s", exc)
     else:
         data = request.get_json(silent=True) or {}
         identifier = (data.get("identifier") or "").strip()
@@ -4174,6 +4188,126 @@ def api_jc_file_url(fid):
     if not url:
         return jsonify({"error": "unavailable"}), 502
     return jsonify({"url": url})
+
+
+@prionvault_bp.route("/api/jc/files/<uuid:fid>/raw", methods=["GET"])
+@login_required
+def api_jc_file_raw(fid):
+    """Stream a JC file's bytes through Flask with Content-Disposition:
+    inline, so PDFs/images open in the browser tab instead of downloading
+    — same reasoning as api_article_pdf. Only meaningful for kinds the
+    browser can render natively (pdf, image); see api_jc_file_view for
+    the Office-document path."""
+    from .services import jc as _jc
+    result = _jc.get_file_bytes(fid)
+    if not result:
+        return jsonify({"error": "unavailable"}), 502
+    filename, kind, content = result
+    mime = (mimetypes.guess_type(filename)[0]
+            or ("application/pdf" if kind == "pdf" else "application/octet-stream"))
+    safe_name = filename.replace('"', "")
+    return Response(content, mimetype=mime, headers={
+        "Content-Disposition": f'inline; filename="{safe_name}"',
+        "Cache-Control": "private, max-age=600",
+        "X-Frame-Options": "SAMEORIGIN",
+    })
+
+
+@prionvault_bp.route("/api/jc/files/<uuid:fid>/view", methods=["GET"])
+@login_required
+def api_jc_file_view(fid):
+    """HTML wrapper so a JC file always opens IN the browser tab, never
+    as a download:
+      - pdf   → the same PDF.js viewer used for article PDFs.
+      - image → a plain centered <img>.
+      - word/excel/pptx/other → no browser can render these natively,
+        so we embed Microsoft's Office Online viewer pointed at a
+        short-lived, unauthenticated Dropbox link (valid ~4h) — that
+        external service can't go through our login, which is why this
+        is the one case that can't be proxied through our own server.
+    """
+    from .services import jc as _jc
+    from urllib.parse import quote as _urlquote
+
+    meta = _jc.get_file_info(fid)
+    if not meta:
+        return "Fichero no encontrado.", 404
+    filename = meta["filename"] or "documento"
+    kind = meta["kind"]
+    esc_name = (filename.replace("&", "&amp;").replace("<", "&lt;")
+                        .replace(">", "&gt;").replace('"', "&quot;"))
+    raw_url = f"/prionvault/api/jc/files/{fid}/raw"
+
+    if kind == "pdf":
+        html = _JC_PDF_VIEW_TEMPLATE.format(title=esc_name, pdf_url=raw_url)
+        return Response(html, mimetype="text/html")
+
+    if kind == "image":
+        html = (
+            '<!doctype html><html><head><meta charset="utf-8">'
+            f'<title>{esc_name}</title>'
+            '<style>html,body{margin:0;height:100%;background:#222;'
+            'display:flex;align-items:center;justify-content:center;}'
+            'img{max-width:100%;max-height:100vh;}</style></head>'
+            f'<body><img src="{raw_url}" alt="{esc_name}"></body></html>'
+        )
+        return Response(html, mimetype="text/html")
+
+    # Office formats.
+    temp_url = _jc.temporary_link(fid)
+    if not temp_url:
+        html = (
+            f'<!doctype html><html><body style="font-family:sans-serif;padding:24px;">'
+            f'<p>No se pudo generar la vista previa de <strong>{esc_name}</strong>.</p>'
+            f'<p><a href="{raw_url}">Descargar el fichero</a></p></body></html>'
+        )
+        return Response(html, mimetype="text/html"), 502
+    viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(temp_url, safe="")
+    html = (
+        '<!doctype html><html><head><meta charset="utf-8">'
+        f'<title>{esc_name}</title>'
+        '<style>html,body{margin:0;height:100%;}'
+        'iframe{border:0;width:100%;height:100vh;display:block;}</style></head>'
+        f'<body><iframe src="{viewer_src}" title="{esc_name}"></iframe></body></html>'
+    )
+    return Response(html, mimetype="text/html")
+
+
+_JC_PDF_VIEW_TEMPLATE = (
+    '<!doctype html><html><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    '<title>{title}</title>'
+    '<style>'
+    '  html,body{{margin:0;padding:0;height:100%;background:#444;'
+    '            font:500 14px/1.3 -apple-system,system-ui,sans-serif;'
+    '            -webkit-overflow-scrolling:touch;}}'
+    '  #pv-pdf-pages{{display:flex;flex-direction:column;align-items:center;'
+    '    gap:10px;padding:10px;}}'
+    '  .pv-pdf-page{{background:white;box-shadow:0 2px 10px rgba(0,0,0,0.4);'
+    '    display:block;max-width:100%;}}'
+    '  #pv-pdf-status{{color:rgba(255,255,255,0.85);padding:20px;text-align:center;}}'
+    '</style></head><body>'
+    '<div id="pv-pdf-pages"><div id="pv-pdf-status">Cargando…</div></div>'
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>'
+    '<script>'
+    '  pdfjsLib.GlobalWorkerOptions.workerSrc = '
+    '    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";'
+    '  const container = document.getElementById("pv-pdf-pages");'
+    '  const status = document.getElementById("pv-pdf-status");'
+    '  pdfjsLib.getDocument("{pdf_url}").promise.then(async (pdf) => {{'
+    '    status.remove();'
+    '    for (let i = 1; i <= pdf.numPages; i++) {{'
+    '      const page = await pdf.getPage(i);'
+    '      const viewport = page.getViewport({{ scale: 1.4 }});'
+    '      const canvas = document.createElement("canvas");'
+    '      canvas.className = "pv-pdf-page";'
+    '      canvas.width = viewport.width; canvas.height = viewport.height;'
+    '      container.appendChild(canvas);'
+    '      await page.render({{ canvasContext: canvas.getContext("2d"), viewport }}).promise;'
+    '    }}'
+    '  }}).catch((err) => {{ status.textContent = "No se pudo cargar el PDF: " + err.message; }});'
+    '</script></body></html>'
+)
 
 
 # ── Per-article reindex (Phase 4) ───────────────────────────────────────────

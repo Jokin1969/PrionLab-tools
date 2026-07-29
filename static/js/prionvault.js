@@ -2960,10 +2960,12 @@
                      style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;border:none;cursor:pointer;">⬇ Abstract</button>`
           : '',
       a.has_jc
-        ? `<span title="${a.jc_count > 1
-              ? esc(a.jc_count + ' presentaciones en Journal Club')
-              : 'Presentado en Journal Club'}"
-                style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fce7f3;color:#be185d;">JC${a.jc_count > 1 ? ' ' + a.jc_count : ''}</span>`
+        ? `<button type="button" class="pv-row-jc-btn" data-aid="${esc(a.id)}"
+                title="${a.jc_count > 1
+                    ? esc(a.jc_count + ' presentaciones en Journal Club — clic para abrir el documento')
+                    : 'Presentado en Journal Club — clic para abrir el documento'}"
+                style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;
+                       background:#fce7f3;color:#be185d;border:none;cursor:pointer;">JC${a.jc_count > 1 ? ' ' + a.jc_count : ''}</button>`
         : '',
       (a.prionpacks && a.prionpacks.length)
         ? `<a href="/prionpacks/index?open=${esc(a.prionpacks[0].id)}"
@@ -3361,6 +3363,27 @@
         e.stopPropagation();
         _setIsolatedArticleId(a.id);
         loadArticles();
+      });
+
+      const jcRowBtn = row.querySelector('.pv-row-jc-btn');
+      if (jcRowBtn) jcRowBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        jcRowBtn.disabled = true;
+        try {
+          const r = await api(`/articles/${a.id}/jc`);
+          const files = (r.items || []).flatMap(p => p.files || []);
+          if (files.length === 1) {
+            window.open(API + `/jc/files/${files[0].id}/view`, '_blank', 'noopener');
+          } else {
+            // Several files (or none yet attached) — open the article so
+            // the operator can see/pick from the full Journal Club list.
+            openDetail(a.id);
+          }
+        } catch (err) {
+          alert('No se pudo abrir el Journal Club: ' + err.message);
+        } finally {
+          jcRowBtn.disabled = false;
+        }
       });
 
       const emailRowBtn = row.querySelector('.pv-email-row-btn');
@@ -4805,16 +4828,12 @@
         </div>`;
     }).join('');
 
-    // Open file in new tab.
+    // Open file in a new tab, rendered in-browser (never downloaded) —
+    // the /view wrapper picks PDF.js / <img> / Office-viewer depending
+    // on file kind.
     list.querySelectorAll('.pv-jc-file').forEach(b =>
-      b.addEventListener('click', async () => {
-        const fid = b.dataset.fid;
-        try {
-          const r = await api(`/jc/files/${fid}/url`);
-          if (r.url) window.open(r.url, '_blank', 'noopener');
-        } catch (e) {
-          alert('No se pudo abrir el fichero: ' + e.message);
-        }
+      b.addEventListener('click', () => {
+        window.open(API + `/jc/files/${b.dataset.fid}/view`, '_blank', 'noopener');
       }));
 
     if (!IS_ADMIN) return;
@@ -5061,6 +5080,24 @@
         for (const f of e.target.files || []) _pendingFiles.push(f);
         renderFileList();
       });
+
+      const dropzone = document.getElementById('pv-jc-dropzone');
+      if (dropzone) {
+        ['dragenter', 'dragover'].forEach(ev => dropzone.addEventListener(ev, (e) => {
+          e.preventDefault(); e.stopPropagation();
+          dropzone.style.background = '#fce7f3';
+          dropzone.style.borderColor = '#be185d';
+        }));
+        ['dragleave', 'drop'].forEach(ev => dropzone.addEventListener(ev, (e) => {
+          e.preventDefault(); e.stopPropagation();
+          dropzone.style.background = '#fdf2f8';
+          dropzone.style.borderColor = '#f3a8ca';
+        }));
+        dropzone.addEventListener('drop', (e) => {
+          for (const f of e.dataTransfer?.files || []) _pendingFiles.push(f);
+          renderFileList();
+        });
+      }
       document.getElementById('pv-jc-presenter-other')?.addEventListener('input', validate);
 
       document.getElementById('pv-jc-upload-confirm')?.addEventListener('click', async () => {
@@ -5083,6 +5120,10 @@
             throw new Error(err.detail || err.error || ('HTTP ' + r.status));
           }
           close();
+          // A successful upload tags the article "Journal Club – Ok"
+          // server-side — refresh the sidebar tag list so it (and its
+          // count) shows up without needing a full page reload.
+          refreshTags();
           if (_onDone) _onDone();
         } catch (e) {
           status.style.color = '#b91c1c';
@@ -5195,6 +5236,27 @@
         fd.append('file', f, f.name);
         doSearch(fd, true);
       });
+
+      const findDropzone = document.getElementById('pv-jc-find-dropzone');
+      if (findDropzone) {
+        ['dragenter', 'dragover'].forEach(ev => findDropzone.addEventListener(ev, (e) => {
+          e.preventDefault(); e.stopPropagation();
+          findDropzone.style.background = '#fce7f3';
+          findDropzone.style.borderColor = '#be185d';
+        }));
+        ['dragleave', 'drop'].forEach(ev => findDropzone.addEventListener(ev, (e) => {
+          e.preventDefault(); e.stopPropagation();
+          findDropzone.style.background = '#fdf2f8';
+          findDropzone.style.borderColor = '#f3a8ca';
+        }));
+        findDropzone.addEventListener('drop', (e) => {
+          const f = e.dataTransfer?.files && e.dataTransfer.files[0];
+          if (!f) return;
+          const fd = new FormData();
+          fd.append('file', f, f.name);
+          doSearch(fd, true);
+        });
+      }
 
       document.getElementById('pv-jc-find-retry')?.addEventListener('click', reset);
       document.getElementById('pv-jc-find-ok')?.addEventListener('click', () => {

@@ -311,6 +311,42 @@ def delete_file(file_id) -> bool:
     return True
 
 
+def get_file_info(file_id) -> Optional[dict]:
+    """Filename/kind without touching Dropbox — for deciding how to
+    render the /view wrapper page before fetching any bytes."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text(
+            "SELECT filename, kind FROM prionvault_jc_file WHERE id = :fid"
+        ), {"fid": str(file_id)}).first()
+    if not row:
+        return None
+    return {"filename": row[0], "kind": row[1]}
+
+
+def get_file_bytes(file_id) -> Optional[tuple]:
+    """Download a JC file's bytes from Dropbox. Returns
+    (filename, kind, content) or None on any failure."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text(
+            "SELECT dropbox_path, filename, kind FROM prionvault_jc_file WHERE id = :fid"
+        ), {"fid": str(file_id)}).first()
+    if not row:
+        return None
+    dropbox_path, filename, kind = row
+    try:
+        from core.dropbox_client import get_client
+        client = get_client()
+        if client is None:
+            return None
+        _meta, response = client.files_download(dropbox_path)
+        return filename, kind, response.content
+    except Exception as exc:
+        logger.warning("jc: download failed for %s: %s", dropbox_path, exc)
+        return None
+
+
 def temporary_link(file_id) -> Optional[str]:
     eng = _get_engine()
     with eng.connect() as conn:

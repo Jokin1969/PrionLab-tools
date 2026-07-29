@@ -1479,11 +1479,19 @@
 
       <div style="font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
                   letter-spacing:0.05em;margin-bottom:6px;">Por PDF</div>
-      <button id="pv-jc-find-pdf-btn" type="button"
-              style="width:100%;padding:9px 12px;border-radius:8px;border:1px dashed #be185d;
-                     background:#fdf2f8;color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-file-pdf"></i> Buscar por PDF — detecta si ya lo tenemos…
-      </button>
+      <div id="pv-jc-find-dropzone" style="border:2px dashed #f3a8ca;border-radius:10px;
+                  background:#fdf2f8;padding:14px;text-align:center;
+                  transition:background 0.15s,border-color 0.15s;">
+        <div style="font-size:12px;color:#9d174d;margin-bottom:8px;">
+          <i class="fas fa-cloud-arrow-up" style="margin-right:5px;"></i>
+          Arrastra aquí el PDF, o
+        </div>
+        <button id="pv-jc-find-pdf-btn" type="button"
+                style="padding:8px 14px;border-radius:8px;border:1px solid #be185d;
+                       background:#fff;color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;">
+          <i class="fas fa-file-pdf"></i> Buscar por PDF — detecta si ya lo tenemos…
+        </button>
+      </div>
       <input type="file" id="pv-jc-find-pdf-input" accept="application/pdf,.pdf" style="display:none;">
     </div>
 
@@ -1508,7 +1516,7 @@
 <!-- ── Journal Club — upload modal ──────────────────────────────────────── -->
 <div id="pv-jc-upload-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
-  <div class="pv-modal-inner" style="max-width:520px;">
+  <div class="pv-modal-inner" style="max-width:600px;max-height:94vh;">
     <button class="pv-modal-close" id="pv-jc-upload-close" aria-label="Close">×</button>
     <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
       <i class="fas fa-chalkboard-teacher" style="color:#be185d;margin-right:6px;"></i>Añadir presentación de Journal Club
@@ -1553,24 +1561,32 @@
       </button>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <button id="pv-jc-pick-files" type="button"
-              style="flex:1;padding:9px 12px;border-radius:8px;border:1px dashed #be185d;
-                     background:#fdf2f8;color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-folder-open"></i> Seleccionar archivos…
-      </button>
-      <button id="pv-jc-add-more" type="button" style="display:none;
-              padding:9px 12px;border-radius:8px;border:1px solid #d1d5db;
-              background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-plus"></i> Añadir + documentos
-      </button>
+    <div id="pv-jc-dropzone" style="border:2px dashed #f3a8ca;border-radius:10px;
+                background:#fdf2f8;padding:14px;margin-bottom:8px;text-align:center;
+                transition:background 0.15s,border-color 0.15s;">
+      <div style="font-size:12px;color:#9d174d;margin-bottom:8px;">
+        <i class="fas fa-cloud-arrow-up" style="margin-right:5px;"></i>
+        Arrastra aquí los documentos, o
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button id="pv-jc-pick-files" type="button"
+                style="padding:8px 14px;border-radius:8px;border:1px solid #be185d;
+                       background:#fff;color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;">
+          <i class="fas fa-folder-open"></i> Seleccionar archivos…
+        </button>
+        <button id="pv-jc-add-more" type="button" style="display:none;
+                padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;
+                background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">
+          <i class="fas fa-plus"></i> Añadir + documentos
+        </button>
+      </div>
     </div>
     <input type="file" id="pv-jc-file-input" multiple style="display:none;">
     <div id="pv-jc-file-list" style="margin-bottom:14px;"></div>
 
     <div style="font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
                 letter-spacing:0.05em;margin-bottom:6px;">Responsable</div>
-    <div id="pv-jc-presenter-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;max-height:140px;overflow-y:auto;">
+    <div id="pv-jc-presenter-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;max-height:260px;overflow-y:auto;">
       <span style="font-size:12px;color:#9ca3af;">Cargando usuarios…</span>
     </div>
     <input id="pv-jc-presenter-other" type="text" placeholder="Nombre del responsable"
