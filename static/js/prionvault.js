@@ -5295,28 +5295,14 @@
       }
     }
 
-    async function pollBulkImport() {
-      const progress = document.getElementById('pv-jc-find-bulk-progress');
+    // Renders a finished bulk-import result into #pv-jc-find-bulk-result.
+    // Shared by the live poll (just-finished run) and by the "recover last
+    // report" path (status fetched fresh when the modal reopens) — a run
+    // over hundreds of folders can easily outlast the operator's patience
+    // for keeping the modal open, but the backend keeps the last result
+    // in memory regardless of whether anyone was watching.
+    function renderBulkImportResult(status, { recovered = false } = {}) {
       const result = document.getElementById('pv-jc-find-bulk-result');
-      const btn = document.getElementById('pv-jc-find-bulk-btn');
-      let status;
-      try {
-        status = await api('/jc/bulk-import/status');
-      } catch (e) {
-        _bulkImportPollTimer = setTimeout(pollBulkImport, 2000);
-        return;
-      }
-      if (status.running) {
-        progress.textContent = status.total
-          ? `Procesando ${status.done}/${status.total} carpetas de fecha…`
-          : 'Listando carpetas…';
-        _bulkImportPollTimer = setTimeout(pollBulkImport, 1500);
-        return;
-      }
-
-      progress.style.display = 'none';
-      btn.disabled = false;
-      btn.style.opacity = '1';
       result.style.display = 'block';
 
       if (status.error) {
@@ -5326,12 +5312,21 @@
       const r2 = status.result;
       if (!r2) { result.innerHTML = ''; result.style.display = 'none'; return; }
 
-      const lines = [
+      const lines = [];
+      if (recovered) {
+        const when = status.finished_at
+          ? new Date(status.finished_at).toLocaleString('es-ES')
+          : '';
+        lines.push(`<div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">` +
+          `Último informe recuperado${status.presenter_name ? ` — ${esc(status.presenter_name)}` : ''}` +
+          `${when ? ` (${when})` : ''}</div>`);
+      }
+      lines.push(
         `<div style="font-weight:700;margin-bottom:6px;">` +
         `${r2.date_folders_seen} carpeta(s) de fecha · ` +
         `${r2.presentations_created} presentación(es) nueva(s), ${r2.presentations_reused} ya existían · ` +
         `${r2.files_attached} archivo(s) adjuntado(s)</div>`,
-      ];
+      );
       if (r2.matched && r2.matched.length) {
         lines.push(`
           <details style="margin-top:6px;">
@@ -5358,6 +5353,56 @@
           `<li><code>${esc(u.folder)}</code> — ${esc(u.error)}</li>`).join('') + '</ul>');
       }
       result.innerHTML = lines.join('');
+    }
+
+    async function pollBulkImport() {
+      const progress = document.getElementById('pv-jc-find-bulk-progress');
+      const btn = document.getElementById('pv-jc-find-bulk-btn');
+      let status;
+      try {
+        status = await api('/jc/bulk-import/status');
+      } catch (e) {
+        _bulkImportPollTimer = setTimeout(pollBulkImport, 2000);
+        return;
+      }
+      if (status.running) {
+        progress.textContent = status.total
+          ? `Procesando ${status.done}/${status.total} carpetas de fecha…`
+          : 'Listando carpetas…';
+        _bulkImportPollTimer = setTimeout(pollBulkImport, 1500);
+        return;
+      }
+
+      progress.style.display = 'none';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      renderBulkImportResult(status);
+    }
+
+    // Checked every time the modal opens: a run can keep going in the
+    // background long after the operator closed the modal (or the tab),
+    // since it's a server-side thread — this recovers whatever is
+    // running or just finished instead of losing it silently.
+    async function checkBulkImportOnOpen() {
+      let status;
+      try {
+        status = await api('/jc/bulk-import/status');
+      } catch (e) {
+        return;
+      }
+      if (status.running) {
+        const btn = document.getElementById('pv-jc-find-bulk-btn');
+        const progress = document.getElementById('pv-jc-find-bulk-progress');
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        progress.style.display = 'block';
+        progress.textContent = status.total
+          ? `Procesando ${status.done}/${status.total} carpetas de fecha…`
+          : 'Listando carpetas…';
+        pollBulkImport();
+      } else if (status.result || status.error) {
+        renderBulkImportResult(status, { recovered: true });
+      }
     }
 
     async function doSearch(payload, isMultipart) {
@@ -5452,6 +5497,7 @@
       reset();
       document.getElementById('pv-jc-find-modal').style.display = 'flex';
       setTimeout(() => document.getElementById('pv-jc-find-identifier')?.focus(), 50);
+      checkBulkImportOnOpen();
     }
 
     return { open };
