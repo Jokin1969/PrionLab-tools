@@ -3958,6 +3958,35 @@ def api_jc_list(aid):
                         "detail": str(exc)[:300]}), 500
 
 
+@prionvault_bp.route("/api/jc/bulk-import/start", methods=["POST"])
+@login_required
+def api_jc_bulk_import_start():
+    """Digest a presenter's pre-existing Dropbox folder tree of JC
+    sessions in one go (see services.jc.bulk_import) instead of
+    uploading each presentation through the modal one by one — the
+    "Importar carpeta" button in the upload modal. Runs in a
+    background thread since a few hundred folders comfortably exceed
+    a normal request timeout; poll .../status for progress."""
+    from .services import jc as _jc
+    data = request.get_json(silent=True) or {}
+    presenter_name = (data.get("presenter_name") or "").strip()
+    if not presenter_name:
+        return jsonify({"error": "missing_fields",
+                        "detail": "presenter_name is required."}), 400
+    snap = _jc.start_bulk_import(presenter_name, created_by=_viewer_id())
+    if snap is None:
+        return jsonify({"error": "already_running",
+                        "status": _jc.get_bulk_import_status()}), 409
+    return jsonify({"ok": True, "status": snap})
+
+
+@prionvault_bp.route("/api/jc/bulk-import/status", methods=["GET"])
+@login_required
+def api_jc_bulk_import_status():
+    from .services import jc as _jc
+    return jsonify(_jc.get_bulk_import_status())
+
+
 def _parse_iso_date(s):
     from datetime import date as _d
     try:
@@ -4050,37 +4079,11 @@ def api_jc_create(aid):
     return jsonify(pres), 201
 
 
-_JC_OK_TAG_NAME = "Journal Club – Ok"
-
-
 def _tag_journal_club_ok(article_id, viewer_uid) -> None:
     """Ensure the shared 'Journal Club – Ok' tag exists and is attached
     to `article_id` for `viewer_uid`. No-op if there's no viewer."""
-    if not viewer_uid:
-        return
-    s = _session()
-    try:
-        tag = s.execute(sql_text(
-            "SELECT id FROM article_tag WHERE lower(name) = lower(:n)"
-        ), {"n": _JC_OK_TAG_NAME}).first()
-        if tag:
-            tag_id = tag[0]
-        else:
-            row = s.execute(sql_text(
-                """INSERT INTO article_tag (name, color, created_by)
-                   VALUES (:n, :c, CAST(:uid AS uuid))
-                   ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-                   RETURNING id"""
-            ), {"n": _JC_OK_TAG_NAME, "c": "#be185d", "uid": str(viewer_uid)}).first()
-            tag_id = row[0]
-        s.execute(sql_text(
-            """INSERT INTO article_tag_link (article_id, tag_id, added_by)
-               VALUES (:aid, :tid, CAST(:uid AS uuid))
-               ON CONFLICT (article_id, tag_id, added_by) DO NOTHING"""
-        ), {"aid": str(article_id), "tid": tag_id, "uid": str(viewer_uid)})
-        s.commit()
-    finally:
-        s.close()
+    from .services import jc as _jc
+    _jc.tag_journal_club_ok(article_id, viewer_uid)
 
 
 @prionvault_bp.route("/api/jc/<uuid:pid>", methods=["PATCH"])

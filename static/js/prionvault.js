@@ -5053,6 +5053,107 @@
       if (status) status.textContent = '';
       const warn = document.getElementById('pv-jc-existing-warn');
       if (warn) warn.style.display = 'none';
+      _bulkImportPollTimer && clearTimeout(_bulkImportPollTimer);
+      const progress = document.getElementById('pv-jc-bulk-import-progress');
+      if (progress) progress.style.display = 'none';
+      const result = document.getElementById('pv-jc-bulk-import-result');
+      if (result) { result.style.display = 'none'; result.innerHTML = ''; }
+      const btn = document.getElementById('pv-jc-bulk-import-btn');
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+
+    let _bulkImportPollTimer = null;
+
+    async function startBulkImport() {
+      const presenterName = currentPresenterName();
+      if (!presenterName) {
+        alert('Elige o escribe primero el responsable cuya carpeta quieres importar.');
+        return;
+      }
+      if (!confirm(
+        `Se va a recorrer la carpeta de Dropbox de "${presenterName}" (Journal clubs/${presenterName}/…) ` +
+        'y crear una presentación por cada carpeta de fecha cuyo "Article ....pdf" se pueda ' +
+        'identificar en PrionVault. Puede tardar varios minutos. ¿Continuar?'
+      )) return;
+
+      const btn = document.getElementById('pv-jc-bulk-import-btn');
+      const progress = document.getElementById('pv-jc-bulk-import-progress');
+      const progressText = document.getElementById('pv-jc-bulk-import-progress-text');
+      const result = document.getElementById('pv-jc-bulk-import-result');
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      result.style.display = 'none';
+      progress.style.display = 'block';
+      progressText.textContent = 'Iniciando…';
+
+      try {
+        const r = await fetch(API + '/jc/bulk-import/start', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ presenter_name: presenterName }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || data.error || ('HTTP ' + r.status));
+        pollBulkImport();
+      } catch (e) {
+        progress.style.display = 'none';
+        result.style.display = 'block';
+        result.innerHTML = `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+    }
+
+    async function pollBulkImport() {
+      const progressText = document.getElementById('pv-jc-bulk-import-progress-text');
+      const progress = document.getElementById('pv-jc-bulk-import-progress');
+      const result = document.getElementById('pv-jc-bulk-import-result');
+      const btn = document.getElementById('pv-jc-bulk-import-btn');
+      let status;
+      try {
+        status = await api('/jc/bulk-import/status');
+      } catch (e) {
+        _bulkImportPollTimer = setTimeout(pollBulkImport, 2000);
+        return;
+      }
+      if (status.running) {
+        progressText.textContent = status.total
+          ? `Procesando ${status.done}/${status.total} carpetas de fecha…`
+          : 'Listando carpetas…';
+        _bulkImportPollTimer = setTimeout(pollBulkImport, 1500);
+        return;
+      }
+
+      progress.style.display = 'none';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      result.style.display = 'block';
+
+      if (status.error) {
+        result.innerHTML = `<span style="color:#b91c1c;">Error: ${esc(status.error)}</span>`;
+        return;
+      }
+      const r2 = status.result;
+      if (!r2) { result.innerHTML = ''; result.style.display = 'none'; return; }
+
+      const lines = [
+        `<div style="font-weight:700;margin-bottom:6px;">` +
+        `${r2.date_folders_seen} carpeta(s) de fecha · ` +
+        `${r2.presentations_created} presentación(es) nueva(s), ${r2.presentations_reused} ya existían · ` +
+        `${r2.files_attached} archivo(s) adjuntado(s)</div>`,
+      ];
+      if (r2.unmatched && r2.unmatched.length) {
+        lines.push(`<div style="font-weight:600;color:#92400e;margin-top:6px;">No identificados (${r2.unmatched.length}):</div>`);
+        lines.push('<ul style="margin:4px 0 0;padding-left:18px;">' + r2.unmatched.map(u =>
+          `<li><code>${esc(u.folder)}</code> — ${esc(u.reason)}</li>`).join('') + '</ul>');
+      }
+      if (r2.errors && r2.errors.length) {
+        lines.push(`<div style="font-weight:600;color:#b91c1c;margin-top:6px;">Errores (${r2.errors.length}):</div>`);
+        lines.push('<ul style="margin:4px 0 0;padding-left:18px;">' + r2.errors.map(u =>
+          `<li><code>${esc(u.folder)}</code> — ${esc(u.error)}</li>`).join('') + '</ul>');
+      }
+      result.innerHTML = lines.join('');
+      if (_onDone) _onDone();
     }
 
     // Purely informational — lets whoever's uploading decide whether to
@@ -5127,6 +5228,7 @@
         });
       }
       document.getElementById('pv-jc-presenter-other')?.addEventListener('input', validate);
+      document.getElementById('pv-jc-bulk-import-btn')?.addEventListener('click', startBulkImport);
 
       document.getElementById('pv-jc-upload-confirm')?.addEventListener('click', async () => {
         const confirmBtn = document.getElementById('pv-jc-upload-confirm');

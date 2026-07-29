@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import uuid
 from datetime import date as _date, datetime as _datetime
 from typing import List, Optional
@@ -367,6 +368,279 @@ def delete_file(file_id) -> bool:
         ), {"fid": str(file_id)})
     _dropbox_delete_paths(_orphaned_paths([row[0]] if row[0] else []))
     return True
+
+
+_JC_OK_TAG_NAME = "Journal Club – Ok"
+
+
+def tag_journal_club_ok(article_id, viewer_uid) -> None:
+    """Ensure the shared 'Journal Club – Ok' tag exists and is attached
+    to `article_id` for `viewer_uid`. Mirrors routes._tag_journal_club_ok
+    (duplicated rather than imported, to avoid a services -> routes
+    circular import); no-op if there's no viewer."""
+    if not viewer_uid:
+        return
+    eng = _get_engine()
+    with eng.begin() as conn:
+        tag = conn.execute(sql_text(
+            "SELECT id FROM article_tag WHERE lower(name) = lower(:n)"
+        ), {"n": _JC_OK_TAG_NAME}).first()
+        if tag:
+            tag_id = tag[0]
+        else:
+            row = conn.execute(sql_text(
+                """INSERT INTO article_tag (name, color, created_by)
+                   VALUES (:n, :c, CAST(:uid AS uuid))
+                   ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                   RETURNING id"""
+            ), {"n": _JC_OK_TAG_NAME, "c": "#be185d", "uid": str(viewer_uid)}).first()
+            tag_id = row[0]
+        conn.execute(sql_text(
+            """INSERT INTO article_tag_link (article_id, tag_id, added_by)
+               VALUES (:aid, :tid, CAST(:uid AS uuid))
+               ON CONFLICT (article_id, tag_id, added_by) DO NOTHING"""
+        ), {"aid": str(article_id), "tid": tag_id, "uid": str(viewer_uid)})
+
+
+_BULK_DATE_FOLDER_RE = re.compile(r"^(20\d{2})(\d{2})(\d{2})$")
+
+
+def _find_or_create_presentation(*, article_id, presented_at: _date,
+                                  presenter_name: str, created_by=None) -> tuple:
+    """Idempotent presentation lookup for bulk import — reruns (a
+    retried batch, a folder added to later) must not pile up duplicate
+    presentation rows for the same article/presenter/date. Returns
+    (presentation_id, was_newly_created)."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text(
+            """SELECT id FROM prionvault_jc_presentation
+               WHERE article_id = :aid AND presented_at = :date
+                 AND lower(presenter_name) = lower(:pname)
+               LIMIT 1"""
+        ), {"aid": str(article_id), "date": presented_at, "pname": presenter_name}).first()
+    if row:
+        return str(row[0]), False
+    pres = create(article_id=article_id, presented_at=presented_at,
+                  presenter_name=presenter_name, created_by=created_by)
+    return pres["id"], True
+
+
+def _attach_existing_dropbox_file(presentation_id, *, dropbox_path: str,
+                                   filename: str, size_bytes: int) -> bool:
+    """Point a prionvault_jc_file row at a file that's ALREADY sitting
+    in Dropbox (the bulk-import case: the operator placed it there by
+    hand, following the same naming convention _build_dropbox_path
+    would produce). No download/upload involved — metadata only.
+    Returns False if a row for this exact path+presentation already
+    exists (rerun of a previous import)."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        existing = conn.execute(sql_text(
+            """SELECT id FROM prionvault_jc_file
+               WHERE presentation_id = :pid AND dropbox_path = :dpath LIMIT 1"""
+        ), {"pid": str(presentation_id), "dpath": dropbox_path}).first()
+    if existing:
+        return False
+    with eng.begin() as conn:
+        conn.execute(sql_text(
+            """INSERT INTO prionvault_jc_file
+               (id, presentation_id, filename, dropbox_path,
+                size_bytes, kind, uploaded_at)
+               VALUES (:id, :pid, :filename, :dpath, :size, :kind, NOW())"""
+        ), {"id": str(uuid.uuid4()), "pid": str(presentation_id),
+            "filename": filename, "dpath": dropbox_path,
+            "size": size_bytes, "kind": _kind_for(filename)})
+    return True
+
+
+def bulk_import(presenter_name: str, *, created_by=None,
+                 on_progress=None) -> dict:
+    """Digest a presenter's pre-existing Dropbox folder tree instead of
+    uploading each presentation one by one through the modal — built
+    for the "we already have 250 of these sitting in Dropbox" case.
+
+    Expects exactly the layout the operator places by hand:
+        /PrionLab tools/Journal clubs/<presenter_name>/<yyyymmdd>/
+            Article <anything>.pdf   (the paper — used ONLY to identify
+                                       the article, never stored as a JC file)
+            <anything else>          (the JC document(s) — pptx, etc.,
+                                       attached as-is, no re-upload)
+
+    For each date folder: downloads the Article PDF, extracts its
+    DOI/PMID (same extractor Import PDFs uses) and MD5, and matches it
+    against existing articles the same way find-article does. A folder
+    whose article can't be identified is reported back (with its path)
+    instead of silently skipped, so the operator knows exactly which
+    folder needs a manual look. Reruns are safe: existing presentations
+    and file rows are detected and left alone rather than duplicated.
+
+    `on_progress(done, total)` is called after each date folder, if given
+    — lets a background job report live progress.
+    """
+    from core.dropbox_client import get_client
+    from ..ingestion.deduplicator import find_duplicate, md5_of
+    from ..ingestion.pdf_extractor import extract_pdf
+
+    client = get_client()
+    if client is None:
+        raise RuntimeError("dropbox not configured")
+
+    base = f"/PrionLab tools/Journal clubs/{presenter_name}"
+    try:
+        listing = client.files_list_folder(base)
+    except Exception as exc:
+        raise RuntimeError(f"no se pudo abrir la carpeta '{base}': {exc}")
+    date_folders = [e for e in listing.entries
+                    if e.__class__.__name__ == "FolderMetadata"
+                    and _BULK_DATE_FOLDER_RE.match(e.name)]
+
+    created = 0
+    reused = 0
+    files_attached = 0
+    unmatched = []          # [{folder, reason}]
+    errors = []             # [{folder, error}]
+    tagged_article_ids = set()   # articles that got a JC file attached — for "Journal Club – Ok"
+    total = len(date_folders)
+
+    for i, folder in enumerate(sorted(date_folders, key=lambda e: e.name)):
+        yyyymmdd = folder.name
+        folder_label = f"{presenter_name}/{yyyymmdd}"
+        try:
+            presented_at = _date(int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
+        except ValueError:
+            unmatched.append({"folder": folder_label, "reason": "nombre de carpeta no es una fecha válida"})
+            if on_progress:
+                on_progress(i + 1, total)
+            continue
+
+        try:
+            sub = client.files_list_folder(folder.path_lower)
+            files = [e for e in sub.entries if e.__class__.__name__ == "FileMetadata"]
+            article_file = next((f for f in files
+                                  if f.name.lower().startswith("article")
+                                  and f.name.lower().endswith(".pdf")), None)
+            if not article_file:
+                unmatched.append({"folder": folder_label, "reason": "no se encontró 'Article ....pdf' en la carpeta"})
+                if on_progress:
+                    on_progress(i + 1, total)
+                continue
+
+            _meta, resp = client.files_download(article_file.path_lower)
+            content = resp.content
+            doi = pmid = None
+            try:
+                extracted = extract_pdf(content)
+                doi, pmid = extracted.doi, extracted.pmid
+            except Exception:
+                pass
+            aid, _reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=md5_of(content))
+            if not aid:
+                unmatched.append({"folder": folder_label, "reason": "artículo no encontrado en PrionVault (ni por DOI/PMID ni por contenido)"})
+                if on_progress:
+                    on_progress(i + 1, total)
+                continue
+
+            pres_id, was_created = _find_or_create_presentation(
+                article_id=aid, presented_at=presented_at,
+                presenter_name=presenter_name, created_by=created_by)
+            if was_created:
+                created += 1
+            else:
+                reused += 1
+
+            other_files = [f for f in files if f is not article_file]
+            for f in other_files:
+                if _attach_existing_dropbox_file(
+                        pres_id, dropbox_path=f.path_display,
+                        filename=f.name, size_bytes=f.size):
+                    files_attached += 1
+                    tagged_article_ids.add(str(aid))
+        except Exception as exc:
+            logger.exception("jc bulk_import: folder %s failed", folder_label)
+            errors.append({"folder": folder_label, "error": str(exc)[:300]})
+        if on_progress:
+            on_progress(i + 1, total)
+
+    return {
+        "presenter_name": presenter_name,
+        "date_folders_seen": total,
+        "presentations_created": created,
+        "presentations_reused": reused,
+        "files_attached": files_attached,
+        "unmatched": unmatched,
+        "errors": errors,
+        "tagged_article_ids": sorted(tagged_article_ids),
+    }
+
+
+# ── Background job wrapper for bulk_import ──────────────────────────────────
+# Mirrors services/batch_index.py's design: a single guarded background
+# thread + an in-memory status snapshot polled by the frontend. A run of
+# ~250 folders (Dropbox listing + one PDF download each) comfortably
+# exceeds a normal request timeout, so this can't run inline in the route.
+_bulk_state = {
+    "running":       False,
+    "presenter_name": None,
+    "started_at":    None,
+    "finished_at":   None,
+    "done":          0,
+    "total":         0,
+    "result":        None,
+    "error":         None,
+}
+_bulk_lock = threading.Lock()
+_bulk_thread: Optional[threading.Thread] = None
+
+
+def get_bulk_import_status() -> dict:
+    with _bulk_lock:
+        return dict(_bulk_state)
+
+
+def start_bulk_import(presenter_name: str, *, created_by=None) -> Optional[dict]:
+    global _bulk_thread
+    with _bulk_lock:
+        if _bulk_state["running"]:
+            return None
+        _bulk_state.update({
+            "running":        True,
+            "presenter_name": presenter_name,
+            "started_at":     _datetime.utcnow().isoformat(),
+            "finished_at":    None,
+            "done":           0,
+            "total":          0,
+            "result":         None,
+            "error":          None,
+        })
+
+    def _progress(done, total):
+        with _bulk_lock:
+            _bulk_state["done"] = done
+            _bulk_state["total"] = total
+
+    def _run():
+        try:
+            result = bulk_import(presenter_name, created_by=created_by, on_progress=_progress)
+            for aid in result.get("tagged_article_ids", []):
+                try:
+                    tag_journal_club_ok(aid, created_by)
+                except Exception:
+                    logger.exception("jc bulk_import: failed to tag %s", aid)
+            with _bulk_lock:
+                _bulk_state["result"] = result
+        except Exception as exc:
+            logger.exception("jc bulk_import failed for %s", presenter_name)
+            with _bulk_lock:
+                _bulk_state["error"] = str(exc)[:500]
+        finally:
+            with _bulk_lock:
+                _bulk_state["running"] = False
+                _bulk_state["finished_at"] = _datetime.utcnow().isoformat()
+
+    _bulk_thread = threading.Thread(target=_run, name="prionvault-jc-bulk-import", daemon=True)
+    _bulk_thread.start()
+    return get_bulk_import_status()
 
 
 def get_file_info(file_id) -> Optional[dict]:
