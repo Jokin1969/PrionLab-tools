@@ -15637,7 +15637,8 @@
 
       section('Resúmenes IA', (() => {
         // Always show total pair
-        let html = row(2, [card('Con resumen IA',     d.with_summary_ai,    true, {has_summary:'ai'},    'good'),
+        let html = row(3, [card('Con resumen IA',  d.with_summary_ai, true, {has_summary:'ai'}, 'good'),
+                           card('Sin resumen IA',  Math.max(0, (d.total||0) - (d.with_summary_ai||0)), true, {has_summary_ai:'false'}, 'warn'),
                            card('Con resumen humano', d.with_summary_human, true, {has_summary_human:'true'}, 'good')]);
         // Per-provider breakdown (only if at least one has data)
         const provRows = [];
