@@ -44,6 +44,19 @@ _DOI_LABEL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# PLOS's own DOI has a rigid, unmistakable shape: 10.1371/journal.<4-letter
+# journal code>.<7 digits> (pone, pbio, pgen, pcbi, pmed, ppat, pntd, pdig,
+# pclm, pwat, pstr, ...). PLOS PDFs repeat it as a bare URL in the running
+# header/footer of every page ("PLOS ONE | https://doi.org/10.1371/journal.
+# pone.0281734 March 15, 2023 1 / 20"), and pdfplumber frequently fails to
+# detect a word-gap there — the footer's tight kerning collapses the space
+# before the date, so the URL and the date glue into one token. The generic
+# suffix patterns above are greedy up to the next real delimiter, so they'd
+# swallow "...0281734march15" as part of the DOI, corrupting it just enough
+# that it never matches PLOS's actual DOI on file. This pattern's fixed
+# 7-digit suffix stops the match at the right place regardless.
+_DOI_PLOS_RE = re.compile(r"10\.1371/journal\.[a-z]{4}\.\d{7}", re.IGNORECASE)
+
 # PMID patterns: "PMID: 12345678", "PubMed ID: 12345678", "PMID12345678",
 # "PubMed PMID: 12345678", "Medline PMID: 12345678".
 # PMIDs are 1-8 digits; we require at least 5 to avoid false positives.
@@ -75,11 +88,16 @@ def find_doi_in_text(text: str) -> Optional[str]:
     """Return the best DOI candidate from `text`, normalised, or None.
 
     Strategy (mirrors PrionRead's approach):
-      1. Collect all labelled DOIs (DOI: 10.xxx/yyy) from the first page only.
-         These are authoritative; pick the shortest (the paper's own DOI is
-         typically shorter than reference DOIs).
+      1. Collect all labelled DOIs (DOI: 10.xxx/yyy) from the first page,
+         plus any DOI matching PLOS's fixed 10.1371/journal.xxxx.NNNNNNN
+         shape (immune to the header/footer word-gap corruption that
+         otherwise trips up the generic patterns for that publisher).
+         These are authoritative; pick the shortest (the paper's own DOI
+         is typically shorter than reference DOIs).
       2. If none found on page 1, try the full text labelled matches.
-      3. Last resort: bare DOI pattern anywhere, again shortest wins.
+      3. Bare DOI pattern anywhere on page 1, again shortest wins.
+      4. Absolute last resort, PLOS only: re-match its fixed shape
+         against page 1 with all whitespace stripped.
     A paper's own DOI is nearly always shorter than reference DOIs.
 
     When a duplicate is detected based on this result, call
@@ -92,11 +110,23 @@ def find_doi_in_text(text: str) -> Optional[str]:
 
     # Limit to first 3 000 chars (≈ first page) for the high-confidence pass.
     head = text[:3000]
+
     candidates: list[str] = []
 
     for m in _DOI_LABEL_RE.finditer(head):
         cand = normalise_doi(m.group(1))
         if cand and len(cand) >= 7:
+            candidates.append(cand)
+
+    # PLOS's fixed-shape DOI (see _DOI_PLOS_RE) rides alongside the
+    # labelled candidates rather than overriding them: when the generic
+    # patterns above got fooled by header/footer word-gap corruption
+    # into a garbled (longer) candidate, this clean one wins the
+    # shortest-candidate tie-break below; when they found nothing (bare
+    # URL with no gluing to trip them up), this is the only candidate.
+    for m in _DOI_PLOS_RE.finditer(head):
+        cand = normalise_doi(m.group(0))
+        if cand not in candidates:
             candidates.append(cand)
 
     if not candidates:
@@ -115,7 +145,18 @@ def find_doi_in_text(text: str) -> Optional[str]:
     # paper's own DOI almost always appears on the first page.
     all_bare = [normalise_doi(m.group(0)) for m in _DOI_RE.finditer(head)]
     all_bare = [c for c in all_bare if len(c) >= 7]
-    return min(all_bare, key=len) if all_bare else None
+    if all_bare:
+        return min(all_bare, key=len)
+
+    # Absolute last resort, PLOS only: pdfplumber sometimes inserts a
+    # stray space INSIDE the running header/footer's DOI (tight kerning
+    # confuses its word-gap heuristic), which breaks every pattern above
+    # mid-match. Collapsing whitespace and re-matching the fixed PLOS
+    # shape recovers it without that risk for the generic patterns
+    # (which would otherwise glue unrelated words together across the
+    # whole page).
+    m = _DOI_PLOS_RE.search(re.sub(r"\s+", "", head))
+    return normalise_doi(m.group(0)) if m else None
 
 
 def find_doi_strict(text: str) -> Optional[str]:
