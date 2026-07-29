@@ -5051,6 +5051,34 @@
       if (other) { other.style.display = 'none'; other.value = ''; }
       const status = document.getElementById('pv-jc-upload-status');
       if (status) status.textContent = '';
+      const warn = document.getElementById('pv-jc-existing-warn');
+      if (warn) warn.style.display = 'none';
+    }
+
+    // Purely informational — lets whoever's uploading decide whether to
+    // add another presentation or go add their file to the existing one
+    // (via the 📎 button on the article's JC list) instead. Never blocks.
+    async function warnIfExisting(article) {
+      const warn = document.getElementById('pv-jc-existing-warn');
+      const text = document.getElementById('pv-jc-existing-warn-text');
+      if (!warn || !text) return;
+      try {
+        const data = await api(`/articles/${article.id}/jc`);
+        const presentations = data.items || [];
+        if (!presentations.length) {
+          warn.style.display = 'none';
+          return;
+        }
+        const names = [...new Set(presentations.map(p => p.presenter_name).filter(Boolean))];
+        text.textContent = names.length
+          ? `Este artículo ya tiene una presentación de Journal Club de ${names.join(', ')}. ` +
+            'Si continúas se añadirá una presentación nueva; si querías sumar este archivo a la ' +
+            'existente, ciérralo y usa el 📎 junto a ella.'
+          : 'Este artículo ya tiene una presentación de Journal Club registrada.';
+        warn.style.display = 'block';
+      } catch (e) {
+        warn.style.display = 'none';
+      }
     }
 
     function wireOnce() {
@@ -5148,6 +5176,7 @@
       reset();
       document.getElementById('pv-jc-upload-modal').style.display = 'flex';
       loadPresenters();
+      warnIfExisting(article);
     }
 
     return { open };
