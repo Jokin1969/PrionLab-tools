@@ -8,6 +8,7 @@ frees its slot so a new note can reuse that colour.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Optional
 
 from sqlalchemy import text as _sql
@@ -21,6 +22,46 @@ MAX_NOTES = 5
 def _get_engine():
     from ..ingestion.queue import _get_engine as _e
     return _e()
+
+
+def _reindex_notes_sync(article_id: str, user_id: str) -> None:
+    """Re-embed this user's combined note text for the article (or clear
+    the AI-search chunks if they no longer have any). Runs the actual
+    Voyage call, so it's meant to be called off the request thread —
+    see `_reindex_notes_async`."""
+    from ..embeddings.indexer import index_article_source, clear_source
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(_sql("""
+                SELECT body FROM prionvault_article_note
+                 WHERE article_id = CAST(:aid AS uuid)
+                   AND user_id    = CAST(:uid AS uuid)
+                 ORDER BY color_index
+            """), {"aid": article_id, "uid": user_id}).all()
+        combined = "\n\n".join(r[0] for r in rows if (r[0] or "").strip())
+        if combined.strip():
+            result = index_article_source(
+                article_id=article_id, source_field="notes",
+                source_text=combined, owner_user_id=user_id,
+            )
+            if result.error:
+                logger.warning("notes reindex (article=%s user=%s): %s",
+                               article_id, user_id, result.error)
+        else:
+            clear_source(article_id, "notes", owner_user_id=user_id)
+    except Exception:
+        logger.exception("notes reindex failed (article=%s user=%s)",
+                         article_id, user_id)
+
+
+def _reindex_notes_async(article_id: str, user_id: str) -> None:
+    """Fire-and-forget: the note save/delete already succeeded and the
+    HTTP response shouldn't wait on an embedding API round-trip."""
+    threading.Thread(
+        target=_reindex_notes_sync, args=(article_id, user_id),
+        name="prionvault-notes-reindex", daemon=True,
+    ).start()
 
 
 def _note_to_dict(r) -> dict:
@@ -80,6 +121,7 @@ def create_note(article_id: str, user_id: str, body: str = "") -> dict:
                     RETURNING id, color_index, body, created_at, updated_at
                 """), {"aid": article_id, "uid": user_id, "ci": idx,
                        "body": body}).mappings().first()
+                _reindex_notes_async(article_id, user_id)
                 return _note_to_dict(row)
             except IntegrityError:
                 continue  # slot taken by a concurrent insert — recompute
@@ -96,19 +138,27 @@ def update_note(note_id: str, user_id: str, body: str) -> Optional[dict]:
                SET body = :body, updated_at = NOW()
              WHERE id = CAST(:nid AS uuid)
                AND user_id = CAST(:uid AS uuid)
-            RETURNING id, color_index, body, created_at, updated_at
+            RETURNING id, article_id, color_index, body, created_at, updated_at
         """), {"nid": note_id, "uid": user_id, "body": body or ""}).mappings().first()
-    return _note_to_dict(row) if row else None
+    if not row:
+        return None
+    d = dict(row)
+    article_id = str(d.pop("article_id"))
+    _reindex_notes_async(article_id, user_id)
+    return _note_to_dict(d)
 
 
 def delete_note(note_id: str, user_id: str) -> bool:
     eng = _get_engine()
     with eng.begin() as conn:
-        res = conn.execute(_sql("""
+        row = conn.execute(_sql("""
             DELETE FROM prionvault_article_note
              WHERE id = CAST(:nid AS uuid) AND user_id = CAST(:uid AS uuid)
-        """), {"nid": note_id, "uid": user_id})
-    return (res.rowcount or 0) > 0
+            RETURNING article_id
+        """), {"nid": note_id, "uid": user_id}).first()
+    if row:
+        _reindex_notes_async(str(row[0]), user_id)
+    return row is not None
 
 
 def note_stubs_for_articles(article_ids: list[str], user_id: str) -> dict:

@@ -435,17 +435,22 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
 
 
 def ask(query: str, *, top_k: int = 20,
-        provider: str = DEFAULT_CHAT_PROVIDER) -> RagResult:
+        provider: str = DEFAULT_CHAT_PROVIDER,
+        viewer_id: Optional[str] = None) -> RagResult:
     """End-to-end RAG: retrieve, prompt the selected provider, parse,
     return. Bubbles NotConfigured / VoyageNotConfigured so the caller
-    can map them to 503; other exceptions become 502."""
+    can map them to 503; other exceptions become 502.
+
+    `viewer_id` is forwarded to the retriever so the asking user's own
+    sticky-note content can surface in their own results without ever
+    leaking another user's private notes (see retriever.search)."""
     start = time.monotonic()
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider {provider!r}")
 
     retrieval_start = time.monotonic()
     try:
-        retrieval: RetrievalResult = search(query, top_k=top_k)
+        retrieval: RetrievalResult = search(query, top_k=top_k, viewer_id=viewer_id)
     except VoyageNotConfigured:
         raise   # bubble up; caller maps to 503
     retrieval_ms = int((time.monotonic() - retrieval_start) * 1000)

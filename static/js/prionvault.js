@@ -11387,11 +11387,13 @@
           coverageRow('📄', 'PDF completo', '#0F3460', c.pdf.indexed,      c.pdf.available,      c.pdf.available - c.pdf.indexed,           'pv-bi-add-pdf'),
           coverageRow('📝', 'Abstract',     '#1d4ed8', c.abstract.indexed,  c.abstract.available, c.abstract.available - c.abstract.indexed,  'pv-bi-add-abstracts'),
           coverageRow('🤖', 'Resumen IA',   '#15803d', c.summary.indexed,   c.summary.available,  c.summary.available - c.summary.indexed,    'pv-bi-add-summaries'),
+          coverageRow('🗒️', 'Notas',        '#7c3aed', c.notes.indexed,     c.notes.available,    c.notes.available - c.notes.indexed,        'pv-bi-add-notes'),
         ].join('');
         // Update button labels to show pending counts
         const pdfPending = c.pdf.available - c.pdf.indexed;
         const absPending = c.abstract.available - c.abstract.indexed;
         const sumPending = c.summary.available - c.summary.indexed;
+        const notesPending = c.notes.available - c.notes.indexed;
         const pdfBtn = document.getElementById('pv-bi-add-pdf');
         if (pdfBtn && !pdfBtn.disabled) {
           pdfBtn.textContent = pdfPending > 0
@@ -11409,6 +11411,12 @@
           sumBtn.textContent = sumPending > 0
             ? `+ Añadir resúmenes IA (${sumPending.toLocaleString('es-ES')} pendientes)`
             : '✓ Resúmenes IA al día';
+        }
+        const notesBtn = document.getElementById('pv-bi-add-notes');
+        if (notesBtn && !notesBtn.disabled) {
+          notesBtn.textContent = notesPending > 0
+            ? `+ Añadir notas (${notesPending.toLocaleString('es-ES')} pendientes)`
+            : '✓ Notas al día';
         }
       } catch (e) {
         coverageRows.innerHTML = `<div style="color:#b91c1c;font-size:12px;">Error: ${esc(e.message)}</div>`;
@@ -11643,6 +11651,37 @@
       });
     }
 
+    // Backfill note chunks for (article, user) pairs that had notes
+    // before this feature existed — new notes reindex themselves on save.
+    const addNotesBtn = document.getElementById('pv-bi-add-notes');
+    if (addNotesBtn) {
+      addNotesBtn.addEventListener('click', async () => {
+        if (!confirm(
+          'Vectorizar las notas flotantes existentes para que la búsqueda IA\n' +
+          'las tenga en cuenta.\n\n' +
+          '• Cada nota solo aparece en los resultados de su propio autor —\n' +
+          '  nunca se mezclan las notas de un usuario con las de otro.\n' +
+          '• Las notas nuevas se indexan solas al guardarlas; esto es solo\n' +
+          '  para las que ya existían antes de esta función.\n' +
+          '• Corre en background.\n\n' +
+          '¿Continuar?'
+        )) return;
+        addNotesBtn.disabled = true;
+        const orig = addNotesBtn.textContent;
+        addNotesBtn.textContent = '⏳ Enviando…';
+        try {
+          const r = await api('/admin/embeddings/add-notes', { method: 'POST' });
+          alert(`OK — ${r.detail}`);
+          loadCoverage();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          addNotesBtn.disabled = false;
+          addNotesBtn.textContent = orig;
+        }
+      });
+    }
+
     // Full wipe + reindex. Two confirmation prompts because the
     // operation is destructive — we'd rather make the operator
     // explicitly type-through twice than recover from a misclick on
@@ -11652,8 +11691,9 @@
         const confirm1 = confirm(
           'BORRAR todos los embeddings existentes y regenerarlos ' +
           'desde cero con el modelo actual (voyage-4-large)?\n\n' +
-          '• Vacía la tabla article_chunk completa (PDF, abstract y resumen IA).\n' +
-          '• Re-indexa TODAS las fuentes disponibles por artículo.\n' +
+          '• Vacía la tabla article_chunk completa (PDF, abstract, resumen IA Y notas).\n' +
+          '• Re-indexa TODAS las fuentes disponibles por artículo, pero las notas ' +
+            'flotantes NO se reindexan automáticamente — usa "+ Añadir notas" después.\n' +
           '• Usa esto al cambiar de modelo (ej. Voyage-4 → Voyage-5).\n' +
           '• Durante el reindex la búsqueda IA devuelve "sin ' +
             'resultados" para los artículos aún no procesados.\n' +

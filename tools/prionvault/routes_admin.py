@@ -88,6 +88,19 @@ def api_embeddings_coverage():
                 "SELECT count(DISTINCT article_id) FROM article_chunk "
                 "WHERE source_field = 'summary_ai'"
             )).scalar() or 0
+            # Notes: counted per (article, user) pair since each user's
+            # notes on an article are indexed as their own private chunk
+            # set (see services/article_notes.py).
+            notes_available = conn.execute(_t(
+                """SELECT count(DISTINCT (article_id, user_id))
+                     FROM prionvault_article_note
+                    WHERE trim(coalesce(body, '')) <> ''"""
+            )).scalar() or 0
+            notes_indexed = conn.execute(_t(
+                """SELECT count(DISTINCT (article_id, owner_user_id))
+                     FROM article_chunk
+                    WHERE source_field = 'notes' AND owner_user_id IS NOT NULL"""
+            )).scalar() or 0
     except Exception as exc:
         return jsonify({"error": str(exc)[:300]}), 500
     return jsonify({
@@ -95,6 +108,7 @@ def api_embeddings_coverage():
         "pdf":      {"available": total,        "indexed": pdf_indexed},
         "abstract": {"available": abstracts_available, "indexed": abstract_indexed},
         "summary":  {"available": summaries_available, "indexed": summary_indexed},
+        "notes":    {"available": notes_available, "indexed": notes_indexed},
     })
 
 
@@ -244,6 +258,61 @@ def api_embeddings_add_abstracts():
     threading.Thread(target=_run, name="pv-add-abstracts", daemon=True).start()
     return jsonify({"ok": True, "queued": total,
                     "detail": f"Indexing abstracts for {total} articles in background."})
+
+
+@prionvault_bp.route("/api/admin/embeddings/add-notes", methods=["GET", "POST"])
+@admin_required
+def api_embeddings_add_notes():
+    """GET: how many (article, user) note sets aren't indexed yet.
+    POST: index every existing sticky note that predates the notes-in-
+    AI-search feature — one-time backfill, new notes reindex themselves
+    automatically on save (see services/article_notes.py)."""
+    from .services.article_notes import _reindex_notes_sync
+    from sqlalchemy import text as _t
+    from database.config import db as _db
+
+    try:
+        with _db.engine.connect() as conn:
+            pairs = conn.execute(_t(
+                """
+                SELECT DISTINCT n.article_id::text, n.user_id::text
+                  FROM prionvault_article_note n
+                 WHERE trim(coalesce(n.body, '')) <> ''
+                   AND NOT EXISTS (
+                       SELECT 1 FROM article_chunk c
+                        WHERE c.article_id = n.article_id
+                          AND c.source_field = 'notes'
+                          AND c.owner_user_id = n.user_id
+                   )
+                """
+            )).all()
+    except Exception as exc:
+        return jsonify({"error": "query_failed", "detail": str(exc)[:300]}), 500
+
+    total = len(pairs)
+    if request.method == "GET":
+        return jsonify({"pending": total})
+    if total == 0:
+        return jsonify({"ok": True, "queued": 0,
+                        "detail": "Every note set is already indexed."})
+
+    import threading
+
+    def _run():
+        ok = fail = 0
+        for aid, uid in pairs:
+            try:
+                _reindex_notes_sync(aid, uid)
+                ok += 1
+            except Exception as exc:
+                logger.warning("add-notes: (article=%s user=%s) failed: %s",
+                               aid, uid, exc)
+                fail += 1
+        logger.info("add-notes backfill finished: %d ok, %d failed", ok, fail)
+
+    threading.Thread(target=_run, name="pv-add-notes", daemon=True).start()
+    return jsonify({"ok": True, "queued": total,
+                    "detail": f"Indexing notes for {total} (article, user) pairs in background."})
 
 
 @prionvault_bp.route("/api/admin/embeddings/add-summaries", methods=["GET", "POST"])
@@ -1078,7 +1147,7 @@ def api_semantic_search():
                         "detail": f"Valid: {sorted(PROVIDERS)}"}), 400
 
     try:
-        result = ask(query, top_k=top_k, provider=provider)
+        result = ask(query, top_k=top_k, provider=provider, viewer_id=_viewer_id())
     except ProviderNotConfigured as exc:
         return jsonify({"error": "ai_unavailable",
                         "detail": str(exc)}), 503

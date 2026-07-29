@@ -92,13 +92,36 @@ def _embedding_to_pgvector_literal(vec: List[float]) -> str:
     return "[" + ",".join(f"{x:.7f}" for x in vec) + "]"
 
 
+def clear_source(article_id, source_field: str, *,
+                 owner_user_id: Optional[str] = None) -> int:
+    """Delete every chunk for (article, source[, owner]) without writing
+    replacements. Used when a source becomes empty (e.g. a user deletes
+    their last note on an article) — index_article_source() only
+    replaces chunks when there IS text, so an emptied source needs this
+    explicit cleanup or the stale chunks would keep matching searches."""
+    eng = _get_engine()
+    with eng.begin() as conn:
+        res = conn.execute(sql_text(
+            "DELETE FROM article_chunk "
+            " WHERE article_id = :aid AND source_field = :src "
+            "   AND owner_user_id IS NOT DISTINCT FROM :owner"
+        ), {"aid": str(article_id), "src": source_field, "owner": owner_user_id})
+        return res.rowcount or 0
+
+
 def _persist_one_source(article_id, source_field: str,
-                        source_text: str) -> tuple[int, int, int, float, Optional[str]]:
+                        source_text: str, *,
+                        owner_user_id: Optional[str] = None,
+                        ) -> tuple[int, int, int, float, Optional[str]]:
     """Chunk → embed → DELETE+INSERT for a single (article, source).
     Returns (chunks_total, chunks_written, tokens, cost_usd, error)
     so the multi-source caller can aggregate stats. Errors are
     strings, not exceptions, so a half-failed multi-source run can
-    still persist what worked."""
+    still persist what worked.
+
+    `owner_user_id` scopes the chunk set to one user (used for sticky
+    notes, which are private) — None means "shared", visible to every
+    viewer, which is what every other source uses."""
     chunks: List[Chunk] = chunk_text(source_text)
     if not chunks:
         return (0, 0, 0, 0.0, f"empty_after_chunking ({source_field})")
@@ -124,8 +147,9 @@ def _persist_one_source(article_id, source_field: str,
     with eng.begin() as conn:
         conn.execute(sql_text(
             "DELETE FROM article_chunk "
-            " WHERE article_id = :aid AND source_field = :src"
-        ), {"aid": str(article_id), "src": source_field})
+            " WHERE article_id = :aid AND source_field = :src "
+            "   AND owner_user_id IS NOT DISTINCT FROM :owner"
+        ), {"aid": str(article_id), "src": source_field, "owner": owner_user_id})
 
         rows = []
         for c, vec in zip(chunks, embed_result.embeddings):
@@ -136,13 +160,24 @@ def _persist_one_source(article_id, source_field: str,
                 "text":  c.text,
                 "tok":   c.tokens,
                 "vec":   _embedding_to_pgvector_literal(vec),
+                "owner": owner_user_id,
             })
+        # The unique index (and hence the valid ON CONFLICT target)
+        # differs depending on whether this is a shared or owned chunk
+        # set — see migration 073.
+        conflict_clause = (
+            "ON CONFLICT (article_id, chunk_index, source_field, owner_user_id) "
+            "WHERE owner_user_id IS NOT NULL"
+            if owner_user_id is not None else
+            "ON CONFLICT (article_id, chunk_index, source_field) "
+            "WHERE owner_user_id IS NULL"
+        )
         conn.execute(sql_text(
-            """INSERT INTO article_chunk
+            f"""INSERT INTO article_chunk
                  (article_id, chunk_index, source_field, chunk_text, tokens,
-                  embedding, created_at)
-               VALUES (:aid, :idx, :src, :text, :tok, (:vec)::vector, NOW())
-               ON CONFLICT (article_id, chunk_index, source_field)
+                  embedding, owner_user_id, created_at)
+               VALUES (:aid, :idx, :src, :text, :tok, (:vec)::vector, :owner, NOW())
+               {conflict_clause}
                DO UPDATE SET
                    chunk_text = EXCLUDED.chunk_text,
                    tokens     = EXCLUDED.tokens,
@@ -240,10 +275,13 @@ def index_article(*, article_id, title, extracted_text=None,
 
 
 def index_article_source(*, article_id, source_field: str,
-                         source_text: str, title: str = "") -> IndexResult:
+                         source_text: str, title: str = "",
+                         owner_user_id: Optional[str] = None) -> IndexResult:
     """Chunk + embed + persist a single source for an article without
     touching any other source_field chunks. Used by the 'add abstracts'
-    batch to backfill abstract chunks alongside existing PDF chunks."""
+    batch to backfill abstract chunks alongside existing PDF chunks, and
+    by the sticky-notes reindex to keep a user's private note content
+    searchable only to that same user (see `owner_user_id`)."""
     start = time.monotonic()
     if not source_text or not source_text.strip():
         return IndexResult(
@@ -251,7 +289,8 @@ def index_article_source(*, article_id, source_field: str,
             tokens=0, cost_usd=0.0,
             elapsed_ms=0, used_source=source_field, error="no_text_available",
         )
-    ct, cw, tk, cu, err = _persist_one_source(article_id, source_field, source_text)
+    ct, cw, tk, cu, err = _persist_one_source(
+        article_id, source_field, source_text, owner_user_id=owner_user_id)
     return IndexResult(
         article_id=str(article_id),
         chunks_total=ct, chunks_written=cw,

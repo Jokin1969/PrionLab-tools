@@ -101,7 +101,7 @@ def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
     with eng.connect() as conn:
         row = conn.execute(sql_text(
             """SELECT embedding::text FROM article_chunk
-               WHERE article_id = :aid
+               WHERE article_id = :aid AND owner_user_id IS NULL
                ORDER BY (source_field = 'extracted_text') DESC,
                         chunk_index ASC
                LIMIT 1"""
@@ -111,7 +111,9 @@ def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
         vec_literal = row[0]
 
         # Over-fetch chunks so the per-article dedup leaves us with
-        # enough distinct papers to return `limit` rows.
+        # enough distinct papers to return `limit` rows. Private-note
+        # chunks are excluded here — "similar articles" is not scoped
+        # to a viewer, so it must never match on someone's personal note.
         candidate_k = max(limit * 8, 60)
         rows = conn.execute(sql_text(
             """SELECT c.article_id,
@@ -121,7 +123,7 @@ def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
                       (a.dropbox_path IS NOT NULL) AS has_pdf
                FROM article_chunk c
                JOIN articles a ON a.id = c.article_id
-               WHERE c.article_id != :aid
+               WHERE c.article_id != :aid AND c.owner_user_id IS NULL
                ORDER BY c.embedding <=> (:vec)::vector ASC
                LIMIT :k"""
         ), {"vec": vec_literal, "aid": str(article_id),
@@ -158,7 +160,8 @@ def search(query: str, *, top_k: int = 20,
            per_article_cap: int = 3,
            rerank: bool = True,
            hybrid: bool = True,
-           candidate_k: Optional[int] = None) -> RetrievalResult:
+           candidate_k: Optional[int] = None,
+           viewer_id: Optional[str] = None) -> RetrievalResult:
     """Run a semantic search. Returns chunks + grouped articles.
 
     `per_article_cap` limits how many chunks of the same article appear in
@@ -175,6 +178,12 @@ def search(query: str, *, top_k: int = 20,
     candidate pool against the query and the final top_k is taken from
     the re-ranked order. If VOYAGE_API_KEY is not set the rerank step is
     skipped gracefully and the function falls back to the fused order.
+
+    `viewer_id`: sticky-note chunks (article_chunk.owner_user_id IS NOT
+    NULL) are private — only ever matched when they belong to this
+    viewer. Every other source (PDF text, abstract, AI summary) has
+    owner_user_id NULL and is visible to everyone, unaffected by this
+    param. Pass None (default) to see shared sources only.
     """
     query = (query or "").strip()
     if not query:
@@ -230,9 +239,10 @@ def search(query: str, *, top_k: int = 20,
                    (a.dropbox_path IS NOT NULL) AS has_pdf
                FROM article_chunk c
                JOIN articles a ON a.id = c.article_id
+               WHERE c.owner_user_id IS NULL OR c.owner_user_id = :viewer_id
                ORDER BY c.embedding <=> (:qvec)::vector ASC
                LIMIT :k"""
-        ), {"qvec": vec_literal, "k": candidate_k}).all()
+        ), {"qvec": vec_literal, "k": candidate_k, "viewer_id": viewer_id}).all()
 
         # ── Lexical (BM25-style) leg of the hybrid retrieval ────────────
         bm25_rows = []
@@ -254,9 +264,11 @@ def search(query: str, *, top_k: int = 20,
                        FROM article_chunk c
                        JOIN articles a ON a.id = c.article_id
                        WHERE c.chunk_search_vector @@ plainto_tsquery('simple', :q)
+                         AND (c.owner_user_id IS NULL OR c.owner_user_id = :viewer_id)
                        ORDER BY rank DESC
                        LIMIT :k"""
-                ), {"q": expanded_for_bm25, "k": candidate_k}).all()
+                ), {"q": expanded_for_bm25, "k": candidate_k,
+                    "viewer_id": viewer_id}).all()
                 hybrid_active = True
             except Exception as exc:
                 # Column or index missing (migration 006 not applied yet?).
