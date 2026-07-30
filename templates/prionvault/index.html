@@ -500,9 +500,9 @@
                carries its own pv-admin-only instead) specifically so
                this one can live inside "Entrada de artículos" while
                staying visible to everyone. -->
-          <button class="pv-nav-btn" id="btn-add-jc"
-                  title="Busca un artículo ya existente en la biblioteca y añádele una presentación de Journal Club.">
-            <span><i class="fas fa-chalkboard-teacher" style="width:13px;margin-right:6px;opacity:0.7;"></i>Añadir Journal clubs</span>
+          <button class="pv-nav-btn" id="btn-manage-jc"
+                  title="Añade presentaciones, busca en el historial completo y genera informes de Journal Club.">
+            <span><i class="fas fa-chalkboard-teacher" style="width:13px;margin-right:6px;opacity:0.7;"></i>Gestión de Journal clubs</span>
           </button>
         </div>
       </details>
@@ -1635,6 +1635,77 @@
       <button id="pv-jc-upload-confirm" type="button" disabled
               style="padding:7px 18px;border-radius:7px;border:none;background:#be185d;color:#fff;
                      font-size:12.5px;font-weight:600;cursor:not-allowed;opacity:0.5;">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Journal Club — management modal (full history, search, report) ── -->
+<div id="pv-jc-manage-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:1180px;width:94vw;height:88vh;display:flex;flex-direction:column;overflow-y:hidden;">
+    <button class="pv-modal-close" id="pv-jc-manage-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;flex-shrink:0;">
+      <i class="fas fa-chalkboard-teacher" style="color:#be185d;margin-right:8px;"></i>Gestión de Journal clubs
+    </h2>
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0;flex-shrink:0;">
+      <button id="pv-jc-manage-add-btn" type="button"
+              style="padding:8px 14px;border-radius:8px;border:none;background:#be185d;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-plus" style="margin-right:5px;"></i>Añadir nuevo JC
+      </button>
+      <button id="pv-jc-manage-report-btn" type="button"
+              style="padding:8px 14px;border-radius:8px;border:1px solid #be185d;background:#fff;
+                     color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-file-pdf" style="margin-right:5px;"></i>Generar informe
+      </button>
+      <div style="flex:1;min-width:220px;position:relative;">
+        <i class="fas fa-magnifying-glass" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px;"></i>
+        <input id="pv-jc-manage-search" type="text" placeholder="Buscar por artículo, responsable o año…"
+               style="width:100%;box-sizing:border-box;padding:8px 12px 8px 30px;border:1px solid #d1d5db;
+                      border-radius:8px;font-size:13px;">
+      </div>
+      <span id="pv-jc-manage-count" style="font-size:11.5px;color:#9ca3af;white-space:nowrap;"></span>
+    </div>
+
+    <!-- Report options panel — hidden until "Generar informe" is clicked -->
+    <div id="pv-jc-manage-report-panel" style="display:none;background:#fdf2f8;border:1px solid #fce7f3;
+                border-radius:8px;padding:10px 12px;margin-bottom:10px;flex-shrink:0;">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:#374151;">
+        <div>
+          <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;margin-bottom:4px;">Orden</div>
+          <label style="margin-right:10px;"><input type="radio" name="pv-jc-report-group" value="year_presenter" checked> Año → Responsable</label>
+          <label><input type="radio" name="pv-jc-report-group" value="presenter_year"> Responsable → Año</label>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;margin-bottom:4px;">Alcance</div>
+          <select id="pv-jc-report-scope" style="padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+            <option value="">Informe completo</option>
+          </select>
+        </div>
+        <button id="pv-jc-report-download" type="button"
+                style="padding:7px 14px;border-radius:7px;border:none;background:#be185d;color:#fff;
+                       font-size:12.5px;font-weight:600;cursor:pointer;align-self:flex-end;">
+          <i class="fas fa-download" style="margin-right:5px;"></i>Descargar PDF
+        </button>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;border:1px solid #f3f4f6;border-radius:8px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead style="position:sticky;top:0;background:#fdf2f8;z-index:1;">
+          <tr>
+            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Fecha</th>
+            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Responsable</th>
+            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Artículo</th>
+            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Revista / Año</th>
+            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Archivos</th>
+          </tr>
+        </thead>
+        <tbody id="pv-jc-manage-tbody">
+          <tr><td colspan="5" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>

@@ -143,6 +143,53 @@ def list_for_article(article_id) -> List[dict]:
     } for p in pres_rows]
 
 
+def list_all() -> List[dict]:
+    """Every JC presentation in the system, each carrying its parent
+    article's usual fields — powers the management modal's full listing
+    (client-side search/grouping/report) and the PDF report. The
+    dataset is bounded by how many presentations actually exist (a
+    lab's JC history, not the article library), so one unpaginated
+    query is fine."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        pres_rows = conn.execute(sql_text(
+            """SELECT jp.id, jp.article_id, jp.presented_at, jp.presenter_name,
+                      jp.presenter_id, jp.created_at, jp.created_by,
+                      a.title, a.authors, a.journal, a.year, a.doi, a.pubmed_id
+                 FROM prionvault_jc_presentation jp
+                 JOIN articles a ON a.id = jp.article_id
+                ORDER BY jp.presented_at DESC, jp.created_at DESC"""
+        )).mappings().all()
+        if not pres_rows:
+            return []
+        pres_ids = [r["id"] for r in pres_rows]
+        file_rows = conn.execute(sql_text(
+            """SELECT id, presentation_id, filename, kind
+               FROM prionvault_jc_file
+               WHERE presentation_id = ANY(CAST(:pids AS uuid[]))
+               ORDER BY uploaded_at ASC"""
+        ), {"pids": [str(x) for x in pres_ids]}).mappings().all()
+
+    files_by_pres: dict = {}
+    for f in file_rows:
+        files_by_pres.setdefault(str(f["presentation_id"]), []).append({
+            "id": str(f["id"]), "filename": f["filename"], "kind": f["kind"],
+        })
+    return [{
+        "id":             str(p["id"]),
+        "article_id":     str(p["article_id"]),
+        "presented_at":   p["presented_at"].isoformat() if p["presented_at"] else None,
+        "presenter_name": p["presenter_name"],
+        "article_title":  p["title"],
+        "article_authors": p["authors"],
+        "article_journal": p["journal"],
+        "article_year":   p["year"],
+        "article_doi":    p["doi"],
+        "article_pmid":   p["pubmed_id"],
+        "files":          files_by_pres.get(str(p["id"]), []),
+    } for p in pres_rows]
+
+
 def create(*, article_id, presented_at: _date,
            presenter_name: str, presenter_id=None,
            created_by=None) -> dict:
@@ -599,6 +646,113 @@ def bulk_import(presenter_name: str, *, created_by=None,
         "errors": errors,
         "tagged_article_ids": sorted(tagged_article_ids),
     }
+
+
+def _html_escape(s) -> str:
+    if s is None:
+        return ""
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+                  .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def render_report_pdf(*, group_by: str = "year_presenter",
+                       scope: Optional[str] = None,
+                       scope_value: Optional[str] = None) -> bytes:
+    """Build the full Journal Club report as a PDF (via WeasyPrint).
+
+    group_by: "year_presenter" (año → responsable) or "presenter_year"
+              (responsable → año) — controls the two-level grouping.
+    scope / scope_value: None for the complete report, or
+              scope="year" with scope_value="2023", or
+              scope="presenter" with scope_value="Carlos Díaz" to
+              restrict it to one year / one presenter.
+    """
+    items = list_all()
+    if scope == "year" and scope_value:
+        items = [x for x in items if str(x.get("article_year") or "") == str(scope_value)]
+    elif scope == "presenter" and scope_value:
+        items = [x for x in items if (x.get("presenter_name") or "").strip().lower()
+                 == scope_value.strip().lower()]
+
+    def _year_of(x):
+        return x.get("article_year") or "Sin año"
+
+    def _presenter_of(x):
+        return x.get("presenter_name") or "Sin responsable"
+
+    outer_key, inner_key = ((_year_of, _presenter_of) if group_by == "year_presenter"
+                             else (_presenter_of, _year_of))
+
+    groups: dict = {}
+    for x in items:
+        groups.setdefault(outer_key(x), {}).setdefault(inner_key(x), []).append(x)
+
+    def _sort_outer(k):
+        # Years sort numerically descending; presenter names alphabetically.
+        try:
+            return (0, -int(k))
+        except (TypeError, ValueError):
+            return (1, str(k))
+
+    parts = []
+    for outer in sorted(groups.keys(), key=_sort_outer):
+        parts.append(f'<h2>{_html_escape(outer)}</h2>')
+        inner_groups = groups[outer]
+        for inner in sorted(inner_groups.keys(), key=_sort_outer):
+            parts.append(f'<h3>{_html_escape(inner)}</h3>')
+            parts.append('<table class="jc-table"><thead><tr>'
+                         '<th>Fecha</th><th>Artículo</th><th>Autores</th>'
+                         '<th>Revista</th><th>Año</th><th>DOI / PMID</th>'
+                         '</tr></thead><tbody>')
+            rows = sorted(inner_groups[inner], key=lambda x: x.get("presented_at") or "")
+            for x in rows:
+                ident = x.get("article_doi") or x.get("article_pmid") or "—"
+                parts.append(
+                    '<tr>'
+                    f'<td>{_html_escape(x.get("presented_at") or "—")}</td>'
+                    f'<td>{_html_escape(x.get("article_title") or "(sin título)")}</td>'
+                    f'<td>{_html_escape(x.get("article_authors") or "—")}</td>'
+                    f'<td>{_html_escape(x.get("article_journal") or "—")}</td>'
+                    f'<td>{_html_escape(x.get("article_year") or "—")}</td>'
+                    f'<td>{_html_escape(ident)}</td>'
+                    '</tr>'
+                )
+            parts.append('</tbody></table>')
+
+    scope_label = ""
+    if scope == "year" and scope_value:
+        scope_label = f" — Año {scope_value}"
+    elif scope == "presenter" and scope_value:
+        scope_label = f" — {scope_value}"
+
+    html = f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Informe Journal Club</title>
+<style>
+  @page {{ size: A4 landscape; margin: 1.5cm; }}
+  body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2937; font-size: 10pt; }}
+  h1 {{ font-size: 18pt; margin-bottom: 2pt; color: #831843; }}
+  .subtitle {{ font-size: 10pt; color: #6b7280; margin-bottom: 18pt; }}
+  h2 {{ font-size: 14pt; color: #be185d; border-bottom: 2px solid #fce7f3; padding-bottom: 3pt; margin-top: 20pt; }}
+  h3 {{ font-size: 11.5pt; color: #831843; margin-top: 10pt; margin-bottom: 4pt; }}
+  table.jc-table {{ width: 100%; border-collapse: collapse; margin-bottom: 10pt; }}
+  table.jc-table th {{ text-align: left; font-size: 8.5pt; text-transform: uppercase;
+    letter-spacing: 0.03em; color: #6b7280; border-bottom: 1px solid #d1d5db; padding: 4pt 6pt; }}
+  table.jc-table td {{ font-size: 9pt; padding: 4pt 6pt; border-bottom: 1px solid #f3f4f6; vertical-align: top; }}
+  table.jc-table tr:nth-child(even) td {{ background: #fdf2f8; }}
+</style></head>
+<body>
+  <h1>Informe de Journal Club</h1>
+  <div class="subtitle">
+    PrionVault{_html_escape(scope_label)} ·
+    {len(items)} presentación(es) ·
+    Agrupado por {'año → responsable' if group_by == 'year_presenter' else 'responsable → año'}
+  </div>
+  {''.join(parts) if parts else '<p>No hay presentaciones que mostrar.</p>'}
+</body></html>"""
+
+    import weasyprint
+    return weasyprint.HTML(string=html).write_pdf()
 
 
 # ── Background job wrapper for bulk_import ──────────────────────────────────

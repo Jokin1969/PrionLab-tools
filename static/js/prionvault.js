@@ -2959,16 +2959,22 @@
                      title="Buscar abstract en CrossRef / PubMed"
                      style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;border:none;cursor:pointer;">⬇ Abstract</button>`
           : '',
-      a.has_jc
-        ? `<button type="button" class="pv-row-jc-btn" data-aid="${esc(a.id)}"
-                title="${a.jc_presenters
-                    ? esc(`Presentado por ${a.jc_presenters} en Journal Club — clic para abrir el documento`)
-                    : (a.jc_count > 1
-                        ? esc(a.jc_count + ' presentaciones en Journal Club — clic para abrir el documento')
-                        : 'Presentado en Journal Club — clic para abrir el documento')}"
-                style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;
-                       background:#fce7f3;color:#be185d;border:none;cursor:pointer;">JC${a.jc_count > 1 ? ' ' + a.jc_count : ''}</button>`
-        : '',
+      // Always shown, even with no presentation yet (grey) — clicking a
+      // grey one jumps straight into "add presentation" for THIS article
+      // (no need to search for it, we already know it); clicking a
+      // green one (has_jc) opens the existing document(s) as before.
+      `<button type="button" class="pv-row-jc-btn" data-aid="${esc(a.id)}" data-has-jc="${a.has_jc ? '1' : '0'}"
+              title="${a.has_jc
+                  ? (a.jc_presenters
+                      ? esc(`Presentado por ${a.jc_presenters} en Journal Club — clic para abrir el documento`)
+                      : (a.jc_count > 1
+                          ? esc(a.jc_count + ' presentaciones en Journal Club — clic para abrir el documento')
+                          : 'Presentado en Journal Club — clic para abrir el documento'))
+                  : 'Sin presentación de Journal Club — clic para añadir una'}"
+              style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;
+                     border:none;cursor:pointer;${a.has_jc
+                       ? 'background:#14532d;color:#fef08a;'
+                       : 'background:#f3f4f6;color:#9ca3af;'}">JC${a.has_jc && a.jc_count > 1 ? ' ' + a.jc_count : ''}</button>`,
       (a.prionpacks && a.prionpacks.length)
         ? `<a href="/prionpacks/index?open=${esc(a.prionpacks[0].id)}"
               target="_blank" rel="noopener"
@@ -3370,6 +3376,12 @@
       const jcRowBtn = row.querySelector('.pv-row-jc-btn');
       if (jcRowBtn) jcRowBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        if (jcRowBtn.dataset.hasJc !== '1') {
+          // No presentation yet — skip the article search step entirely,
+          // we already know which article this is.
+          PVJcUpload.open(a, () => loadArticles());
+          return;
+        }
         jcRowBtn.disabled = true;
         try {
           const r = await api(`/articles/${a.id}/jc`);
@@ -5503,8 +5515,144 @@
     return { open };
   })();
 
-  function wireJcFindButton() {
-    document.getElementById('btn-add-jc')?.addEventListener('click', () => PVJcFind.open());
+  // ── Journal Club — management modal (full history, search, report) ─────
+  const PVJcManage = (() => {
+    let _wired = false;
+    let _items = [];   // flat list from /jc/all, each a {presentation + article} row
+
+    function fmtDate(iso) {
+      if (!iso) return '(sin fecha)';
+      return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    function rowHtml(x) {
+      const ident = [x.article_doi ? `DOI: ${esc(x.article_doi)}` : '',
+                     x.article_pmid ? `PMID: ${esc(x.article_pmid)}` : ''].filter(Boolean).join(' · ');
+      const files = (x.files || []).map(f =>
+        `<button type="button" class="pv-jc-manage-file" data-fid="${esc(f.id)}"
+                 title="Abrir ${esc(f.filename)}"
+                 style="display:inline-flex;padding:2px 7px;margin:1px 3px 1px 0;border-radius:5px;
+                        border:1px solid #e5e7eb;background:#fff;color:#be185d;font-size:10.5px;
+                        font-weight:600;cursor:pointer;">
+           <i class="fas fa-file" style="margin-right:4px;"></i>${esc(f.filename)}
+         </button>`).join('') || '<span style="color:#d1d5db;">—</span>';
+      return `
+        <tr data-pid="${esc(x.id)}" style="border-bottom:1px solid #f9fafb;cursor:pointer;">
+          <td style="padding:7px 10px;white-space:nowrap;color:#374151;">${esc(fmtDate(x.presented_at))}</td>
+          <td style="padding:7px 10px;color:#374151;font-weight:600;">${esc(x.presenter_name || '—')}</td>
+          <td style="padding:7px 10px;color:#111827;max-width:360px;">
+            ${esc(x.article_title || '(sin título)')}
+            ${x.article_authors ? `<div style="font-size:11px;color:#9ca3af;">${esc(x.article_authors)}</div>` : ''}
+            ${ident ? `<div style="font-size:10.5px;color:#9ca3af;">${ident}</div>` : ''}
+          </td>
+          <td style="padding:7px 10px;color:#6b7280;white-space:nowrap;">${esc(x.article_journal || '—')} ${x.article_year ? `(${esc(x.article_year)})` : ''}</td>
+          <td style="padding:7px 10px;">${files}</td>
+        </tr>`;
+    }
+
+    function render(list) {
+      const tbody = document.getElementById('pv-jc-manage-tbody');
+      const count = document.getElementById('pv-jc-manage-count');
+      count.textContent = `${list.length} de ${_items.length} presentación(es)`;
+      tbody.innerHTML = list.length
+        ? list.map(rowHtml).join('')
+        : '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9ca3af;">Sin resultados.</td></tr>';
+      tbody.querySelectorAll('tr[data-pid]').forEach(tr => {
+        tr.addEventListener('click', (e) => {
+          if (e.target.closest('.pv-jc-manage-file')) return;
+          const x = _items.find(i => i.id === tr.dataset.pid);
+          if (x) { close(); openDetail(x.article_id); }
+        });
+      });
+      tbody.querySelectorAll('.pv-jc-manage-file').forEach(b => {
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.open(API + `/jc/files/${b.dataset.fid}/view`, '_blank', 'noopener');
+        });
+      });
+    }
+
+    function applySearch() {
+      const q = (document.getElementById('pv-jc-manage-search').value || '').trim().toLowerCase();
+      if (!q) { render(_items); return; }
+      const terms = q.split(/\s+/);
+      const filtered = _items.filter(x => {
+        const hay = [x.presenter_name, x.article_title, x.article_authors,
+                     x.article_journal, x.article_year, x.article_doi, x.article_pmid]
+          .filter(Boolean).join(' ').toLowerCase();
+        return terms.every(t => hay.includes(t));
+      });
+      render(filtered);
+    }
+
+    function populateScopeOptions() {
+      const sel = document.getElementById('pv-jc-report-scope');
+      const years = [...new Set(_items.map(x => x.article_year).filter(Boolean))].sort((a, b) => b - a);
+      const presenters = [...new Set(_items.map(x => x.presenter_name).filter(Boolean))].sort();
+      sel.innerHTML = '<option value="">Informe completo</option>' +
+        (years.length ? `<optgroup label="Por año">${years.map(y =>
+          `<option value="year:${esc(y)}">Año ${esc(y)}</option>`).join('')}</optgroup>` : '') +
+        (presenters.length ? `<optgroup label="Por responsable">${presenters.map(p =>
+          `<option value="presenter:${esc(p)}">${esc(p)}</option>`).join('')}</optgroup>` : '');
+    }
+
+    async function load() {
+      const tbody = document.getElementById('pv-jc-manage-tbody');
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>';
+      try {
+        const data = await api('/jc/all');
+        _items = data.items || [];
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;text-align:center;color:#b91c1c;">Error: ${esc(e.message)}</td></tr>`;
+        return;
+      }
+      populateScopeOptions();
+      applySearch();
+    }
+
+    function close() {
+      document.getElementById('pv-jc-manage-modal').style.display = 'none';
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      const modal = document.getElementById('pv-jc-manage-modal');
+      document.getElementById('pv-jc-manage-close')?.addEventListener('click', close);
+      modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+      document.getElementById('pv-jc-manage-search')?.addEventListener('input', applySearch);
+      document.getElementById('pv-jc-manage-add-btn')?.addEventListener('click', () => {
+        close();
+        PVJcFind.open();
+      });
+      document.getElementById('pv-jc-manage-report-btn')?.addEventListener('click', () => {
+        const panel = document.getElementById('pv-jc-manage-report-panel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      });
+      document.getElementById('pv-jc-report-download')?.addEventListener('click', () => {
+        const groupBy = modal.querySelector('input[name="pv-jc-report-group"]:checked')?.value || 'year_presenter';
+        const scopeRaw = document.getElementById('pv-jc-report-scope').value;
+        const params = new URLSearchParams({ group_by: groupBy });
+        if (scopeRaw) {
+          const [scope, ...rest] = scopeRaw.split(':');
+          params.set('scope', scope);
+          params.set('scope_value', rest.join(':'));
+        }
+        window.open(API + '/jc/report?' + params.toString(), '_blank', 'noopener');
+      });
+    }
+
+    function open() {
+      wireOnce();
+      document.getElementById('pv-jc-manage-modal').style.display = 'flex';
+      load();
+    }
+
+    return { open, reload: load };
+  })();
+
+  function wireJcManageButton() {
+    document.getElementById('btn-manage-jc')?.addEventListener('click', () => PVJcManage.open());
   }
 
   function addJcFilesViaPicker(a, presentationId) {
@@ -8526,7 +8674,7 @@
       wireImport();
       wireQueue();
       wireAddByDoi();
-      wireJcFindButton();
+      wireJcManageButton();
       wireEditModal();
       wireBatchImport();
       wireScanFolder();

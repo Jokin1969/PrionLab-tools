@@ -3951,6 +3951,46 @@ def api_jc_find_article():
     return jsonify({"found": True, "matched_by": reason, "article": dict(row)})
 
 
+@prionvault_bp.route("/api/jc/all", methods=["GET"])
+@login_required
+def api_jc_all():
+    """Every JC presentation in the system with its article's fields —
+    powers the 'Gestión de Journal clubs' modal's full listing (client-
+    side search) and its PDF report generator."""
+    from .services import jc as _jc
+    try:
+        return jsonify({"items": _jc.list_all()})
+    except Exception as exc:
+        logger.exception("jc list_all failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+
+
+@prionvault_bp.route("/api/jc/report", methods=["GET"])
+@login_required
+def api_jc_report():
+    """Downloadable PDF report of the JC history, grouped/scoped per
+    query params: group_by=year_presenter|presenter_year (default
+    year_presenter), scope=year|presenter with scope_value=<the year
+    or presenter name> to restrict it, or no scope for the complete
+    report."""
+    from .services import jc as _jc
+    group_by = request.args.get("group_by", "year_presenter")
+    if group_by not in ("year_presenter", "presenter_year"):
+        return jsonify({"error": "invalid_group_by"}), 400
+    scope = request.args.get("scope") or None
+    scope_value = request.args.get("scope_value") or None
+    if scope not in (None, "year", "presenter"):
+        return jsonify({"error": "invalid_scope"}), 400
+    try:
+        pdf_bytes = _jc.render_report_pdf(group_by=group_by, scope=scope, scope_value=scope_value)
+    except Exception as exc:
+        logger.exception("jc report generation failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    return Response(pdf_bytes, mimetype="application/pdf", headers={
+        "Content-Disposition": 'attachment; filename="journal_club_report.pdf"',
+    })
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/jc", methods=["GET"])
 @login_required
 def api_jc_list(aid):
