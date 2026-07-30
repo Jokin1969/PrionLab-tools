@@ -802,51 +802,82 @@ def render_report_pdf(*, group_by: str = "year_presenter",
 
 
 # ── Background job wrapper for bulk_import ──────────────────────────────────
-# Mirrors services/batch_index.py's design: a single guarded background
-# thread + an in-memory status snapshot polled by the frontend. A run of
-# ~250 folders (Dropbox listing + one PDF download each) comfortably
-# exceeds a normal request timeout, so this can't run inline in the route.
-_bulk_state = {
-    "running":       False,
-    "presenter_name": None,
-    "started_at":    None,
-    "finished_at":   None,
-    "done":          0,
-    "total":         0,
-    "result":        None,
-    "error":         None,
-}
-_bulk_lock = threading.Lock()
+# Status is persisted to the shared `admin_background_job` table (see
+# migrations/069_admin_background_jobs.sql) rather than kept in an
+# in-process dict: gunicorn runs multiple worker processes (--workers 2),
+# and a status-poll request can land on a different worker than the one
+# that started the background thread — which would never see an
+# in-memory-only registry, silently showing no report at all. A single
+# fixed job id is enough since only one JC bulk import is meant to run
+# at a time; `stage` doubles as the "done/total" progress counter and
+# `filename` as the presenter name, reusing the generic columns rather
+# than adding JC-specific ones.
+_BULK_JOB_ID = "jc_bulk_import"
 _bulk_thread: Optional[threading.Thread] = None
 
 
+def _bulk_job_row() -> Optional[dict]:
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text(
+            """SELECT status, stage, filename, result, error, started_at, finished_at
+                 FROM admin_background_job WHERE id = :id"""
+        ), {"id": _BULK_JOB_ID}).mappings().first()
+    return dict(row) if row else None
+
+
 def get_bulk_import_status() -> dict:
-    with _bulk_lock:
-        return dict(_bulk_state)
+    row = _bulk_job_row()
+    if not row:
+        return {"running": False, "presenter_name": None, "started_at": None,
+                "finished_at": None, "done": 0, "total": 0, "result": None, "error": None}
+    done, total = 0, 0
+    if row.get("stage") and "/" in row["stage"]:
+        try:
+            done, total = (int(x) for x in row["stage"].split("/", 1))
+        except ValueError:
+            pass
+    return {
+        "running":        row["status"] == "running",
+        "presenter_name": row.get("filename"),
+        "started_at":     row["started_at"].isoformat() if row.get("started_at") else None,
+        "finished_at":    row["finished_at"].isoformat() if row.get("finished_at") else None,
+        "done":           done,
+        "total":          total,
+        "result":         row.get("result"),
+        "error":          row.get("error"),
+    }
 
 
 def start_bulk_import(presenter_name: str, *, created_by=None) -> Optional[dict]:
     global _bulk_thread
-    with _bulk_lock:
-        if _bulk_state["running"]:
+    eng = _get_engine()
+    with eng.begin() as conn:
+        existing = conn.execute(sql_text(
+            "SELECT status FROM admin_background_job WHERE id = :id"
+        ), {"id": _BULK_JOB_ID}).first()
+        if existing and existing[0] == "running":
             return None
-        _bulk_state.update({
-            "running":        True,
-            "presenter_name": presenter_name,
-            "started_at":     _datetime.utcnow().isoformat(),
-            "finished_at":    None,
-            "done":           0,
-            "total":          0,
-            "result":         None,
-            "error":          None,
-        })
+        conn.execute(sql_text(
+            """INSERT INTO admin_background_job
+                   (id, kind, status, stage, filename, result, error, started_at, finished_at)
+               VALUES (:id, 'jc_bulk_import', 'running', '0/0', :pname, NULL, NULL, NOW(), NULL)
+               ON CONFLICT (id) DO UPDATE SET
+                   status = 'running', stage = '0/0', filename = :pname,
+                   result = NULL, error = NULL, started_at = NOW(), finished_at = NULL"""
+        ), {"id": _BULK_JOB_ID, "pname": presenter_name})
 
     def _progress(done, total):
-        with _bulk_lock:
-            _bulk_state["done"] = done
-            _bulk_state["total"] = total
+        try:
+            with eng.begin() as conn:
+                conn.execute(sql_text(
+                    "UPDATE admin_background_job SET stage = :stage WHERE id = :id"
+                ), {"id": _BULK_JOB_ID, "stage": f"{done}/{total}"})
+        except Exception:
+            logger.exception("jc bulk_import: progress update failed")
 
     def _run():
+        import json as _json
         try:
             result = bulk_import(presenter_name, created_by=created_by, on_progress=_progress)
             for aid in result.get("tagged_article_ids", []):
@@ -854,16 +885,20 @@ def start_bulk_import(presenter_name: str, *, created_by=None) -> Optional[dict]
                     tag_journal_club_ok(aid, created_by)
                 except Exception:
                     logger.exception("jc bulk_import: failed to tag %s", aid)
-            with _bulk_lock:
-                _bulk_state["result"] = result
+            with eng.begin() as conn:
+                conn.execute(sql_text(
+                    """UPDATE admin_background_job
+                       SET status = 'done', result = :result, finished_at = NOW()
+                       WHERE id = :id"""
+                ), {"id": _BULK_JOB_ID, "result": _json.dumps(result)})
         except Exception as exc:
             logger.exception("jc bulk_import failed for %s", presenter_name)
-            with _bulk_lock:
-                _bulk_state["error"] = str(exc)[:500]
-        finally:
-            with _bulk_lock:
-                _bulk_state["running"] = False
-                _bulk_state["finished_at"] = _datetime.utcnow().isoformat()
+            with eng.begin() as conn:
+                conn.execute(sql_text(
+                    """UPDATE admin_background_job
+                       SET status = 'error', error = :error, finished_at = NOW()
+                       WHERE id = :id"""
+                ), {"id": _BULK_JOB_ID, "error": str(exc)[:500]})
 
     _bulk_thread = threading.Thread(target=_run, name="prionvault-jc-bulk-import", daemon=True)
     _bulk_thread.start()
