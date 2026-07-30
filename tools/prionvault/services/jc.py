@@ -706,7 +706,14 @@ def render_report_pdf(*, group_by: str = "year_presenter",
                          '</tr></thead><tbody>')
             rows = sorted(inner_groups[inner], key=lambda x: x.get("presented_at") or "")
             for x in rows:
-                ident = x.get("article_doi") or x.get("article_pmid") or "—"
+                if x.get("article_doi"):
+                    doi = _html_escape(x["article_doi"])
+                    ident = f'<a href="https://doi.org/{doi}">DOI: {doi}</a>'
+                elif x.get("article_pmid"):
+                    pmid = _html_escape(x["article_pmid"])
+                    ident = f'<a href="https://pubmed.ncbi.nlm.nih.gov/{pmid}/">PMID: {pmid}</a>'
+                else:
+                    ident = "—"
                 parts.append(
                     '<tr>'
                     f'<td>{_html_escape(x.get("presented_at") or "—")}</td>'
@@ -714,7 +721,7 @@ def render_report_pdf(*, group_by: str = "year_presenter",
                     f'<td>{_html_escape(x.get("article_authors") or "—")}</td>'
                     f'<td>{_html_escape(x.get("article_journal") or "—")}</td>'
                     f'<td>{_html_escape(x.get("article_year") or "—")}</td>'
-                    f'<td>{_html_escape(ident)}</td>'
+                    f'<td>{ident}</td>'
                     '</tr>'
                 )
             parts.append('</tbody></table>')

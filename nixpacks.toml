@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python312", "python312Packages.pip", "tesseract", "ghostscript", "qpdf", "libreoffice-fresh"]
+nixPkgs = ["nodejs_20", "python312", "python312Packages.pip", "tesseract", "ghostscript", "qpdf", "libreoffice-fresh", "pango", "cairo", "gdk-pixbuf", "glib", "harfbuzz", "fontconfig"]
 
 [phases.install]
 cmds = [

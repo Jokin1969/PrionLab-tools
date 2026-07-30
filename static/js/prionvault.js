@@ -5518,7 +5518,11 @@
   // ── Journal Club — management modal (full history, search, report) ─────
   const PVJcManage = (() => {
     let _wired = false;
-    let _items = [];   // flat list from /jc/all, each a {presentation + article} row
+    let _items = [];        // flat list from /jc/all, each a {presentation + article} row
+    let _filtered = [];     // current search result, pre-sort
+    let _searchOr = false;  // AND (default) vs OR between search terms
+    let _sortKey = 'date';  // 'date' | 'presenter'
+    let _sortAsc = false;   // newest / Z-first by default
 
     function fmtDate(iso) {
       if (!iso) return '(sin fecha)';
@@ -5526,40 +5530,81 @@
     }
 
     function rowHtml(x) {
-      const ident = [x.article_doi ? `DOI: ${esc(x.article_doi)}` : '',
-                     x.article_pmid ? `PMID: ${esc(x.article_pmid)}` : ''].filter(Boolean).join(' · ');
-      const files = (x.files || []).map(f =>
-        `<button type="button" class="pv-jc-manage-file" data-fid="${esc(f.id)}"
-                 title="Abrir ${esc(f.filename)}"
-                 style="display:inline-flex;padding:2px 7px;margin:1px 3px 1px 0;border-radius:5px;
-                        border:1px solid #e5e7eb;background:#fff;color:#be185d;font-size:10.5px;
-                        font-weight:600;cursor:pointer;">
-           <i class="fas fa-file" style="margin-right:4px;"></i>${esc(f.filename)}
-         </button>`).join('') || '<span style="color:#d1d5db;">—</span>';
+      const idLinks = [
+        x.article_doi ? `<a href="https://doi.org/${encodeURIComponent(x.article_doi)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:#1d4ed8;text-decoration:none;">DOI: ${esc(x.article_doi)}</a>` : '',
+        x.article_pmid ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(x.article_pmid)}/" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:#1d4ed8;text-decoration:none;">PMID: ${esc(x.article_pmid)}</a>` : '',
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      const files = (x.files || []).map(f => {
+        const icon = JC_FILE_ICONS[f.kind] || JC_FILE_ICONS.other;
+        const color = JC_FILE_COLORS[f.kind] || JC_FILE_COLORS.other;
+        return `<button type="button" class="pv-jc-manage-file" data-fid="${esc(f.id)}"
+                 title="${esc(f.filename)}"
+                 style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;
+                        margin:1px 4px 1px 0;border-radius:7px;border:1px solid #e5e7eb;background:#fff;
+                        color:${color};font-size:16px;cursor:pointer;">
+           <i class="fas ${icon}"></i>
+         </button>`;
+      }).join('') || '<span style="color:#d1d5db;">—</span>';
       return `
         <tr data-pid="${esc(x.id)}" style="border-bottom:1px solid #f9fafb;cursor:pointer;">
-          <td style="padding:7px 10px;white-space:nowrap;color:#374151;">${esc(fmtDate(x.presented_at))}</td>
-          <td style="padding:7px 10px;color:#374151;font-weight:600;">${esc(x.presenter_name || '—')}</td>
-          <td style="padding:7px 10px;color:#111827;max-width:360px;">
-            ${esc(x.article_title || '(sin título)')}
-            ${x.article_authors ? `<div style="font-size:11px;color:#9ca3af;">${esc(x.article_authors)}</div>` : ''}
-            ${ident ? `<div style="font-size:10.5px;color:#9ca3af;">${ident}</div>` : ''}
+          <td style="padding:7px 10px;white-space:nowrap;color:#374151;overflow:hidden;text-overflow:ellipsis;">${esc(fmtDate(x.presented_at))}</td>
+          <td style="padding:7px 10px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.presenter_name || '—')}</td>
+          <td style="padding:7px 10px;color:#111827;overflow:hidden;">
+            <div style="font-size:13.5px;font-weight:600;color:#111827;line-height:1.35;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(x.article_title || '(sin título)')}</div>
+            <div style="margin-top:1px;font-size:11.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${x.article_authors ? esc(x.article_authors) : ''}${x.article_journal
+                ? ` <span style="color:#a21caf;font-weight:600;">· ${esc(x.article_journal)}${x.article_year ? ` (${esc(x.article_year)})` : ''}</span>`
+                : ''}
+            </div>
+            ${idLinks ? `<div style="margin-top:1px;font-size:11px;">${idLinks}</div>` : ''}
           </td>
-          <td style="padding:7px 10px;color:#6b7280;white-space:nowrap;">${esc(x.article_journal || '—')} ${x.article_year ? `(${esc(x.article_year)})` : ''}</td>
-          <td style="padding:7px 10px;">${files}</td>
+          <td style="padding:7px 10px;white-space:nowrap;overflow:hidden;">${files}</td>
         </tr>`;
     }
 
-    function render(list) {
+    function sortIcon(key) {
+      if (_sortKey !== key) return 'fa-sort';
+      return _sortAsc ? 'fa-sort-up' : 'fa-sort-down';
+    }
+
+    function updateSortHeaders() {
+      document.querySelectorAll('.pv-jc-manage-sortable').forEach(th => {
+        const icon = th.querySelector('i');
+        if (icon) icon.className = `fas ${sortIcon(th.dataset.sort)}`;
+        icon && (icon.style.opacity = (_sortKey === th.dataset.sort) ? '1' : '0.4');
+      });
+    }
+
+    function sortedList(list) {
+      const sorted = [...list];
+      sorted.sort((a, b) => {
+        let av, bv;
+        if (_sortKey === 'presenter') {
+          av = (a.presenter_name || '').toLowerCase();
+          bv = (b.presenter_name || '').toLowerCase();
+        } else {
+          av = a.presented_at || '';
+          bv = b.presented_at || '';
+        }
+        const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        return _sortAsc ? cmp : -cmp;
+      });
+      return sorted;
+    }
+
+    function render() {
       const tbody = document.getElementById('pv-jc-manage-tbody');
       const count = document.getElementById('pv-jc-manage-count');
+      const list = sortedList(_filtered);
       count.textContent = `${list.length} de ${_items.length} presentación(es)`;
+      updateSortHeaders();
       tbody.innerHTML = list.length
         ? list.map(rowHtml).join('')
-        : '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9ca3af;">Sin resultados.</td></tr>';
+        : '<tr><td colspan="4" style="padding:20px;text-align:center;color:#9ca3af;">Sin resultados.</td></tr>';
       tbody.querySelectorAll('tr[data-pid]').forEach(tr => {
         tr.addEventListener('click', (e) => {
-          if (e.target.closest('.pv-jc-manage-file')) return;
+          if (e.target.closest('.pv-jc-manage-file') || e.target.closest('a')) return;
           const x = _items.find(i => i.id === tr.dataset.pid);
           if (x) { close(); openDetail(x.article_id); }
         });
@@ -5574,15 +5619,15 @@
 
     function applySearch() {
       const q = (document.getElementById('pv-jc-manage-search').value || '').trim().toLowerCase();
-      if (!q) { render(_items); return; }
-      const terms = q.split(/\s+/);
-      const filtered = _items.filter(x => {
+      if (!q) { _filtered = _items; render(); return; }
+      const terms = q.split(/\s+/).filter(Boolean);
+      _filtered = _items.filter(x => {
         const hay = [x.presenter_name, x.article_title, x.article_authors,
                      x.article_journal, x.article_year, x.article_doi, x.article_pmid]
           .filter(Boolean).join(' ').toLowerCase();
-        return terms.every(t => hay.includes(t));
+        return _searchOr ? terms.some(t => hay.includes(t)) : terms.every(t => hay.includes(t));
       });
-      render(filtered);
+      render();
     }
 
     function populateScopeOptions() {
@@ -5598,12 +5643,12 @@
 
     async function load() {
       const tbody = document.getElementById('pv-jc-manage-tbody');
-      tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>';
       try {
         const data = await api('/jc/all');
         _items = data.items || [];
       } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;text-align:center;color:#b91c1c;">Error: ${esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:#b91c1c;">Error: ${esc(e.message)}</td></tr>`;
         return;
       }
       populateScopeOptions();
@@ -5621,6 +5666,21 @@
       document.getElementById('pv-jc-manage-close')?.addEventListener('click', close);
       modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
       document.getElementById('pv-jc-manage-search')?.addEventListener('input', applySearch);
+      document.getElementById('pv-jc-manage-search-or')?.addEventListener('click', (e) => {
+        _searchOr = !_searchOr;
+        e.target.style.background = _searchOr ? '#be185d' : '#fff';
+        e.target.style.color = _searchOr ? '#fff' : '#9ca3af';
+        e.target.style.borderColor = _searchOr ? '#be185d' : '#d1d5db';
+        applySearch();
+      });
+      document.querySelectorAll('.pv-jc-manage-sortable').forEach(th => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.sort;
+          if (_sortKey === key) { _sortAsc = !_sortAsc; }
+          else { _sortKey = key; _sortAsc = false; }
+          render();
+        });
+      });
       document.getElementById('pv-jc-manage-add-btn')?.addEventListener('click', () => {
         close();
         PVJcFind.open();

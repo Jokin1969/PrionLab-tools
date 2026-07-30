@@ -1661,9 +1661,13 @@
       </button>
       <div style="flex:1;min-width:220px;position:relative;">
         <i class="fas fa-magnifying-glass" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px;"></i>
-        <input id="pv-jc-manage-search" type="text" placeholder="Buscar por artículo, responsable o año…"
-               style="width:100%;box-sizing:border-box;padding:8px 12px 8px 30px;border:1px solid #d1d5db;
+        <input id="pv-jc-manage-search" type="text" placeholder="Buscar por artículo, responsable o año… (varias palabras = Y, activa OR para O)"
+               style="width:100%;box-sizing:border-box;padding:8px 74px 8px 30px;border:1px solid #d1d5db;
                       border-radius:8px;font-size:13px;">
+        <button id="pv-jc-manage-search-or" type="button" title="Si está activo, busca artículos que coincidan con CUALQUIERA de las palabras (OR) en vez de con todas (Y)"
+                style="position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:3px 9px;
+                       border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#9ca3af;
+                       font-size:11px;font-weight:700;cursor:pointer;">OR</button>
       </div>
       <span id="pv-jc-manage-count" style="font-size:11.5px;color:#9ca3af;white-space:nowrap;"></span>
     </div>
@@ -1691,19 +1695,27 @@
       </div>
     </div>
 
-    <div style="flex:1;min-height:0;overflow-y:auto;border:1px solid #f3f4f6;border-radius:8px;">
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+    <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;border:1px solid #f3f4f6;border-radius:8px;">
+      <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12.5px;">
+        <colgroup>
+          <col style="width:11%;"><col style="width:15%;"><col style="width:54%;"><col style="width:20%;">
+        </colgroup>
         <thead style="position:sticky;top:0;background:#fdf2f8;z-index:1;">
           <tr>
-            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Fecha</th>
-            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Responsable</th>
+            <th data-sort="date" class="pv-jc-manage-sortable"
+                style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;cursor:pointer;user-select:none;">
+              Fecha <i class="fas fa-sort" style="opacity:0.4;font-size:9px;"></i>
+            </th>
+            <th data-sort="presenter" class="pv-jc-manage-sortable"
+                style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;cursor:pointer;user-select:none;">
+              Responsable <i class="fas fa-sort" style="opacity:0.4;font-size:9px;"></i>
+            </th>
             <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Artículo</th>
-            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Revista / Año</th>
-            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Archivos</th>
+            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Archivo</th>
           </tr>
         </thead>
         <tbody id="pv-jc-manage-tbody">
-          <tr><td colspan="5" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>
+          <tr><td colspan="4" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>
         </tbody>
       </table>
     </div>
