@@ -4807,25 +4807,32 @@
         ? new Date(p.presented_at).toLocaleDateString('es-ES',
             { day: '2-digit', month: 'short', year: 'numeric' })
         : '(sin fecha)';
-      const fileChips = (p.files || []).map(f => {
-        const icon  = JC_FILE_ICONS[f.kind] || JC_FILE_ICONS.other;
-        const color = JC_FILE_COLORS[f.kind] || JC_FILE_COLORS.other;
-        return `
-          <button type="button" class="pv-jc-file" data-fid="${esc(f.id)}"
-                  title="Abrir ${esc(f.filename)} en una pestaña nueva"
-                  style="display:inline-flex;align-items:center;gap:5px;
-                         padding:3px 9px;border-radius:6px;border:1px solid #e5e7eb;
-                         background:white;color:${color};font-size:11.5px;font-weight:600;
-                         cursor:pointer;margin-right:5px;margin-top:4px;">
-            <i class="fas ${icon}"></i>
-            ${esc(f.filename)}
-          </button>`;
-      }).join('');
       // Show edit / delete for the user who created the presentation,
       // and for admins (who can curate). Other readers see the row
       // but no action buttons — matches the server-side _ensure_can_modify
       // rule on PATCH and DELETE.
       const canEdit = IS_ADMIN || (p.created_by && p.created_by === USER_ID);
+      const fileChips = (p.files || []).map(f => {
+        const icon  = JC_FILE_ICONS[f.kind] || JC_FILE_ICONS.other;
+        const color = JC_FILE_COLORS[f.kind] || JC_FILE_COLORS.other;
+        return `
+          <span style="display:inline-flex;align-items:center;border-radius:6px;
+                       border:1px solid #e5e7eb;background:white;margin-right:5px;margin-top:4px;overflow:hidden;">
+            <button type="button" class="pv-jc-file" data-fid="${esc(f.id)}"
+                    title="Abrir ${esc(f.filename)} en una pestaña nueva"
+                    style="display:inline-flex;align-items:center;gap:5px;border:none;background:none;
+                           padding:3px 9px;color:${color};font-size:11.5px;font-weight:600;cursor:pointer;">
+              <i class="fas ${icon}"></i>
+              ${esc(f.filename)}
+            </button>${canEdit ? `
+            <button type="button" class="pv-jc-file-delete" data-fid="${esc(f.id)}" data-filename="${esc(f.filename)}"
+                    title="Eliminar este fichero (también se borra de Dropbox)"
+                    style="border:none;border-left:1px solid #e5e7eb;background:none;
+                           padding:3px 7px;color:#b91c1c;font-size:11px;cursor:pointer;">
+              <i class="fas fa-xmark"></i>
+            </button>` : ''}
+          </span>`;
+      }).join('');
       const adminActions = canEdit ? `
         <div style="display:flex;gap:4px;flex-shrink:0;">
           <button type="button" class="pv-jc-add-file" data-pid="${esc(p.id)}"
@@ -4874,7 +4881,19 @@
         window.open(API + `/jc/files/${b.dataset.fid}/view`, '_blank', 'noopener');
       }));
 
-    if (!IS_ADMIN) return;
+    // No IS_ADMIN gate here: canEdit (render time, above) already governs
+    // whether these buttons exist in the DOM at all — a non-admin creator
+    // gets them too, so querySelectorAll naturally finds nothing for
+    // anyone else instead of needing a second, redundant check here.
+    list.querySelectorAll('.pv-jc-file-delete').forEach(b =>
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`¿Eliminar «${b.dataset.filename}»? También se borra de Dropbox si ningún otro Journal Club lo usa.`)) return;
+        try {
+          await api(`/jc/files/${b.dataset.fid}`, { method: 'DELETE' });
+          renderJcSection(a);
+        } catch (e) { alert('Error: ' + e.message); }
+      }));
 
     list.querySelectorAll('.pv-jc-delete').forEach(b =>
       b.addEventListener('click', async () => {
