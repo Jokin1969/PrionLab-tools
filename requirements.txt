@@ -10,6 +10,7 @@ openpyxl>=3.1
 requests>=2.31
 python-docx>=1.1
 weasyprint>=61.0
+reportlab>=4.2
 apscheduler>=3.10
 
 # Database dependencies

@@ -658,7 +658,15 @@ def _html_escape(s) -> str:
 def render_report_pdf(*, group_by: str = "year_presenter",
                        scope: Optional[str] = None,
                        scope_value: Optional[str] = None) -> bytes:
-    """Build the full Journal Club report as a PDF (via WeasyPrint).
+    """Build the full Journal Club report as a PDF via ReportLab.
+
+    Deliberately NOT WeasyPrint: it needs Pango/Cairo/GLib/HarfBuzz as
+    native shared libraries, which repeatedly failed to resolve at
+    runtime on Railway's nixpacks image (OSError: cannot load library
+    'libgobject-2.0-0') even after adding the corresponding nixPkgs —
+    nixpacks doesn't reliably put every declared package's lib output
+    on the dynamic linker's search path. ReportLab is pure Python
+    (no native deps at all), so it sidesteps the problem entirely.
 
     group_by: "year_presenter" (año → responsable) or "presenter_year"
               (responsable → año) — controls the two-level grouping.
@@ -667,6 +675,14 @@ def render_report_pdf(*, group_by: str = "year_presenter",
               scope="presenter" with scope_value="Carlos Díaz" to
               restrict it to one year / one presenter.
     """
+    from io import BytesIO
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                     Table, TableStyle)
+
     items = list_all()
     if scope == "year" and scope_value:
         items = [x for x in items if str(x.get("article_year") or "") == str(scope_value)]
@@ -694,37 +710,25 @@ def render_report_pdf(*, group_by: str = "year_presenter",
         except (TypeError, ValueError):
             return (1, str(k))
 
-    parts = []
-    for outer in sorted(groups.keys(), key=_sort_outer):
-        parts.append(f'<h2>{_html_escape(outer)}</h2>')
-        inner_groups = groups[outer]
-        for inner in sorted(inner_groups.keys(), key=_sort_outer):
-            parts.append(f'<h3>{_html_escape(inner)}</h3>')
-            parts.append('<table class="jc-table"><thead><tr>'
-                         '<th>Fecha</th><th>Artículo</th><th>Autores</th>'
-                         '<th>Revista</th><th>Año</th><th>DOI / PMID</th>'
-                         '</tr></thead><tbody>')
-            rows = sorted(inner_groups[inner], key=lambda x: x.get("presented_at") or "")
-            for x in rows:
-                if x.get("article_doi"):
-                    doi = _html_escape(x["article_doi"])
-                    ident = f'<a href="https://doi.org/{doi}">DOI: {doi}</a>'
-                elif x.get("article_pmid"):
-                    pmid = _html_escape(x["article_pmid"])
-                    ident = f'<a href="https://pubmed.ncbi.nlm.nih.gov/{pmid}/">PMID: {pmid}</a>'
-                else:
-                    ident = "—"
-                parts.append(
-                    '<tr>'
-                    f'<td>{_html_escape(x.get("presented_at") or "—")}</td>'
-                    f'<td>{_html_escape(x.get("article_title") or "(sin título)")}</td>'
-                    f'<td>{_html_escape(x.get("article_authors") or "—")}</td>'
-                    f'<td>{_html_escape(x.get("article_journal") or "—")}</td>'
-                    f'<td>{_html_escape(x.get("article_year") or "—")}</td>'
-                    f'<td>{ident}</td>'
-                    '</tr>'
-                )
-            parts.append('</tbody></table>')
+    def _xml_escape(s) -> str:
+        # ReportLab Paragraphs use a small XML-like markup, not raw HTML —
+        # angle brackets/ampersands must be escaped the same way, but we
+        # also feed it deliberate <link> tags below, so escape only the
+        # dynamic bits, never the markup we build ourselves.
+        return _html_escape(s)
+
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("jc_h1", parent=styles["Title"], fontSize=18,
+                         textColor=colors.HexColor("#831843"), spaceAfter=2)
+    subtitle = ParagraphStyle("jc_subtitle", parent=styles["Normal"], fontSize=10,
+                               textColor=colors.HexColor("#6b7280"), spaceAfter=16)
+    h2 = ParagraphStyle("jc_h2", parent=styles["Heading2"], fontSize=14,
+                         textColor=colors.HexColor("#be185d"), spaceBefore=16, spaceAfter=4)
+    h3 = ParagraphStyle("jc_h3", parent=styles["Heading3"], fontSize=11.5,
+                         textColor=colors.HexColor("#831843"), spaceBefore=8, spaceAfter=3)
+    cell = ParagraphStyle("jc_cell", parent=styles["Normal"], fontSize=9, leading=11)
+    empty = ParagraphStyle("jc_empty", parent=styles["Normal"], fontSize=11,
+                            textColor=colors.HexColor("#9ca3af"))
 
     scope_label = ""
     if scope == "year" and scope_value:
@@ -732,34 +736,69 @@ def render_report_pdf(*, group_by: str = "year_presenter",
     elif scope == "presenter" and scope_value:
         scope_label = f" — {scope_value}"
 
-    html = f"""<!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8">
-<title>Informe Journal Club</title>
-<style>
-  @page {{ size: A4 landscape; margin: 1.5cm; }}
-  body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2937; font-size: 10pt; }}
-  h1 {{ font-size: 18pt; margin-bottom: 2pt; color: #831843; }}
-  .subtitle {{ font-size: 10pt; color: #6b7280; margin-bottom: 18pt; }}
-  h2 {{ font-size: 14pt; color: #be185d; border-bottom: 2px solid #fce7f3; padding-bottom: 3pt; margin-top: 20pt; }}
-  h3 {{ font-size: 11.5pt; color: #831843; margin-top: 10pt; margin-bottom: 4pt; }}
-  table.jc-table {{ width: 100%; border-collapse: collapse; margin-bottom: 10pt; }}
-  table.jc-table th {{ text-align: left; font-size: 8.5pt; text-transform: uppercase;
-    letter-spacing: 0.03em; color: #6b7280; border-bottom: 1px solid #d1d5db; padding: 4pt 6pt; }}
-  table.jc-table td {{ font-size: 9pt; padding: 4pt 6pt; border-bottom: 1px solid #f3f4f6; vertical-align: top; }}
-  table.jc-table tr:nth-child(even) td {{ background: #fdf2f8; }}
-</style></head>
-<body>
-  <h1>Informe de Journal Club</h1>
-  <div class="subtitle">
-    PrionVault{_html_escape(scope_label)} ·
-    {len(items)} presentación(es) ·
-    Agrupado por {'año → responsable' if group_by == 'year_presenter' else 'responsable → año'}
-  </div>
-  {''.join(parts) if parts else '<p>No hay presentaciones que mostrar.</p>'}
-</body></html>"""
+    story = [
+        Paragraph("Informe de Journal Club", h1),
+        Paragraph(
+            f"PrionVault{_xml_escape(scope_label)} · {len(items)} presentación(es) · "
+            f"Agrupado por {'año &#8594; responsable' if group_by == 'year_presenter' else 'responsable &#8594; año'}",
+            subtitle,
+        ),
+    ]
 
-    import weasyprint
-    return weasyprint.HTML(string=html).write_pdf()
+    if not items:
+        story.append(Paragraph("No hay presentaciones que mostrar.", empty))
+
+    header_row = [Paragraph(t, cell) for t in
+                  ("<b>Fecha</b>", "<b>Artículo</b>", "<b>Autores</b>",
+                   "<b>Revista</b>", "<b>Año</b>", "<b>DOI / PMID</b>")]
+    col_widths = [2.1*cm, 7.5*cm, 5.5*cm, 4*cm, 1.3*cm, 4.2*cm]
+
+    for outer in sorted(groups.keys(), key=_sort_outer):
+        story.append(Paragraph(_xml_escape(outer), h2))
+        inner_groups = groups[outer]
+        for inner in sorted(inner_groups.keys(), key=_sort_outer):
+            story.append(Paragraph(_xml_escape(inner), h3))
+            rows = sorted(inner_groups[inner], key=lambda x: x.get("presented_at") or "")
+            table_data = [header_row]
+            for x in rows:
+                if x.get("article_doi"):
+                    doi = _xml_escape(x["article_doi"])
+                    ident = f'<link href="https://doi.org/{doi}" color="#1d4ed8">DOI: {doi}</link>'
+                elif x.get("article_pmid"):
+                    pmid = _xml_escape(x["article_pmid"])
+                    ident = f'<link href="https://pubmed.ncbi.nlm.nih.gov/{pmid}/" color="#1d4ed8">PMID: {pmid}</link>'
+                else:
+                    ident = "—"
+                table_data.append([
+                    Paragraph(_xml_escape(x.get("presented_at") or "—"), cell),
+                    Paragraph(_xml_escape(x.get("article_title") or "(sin título)"), cell),
+                    Paragraph(_xml_escape(x.get("article_authors") or "—"), cell),
+                    Paragraph(_xml_escape(x.get("article_journal") or "—"), cell),
+                    Paragraph(_xml_escape(x.get("article_year") or "—"), cell),
+                    Paragraph(ident, cell),
+                ])
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fdf2f8")),
+                ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#d1d5db")),
+                ("LINEBELOW", (0, 1), (-1, -1), 0.5, colors.HexColor("#f3f4f6")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fdf2f8")]),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]))
+            story.append(table)
+            story.append(Spacer(1, 8))
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                             topMargin=1.5*cm, bottomMargin=1.5*cm,
+                             leftMargin=1.5*cm, rightMargin=1.5*cm,
+                             title="Informe Journal Club")
+    doc.build(story)
+    return buf.getvalue()
 
 
 # ── Background job wrapper for bulk_import ──────────────────────────────────
