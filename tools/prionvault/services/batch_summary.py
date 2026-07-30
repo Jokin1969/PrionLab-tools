@@ -239,7 +239,7 @@ def _run_batch_inner(*, viewer_user_id=None,
                        FROM articles
                        {base_where}
                        {seen_clause}
-                       ORDER BY year DESC NULLS LAST, created_at DESC NULLS LAST
+                       ORDER BY created_at DESC NULLS LAST
                        LIMIT 1"""
                 ), base_params).first()
         except Exception as exc:
