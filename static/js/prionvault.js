@@ -17861,18 +17861,23 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
-          <h4>📖 Journal Club — visor de documentos, importación masiva y más ${NEW}</h4>
-          <p>El módulo de Journal Club ha recibido varias mejoras de golpe:</p>
+          <h4>📖 Gestión de Journal clubs — modal, informe PDF y más ${NEW}</h4>
+          <p>El enlace del menú lateral pasa a llamarse <strong>"Gestión de Journal clubs"</strong> y ahora abre un modal grande con todo el historial de JC, en vez de ir directo al buscador de artículos:</p>
           <ul>
-            <li><strong>Visor de documentos Office:</strong> los PowerPoint/Word/Excel adjuntos ya no se descargan — se abren directamente en el navegador (convertidos a PDF en el servidor la primera vez y guardados en caché para las siguientes). Si la conversión falla, se ofrece descargar el original o abrirlo con el visor de Office Online.</li>
-            <li><strong>Importación masiva desde Dropbox:</strong> si ya tenías cientos de presentaciones antiguas organizadas en Dropbox (<code>Journal clubs/&lt;responsable&gt;/yyyymmdd/</code>, con <code>Article yyyymmdd.pdf</code> + el documento de la sesión), el botón <em>"Importar carpeta completa de un responsable"</em> del modal <em>Añadir Journal Club — buscar artículo</em> las digiere todas de golpe: empareja cada PDF con su artículo en PrionVault (por DOI, PMID o contenido) y adjunta el resto de ficheros sin volver a subirlos. Al terminar, un informe indica qué se importó bien y qué carpeta no se pudo identificar (para revisarla a mano).</li>
-            <li><strong>Aviso de presentación ya existente:</strong> al añadir una nueva presentación, si el artículo ya tenía una de otro responsable, se muestra un aviso con su nombre — tú decides si continuar (crea una nueva) o usar el 📎 de la existente en su lugar.</li>
-            <li><strong>Orden por fecha:</strong> en la ficha del artículo, junto al título "JOURNAL CLUB", el botón "Fecha" invierte el orden de las presentaciones (más reciente ↔ más antigua primero).</li>
-            <li><strong>Responsable en el tooltip:</strong> el botón "JC" del listado ahora muestra en su texto emergente quién presentó el artículo, no solo que fue presentado.</li>
+            <li><strong>Listado completo y búsqueda instantánea:</strong> todas las presentaciones registradas, con buscador que filtra al instante por artículo, responsable o año — activa el botón <strong>OR</strong> junto al buscador para que baste con que coincida una palabra en vez de todas. Las columnas "Fecha" y "Responsable" se ordenan haciendo clic en su cabecera.</li>
+            <li><strong>Enlaces directos:</strong> cada fila enlaza al PDF del artículo (si lo tiene) y a su DOI/PMID, además de a los documentos de la sesión (icono grande, sin texto).</li>
+            <li><strong>Generar informe (PDF):</strong> botón que descarga un PDF con todo el historial, agrupado a elegir entre Año→Responsable o Responsable→Año, para todo o restringido a un año/responsable concreto.</li>
+            <li><strong>"Añadir nuevo JC"</strong> sigue siendo el mismo buscador de artículos de antes, ahora como una opción dentro de este modal — incluye la <strong>importación masiva desde Dropbox</strong> (carpetas <code>Journal clubs/&lt;responsable&gt;/yyyymmdd/</code> ya organizadas a mano) con su mini-informe de qué se importó bien y qué carpeta no se pudo identificar.</li>
+            <li><strong>Botón "JC" siempre visible en el listado:</strong> antes solo aparecía si el artículo ya tenía una presentación; ahora aparece siempre — gris si no tiene ninguna (clic = añadir presentación directamente para ese artículo, sin buscarlo) y verde oscuro con letra amarilla si ya tiene una o más (clic = abrir el documento, igual que antes).</li>
+            <li><strong>Borrar un archivo suelto:</strong> en la ficha del artículo, cada documento adjunto a una presentación de JC tiene ahora su propia ✕ para quitarlo (y borrarlo de Dropbox) sin tener que eliminar la presentación entera.</li>
+            <li>El resto de novedades de esta tanda (visor de Office, aviso de presentación ya existente, orden por fecha, responsable en el tooltip) se mantienen como se explicó antes — ver la pestaña <em>"Journal Club"</em> de esta ayuda para el detalle completo.</li>
           </ul>
 
           <h4>💾 Copias de seguridad (Backups) ${NEW}</h4>
           <p>Nuevo panel de <strong>Backups</strong> (acceso de administrador) accesible desde el menú lateral: crea copias de seguridad de la base de datos bajo demanda o consulta las programadas automáticamente, verifica su integridad, ajusta la frecuencia y restaura una copia si hace falta.</p>
+
+          <h4>🤖 Resumen IA por lote — orden corregido ${NEW}</h4>
+          <p>Al pulsar un número preestablecido (p. ej. "100") en el modal de <strong>Resumen IA</strong> sin seleccionar artículos concretos, ahora se procesan los <strong>últimos 100 artículos añadidos a la biblioteca</strong> que aún no tienen resumen — antes se priorizaba por año de publicación más alto, no por fecha de alta en PrionVault.</p>
 
           <h4>🏛️ Exportación Gobierno Vasco + SCImago (SJR) ${NEW}</h4>
           <p>Desde el modal <strong>Exportar referencias</strong>, el botón <em>"Formato Gobierno Vasco"</em> genera el .docx con el formato exacto de la justificación (Authors / Title / Name of journal / Volume / páginas / Year / Quality indicators). Al pulsarlo se abre un pequeño diálogo con las opciones de las <strong>etiquetas</strong> de los campos:</p>
@@ -18102,7 +18107,22 @@
           </ul>
 
           <h4>Archivos adjuntos</h4>
-          <p>Puedes adjuntar uno o varios archivos a cada entrada JC (presentaciones PPTX, PDFs complementarios, notas…). Los archivos se almacenan en Dropbox y están disponibles para todos los usuarios. El creador de la entrada y el administrador pueden añadir o eliminar adjuntos.</p>
+          <p>Puedes adjuntar uno o varios archivos a cada entrada JC (presentaciones PPTX, PDFs complementarios, notas…). Los archivos se almacenan en Dropbox y están disponibles para todos los usuarios. El creador de la entrada y el administrador pueden añadir o eliminar adjuntos, incluso uno por uno (✕ junto a cada fichero, sin tener que borrar toda la presentación).</p>
+
+          <h4>Gestión de Journal clubs — el modal grande ${NEW}</h4>
+          <p>El enlace <em>"Gestión de Journal clubs"</em> del menú lateral (antes "Añadir Journal clubs") abre un modal con tres partes:</p>
+          <ul>
+            <li><strong>Listado completo</strong> de todas las presentaciones registradas, con buscador instantáneo por artículo, responsable o año. El botón <strong>OR</strong> junto al buscador cambia el criterio de "todas las palabras deben coincidir" a "basta con que coincida una". Las columnas "Fecha" y "Responsable" se ordenan pulsando su cabecera. Cada fila enlaza directamente al PDF del artículo (si lo tiene) y a su DOI/PMID.</li>
+            <li><strong>"Añadir nuevo JC"</strong> abre el mismo buscador de artículo de siempre (con la importación masiva, ver más abajo).</li>
+            <li><strong>"Generar informe"</strong> descarga un PDF con todo el historial, agrupado a elegir entre Año→Responsable o Responsable→Año, para todo o restringido a un año o responsable concreto.</li>
+          </ul>
+
+          <h4>El botón "JC" del listado, siempre visible ${NEW}</h4>
+          <p>Antes el botón "JC" de cada fila del listado principal solo aparecía si el artículo ya tenía una presentación. Ahora aparece <strong>siempre</strong>:</p>
+          <ul>
+            <li><strong>Gris</strong> ("Sin presentación de Journal Club"): el artículo no tiene ninguna todavía. Al pulsarlo se abre directamente el modal de "añadir presentación" para ese artículo — no hace falta buscarlo, ya se sabe cuál es.</li>
+            <li><strong>Verde oscuro con letra amarilla</strong>: el artículo ya tiene una o más presentaciones. Al pulsarlo se abre el documento (o la ficha del artículo, si hay varios), igual que antes.</li>
+          </ul>
 
           <h4>Ver los documentos adjuntos ${NEW}</h4>
           <p>Al pulsar sobre un archivo adjunto se abre en una pestaña nueva, siempre <strong>dentro del navegador</strong>, nunca como descarga:</p>
@@ -18115,7 +18135,7 @@
           <p>Al pulsar "Añadir presentación" para un artículo que ya tenía una entrada de JC (de otro responsable, o del mismo en otra fecha), aparece un aviso amarillo indicando quién la presentó. No bloquea nada: tú decides si continuar (se crea una presentación adicional) o cerrar el modal y usar el 📎 de la presentación existente para sumar el archivo ahí en su lugar.</p>
 
           <h4>Importación masiva desde una carpeta de Dropbox ${NEW}</h4>
-          <p>Si ya tenías muchas presentaciones antiguas guardadas a mano en Dropbox, no hace falta subirlas una a una. Desde el menú lateral, <em>"Añadir Journal clubs"</em> abre el modal de búsqueda de artículo, que incluye la opción <strong>"Importar carpeta completa de un responsable"</strong>:</p>
+          <p>Si ya tenías muchas presentaciones antiguas guardadas a mano en Dropbox, no hace falta subirlas una a una. Desde <em>"Gestión de Journal clubs"</em> → <em>"Añadir nuevo JC"</em> se abre el modal de búsqueda de artículo, que incluye la opción <strong>"Importar carpeta completa de un responsable"</strong>:</p>
           <ul>
             <li>Espera que los archivos estén organizados como <code>PrionLab tools/Journal clubs/&lt;Responsable&gt;/&lt;yyyymmdd&gt;/</code>, con el PDF del artículo nombrado <code>Article ....pdf</code> (usado solo para identificar de qué artículo se trata) junto al documento de la sesión (p. ej. <code>JC yyyymmdd.pptx</code>).</li>
             <li>Escribe el nombre del responsable tal cual aparece la carpeta en Dropbox y pulsa "Importar". El proceso corre en segundo plano (puede tardar varios minutos si hay muchas carpetas) mostrando el progreso en vivo.</li>
