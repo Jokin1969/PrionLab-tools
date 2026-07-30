@@ -155,7 +155,8 @@ def list_all() -> List[dict]:
         pres_rows = conn.execute(sql_text(
             """SELECT jp.id, jp.article_id, jp.presented_at, jp.presenter_name,
                       jp.presenter_id, jp.created_at, jp.created_by,
-                      a.title, a.authors, a.journal, a.year, a.doi, a.pubmed_id
+                      a.title, a.authors, a.journal, a.year, a.doi, a.pubmed_id,
+                      (a.dropbox_path IS NOT NULL) AS has_pdf
                  FROM prionvault_jc_presentation jp
                  JOIN articles a ON a.id = jp.article_id
                 ORDER BY jp.presented_at DESC, jp.created_at DESC"""
@@ -186,6 +187,7 @@ def list_all() -> List[dict]:
         "article_year":   p["year"],
         "article_doi":    p["doi"],
         "article_pmid":   p["pubmed_id"],
+        "article_has_pdf": bool(p["has_pdf"]),
         "files":          files_by_pres.get(str(p["id"]), []),
     } for p in pres_rows]
 

@@ -5550,6 +5550,7 @@
 
     function rowHtml(x) {
       const idLinks = [
+        x.article_has_pdf ? `<a href="${API}/articles/${esc(x.article_id)}/pdf-view" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:#b91c1c;text-decoration:none;font-weight:600;"><i class="fas fa-file-pdf"></i> PDF</a>` : '',
         x.article_doi ? `<a href="https://doi.org/${encodeURIComponent(x.article_doi)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:#1d4ed8;text-decoration:none;">DOI: ${esc(x.article_doi)}</a>` : '',
         x.article_pmid ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(x.article_pmid)}/" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:#1d4ed8;text-decoration:none;">PMID: ${esc(x.article_pmid)}</a>` : '',
       ].filter(Boolean).join(' &nbsp;·&nbsp; ');
