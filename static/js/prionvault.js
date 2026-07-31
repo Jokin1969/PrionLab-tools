@@ -46,6 +46,8 @@
     collectionGroup: null,     // string when filtering by group
     collectionSubgroup: null,  // string when also restricted to subgroup
     hasJc: null,         // null = all, true = JC sí, false = sin JC
+    hasPdf: null,        // null = all, true = only with PDF (header icon filter)
+    hasDoi: null,        // null = all, true = only with DOI (header icon filter)
     jcPresenter: '',     // substring filter on JC presenter name
     jcYear: null,        // year of JC presentation
     hasPp: null,         // null = all, true = en algún PrionPack, false = sin pack
@@ -2576,6 +2578,8 @@
     if (state.collectionGroup)     params.set('collection_group', state.collectionGroup);
     if (state.collectionSubgroup)  params.set('collection_subgroup', state.collectionSubgroup);
     if (state.hasJc !== null)      params.set('has_jc', state.hasJc ? '1' : '0');
+    if (state.hasPdf !== null)     params.set('has_pdf', state.hasPdf ? 'true' : 'false');
+    if (state.hasDoi !== null)     params.set('has_doi', state.hasDoi ? 'true' : 'false');
     if (state.jcPresenter)         params.set('jc_presenter', state.jcPresenter);
     if (state.jcYear)              params.set('jc_year', state.jcYear);
     if (state.hasPp !== null)      params.set('has_pp', state.hasPp ? '1' : '0');
@@ -2595,6 +2599,23 @@
     params.set('page', state.page);
     params.set('size', state.size);
     return params;
+  }
+
+  // ── Mark filters, in the table's own column headers ─────────────────────
+  // Shared at module scope (not nested inside init()) so both the header
+  // click-wiring and one-off state resets elsewhere (e.g. the Library
+  // Health modal's applyHealthFilter) can resync the icons' colour.
+  const MARK_FILTER_ACTIVE_COLOR = {
+    isFlagged: '#e11d48', isMilestone: '#f59e0b', isJc: '#7c3aed',
+    isFavorite: '#e11d48', isRead: '#15803d',
+    hasPdf: '#b91c1c', hasDoi: '#3730a3', inPrionread: '#0F3460',
+  };
+  function syncMarkFilterButtons() {
+    document.querySelectorAll('.pv-mark-filter-btn').forEach(btn => {
+      const key = btn.dataset.mark;
+      const active = state[key] === true;
+      btn.style.color = active ? (MARK_FILTER_ACTIVE_COLOR[key] || '#0F3460') : '#9ca3af';
+    });
   }
 
   // Isolate the listing to show only a single article
@@ -8571,54 +8592,27 @@
       state.sort = e.target.value; state.page = 1; loadArticles();
     });
 
-    const prBtn = document.getElementById('btn-filter-prionread');
-    prBtn.addEventListener('click', () => {
-      // Cycle: null → true → false → null
-      state.inPrionread = state.inPrionread === null ? true : state.inPrionread === true ? false : null;
-      state.page = 1;
-      const labels = {
-        null:  '👥 Asignado: todos',
-        true:  '👥 Asignados ✓',
-        false: '👥 Sin asignar',
-      };
-      prBtn.textContent = labels[state.inPrionread];
-      const active = state.inPrionread !== null;
-      prBtn.style.background     = active ? '#0F3460' : 'white';
-      prBtn.style.color          = active ? 'white' : '#374151';
-      prBtn.style.borderColor    = active ? '#0F3460' : '#e5e7eb';
-      loadArticles();
-    });
-
-    function wireTriStateButton(id, stateKey, labels) {
-      const btn = document.getElementById(id);
-      if (!btn) return;
+    // ── Mark filters, moved from the toolbar strip into the table's own
+    // column headers (above "Marcas", "Links" and "Asignado") — icons
+    // matching the per-row marks, muted grey when inactive, coloured when
+    // active. Binary on/off (not the old 3-way all/yes/no cycle): click =
+    // show only articles with that mark, click again = show all. Multiple
+    // active marks combine as AND (each is its own query param, ANDed
+    // server-side) — matches the row icons 1:1 so there's nothing new to
+    // learn, and keeps the toolbar strip free for things that aren't
+    // simple booleans (color, priority, free-text search). syncMarkFilterButtons
+    // itself lives at module scope (see above buildListParams) so other
+    // spots that reset state (e.g. the Library Health modal) can resync too.
+    document.querySelectorAll('.pv-mark-filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        state[stateKey] = state[stateKey] === null ? true
-                       : state[stateKey] === true ? false : null;
+        const key = btn.dataset.mark;
+        state[key] = state[key] === true ? null : true;
         state.page = 1;
-        btn.textContent = labels[state[stateKey]];
-        const active = state[stateKey] !== null;
-        btn.style.background  = active ? '#0F3460' : 'white';
-        btn.style.color       = active ? 'white' : '#374151';
-        btn.style.borderColor = active ? '#0F3460' : '#e5e7eb';
+        syncMarkFilterButtons();
         loadArticles();
       });
-    }
-    wireTriStateButton('btn-filter-milestone', 'isMilestone', {
-      null: '★ Hito: todos', true: '★ Solo hitos', false: '★ No hitos',
     });
-    wireTriStateButton('btn-filter-flagged', 'isFlagged', {
-      null: '🚩 Bandera: todos', true: '🚩 Solo marcados', false: '🚩 Sin bandera',
-    });
-    wireTriStateButton('btn-filter-favorite', 'isFavorite', {
-      null: '❤ Favoritos: todos', true: '❤ Mis favoritos', false: '❤ No favoritos',
-    });
-    wireTriStateButton('btn-filter-read', 'isRead', {
-      null: '✓ Leídos: todos', true: '✓ Leídos por mí', false: '✓ No leídos',
-    });
-    wireTriStateButton('btn-filter-jc', 'isJc', {
-      null: '📖 Journal Club: todos', true: '📖 Mi Journal Club', false: '📖 Fuera de JC',
-    });
+    syncMarkFilterButtons();
 
     document.getElementById('filter-color').addEventListener('change', e => {
       state.colorLabel = e.target.value || null;
@@ -8830,7 +8824,7 @@
         isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
         isFavorite: null, isRead: null, isJc: null, collectionId: null, collectionGroup: null,
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
-        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '',
+        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null,
         _healthExtra: null, page: 1,
         filterSelectedOnly: true,
       });
@@ -8840,6 +8834,7 @@
       } else {
         state.selectedIds = new Set(ids);
       }
+      syncMarkFilterButtons();
       // IDs are sent via POST body in loadArticles — no server sync needed here.
       loadArticles();
     };
@@ -11332,9 +11327,10 @@
         isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
         isFavorite: null, isRead: null, isJc: null, collectionId: null, collectionGroup: null,
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
-        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', page: 1,
+        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null, page: 1,
         _healthExtra: { has_summary_ai: hasSummaryVal },
       });
+      syncMarkFilterButtons();
       loadArticles();
     };
     function statCardFilter(label, value, color, hasSummaryVal) {
@@ -16324,6 +16320,8 @@
       state.collectionId = null; state.collectionGroup = null; state.collectionSubgroup = null;
       state.hasJc = null; state.jcPresenter = ''; state.jcYear = null;
       state.hasPp = null; state.ppId = ''; state.abstractStatus = ''; state.indexedStatus = '';
+      state.hasPdf = null; state.hasDoi = null; state.isJc = null;
+      syncMarkFilterButtons();
       state.page = 1;
       // Apply health-specific params by temporarily augmenting buildListParams
       // We do this by storing them in state as _health_ properties (cleaned after fetch).
@@ -16600,7 +16598,7 @@
         isMilestone: null, colorLabel: null, priorityEq: null, extraction: null,
         isFavorite: null, isRead: null, isJc: null, collectionId: null, collectionGroup: null,
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
-        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', page: 1,
+        hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null, page: 1,
       });
 
       // Apply known filter params that map to state fields
@@ -16620,6 +16618,7 @@
       }
       state._healthExtra = Object.keys(extra).length ? extra : null;
 
+      syncMarkFilterButtons();
       loadArticles();
     };
 

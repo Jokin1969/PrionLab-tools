@@ -816,64 +816,6 @@
           </select>
         </label>
 
-        <button id="btn-filter-prionread"
-                class="pv-mobile-hide"
-                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
-                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
-                       gap:5px;transition:all 0.15s;white-space:nowrap;"
-                title="Filtrar por artículos asignados a estudiantes en PrionRead">
-          👥 Asignado: todos
-        </button>
-
-        <button id="btn-filter-milestone"
-                class="pv-mobile-hide"
-                data-state="all"
-                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
-                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
-                       gap:5px;transition:all 0.15s;white-space:nowrap;"
-                title="Filtrar por hito (milestone)">
-          ★ Hito: todos
-        </button>
-
-        <button id="btn-filter-flagged"
-                class="pv-mobile-hide"
-                data-state="all"
-                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
-                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
-                       gap:5px;transition:all 0.15s;white-space:nowrap;"
-                title="Filtrar por bandera">
-          🚩 Bandera: todos
-        </button>
-
-        <button id="btn-filter-favorite"
-                class="pv-mobile-hide"
-                data-state="all"
-                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
-                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
-                       gap:5px;transition:all 0.15s;white-space:nowrap;"
-                title="Filtrar por mis favoritos">
-          ❤ Favoritos: todos
-        </button>
-
-        <button id="btn-filter-read"
-                class="pv-mobile-hide"
-                data-state="all"
-                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
-                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
-                       gap:5px;transition:all 0.15s;white-space:nowrap;"
-                title="Filtrar por artículos leídos por mí">
-          ✓ Leídos: todos
-        </button>
-
-        <button id="btn-filter-jc"
-                class="pv-mobile-hide"
-                data-state="all"
-                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
-                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
-                       gap:5px;transition:all 0.15s;white-space:nowrap;"
-                title="Filtrar por mi Journal Club">
-          📖 Journal Club: todos
-        </button>
 
         <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Color
@@ -1082,9 +1024,27 @@
                        aria-label="Seleccionar todos los artículos visibles"
                        style="cursor:pointer;width:14px;height:14px;">
               </th>
-              <th scope="col" style="width:114px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
-                         color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
-                         border-bottom:1px solid #e5e7eb;">Marcas</th>
+              <th scope="col" style="width:132px;padding:6px 4px;text-align:center;
+                         border-bottom:1px solid #e5e7eb;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:6px;"
+                     title="Clic en un icono = mostrar solo los artículos con esa marca. Vuelve a pulsar para ver todos. Varias marcas activas a la vez = deben tener TODAS.">
+                  <button type="button" class="pv-mark-filter-btn" data-mark="isFlagged"
+                          title="Solo con bandera 🚩" style="background:none;border:none;padding:0;
+                          line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;"><i class="fas fa-flag"></i></button>
+                  <button type="button" class="pv-mark-filter-btn" data-mark="isMilestone"
+                          title="Solo hitos ★" style="background:none;border:none;padding:0;
+                          line-height:0;cursor:pointer;color:#9ca3af;font-size:14px;"><i class="fas fa-star"></i></button>
+                  <button type="button" class="pv-mark-filter-btn" data-mark="isJc"
+                          title="Solo mi Journal Club 📖" style="background:none;border:none;padding:0;
+                          line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;"><i class="fas fa-book-open"></i></button>
+                  <button type="button" class="pv-mark-filter-btn" data-mark="isFavorite"
+                          title="Solo favoritos ♥" style="background:none;border:none;padding:0;
+                          line-height:0;cursor:pointer;color:#9ca3af;font-size:14px;"><i class="fas fa-heart"></i></button>
+                  <button type="button" class="pv-mark-filter-btn" data-mark="isRead"
+                          title="Solo leídos ✓" style="background:none;border:none;padding:0;
+                          line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;font-weight:700;"><i class="fas fa-check"></i></button>
+                </div>
+              </th>
               <th scope="col" style="width:46px;padding:8px 4px;border-bottom:1px solid #e5e7eb;"></th>
               <th data-sort-col="title" class="pv-sort-th" scope="col"
                   style="padding:8px 12px;text-align:left;font-size:10.5px;font-weight:600;
@@ -1100,12 +1060,24 @@
               <th scope="col" style="width:50px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
                          color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
                          border-bottom:1px solid #e5e7eb;">Prio</th>
-              <th scope="col" style="width:100px;padding:8px 8px;text-align:left;font-size:10.5px;font-weight:600;
-                         color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
-                         border-bottom:1px solid #e5e7eb;">Links</th>
-              <th scope="col" style="width:90px;padding:8px 8px;text-align:center;font-size:10.5px;font-weight:600;
-                         color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;
-                         border-bottom:1px solid #e5e7eb;">Asignado</th>
+              <th scope="col" style="width:70px;padding:6px 4px;text-align:center;
+                         border-bottom:1px solid #e5e7eb;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;"
+                     title="Clic en un icono = mostrar solo los artículos con eso. Vuelve a pulsar para ver todos.">
+                  <button type="button" class="pv-mark-filter-btn" data-mark="hasPdf"
+                          title="Solo con PDF" style="background:none;border:none;padding:0;
+                          line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;"><i class="fas fa-file-pdf"></i></button>
+                  <button type="button" class="pv-mark-filter-btn" data-mark="hasDoi"
+                          title="Solo con DOI" style="background:none;border:none;padding:0;
+                          line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;"><i class="fas fa-link"></i></button>
+                </div>
+              </th>
+              <th scope="col" style="width:50px;padding:6px 4px;text-align:center;
+                         border-bottom:1px solid #e5e7eb;">
+                <button type="button" class="pv-mark-filter-btn" data-mark="inPrionread"
+                        title="Solo asignados en PrionRead" style="background:none;border:none;padding:0;
+                        line-height:0;cursor:pointer;color:#9ca3af;font-size:14px;"><i class="fas fa-user-graduate"></i></button>
+              </th>
             </tr>
           </thead>
           <tbody id="pv-results-tbody"></tbody>
