@@ -693,7 +693,7 @@
         <input type="text" id="pv-search-input"
                style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#111827;min-width:0;"
                placeholder="Search title, abstract, authors, journal…"
-               title='Busca en title, abstract, authors, journal.&#10;&#10;Operadores:&#10;  prion AND BSE&#10;  Castilla OR Soto&#10;  BSE -review&#10;  "prion protein"&#10;&#10;Para autor exacto usa el filtro Autores.'
+               title='Busca en title, abstract, authors, journal.&#10;&#10;Operadores:&#10;  prion AND BSE&#10;  Castilla OR Soto&#10;  BSE -review&#10;  "prion protein"&#10;&#10;Para autor exacto usa el filtro Autores.&#10;Los botones Y/O de la derecha controlan cómo se combinan varias palabras sueltas.'
                autocomplete="off" />
         <button id="pv-search-clear" type="button"
                 title="Limpiar búsqueda (Esc)"
@@ -705,6 +705,18 @@
                        transition:background 0.12s ease;"
                 onmouseover="this.style.background='#9ca3af';"
                 onmouseout="this.style.background='#d1d5db';">×</button>
+        <div id="pv-search-mode-btns"
+             style="display:flex;gap:3px;flex-shrink:0;align-items:center;"
+             title="Cómo combinar varias palabras sueltas escritas en la búsqueda.">
+          <button type="button" id="pv-search-mode-and" data-mode="and"
+                  style="padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;
+                         border:1px solid #0F3460;background:#0F3460;color:#fff;cursor:pointer;
+                         transition:background 0.12s,color 0.12s,border-color 0.12s;">Y</button>
+          <button type="button" id="pv-search-mode-or" data-mode="or"
+                  style="padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;
+                         border:1px solid #d1d5db;background:#fff;color:#9ca3af;cursor:pointer;
+                         transition:background 0.12s,color 0.12s,border-color 0.12s;">O</button>
+        </div>
         <div id="pv-search-field-btns"
              style="display:flex;gap:3px;flex-shrink:0;align-items:center;"
              title="Limitar búsqueda a campos concretos. Sin selección = busca en todos.">
@@ -724,32 +736,16 @@
                          border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
                          transition:background 0.12s,color 0.12s,border-color 0.12s;">A</button>
         </div>
-        <button id="btn-search-mode"
-                data-mode="text"
-                style="display:none;"
-                aria-hidden="true"></button>
-        <div style="display:flex;gap:5px;flex-shrink:0;align-items:center;" class="pv-mobile-hide">
-          <button class="pv-ask-btn" data-provider="anthropic" type="button"
-                  title="Pregunta a Claude Sonnet 4.6 (Anthropic)"
-                  aria-label="Preguntar a Claude Sonnet 4.6 de Anthropic"
-                  style="width:26px;height:26px;border-radius:50%;cursor:pointer;
-                         background:#CC785C;border:2px solid transparent;padding:0;
-                         transition:transform 0.12s ease, border-color 0.15s;"></button>
-          <button class="pv-ask-btn" data-provider="openai" type="button"
-                  title="Pregunta a GPT-4.1 (OpenAI)"
-                  aria-label="Preguntar a GPT-4.1 de OpenAI"
-                  style="width:26px;height:26px;border-radius:50%;cursor:pointer;
-                         background:#10A37F;border:2px solid transparent;padding:0;
-                         transition:transform 0.12s ease, border-color 0.15s;"></button>
-          <button class="pv-ask-btn" data-provider="gemini" type="button"
-                  title="Pregunta a Gemini 2.5 Pro (Google)"
-                  aria-label="Preguntar a Gemini 2.5 Pro de Google"
-                  style="width:26px;height:26px;border-radius:50%;cursor:pointer;
-                         background:linear-gradient(135deg,#4285F4 0%,#9B72CB 55%,#D96570 100%);
-                         border:2px solid transparent;padding:0;
-                         transition:transform 0.12s ease, border-color 0.15s;"></button>
         </div>
-        </div>
+        <button id="btn-ai-search" type="button"
+                title="Búsqueda con IA — pregunta a la biblioteca en lenguaje natural"
+                aria-label="Búsqueda con IA"
+                style="display:flex;align-items:center;justify-content:center;
+                       width:38px;height:38px;flex-shrink:0;border-radius:8px;border:1px solid #d1d5db;
+                       background:#fff;color:#0F3460;font-size:16px;cursor:pointer;
+                       transition:background 0.12s,border-color 0.12s;">
+          <i class="fas fa-robot"></i>
+        </button>
         <!-- Cart icon — opens PrionPacks in new tab, badge shows cart count -->
         <button id="pv-cart-btn" type="button"
                 onclick="window.open('/prionpacks','_blank')"
@@ -1722,6 +1718,65 @@
           <tr><td colspan="4" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── AI search modal — separate from the standard text search box ───── -->
+<div id="pv-ai-search-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:640px;">
+    <button class="pv-modal-close" id="pv-ai-search-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-robot" style="color:#0F3460;margin-right:8px;"></i>Búsqueda con IA
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 14px;line-height:1.5;">
+      Pregunta en lenguaje natural — la IA busca en el contenido vectorizado de la biblioteca
+      (artículos, resúmenes, notas) y responde citando las referencias usadas.
+    </p>
+
+    <textarea id="pv-ai-search-input" rows="4"
+              placeholder="Ej: ¿Qué artículos discuten la resistencia a proteasas de la proteína priónica en modelos de ratón?"
+              style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d1d5db;
+                     border-radius:10px;font-size:14.5px;line-height:1.5;resize:vertical;
+                     font-family:inherit;margin-bottom:14px;"></textarea>
+
+    <div style="font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
+                letter-spacing:0.05em;margin-bottom:8px;">Modelo de IA</div>
+    <div id="pv-ai-search-providers" style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+      <button type="button" class="pv-ai-search-provider-btn" data-provider="anthropic"
+              style="flex:1;min-width:140px;display:flex;align-items:center;gap:8px;padding:10px 12px;
+                     border-radius:10px;border:2px solid #CC785C;background:#fff7f4;color:#7c3a26;
+                     cursor:pointer;font-size:12.5px;font-weight:600;text-align:left;">
+        <span style="width:10px;height:10px;border-radius:50%;background:#CC785C;flex-shrink:0;"></span>
+        Claude Sonnet 4.6
+      </button>
+      <button type="button" class="pv-ai-search-provider-btn" data-provider="openai"
+              style="flex:1;min-width:140px;display:flex;align-items:center;gap:8px;padding:10px 12px;
+                     border-radius:10px;border:2px solid #e5e7eb;background:#fff;color:#374151;
+                     cursor:pointer;font-size:12.5px;font-weight:600;text-align:left;">
+        <span style="width:10px;height:10px;border-radius:50%;background:#10A37F;flex-shrink:0;"></span>
+        GPT-4.1
+      </button>
+      <button type="button" class="pv-ai-search-provider-btn" data-provider="gemini"
+              style="flex:1;min-width:140px;display:flex;align-items:center;gap:8px;padding:10px 12px;
+                     border-radius:10px;border:2px solid #e5e7eb;background:#fff;color:#374151;
+                     cursor:pointer;font-size:12.5px;font-weight:600;text-align:left;">
+        <span style="width:10px;height:10px;border-radius:50%;
+                     background:linear-gradient(135deg,#4285F4 0%,#9B72CB 55%,#D96570 100%);flex-shrink:0;"></span>
+        Gemini 2.5 Pro
+      </button>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+      <button id="pv-ai-search-cancel" type="button"
+              style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                     color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Cancelar</button>
+      <button id="pv-ai-search-submit" type="button"
+              style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-magnifying-glass" style="margin-right:5px;"></i>Buscar
+      </button>
     </div>
   </div>
 </div>

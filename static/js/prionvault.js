@@ -54,6 +54,7 @@
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     indexedStatus:  '',  // '' | 'yes' | 'no'
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
+    qMode:          'and',  // 'and' | 'or' — how multiple bare words in `q` combine
     page: 1,
     // Anyone who had the old "todos" (50000, now removed) stored is brought
     // back to 100 so they don't keep loading the whole catalogue every visit.
@@ -2555,6 +2556,7 @@
       params.set('ids', Array.from(state.selectedIds).join(','));
     }
     if (state.q)                   params.set('q', state.q);
+    if (state.q && state.qMode === 'or') params.set('q_mode', 'or');
     if (state.yearMin)             params.set('year_min', state.yearMin);
     if (state.yearMax)             params.set('year_max', state.yearMax);
     if (state.journal)             params.set('journal', state.journal);
@@ -8377,23 +8379,6 @@
     }
 
     const searchInput = document.getElementById('pv-search-input');
-    const searchModeBtn = document.getElementById('btn-search-mode');
-
-    function setSearchMode(mode) {
-      searchModeBtn.dataset.mode = mode;
-      if (mode === 'ai') {
-        searchModeBtn.style.background = '#0F3460';
-        searchModeBtn.style.color = 'white';
-        searchModeBtn.style.borderColor = '#0F3460';
-        searchInput.placeholder = 'Pregunta a la biblioteca en lenguaje natural (Enter para enviar)…';
-      } else {
-        searchModeBtn.style.background = 'transparent';
-        searchModeBtn.style.color = '#6b7280';
-        searchModeBtn.style.borderColor = '#d1d5db';
-        searchInput.placeholder = 'Search title, abstract, authors, journal…';
-        closeRagPanel();
-      }
-    }
 
     // Clear-search × button: visible only when the input has content,
     // clicking it wipes the box, refocuses, and triggers the same
@@ -8439,7 +8424,6 @@
 
     searchInput.addEventListener('input', e => {
       syncClearBtn();
-      if (searchModeBtn.dataset.mode === 'ai') return;  // text-only debounced search
       state.q = e.target.value.trim();
       onSearch();
     });
@@ -8447,53 +8431,78 @@
       if (e.key === 'Escape') {
         e.preventDefault();
         clearSearch();
-        return;
-      }
-      if (e.key === 'Enter' && searchModeBtn.dataset.mode === 'ai') {
-        e.preventDefault();
-        runRagSearch(searchInput.value.trim());
       }
     });
     // First paint — in case the input was restored with a value
     // (URL state, persisted filter, etc.).
     syncClearBtn();
-    searchModeBtn.addEventListener('click', () => {
-      setSearchMode(searchModeBtn.dataset.mode === 'ai' ? 'text' : 'ai');
-    });
 
-    // Three coloured AI buttons in the search bar — each sends the
-    // current input text as a question to that provider, with the
-    // selection persisted in localStorage so Enter in AI mode picks
-    // the last-used model.
-    function syncAskBtnSelection() {
-      const cur = localStorage.getItem('pv-summary-provider') || 'anthropic';
-      document.querySelectorAll('.pv-ask-btn').forEach(b => {
-        b.style.borderColor = b.dataset.provider === cur ? '#0F3460' : 'transparent';
-        b.style.boxShadow = b.dataset.provider === cur
-          ? '0 0 0 1px white inset' : 'none';
+    // ── AND / OR toggle for the standard search box ───────────────────────
+    // Controls how multiple bare words typed in pv-search-input combine
+    // (both in Postgres full-text search and the ILIKE fallback — see
+    // buildListParams' q_mode param). AND is the default and matches what
+    // a plain multi-word Google-style query implies.
+    function setSearchWordMode(mode) {
+      state.qMode = mode;
+      const andBtn = document.getElementById('pv-search-mode-and');
+      const orBtn  = document.getElementById('pv-search-mode-or');
+      [[andBtn, mode === 'and'], [orBtn, mode === 'or']].forEach(([btn, active]) => {
+        btn.style.background  = active ? '#0F3460' : '#fff';
+        btn.style.color       = active ? '#fff' : '#9ca3af';
+        btn.style.borderColor = active ? '#0F3460' : '#d1d5db';
       });
+      state.page = 1;
+      loadArticles();
     }
-    document.querySelectorAll('.pv-ask-btn').forEach(btn => {
-      btn.addEventListener('mouseenter', () => { btn.style.transform = 'scale(1.15)'; });
-      btn.addEventListener('mouseleave', () => { btn.style.transform = 'scale(1)'; });
-      btn.addEventListener('click', () => {
-        const provider = btn.dataset.provider;
-        localStorage.setItem('pv-summary-provider', provider);
-        syncAskBtnSelection();
-        // Reflect the choice in the answer panel's dropdown too.
-        const rp = document.getElementById('pv-rag-provider');
-        if (rp) rp.value = provider;
-        const text = searchInput.value.trim();
-        if (!text) {
-          searchInput.focus();
-          searchInput.placeholder = 'Escribe tu pregunta y vuelve a pulsar el botón…';
-          return;
-        }
-        setSearchMode('ai');
-        runRagSearch(text);
+    document.getElementById('pv-search-mode-and')?.addEventListener('click', () => setSearchWordMode('and'));
+    document.getElementById('pv-search-mode-or')?.addEventListener('click', () => setSearchWordMode('or'));
+
+    // ── AI search — separate modal, its own textarea + named provider
+    // buttons, kept fully apart from the standard search box above. ──────
+    const AI_PROVIDER_COLORS = { anthropic: '#CC785C', openai: '#10A37F', gemini: '#8b5cf6' };
+    function setAiSearchProvider(provider) {
+      document.querySelectorAll('.pv-ai-search-provider-btn').forEach(b => {
+        const active = b.dataset.provider === provider;
+        const color = AI_PROVIDER_COLORS[b.dataset.provider];
+        b.style.borderColor = active ? color : '#e5e7eb';
+        b.style.background = active ? color + '14' : '#fff';
       });
+      localStorage.setItem('pv-summary-provider', provider);
+    }
+    document.querySelectorAll('.pv-ai-search-provider-btn').forEach(btn => {
+      btn.addEventListener('click', () => setAiSearchProvider(btn.dataset.provider));
     });
-    syncAskBtnSelection();
+    document.getElementById('btn-ai-search')?.addEventListener('click', () => {
+      const modal = document.getElementById('pv-ai-search-modal');
+      modal.style.display = 'flex';
+      setAiSearchProvider(localStorage.getItem('pv-summary-provider') || 'anthropic');
+      setTimeout(() => document.getElementById('pv-ai-search-input')?.focus(), 50);
+    });
+    const closeAiSearchModal = () => {
+      document.getElementById('pv-ai-search-modal').style.display = 'none';
+    };
+    document.getElementById('pv-ai-search-close')?.addEventListener('click', closeAiSearchModal);
+    document.getElementById('pv-ai-search-cancel')?.addEventListener('click', closeAiSearchModal);
+    document.querySelector('#pv-ai-search-modal .pv-modal-backdrop')?.addEventListener('click', closeAiSearchModal);
+    function submitAiSearch() {
+      const text = document.getElementById('pv-ai-search-input').value.trim();
+      if (!text) {
+        document.getElementById('pv-ai-search-input').focus();
+        return;
+      }
+      const provider = localStorage.getItem('pv-summary-provider') || 'anthropic';
+      const rp = document.getElementById('pv-rag-provider');
+      if (rp) rp.value = provider;
+      closeAiSearchModal();
+      runRagSearch(text);
+    }
+    document.getElementById('pv-ai-search-submit')?.addEventListener('click', submitAiSearch);
+    document.getElementById('pv-ai-search-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        submitAiSearch();
+      }
+    });
 
     // Visual signal that an input has text — easy to miss otherwise
     // when the placeholder/value contrast is low.
@@ -8537,7 +8546,6 @@
       ragProv.value = localStorage.getItem('pv-summary-provider') || 'anthropic';
       ragProv.addEventListener('change', () => {
         localStorage.setItem('pv-summary-provider', ragProv.value);
-        syncAskBtnSelection();
       });
     }
     if (ragRerun) {
@@ -17887,6 +17895,13 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
+          <h4>🔎 Búsqueda separada de la IA, botones Y/O, y mucho más rápida ${NEW}</h4>
+          <ul>
+            <li><strong>Búsqueda con IA en su propio modal:</strong> ya no comparte campo con la búsqueda estándar. El icono 🤖 junto a la barra abre un modal con un cuadro de texto grande y los tres modelos por nombre (Claude Sonnet 4.6, GPT-4.1, Gemini 2.5 Pro) para elegir antes de preguntar.</li>
+            <li><strong>Botones Y / O en la búsqueda estándar:</strong> dentro del propio campo, controlan si varias palabras sueltas deben coincidir todas (Y, activo por defecto) o basta con que aparezca una (O).</li>
+            <li><strong>Búsqueda del listado general más rápida:</strong> se han añadido índices de PostgreSQL (trigramas) que evitan que cada búsqueda tuviera que recorrer toda la tabla de artículos — antes era la búsqueda más lenta de la aplicación en comparación con listados más pequeños como el de Journal Club.</li>
+          </ul>
+
           <h4>📖 Gestión de Journal clubs — modal, informe PDF y más ${NEW}</h4>
           <p>El enlace del menú lateral pasa a llamarse <strong>"Gestión de Journal clubs"</strong> y ahora abre un modal grande con todo el historial de JC, en vez de ir directo al buscador de artículos:</p>
           <ul>
@@ -18047,11 +18062,11 @@
       busqueda: `
         <div class="pv-help-section">
           <h3>Búsqueda y filtros</h3>
-          <h4>Barra de búsqueda</h4>
-          <p>La barra de búsqueda superior admite tres modos según el botón activo a su izquierda:</p>
+          <h4>Barra de búsqueda ${NEW}</h4>
+          <p>La búsqueda de texto y la búsqueda con IA ahora están separadas — cada una en su propio campo, para que no compartan comportamiento por error:</p>
           <ul>
-            <li><strong>🔤 Texto libre:</strong> búsqueda clásica por título, autores, abstract y notas. Rápida y sin coste.</li>
-            <li><strong>🤖 IA semántica:</strong> formula tu pregunta en lenguaje natural y el sistema busca por significado usando embeddings vectoriales. Requiere que los artículos estén indexados.</li>
+            <li><strong>🔤 Búsqueda estándar</strong> (la barra de siempre): por título, autores y abstract. Admite los operadores de PostgreSQL (<code>"frase exacta"</code>, <code>BSE -review</code>, <code>Castilla OR Soto</code>) y, para varias palabras sueltas, los botones <strong>Y / O</strong> dentro del propio campo controlan si deben coincidir todas (Y, por defecto) o basta con una (O).</li>
+            <li><strong>🤖 Búsqueda con IA</strong> (icono de robot, a la derecha de la barra): abre un modal aparte con un campo de texto grande para escribir la pregunta en lenguaje natural y elegir el modelo — Claude Sonnet 4.6, GPT-4.1 o Gemini 2.5 Pro, por nombre — antes de lanzarla. Busca por significado sobre el contenido vectorizado de la biblioteca y responde citando las referencias usadas.</li>
             <li><strong>🔍 Búsqueda bibliográfica:</strong> consulta PubMed y Scopus en tiempo real. Los resultados se pueden importar directamente a la biblioteca.</li>
           </ul>
           <h4>Filtros del panel lateral</h4>

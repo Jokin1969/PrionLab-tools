@@ -56,6 +56,7 @@ def api_list_articles():
         return _body.get(key, default)
 
     q           = (_p("q") or "").strip()
+    q_mode      = "or" if (_p("q_mode") or "").strip().lower() == "or" else "and"
     # Optional "filter by article id list" — used by the bulk-bar's
     # "Ver sólo seleccionados" button so the operator can keep their
     # selection scoped to a working set even after leaving and
@@ -451,31 +452,53 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         #   BSE -review       — BSE without "review"
         #   Castilla OR Soto  — either author
         #   Castilla BSE      — both (default AND between bare terms)
-        # plainto_tsquery is kept as a fallback for clusters where
-        # websearch is unavailable (very old Postgres).
         #
-        # `search_fields` restricts which columns are matched.
-        # [] / None means all fields (title + abstract + FTS).
+        # q_mode ('and' default, 'or') governs how multiple BARE words
+        # combine, on both sides of the OR below:
+        #   - FTS: 'and' passes q through as-is (websearch already ANDs
+        #     bare words); 'or' rejoins the words with the literal "OR"
+        #     keyword, which websearch_to_tsquery understands natively.
+        #   - ILIKE: each word gets its OWN "%word%" match against the
+        #     selected columns, ANDed or ORed together — NOT a single
+        #     "%whole phrase%" substring like before, which required the
+        #     exact word order/spacing to appear verbatim. Per-word
+        #     conditions also let each word hit the pg_trgm trigram
+        #     indexes on title/authors/abstract individually instead of
+        #     forcing a sequential scan for a single wide OR (see
+        #     migrations/*_articles_trgm_indexes.sql) — this is the
+        #     dominant cost of the main listing search.
+        #
+        # `search_fields` restricts which columns are matched (and, same
+        # as before, drops the FTS branch entirely when set — FTS always
+        # covers title/abstract/authors together via search_vector, so a
+        # column restriction only makes sense against the ILIKE side).
         _sf = set(search_fields or []) & {"title", "authors", "abstract"}
+        words = q.split()
+        ts_input = q if q_mode == "and" else " OR ".join(words)
+        joiner = " AND " if q_mode == "and" else " OR "
+
         if not _sf:
-            # Default: FTS on search_vector OR ILIKE on title/abstract
-            conditions.append(
-                "(search_vector @@ websearch_to_tsquery('simple', :q) "
-                "   OR title ILIKE :q_like "
-                "   OR coalesce(authors,'') ILIKE :q_like "
-                "   OR coalesce(abstract,'') ILIKE :q_like)"
-                if "search_vector" in pv_cols
-                else "(title ILIKE :q_like OR coalesce(authors,'') ILIKE :q_like "
-                     "OR coalesce(abstract,'') ILIKE :q_like)"
-            )
+            ilike_cols = ["title", "coalesce(authors,'')", "coalesce(abstract,'')"]
         else:
-            parts = []
-            if "title"    in _sf: parts.append("title ILIKE :q_like")
-            if "authors"  in _sf: parts.append("coalesce(authors,'') ILIKE :q_like")
-            if "abstract" in _sf: parts.append("coalesce(abstract,'') ILIKE :q_like")
-            conditions.append("(" + " OR ".join(parts) + ")")
-        params["q"] = q
-        params["q_like"] = f"%{q}%"
+            ilike_cols = []
+            if "title"    in _sf: ilike_cols.append("title")
+            if "authors"  in _sf: ilike_cols.append("coalesce(authors,'')")
+            if "abstract" in _sf: ilike_cols.append("coalesce(abstract,'')")
+
+        like_params: dict = {}
+        word_clauses = []
+        for i, w in enumerate(words):
+            key = f"q_like_{i}"
+            like_params[key] = f"%{w}%"
+            word_clauses.append("(" + " OR ".join(f"{c} ILIKE :{key}" for c in ilike_cols) + ")")
+        ilike_sql = joiner.join(word_clauses) if word_clauses else "FALSE"
+
+        if not _sf and "search_vector" in pv_cols:
+            conditions.append(f"(search_vector @@ websearch_to_tsquery('simple', :q) OR ({ilike_sql}))")
+            params["q"] = ts_input
+        else:
+            conditions.append(f"({ilike_sql})")
+        params.update(like_params)
 
     if year_min is not None:
         conditions.append("year >= :year_min")
