@@ -90,6 +90,17 @@ class DatabaseConfig:
         Base.metadata.create_all(self.engine)
         logger.info("Database tables created successfully")
 
+    # Session-scoped Postgres advisory lock key for run_migrations(), so
+    # concurrent gunicorn workers (each calls create_app() -> run_migrations()
+    # independently at startup) serialize instead of racing. Without this,
+    # two workers can both see a migration as "not yet applied" and both
+    # execute it — harmless for idempotent DDL like `CREATE TABLE IF NOT
+    # EXISTS`, but `CREATE EXTENSION IF NOT EXISTS` is NOT race-safe: both
+    # transactions can pass the not-exists check before either commits, and
+    # the second hits a UniqueViolation on pg_extension_name_index. ASCII
+    # "prv_mig" packed as a bigint, distinct from email_ingest's leader lock.
+    _MIGRATION_LOCK_KEY = 0x7072765F6D6967
+
     def run_migrations(self) -> None:
         """Execute all SQL migration files in order."""
         if not self.is_configured():
@@ -110,6 +121,29 @@ class DatabaseConfig:
             logger.info("No migration files found")
             return
 
+        # Block here until any other worker's migration run finishes —
+        # pg_advisory_lock (not the _try_ variant) waits rather than
+        # failing, which is what we want: whichever worker loses the race
+        # just waits its turn, then finds every migration already applied
+        # and skips them all via the _schema_migrations check below.
+        lock_conn = self.engine.connect()
+        try:
+            lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": self._MIGRATION_LOCK_KEY})
+            lock_conn.commit()
+        except Exception as e:
+            logger.warning("Could not acquire migration advisory lock, proceeding unlocked: %s", e)
+
+        try:
+            self._run_migrations_locked(migration_files)
+        finally:
+            try:
+                lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": self._MIGRATION_LOCK_KEY})
+                lock_conn.commit()
+            except Exception:
+                pass
+            lock_conn.close()
+
+    def _run_migrations_locked(self, migration_files) -> None:
         # Ensure tracking table exists
         with self.engine.connect() as conn:
             try:
