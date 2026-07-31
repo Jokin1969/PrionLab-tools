@@ -1661,13 +1661,17 @@
       </button>
       <div style="flex:1;min-width:220px;position:relative;">
         <i class="fas fa-magnifying-glass" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px;"></i>
-        <input id="pv-jc-manage-search" type="text" placeholder="Buscar por artículo, responsable o año… (varias palabras = Y, activa OR para O)"
-               style="width:100%;box-sizing:border-box;padding:8px 74px 8px 30px;border:1px solid #d1d5db;
+        <input id="pv-jc-manage-search" type="text" placeholder="Buscar por artículo, responsable o año…"
+               style="width:100%;box-sizing:border-box;padding:8px 116px 8px 30px;border:1px solid #d1d5db;
                       border-radius:8px;font-size:13px;">
-        <button id="pv-jc-manage-search-or" type="button" title="Si está activo, busca artículos que coincidan con CUALQUIERA de las palabras (OR) en vez de con todas (Y)"
-                style="position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:3px 9px;
-                       border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#9ca3af;
-                       font-size:11px;font-weight:700;cursor:pointer;">OR</button>
+        <div style="position:absolute;right:5px;top:50%;transform:translateY(-50%);display:flex;gap:3px;">
+          <button id="pv-jc-manage-search-and" type="button" title="Deben coincidir TODAS las palabras escritas (AND)"
+                  style="padding:3px 9px;border-radius:6px;border:1px solid #be185d;background:#be185d;color:#fff;
+                         font-size:11px;font-weight:700;cursor:pointer;">AND</button>
+          <button id="pv-jc-manage-search-or" type="button" title="Basta con que coincida UNA de las palabras escritas (OR)"
+                  style="padding:3px 9px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#9ca3af;
+                         font-size:11px;font-weight:700;cursor:pointer;">OR</button>
+        </div>
       </div>
       <span id="pv-jc-manage-count" style="font-size:11.5px;color:#9ca3af;white-space:nowrap;"></span>
     </div>

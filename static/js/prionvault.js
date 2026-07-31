@@ -5564,7 +5564,9 @@
                         color:${color};font-size:16px;cursor:pointer;">
            <i class="fas ${icon}"></i>
          </button>`;
-      }).join('') || '<span style="color:#d1d5db;">—</span>';
+      }).join('') || `<span title="Sin ningún fichero adjunto — el artículo NO lleva la etiqueta compartida &quot;Journal Club – Ok&quot;, que solo se aplica cuando una presentación tiene al menos un documento"
+                            style="color:#b91c1c;font-size:10.5px;font-weight:600;white-space:nowrap;">
+                        <i class="fas fa-triangle-exclamation"></i> sin archivo</span>`;
       return `
         <tr data-pid="${esc(x.id)}" style="border-bottom:1px solid #f9fafb;cursor:pointer;">
           <td style="padding:7px 10px;white-space:nowrap;color:#374151;overflow:hidden;text-overflow:ellipsis;">${esc(fmtDate(x.presented_at))}</td>
@@ -5613,11 +5615,28 @@
       return sorted;
     }
 
+    // Articles whose every JC presentation has zero attached files never
+    // get the shared "Journal Club – Ok" tag (see routes.py
+    // api_jc_create: it's only applied once a presentation actually has a
+    // document) — this is the #1 reason the tag's count and this modal's
+    // count of distinct articles can diverge. Recomputed whenever _items
+    // changes, not per-filter, since it's about the whole dataset.
+    let _articlesMissingTagCount = 0;
+    function _recomputeMissingTagCount() {
+      const withFiles = new Set(_items.filter(x => x.files && x.files.length).map(x => x.article_id));
+      const allArticles = new Set(_items.map(x => x.article_id));
+      _articlesMissingTagCount = [...allArticles].filter(aid => !withFiles.has(aid)).length;
+    }
+
     function render() {
       const tbody = document.getElementById('pv-jc-manage-tbody');
       const count = document.getElementById('pv-jc-manage-count');
       const list = sortedList(_filtered);
-      count.textContent = `${list.length} de ${_items.length} presentación(es)`;
+      count.innerHTML = `${list.length} de ${_items.length} presentación(es)` +
+        (_articlesMissingTagCount
+          ? ` <span style="color:#b91c1c;" title="Presentaciones sin ningún fichero adjunto — esos artículos no llevan la etiqueta compartida &quot;Journal Club – Ok&quot;">` +
+            `· ⚠ ${_articlesMissingTagCount} artículo(s) sin etiquetar</span>`
+          : '');
       updateSortHeaders();
       tbody.innerHTML = list.length
         ? list.map(rowHtml).join('')
@@ -5671,6 +5690,7 @@
         tbody.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:#b91c1c;">Error: ${esc(e.message)}</td></tr>`;
         return;
       }
+      _recomputeMissingTagCount();
       populateScopeOptions();
       applySearch();
     }
@@ -5686,13 +5706,19 @@
       document.getElementById('pv-jc-manage-close')?.addEventListener('click', close);
       modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
       document.getElementById('pv-jc-manage-search')?.addEventListener('input', applySearch);
-      document.getElementById('pv-jc-manage-search-or')?.addEventListener('click', (e) => {
-        _searchOr = !_searchOr;
-        e.target.style.background = _searchOr ? '#be185d' : '#fff';
-        e.target.style.color = _searchOr ? '#fff' : '#9ca3af';
-        e.target.style.borderColor = _searchOr ? '#be185d' : '#d1d5db';
+      const setSearchMode = (or) => {
+        _searchOr = or;
+        const andBtn = document.getElementById('pv-jc-manage-search-and');
+        const orBtn  = document.getElementById('pv-jc-manage-search-or');
+        [[andBtn, !or], [orBtn, or]].forEach(([btn, active]) => {
+          btn.style.background   = active ? '#be185d' : '#fff';
+          btn.style.color        = active ? '#fff' : '#9ca3af';
+          btn.style.borderColor  = active ? '#be185d' : '#d1d5db';
+        });
         applySearch();
-      });
+      };
+      document.getElementById('pv-jc-manage-search-and')?.addEventListener('click', () => setSearchMode(false));
+      document.getElementById('pv-jc-manage-search-or')?.addEventListener('click', () => setSearchMode(true));
       document.querySelectorAll('.pv-jc-manage-sortable').forEach(th => {
         th.addEventListener('click', () => {
           const key = th.dataset.sort;
