@@ -7681,6 +7681,254 @@
     PVChat.updateLauncherCount(a);
   }
 
+  // ── Library chat — persistent, memory-capable AI chat over the whole
+  // library (replaces the old strict-grounding "AI search" modal). ──────
+  const PVLibChat = (() => {
+    const $ = id => document.getElementById(id);
+    let _wired = false;
+    let _currentChatId = null;
+    let _chats = [];
+    let _provider = localStorage.getItem('pv-libchat-provider') || 'anthropic';
+
+    const PROVIDER_COLORS = { anthropic: '#CC785C', openai: '#10A37F', gemini: '#8b5cf6' };
+
+    function paintProvider() {
+      document.querySelectorAll('.pv-libchat-provider-btn').forEach(b => {
+        const active = b.dataset.provider === _provider;
+        const color = PROVIDER_COLORS[b.dataset.provider];
+        b.style.borderColor = active ? color : '#e5e7eb';
+        b.style.background  = active ? color + '14' : '#fff';
+      });
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+    }
+
+    // Renders an assistant answer's [N] citations + "conocimiento
+    // general" labels as-is (they're already plain text markers the
+    // model was asked to emit) — just escape + linebreak-to-<br>.
+    function renderMarkdownish(text) {
+      return esc(text || '').replace(/\n/g, '<br>');
+    }
+
+    function citationChips(citations) {
+      if (!citations || !citations.length) return '';
+      return `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">` +
+        citations.map(c => `
+          <span title="${esc([c.authors, c.year, c.journal].filter(Boolean).join(' · '))}"
+                style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;
+                       font-size:10.5px;font-weight:600;background:#d1fae5;color:#065f46;cursor:pointer;"
+                data-open-aid="${esc(c.article_id)}">
+            [${c.n}] ${esc((c.title || '').slice(0, 40))}${(c.title || '').length > 40 ? '…' : ''}
+          </span>`).join('') + `</div>`;
+    }
+
+    function messageHtml(m) {
+      const isUser = m.role === 'user';
+      return `
+        <div style="display:flex;margin-bottom:14px;${isUser ? 'justify-content:flex-end;' : ''}">
+          <div style="max-width:78%;padding:10px 14px;border-radius:12px;font-size:13.5px;line-height:1.55;
+                      ${isUser
+                        ? 'background:#059669;color:#fff;border-bottom-right-radius:3px;'
+                        : 'background:#ecfdf5;color:#111827;border:1px solid #d1fae5;border-bottom-left-radius:3px;'}">
+            ${renderMarkdownish(m.content)}
+            ${!isUser ? citationChips(m.cited_article_ids && m.citations ? m.citations : null) : ''}
+            ${!isUser && m.provider_label
+              ? `<div style="margin-top:6px;font-size:10px;color:#6b7280;">
+                   ${esc(m.provider_label)}${m.switched ? ' (proveedor sustituido)' : ''}
+                 </div>` : ''}
+          </div>
+        </div>`;
+    }
+
+    function renderThread(chat) {
+      const el = $('pv-libchat-thread');
+      if (!chat || !chat.messages || !chat.messages.length) {
+        el.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;
+                    color:#9ca3af;font-size:13px;text-align:center;padding:24px;">
+          Pregunta lo que quieras — la IA combinará lo que encuentre en PrionVault<br>
+          con su propio conocimiento, dejando claro de dónde viene cada cosa.</div>`;
+        return;
+      }
+      el.innerHTML = chat.messages.map(messageHtml).join('');
+      el.querySelectorAll('[data-open-aid]').forEach(chip => {
+        chip.addEventListener('click', () => openDetail(chip.dataset.openAid));
+      });
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function renderList() {
+      const el = $('pv-libchat-list');
+      if (!_chats.length) {
+        el.innerHTML = `<div style="padding:16px 10px;text-align:center;color:#9ca3af;font-size:11.5px;">
+          Sin conversaciones todavía.</div>`;
+        return;
+      }
+      el.innerHTML = _chats.map(c => `
+        <div class="pv-libchat-item" data-id="${esc(c.id)}"
+             style="padding:9px 10px;border-bottom:1px solid #f3f4f6;cursor:pointer;
+                    ${c.id === _currentChatId ? 'background:#d1fae5;' : ''}">
+          <div style="font-size:12px;font-weight:600;color:#111827;white-space:nowrap;
+                      overflow:hidden;text-overflow:ellipsis;">${esc(c.title || 'Nueva conversación')}</div>
+          <div style="font-size:10.5px;color:#9ca3af;margin-top:1px;">
+            ${fmtDate(c.updated_at)} · ${c.message_count} msj.
+          </div>
+        </div>`).join('');
+      el.querySelectorAll('.pv-libchat-item').forEach(row => {
+        row.addEventListener('click', () => openChat(row.dataset.id));
+      });
+    }
+
+    async function loadChats() {
+      try {
+        const r = await api('/library-chats');
+        _chats = r.chats || [];
+        renderList();
+      } catch (e) { /* silent — list stays empty */ }
+    }
+
+    async function openChat(chatId) {
+      _currentChatId = chatId;
+      renderList();
+      $('pv-libchat-thread').innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:30px;">Cargando…</div>';
+      try {
+        const chat = await api(`/library-chats/${chatId}`);
+        _provider = chat.requested_provider || _provider;
+        paintProvider();
+        renderThread(chat);
+      } catch (e) {
+        $('pv-libchat-thread').innerHTML =
+          `<div style="text-align:center;color:#b91c1c;padding:30px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    async function newChat() {
+      try {
+        const r = await api('/library-chats', { method: 'POST', body: JSON.stringify({ provider: _provider }) });
+        await loadChats();
+        await openChat(r.chat_id);
+        $('pv-libchat-input')?.focus();
+      } catch (e) { alert('Error al crear la conversación: ' + e.message); }
+    }
+
+    async function send() {
+      const input = $('pv-libchat-input');
+      const question = (input.value || '').trim();
+      if (!question) return;
+      if (!_currentChatId) await newChat();
+      if (!_currentChatId) return;
+
+      input.value = '';
+      const sendBtn = $('pv-libchat-send');
+      sendBtn.disabled = true;
+
+      // Optimistic user bubble while waiting for the answer.
+      const el = $('pv-libchat-thread');
+      const wasEmpty = el.querySelector('div[style*="height:100%"]');
+      if (wasEmpty) el.innerHTML = '';
+      el.insertAdjacentHTML('beforeend', messageHtml({ role: 'user', content: question }));
+      el.insertAdjacentHTML('beforeend',
+        `<div id="pv-libchat-pending" style="display:flex;margin-bottom:14px;">
+           <div style="padding:10px 14px;border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;
+                       font-size:13px;color:#065f46;">
+             <i class="fas fa-spinner fa-spin"></i> Pensando…
+           </div>
+         </div>`);
+      el.scrollTop = el.scrollHeight;
+
+      try {
+        const r = await api(`/library-chats/${_currentChatId}/ask`, {
+          method: 'POST', body: JSON.stringify({ question, provider: _provider }),
+        });
+        $('pv-libchat-pending')?.remove();
+        el.insertAdjacentHTML('beforeend', messageHtml({
+          role: 'assistant', content: r.answer, provider_label: r.provider_label,
+          switched: r.switched, citations: r.citations, cited_article_ids: r.cited_article_ids,
+        }));
+        el.scrollTop = el.scrollHeight;
+        await loadChats();
+        renderList();
+      } catch (e) {
+        $('pv-libchat-pending')?.remove();
+        el.insertAdjacentHTML('beforeend', `
+          <div style="text-align:center;color:#b91c1c;font-size:12.5px;padding:8px;">
+            Error: ${esc(e.message)}
+          </div>`);
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    let _searchTimer = null;
+    function wireSearch() {
+      $('pv-libchat-search')?.addEventListener('input', (e) => {
+        clearTimeout(_searchTimer);
+        const q = e.target.value.trim();
+        _searchTimer = setTimeout(async () => {
+          if (!q) { renderList(); return; }
+          try {
+            const r = await api('/library-chats/search?q=' + encodeURIComponent(q));
+            const el = $('pv-libchat-list');
+            const results = r.results || [];
+            el.innerHTML = results.length ? results.map(res => `
+              <div class="pv-libchat-search-hit" data-id="${esc(res.chat_id)}"
+                   style="padding:9px 10px;border-bottom:1px solid #f3f4f6;cursor:pointer;">
+                <div style="font-size:12px;font-weight:600;color:#111827;">${esc(res.chat_title)}</div>
+                <div style="font-size:11px;color:#6b7280;margin-top:2px;">${esc(res.excerpt)}</div>
+              </div>`).join('') : `<div style="padding:16px 10px;text-align:center;color:#9ca3af;font-size:11.5px;">
+                Sin resultados.</div>`;
+            el.querySelectorAll('.pv-libchat-search-hit').forEach(row => {
+              row.addEventListener('click', () => openChat(row.dataset.id));
+            });
+          } catch (e) { /* silent */ }
+        }, 300);
+      });
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      const modal = $('pv-libchat-modal');
+      $('pv-libchat-close')?.addEventListener('click', close);
+      modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-libchat-new')?.addEventListener('click', newChat);
+      $('pv-libchat-send')?.addEventListener('click', send);
+      $('pv-libchat-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+      });
+      document.querySelectorAll('.pv-libchat-provider-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          _provider = btn.dataset.provider;
+          localStorage.setItem('pv-libchat-provider', _provider);
+          paintProvider();
+        });
+      });
+      wireSearch();
+    }
+
+    function close() { $('pv-libchat-modal').style.display = 'none'; }
+
+    async function open() {
+      wireOnce();
+      $('pv-libchat-modal').style.display = 'flex';
+      paintProvider();
+      await loadChats();
+      if (_currentChatId) {
+        openChat(_currentChatId);
+      } else if (_chats.length) {
+        openChat(_chats[0].id);
+      } else {
+        renderThread(null);
+      }
+      setTimeout(() => $('pv-libchat-input')?.focus(), 50);
+    }
+
+    return { open };
+  })();
+
   // ── Share article by email ───────────────────────────────────────────
   const PVEmailShare = (() => {
     let _article = null;
@@ -8963,52 +9211,10 @@
     });
     document.querySelector('#pv-advanced-search-modal .pv-modal-backdrop')?.addEventListener('click', closeAdvancedSearchModal);
 
-    // ── AI search — separate modal, its own textarea + named provider
-    // buttons, kept fully apart from the standard search box above. ──────
-    const AI_PROVIDER_COLORS = { anthropic: '#CC785C', openai: '#10A37F', gemini: '#8b5cf6' };
-    function setAiSearchProvider(provider) {
-      document.querySelectorAll('.pv-ai-search-provider-btn').forEach(b => {
-        const active = b.dataset.provider === provider;
-        const color = AI_PROVIDER_COLORS[b.dataset.provider];
-        b.style.borderColor = active ? color : '#e5e7eb';
-        b.style.background = active ? color + '14' : '#fff';
-      });
-      localStorage.setItem('pv-summary-provider', provider);
-    }
-    document.querySelectorAll('.pv-ai-search-provider-btn').forEach(btn => {
-      btn.addEventListener('click', () => setAiSearchProvider(btn.dataset.provider));
-    });
-    document.getElementById('btn-ai-search')?.addEventListener('click', () => {
-      const modal = document.getElementById('pv-ai-search-modal');
-      modal.style.display = 'flex';
-      setAiSearchProvider(localStorage.getItem('pv-summary-provider') || 'anthropic');
-      setTimeout(() => document.getElementById('pv-ai-search-input')?.focus(), 50);
-    });
-    const closeAiSearchModal = () => {
-      document.getElementById('pv-ai-search-modal').style.display = 'none';
-    };
-    document.getElementById('pv-ai-search-close')?.addEventListener('click', closeAiSearchModal);
-    document.getElementById('pv-ai-search-cancel')?.addEventListener('click', closeAiSearchModal);
-    document.querySelector('#pv-ai-search-modal .pv-modal-backdrop')?.addEventListener('click', closeAiSearchModal);
-    function submitAiSearch() {
-      const text = document.getElementById('pv-ai-search-input').value.trim();
-      if (!text) {
-        document.getElementById('pv-ai-search-input').focus();
-        return;
-      }
-      const provider = localStorage.getItem('pv-summary-provider') || 'anthropic';
-      const rp = document.getElementById('pv-rag-provider');
-      if (rp) rp.value = provider;
-      closeAiSearchModal();
-      runRagSearch(text);
-    }
-    document.getElementById('pv-ai-search-submit')?.addEventListener('click', submitAiSearch);
-    document.getElementById('pv-ai-search-input')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        submitAiSearch();
-      }
-    });
+    // ── Library chat — replaces the old strict-grounding "AI search"
+    // modal with a persistent, memory-capable chat (see PVLibChat below,
+    // and services/library_chat.py on the backend). ──────────────────────
+    document.getElementById('btn-ai-search')?.addEventListener('click', () => PVLibChat.open());
 
     // Visual signal that an input has text — easy to miss otherwise
     // when the placeholder/value contrast is low.

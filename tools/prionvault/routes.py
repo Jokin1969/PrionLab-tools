@@ -4865,6 +4865,9 @@ from .routes_notifications import _validate_notif_payload, _notif_sub_to_dict  #
 # Per-article AI chat routes live in their own module.
 from . import routes_chat  # noqa: F401, E402
 
+# Library chat (persistent, memory-capable, whole-library) routes.
+from . import routes_library_chat  # noqa: F401, E402
+
 # Per-user article notes routes live in their own module.
 from . import routes_notes  # noqa: F401, E402
 

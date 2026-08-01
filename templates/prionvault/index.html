@@ -1652,60 +1652,79 @@
 </div>
 
 <!-- ── AI search modal — separate from the standard text search box ───── -->
-<div id="pv-ai-search-modal" class="pv-modal" style="display:none;">
+<!-- ── Library chat (persistent, memory-capable AI chat) ───────────────
+     Styled after pv-jc-manage-modal, mapped rose→emerald:
+       #be185d→#059669  #831843→#065f46  #fdf2f8→#ecfdf5  #fce7f3→#d1fae5 -->
+<div id="pv-libchat-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>
-  <div class="pv-modal-inner" style="max-width:640px;">
-    <button class="pv-modal-close" id="pv-ai-search-close" aria-label="Close">×</button>
-    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
-      <i class="fas fa-robot" style="color:#0F3460;margin-right:8px;"></i>Búsqueda con IA
+  <div class="pv-modal-inner" style="max-width:1180px;width:94vw;height:88vh;display:flex;flex-direction:column;">
+    <button class="pv-modal-close" id="pv-libchat-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 2px;font-size:17px;font-weight:700;color:#111827;flex-shrink:0;">
+      <i class="fas fa-brain" style="color:#059669;margin-right:8px;"></i>Chat con la IA
     </h2>
-    <p style="color:#6b7280;font-size:12.5px;margin:0 0 14px;line-height:1.5;">
-      Pregunta en lenguaje natural — la IA busca en el contenido vectorizado de la biblioteca
-      (artículos, resúmenes, notas) y responde citando las referencias usadas.
+    <p style="color:#6b7280;font-size:12px;margin:0 0 10px;flex-shrink:0;">
+      Mezcla el conocimiento de PrionVault (artículos, resúmenes, notas — marcado <b>[N]</b>) con el
+      conocimiento general de la IA (marcado <i>«conocimiento general»</i>), sin favorecer ninguno.
     </p>
 
-    <textarea id="pv-ai-search-input" rows="4"
-              placeholder="Ej: ¿Qué artículos discuten la resistencia a proteasas de la proteína priónica en modelos de ratón?"
-              style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d1d5db;
-                     border-radius:10px;font-size:14.5px;line-height:1.5;resize:vertical;
-                     font-family:inherit;margin-bottom:14px;"></textarea>
+    <div style="flex:1;min-height:0;display:flex;gap:14px;">
+      <!-- ── Left: conversation list + search ──────────────────────────── -->
+      <div style="width:260px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;">
+        <button id="pv-libchat-new" type="button"
+                style="padding:9px 12px;border-radius:8px;border:none;background:#059669;color:#fff;
+                       font-size:12.5px;font-weight:600;cursor:pointer;margin-bottom:8px;">
+          <i class="fas fa-plus" style="margin-right:6px;"></i>Nueva conversación
+        </button>
+        <div style="position:relative;margin-bottom:8px;">
+          <i class="fas fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:11px;"></i>
+          <input type="text" id="pv-libchat-search" placeholder="Buscar en conversaciones…"
+                 style="width:100%;box-sizing:border-box;padding:7px 10px 7px 28px;border:1px solid #d1d5db;
+                        border-radius:8px;font-size:12px;">
+        </div>
+        <div id="pv-libchat-list" style="flex:1;min-height:0;overflow-y:auto;border:1px solid #f3f4f6;
+                    border-radius:8px;background:#fafafa;"></div>
+      </div>
 
-    <div style="font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
-                letter-spacing:0.05em;margin-bottom:8px;">Modelo de IA</div>
-    <div id="pv-ai-search-providers" style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
-      <button type="button" class="pv-ai-search-provider-btn" data-provider="anthropic"
-              style="flex:1;min-width:140px;display:flex;align-items:center;gap:8px;padding:10px 12px;
-                     border-radius:10px;border:2px solid #CC785C;background:#fff7f4;color:#7c3a26;
-                     cursor:pointer;font-size:12.5px;font-weight:600;text-align:left;">
-        <span style="width:10px;height:10px;border-radius:50%;background:#CC785C;flex-shrink:0;"></span>
-        Claude Sonnet 4.6
-      </button>
-      <button type="button" class="pv-ai-search-provider-btn" data-provider="openai"
-              style="flex:1;min-width:140px;display:flex;align-items:center;gap:8px;padding:10px 12px;
-                     border-radius:10px;border:2px solid #e5e7eb;background:#fff;color:#374151;
-                     cursor:pointer;font-size:12.5px;font-weight:600;text-align:left;">
-        <span style="width:10px;height:10px;border-radius:50%;background:#10A37F;flex-shrink:0;"></span>
-        GPT-4.1
-      </button>
-      <button type="button" class="pv-ai-search-provider-btn" data-provider="gemini"
-              style="flex:1;min-width:140px;display:flex;align-items:center;gap:8px;padding:10px 12px;
-                     border-radius:10px;border:2px solid #e5e7eb;background:#fff;color:#374151;
-                     cursor:pointer;font-size:12.5px;font-weight:600;text-align:left;">
-        <span style="width:10px;height:10px;border-radius:50%;
-                     background:linear-gradient(135deg,#4285F4 0%,#9B72CB 55%,#D96570 100%);flex-shrink:0;"></span>
-        Gemini 2.5 Pro
-      </button>
-    </div>
+      <!-- ── Right: active thread + composer ────────────────────────────── -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;
+                  border:1px solid #f3f4f6;border-radius:8px;background:#fff;">
+        <div id="pv-libchat-thread" style="flex:1;min-height:0;overflow-y:auto;padding:16px;"></div>
 
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
-      <button id="pv-ai-search-cancel" type="button"
-              style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
-                     color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Cancelar</button>
-      <button id="pv-ai-search-submit" type="button"
-              style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
-                     font-size:12.5px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-magnifying-glass" style="margin-right:5px;"></i>Buscar
-      </button>
+        <div style="border-top:1px solid #f3f4f6;padding:10px 12px;flex-shrink:0;">
+          <div id="pv-libchat-providers" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+            <button type="button" class="pv-libchat-provider-btn" data-provider="anthropic"
+                    style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
+                           border:1.5px solid #CC785C;background:#fff7f4;color:#7c3a26;
+                           cursor:pointer;font-size:11.5px;font-weight:600;">
+              <span style="width:8px;height:8px;border-radius:50%;background:#CC785C;flex-shrink:0;"></span>Claude
+            </button>
+            <button type="button" class="pv-libchat-provider-btn" data-provider="openai"
+                    style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
+                           border:1.5px solid #e5e7eb;background:#fff;color:#374151;
+                           cursor:pointer;font-size:11.5px;font-weight:600;">
+              <span style="width:8px;height:8px;border-radius:50%;background:#10A37F;flex-shrink:0;"></span>GPT
+            </button>
+            <button type="button" class="pv-libchat-provider-btn" data-provider="gemini"
+                    style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
+                           border:1.5px solid #e5e7eb;background:#fff;color:#374151;
+                           cursor:pointer;font-size:11.5px;font-weight:600;">
+              <span style="width:8px;height:8px;border-radius:50%;
+                           background:linear-gradient(135deg,#4285F4 0%,#9B72CB 55%,#D96570 100%);flex-shrink:0;"></span>Gemini
+            </button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;">
+            <textarea id="pv-libchat-input" rows="2" placeholder="Pregunta lo que quieras…"
+                      style="flex:1;box-sizing:border-box;padding:9px 12px;border:1px solid #d1d5db;
+                             border-radius:10px;font-size:13.5px;line-height:1.4;resize:vertical;
+                             font-family:inherit;"></textarea>
+            <button id="pv-libchat-send" type="button"
+                    style="padding:10px 16px;border-radius:10px;border:none;background:#059669;color:#fff;
+                           font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

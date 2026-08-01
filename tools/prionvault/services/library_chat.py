@@ -1,0 +1,451 @@
+"""Library chat — persistent, memory-capable chat over the whole library.
+
+The old "AI search" (rag.py) answered strictly from retrieved PrionVault
+fragments and refused to say anything else. This is the same retrieval
+pipeline (hybrid vector + BM25, optional rerank — see
+embeddings/retriever.search) feeding a DIFFERENT kind of answer: the
+model is explicitly allowed to add its own general knowledge, as long
+as it clearly labels, claim by claim, whether something comes from
+PrionVault or from what it already knows — neither source is favoured,
+PrionVault material is just more convenient when it's there.
+
+Conversations persist forever (prionvault_library_chat /
+_message, never expired — same posture as prionvault_article_chat) and
+are themselves searchable: every message gets embedded the same way an
+article chunk does, so "what did we discuss about X in March" works via
+the same hybrid retrieval idea, just pointed at messages instead of
+chunks.
+"""
+from __future__ import annotations
+
+import logging
+import time
+from typing import Optional
+
+from sqlalchemy import text as _sql
+
+from .ai_summary import PROVIDERS, DEFAULT_PROVIDER
+from .rag import _chat, _classify_failure, _FALLBACK_KINDS, _estimate_cost, _parse_cited_numbers
+from ..embeddings.retriever import search as _retrieve
+
+logger = logging.getLogger(__name__)
+
+_HISTORY_CHAR_CAP = 16_000
+_MAX_QUESTION_LEN = 4_000
+_CANONICAL_ORDER = ["anthropic", "openai", "gemini"]
+
+
+_SYSTEM_PROMPT = """Eres el asistente de investigación de PrionLab, especializado \
+en priones, neurodegeneración y biomedicina en general. Conversas de forma \
+continuada con un investigador que puede preguntarte cualquier cosa: sobre la \
+literatura que tiene en su biblioteca PrionVault, sobre ciencia en general, o \
+ambas cosas mezcladas.
+
+Se te proporciona, cuando existe, un bloque de FRAGMENTOS recuperados de \
+PrionVault (artículos, resúmenes generados por IA, notas del investigador) \
+relevantes para la pregunta actual.
+
+Reglas de atribución — MUY IMPORTANTES:
+- Tienes total libertad para responder combinando lo que encuentres en los \
+fragmentos de PrionVault con tu propio conocimiento general. Ninguna de las \
+dos fuentes tiene prioridad sobre la otra: usa la que mejor responda a la \
+pregunta. Que la información esté en PrionVault es solo una comodidad (ya \
+está verificada, indexada y citable), no un motivo para preferirla.
+- Deja SIEMPRE claro, para cada afirmación relevante, de dónde viene: usa la \
+notación [N] (fragmento N de PrionVault) para lo que se apoye en el material \
+proporcionado, y la etiqueta (conocimiento general) para lo que aportes por tu \
+cuenta. Una misma frase puede combinar ambas si corresponde.
+- No inventes datos, cifras ni citas de PrionVault que no estén en los \
+fragmentos — lo que no venga de allí, sácalo de tu conocimiento general y \
+etiquétalo como tal en vez de fingir que es de la biblioteca.
+- Ten en cuenta la conversación previa para dar continuidad.
+- Responde en español (salvo que te escriban en otro idioma), en tono claro \
+y directo, con la extensión que la pregunta requiera."""
+
+
+def _get_engine():
+    from ..ingestion.queue import _get_engine as _e
+    return _e()
+
+
+def _fallback_chain(primary: str) -> list[str]:
+    primary = (primary or DEFAULT_PROVIDER).strip().lower()
+    if primary not in PROVIDERS:
+        primary = DEFAULT_PROVIDER
+    return [primary] + [p for p in _CANONICAL_ORDER if p != primary]
+
+
+# ── Context assembly ─────────────────────────────────────────────────────────
+
+def _build_pv_context(question: str, viewer_id: Optional[str]):
+    """Hybrid-retrieve PrionVault fragments for this question. Returns
+    (context_block: str, citations: list[dict]) — empty when retrieval
+    finds nothing or embeddings aren't configured."""
+    try:
+        result = _retrieve(question, top_k=12, per_article_cap=2,
+                           rerank=True, hybrid=True, viewer_id=viewer_id)
+    except Exception as exc:
+        logger.warning("library_chat: retrieval failed: %s", exc)
+        return "", []
+
+    from .rag import _build_context
+    if not result.raw_chunks:
+        return "", []
+    context_block, citations = _build_context(result.raw_chunks, result.articles)
+    cite_dicts = [{
+        "n": c.n, "article_id": c.article_id, "title": c.title,
+        "authors": c.authors, "year": c.year, "journal": c.journal,
+        "doi": c.doi, "pubmed_id": c.pubmed_id, "has_pdf": c.has_pdf,
+    } for c in citations]
+    return context_block, cite_dicts
+
+
+def _build_user_prompt(context_block: str, history: list[dict], question: str) -> str:
+    sections = []
+    if context_block:
+        sections.append("=== FRAGMENTOS DE PRIONVAULT (usa [N] para citarlos) ===\n" + context_block)
+    else:
+        sections.append(
+            "(No se ha encontrado material relevante en PrionVault para esta "
+            "pregunta — responde con tu conocimiento general, etiquetándolo "
+            "como tal.)"
+        )
+
+    if history:
+        hist_lines: list[str] = []
+        running = 0
+        for m in reversed(history):
+            role = "Usuario" if m["role"] == "user" else "Asistente"
+            line = f"{role}: {m['content']}"
+            if running + len(line) > _HISTORY_CHAR_CAP:
+                break
+            hist_lines.append(line)
+            running += len(line)
+        hist_lines.reverse()
+        if hist_lines:
+            sections.append("\n=== CONVERSACIÓN PREVIA ===\n" + "\n\n".join(hist_lines))
+
+    sections.append(f"\n=== PREGUNTA ACTUAL ===\n{question}")
+    return "\n".join(sections)
+
+
+def _embed_message_async(message_id: int, content: str) -> None:
+    """Best-effort: embed a stored message so it's findable later via
+    search_chats(). Never lets an embedding failure affect the chat
+    response — this always runs AFTER the message is already saved."""
+    try:
+        from ..embeddings.embedder import embed_texts
+        result = embed_texts([content[:8000]], input_type="document")
+        if not result.embeddings:
+            return
+        vec = result.embeddings[0]
+        vec_literal = "[" + ",".join(f"{x:.7f}" for x in vec) + "]"
+        eng = _get_engine()
+        with eng.begin() as conn:
+            conn.execute(_sql("""
+                UPDATE prionvault_library_chat_message
+                   SET embedding = (:emb)::vector
+                 WHERE id = :id
+            """), {"emb": vec_literal, "id": message_id})
+    except Exception as exc:
+        logger.warning("library_chat: embed message %s failed: %s", message_id, exc)
+
+
+# ── CRUD ─────────────────────────────────────────────────────────────────────
+
+def _chat_row_to_dict(r) -> dict:
+    d = dict(r)
+    for k in ("created_at", "updated_at"):
+        if d.get(k) is not None:
+            d[k] = d[k].isoformat()
+    d["provider_label"] = PROVIDERS.get(
+        d.get("requested_provider"), {}).get("label", d.get("requested_provider"))
+    return d
+
+
+def list_chats(user_id: str) -> list[dict]:
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(_sql("""
+            SELECT c.id::text AS id, c.requested_provider, c.title,
+                   c.created_at, c.updated_at, COUNT(m.id) AS message_count
+              FROM prionvault_library_chat c
+              LEFT JOIN prionvault_library_chat_message m ON m.chat_id = c.id
+             WHERE c.user_id = CAST(:uid AS uuid)
+             GROUP BY c.id
+             ORDER BY c.updated_at DESC
+        """), {"uid": user_id}).mappings().all()
+    return [_chat_row_to_dict(r) for r in rows]
+
+
+def create_chat(user_id: str, provider: str) -> str:
+    provider = (provider or DEFAULT_PROVIDER).strip().lower()
+    if provider not in PROVIDERS:
+        provider = DEFAULT_PROVIDER
+    eng = _get_engine()
+    with eng.begin() as conn:
+        cid = conn.execute(_sql("""
+            INSERT INTO prionvault_library_chat (user_id, requested_provider)
+            VALUES (CAST(:uid AS uuid), :prov)
+            RETURNING id::text
+        """), {"uid": user_id, "prov": provider}).scalar()
+    return cid
+
+
+def get_chat(chat_id: str, user_id: str) -> Optional[dict]:
+    eng = _get_engine()
+    with eng.connect() as conn:
+        head = conn.execute(_sql("""
+            SELECT id::text AS id, requested_provider, title, created_at, updated_at
+              FROM prionvault_library_chat
+             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+        """), {"cid": chat_id, "uid": user_id}).mappings().first()
+        if not head:
+            return None
+        msgs = conn.execute(_sql("""
+            SELECT id, role, content, provider, model, tokens_in, tokens_out,
+                   cost_usd, fallback, cited_article_ids, created_at
+              FROM prionvault_library_chat_message
+             WHERE chat_id = CAST(:cid AS uuid)
+             ORDER BY created_at, id
+        """), {"cid": chat_id}).mappings().all()
+
+    out = _chat_row_to_dict(head)
+    out["messages"] = []
+    for m in msgs:
+        md = dict(m)
+        if md.get("created_at") is not None:
+            md["created_at"] = md["created_at"].isoformat()
+        if md.get("cost_usd") is not None:
+            md["cost_usd"] = float(md["cost_usd"])
+        if md.get("cited_article_ids"):
+            md["cited_article_ids"] = [str(x) for x in md["cited_article_ids"]]
+        if md.get("provider"):
+            md["provider_label"] = PROVIDERS.get(md["provider"], {}).get("label", md["provider"])
+        out["messages"].append(md)
+    return out
+
+
+def delete_chat(chat_id: str, user_id: str) -> bool:
+    eng = _get_engine()
+    with eng.begin() as conn:
+        res = conn.execute(_sql("""
+            DELETE FROM prionvault_library_chat
+             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+        """), {"cid": chat_id, "uid": user_id})
+    return (res.rowcount or 0) > 0
+
+
+class ChatError(RuntimeError):
+    def __init__(self, message: str, attempts: list[dict]):
+        super().__init__(message)
+        self.attempts = attempts
+
+
+def ask(chat_id: str, user_id: str, question: str, provider: Optional[str] = None) -> dict:
+    question = (question or "").strip()
+    if not question:
+        raise ValueError("La pregunta no puede estar vacía.")
+    question = question[:_MAX_QUESTION_LEN]
+
+    eng = _get_engine()
+    with eng.connect() as conn:
+        head = conn.execute(_sql("""
+            SELECT requested_provider FROM prionvault_library_chat
+             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+        """), {"cid": chat_id, "uid": user_id}).mappings().first()
+    if not head:
+        raise LookupError("chat_not_found")
+
+    primary = (provider or head["requested_provider"] or DEFAULT_PROVIDER).strip().lower()
+    if primary not in PROVIDERS:
+        primary = DEFAULT_PROVIDER
+
+    existing = get_chat(chat_id, user_id)
+    history = existing["messages"] if existing else []
+
+    retrieval_start = time.monotonic()
+    context_block, citations = _build_pv_context(question, user_id)
+    retrieval_ms = int((time.monotonic() - retrieval_start) * 1000)
+
+    user_prompt = _build_user_prompt(context_block, history, question)
+
+    system_prompt = _SYSTEM_PROMPT
+    try:
+        from .glossary import glossary_prompt_block
+        system_prompt = _SYSTEM_PROMPT + glossary_prompt_block()
+    except Exception:
+        pass
+
+    chain = _fallback_chain(primary)
+    attempts: list[dict] = []
+    answer = ""
+    actual_provider = primary
+    model_used = PROVIDERS[primary]["model"]
+    tokens_in = tokens_out = None
+    last_exc: Optional[Exception] = None
+    start = time.monotonic()
+
+    for attempt_provider in chain:
+        try:
+            answer, tokens_in, tokens_out, model_used = _chat(
+                provider=attempt_provider, system=system_prompt, user=user_prompt)
+            if not answer:
+                raise RuntimeError(f"{PROVIDERS[attempt_provider]['label']} returned an empty response")
+            actual_provider = attempt_provider
+            break
+        except Exception as exc:
+            kind, reason = _classify_failure(exc)
+            attempts.append({"provider": attempt_provider, "kind": kind, "reason": reason})
+            last_exc = exc
+            logger.info("library_chat fallback: %s failed (%s — %s)", attempt_provider, kind, reason)
+            if kind not in _FALLBACK_KINDS:
+                raise ChatError(str(exc), attempts) from exc
+            continue
+    else:
+        raise ChatError(str(last_exc) if last_exc else "all providers failed", attempts)
+
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+    cost = _estimate_cost(actual_provider, tokens_in, tokens_out)
+    fallback_meta = [a for a in attempts if a["provider"] != actual_provider]
+
+    cited_numbers = _parse_cited_numbers(answer)
+    cite_by_n = {c["n"]: c["article_id"] for c in citations}
+    cited_article_ids = [cite_by_n[n] for n in cited_numbers if n in cite_by_n]
+
+    import json as _json
+    with eng.begin() as conn:
+        conn.execute(_sql("""
+            INSERT INTO prionvault_library_chat_message (chat_id, role, content)
+            VALUES (CAST(:cid AS uuid), 'user', :content)
+        """), {"cid": chat_id, "content": question})
+        assistant_id = conn.execute(_sql("""
+            INSERT INTO prionvault_library_chat_message
+                (chat_id, role, content, provider, model, tokens_in, tokens_out,
+                 cost_usd, fallback, cited_article_ids)
+            VALUES (CAST(:cid AS uuid), 'assistant', :content, :prov, :model,
+                    :tin, :tout, :cost, CAST(:fb AS jsonb), CAST(:cites AS uuid[]))
+            RETURNING id
+        """), {
+            "cid": chat_id, "content": answer, "prov": actual_provider,
+            "model": model_used, "tin": tokens_in, "tout": tokens_out, "cost": cost,
+            "fb": _json.dumps(fallback_meta) if fallback_meta else None,
+            "cites": cited_article_ids or None,
+        }).scalar()
+        conn.execute(_sql("""
+            UPDATE prionvault_library_chat
+               SET updated_at = NOW(), title = COALESCE(title, :title)
+             WHERE id = CAST(:cid AS uuid)
+        """), {"cid": chat_id, "title": question[:120]})
+
+    # Best-effort, synchronous but non-blocking-on-failure: embed the new
+    # assistant turn so it's findable via search_chats(). Skipped for the
+    # user turn to keep this fast — the assistant answer's embedding is
+    # enough to recall the exchange (it restates the question in context).
+    try:
+        _embed_message_async(assistant_id, f"{question}\n\n{answer}")
+    except Exception:
+        pass
+
+    return {
+        "answer": answer,
+        "requested_provider": primary,
+        "actual_provider": actual_provider,
+        "provider_label": PROVIDERS.get(actual_provider, {}).get("label", actual_provider),
+        "model": model_used,
+        "fallback": fallback_meta,
+        "switched": actual_provider != primary,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "cost_usd": cost,
+        "elapsed_ms": elapsed_ms,
+        "retrieval_ms": retrieval_ms,
+        "citations": citations,
+        "cited_article_ids": cited_article_ids,
+    }
+
+
+# ── Search past conversations ────────────────────────────────────────────────
+
+def search_chats(user_id: str, query: str, limit: int = 15) -> list[dict]:
+    """Hybrid search (vector + BM25) over this user's past messages —
+    same idea as the article retriever, pointed at conversations instead
+    of chunks. Falls back to BM25-only if embeddings aren't configured."""
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    eng = _get_engine()
+    qvec = None
+    try:
+        from ..embeddings.embedder import embed_query
+        raw_qvec = embed_query(query)
+        if raw_qvec:
+            qvec = "[" + ",".join(f"{x:.7f}" for x in raw_qvec) + "]"
+    except Exception as exc:
+        logger.info("library_chat search: embeddings unavailable, BM25-only: %s", exc)
+
+    with eng.connect() as conn:
+        if qvec:
+            rows = conn.execute(_sql("""
+                WITH vec AS (
+                    SELECT m.id, m.chat_id, m.content, m.created_at,
+                           1 - (m.embedding <=> (:qvec)::vector) AS score
+                      FROM prionvault_library_chat_message m
+                      JOIN prionvault_library_chat c ON c.id = m.chat_id
+                     WHERE c.user_id = CAST(:uid AS uuid)
+                       AND m.embedding IS NOT NULL
+                       AND m.role = 'assistant'
+                     ORDER BY m.embedding <=> (:qvec)::vector
+                     LIMIT 30
+                ),
+                bm25 AS (
+                    SELECT m.id, m.chat_id, m.content, m.created_at,
+                           ts_rank(m.search_vector, plainto_tsquery('simple', :q)) AS score
+                      FROM prionvault_library_chat_message m
+                      JOIN prionvault_library_chat c ON c.id = m.chat_id
+                     WHERE c.user_id = CAST(:uid AS uuid)
+                       AND m.search_vector @@ plainto_tsquery('simple', :q)
+                     ORDER BY score DESC
+                     LIMIT 30
+                ),
+                fused AS (
+                    SELECT id, chat_id, content, created_at, score FROM vec
+                    UNION ALL
+                    SELECT id, chat_id, content, created_at, score FROM bm25
+                )
+                SELECT DISTINCT ON (id) id, chat_id, content, created_at
+                  FROM fused
+                 ORDER BY id, score DESC
+                 LIMIT :lim
+            """), {"qvec": qvec, "uid": user_id, "q": query, "lim": limit}).mappings().all()
+        else:
+            rows = conn.execute(_sql("""
+                SELECT m.id, m.chat_id, m.content, m.created_at
+                  FROM prionvault_library_chat_message m
+                  JOIN prionvault_library_chat c ON c.id = m.chat_id
+                 WHERE c.user_id = CAST(:uid AS uuid)
+                   AND m.search_vector @@ plainto_tsquery('simple', :q)
+                 ORDER BY ts_rank(m.search_vector, plainto_tsquery('simple', :q)) DESC
+                 LIMIT :lim
+            """), {"uid": user_id, "q": query, "lim": limit}).mappings().all()
+
+        if not rows:
+            return []
+        chat_ids = list({str(r["chat_id"]) for r in rows})
+        titles = conn.execute(_sql("""
+            SELECT id::text, title FROM prionvault_library_chat
+             WHERE id = ANY(CAST(:ids AS uuid[]))
+        """), {"ids": chat_ids}).all()
+        title_by_id = {t[0]: t[1] for t in titles}
+
+    out = []
+    for r in rows:
+        out.append({
+            "message_id": r["id"],
+            "chat_id": str(r["chat_id"]),
+            "chat_title": title_by_id.get(str(r["chat_id"])) or "(sin título)",
+            "excerpt": (r["content"] or "")[:280],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        })
+    return out
