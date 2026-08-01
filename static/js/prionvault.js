@@ -644,7 +644,7 @@
     const msg =
       `Vas a borrar ${what} y sus ${count} colección${count === 1 ? '' : 'es'}.\n\n` +
       '• Las filas de las colecciones desaparecen de la sidebar.\n' +
-      '• Los artículos NO se borran — sólo se desvincula la pertenencia.\n' +
+      '• Los artículos NO se borran — solo se desvincula la pertenencia.\n' +
       '• Las anotaciones / tags de cada artículo siguen igual.\n\n' +
       'Esta acción no se puede deshacer desde la app. ¿Continuar?';
     if (!confirm(msg)) return;
@@ -2009,12 +2009,12 @@
         btn.style.background    = 'white';
         btn.style.color         = '#0F3460';
         btn.style.borderColor   = 'white';
-        lbl.textContent = '✓ Mostrando sólo seleccionados — clic para ver todos';
+        lbl.textContent = '✓ Mostrando solo seleccionados — clic para ver todos';
       } else {
         btn.style.background    = 'rgba(255,255,255,0.14)';
         btn.style.color         = 'white';
         btn.style.borderColor   = 'rgba(255,255,255,0.25)';
-        lbl.textContent = '🔍 Ver sólo seleccionados';
+        lbl.textContent = '🔍 Ver solo seleccionados';
       }
     });
   }
@@ -2106,7 +2106,7 @@
               style="padding:4px 10px;border-radius:6px;
                      background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);
                      font-size:12px;cursor:pointer;white-space:nowrap;">
-        <span id="pv-bulk-only-selected-label${s}">🔍 Ver sólo seleccionados</span>
+        <span id="pv-bulk-only-selected-label${s}">🔍 Ver solo seleccionados</span>
       </button>
       <span style="flex:1;"></span>
 
@@ -8846,6 +8846,7 @@
       searchInput.value = '';
       state.q = '';
       syncClearBtn();
+      paintSearchInputState(false);
       searchInput.focus();
       state.page = 1;
       loadArticles();
@@ -10450,7 +10451,7 @@
     btn.addEventListener('click', async () => {
       if (!confirm('Va a recorrer todos los artículos limpiando entidades HTML y ' +
                    'transformando sup/sub a Unicode. La acción es idempotente y ' +
-                   'reversible (sólo actualiza filas con cambios). ¿Continuar?')) {
+                   'reversible (solo actualiza filas con cambios). ¿Continuar?')) {
         return;
       }
       btn.disabled = true;
@@ -10704,7 +10705,7 @@
 
     document.getElementById('pv-pmid-log-clear')?.addEventListener('click', () => {
       if (!logEl.querySelector('.pv-pmid-log-row')) return;
-      if (!confirm('Vaciar el log de esta sesión?\n\nNo afecta a la base de datos ni a los contadores — sólo limpia lo que ves en este panel.')) return;
+      if (!confirm('Vaciar el log de esta sesión?\n\nNo afecta a la base de datos ni a los contadores — solo limpia lo que ves en este panel.')) return;
       logEl.innerHTML =
         '<div style="color:#9ca3af;text-align:center;padding:24px 12px;">El log de búsquedas aparecerá aquí.</div>';
       _syncPmidLogCount();
@@ -11333,6 +11334,10 @@
             </div>
             ${[p.a, p.b].map(x => `
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid #f3f4f6;">
+                <input type="checkbox" class="pv-dup-select" data-aid="${esc(x.id)}"
+                       ${state.selectedIds.has(x.id) ? 'checked' : ''}
+                       title="Seleccionar — para verlo luego en el listado general"
+                       style="cursor:pointer;width:14px;height:14px;margin-top:4px;flex-shrink:0;">
                 <div style="flex:1;min-width:0;cursor:pointer;" data-open-aid="${esc(x.id)}">
                   <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${supHtml(x.title || '(no title)')}</div>
                   <div style="font-size:11.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -11410,9 +11415,31 @@
             }
           });
         });
+
+        // Selecting here uses the exact same state.selectedIds as the
+        // main listing's row checkboxes — check one and it shows up
+        // selected there too (see the cart/JC-modal checkboxes for the
+        // same pattern), so "seleccionar aquí, revisar allí" works.
+        list.querySelectorAll('.pv-dup-select').forEach(cb => {
+          cb.addEventListener('change', () => {
+            if (cb.checked) state.selectedIds.add(cb.dataset.aid);
+            else state.selectedIds.delete(cb.dataset.aid);
+            updateBulkBar();
+          });
+        });
       } catch (e) {
         meta.textContent = 'Error: ' + e.message;
       }
+    });
+
+    // Reflect any selection made here on the main listing's already-
+    // rendered checkboxes/bulk-bar as soon as the modal closes.
+    closeBtn.addEventListener('click', () => {
+      document.querySelectorAll('.pv-row-select').forEach(cb => {
+        cb.checked = state.selectedIds.has(cb.dataset.aid);
+      });
+      updateBulkBar();
+      syncSelectAllHeader();
     });
   }
 
@@ -16153,8 +16180,14 @@
                   </button>
                   <button class="pv-bk-restore-btn" data-filename="${escAttrJs(b.filename)}"
                           style="padding:4px 10px;border-radius:6px;border:1px solid #fca5a5;background:#fff5f5;
-                                 color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
+                                 color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;margin-right:4px;">
                     ♻ Restaurar
+                  </button>
+                  <button class="pv-bk-delete-btn" data-filename="${escAttrJs(b.filename)}"
+                          title="Borrar este backup (de Dropbox y de la caché local)"
+                          style="padding:4px 8px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                                 color:#6b7280;font-size:11.5px;cursor:pointer;">
+                    🗑️
                   </button>
                 </td>
               </tr>
@@ -16166,6 +16199,18 @@
         b.addEventListener('click', () => runVerify(b.dataset.filename)));
       listEl.querySelectorAll('.pv-bk-restore-btn').forEach(b =>
         b.addEventListener('click', () => openRestoreFlow(b.dataset.filename)));
+      listEl.querySelectorAll('.pv-bk-delete-btn').forEach(b =>
+        b.addEventListener('click', () => deleteBackup(b.dataset.filename)));
+    }
+
+    async function deleteBackup(filename) {
+      if (!confirm(`¿Borrar el backup "${filename}"? Esta acción no se puede deshacer.`)) return;
+      try {
+        await adminApi(`/api/db/backups/${encodeURIComponent(filename)}/delete`, { method: 'POST' });
+        loadList();
+      } catch (e) {
+        alert('Error al borrar el backup: ' + e.message);
+      }
     }
     function escAttrJs(s) { return esc(String(s || '')).replace(/"/g, '&quot;'); }
 

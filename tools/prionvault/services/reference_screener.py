@@ -230,7 +230,7 @@ def _classify_oa(entry: dict, *, check_unpaywall: bool) -> dict:
     doi = entry.get("doi")
     if not doi:
         return {"has_pmc": False, "oa_hint": "no",
-                "oa_detail": "Sin DOI ni PMC — sólo metadatos"}
+                "oa_detail": "Sin DOI ni PMC — solo metadatos"}
     try:
         from . import unpaywall as _u
         info = _u.find_open_pdf(doi)
@@ -241,7 +241,7 @@ def _classify_oa(entry: dict, *, check_unpaywall: bool) -> dict:
         return {"has_pmc": False, "oa_hint": "unpaywall",
                 "oa_detail": f"OA según Unpaywall ({info.host_type or 'fuente'})"}
     return {"has_pmc": False, "oa_hint": "no",
-            "oa_detail": "Ni PMC ni Unpaywall ofrecen PDF — sólo metadatos"}
+            "oa_detail": "Ni PMC ni Unpaywall ofrecen PDF — solo metadatos"}
 
 
 # ── Public entry point ──────────────────────────────────────────────────────

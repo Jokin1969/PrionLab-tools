@@ -665,6 +665,25 @@ def api_db_fix_sequences():
         return jsonify({"success": False, "error": str(e)[:500]}), 500
 
 
+@admin_bp.route("/api/db/backups/<filename>/delete", methods=["POST"])
+@admin_required
+def api_db_backups_delete(filename):
+    """Delete one backup from Dropbox (and its local cache, if any) —
+    the trash icon next to Restaurar in the backups modal."""
+    from flask import jsonify
+    from database.backup import BackupManager
+    try:
+        found = BackupManager.delete_dropbox_backup(filename)
+        if not found:
+            return jsonify({"success": False, "error": f"Backup not found: {filename}"}), 404
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error("backup delete failed: %s", e)
+        return jsonify({"success": False, "error": str(e)[:500]}), 500
+
+
 @admin_bp.route("/api/db/backups/restore", methods=["POST"])
 @admin_required
 def api_db_restore_backup():

@@ -689,6 +689,34 @@ class BackupManager:
         return items
 
     @classmethod
+    def delete_dropbox_backup(cls, filename: str) -> bool:
+        """Delete one named backup from Dropbox (the durable source of
+        truth the modal lists from) and its local cached copy, if any.
+        Returns True if the Dropbox file was found and deleted."""
+        import re
+        if not re.match(r"^[\w\-.]+$", filename or ""):
+            raise ValueError("invalid filename")
+
+        from core.dropbox_client import get_client
+        client = get_client()
+        if client is None:
+            raise RuntimeError("Dropbox no está configurado.")
+
+        entry = next((e for e in cls._list_dropbox_entries() if e["name"] == filename), None)
+        if entry is None:
+            return False
+        client.files_delete_v2(entry["path_lower"])
+
+        try:
+            local_path = BACKUP_DIR / filename
+            if local_path.exists() and local_path.parent == BACKUP_DIR:
+                local_path.unlink()
+        except Exception as exc:
+            logger.warning("delete_dropbox_backup: local cache cleanup failed for %s: %s",
+                           filename, exc)
+        return True
+
+    @classmethod
     def _apply_dropbox_retention(cls, *, retain_count: int, monthly: int) -> int:
         """Prune old backups in the Dropbox folder. Returns count
         deleted. The newest `retain_count` backups are always kept,

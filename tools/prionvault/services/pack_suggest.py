@@ -211,7 +211,7 @@ _RATIONALE_SYSTEM = (
     "2 = tangencialmente relacionado, dudoso | "
     "1 = no encaja con este pack.\n\n"
     "Responde SIEMPRE en español. Sé conciso (1-2 frases por 'why'). "
-    "No inventes datos del artículo, sólo usa lo que se te da."
+    "No inventes datos del artículo, solo usa lo que se te da."
 )
 
 
