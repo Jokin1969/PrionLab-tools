@@ -494,9 +494,24 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             if "abstract" in _sf: ilike_cols.append("coalesce(abstract,'')")
             if "journal"  in _sf: ilike_cols.append("coalesce(journal,'')")
 
+        # pg_trgm can't build a trigram (and so can't use the GIN index)
+        # for a pattern shorter than 3 chars — that word's ILIKE clause
+        # falls back to a full scan to evaluate, and worse, its bogus
+        # "very selective" cost estimate can trick the planner into
+        # driving the whole AND chain off that useless clause instead of
+        # a genuinely selective one (e.g. "Prions activate a p38 MAPK
+        # synaptotoxic signaling pathway" — the lone "a" ILIKE '%a%'
+        # matches nearly every title, but Postgres doesn't know that).
+        # Words under 3 chars add essentially zero restriction anyway
+        # (near-universal substrings), so drop them from the ILIKE
+        # chain — as long as at least one longer word is still driving
+        # it. Doesn't touch the FTS side (ts_input/words), whose GIN
+        # index handles short tokens fine.
+        ilike_words = [w for w in words if len(w) >= 3] or words
+
         like_params: dict = {}
         word_clauses = []
-        for i, w in enumerate(words):
+        for i, w in enumerate(ilike_words):
             key = f"q_like_{i}"
             like_params[key] = f"%{w}%"
             word_clauses.append("(" + " OR ".join(f"{c} ILIKE :{key}" for c in ilike_cols) + ")")
