@@ -638,13 +638,28 @@ def bulk_import(presenter_name: str, *, created_by=None,
 
             _meta, resp = client.files_download(article_file.path_lower)
             content = resp.content
-            doi = pmid = None
+            doi = pmid = title_hint = None
             try:
                 extracted = extract_pdf(content)
-                doi, pmid = extracted.doi, extracted.pmid
+                doi, pmid, title_hint = extracted.doi, extracted.pmid, extracted.title_hint
             except Exception:
                 pass
             aid, _reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=md5_of(content))
+            if not aid and not doi and not pmid and title_hint:
+                # Same rescue Import PDFs gets from resolve_metadata: some
+                # publishers (PLOS in particular — its DOI rides the running
+                # header/footer, which pdfplumber can mangle just enough to
+                # defeat every DOI regex) never yield a usable DOI/PMID from
+                # the PDF text at all. A CrossRef title search recovers the
+                # DOI in that case, which then hits the same lookup below.
+                try:
+                    from ..ingestion.metadata_resolver import resolve_metadata
+                    resolved = resolve_metadata(title_hint=title_hint)
+                    if resolved and resolved.doi:
+                        aid, _reason = find_duplicate(doi=resolved.doi)
+                except Exception:
+                    logger.debug("bulk_import: title-hint DOI resolution failed for %s",
+                                 folder_label, exc_info=True)
             if not aid:
                 unmatched.append({"folder": folder_label, "reason": "artículo no encontrado en PrionVault (ni por DOI/PMID ni por contenido)"})
                 if on_progress:

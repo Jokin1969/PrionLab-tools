@@ -4026,13 +4026,27 @@ def api_jc_find_article():
         # article. Extract the DOI/PMID from the PDF's own text too (same
         # extractor Import PDFs uses), and prefer that for the match since
         # it's what actually identifies the article.
+        title_hint = None
         try:
             from .ingestion.pdf_extractor import extract_pdf
             extracted = extract_pdf(content)
             doi = extracted.doi
             pmid = extracted.pmid
+            title_hint = extracted.title_hint
         except Exception as exc:
             logger.warning("jc find-article: PDF text extraction failed: %s", exc)
+        if not doi and not pmid and title_hint:
+            # Same rescue as Import PDFs: when the PDF text yields no
+            # usable DOI/PMID at all (some publishers — PLOS in
+            # particular — bury/mangle it in a running header/footer),
+            # a CrossRef title search recovers the DOI.
+            try:
+                from .ingestion.metadata_resolver import resolve_metadata
+                resolved = resolve_metadata(title_hint=title_hint)
+                if resolved and resolved.doi:
+                    doi = resolved.doi
+            except Exception:
+                logger.debug("jc find-article: title-hint DOI resolution failed", exc_info=True)
     else:
         data = request.get_json(silent=True) or {}
         identifier = (data.get("identifier") or "").strip()
