@@ -74,10 +74,14 @@ class MaintenanceScheduler:
             sched.add_job(lambda: _run(self.run_scheduled_emails),
                           IntervalTrigger(minutes=1), id="scheduled_emails",
                           replace_existing=True)
+            # Every minute: send pending one-time reminders ("Recordatorios")
+            sched.add_job(lambda: _run(self.run_reminders),
+                          IntervalTrigger(minutes=1), id="reminders",
+                          replace_existing=True)
 
             sched.start()
             self._scheduler = sched
-            logger.info("Maintenance scheduler started (7 jobs)")
+            logger.info("Maintenance scheduler started (8 jobs)")
             return True
         except Exception as e:
             logger.warning("Could not start maintenance scheduler: %s", e)
@@ -204,3 +208,11 @@ class MaintenanceScheduler:
             send_pending_scheduled_emails()
         except Exception as exc:
             logger.warning("Scheduled email send error: %s", exc)
+
+    def run_reminders(self) -> None:
+        """Send any pending one-time reminders ('Recordatorios')."""
+        try:
+            from tools.prionvault.services.reminders import send_pending_reminders
+            send_pending_reminders()
+        except Exception as exc:
+            logger.warning("Reminder send error: %s", exc)

@@ -4247,23 +4247,114 @@
       </div>
     </div>
 
-    <div style="height:1px;background:#e5e7eb;margin:14px 0 12px;"></div>
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;margin:14px 0 0;border-bottom:1px solid #e5e7eb;">
+      <button type="button" class="pv-notif-tab" data-tab="picks"
+              style="padding:8px 14px;border:none;background:none;cursor:pointer;
+                     font-size:12.5px;font-weight:600;color:#0F3460;
+                     border-bottom:2px solid #0F3460;margin-bottom:-1px;">
+        PrionVault picks
+      </button>
+      <button type="button" class="pv-notif-tab" data-tab="reminders"
+              style="padding:8px 14px;border:none;background:none;cursor:pointer;
+                     font-size:12.5px;font-weight:600;color:#9ca3af;
+                     border-bottom:2px solid transparent;margin-bottom:-1px;">
+        Recordatorios
+      </button>
+    </div>
 
-    <!-- Status bar -->
-    <div id="pv-notif-status" style="display:none;margin-bottom:10px;font-size:12.5px;
-                                      padding:8px 12px;border-radius:7px;"></div>
+    <!-- ── Tab: PrionVault picks (recurring digest subscriptions) ────────── -->
+    <div id="pv-notif-tab-picks" style="padding-top:12px;">
+      <!-- Status bar -->
+      <div id="pv-notif-status" style="display:none;margin-bottom:10px;font-size:12.5px;
+                                        padding:8px 12px;border-radius:7px;"></div>
 
-    <!-- Subscriptions table — rendered by JS -->
-    <div id="pv-notif-table-wrap"></div>
+      <!-- Subscriptions table — rendered by JS -->
+      <div id="pv-notif-table-wrap"></div>
 
-    <!-- Add button -->
-    <button id="pv-notif-add" type="button"
-            style="margin-top:10px;padding:8px 16px;border-radius:8px;width:100%;
-                   border:1px dashed #d1d5db;background:#f9fafb;color:#374151;
-                   font-size:13px;font-weight:600;cursor:pointer;">
-      <i class="fas fa-plus" style="color:#0F3460;margin-right:6px;"></i>
-      Nueva suscripción
-    </button>
+      <!-- Add button -->
+      <button id="pv-notif-add" type="button"
+              style="margin-top:10px;padding:8px 16px;border-radius:8px;width:100%;
+                     border:1px dashed #d1d5db;background:#f9fafb;color:#374151;
+                     font-size:13px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-plus" style="color:#0F3460;margin-right:6px;"></i>
+        Nueva suscripción
+      </button>
+    </div>
+
+    <!-- ── Tab: Recordatorios (one-time reminders) ─────────────────────── -->
+    <div id="pv-notif-tab-reminders" style="display:none;padding-top:12px;">
+      <div id="pv-reminders-status" style="display:none;margin-bottom:10px;font-size:12.5px;
+                                            padding:8px 12px;border-radius:7px;"></div>
+
+      <div id="pv-reminders-list"></div>
+
+      <button id="pv-reminders-add" type="button"
+              style="margin-top:10px;padding:8px 16px;border-radius:8px;width:100%;
+                     border:1px dashed #d1d5db;background:#f9fafb;color:#374151;
+                     font-size:13px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-plus" style="color:#0F3460;margin-right:6px;"></i>
+        Nuevo recordatorio
+      </button>
+
+      <!-- Inline create/edit form — hidden until "Nuevo recordatorio" or "Editar" -->
+      <div id="pv-reminder-form" style="display:none;margin-top:12px;background:#f9fafb;
+                  border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;">
+        <input type="hidden" id="pv-reminder-form-id">
+
+        <label style="display:block;font-size:11.5px;font-weight:700;color:#6b7280;
+                      text-transform:uppercase;letter-spacing:0.04em;margin-bottom:5px;">
+          Fecha y hora
+        </label>
+        <input type="datetime-local" id="pv-reminder-form-when"
+               style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;
+                      border-radius:8px;font-size:13px;margin-bottom:12px;">
+
+        <label style="display:block;font-size:11.5px;font-weight:700;color:#6b7280;
+                      text-transform:uppercase;letter-spacing:0.04em;margin-bottom:5px;">
+          Destinatario
+        </label>
+        <input type="email" id="pv-reminder-form-to" placeholder="correo@ejemplo.com"
+               style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;
+                      border-radius:8px;font-size:13px;margin-bottom:12px;">
+
+        <label style="display:block;font-size:11.5px;font-weight:700;color:#6b7280;
+                      text-transform:uppercase;letter-spacing:0.04em;margin-bottom:5px;">
+          Adjuntar PDF de Journal Club (opcional)
+        </label>
+        <select id="pv-reminder-form-jc"
+                style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;
+                       border-radius:8px;font-size:13px;margin-bottom:12px;">
+          <option value="">— Sin adjunto —</option>
+        </select>
+
+        <label style="display:block;font-size:11.5px;font-weight:700;color:#6b7280;
+                      text-transform:uppercase;letter-spacing:0.04em;margin-bottom:5px;">
+          Asunto
+        </label>
+        <input type="text" id="pv-reminder-form-subject" placeholder="Recordatorio — PrionVault"
+               style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;
+                      border-radius:8px;font-size:13px;margin-bottom:12px;">
+
+        <label style="display:block;font-size:11.5px;font-weight:700;color:#6b7280;
+                      text-transform:uppercase;letter-spacing:0.04em;margin-bottom:5px;">
+          Mensaje
+        </label>
+        <textarea id="pv-reminder-form-message" rows="6"
+                  style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;
+                         border-radius:8px;font-size:13px;resize:vertical;font-family:inherit;margin-bottom:14px;"></textarea>
+
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+          <span id="pv-reminder-form-status" style="font-size:12px;color:#9ca3af;flex:1;"></span>
+          <button id="pv-reminder-form-cancel" type="button"
+                  style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                         color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Cancelar</button>
+          <button id="pv-reminder-form-save" type="button"
+                  style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                         font-size:12.5px;font-weight:600;cursor:pointer;">Guardar</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 

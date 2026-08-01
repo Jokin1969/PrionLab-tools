@@ -8,7 +8,7 @@ import logging
 
 from flask import jsonify, request, session
 
-from core.decorators import login_required
+from core.decorators import login_required, admin_required
 from . import prionvault_bp
 
 logger = logging.getLogger(__name__)
@@ -482,3 +482,132 @@ def api_notifications_sub_preview(sub_id):
             for a in articles[:20]  # cap at 20 for display
         ],
     })
+
+
+# ── Recordatorios (one-time reminders) ──────────────────────────────────────
+# Distinct feature from the subscriptions above: a single scheduled send,
+# not a recurring digest. See services/reminders.py.
+
+def _parse_scheduled_at(raw):
+    from datetime import datetime
+    if not raw:
+        raise ValueError("Falta la fecha/hora del recordatorio.")
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        raise ValueError("Fecha/hora no válida.")
+
+
+@prionvault_bp.route("/api/reminders/jc-picker", methods=["GET"])
+@admin_required
+def api_reminders_jc_picker():
+    """Articles with at least one attached JC file — the picker list
+    for a reminder's optional PDF attachment."""
+    from .services import jc as _jc
+    try:
+        items = [x for x in _jc.list_all() if x.get("files")]
+    except Exception as exc:
+        logger.exception("reminders jc-picker failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    return jsonify({"items": items})
+
+
+@prionvault_bp.route("/api/reminders", methods=["GET"])
+@admin_required
+def api_reminders_list():
+    from .services import reminders as _rem
+    try:
+        return jsonify({"items": _rem.list_reminders()})
+    except Exception as exc:
+        logger.exception("reminders list failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+
+
+@prionvault_bp.route("/api/reminders", methods=["POST"])
+@admin_required
+def api_reminders_create():
+    from .services import reminders as _rem
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = _rem.create_reminder(
+            to_email=data.get("to_email", ""),
+            scheduled_at=_parse_scheduled_at(data.get("scheduled_at")),
+            subject=data.get("subject", ""),
+            message=data.get("message", ""),
+            article_id=data.get("article_id") or None,
+            jc_file_id=data.get("jc_file_id") or None,
+            created_by=session.get("user_id"),
+        )
+        return jsonify(result), 201
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("reminder create failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+
+
+@prionvault_bp.route("/api/reminders/<reminder_id>", methods=["PUT"])
+@admin_required
+def api_reminders_update(reminder_id):
+    from .services import reminders as _rem
+    data = request.get_json(force=True, silent=True) or {}
+    fields = {}
+    for key in ("to_email", "subject", "message", "article_id", "jc_file_id"):
+        if key in data:
+            fields[key] = data[key]
+    if "scheduled_at" in data:
+        fields["scheduled_at"] = _parse_scheduled_at(data["scheduled_at"])
+    try:
+        result = _rem.update_reminder(reminder_id, **fields)
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("reminder update failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    if not result:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(result)
+
+
+@prionvault_bp.route("/api/reminders/<reminder_id>", methods=["DELETE"])
+@admin_required
+def api_reminders_delete(reminder_id):
+    from .services import reminders as _rem
+    try:
+        ok = _rem.delete_reminder(reminder_id)
+    except Exception as exc:
+        logger.exception("reminder delete failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/reminders/<reminder_id>/send-now", methods=["POST"])
+@admin_required
+def api_reminders_send_now(reminder_id):
+    from .services import reminders as _rem
+    try:
+        result = _rem.send_reminder(reminder_id, force=True)
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        logger.exception("reminder send-now failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    return jsonify(result)
+
+
+@prionvault_bp.route("/api/reminders/<reminder_id>/preview", methods=["GET"])
+@admin_required
+def api_reminders_preview(reminder_id):
+    from .services import reminders as _rem
+    try:
+        html = _rem.render_preview(reminder_id)
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        logger.exception("reminder preview failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    return jsonify({"html": html})

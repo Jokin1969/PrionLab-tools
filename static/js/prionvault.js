@@ -18427,6 +18427,217 @@
         _showStatus('error', 'Error al crear: ' + e.message);
       }
     });
+
+    // ── Tabs: "PrionVault picks" (above) vs. "Recordatorios" (below) ────
+    const tabPicks     = document.getElementById('pv-notif-tab-picks');
+    const tabReminders = document.getElementById('pv-notif-tab-reminders');
+    modal.querySelectorAll('.pv-notif-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const on = btn.dataset.tab === 'reminders';
+        modal.querySelectorAll('.pv-notif-tab').forEach(b => {
+          const active = b === btn;
+          b.style.color = active ? '#0F3460' : '#9ca3af';
+          b.style.borderBottomColor = active ? '#0F3460' : 'transparent';
+        });
+        tabPicks.style.display     = on ? 'none' : '';
+        tabReminders.style.display = on ? '' : 'none';
+        if (on) _loadReminders();
+      });
+    });
+
+    // ── Recordatorios (one-time reminders) ───────────────────────────────
+    const remStatusEl = document.getElementById('pv-reminders-status');
+    const remListEl   = document.getElementById('pv-reminders-list');
+    const remAddBtn    = document.getElementById('pv-reminders-add');
+    const remForm      = document.getElementById('pv-reminder-form');
+    const remFormId     = document.getElementById('pv-reminder-form-id');
+    const remFormWhen   = document.getElementById('pv-reminder-form-when');
+    const remFormTo     = document.getElementById('pv-reminder-form-to');
+    const remFormJc      = document.getElementById('pv-reminder-form-jc');
+    const remFormSubject = document.getElementById('pv-reminder-form-subject');
+    const remFormMessage = document.getElementById('pv-reminder-form-message');
+    const remFormStatus  = document.getElementById('pv-reminder-form-status');
+    const remFormSave    = document.getElementById('pv-reminder-form-save');
+    const remFormCancel  = document.getElementById('pv-reminder-form-cancel');
+
+    const REMINDER_DEFAULT_MESSAGE =
+      'Hola, [Usuario]:\n\n' +
+      'Sirva este mensaje para recordarte que debes adjuntar la presentación ' +
+      'del Journal Club que has realizado recientemente, al artículo ' +
+      '[datos del artículo adjunto].\n\n' +
+      'Gracias y un saludo.';
+
+    let _jcOptionsLoaded = false;
+    async function _loadJcOptions() {
+      if (_jcOptionsLoaded) return;
+      _jcOptionsLoaded = true;
+      try {
+        const r = await _notifApi('/reminders/jc-picker');
+        const items = r.items || [];
+        remFormJc.innerHTML = '<option value="">— Sin adjunto —</option>' +
+          items.flatMap(x => (x.files || []).map(f =>
+            `<option value="${f.id}" data-article-id="${x.article_id}"
+                     data-article-title="${esc(x.article_title || '')}">
+               ${esc(x.article_title || '(sin título)')} — ${esc(f.filename)}
+             </option>`
+          )).join('');
+      } catch (e) { /* silent — attachment stays optional */ }
+    }
+
+    function _remFmtDate(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleString('es-ES', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+    }
+
+    function _openReminderForm(rem) {
+      remForm.style.display = 'block';
+      remFormStatus.textContent = '';
+      _loadJcOptions();
+      if (rem) {
+        remFormId.value = rem.id;
+        remFormWhen.value = rem.scheduled_at ? rem.scheduled_at.slice(0, 16) : '';
+        remFormTo.value = rem.to_email || '';
+        remFormSubject.value = rem.subject || '';
+        remFormMessage.value = rem.message || '';
+        setTimeout(() => { remFormJc.value = rem.jc_file_id || ''; }, 0);
+      } else {
+        remFormId.value = '';
+        remFormWhen.value = '';
+        remFormTo.value = '';
+        remFormSubject.value = 'Recordatorio — PrionVault';
+        remFormMessage.value = REMINDER_DEFAULT_MESSAGE;
+        remFormJc.value = '';
+      }
+      remForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function _closeReminderForm() { remForm.style.display = 'none'; }
+
+    function _renderReminders(items) {
+      if (!items.length) {
+        remListEl.innerHTML = `<p style="color:#9ca3af;text-align:center;padding:20px;font-size:13px;">
+          Sin recordatorios todavía.</p>`;
+        return;
+      }
+      remListEl.innerHTML = items.map(r => {
+        const sent = !!r.sent_at;
+        return `
+        <div class="pv-reminder-row" data-id="${r.id}"
+             style="display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid #f3f4f6;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#111827;">
+              ${esc(r.subject || '(sin asunto)')}
+              ${sent
+                ? '<span style="margin-left:6px;font-size:10.5px;font-weight:700;color:#15803d;">✓ enviado</span>'
+                : r.error_msg
+                  ? '<span style="margin-left:6px;font-size:10.5px;font-weight:700;color:#b91c1c;">✗ error</span>'
+                  : ''}
+            </div>
+            <div style="font-size:11.5px;color:#6b7280;margin-top:2px;">
+              Para ${esc(r.to_email)} · ${sent ? 'enviado el ' + _remFmtDate(r.sent_at) : _remFmtDate(r.scheduled_at)}
+              ${r.jc_filename ? ` · 📎 ${esc(r.jc_filename)}` : ''}
+            </div>
+            ${r.article_title ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px;">${esc(r.article_title)}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            ${!sent ? `
+              <button class="pv-rem-edit" data-id="${r.id}" title="Editar"
+                      style="padding:4px 8px;border-radius:6px;border:1px solid #d1d5db;background:white;font-size:11px;cursor:pointer;">✏</button>
+              <button class="pv-rem-send" data-id="${r.id}" title="Enviar ahora"
+                      style="padding:4px 8px;border-radius:6px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-size:11px;cursor:pointer;">▶</button>` : ''}
+            <button class="pv-rem-delete" data-id="${r.id}" title="Borrar"
+                    style="padding:4px 8px;border-radius:6px;border:1px solid #fca5a5;background:white;color:#b91c1c;font-size:11px;cursor:pointer;">🗑</button>
+          </div>
+        </div>`;
+      }).join('');
+
+      remListEl.querySelectorAll('.pv-rem-edit').forEach(b => {
+        b.addEventListener('click', () => {
+          const rem = _lastReminders.find(x => x.id === b.dataset.id);
+          if (rem) _openReminderForm(rem);
+        });
+      });
+      remListEl.querySelectorAll('.pv-rem-send').forEach(b => {
+        b.addEventListener('click', async () => {
+          if (!confirm('¿Enviar este recordatorio ahora?')) return;
+          b.disabled = true;
+          try {
+            await _notifApi(`/reminders/${b.dataset.id}/send-now`, { method: 'POST' });
+            await _loadReminders();
+          } catch (e) {
+            alert('Error al enviar: ' + e.message);
+            b.disabled = false;
+          }
+        });
+      });
+      remListEl.querySelectorAll('.pv-rem-delete').forEach(b => {
+        b.addEventListener('click', async () => {
+          if (!confirm('¿Borrar este recordatorio?')) return;
+          try {
+            await _notifApi(`/reminders/${b.dataset.id}`, { method: 'DELETE' });
+            await _loadReminders();
+          } catch (e) {
+            alert('Error al borrar: ' + e.message);
+          }
+        });
+      });
+    }
+
+    let _lastReminders = [];
+    async function _loadReminders() {
+      try {
+        const r = await _notifApi('/reminders');
+        _lastReminders = r.items || [];
+        remStatusEl.style.display = 'none';
+        _renderReminders(_lastReminders);
+      } catch (e) {
+        remStatusEl.style.display = 'block';
+        remStatusEl.style.background = '#fef2f2';
+        remStatusEl.style.color = '#b91c1c';
+        remStatusEl.style.border = '1px solid #fecaca';
+        remStatusEl.textContent = 'Error al cargar: ' + e.message;
+      }
+    }
+
+    remAddBtn?.addEventListener('click', () => _openReminderForm(null));
+    remFormCancel?.addEventListener('click', _closeReminderForm);
+    remFormSave?.addEventListener('click', async () => {
+      const when = remFormWhen.value;
+      const to = (remFormTo.value || '').trim();
+      if (!when || !to) {
+        remFormStatus.style.color = '#b91c1c';
+        remFormStatus.textContent = 'Rellena la fecha/hora y el destinatario.';
+        return;
+      }
+      const opt = remFormJc.selectedOptions[0];
+      const payload = {
+        scheduled_at: new Date(when).toISOString(),
+        to_email: to,
+        subject: (remFormSubject.value || '').trim() || 'Recordatorio — PrionVault',
+        message: (remFormMessage.value || '').trim() || REMINDER_DEFAULT_MESSAGE,
+        jc_file_id: remFormJc.value || null,
+        article_id: (opt && opt.dataset.articleId) || null,
+      };
+      remFormSave.disabled = true;
+      remFormStatus.style.color = '#9ca3af';
+      remFormStatus.textContent = 'Guardando…';
+      try {
+        const id = remFormId.value;
+        if (id) {
+          await _notifApi(`/reminders/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        } else {
+          await _notifApi('/reminders', { method: 'POST', body: JSON.stringify(payload) });
+        }
+        _closeReminderForm();
+        await _loadReminders();
+      } catch (e) {
+        remFormStatus.style.color = '#b91c1c';
+        remFormStatus.textContent = 'Error: ' + e.message;
+      } finally {
+        remFormSave.disabled = false;
+      }
+    });
   });
 
 
