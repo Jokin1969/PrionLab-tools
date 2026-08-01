@@ -1024,25 +1024,40 @@
                        aria-label="Seleccionar todos los artículos visibles"
                        style="cursor:pointer;width:14px;height:14px;">
               </th>
-              <th scope="col" style="width:132px;padding:6px 4px;text-align:center;
+              <th scope="col" style="width:152px;padding:6px 4px;text-align:center;position:relative;
                          border-bottom:1px solid #e5e7eb;">
                 <div style="display:flex;align-items:center;justify-content:center;gap:6px;"
                      title="Clic en un icono = mostrar solo los artículos con esa marca. Vuelve a pulsar para ver todos. Varias marcas activas a la vez = deben tener TODAS.">
+                  <button type="button" id="pv-color-filter-btn"
+                          title="Filtrar por color — clic para elegir entre los colores usados"
+                          style="background:none;border:1.5px dashed #9ca3af;padding:0;width:11px;height:11px;
+                                 border-radius:50%;cursor:pointer;flex-shrink:0;"></button>
+                  <div id="pv-color-filter-popup" style="display:none;position:absolute;top:100%;left:8px;
+                              margin-top:4px;background:white;border:1px solid #e5e7eb;border-radius:8px;
+                              box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:8px;z-index:20;
+                              min-width:150px;text-align:left;"></div>
                   <button type="button" class="pv-mark-filter-btn" data-mark="isFlagged"
                           title="Solo con bandera 🚩" style="background:none;border:none;padding:0;
-                          line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;"><i class="fas fa-flag"></i></button>
+                          line-height:0;cursor:pointer;color:#9ca3af;">
+                    <svg viewBox="0 0 10 13" width="13" height="13" style="display:block;"
+                         fill="none" stroke="currentColor" stroke-width="1.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="1.5" y1="0.5" x2="1.5" y2="12.5"></line>
+                      <path d="M1.5 1 L9 3.5 L1.5 7 Z"></path>
+                    </svg>
+                  </button>
                   <button type="button" class="pv-mark-filter-btn" data-mark="isMilestone"
                           title="Solo hitos ★" style="background:none;border:none;padding:0;
-                          line-height:0;cursor:pointer;color:#9ca3af;font-size:14px;"><i class="fas fa-star"></i></button>
+                          line-height:1;cursor:pointer;color:#9ca3af;font-size:15px;">☆</button>
                   <button type="button" class="pv-mark-filter-btn" data-mark="isJc"
                           title="Solo mi Journal Club 📖" style="background:none;border:none;padding:0;
                           line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;"><i class="fas fa-book-open"></i></button>
                   <button type="button" class="pv-mark-filter-btn" data-mark="isFavorite"
                           title="Solo favoritos ♥" style="background:none;border:none;padding:0;
-                          line-height:0;cursor:pointer;color:#9ca3af;font-size:14px;"><i class="fas fa-heart"></i></button>
+                          line-height:1;cursor:pointer;color:#9ca3af;font-size:14px;">♡</button>
                   <button type="button" class="pv-mark-filter-btn" data-mark="isRead"
                           title="Solo leídos ✓" style="background:none;border:none;padding:0;
-                          line-height:0;cursor:pointer;color:#9ca3af;font-size:13px;font-weight:700;"><i class="fas fa-check"></i></button>
+                          line-height:1;cursor:pointer;color:#9ca3af;font-size:13px;font-weight:700;">✓</button>
                 </div>
               </th>
               <th scope="col" style="width:46px;padding:8px 4px;border-bottom:1px solid #e5e7eb;"></th>

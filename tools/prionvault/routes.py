@@ -1358,6 +1358,33 @@ def api_article_detail(aid):
         db.Session.remove()
 
 
+@prionvault_bp.route("/api/articles/colors-in-use", methods=["GET"])
+@login_required
+def api_colors_in_use():
+    """Distinct color labels (+ counts) the viewer has actually used to
+    mark articles — powers the header color-filter popup, which only
+    offers colors that are actually in play instead of the full fixed
+    palette (color_label is a per-user mark, see _PER_USER_MARKS)."""
+    viewer_uid = _viewer_id()
+    if not viewer_uid:
+        return jsonify({"colors": []})
+    s = _session()
+    try:
+        rows = s.execute(sql_text(
+            """SELECT color_label, COUNT(*) AS n
+                 FROM prionvault_user_state
+                WHERE user_id = CAST(:uid AS uuid) AND color_label IS NOT NULL
+                GROUP BY color_label
+                ORDER BY n DESC"""
+        ), {"uid": str(viewer_uid)}).all()
+    except Exception as exc:
+        logger.warning("colors-in-use query failed: %s", exc)
+        return jsonify({"colors": []})
+    finally:
+        s.close()
+    return jsonify({"colors": [{"color": r[0], "count": int(r[1])} for r in rows]})
+
+
 @prionvault_bp.route("/api/articles/stats", methods=["GET"])
 @login_required
 def api_article_stats():

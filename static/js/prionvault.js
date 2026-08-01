@@ -2616,6 +2616,7 @@
       const active = state[key] === true;
       btn.style.color = active ? (MARK_FILTER_ACTIVE_COLOR[key] || '#0F3460') : '#9ca3af';
     });
+    if (window._pvSyncColorDot) window._pvSyncColorDot();
   }
 
   // Isolate the listing to show only a single article
@@ -8613,6 +8614,86 @@
       });
     });
     syncMarkFilterButtons();
+
+    // ── Color filter popup (header) ─────────────────────────────────────
+    // Unlike the boolean marks above, color is a 6-value pick — doesn't
+    // fit as a single click-to-toggle icon. The dot opens a small popup
+    // listing only the colors the viewer has actually used (fetched once
+    // per open), each with its count; picking one filters to it, picking
+    // the active one again clears the filter. Single-select: an article
+    // has exactly one color, so there's no "AND" case here like the
+    // boolean marks.
+    (function wireColorFilterPopup() {
+      const btn = document.getElementById('pv-color-filter-btn');
+      const popup = document.getElementById('pv-color-filter-popup');
+      if (!btn || !popup) return;
+
+      function syncDot() {
+        const css = COLOR_CSS[state.colorLabel];
+        btn.style.background = css || 'none';
+        btn.style.borderStyle = css ? 'solid' : 'dashed';
+        btn.style.borderColor = css || '#9ca3af';
+      }
+      syncDot();
+
+      async function renderPopup() {
+        popup.innerHTML = '<div style="font-size:11.5px;color:#9ca3af;padding:4px;">Cargando…</div>';
+        let colors = [];
+        try {
+          const data = await api('/articles/colors-in-use');
+          colors = data.colors || [];
+        } catch (e) {
+          popup.innerHTML = `<div style="font-size:11.5px;color:#b91c1c;padding:4px;">Error: ${esc(e.message)}</div>`;
+          return;
+        }
+        if (!colors.length) {
+          popup.innerHTML = '<div style="font-size:11.5px;color:#9ca3af;padding:4px;max-width:160px;">Todavía no has marcado ningún artículo con un color.</div>';
+          return;
+        }
+        popup.innerHTML = colors.map(c => {
+          const css = COLOR_CSS[c.color] || '#9ca3af';
+          const active = state.colorLabel === c.color;
+          return `
+            <button type="button" class="pv-color-filter-option" data-color="${esc(c.color)}"
+                    style="display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;
+                           border:none;border-radius:6px;cursor:pointer;font-size:12.5px;
+                           background:${active ? '#f3f4f6' : 'none'};color:#374151;text-align:left;">
+              <span style="width:11px;height:11px;border-radius:50%;background:${css};flex-shrink:0;"></span>
+              <span style="flex:1;text-transform:capitalize;">${esc(c.color)}</span>
+              <span style="color:#9ca3af;font-size:11px;">${c.count}${active ? ' ✓' : ''}</span>
+            </button>`;
+        }).join('');
+        popup.querySelectorAll('.pv-color-filter-option').forEach(opt => {
+          opt.addEventListener('click', () => {
+            const color = opt.dataset.color;
+            state.colorLabel = state.colorLabel === color ? null : color;
+            state.page = 1;
+            syncDot();
+            popup.style.display = 'none';
+            loadArticles();
+          });
+        });
+      }
+
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const opening = popup.style.display === 'none';
+        popup.style.display = opening ? 'block' : 'none';
+        if (opening) renderPopup();
+      });
+      document.addEventListener('click', (e) => {
+        if (popup.style.display !== 'none' && !popup.contains(e.target) && e.target !== btn) {
+          popup.style.display = 'none';
+        }
+      });
+
+      // Exposed so syncMarkFilterButtons() (module scope, called from
+      // resets triggered elsewhere — Library Health shortcuts, "Reset
+      // filters"...) can keep this dot in sync too.
+      window._pvSyncColorDot = syncDot;
+
+      document.getElementById('filter-color')?.addEventListener('change', syncDot);
+    })();
 
     document.getElementById('filter-color').addEventListener('change', e => {
       state.colorLabel = e.target.value || null;
