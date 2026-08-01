@@ -4437,11 +4437,14 @@ def api_jc_file_view(fid):
     as a download:
       - pdf   → the same PDF.js viewer used for article PDFs.
       - image → a plain centered <img>.
-      - word/excel/pptx/other → no browser can render these natively.
-        External viewers (Office Online, Google Docs Viewer) proved
-        unreliable for arbitrary hosted files, so these are converted
-        to PDF server-side (headless LibreOffice, cached in Dropbox
-        after the first view) and shown through the same PDF.js viewer.
+      - word/excel/pptx → embedded via Microsoft's Office Online viewer
+        (view.officeapps.live.com), fed a short-lived Dropbox temporary
+        link. Full native fidelity (animations, transitions, speaker
+        layout for pptx) and no server-side conversion wait — this
+        replaced an earlier headless-LibreOffice-to-PDF pipeline that
+        was slow on first view and lost most of that fidelity.
+      - keynote/other (formats Office Online doesn't render) → falls
+        back to the LibreOffice conversion, same as before.
     """
     from .services import jc as _jc
 
@@ -4469,28 +4472,34 @@ def api_jc_file_view(fid):
         )
         return Response(html, mimetype="text/html")
 
-    # Office formats: convert to PDF (cached after the first view) and
-    # show through the same PDF.js viewer. If the conversion itself
-    # fails — LibreOffice missing/crashed, corrupt file — fall back to
-    # a plain page offering the original download and, if Dropbox can
-    # hand out a temporary link, Microsoft's own Office Online viewer
-    # as a last resort (full fidelity, but an external, unauthenticated
-    # service — not something we can rely on as the primary path, see
-    # get_or_convert_pdf docstring).
+    from urllib.parse import quote as _urlquote
+
+    # Office Online only renders the formats it was built for — pptx/
+    # ppt, docx/doc, xlsx/xls (kinds "pptx"/"word"/"excel" here; a
+    # .key/"keynote" or genuinely unknown "other" file goes straight to
+    # the LibreOffice-conversion fallback below).
+    if kind in ("pptx", "word", "excel"):
+        temp_link = _jc.temporary_link(fid)
+        if temp_link:
+            viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(temp_link, safe="")
+            html = (
+                '<!doctype html><html><head><meta charset="utf-8">'
+                f'<title>{esc_name}</title>'
+                '<style>html,body{margin:0;height:100%;background:#222;}'
+                'iframe{border:none;width:100%;height:100%;display:block;}</style></head>'
+                f'<body><iframe src="{viewer_src}" allowfullscreen></iframe></body></html>'
+            )
+            return Response(html, mimetype="text/html")
+
+    # Fallback path — Office Online unavailable (Dropbox not configured,
+    # temp-link request failed) or a format it can't render (keynote,
+    # other): convert to PDF server-side (headless LibreOffice, cached
+    # in Dropbox after the first view) and show via the PDF.js viewer.
     if _jc.get_or_convert_pdf(fid):
         office_pdf_url = f"/prionvault/api/jc/files/{fid}/office-pdf"
         html = _JC_PDF_VIEW_TEMPLATE.format(title=esc_name, pdf_url=office_pdf_url)
         return Response(html, mimetype="text/html")
 
-    from urllib.parse import quote as _urlquote
-    temp_link = _jc.temporary_link(fid)
-    online_viewer_html = ""
-    if temp_link:
-        viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(temp_link, safe="")
-        online_viewer_html = (
-            f'<a href="{viewer_src}" target="_blank" rel="noopener" class="pv-jc-fallback-btn">'
-            'Ver en Office Online (visor externo)</a>'
-        )
     html = (
         '<!doctype html><html><head><meta charset="utf-8">'
         f'<title>{esc_name}</title>'
@@ -4504,7 +4513,6 @@ def api_jc_file_view(fid):
         f'<body><p>No se ha podido generar una vista previa de «{esc_name}».</p>'
         '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">'
         f'<a href="{raw_url}" class="pv-jc-fallback-btn">Descargar original</a>'
-        f'{online_viewer_html}'
         '</div></body></html>'
     )
     return Response(html, mimetype="text/html")
