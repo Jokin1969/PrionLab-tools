@@ -10,7 +10,10 @@
 
 async function getSettings() {
   return new Promise(resolve =>
-    chrome.storage.sync.get({ serverUrl: '', apiKey: '' }, resolve)
+    chrome.storage.sync.get(
+      { serverUrl: '', apiKey: '', suggesterName: '', suggesterEmail: '' },
+      resolve
+    )
   );
 }
 
@@ -44,6 +47,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 async function handleMessage(msg) {
   switch (msg.type) {
+
+    // ── Who am I? (admin key vs reader key) ─────────────────────────────
+    case 'WHOAMI': {
+      const resp = await apiRequest('/prionvault/api/whoami');
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      return data;
+    }
+
+    // ── Propose an article by email (reader-key users) ───────────────────
+    case 'SUGGEST': {
+      const { suggesterName, suggesterEmail } = await getSettings();
+      const resp = await apiRequest('/prionvault/api/articles/suggest', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          ...msg.metadata,
+          page_url:        msg.pageUrl || null,
+          suggester_name:  suggesterName || null,
+          suggester_email: suggesterEmail || null,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      return data;
+    }
 
     // ── Lookup metadata for a DOI or PMID ─────────────────────────────────
     case 'LOOKUP': {

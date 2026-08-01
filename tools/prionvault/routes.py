@@ -2948,8 +2948,58 @@ def api_article_delete(aid):
 
 
 # ── Metadata lookup (synchronous, no PDF) ──────────────────────────────────
+@prionvault_bp.route("/api/whoami", methods=["GET"])
+@login_required
+def api_whoami():
+    """Lightweight role probe for the Chrome extension — lets the panel
+    decide whether to show the direct 'Añadir a PrionVault' buttons
+    (admin) or the 'Proponer por email' button (reader), without having
+    to infer it from a 403 on some other endpoint."""
+    return jsonify({"role": _viewer_role() or "reader"})
+
+
+@prionvault_bp.route("/api/articles/suggest", methods=["POST"])
+@login_required
+def api_article_suggest():
+    """A non-admin extension user proposes an article for the library —
+    emails the admin instead of creating it directly (only admins can do
+    that; see @admin_required on /api/articles/create and /with-pdf).
+
+    Body: same metadata shape as /api/articles/create, plus optional
+    page_url (where the extension found it), suggester_name/_email
+    (from the extension's settings, entirely optional — the email works
+    fine without them)."""
+    from .services.article_suggest import send_suggestion_email
+
+    data = request.get_json(force=True, silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "missing_fields", "detail": "title is required"}), 400
+
+    try:
+        ok = send_suggestion_email(
+            title=title,
+            authors=data.get("authors"),
+            year=data.get("year"),
+            journal=data.get("journal"),
+            doi=(data.get("doi") or "").strip() or None,
+            pubmed_id=(data.get("pubmed_id") or data.get("pmid") or "").strip() or None,
+            abstract=data.get("abstract"),
+            page_url=(data.get("page_url") or "").strip() or None,
+            suggester_name=(data.get("suggester_name") or "").strip() or None,
+            suggester_email=(data.get("suggester_email") or "").strip() or None,
+        )
+    except Exception as exc:
+        logger.exception("article suggestion email failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+    if not ok:
+        return jsonify({"error": "send_failed",
+                        "detail": "No se pudo enviar el email. Revisa la configuración SMTP del servidor."}), 502
+    return jsonify({"ok": True})
+
+
 @prionvault_bp.route("/api/articles/lookup", methods=["POST"])
-@admin_required
+@login_required
 def api_article_lookup():
     """Resolve bibliographic metadata for a DOI or PMID without ingesting.
 

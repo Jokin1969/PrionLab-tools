@@ -15,9 +15,12 @@ const state = {
   pmid:      null,
   pdfUrl:    null,
   pageTitle: null,
+  pageUrl:   null,
   meta:      null,      // resolved metadata from server
   serverId:  null,      // article id if already in library
   serverUrl: null,      // base URL of the PrionVault instance
+  role:      'admin',   // 'admin' | 'reader' — from GET /api/whoami; governs
+                         // whether the panel offers direct add or email suggestion
 };
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
@@ -91,7 +94,10 @@ function renderArticle(meta, duplicateOf) {
       ${state.serverUrl ? `<a class="pv-view-link" href="${esc(state.serverUrl)}/prionvault/?open=${esc(duplicateOf)}" target="_blank">Ver en PrionVault →</a>` : ''}
     </div>` : '';
 
-  const actions = duplicateOf ? '' : `
+  // Only admins can create articles directly (server enforces this too —
+  // /api/articles/create and /with-pdf are @admin_required — this branch
+  // just avoids showing a button that would 403 for a reader-key user).
+  const actions = duplicateOf ? '' : (state.role === 'admin' ? `
     <div class="pv-actions" id="pv-actions">
       <button class="pv-btn pv-btn-primary" id="pv-add">
         + Añadir a PrionVault
@@ -102,7 +108,13 @@ function renderArticle(meta, duplicateOf) {
         </button>
         <p class="pv-pdf-hint">Solo funciona con PDFs de acceso abierto o si tienes acceso institucional.</p>
       ` : ''}
-    </div>`;
+    </div>` : `
+    <div class="pv-actions" id="pv-actions">
+      <button class="pv-btn pv-btn-primary" id="pv-suggest">
+        ✉️ Proponer para PrionVault
+      </button>
+      <p class="pv-pdf-hint">Se envía un email al administrador con los datos del artículo para que lo añada.</p>
+    </div>`);
 
   const abstractHtml = meta.abstract ? `
     <div class="pv-abstract-section">
@@ -173,6 +185,7 @@ function renderArticle(meta, duplicateOf) {
   // Add buttons
   document.getElementById('pv-add')?.addEventListener('click', () => addArticle(false));
   document.getElementById('pv-add-pdf')?.addEventListener('click', () => addArticle(true));
+  document.getElementById('pv-suggest')?.addEventListener('click', () => suggestArticle());
 }
 
 function renderSuccess(articleId, withPdf) {
@@ -189,6 +202,42 @@ function renderSuccess(articleId, withPdf) {
     </div>`;
 
   document.getElementById('pv-actions')?.remove();
+}
+
+// ── Article suggestion (reader-key users) ───────────────────────────────────
+
+async function suggestArticle() {
+  const meta = state.meta;
+  if (!meta) return;
+
+  const btn      = document.getElementById('pv-suggest');
+  const resultEl = document.getElementById('pv-action-result');
+  if (btn) btn.disabled = true;
+  resultEl.innerHTML = '';
+
+  const metadata = {
+    title:     meta.title,
+    authors:   meta.authors,
+    year:      meta.year,
+    journal:   meta.journal,
+    doi:       meta.doi,
+    pubmed_id: meta.pubmed_id,
+    abstract:  meta.abstract,
+  };
+
+  try {
+    await send({ type: 'SUGGEST', metadata, pageUrl: state.pageUrl || null });
+    resultEl.innerHTML = `
+      <div class="pv-success">
+        <div class="pv-checkmark">✓</div>
+        <h3>¡Enviado!</h3>
+        <p>Se ha avisado al administrador para que valore añadirlo a PrionVault.</p>
+      </div>`;
+    document.getElementById('pv-actions')?.remove();
+  } catch (err) {
+    resultEl.innerHTML = `<div class="pv-error">Error: ${esc(err.message)}</div>`;
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ── Article add logic ─────────────────────────────────────────────────────────
@@ -306,6 +355,7 @@ window.addEventListener('message', async (e) => {
   state.pmid      = e.data.pmid  || null;
   state.pdfUrl    = e.data.pdfUrl || null;
   state.pageTitle = e.data.pageTitle || null;
+  state.pageUrl   = e.data.pageUrl || null;
 
   // Load server URL for "View in PrionVault" links
   try {
@@ -318,6 +368,16 @@ window.addEventListener('message', async (e) => {
   } catch (_) {
     renderNotConfigured();
     return;
+  }
+
+  // Which key was configured — admin (direct add) or reader (email
+  // suggestion)? Defaults to 'admin' on failure so an already-working
+  // admin setup never regresses if this call has a hiccup.
+  try {
+    const who = await send({ type: 'WHOAMI' });
+    state.role = who.role === 'reader' ? 'reader' : 'admin';
+  } catch (_) {
+    state.role = 'admin';
   }
 
   if (!state.doi && !state.pmid) {

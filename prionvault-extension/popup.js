@@ -1,33 +1,42 @@
 'use strict';
 
-const serverInput = document.getElementById('server-url');
-const apiKeyInput = document.getElementById('api-key');
-const saveBtn     = document.getElementById('save-btn');
-const saveMsg     = document.getElementById('save-msg');
-const statusEl    = document.getElementById('status-text');
-const openBtn     = document.getElementById('open-panel-btn');
-const toggleBtn   = document.getElementById('toggle-key');
+const serverInput   = document.getElementById('server-url');
+const apiKeyInput   = document.getElementById('api-key');
+const nameInput     = document.getElementById('suggester-name');
+const emailInput    = document.getElementById('suggester-email');
+const saveBtn       = document.getElementById('save-btn');
+const saveMsg       = document.getElementById('save-msg');
+const statusEl      = document.getElementById('status-text');
+const openBtn       = document.getElementById('open-panel-btn');
+const toggleBtn     = document.getElementById('toggle-key');
 
 // ── Load saved settings ───────────────────────────────────────────────────────
 
-chrome.storage.sync.get({ serverUrl: '', apiKey: '' }, ({ serverUrl, apiKey }) => {
-  serverInput.value = serverUrl;
-  apiKeyInput.value = apiKey;
-  if (serverUrl && apiKey) checkConnection(serverUrl, apiKey);
-  else setStatus('not-configured', 'No configurado');
-});
+chrome.storage.sync.get(
+  { serverUrl: '', apiKey: '', suggesterName: '', suggesterEmail: '' },
+  ({ serverUrl, apiKey, suggesterName, suggesterEmail }) => {
+    serverInput.value = serverUrl;
+    apiKeyInput.value = apiKey;
+    nameInput.value   = suggesterName;
+    emailInput.value  = suggesterEmail;
+    if (serverUrl && apiKey) checkConnection(serverUrl, apiKey);
+    else setStatus('not-configured', 'No configurado');
+  }
+);
 
 // ── Save settings ─────────────────────────────────────────────────────────────
 
 saveBtn.addEventListener('click', async () => {
-  const serverUrl = serverInput.value.trim().replace(/\/+$/, '');
-  const apiKey    = apiKeyInput.value.trim();
+  const serverUrl      = serverInput.value.trim().replace(/\/+$/, '');
+  const apiKey          = apiKeyInput.value.trim();
+  const suggesterName   = nameInput.value.trim();
+  const suggesterEmail  = emailInput.value.trim();
 
   if (!serverUrl) { showMsg('Introduce la URL del servidor.', true); return; }
   if (!apiKey)    { showMsg('Introduce la API key.',            true); return; }
 
   await new Promise(resolve =>
-    chrome.storage.sync.set({ serverUrl, apiKey }, resolve)
+    chrome.storage.sync.set({ serverUrl, apiKey, suggesterName, suggesterEmail }, resolve)
   );
   showMsg('✓ Guardado');
   checkConnection(serverUrl, apiKey);

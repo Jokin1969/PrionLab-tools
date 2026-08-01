@@ -30,9 +30,20 @@
         <button type="button" id="toggle-key" title="Mostrar/ocultar">👁</button>
       </div>
       <div class="field-hint">
-        Generada con <code>secrets.token_hex(32)</code> y guardada en<br>
-        <code>PRIONVAULT_EXTENSION_API_KEY</code> en el servidor.
+        Pide tu clave al administrador. Hay dos tipos: una de <strong>administrador</strong>
+        (añade artículos directamente) y otra de <strong>lector</strong> (propone artículos
+        por email para que el administrador los añada).
       </div>
+    </div>
+
+    <div class="field">
+      <label for="suggester-name">Tu nombre (opcional)</label>
+      <input type="text" id="suggester-name" placeholder="Se incluye en las sugerencias que envíes">
+    </div>
+
+    <div class="field">
+      <label for="suggester-email">Tu email (opcional)</label>
+      <input type="email" id="suggester-email" placeholder="para que el admin pueda responderte">
     </div>
 
     <button id="save-btn" class="btn-primary">Guardar configuración</button>
@@ -52,7 +63,7 @@
   </div>
 
   <div id="popup-footer">
-    Genera tu API key en el servidor:<br>
+    El administrador genera las claves en el servidor:<br>
     <code>python -c "import secrets; print(secrets.token_hex(32))"</code>
   </div>
 

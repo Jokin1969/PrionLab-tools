@@ -99,7 +99,7 @@ _GuardResult = Optional[Tuple[Response, int]]
 
 def _viewer_role() -> Optional[str]:
     if getattr(g, "_ext_authed", False):
-        return "admin"
+        return getattr(g, "_ext_authed_role", "admin")
     return session.get("role")
 
 

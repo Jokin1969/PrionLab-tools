@@ -167,6 +167,7 @@
         pmid:     data.pmid,
         pdfUrl:   data.pdfUrl,
         pageTitle: document.title,
+        pageUrl:  location.href,
       }, '*');
     });
   }

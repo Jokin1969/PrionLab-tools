@@ -1,10 +1,18 @@
 from functools import wraps
-from flask import flash, g, redirect, request, session, url_for
+from flask import flash, g, jsonify, redirect, request, session, url_for
 
 
 def _ext_authed() -> bool:
     """True when the request carries a valid extension API key."""
     return bool(getattr(g, "_ext_authed", False))
+
+
+def _ext_role() -> str:
+    """Role associated with the extension key that authenticated this
+    request. Defaults to 'admin' for backward compatibility with the
+    original single shared PRIONVAULT_EXTENSION_API_KEY, which never
+    set this attribute explicitly — only the newer reader key does."""
+    return getattr(g, "_ext_authed_role", "admin")
 
 
 def login_required(f):
@@ -22,7 +30,15 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if _ext_authed():
-            return f(*args, **kwargs)
+            if _ext_role() == "admin":
+                return f(*args, **kwargs)
+            # A reader-level extension key hitting an admin-only endpoint —
+            # this is an API consumed by the Chrome extension's fetch()
+            # calls, not a browser page load, so a JSON 403 is the right
+            # response (a redirect would just come back as an opaque
+            # failure to the extension's error handling).
+            return jsonify({"error": "forbidden",
+                            "detail": "admin access required"}), 403
         if not session.get("logged_in"):
             return redirect(url_for("auth.login", next=request.full_path))
         if session.get("role") != "admin":
@@ -36,7 +52,10 @@ def editor_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if _ext_authed():
-            return f(*args, **kwargs)
+            if _ext_role() in ("admin", "editor"):
+                return f(*args, **kwargs)
+            return jsonify({"error": "forbidden",
+                            "detail": "editor access required"}), 403
         if not session.get("logged_in"):
             return redirect(url_for("auth.login", next=request.full_path))
         if session.get("role") not in ("admin", "editor"):
