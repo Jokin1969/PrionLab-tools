@@ -1594,6 +1594,31 @@
                      color:#6b7280;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
         <i class="fas fa-people-arrows" style="margin-right:5px;"></i>Repetidos
       </button>
+      <button id="pv-jc-manage-verify-btn" type="button"
+              title="Verificar en Dropbox que todos los archivos enlazados siguen existiendo con el mismo nombre y ruta (detecta archivos renombrados/movidos/borrados tras enlazarlos)."
+              style="padding:8px 10px;border-radius:8px;border:1px solid #d1d5db;background:#fff;
+                     color:#6b7280;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
+        <i class="fas fa-magnifying-glass-arrow-right"></i>
+      </button>
+      <div id="pv-jc-manage-cal-wrap" style="position:relative;">
+        <button id="pv-jc-manage-cal-btn" type="button"
+                title="Localizar un Journal Club por fecha de presentación"
+                style="padding:8px 10px;border-radius:8px;border:1px solid #d1d5db;background:#fff;
+                       color:#6b7280;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          <i class="fas fa-calendar-day"></i>
+        </button>
+        <div id="pv-jc-manage-cal-popup" style="display:none;position:absolute;top:calc(100% + 6px);left:0;
+                    z-index:20;background:#fff;border:1px solid #e5e7eb;border-radius:9px;
+                    box-shadow:0 6px 20px rgba(0,0,0,0.12);padding:10px;white-space:nowrap;">
+          <input type="date" id="pv-jc-manage-cal-input"
+                 style="padding:5px 7px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+          <button id="pv-jc-manage-cal-clear" type="button"
+                  style="padding:5px 9px;border-radius:6px;border:1px solid #d1d5db;background:#fff;
+                         color:#6b7280;font-size:11.5px;font-weight:600;cursor:pointer;margin-left:4px;">
+            Quitar
+          </button>
+        </div>
+      </div>
       <div style="flex:1;min-width:220px;position:relative;">
         <i class="fas fa-magnifying-glass" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px;"></i>
         <input id="pv-jc-manage-search" type="text" placeholder="Buscar por artículo, responsable o año…"
@@ -1633,6 +1658,10 @@
         </button>
       </div>
     </div>
+
+    <!-- Dropbox verification results — hidden until "verify" button used -->
+    <div id="pv-jc-manage-verify-panel" style="display:none;border-radius:8px;padding:10px 12px;
+                margin-bottom:10px;flex-shrink:0;font-size:12.5px;"></div>
 
     <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;border:1px solid #f3f4f6;border-radius:8px;">
       <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12.5px;">

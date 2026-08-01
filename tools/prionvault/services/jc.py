@@ -192,6 +192,52 @@ def list_all() -> List[dict]:
     } for p in pres_rows]
 
 
+def verify_dropbox_files() -> dict:
+    """Check every prionvault_jc_file row against live Dropbox state.
+
+    A row only stores dropbox_path (built from presenter/date/filename
+    at upload time — see _build_dropbox_path); there's no Dropbox file
+    id to follow. So a rename or move done directly in Dropbox after
+    linking breaks the stored path silently — files_get_metadata on
+    that exact path then 404s. That's the "orphan" this catches:
+    presentations that look complete in PrionVault but whose file no
+    longer exists where the DB thinks it does.
+    """
+    from core.dropbox_client import get_client
+    import dropbox
+
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(sql_text(
+            """SELECT jf.id, jf.filename, jf.dropbox_path,
+                      jp.presented_at, jp.presenter_name, a.title AS article_title
+                 FROM prionvault_jc_file jf
+                 JOIN prionvault_jc_presentation jp ON jp.id = jf.presentation_id
+                 JOIN articles a ON a.id = jp.article_id
+                ORDER BY jp.presented_at DESC"""
+        )).mappings().all()
+
+    client = get_client()
+    if client is None:
+        raise RuntimeError("Dropbox no está configurado en este servidor.")
+
+    missing = []
+    for r in rows:
+        try:
+            client.files_get_metadata(r["dropbox_path"])
+        except dropbox.exceptions.ApiError:
+            missing.append({
+                "file_id":        str(r["id"]),
+                "filename":       r["filename"],
+                "dropbox_path":   r["dropbox_path"],
+                "presented_at":   r["presented_at"].isoformat() if r["presented_at"] else None,
+                "presenter_name": r["presenter_name"],
+                "article_title":  r["article_title"],
+            })
+
+    return {"checked": len(rows), "missing": missing}
+
+
 def create(*, article_id, presented_at: _date,
            presenter_name: str, presenter_id=None,
            created_by=None) -> dict:

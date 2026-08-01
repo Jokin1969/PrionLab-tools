@@ -4066,6 +4066,22 @@ def api_jc_all():
         return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
 
 
+@prionvault_bp.route("/api/jc/verify-dropbox", methods=["POST"])
+@admin_required
+def api_jc_verify_dropbox():
+    """Check every linked JC file against live Dropbox state, catching
+    orphans left behind when a file is renamed/moved/deleted directly
+    in Dropbox after being linked (see services.jc.verify_dropbox_files)."""
+    from .services import jc as _jc
+    try:
+        return jsonify(_jc.verify_dropbox_files())
+    except RuntimeError as exc:
+        return jsonify({"error": "dropbox_unavailable", "detail": str(exc)}), 503
+    except Exception as exc:
+        logger.exception("jc verify_dropbox_files failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:300]}), 500
+
+
 @prionvault_bp.route("/api/jc/report", methods=["GET"])
 @login_required
 def api_jc_report():

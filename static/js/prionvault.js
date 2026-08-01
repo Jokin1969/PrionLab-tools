@@ -5588,6 +5588,7 @@
     let _sortKey = 'date';  // 'date' | 'presenter'
     let _sortAsc = false;   // newest / Z-first by default
     let _repeatedOnly = false;  // only articles presented more than once (>1 distinct presenter)
+    let _dateFilter = null;     // ISO 'YYYY-MM-DD' — locate a JC by its presented_at date
 
     function fmtDate(iso) {
       if (!iso) return '(sin fecha)';
@@ -5739,6 +5740,9 @@
       if (_repeatedOnly) {
         list = list.filter(x => (_presenterCountByArticle.get(x.article_id) || 0) > 1);
       }
+      if (_dateFilter) {
+        list = list.filter(x => x.presented_at === _dateFilter);
+      }
       _filtered = list;
       render();
     }
@@ -5827,6 +5831,88 @@
           params.set('scope_value', rest.join(':'));
         }
         window.open(API + '/jc/report?' + params.toString(), '_blank', 'noopener');
+      });
+
+      // ── Verify Dropbox: catches files renamed/moved/deleted directly in
+      // Dropbox after being linked to a JC presentation. ───────────────────
+      document.getElementById('pv-jc-manage-verify-btn')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const panel = document.getElementById('pv-jc-manage-verify-panel');
+        const prevHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        panel.style.display = 'block';
+        panel.style.background = '#f9fafb';
+        panel.style.border = '1px solid #e5e7eb';
+        panel.style.color = '#6b7280';
+        panel.innerHTML = 'Verificando archivos en Dropbox…';
+        try {
+          const data = await api('/jc/verify-dropbox', { method: 'POST' });
+          if (!data.missing || !data.missing.length) {
+            panel.style.background = '#f0fdf4';
+            panel.style.border = '1px solid #bbf7d0';
+            panel.style.color = '#166534';
+            panel.innerHTML = `<i class="fas fa-circle-check"></i> Todo correcto — ${data.checked} archivo(s) verificado(s), ningún huérfano.`;
+          } else {
+            panel.style.background = '#fffbeb';
+            panel.style.border = '1px solid #fcd34d';
+            panel.style.color = '#92400e';
+            panel.innerHTML =
+              `<div style="font-weight:700;margin-bottom:6px;"><i class="fas fa-triangle-exclamation"></i> ` +
+              `${data.missing.length} de ${data.checked} archivo(s) no se encuentran en Dropbox ` +
+              `(renombrados, movidos o borrados tras enlazarlos):</div>` +
+              `<ul style="margin:0;padding-left:18px;">` +
+              data.missing.map(m => `<li style="margin-bottom:3px;">` +
+                `<strong>${esc(m.filename)}</strong> — ${esc(m.article_title || '(sin título)')} ` +
+                `· ${esc(m.presenter_name || '—')} · ${esc(fmtDate(m.presented_at))}` +
+                `<div style="font-size:11px;color:#a16207;">${esc(m.dropbox_path)}</div>` +
+                `</li>`).join('') +
+              `</ul>`;
+          }
+        } catch (err) {
+          panel.style.background = '#fef2f2';
+          panel.style.border = '1px solid #fecaca';
+          panel.style.color = '#991b1b';
+          panel.innerHTML = `<i class="fas fa-circle-exclamation"></i> Error al verificar: ${esc(err.message || String(err))}`;
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = prevHtml;
+        }
+      });
+
+      // ── Locate a JC by presentation date ──────────────────────────────────
+      const calBtn   = document.getElementById('pv-jc-manage-cal-btn');
+      const calPopup = document.getElementById('pv-jc-manage-cal-popup');
+      const calInput = document.getElementById('pv-jc-manage-cal-input');
+      const syncCalBtn = () => {
+        const active = !!_dateFilter;
+        calBtn.style.background  = active ? '#be185d' : '#fff';
+        calBtn.style.color       = active ? '#fff' : '#6b7280';
+        calBtn.style.borderColor = active ? '#be185d' : '#d1d5db';
+      };
+      calBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const opening = calPopup.style.display === 'none';
+        calPopup.style.display = opening ? 'block' : 'none';
+        if (opening) { calInput.value = _dateFilter || ''; calInput.focus(); }
+      });
+      document.addEventListener('click', (e) => {
+        if (calPopup && calPopup.style.display !== 'none' &&
+            !calPopup.contains(e.target) && e.target !== calBtn && !calBtn.contains(e.target)) {
+          calPopup.style.display = 'none';
+        }
+      });
+      calInput?.addEventListener('change', () => {
+        _dateFilter = calInput.value || null;
+        syncCalBtn();
+        applySearch();
+      });
+      document.getElementById('pv-jc-manage-cal-clear')?.addEventListener('click', () => {
+        _dateFilter = null;
+        calInput.value = '';
+        syncCalBtn();
+        applySearch();
+        calPopup.style.display = 'none';
       });
     }
 
