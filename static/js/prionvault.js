@@ -5619,6 +5619,12 @@
                         <i class="fas fa-triangle-exclamation"></i> sin archivo</span>`;
       return `
         <tr data-pid="${esc(x.id)}" style="border-bottom:1px solid #f9fafb;cursor:pointer;">
+          <td style="padding:7px 4px 7px 10px;vertical-align:middle;text-align:center;width:28px;">
+            <input type="checkbox" class="pv-jc-manage-row-select" data-aid="${esc(x.article_id)}"
+                   ${state.selectedIds.has(x.article_id) ? 'checked' : ''}
+                   onclick="event.stopPropagation();"
+                   style="cursor:pointer;width:14px;height:14px;">
+          </td>
           <td style="padding:7px 10px;white-space:nowrap;color:#374151;overflow:hidden;text-overflow:ellipsis;">${esc(fmtDate(x.presented_at))}</td>
           <td style="padding:7px 10px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.presenter_name || '—')}</td>
           <td style="padding:7px 10px;color:#111827;overflow:hidden;">
@@ -5699,10 +5705,11 @@
       updateSortHeaders();
       tbody.innerHTML = list.length
         ? list.map(rowHtml).join('')
-        : '<tr><td colspan="4" style="padding:20px;text-align:center;color:#9ca3af;">Sin resultados.</td></tr>';
+        : '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9ca3af;">Sin resultados.</td></tr>';
       tbody.querySelectorAll('tr[data-pid]').forEach(tr => {
         tr.addEventListener('click', (e) => {
-          if (e.target.closest('.pv-jc-manage-file') || e.target.closest('a')) return;
+          if (e.target.closest('.pv-jc-manage-file') || e.target.closest('a') ||
+              e.target.closest('.pv-jc-manage-row-select')) return;
           const x = _items.find(i => i.id === tr.dataset.pid);
           if (x) { close(); openDetail(x.article_id); }
         });
@@ -5711,6 +5718,18 @@
         b.addEventListener('click', (e) => {
           e.stopPropagation();
           window.open(API + `/jc/files/${b.dataset.fid}/view`, '_blank', 'noopener');
+        });
+      });
+      // Same shared state.selectedIds the main listing's row checkboxes
+      // use — checking one here selects the article there too, so
+      // closing this modal leaves the main listing showing the same
+      // selection (no separate "JC selection" concept to keep in sync).
+      tbody.querySelectorAll('.pv-jc-manage-row-select').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const aid = cb.dataset.aid;
+          if (cb.checked) state.selectedIds.add(aid);
+          else state.selectedIds.delete(aid);
+          updateBulkBar();
         });
       });
     }
@@ -5728,15 +5747,23 @@
         [...presentersByArticle.entries()].map(([aid, set]) => [aid, set.size]));
     }
 
+    // Accent-insensitive compare — "Fernández" and "Fernandez" should
+    // match the same way. NFD splits each accented character into its
+    // base letter + a combining diacritical mark, which the \p{Diacritic}
+    // regex then strips.
+    function _foldAccents(s) {
+      return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
     function applySearch() {
-      const q = (document.getElementById('pv-jc-manage-search').value || '').trim().toLowerCase();
+      const q = _foldAccents((document.getElementById('pv-jc-manage-search').value || '').trim().toLowerCase());
       let list = _items;
       if (q) {
         const terms = q.split(/\s+/).filter(Boolean);
         list = list.filter(x => {
-          const hay = [x.presenter_name, x.article_title, x.article_authors,
+          const hay = _foldAccents([x.presenter_name, x.article_title, x.article_authors,
                        x.article_journal, x.article_year, x.article_doi, x.article_pmid]
-            .filter(Boolean).join(' ').toLowerCase();
+            .filter(Boolean).join(' ').toLowerCase());
           return _searchOr ? terms.some(t => hay.includes(t)) : terms.every(t => hay.includes(t));
         });
       }
@@ -5779,6 +5806,15 @@
 
     function close() {
       document.getElementById('pv-jc-manage-modal').style.display = 'none';
+      // Reflect any selection made in this modal on the main listing's
+      // already-rendered checkboxes/bulk-bar right away, without
+      // needing a reload — state.selectedIds itself was already kept
+      // in sync live (see the checkbox wiring in render()).
+      document.querySelectorAll('.pv-row-select').forEach(cb => {
+        cb.checked = state.selectedIds.has(cb.dataset.aid);
+      });
+      updateBulkBar();
+      syncSelectAllHeader();
     }
 
     function wireOnce() {
@@ -8909,40 +8945,6 @@
       state.page = 1;
       loadArticles();
     });
-    // "Sólo JC" is a toggle: off (default) = no filter; on = show
-    // only articles with at least one Journal Club presentation.
-    // The third state ("only WITHOUT JC") of the old dropdown wasn't
-    // a feature anyone reached for; dropping it for the simpler UX.
-    const jcBtn = document.getElementById('btn-filter-has-jc');
-    if (jcBtn) {
-      const paintJc = () => {
-        const on = state.hasJc === true;
-        jcBtn.style.background    = on ? '#0F3460'   : 'white';
-        jcBtn.style.color         = on ? 'white'     : '#374151';
-        jcBtn.style.borderColor   = on ? '#0F3460'   : '#e5e7eb';
-        jcBtn.style.fontWeight    = on ? '600'       : 'normal';
-      };
-      paintJc();
-      jcBtn.addEventListener('click', () => {
-        state.hasJc = state.hasJc === true ? null : true;
-        state.page = 1;
-        paintJc();
-        loadArticles();
-      });
-    }
-    document.getElementById('filter-jc-presenter')?.addEventListener('input',
-      debounce(e => {
-        state.jcPresenter = e.target.value.trim();
-        state.page = 1;
-        loadArticles();
-      }, 250));
-    document.getElementById('filter-jc-year')?.addEventListener('change', e => {
-      const v = parseInt(e.target.value, 10);
-      state.jcYear = Number.isFinite(v) ? v : null;
-      state.page = 1;
-      loadArticles();
-    });
-
     document.getElementById('filter-has-pp')?.addEventListener('change', e => {
       const v = e.target.value;
       state.hasPp = v === '1' ? true : (v === '0' ? false : null);

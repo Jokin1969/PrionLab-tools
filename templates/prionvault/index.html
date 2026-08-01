@@ -818,29 +818,6 @@
         </label>
 
 
-        <button id="btn-filter-has-jc" type="button"
-                class="pv-mobile-hide"
-                title="Mostrar sólo los artículos con presentación en Journal Club. Pulsa otra vez para ver todos."
-                style="padding:4px 12px;border-radius:7px;border:1px solid #e5e7eb;background:white;
-                       font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;
-                       gap:5px;transition:all 0.15s;white-space:nowrap;">
-          <span style="font-size:11px;">📚</span>
-          <span>Sólo JC</span>
-        </button>
-
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Presentador
-          <input type="text" id="filter-jc-presenter" class="pv-filter-input"
-                 placeholder="contiene…" style="width:140px;"
-                 title="Filtra por subcadena en el nombre del presentador del Journal Club (case-insensitive).">
-        </label>
-
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          JC año
-          <input type="number" id="filter-jc-year" class="pv-filter-input"
-                 placeholder="2024" min="1980" max="2100" style="width:80px;">
-        </label>
-
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
                title="Pertenencia a un PrionPack: el match se hace por DOI contra las references/introReferences del pack.">
           PrionPacks
@@ -1672,10 +1649,11 @@
     <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;border:1px solid #f3f4f6;border-radius:8px;">
       <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12.5px;">
         <colgroup>
-          <col style="width:11%;"><col style="width:11%;"><col style="width:63%;"><col style="width:15%;">
+          <col style="width:28px;"><col style="width:11%;"><col style="width:11%;"><col style="width:62%;"><col style="width:15%;">
         </colgroup>
         <thead style="position:sticky;top:0;background:#fdf2f8;z-index:1;">
           <tr>
+            <th style="padding:8px 4px 8px 10px;border-bottom:1px solid #fce7f3;"></th>
             <th data-sort="date" class="pv-jc-manage-sortable"
                 style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;cursor:pointer;user-select:none;">
               Fecha <i class="fas fa-sort" style="opacity:0.4;font-size:9px;"></i>
