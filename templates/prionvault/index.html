@@ -695,16 +695,6 @@
                placeholder="Buscar por título, resumen, autores, revista…"
                title='Busca en title, abstract, authors, journal.&#10;&#10;Operadores:&#10;  prion AND BSE&#10;  Castilla OR Soto&#10;  BSE -review&#10;  "prion protein"&#10;&#10;Para autor exacto usa el filtro Autores.&#10;Los botones Y/O de la derecha controlan cómo se combinan varias palabras sueltas.'
                autocomplete="off" />
-        <button id="pv-search-clear" type="button"
-                title="Limpiar búsqueda (Esc)"
-                aria-label="Limpiar búsqueda"
-                style="display:none;align-items:center;justify-content:center;
-                       width:20px;height:20px;flex-shrink:0;border:none;border-radius:50%;
-                       background:#d1d5db;color:white;font-size:13px;font-weight:700;line-height:1;
-                       cursor:pointer;padding:0 0 1px;
-                       transition:background 0.12s ease;"
-                onmouseover="this.style.background='#9ca3af';"
-                onmouseout="this.style.background='#d1d5db';">×</button>
         <div id="pv-search-mode-btns"
              style="display:flex;gap:3px;flex-shrink:0;align-items:center;"
              title="Cómo combinar varias palabras sueltas escritas en la búsqueda.">
@@ -736,6 +726,16 @@
                          border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
                          transition:background 0.12s,color 0.12s,border-color 0.12s;">A</button>
         </div>
+        <button id="pv-search-clear" type="button"
+                title="Limpiar búsqueda (Esc)"
+                aria-label="Limpiar búsqueda"
+                style="display:none;align-items:center;justify-content:center;
+                       width:20px;height:20px;flex-shrink:0;border:none;border-radius:50%;
+                       background:#d1d5db;color:white;font-size:13px;font-weight:700;line-height:1;
+                       cursor:pointer;padding:0 0 1px;margin-left:2px;
+                       transition:background 0.12s ease;"
+                onmouseover="this.style.background='#9ca3af';"
+                onmouseout="this.style.background='#d1d5db';">×</button>
         </div>
         <button id="btn-ai-search" type="button"
                 title="Búsqueda con IA — pregunta a la biblioteca en lenguaje natural"
@@ -1028,14 +1028,6 @@
                          border-bottom:1px solid #e5e7eb;">
                 <div style="display:flex;align-items:center;justify-content:center;gap:6px;"
                      title="Clic en un icono = mostrar solo los artículos con esa marca. Vuelve a pulsar para ver todos. Varias marcas activas a la vez = deben tener TODAS.">
-                  <button type="button" id="pv-color-filter-btn"
-                          title="Filtrar por color — clic para elegir entre los colores usados"
-                          style="background:none;border:1.5px dashed #9ca3af;padding:0;width:11px;height:11px;
-                                 border-radius:50%;cursor:pointer;flex-shrink:0;"></button>
-                  <div id="pv-color-filter-popup" style="display:none;position:absolute;top:100%;left:8px;
-                              margin-top:4px;background:white;border:1px solid #e5e7eb;border-radius:8px;
-                              box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:8px;z-index:20;
-                              min-width:150px;text-align:left;"></div>
                   <button type="button" class="pv-mark-filter-btn" data-mark="isFlagged"
                           title="Solo con bandera 🚩" style="background:none;border:none;padding:0;
                           line-height:0;cursor:pointer;color:#9ca3af;">
@@ -1046,6 +1038,14 @@
                       <path d="M1.5 1 L9 3.5 L1.5 7 Z"></path>
                     </svg>
                   </button>
+                  <button type="button" id="pv-color-filter-btn"
+                          title="Filtrar por color — clic para elegir entre los colores usados"
+                          style="background:none;border:1.5px dashed #9ca3af;padding:0;width:11px;height:11px;
+                                 border-radius:50%;cursor:pointer;flex-shrink:0;"></button>
+                  <div id="pv-color-filter-popup" style="display:none;position:absolute;top:100%;left:8px;
+                              margin-top:4px;background:white;border:1px solid #e5e7eb;border-radius:8px;
+                              box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:8px;z-index:20;
+                              min-width:150px;text-align:left;"></div>
                   <button type="button" class="pv-mark-filter-btn" data-mark="isMilestone"
                           title="Solo hitos ★" style="background:none;border:none;padding:0;
                           line-height:1;cursor:pointer;color:#9ca3af;font-size:15px;">☆</button>
