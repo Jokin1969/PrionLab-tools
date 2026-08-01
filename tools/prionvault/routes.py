@@ -437,6 +437,14 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # ── Build WHERE clause using raw SQL to be resilient to missing cols ────
     conditions = []
     params: dict = {}
+    # Set when the query relies solely on the pg_trgm ILIKE branch (a field
+    # button — T/Au/A/R — restricts the search to one column, dropping the
+    # FTS OR side). Postgres's cost estimate for a bare trigram GIN scan on
+    # a short pattern is unreliable and can make the planner fall back to a
+    # sequential scan even though the index would answer it in a fraction
+    # of the time — see the SET LOCAL enable_seqscan below, right before
+    # this query executes.
+    force_index_scan = False
 
     # Hard filter by explicit article-id list (powers the "Ver sólo
     # seleccionados" toggle in the bulk bar). An empty list naturally
@@ -499,6 +507,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             params["q"] = ts_input
         else:
             conditions.append(f"({ilike_sql})")
+            force_index_scan = True
         params.update(like_params)
 
     if year_min is not None:
@@ -970,6 +979,10 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         f"SELECT {select_cols}, COUNT(*) OVER() AS _total_count "
         f"{from_clause} {where} ORDER BY {order} LIMIT :limit OFFSET :offset"
     )
+    if force_index_scan:
+        # Scoped to this transaction only (SET LOCAL) — never leaks to
+        # other requests sharing the connection pool.
+        s.execute(sql_text("SET LOCAL enable_seqscan = off"))
     rows = s.execute(list_sql, params).all()
     total = int(rows[0]._mapping["_total_count"]) if rows else 0
     col_names = list(rows[0]._fields) if rows else []
