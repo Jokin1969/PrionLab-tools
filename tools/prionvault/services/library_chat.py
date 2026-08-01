@@ -204,7 +204,7 @@ def get_chat(chat_id: str, user_id: str) -> Optional[dict]:
             return None
         msgs = conn.execute(_sql("""
             SELECT id, role, content, provider, model, tokens_in, tokens_out,
-                   cost_usd, fallback, cited_article_ids, created_at
+                   cost_usd, fallback, cited_article_ids, citations, created_at
               FROM prionvault_library_chat_message
              WHERE chat_id = CAST(:cid AS uuid)
              ORDER BY created_at, id
@@ -322,15 +322,19 @@ def ask(chat_id: str, user_id: str, question: str, provider: Optional[str] = Non
         assistant_id = conn.execute(_sql("""
             INSERT INTO prionvault_library_chat_message
                 (chat_id, role, content, provider, model, tokens_in, tokens_out,
-                 cost_usd, fallback, cited_article_ids)
+                 cost_usd, fallback, cited_article_ids, citations)
             VALUES (CAST(:cid AS uuid), 'assistant', :content, :prov, :model,
-                    :tin, :tout, :cost, CAST(:fb AS jsonb), CAST(:cites AS uuid[]))
+                    :tin, :tout, :cost, CAST(:fb AS jsonb), CAST(:cites AS uuid[]), CAST(:citjson AS jsonb))
             RETURNING id
         """), {
             "cid": chat_id, "content": answer, "prov": actual_provider,
             "model": model_used, "tin": tokens_in, "tout": tokens_out, "cost": cost,
             "fb": _json.dumps(fallback_meta) if fallback_meta else None,
             "cites": cited_article_ids or None,
+            # Store every retrieved citation (not just the ones the model
+            # actually cited) so a hover card can resolve ANY [N] token
+            # that shows up in the answer text, on reload as well.
+            "citjson": _json.dumps(citations) if citations else None,
         }).scalar()
         conn.execute(_sql("""
             UPDATE prionvault_library_chat

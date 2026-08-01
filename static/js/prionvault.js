@@ -7706,41 +7706,122 @@
       return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
     }
 
-    // Renders an assistant answer's [N] citations + "conocimiento
-    // general" labels as-is (they're already plain text markers the
-    // model was asked to emit) — just escape + linebreak-to-<br>.
-    function renderMarkdownish(text) {
-      return esc(text || '').replace(/\n/g, '<br>');
+    // ── Answer rendering: light markdown (headers/bold/lists/paragraphs)
+    // + [N] citation tokens turned into navy hover chips. ─────────────────
+    function _mdToHtml(text) {
+      const lines = esc(text || '').split('\n');
+      const out = [];
+      let listType = null;   // 'ul' | 'ol' | null
+      const closeList = () => { if (listType) { out.push(`</${listType}>`); listType = null; } };
+      for (let raw of lines) {
+        const line = raw.trim();
+        if (!line) { closeList(); continue; }
+        let m;
+        if ((m = line.match(/^#{2,3}\s+(.+)$/))) {
+          closeList();
+          out.push(`<div style="font-size:12.5px;font-weight:700;color:#065f46;` +
+            `text-transform:uppercase;letter-spacing:0.04em;margin:12px 0 4px;">${m[1]}</div>`);
+        } else if ((m = line.match(/^[-*]\s+(.+)$/))) {
+          if (listType !== 'ul') { closeList(); out.push('<ul style="margin:4px 0 8px;padding-left:20px;">'); listType = 'ul'; }
+          out.push(`<li style="margin-bottom:2px;">${m[1]}</li>`);
+        } else if ((m = line.match(/^\d+\.\s+(.+)$/))) {
+          if (listType !== 'ol') { closeList(); out.push('<ol style="margin:4px 0 8px;padding-left:20px;">'); listType = 'ol'; }
+          out.push(`<li style="margin-bottom:2px;">${m[1]}</li>`);
+        } else {
+          closeList();
+          out.push(`<p style="margin:0 0 8px;">${line}</p>`);
+        }
+      }
+      closeList();
+      let html = out.join('');
+      html = html.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+      return html;
     }
 
-    function citationChips(citations) {
-      if (!citations || !citations.length) return '';
-      return `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">` +
-        citations.map(c => `
-          <span title="${esc([c.authors, c.year, c.journal].filter(Boolean).join(' · '))}"
-                style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;
-                       font-size:10.5px;font-weight:600;background:#d1fae5;color:#065f46;cursor:pointer;"
-                data-open-aid="${esc(c.article_id)}">
-            [${c.n}] ${esc((c.title || '').slice(0, 40))}${(c.title || '').length > 40 ? '…' : ''}
-          </span>`).join('') + `</div>`;
+    // Turns every "[N]" token into a clickable, hoverable navy chip.
+    // The hover card shows the full reference (authors/year/journal,
+    // DOI/PMID/PDF links) and a cart button — resolved from the
+    // message's own `citations` list (persisted on the message, so
+    // this works identically for a fresh answer and a reloaded one).
+    function _linkCitations(html, citations) {
+      if (!citations || !citations.length) return html;
+      const byN = new Map(citations.map(c => [c.n, c]));
+      return html.replace(/\[(\d{1,3})\]/g, (full, nStr) => {
+        const n = parseInt(nStr, 10);
+        const c = byN.get(n);
+        if (!c) return full;
+        const meta = [c.authors, c.year, c.journal].filter(Boolean).join(' · ');
+        const doiLink = c.doi
+          ? `<a href="https://doi.org/${encodeURIComponent(c.doi)}" target="_blank" rel="noopener"
+                style="color:#1e3a8a;text-decoration:none;">DOI ↗</a>` : '';
+        const pmidLink = c.pubmed_id
+          ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(c.pubmed_id)}/" target="_blank" rel="noopener"
+                style="color:#1e3a8a;text-decoration:none;">PMID ↗</a>` : '';
+        const pdfLink = c.has_pdf
+          ? `<a href="${API}/articles/${esc(c.article_id)}/pdf-view" target="_blank" rel="noopener"
+                style="color:#b91c1c;text-decoration:none;"><i class="fas fa-file-pdf"></i> PDF</a>` : '';
+        const links = [doiLink, pmidLink, pdfLink].filter(Boolean).join(' &nbsp;·&nbsp; ');
+        return `<span class="pv-cite-wrap" style="position:relative;display:inline-block;">` +
+          `<span class="pv-cite" data-open-aid="${esc(c.article_id)}"
+                 style="color:#1e3a8a;font-weight:700;cursor:pointer;
+                        text-decoration:underline dotted;text-underline-offset:2px;">[${n}]</span>` +
+          `<span class="pv-cite-card" style="display:none;position:absolute;bottom:100%;left:0;
+                       margin-bottom:6px;width:270px;background:#fff;border:1px solid #d1d5db;
+                       border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);padding:11px 12px;
+                       z-index:50;font-size:12px;line-height:1.4;white-space:normal;cursor:default;">` +
+            `<div style="font-weight:700;color:#111827;margin-bottom:3px;">${esc(c.title || '')}</div>` +
+            (meta ? `<div style="color:#6b7280;margin-bottom:6px;">${esc(meta)}</div>` : '') +
+            (links ? `<div style="margin-bottom:8px;">${links}</div>` : '') +
+            `<button type="button" class="pv-cite-cart-btn" data-aid="${esc(c.article_id)}"
+                     data-title="${esc(c.title || '')}" data-authors="${esc(c.authors || '')}"
+                     data-year="${esc(c.year || '')}" data-journal="${esc(c.journal || '')}"
+                     data-doi="${esc(c.doi || '')}" data-pmid="${esc(c.pubmed_id || '')}"
+                     data-haspdf="${c.has_pdf ? '1' : '0'}"
+                     style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid #d1d5db;
+                            background:#f9fafb;color:#374151;font-size:11.5px;font-weight:600;cursor:pointer;">
+               🛒 Añadir al carrito
+             </button>` +
+          `</span></span>`;
+      });
     }
 
     function messageHtml(m) {
       const isUser = m.role === 'user';
+      const bodyHtml = isUser
+        ? esc(m.content || '').replace(/\n/g, '<br>')
+        : _linkCitations(_mdToHtml(m.content), m.citations);
       return `
         <div style="display:flex;margin-bottom:14px;${isUser ? 'justify-content:flex-end;' : ''}">
           <div style="max-width:78%;padding:10px 14px;border-radius:12px;font-size:13.5px;line-height:1.55;
                       ${isUser
                         ? 'background:#059669;color:#fff;border-bottom-right-radius:3px;'
                         : 'background:#ecfdf5;color:#111827;border:1px solid #d1fae5;border-bottom-left-radius:3px;'}">
-            ${renderMarkdownish(m.content)}
-            ${!isUser ? citationChips(m.cited_article_ids && m.citations ? m.citations : null) : ''}
+            ${bodyHtml}
             ${!isUser && m.provider_label
               ? `<div style="margin-top:6px;font-size:10px;color:#6b7280;">
                    ${esc(m.provider_label)}${m.switched ? ' (proveedor sustituido)' : ''}
                  </div>` : ''}
           </div>
         </div>`;
+    }
+
+    function _wireThreadInteractions(el) {
+      el.querySelectorAll('.pv-cite').forEach(chip => {
+        chip.addEventListener('click', () => openDetail(chip.dataset.openAid));
+      });
+      el.querySelectorAll('.pv-cite-cart-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.PPCart?.add({
+            id: btn.dataset.aid, title: btn.dataset.title, authors: btn.dataset.authors,
+            year: btn.dataset.year || null, journal: btn.dataset.journal,
+            doi: btn.dataset.doi, pubmed_id: btn.dataset.pmid,
+            has_pdf: btn.dataset.haspdf === '1',
+          });
+          btn.textContent = '✓ En el carrito';
+          btn.disabled = true;
+        });
+      });
     }
 
     function renderThread(chat) {
@@ -7753,9 +7834,7 @@
         return;
       }
       el.innerHTML = chat.messages.map(messageHtml).join('');
-      el.querySelectorAll('[data-open-aid]').forEach(chip => {
-        chip.addEventListener('click', () => openDetail(chip.dataset.openAid));
-      });
+      _wireThreadInteractions(el);
       el.scrollTop = el.scrollHeight;
     }
 
@@ -7848,6 +7927,10 @@
           role: 'assistant', content: r.answer, provider_label: r.provider_label,
           switched: r.switched, citations: r.citations, cited_article_ids: r.cited_article_ids,
         }));
+        // Scope wiring to the just-inserted bubble only — re-wiring the
+        // whole thread on every send would stack duplicate listeners on
+        // earlier messages' citation chips/cart buttons.
+        if (el.lastElementChild) _wireThreadInteractions(el.lastElementChild);
         el.scrollTop = el.scrollHeight;
         await loadChats();
         renderList();
