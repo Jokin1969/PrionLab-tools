@@ -1643,6 +1643,12 @@
                      color:#be185d;font-size:12.5px;font-weight:600;cursor:pointer;">
         <i class="fas fa-file-pdf" style="margin-right:5px;"></i>Generar informe
       </button>
+      <button id="pv-jc-manage-repeated-btn" type="button"
+              title="Mostrar solo artículos presentados más de una vez (más de un responsable o fecha)"
+              style="padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#fff;
+                     color:#6b7280;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
+        <i class="fas fa-people-arrows" style="margin-right:5px;"></i>Repetidos
+      </button>
       <div style="flex:1;min-width:220px;position:relative;">
         <i class="fas fa-magnifying-glass" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px;"></i>
         <input id="pv-jc-manage-search" type="text" placeholder="Buscar por artículo, responsable o año…"
@@ -1702,7 +1708,10 @@
                 style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;cursor:pointer;user-select:none;">
               Artículo <i class="fas fa-sort" style="opacity:0.4;font-size:9px;"></i>
             </th>
-            <th style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;">Archivo</th>
+            <th data-sort="filetype" class="pv-jc-manage-sortable"
+                style="text-align:left;padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#831843;border-bottom:1px solid #fce7f3;cursor:pointer;user-select:none;">
+              Archivo <i class="fas fa-sort" style="opacity:0.4;font-size:9px;"></i>
+            </th>
           </tr>
         </thead>
         <tbody id="pv-jc-manage-tbody">

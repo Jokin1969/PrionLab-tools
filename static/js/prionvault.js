@@ -5587,6 +5587,7 @@
     let _searchOr = false;  // AND (default) vs OR between search terms
     let _sortKey = 'date';  // 'date' | 'presenter'
     let _sortAsc = false;   // newest / Z-first by default
+    let _repeatedOnly = false;  // only articles presented more than once (>1 distinct presenter)
 
     function fmtDate(iso) {
       if (!iso) return '(sin fecha)';
@@ -5653,6 +5654,12 @@
         } else if (_sortKey === 'article') {
           av = (a.article_title || '').toLowerCase();
           bv = (b.article_title || '').toLowerCase();
+        } else if (_sortKey === 'filetype') {
+          // Sort by file format (pptx, pdf, word, excel…) — several files
+          // on one presentation sort by their kinds joined alphabetically,
+          // so mixed-format rows still land somewhere consistent.
+          const kindsOf = (row) => (row.files || []).map(f => f.kind || '').sort().join(',');
+          av = kindsOf(a); bv = kindsOf(b);
         } else {
           av = a.presented_at || '';
           bv = b.presented_at || '';
@@ -5704,16 +5711,35 @@
       });
     }
 
+    // article_id -> count of distinct presenters across all its JC
+    // presentations. Recomputed whenever _items changes (see load()).
+    let _presenterCountByArticle = new Map();
+    function _recomputeRepeatedArticles() {
+      const presentersByArticle = new Map();
+      for (const x of _items) {
+        if (!presentersByArticle.has(x.article_id)) presentersByArticle.set(x.article_id, new Set());
+        if (x.presenter_name) presentersByArticle.get(x.article_id).add(x.presenter_name.trim().toLowerCase());
+      }
+      _presenterCountByArticle = new Map(
+        [...presentersByArticle.entries()].map(([aid, set]) => [aid, set.size]));
+    }
+
     function applySearch() {
       const q = (document.getElementById('pv-jc-manage-search').value || '').trim().toLowerCase();
-      if (!q) { _filtered = _items; render(); return; }
-      const terms = q.split(/\s+/).filter(Boolean);
-      _filtered = _items.filter(x => {
-        const hay = [x.presenter_name, x.article_title, x.article_authors,
-                     x.article_journal, x.article_year, x.article_doi, x.article_pmid]
-          .filter(Boolean).join(' ').toLowerCase();
-        return _searchOr ? terms.some(t => hay.includes(t)) : terms.every(t => hay.includes(t));
-      });
+      let list = _items;
+      if (q) {
+        const terms = q.split(/\s+/).filter(Boolean);
+        list = list.filter(x => {
+          const hay = [x.presenter_name, x.article_title, x.article_authors,
+                       x.article_journal, x.article_year, x.article_doi, x.article_pmid]
+            .filter(Boolean).join(' ').toLowerCase();
+          return _searchOr ? terms.some(t => hay.includes(t)) : terms.every(t => hay.includes(t));
+        });
+      }
+      if (_repeatedOnly) {
+        list = list.filter(x => (_presenterCountByArticle.get(x.article_id) || 0) > 1);
+      }
+      _filtered = list;
       render();
     }
 
@@ -5739,6 +5765,7 @@
         return;
       }
       _recomputeMissingTagCount();
+      _recomputeRepeatedArticles();
       populateScopeOptions();
       applySearch();
     }
@@ -5767,6 +5794,13 @@
       };
       document.getElementById('pv-jc-manage-search-and')?.addEventListener('click', () => setSearchMode(false));
       document.getElementById('pv-jc-manage-search-or')?.addEventListener('click', () => setSearchMode(true));
+      document.getElementById('pv-jc-manage-repeated-btn')?.addEventListener('click', (e) => {
+        _repeatedOnly = !_repeatedOnly;
+        e.currentTarget.style.background  = _repeatedOnly ? '#be185d' : '#fff';
+        e.currentTarget.style.color       = _repeatedOnly ? '#fff' : '#6b7280';
+        e.currentTarget.style.borderColor = _repeatedOnly ? '#be185d' : '#d1d5db';
+        applySearch();
+      });
       document.querySelectorAll('.pv-jc-manage-sortable').forEach(th => {
         th.addEventListener('click', () => {
           const key = th.dataset.sort;
