@@ -5838,6 +5838,7 @@
       document.getElementById('pv-jc-manage-verify-btn')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         const panel = document.getElementById('pv-jc-manage-verify-panel');
+        const body  = document.getElementById('pv-jc-manage-verify-body');
         const prevHtml = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -5845,19 +5846,19 @@
         panel.style.background = '#f9fafb';
         panel.style.border = '1px solid #e5e7eb';
         panel.style.color = '#6b7280';
-        panel.innerHTML = 'Verificando archivos en Dropbox…';
+        body.innerHTML = 'Verificando archivos en Dropbox…';
         try {
           const data = await api('/jc/verify-dropbox', { method: 'POST' });
           if (!data.missing || !data.missing.length) {
             panel.style.background = '#f0fdf4';
             panel.style.border = '1px solid #bbf7d0';
             panel.style.color = '#166534';
-            panel.innerHTML = `<i class="fas fa-circle-check"></i> Todo correcto — ${data.checked} archivo(s) verificado(s), ningún huérfano.`;
+            body.innerHTML = `<i class="fas fa-circle-check"></i> Todo correcto — ${data.checked} archivo(s) verificado(s), ningún huérfano.`;
           } else {
             panel.style.background = '#fffbeb';
             panel.style.border = '1px solid #fcd34d';
             panel.style.color = '#92400e';
-            panel.innerHTML =
+            body.innerHTML =
               `<div style="font-weight:700;margin-bottom:6px;"><i class="fas fa-triangle-exclamation"></i> ` +
               `${data.missing.length} de ${data.checked} archivo(s) no se encuentran en Dropbox ` +
               `(renombrados, movidos o borrados tras enlazarlos):</div>` +
@@ -5873,11 +5874,14 @@
           panel.style.background = '#fef2f2';
           panel.style.border = '1px solid #fecaca';
           panel.style.color = '#991b1b';
-          panel.innerHTML = `<i class="fas fa-circle-exclamation"></i> Error al verificar: ${esc(err.message || String(err))}`;
+          body.innerHTML = `<i class="fas fa-circle-exclamation"></i> Error al verificar: ${esc(err.message || String(err))}`;
         } finally {
           btn.disabled = false;
           btn.innerHTML = prevHtml;
         }
+      });
+      document.getElementById('pv-jc-manage-verify-close')?.addEventListener('click', () => {
+        document.getElementById('pv-jc-manage-verify-panel').style.display = 'none';
       });
 
       // ── Locate a JC by presentation date ──────────────────────────────────

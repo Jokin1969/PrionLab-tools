@@ -1660,8 +1660,14 @@
     </div>
 
     <!-- Dropbox verification results — hidden until "verify" button used -->
-    <div id="pv-jc-manage-verify-panel" style="display:none;border-radius:8px;padding:10px 12px;
-                margin-bottom:10px;flex-shrink:0;font-size:12.5px;"></div>
+    <div id="pv-jc-manage-verify-panel" style="display:none;position:relative;border-radius:8px;padding:10px 34px 10px 12px;
+                margin-bottom:10px;flex-shrink:0;font-size:12.5px;">
+      <button id="pv-jc-manage-verify-close" type="button" title="Cerrar" aria-label="Cerrar"
+              style="position:absolute;top:8px;right:8px;width:20px;height:20px;border:none;border-radius:50%;
+                     background:rgba(0,0,0,0.08);color:inherit;font-size:13px;font-weight:700;line-height:1;
+                     cursor:pointer;padding:0 0 1px;">×</button>
+      <div id="pv-jc-manage-verify-body"></div>
+    </div>
 
     <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;border:1px solid #f3f4f6;border-radius:8px;">
       <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12.5px;">
