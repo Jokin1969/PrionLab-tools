@@ -405,7 +405,7 @@
                        cursor:pointer;padding:0;font-size:9.5px;flex:1;text-align:left;
                        display:flex;align-items:center;gap:5px;font-weight:700;
                        letter-spacing:0.1em;text-transform:uppercase;">
-          <span class="pv-toggle-caret" style="display:inline-block;transition:transform 0.15s;">▾</span>
+          <span class="pv-toggle-caret" style="display:inline-block;font-size:14px;line-height:1;transition:transform 0.15s;">▾</span>
           <span>Colecciones</span>
           <span id="collection-count"
                 style="font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:normal;text-transform:none;font-size:10px;"></span>
@@ -432,7 +432,7 @@
                        cursor:pointer;padding:0;font-size:9.5px;flex:1;text-align:left;
                        display:flex;align-items:center;gap:5px;font-weight:700;
                        letter-spacing:0.1em;text-transform:uppercase;">
-          <span class="pv-toggle-caret" style="display:inline-block;transition:transform 0.15s;">▾</span>
+          <span class="pv-toggle-caret" style="display:inline-block;font-size:14px;line-height:1;transition:transform 0.15s;">▾</span>
           <span>Tags</span>
           <span id="tag-count"
                 style="font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:normal;text-transform:none;font-size:10px;"></span>
@@ -751,20 +751,6 @@
                        transition:background 0.12s,border-color 0.12s;">
           <i class="fas fa-robot"></i>
         </button>
-        <!-- Cart icon — opens PrionPacks in new tab, badge shows cart count -->
-        <button id="pv-cart-btn" type="button"
-                onclick="window.open('/prionpacks','_blank')"
-                title="Carrito de artículos — abre PrionPacks"
-                style="position:relative;display:flex;align-items:center;justify-content:center;
-                       width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;
-                       background:#fff;cursor:pointer;flex-shrink:0;font-size:15px;
-                       transition:background 0.12s;">🛒
-          <span id="pv-cart-badge"
-                style="display:none;position:absolute;top:-5px;right:-5px;
-                       background:#dc2626;color:#fff;font-size:10px;font-weight:700;
-                       border-radius:9999px;padding:1px 4px;min-width:16px;text-align:center;
-                       pointer-events:none;">0</span>
-        </button>
         <div id="pv-bulk-lookup-wrap"
              class="pv-mobile-hide pv-admin-only"
              style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:10px;
@@ -792,19 +778,12 @@
                        padding:0 12px;height:38px;flex-shrink:0;border-radius:8px;border:1px solid #d1d5db;
                        background:#fff;color:#0F3460;font-size:12px;font-weight:600;cursor:pointer;
                        white-space:nowrap;transition:background 0.12s,border-color 0.12s;">
-          <i class="fas fa-sliders"></i> Búsqueda avanzada
+          <i class="fas fa-magnifying-glass"></i> avanzada
         </button>
-      </div>
-      <div id="pv-filter-strip" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Autores
-          <input type="text" id="filter-authors" class="pv-filter-input"
-                 placeholder="Castilla, Soto…" style="width:140px;"
-                 title="Coincidencia parcial sobre el campo 'authors' del artículo">
-        </label>
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Sort
-          <select id="filter-sort" class="pv-filter-input">
+        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;
+                       flex-shrink:0;height:38px;">
+          Ordenar
+          <select id="filter-sort" class="pv-filter-input" style="height:38px;">
             <option value="added_desc">Recently added</option>
             <option value="added_asc">Oldest added</option>
             <option value="year_desc">Year (newest)</option>
@@ -816,25 +795,21 @@
             <option value="journal_desc">Revista Z → A</option>
           </select>
         </label>
-
-
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
-               title="Pertenencia a un PrionPack: el match se hace por DOI contra las references/introReferences del pack.">
-          PrionPacks
-          <select id="filter-has-pp" class="pv-filter-input">
-            <option value="">cualquiera</option>
-            <option value="1">sí — en algún pack</option>
-            <option value="0">no — sin pack</option>
-          </select>
-        </label>
-
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Pack
-          <select id="filter-pp-id" class="pv-filter-input" style="min-width:150px;max-width:240px;">
-            <option value="">todos</option>
-          </select>
-        </label>
-
+        <div style="flex:1;"></div>
+        <!-- Cart icon — opens PrionPacks in new tab, badge shows cart count -->
+        <button id="pv-cart-btn" type="button"
+                onclick="window.open('/prionpacks','_blank')"
+                title="Carrito de artículos — abre PrionPacks"
+                style="position:relative;display:flex;align-items:center;justify-content:center;
+                       width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;
+                       background:#fff;cursor:pointer;flex-shrink:0;font-size:15px;
+                       transition:background 0.12s;">🛒
+          <span id="pv-cart-badge"
+                style="display:none;position:absolute;top:-5px;right:-5px;
+                       background:#dc2626;color:#fff;font-size:10px;font-weight:700;
+                       border-radius:9999px;padding:1px 4px;min-width:16px;text-align:center;
+                       pointer-events:none;">0</span>
+        </button>
       </div>
     </div>
 

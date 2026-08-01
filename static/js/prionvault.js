@@ -468,6 +468,21 @@
       return;
     }
     _allCollections = items;
+    renderCollectionTree();
+  }
+
+  // Pure re-render from already-fetched _allCollections/_collRollup — no
+  // network round trip. Folding/unfolding a group or subgroup chevron
+  // used to call refreshCollections() (a full re-fetch, including
+  // /collections/rollup's per-collection DB queries on the backend),
+  // which made every expand/collapse click visibly slow for no reason:
+  // toggling a fold is a pure UI state change, the data hasn't gone
+  // stale. Callers that DID change the underlying data (create/delete/
+  // edit a collection) still go through refreshCollections().
+  function renderCollectionTree() {
+    const container = document.getElementById('collection-list');
+    if (!container) return;
+    const items = _allCollections;
     refreshCollectionsCount();
     refreshFilterIndicators();
     if (!items.length) {
@@ -597,7 +612,7 @@
       if (ev.target.closest('.pv-coll-chevron')) {
         ev.preventDefault();
         _toggleCollapsed(_COLL_GROUPS_KEY, group);
-        refreshCollections();
+        renderCollectionTree();
         return;
       }
       // × wipes the whole group (admin only).
@@ -719,7 +734,7 @@
       if (ev.target.closest('.pv-coll-chevron')) {
         ev.preventDefault();
         _toggleCollapsed(_COLL_SUBGROUPS_KEY, `${group}::${subgroup}`);
-        refreshCollections();
+        renderCollectionTree();
         return;
       }
       if (ev.target.closest('.pv-coll-del')) {
@@ -8832,9 +8847,6 @@
     document.getElementById('filter-year-max').addEventListener('change', e => {
       state.yearMax = parseInt(e.target.value, 10) || null; state.page = 1; loadArticles();
     });
-    document.getElementById('filter-authors').addEventListener('input', debounce(e => {
-      state.authors = e.target.value.trim(); state.page = 1; loadArticles();
-    }, 250));
     document.getElementById('filter-sort').addEventListener('change', e => {
       state.sort = e.target.value; state.page = 1; loadArticles();
     });
