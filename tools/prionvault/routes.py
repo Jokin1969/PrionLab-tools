@@ -481,7 +481,26 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         # covers title/abstract/authors together via search_vector, so a
         # column restriction only makes sense against the ILIKE side).
         _sf = set(search_fields or []) & {"title", "authors", "abstract", "journal"}
-        words = q.split()
+        raw_words = q.split()
+
+        # Drop words of 2 chars or less before building the ILIKE side
+        # (both here and below in the field-restricted branch) — a word
+        # that short can't meaningfully narrow anything down (a
+        # near-universal substring), and worse, pg_trgm can't build a
+        # trigram for a pattern under 3 chars, so that clause can't use
+        # the GIN index at all. Its unreliable "very selective" cost
+        # estimate can then trick the planner into driving a whole
+        # multi-word AND chain off that one useless clause instead of a
+        # genuinely selective word (e.g. "Prions activate a p38 MAPK
+        # synaptotoxic signaling pathway" — the lone "a" ILIKE '%a%'
+        # matches nearly every title). Falls back to the unfiltered list
+        # only if filtering would leave nothing (e.g. the whole query is
+        # "ab"). Left out of the FTS side on purpose: `ts_input` below
+        # stays the raw `q` for AND mode so websearch_to_tsquery's own
+        # phrase-quote/exclude ("-word") syntax keeps working verbatim —
+        # short words there ride the GIN index same as any other token,
+        # so they aren't a performance problem, only on the ILIKE side.
+        words = [w for w in raw_words if len(w) > 2] or raw_words
         ts_input = q if q_mode == "and" else " OR ".join(words)
         joiner = " AND " if q_mode == "and" else " OR "
 
@@ -494,24 +513,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             if "abstract" in _sf: ilike_cols.append("coalesce(abstract,'')")
             if "journal"  in _sf: ilike_cols.append("coalesce(journal,'')")
 
-        # pg_trgm can't build a trigram (and so can't use the GIN index)
-        # for a pattern shorter than 3 chars — that word's ILIKE clause
-        # falls back to a full scan to evaluate, and worse, its bogus
-        # "very selective" cost estimate can trick the planner into
-        # driving the whole AND chain off that useless clause instead of
-        # a genuinely selective one (e.g. "Prions activate a p38 MAPK
-        # synaptotoxic signaling pathway" — the lone "a" ILIKE '%a%'
-        # matches nearly every title, but Postgres doesn't know that).
-        # Words under 3 chars add essentially zero restriction anyway
-        # (near-universal substrings), so drop them from the ILIKE
-        # chain — as long as at least one longer word is still driving
-        # it. Doesn't touch the FTS side (ts_input/words), whose GIN
-        # index handles short tokens fine.
-        ilike_words = [w for w in words if len(w) >= 3] or words
-
         like_params: dict = {}
         word_clauses = []
-        for i, w in enumerate(ilike_words):
+        for i, w in enumerate(words):
             key = f"q_like_{i}"
             like_params[key] = f"%{w}%"
             word_clauses.append("(" + " OR ".join(f"{c} ILIKE :{key}" for c in ilike_cols) + ")")
