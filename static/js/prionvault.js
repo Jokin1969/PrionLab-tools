@@ -8628,16 +8628,40 @@
 
     // ── "Búsqueda avanzada" modal: mirrors the head's search input ────────
     const advSearchInput = document.getElementById('pv-adv-search-input');
+    const advSearchWrap  = document.getElementById('pv-adv-search-wrap');
+    const advClearBtn    = document.getElementById('pv-adv-search-clear');
+    const paintAdvSearchInputState = (hasText) => {
+      if (advSearchWrap) {
+        advSearchWrap.style.background  = hasText ? '#fff3e6' : '#f9fafb';
+        advSearchWrap.style.borderColor = hasText ? '#fbcea0' : '#e5e7eb';
+      }
+      if (advClearBtn) advClearBtn.style.display = hasText ? 'inline-flex' : 'none';
+    };
     if (advSearchInput) {
       advSearchInput.addEventListener('input', e => {
         searchInput.value = e.target.value;
         syncClearBtn();
+        paintAdvSearchInputState(!!e.target.value.trim());
         state.q = e.target.value.trim();
         onSearch();
       });
     }
+    advClearBtn?.addEventListener('click', () => {
+      if (!advSearchInput) return;
+      advSearchInput.value = '';
+      searchInput.value = '';
+      syncClearBtn();
+      paintAdvSearchInputState(false);
+      state.q = '';
+      advSearchInput.focus();
+      state.page = 1;
+      loadArticles();
+    });
     document.getElementById('btn-advanced-search')?.addEventListener('click', () => {
-      if (advSearchInput) advSearchInput.value = searchInput.value;
+      if (advSearchInput) {
+        advSearchInput.value = searchInput.value;
+        paintAdvSearchInputState(!!searchInput.value.trim());
+      }
       document.getElementById('pv-advanced-search-modal').style.display = 'flex';
     });
     const closeAdvancedSearchModal = () => {
@@ -8645,6 +8669,11 @@
     };
     document.getElementById('pv-advanced-search-close')?.addEventListener('click', closeAdvancedSearchModal);
     document.getElementById('pv-advanced-search-done')?.addEventListener('click', closeAdvancedSearchModal);
+    document.getElementById('pv-advanced-search-run')?.addEventListener('click', () => {
+      state.page = 1;
+      loadArticles();
+      closeAdvancedSearchModal();
+    });
     document.querySelector('#pv-advanced-search-modal .pv-modal-backdrop')?.addEventListener('click', closeAdvancedSearchModal);
 
     // ── AI search — separate modal, its own textarea + named provider
