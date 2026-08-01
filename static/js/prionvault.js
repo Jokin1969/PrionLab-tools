@@ -8480,23 +8480,26 @@
     };
     if (clearBtn) clearBtn.addEventListener('click', clearSearch);
 
-    // ── Field-filter microbuttons (T / Au / A) ────────────────────────────
-    const FIELD_COLORS = { title: '#2563eb', authors: '#7c3aed', abstract: '#059669' };
+    // ── Field-filter microbuttons (T / Au / A / R) ─────────────────────────
+    // Head and "Búsqueda avanzada" modal each have their own copy of these
+    // buttons (same data-field, shared class) — paintFieldButton() repaints
+    // every instance so both stay in sync regardless of which was clicked.
+    const FIELD_COLORS = { title: '#2563eb', authors: '#7c3aed', abstract: '#059669', journal: '#d97706' };
+    function paintFieldButtons(field) {
+      const active = state.searchFields.indexOf(field) !== -1;
+      document.querySelectorAll(`.pv-field-btn[data-field="${field}"]`).forEach(btn => {
+        btn.style.background  = active ? FIELD_COLORS[field] : '#f3f4f6';
+        btn.style.color       = active ? '#fff' : '#9ca3af';
+        btn.style.borderColor = active ? FIELD_COLORS[field] : '#d1d5db';
+      });
+    }
     document.querySelectorAll('.pv-field-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const field = btn.dataset.field;
         const idx   = state.searchFields.indexOf(field);
-        if (idx === -1) {
-          state.searchFields.push(field);
-          btn.style.background   = FIELD_COLORS[field];
-          btn.style.color        = '#fff';
-          btn.style.borderColor  = FIELD_COLORS[field];
-        } else {
-          state.searchFields.splice(idx, 1);
-          btn.style.background  = '#f3f4f6';
-          btn.style.color       = '#9ca3af';
-          btn.style.borderColor = '#d1d5db';
-        }
+        if (idx === -1) state.searchFields.push(field);
+        else state.searchFields.splice(idx, 1);
+        paintFieldButtons(field);
         state.page = 1;
         loadArticles();
       });
@@ -8524,9 +8527,8 @@
     // a plain multi-word Google-style query implies.
     function setSearchWordMode(mode) {
       state.qMode = mode;
-      const andBtn = document.getElementById('pv-search-mode-and');
-      const orBtn  = document.getElementById('pv-search-mode-or');
-      [[andBtn, mode === 'and'], [orBtn, mode === 'or']].forEach(([btn, active]) => {
+      document.querySelectorAll('.pv-search-mode-btn').forEach(btn => {
+        const active = btn.dataset.mode === mode;
         btn.style.background  = active ? '#0F3460' : '#fff';
         btn.style.color       = active ? '#fff' : '#9ca3af';
         btn.style.borderColor = active ? '#0F3460' : '#d1d5db';
@@ -8534,8 +8536,30 @@
       state.page = 1;
       loadArticles();
     }
-    document.getElementById('pv-search-mode-and')?.addEventListener('click', () => setSearchWordMode('and'));
-    document.getElementById('pv-search-mode-or')?.addEventListener('click', () => setSearchWordMode('or'));
+    document.querySelectorAll('.pv-search-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => setSearchWordMode(btn.dataset.mode));
+    });
+
+    // ── "Búsqueda avanzada" modal: mirrors the head's search input ────────
+    const advSearchInput = document.getElementById('pv-adv-search-input');
+    if (advSearchInput) {
+      advSearchInput.addEventListener('input', e => {
+        searchInput.value = e.target.value;
+        syncClearBtn();
+        state.q = e.target.value.trim();
+        onSearch();
+      });
+    }
+    document.getElementById('btn-advanced-search')?.addEventListener('click', () => {
+      if (advSearchInput) advSearchInput.value = searchInput.value;
+      document.getElementById('pv-advanced-search-modal').style.display = 'flex';
+    });
+    const closeAdvancedSearchModal = () => {
+      document.getElementById('pv-advanced-search-modal').style.display = 'none';
+    };
+    document.getElementById('pv-advanced-search-close')?.addEventListener('click', closeAdvancedSearchModal);
+    document.getElementById('pv-advanced-search-done')?.addEventListener('click', closeAdvancedSearchModal);
+    document.querySelector('#pv-advanced-search-modal .pv-modal-backdrop')?.addEventListener('click', closeAdvancedSearchModal);
 
     // ── AI search — separate modal, its own textarea + named provider
     // buttons, kept fully apart from the standard search box above. ──────
@@ -8653,9 +8677,6 @@
     document.getElementById('filter-authors').addEventListener('input', debounce(e => {
       state.authors = e.target.value.trim(); state.page = 1; loadArticles();
     }, 250));
-    document.getElementById('filter-journal').addEventListener('input', debounce(e => {
-      state.journal = e.target.value.trim(); state.page = 1; loadArticles();
-    }, 250));
     document.getElementById('filter-sort').addEventListener('change', e => {
       state.sort = e.target.value; state.page = 1; loadArticles();
     });
@@ -8758,15 +8779,8 @@
       // resets triggered elsewhere — Library Health shortcuts, "Reset
       // filters"...) can keep this dot in sync too.
       window._pvSyncColorDot = syncDot;
-
-      document.getElementById('filter-color')?.addEventListener('change', syncDot);
     })();
 
-    document.getElementById('filter-color').addEventListener('change', e => {
-      state.colorLabel = e.target.value || null;
-      state.page = 1;
-      loadArticles();
-    });
     document.getElementById('filter-priority-eq').addEventListener('change', e => {
       const v = parseInt(e.target.value, 10);
       state.priorityEq = Number.isFinite(v) ? v : null;

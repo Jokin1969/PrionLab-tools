@@ -161,7 +161,7 @@ def api_list_articles():
     has_year_raw = request.args.get("has_year")
     has_year = True if has_year_raw == "true" else (False if has_year_raw == "false" else None)
     _sf_raw     = (request.args.get("search_fields") or "").strip()
-    search_fields = [f.strip() for f in _sf_raw.split(",") if f.strip() in ("title", "authors", "abstract")] if _sf_raw else []
+    search_fields = [f.strip() for f in _sf_raw.split(",") if f.strip() in ("title", "authors", "abstract", "journal")] if _sf_raw else []
     sort        = request.args.get("sort", "added_desc")
     page        = max(1, request.args.get("page", 1, type=int))
     page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
@@ -472,7 +472,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         # as before, drops the FTS branch entirely when set — FTS always
         # covers title/abstract/authors together via search_vector, so a
         # column restriction only makes sense against the ILIKE side).
-        _sf = set(search_fields or []) & {"title", "authors", "abstract"}
+        _sf = set(search_fields or []) & {"title", "authors", "abstract", "journal"}
         words = q.split()
         ts_input = q if q_mode == "and" else " OR ".join(words)
         joiner = " AND " if q_mode == "and" else " OR "
@@ -484,6 +484,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             if "title"    in _sf: ilike_cols.append("title")
             if "authors"  in _sf: ilike_cols.append("coalesce(authors,'')")
             if "abstract" in _sf: ilike_cols.append("coalesce(abstract,'')")
+            if "journal"  in _sf: ilike_cols.append("coalesce(journal,'')")
 
         like_params: dict = {}
         word_clauses = []

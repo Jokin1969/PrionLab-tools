@@ -698,11 +698,11 @@
         <div id="pv-search-mode-btns"
              style="display:flex;gap:3px;flex-shrink:0;align-items:center;"
              title="Cómo combinar varias palabras sueltas escritas en la búsqueda.">
-          <button type="button" id="pv-search-mode-and" data-mode="and"
+          <button type="button" class="pv-search-mode-btn" data-mode="and"
                   style="padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;
                          border:1px solid #0F3460;background:#0F3460;color:#fff;cursor:pointer;
                          transition:background 0.12s,color 0.12s,border-color 0.12s;">Y</button>
-          <button type="button" id="pv-search-mode-or" data-mode="or"
+          <button type="button" class="pv-search-mode-btn" data-mode="or"
                   style="padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;
                          border:1px solid #d1d5db;background:#fff;color:#9ca3af;cursor:pointer;
                          transition:background 0.12s,color 0.12s,border-color 0.12s;">O</button>
@@ -725,6 +725,11 @@
                   style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
                          border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
                          transition:background 0.12s,color 0.12s,border-color 0.12s;">A</button>
+          <button type="button" class="pv-field-btn" data-field="journal"
+                  title="Buscar solo en Revista"
+                  style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                         border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                         transition:background 0.12s,color 0.12s,border-color 0.12s;">R</button>
         </div>
         <button id="pv-search-clear" type="button"
                 title="Limpiar búsqueda (Esc)"
@@ -780,26 +785,22 @@
             Buscar
           </button>
         </div>
+        <button id="btn-advanced-search" type="button"
+                title="Búsqueda avanzada — filtros de año, prioridad, abstract, indexado y estado del PDF"
+                aria-label="Búsqueda avanzada"
+                style="display:flex;align-items:center;justify-content:center;gap:6px;
+                       padding:0 12px;height:38px;flex-shrink:0;border-radius:8px;border:1px solid #d1d5db;
+                       background:#fff;color:#0F3460;font-size:12px;font-weight:600;cursor:pointer;
+                       white-space:nowrap;transition:background 0.12s,border-color 0.12s;">
+          <i class="fas fa-sliders"></i> Búsqueda avanzada
+        </button>
       </div>
       <div id="pv-filter-strip" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Year
-          <input type="number" id="filter-year-min" class="pv-filter-input"
-                 placeholder="from" min="1900" max="2100" style="width:68px;">
-          <span style="color:#d1d5db;">—</span>
-          <input type="number" id="filter-year-max" class="pv-filter-input"
-                 placeholder="to" min="1900" max="2100" style="width:68px;">
-        </label>
         <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Autores
           <input type="text" id="filter-authors" class="pv-filter-input"
                  placeholder="Castilla, Soto…" style="width:140px;"
                  title="Coincidencia parcial sobre el campo 'authors' del artículo">
-        </label>
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Journal
-          <input type="text" id="filter-journal" class="pv-filter-input"
-                 placeholder="filter…" style="width:140px;">
         </label>
         <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
           Sort
@@ -816,32 +817,6 @@
           </select>
         </label>
 
-
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Color
-          <select id="filter-color" class="pv-filter-input">
-            <option value="">todos</option>
-            <option value="red">Rojo</option>
-            <option value="orange">Naranja</option>
-            <option value="yellow">Amarillo</option>
-            <option value="green">Verde</option>
-            <option value="blue">Azul</option>
-            <option value="purple">Morado</option>
-            <option value="none">Sin color</option>
-          </select>
-        </label>
-
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Prioridad =
-          <select id="filter-priority-eq" class="pv-filter-input">
-            <option value="">todas</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5 (solo hitos)</option>
-          </select>
-        </label>
 
         <button id="btn-filter-has-jc" type="button"
                 class="pv-mobile-hide"
@@ -883,36 +858,6 @@
           </select>
         </label>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
-               title="Estado del abstract: 'pendiente' = sin abstract y no buscado todavía; 'no disponible' = consultado y CrossRef/PubMed lo confirman como inexistente.">
-          Abstract
-          <select id="filter-abstract-status" class="pv-filter-input">
-            <option value="">cualquiera</option>
-            <option value="has">sí — con abstract</option>
-            <option value="pending">pendiente — por buscar</option>
-            <option value="unavailable">no disponible (confirmado)</option>
-          </select>
-        </label>
-
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;"
-               title="Marca 'indexed' del listado: indica si el artículo está en el índice vectorial de búsqueda semántica.">
-          Indexado
-          <select id="filter-indexed-status" class="pv-filter-input">
-            <option value="">cualquiera</option>
-            <option value="yes">sí — indexado</option>
-            <option value="no">no — sin indexar</option>
-          </select>
-        </label>
-
-        <label class="pv-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
-          Estado PDF
-          <select id="filter-extraction" class="pv-filter-input">
-            <option value="">todos</option>
-            <option value="extracted">Con extracción</option>
-            <option value="pending">Pendiente</option>
-            <option value="failed">Fallida</option>
-          </select>
-        </label>
       </div>
     </div>
 
@@ -1777,6 +1722,116 @@
                      font-size:12.5px;font-weight:600;cursor:pointer;">
         <i class="fas fa-magnifying-glass" style="margin-right:5px;"></i>Buscar
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Advanced search modal ─────────────────────────────────────────── -->
+<div id="pv-advanced-search-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:520px;">
+    <button class="pv-modal-close" id="pv-advanced-search-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 14px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-sliders" style="color:#0F3460;margin-right:8px;"></i>Búsqueda avanzada
+    </h2>
+
+    <div style="display:flex;align-items:center;gap:8px;background:#f9fafb;border-radius:10px;
+                padding:8px 12px;border:1px solid #e5e7eb;margin-bottom:16px;">
+      <i class="fas fa-search" style="color:#9ca3af;font-size:13px;flex-shrink:0;"></i>
+      <input type="text" id="pv-adv-search-input"
+             style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#111827;min-width:0;"
+             placeholder="Buscar por título, resumen, autores, revista…"
+             autocomplete="off" />
+      <div class="pv-adv-search-mode-btns" style="display:flex;gap:3px;flex-shrink:0;align-items:center;"
+           title="Cómo combinar varias palabras sueltas escritas en la búsqueda.">
+        <button type="button" class="pv-search-mode-btn" data-mode="and"
+                style="padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;
+                       border:1px solid #0F3460;background:#0F3460;color:#fff;cursor:pointer;
+                       transition:background 0.12s,color 0.12s,border-color 0.12s;">Y</button>
+        <button type="button" class="pv-search-mode-btn" data-mode="or"
+                style="padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;
+                       border:1px solid #d1d5db;background:#fff;color:#9ca3af;cursor:pointer;
+                       transition:background 0.12s,color 0.12s,border-color 0.12s;">O</button>
+      </div>
+      <div style="display:flex;gap:3px;flex-shrink:0;align-items:center;"
+           title="Limitar búsqueda a campos concretos. Sin selección = busca en todos.">
+        <button type="button" class="pv-field-btn" data-field="title" title="Buscar solo en Título"
+                style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                       border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                       transition:background 0.12s,color 0.12s,border-color 0.12s;">T</button>
+        <button type="button" class="pv-field-btn" data-field="authors" title="Buscar solo en Autores"
+                style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                       border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                       transition:background 0.12s,color 0.12s,border-color 0.12s;">Au</button>
+        <button type="button" class="pv-field-btn" data-field="abstract" title="Buscar solo en Abstract"
+                style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                       border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                       transition:background 0.12s,color 0.12s,border-color 0.12s;">A</button>
+        <button type="button" class="pv-field-btn" data-field="journal" title="Buscar solo en Revista"
+                style="padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700;
+                       border:1px solid #d1d5db;background:#f3f4f6;color:#9ca3af;cursor:pointer;
+                       transition:background 0.12s,color 0.12s,border-color 0.12s;">R</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#374151;font-weight:600;">
+        Año
+        <input type="number" id="filter-year-min" class="pv-filter-input"
+               placeholder="desde" min="1900" max="2100" style="width:80px;">
+        <span style="color:#d1d5db;">—</span>
+        <input type="number" id="filter-year-max" class="pv-filter-input"
+               placeholder="hasta" min="1900" max="2100" style="width:80px;">
+      </label>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#374151;font-weight:600;">
+        Prioridad =
+        <select id="filter-priority-eq" class="pv-filter-input">
+          <option value="">todas</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5 (solo hitos)</option>
+        </select>
+      </label>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#374151;font-weight:600;"
+             title="Estado del abstract: 'pendiente' = sin abstract y no buscado todavía; 'no disponible' = consultado y CrossRef/PubMed lo confirman como inexistente.">
+        Abstract
+        <select id="filter-abstract-status" class="pv-filter-input">
+          <option value="">cualquiera</option>
+          <option value="has">sí — con abstract</option>
+          <option value="pending">pendiente — por buscar</option>
+          <option value="unavailable">no disponible (confirmado)</option>
+        </select>
+      </label>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#374151;font-weight:600;"
+             title="Marca 'indexed' del listado: indica si el artículo está en el índice vectorial de búsqueda semántica.">
+        Indexado
+        <select id="filter-indexed-status" class="pv-filter-input">
+          <option value="">cualquiera</option>
+          <option value="yes">sí — indexado</option>
+          <option value="no">no — sin indexar</option>
+        </select>
+      </label>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#374151;font-weight:600;">
+        Estado PDF
+        <select id="filter-extraction" class="pv-filter-input">
+          <option value="">todos</option>
+          <option value="extracted">Con extracción</option>
+          <option value="pending">Pendiente</option>
+          <option value="failed">Fallida</option>
+        </select>
+      </label>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:20px;">
+      <button id="pv-advanced-search-done" type="button"
+              style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">Cerrar</button>
     </div>
   </div>
 </div>
