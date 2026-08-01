@@ -58,10 +58,12 @@
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
     qMode:          'and',  // 'and' | 'or' — how multiple bare words in `q` combine
     page: 1,
-    // Anyone who had the old "todos" (50000, now removed) stored is brought
-    // back to 100 so they don't keep loading the whole catalogue every visit.
+    // "Todos" (50000, effectively the whole catalogue) is back by request —
+    // it's genuinely slow on a large library since the server still has to
+    // fetch/serialize every row, so it's opt-in via the dropdown, never
+    // the default.
     size: (() => { const n = parseInt(localStorage.getItem('pv-page-size') || '100', 10) || 100;
-                   return n > 2000 ? 100 : n; })(),
+                   return n > 50000 ? 100 : n; })(),
     // selectedIds: a Set that ALSO syncs every change to the server
     // (table: prionvault_user_selection) so the operator's ticks
     // survive refresh, browser switch and server deploys. Starts as
@@ -5648,6 +5650,9 @@
         if (_sortKey === 'presenter') {
           av = (a.presenter_name || '').toLowerCase();
           bv = (b.presenter_name || '').toLowerCase();
+        } else if (_sortKey === 'article') {
+          av = (a.article_title || '').toLowerCase();
+          bv = (b.article_title || '').toLowerCase();
         } else {
           av = a.presented_at || '';
           bv = b.presented_at || '';
