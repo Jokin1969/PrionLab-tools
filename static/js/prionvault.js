@@ -8533,10 +8533,19 @@
       wrap.style.background   = hasText ? '#eff6ff' : '#f3f4f6';
       wrap.style.borderColor  = hasText ? '#bfdbfe' : 'transparent';
     }
+    // The main search box gets its own (much lighter empty state, soft
+    // orange when it has text) rather than sharing paintInputState's
+    // grey/blue — kept separate so the bulk DOI/PMID lookup field below
+    // isn't affected.
+    function paintSearchInputState(hasText) {
+      if (!searchWrap) return;
+      searchWrap.style.background  = hasText ? '#fff3e6' : '#fbfbfc';
+      searchWrap.style.borderColor = hasText ? '#fbcea0' : '#f0f0f1';
+    }
     const searchWrap = document.getElementById('pv-search-wrap');
-    paintInputState(searchWrap, !!searchInput.value.trim());
+    paintSearchInputState(!!searchInput.value.trim());
     searchInput.addEventListener('input',
-      () => paintInputState(searchWrap, !!searchInput.value.trim()));
+      () => paintSearchInputState(!!searchInput.value.trim()));
 
     const bulkLookupWrap = document.getElementById('pv-bulk-lookup-wrap');
     const bulkLookupInputEl = document.getElementById('pv-bulk-lookup-input');
