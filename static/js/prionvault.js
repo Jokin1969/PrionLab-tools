@@ -7885,6 +7885,234 @@
     return { open, close };
   })();
 
+  // ── Cart modal — select articles from the cart, act on them ────────────
+  const PVCart = (() => {
+    const $ = id => document.getElementById(id);
+    let _wired = false;
+    const _selected = new Set();   // article ids selected INSIDE the modal
+
+    function journalYear(a) {
+      if (!a.journal) return '';
+      return ` · <span style="color:#1e3a8a;font-weight:600;">${esc(a.journal)}</span>` +
+        (a.year ? ` <span style="color:#7a1230;font-weight:600;">(${esc(a.year)})</span>` : '');
+    }
+
+    function rowHtml(a) {
+      const links = [
+        a.has_pdf ? `<a href="${API}/articles/${esc(a.id)}/pdf-view" target="_blank" rel="noopener"
+              onclick="event.stopPropagation();" style="color:#b91c1c;text-decoration:none;font-weight:600;">
+              <i class="fas fa-file-pdf"></i> PDF</a>` : '',
+        a.doi ? `<a href="https://doi.org/${encodeURIComponent(a.doi)}" target="_blank" rel="noopener"
+              onclick="event.stopPropagation();" style="color:#0F3460;text-decoration:none;">DOI: ${esc(a.doi)}</a>` : '',
+        a.pubmed_id ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pubmed_id)}/" target="_blank" rel="noopener"
+              onclick="event.stopPropagation();" style="color:#0F3460;text-decoration:none;">PMID: ${esc(a.pubmed_id)}</a>` : '',
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      return `
+        <div class="pv-cart-row" data-aid="${esc(a.id)}"
+             style="display:flex;align-items:flex-start;gap:10px;padding:10px 6px;border-bottom:1px solid #f3f4f6;">
+          <input type="checkbox" class="pv-cart-row-select" data-aid="${esc(a.id)}"
+                 ${_selected.has(a.id) ? 'checked' : ''}
+                 style="cursor:pointer;width:14px;height:14px;margin-top:3px;flex-shrink:0;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13.5px;font-weight:600;color:#111827;line-height:1.35;
+                        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title || '(sin título)')}</div>
+            <div style="margin-top:2px;font-size:12px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${a.authors ? esc(a.authors) : '—'}${journalYear(a)}
+            </div>
+            ${links ? `<div style="margin-top:3px;font-size:11px;">${links}</div>` : ''}
+          </div>
+          <button type="button" class="pv-cart-row-remove" data-aid="${esc(a.id)}"
+                  title="Quitar del carrito"
+                  style="flex-shrink:0;border:none;background:transparent;color:#d1d5db;
+                         cursor:pointer;font-size:14px;padding:4px;"
+                  onmouseover="this.style.color='#b91c1c';" onmouseout="this.style.color='#d1d5db';">⚔️</button>
+        </div>`;
+    }
+
+    function syncActionsBtn() {
+      const btn = $('pv-cart-actions-btn');
+      if (!btn) return;
+      const on = _selected.size > 0;
+      btn.disabled = !on;
+      btn.style.opacity = on ? '1' : '0.45';
+      btn.style.cursor = on ? 'pointer' : 'default';
+    }
+
+    function syncSelectAll() {
+      const all = $('pv-cart-select-all');
+      if (!all) return;
+      const items = window.PPCart?.getAll() || [];
+      all.checked = items.length > 0 && items.every(a => _selected.has(a.id));
+      all.indeterminate = !all.checked && items.some(a => _selected.has(a.id));
+    }
+
+    function render() {
+      const items = window.PPCart?.getAll() || [];
+      // Drop selections for articles no longer in the cart.
+      [..._selected].forEach(id => { if (!items.some(a => a.id === id)) _selected.delete(id); });
+      const list = $('pv-cart-list');
+      const label = $('pv-cart-count-label');
+      if (label) label.textContent = items.length
+        ? `${items.length} artículo${items.length === 1 ? '' : 's'} en el carrito`
+        : 'El carrito está vacío.';
+      if (list) list.innerHTML = items.length ? items.map(rowHtml).join('') : `
+        <div style="padding:30px 10px;text-align:center;color:#9ca3af;font-size:13px;">
+          Añade artículos con el botón 🛒 del listado.
+        </div>`;
+      list?.querySelectorAll('.pv-cart-row-select').forEach(cb => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) _selected.add(cb.dataset.aid);
+          else _selected.delete(cb.dataset.aid);
+          syncActionsBtn();
+          syncSelectAll();
+        });
+      });
+      list?.querySelectorAll('.pv-cart-row-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          window.PPCart?.remove(btn.dataset.aid);
+          _selected.delete(btn.dataset.aid);
+          render();
+        });
+      });
+      syncActionsBtn();
+      syncSelectAll();
+    }
+
+    function close() { $('pv-cart-modal').style.display = 'none'; }
+
+    function open() {
+      wireOnce();
+      const modal = $('pv-cart-modal');
+      if (!modal) return;
+      render();
+      modal.style.display = 'flex';
+    }
+
+    // ── Actions ────────────────────────────────────────────────────────
+    function openActions() {
+      if (!_selected.size) return;
+      const modal = $('pv-cart-actions-modal');
+      if (!modal) return;
+      $('pv-cart-actions-count').textContent =
+        `${_selected.size} artículo${_selected.size === 1 ? '' : 's'} seleccionado${_selected.size === 1 ? '' : 's'}`;
+      modal.style.display = 'flex';
+    }
+    function closeActions() { $('pv-cart-actions-modal').style.display = 'none'; }
+
+    function selectedArticles() {
+      const items = window.PPCart?.getAll() || [];
+      return items.filter(a => _selected.has(a.id));
+    }
+
+    function actionEmail() {
+      const arts = selectedArticles();
+      if (!arts.length) return;
+      closeActions();
+      close();
+      if (arts.length === 1) {
+        // Exactly the same single-article flow as the row/detail "send
+        // by email" button — PDF attachment, preview, everything.
+        PVEmailShare.open(arts[0]);
+        return;
+      }
+      openBulkEmail(arts);
+    }
+
+    function actionPrionPacks() {
+      if (!_selected.size) return;
+      // Unchanged from before: PrionPacks' own cart panel operates on
+      // the whole cart and lets the operator choose target package(s)
+      // per item — nothing to change here, just get them there.
+      window.open('/prionpacks', '_blank');
+      closeActions();
+    }
+
+    // ── Bulk email (2+ selected) ─────────────────────────────────────────
+    let _bulkIds = [];
+    function openBulkEmail(arts) {
+      _bulkIds = arts.map(a => a.id);
+      const modal = $('pv-cart-email-modal');
+      if (!modal) return;
+      $('pv-cart-email-count').textContent =
+        `${arts.length} artículos — se enviará un listado con enlaces, sin PDF adjunto.`;
+      $('pv-cart-email-status').textContent = '';
+      const toEl = $('pv-cart-email-to');
+      const last = (() => { try { return localStorage.getItem('pv-share-last-email') || ''; } catch (e) { return ''; } })();
+      toEl.value = last;
+      $('pv-cart-email-comment').value = '';
+      modal.style.display = 'flex';
+      toEl.focus();
+    }
+    function closeBulkEmail() { $('pv-cart-email-modal').style.display = 'none'; }
+
+    async function sendBulkEmail() {
+      const btn = $('pv-cart-email-send');
+      const status = $('pv-cart-email-status');
+      const to = ($('pv-cart-email-to').value || '').trim();
+      if (!to) { status.style.color = '#b91c1c'; status.textContent = 'Escribe un destinatario.'; return; }
+      btn.disabled = true;
+      status.style.color = '#9ca3af';
+      status.textContent = 'Enviando…';
+      try {
+        await api('/articles/email-list', {
+          method: 'POST',
+          body: JSON.stringify({
+            to, article_ids: _bulkIds,
+            comment: ($('pv-cart-email-comment').value || '').trim(),
+          }),
+        });
+        try { localStorage.setItem('pv-share-last-email', to); } catch (e) { /* ignore */ }
+        status.style.color = '#15803d';
+        status.textContent = '✓ Enviado';
+        setTimeout(closeBulkEmail, 1400);
+      } catch (e) {
+        status.style.color = '#b91c1c';
+        status.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-cart-close')?.addEventListener('click', close);
+      document.querySelector('#pv-cart-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-cart-clear-all')?.addEventListener('click', () => {
+        const items = window.PPCart?.getAll() || [];
+        if (!items.length) return;
+        if (!confirm(`¿Vaciar el carrito? Se quitarán los ${items.length} artículo${items.length === 1 ? '' : 's'}.`)) return;
+        window.PPCart?.clear();
+        _selected.clear();
+        render();
+      });
+      $('pv-cart-select-all')?.addEventListener('change', (e) => {
+        const items = window.PPCart?.getAll() || [];
+        if (e.target.checked) items.forEach(a => _selected.add(a.id));
+        else _selected.clear();
+        render();
+      });
+      $('pv-cart-actions-btn')?.addEventListener('click', openActions);
+      $('pv-cart-actions-close')?.addEventListener('click', closeActions);
+      document.querySelector('#pv-cart-actions-modal .pv-modal-backdrop')?.addEventListener('click', closeActions);
+      $('pv-cart-action-email')?.addEventListener('click', actionEmail);
+      $('pv-cart-action-prionpacks')?.addEventListener('click', actionPrionPacks);
+      $('pv-cart-email-close')?.addEventListener('click', closeBulkEmail);
+      document.querySelector('#pv-cart-email-modal .pv-modal-backdrop')?.addEventListener('click', closeBulkEmail);
+      $('pv-cart-email-send')?.addEventListener('click', sendBulkEmail);
+      $('pv-cart-email-to')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendBulkEmail(); });
+      // Cart changes elsewhere (row toggle, detail modal, etc.) should
+      // keep the open modal's list in sync.
+      window.addEventListener('pp-cart-changed', () => {
+        if ($('pv-cart-modal')?.style.display !== 'none') render();
+      });
+    }
+
+    document.getElementById('pv-cart-btn')?.addEventListener('click', open);
+
+    return { open };
+  })();
+
   // ── Sticky notes (per-article, per-user) ─────────────────────────────
   // Row cluster: one coloured icon per note + a grey "add" icon (≤5).
   function _noteClusterInner(notes) {

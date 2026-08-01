@@ -202,6 +202,143 @@ def _plain(a: dict, base_url: str, sender_name: str,
 _EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def build_share_list_html(articles: list, base_url: str, sender_name: str = "",
+                          comment: str = "") -> str:
+    """Same visual family as build_share_html, but a compact list of
+    several articles instead of one full ficha — used when the cart's
+    email action is sent with more than one article selected. Each row
+    links straight to the article in PrionVault plus its DOI/PMID, same
+    as the single-article version, but no PDF is ever attached here."""
+    comment_block = ""
+    if (comment or "").strip():
+        safe = _html.escape(comment.strip()).replace("\n", "<br>")
+        comment_block = f"""
+        <tr><td style="padding:20px 28px 0;">
+          <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;
+                      padding:14px 16px;font-size:13.5px;color:#3730a3;line-height:1.6;">
+            {safe}
+          </div>
+        </td></tr>"""
+
+    def _article_row(a: dict) -> str:
+        link = f"{base_url}/prionvault/?open={a['article_id']}" if base_url else ""
+        title_html = (f'<a href="{_html.escape(link)}" style="color:#111827;text-decoration:none;">'
+                      f'{_html.escape(a.get("title") or "(sin título)")}</a>'
+                      if link else _html.escape(a.get("title") or "(sin título)"))
+        meta = " · ".join(x for x in [
+            _fmt_authors(a.get("authors")), a.get("journal"),
+            str(a.get("year")) if a.get("year") else "",
+        ] if x)
+        doi = (a.get("doi") or "").strip()
+        pmid = (a.get("pubmed_id") or "").strip()
+        links = []
+        if doi:
+            url = doi if doi.startswith("http") else f"https://doi.org/{doi}"
+            links.append(f'<a href="{_html.escape(url)}" style="color:#0F3460;'
+                        f'text-decoration:none;">DOI ↗</a>')
+        if pmid:
+            links.append(f'<a href="https://pubmed.ncbi.nlm.nih.gov/{_html.escape(pmid)}/" '
+                        f'style="color:#0F3460;text-decoration:none;">PubMed ↗</a>')
+        if link:
+            links.append(f'<a href="{_html.escape(link)}" style="color:#0F3460;'
+                        f'text-decoration:none;">Ver en PrionVault ↗</a>')
+        links_html = " &nbsp;·&nbsp; ".join(links)
+        return f"""
+        <tr><td style="padding:12px 0;border-bottom:1px solid #f3f4f6;">
+          <p style="margin:0 0 3px;font-size:13.5px;font-weight:600;">{title_html}</p>
+          {f'<p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{_html.escape(meta)}</p>' if meta else ''}
+          {f'<p style="margin:0;font-size:11.5px;">{links_html}</p>' if links_html else ''}
+        </td></tr>"""
+
+    rows_html = "".join(_article_row(a) for a in articles)
+    sender_line = (f'<p style="margin:14px 0 0;font-size:11.5px;color:#9ca3af;">'
+                   f'Compartido desde PrionVault{(" por " + _html.escape(sender_name)) if sender_name else ""}.</p>')
+
+    return f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PrionVault</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:28px 16px;">
+  <tr><td align="center">
+    <table width="620" cellpadding="0" cellspacing="0" style="max-width:620px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      <tr><td style="background:#0F3460;padding:22px 28px;">
+        <p style="margin:0;font-size:20px;font-weight:800;color:#fff;">🔬 PrionVault</p>
+        <p style="margin:6px 0 0;font-size:13.5px;color:rgba(255,255,255,0.9);">
+          {len(articles)} artículo{'s' if len(articles) != 1 else ''} seleccionados
+        </p>
+      </td></tr>
+
+      {comment_block}
+
+      <tr><td style="padding:20px 28px 4px;">
+        <table width="100%" cellpadding="0" cellspacing="0">{rows_html}</table>
+      </td></tr>
+
+      <tr><td style="padding:16px 28px 22px;">
+        {sender_line}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+
+def _plain_list(articles: list, base_url: str, sender_name: str, comment: str = "") -> str:
+    lines = []
+    if (comment or "").strip():
+        lines += [comment.strip(), "", "─" * 20, ""]
+    lines += [f"{len(articles)} artículo(s) seleccionados — PrionVault", ""]
+    for a in articles:
+        lines.append(f"• {a.get('title') or '(sin título)'}")
+        meta = " · ".join(x for x in [
+            _fmt_authors(a.get("authors")), a.get("journal"),
+            str(a.get("year")) if a.get("year") else "",
+        ] if x)
+        if meta:
+            lines.append(f"  {meta}")
+        if a.get("doi"):
+            lines.append(f"  DOI: {a['doi']}")
+        if a.get("pubmed_id"):
+            lines.append(f"  PubMed: {a['pubmed_id']}")
+        if base_url:
+            lines.append(f"  {base_url}/prionvault/?open={a['article_id']}")
+        lines.append("")
+    lines.append(f"Compartido desde PrionVault{(' por ' + sender_name) if sender_name else ''}.")
+    return "\n".join(lines)
+
+
+def send_article_list_email(article_ids: list, to: str,
+                            sender_name: str = "", comment: str = "") -> dict:
+    """Send a compact HTML list of several articles to `to`. No PDF is
+    ever attached — that's reserved for the single-article send."""
+    to = (to or "").strip()
+    if not _EMAIL_RE.match(to):
+        raise ValueError("Dirección de email no válida.")
+    if not article_ids:
+        raise ValueError("No hay artículos seleccionados.")
+
+    articles = [a for a in (_fetch_article(aid) for aid in article_ids) if a]
+    if not articles:
+        raise LookupError("articles_not_found")
+
+    comment = (comment or "").strip()[:2000]
+    base = _base_url()
+    html = build_share_list_html(articles, base, sender_name, comment)
+    plain = _plain_list(articles, base, sender_name, comment)
+    subject = f"PrionVault · {len(articles)} artículos seleccionados"[:160]
+
+    from config import smtp_configured
+    if not smtp_configured():
+        raise RuntimeError("El servidor de correo no está configurado.")
+
+    from core.smtp_client import send_email
+    ok = send_email(to=to, subject=subject, body=plain, html=html)
+    if not ok:
+        raise RuntimeError("El envío del email falló (revisa el servidor SMTP).")
+    return {"ok": True, "count": len(articles)}
+
+
 def render_preview(article_id: str, sender_name: str = "",
                    include_summary: bool = True, comment: str = "") -> str:
     """Return the share email HTML without sending it (for the preview)."""

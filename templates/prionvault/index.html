@@ -798,8 +798,7 @@
         <div style="flex:1;"></div>
         <!-- Cart icon — opens PrionPacks in new tab, badge shows cart count -->
         <button id="pv-cart-btn" type="button"
-                onclick="window.open('/prionpacks','_blank')"
-                title="Carrito de artículos — abre PrionPacks"
+                title="Carrito de artículos"
                 style="position:relative;display:flex;align-items:center;justify-content:center;
                        width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;
                        background:#fff;cursor:pointer;flex-shrink:0;font-size:15px;
@@ -1834,6 +1833,116 @@
               style="padding:7px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
                      font-size:12.5px;font-weight:600;cursor:pointer;">
         <i class="fas fa-magnifying-glass" style="margin-right:5px;"></i>Buscar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cart modal ───────────────────────────────────────────────────── -->
+<div id="pv-cart-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:760px;">
+    <button id="pv-cart-clear-all" type="button"
+            title="Vaciar el carrito"
+            style="position:absolute;top:14px;right:52px;display:flex;align-items:center;gap:6px;
+                   padding:6px 12px;border-radius:7px;border:1px solid #fecaca;background:#fff;
+                   color:#b91c1c;font-size:12px;font-weight:600;cursor:pointer;">
+      <i class="fas fa-trash"></i> Vaciar carrito
+    </button>
+    <button class="pv-modal-close" id="pv-cart-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      🛒 Carrito
+    </h2>
+    <p id="pv-cart-count-label" style="color:#6b7280;font-size:12.5px;margin:0 0 14px;"></p>
+
+    <div id="pv-cart-list" style="display:flex;flex-direction:column;gap:2px;max-height:52vh;overflow-y:auto;
+                margin:0 -4px;padding:0 4px;"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;
+                margin-top:18px;padding-top:14px;border-top:1px solid #f3f4f6;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#6b7280;cursor:pointer;">
+        <input type="checkbox" id="pv-cart-select-all" style="cursor:pointer;width:14px;height:14px;">
+        Seleccionar todos
+      </label>
+      <button id="pv-cart-actions-btn" type="button" disabled
+              style="padding:9px 20px;border-radius:8px;border:none;background:#0F3460;color:#fff;
+                     font-size:13px;font-weight:600;cursor:pointer;opacity:0.45;
+                     transition:opacity 0.12s;">
+        <i class="fas fa-bolt" style="margin-right:6px;"></i>Acciones
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cart actions modal ───────────────────────────────────────────── -->
+<div id="pv-cart-actions-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:480px;">
+    <button class="pv-modal-close" id="pv-cart-actions-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-bolt" style="color:#0F3460;margin-right:8px;"></i>Acciones
+    </h2>
+    <p id="pv-cart-actions-count" style="color:#6b7280;font-size:12.5px;margin:0 0 16px;"></p>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button type="button" id="pv-cart-action-email"
+              style="display:flex;align-items:center;gap:12px;padding:14px 16px;
+                     border-radius:10px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;
+                     text-align:left;transition:border-color 0.12s,background 0.12s;">
+        <span style="width:38px;height:38px;border-radius:9px;background:#eef2ff;color:#4f46e5;
+                     display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
+          <i class="fas fa-envelope"></i>
+        </span>
+        <span>
+          <span style="display:block;font-size:13.5px;font-weight:600;color:#111827;">Enviar por email</span>
+          <span style="display:block;font-size:11.5px;color:#9ca3af;">Un artículo incluye su PDF; varios, un listado con enlaces.</span>
+        </span>
+      </button>
+      <button type="button" id="pv-cart-action-prionpacks"
+              style="display:flex;align-items:center;gap:12px;padding:14px 16px;
+                     border-radius:10px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;
+                     text-align:left;transition:border-color 0.12s,background 0.12s;">
+        <span style="width:38px;height:38px;border-radius:9px;background:#ede9fe;color:#6d28d9;
+                     display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
+          📦
+        </span>
+        <span>
+          <span style="display:block;font-size:13.5px;font-weight:600;color:#111827;">Enviar a PrionPacks</span>
+          <span style="display:block;font-size:11.5px;color:#9ca3af;">Abre PrionPacks para añadirlos a un paquete.</span>
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cart bulk-email modal (2+ articles selected) ────────────────────── -->
+<div id="pv-cart-email-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:460px;">
+    <button class="pv-modal-close" id="pv-cart-email-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-envelope" style="color:#0F3460;margin-right:8px;"></i>Enviar listado por email
+    </h2>
+    <p id="pv-cart-email-count" style="color:#6b7280;font-size:12.5px;margin:0 0 14px;"></p>
+
+    <label style="display:block;font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
+                  letter-spacing:0.04em;margin-bottom:5px;">Destinatario</label>
+    <input type="email" id="pv-cart-email-to" placeholder="correo@ejemplo.com"
+           style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #d1d5db;
+                  border-radius:8px;font-size:13.5px;margin-bottom:12px;">
+
+    <label style="display:block;font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
+                  letter-spacing:0.04em;margin-bottom:5px;">Comentario (opcional)</label>
+    <textarea id="pv-cart-email-comment" rows="3"
+              style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #d1d5db;
+                     border-radius:8px;font-size:13px;resize:vertical;font-family:inherit;margin-bottom:14px;"></textarea>
+
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+      <span id="pv-cart-email-status" style="font-size:12px;color:#9ca3af;flex:1;"></span>
+      <button id="pv-cart-email-send" type="button"
+              style="padding:8px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-paper-plane" style="margin-right:5px;"></i>Enviar
       </button>
     </div>
   </div>

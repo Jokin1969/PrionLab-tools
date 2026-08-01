@@ -2103,6 +2103,35 @@ def api_article_email(aid):
     return jsonify({"ok": True, **result})
 
 
+@prionvault_bp.route("/api/articles/email-list", methods=["POST"])
+@login_required
+def api_articles_email_list():
+    """Email a compact HTML list of several articles at once — the
+    cart's "send by email" action when more than one item is selected
+    (a single selected item goes through /articles/<id>/email instead,
+    which attaches the PDF; this one never does).
+
+    Request body: {to, article_ids: [...], comment}
+    """
+    body = request.get_json(silent=True) or {}
+    to = (body.get("to") or "").strip()
+    article_ids = [str(x) for x in (body.get("article_ids") or []) if x]
+    me = _current_user_contact()
+    from .services import article_share
+    try:
+        result = article_share.send_article_list_email(
+            article_ids, to, sender_name=me.get("name") or "",
+            comment=body.get("comment", ""))
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        logger.exception("article list email failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify(result)
+
+
 # ── Email import landing page ─────────────────────────────────────────────────
 
 _IMPORT_PAGE = """<!DOCTYPE html>
