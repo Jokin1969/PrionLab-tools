@@ -3047,7 +3047,10 @@
     ].filter(Boolean).join('');
 
     const authors = a.authors ? esc(a.authors) : '—';
-    const journal = a.journal ? ` · ${esc(a.journal)}` : '';
+    const journal = a.journal
+      ? ` · <span style="color:#1e3a8a;font-weight:600;">${esc(a.journal)}</span>`
+        + (a.year ? ` <span style="color:#7a1230;font-weight:600;">(${esc(a.year)})</span>` : '')
+      : '';
 
     // ── Select cell: bulk-selection checkbox (admin only) ────────────────
     const selectCell =
