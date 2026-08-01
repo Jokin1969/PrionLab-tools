@@ -1871,6 +1871,7 @@
         `;
         btn.addEventListener('click', () => {
           state.tagId = state.tagId === t.id ? null : t.id;
+          clearMarkFilters();
           state.page = 1;
           loadArticles();
           highlightActiveTag();
@@ -2617,6 +2618,24 @@
       btn.style.color = active ? (MARK_FILTER_ACTIVE_COLOR[key] || '#0F3460') : '#9ca3af';
     });
     if (window._pvSyncColorDot) window._pvSyncColorDot();
+  }
+
+  // Clears every header mark filter (flag/milestone/JC/favorite/read/
+  // PDF/DOI/PrionRead-assigned/color) and repaints the icons. Bug fix:
+  // sidebar navigation (All articles, Recently added, tags…) never
+  // touched these — so activating a mark filter that matched nothing
+  // (e.g. the ★ header icon with no milestones set) left the listing
+  // permanently empty no matter what else you clicked in the sidebar,
+  // because every one of those still carried the same stale isMilestone
+  // filter. Only a hard page refresh reset it. Called from the sidebar
+  // nav + tag click handlers below so switching context always actually
+  // shows articles again.
+  function clearMarkFilters() {
+    state.isFlagged = null; state.isMilestone = null; state.isJc = null;
+    state.isFavorite = null; state.isRead = null;
+    state.hasPdf = null; state.hasDoi = null; state.inPrionread = null;
+    state.colorLabel = null;
+    syncMarkFilterButtons();
   }
 
   // Isolate the listing to show only a single article
@@ -8814,6 +8833,7 @@
         btn.addEventListener('click', () => {
           const f = btn.dataset.filter;
           state.tagId     = null;
+          clearMarkFilters();
           if (f === 'notes') {
             // Toggle: clicking again deactivates the notes filter
             state.hasSummary = state.hasSummary === 'human' ? null : 'human';
