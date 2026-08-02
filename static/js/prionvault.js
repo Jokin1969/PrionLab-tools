@@ -2661,6 +2661,17 @@
     syncMarkFilterButtons();
   }
 
+  // Close every currently-open .pv-modal (centered dialogs) — used
+  // before opening one from inside the cart's floating side panel, so
+  // clicking several row buttons in a row only ever leaves the LAST
+  // one open instead of stacking. The cart panel itself is a separate,
+  // non-blocking fixed drawer (not a .pv-modal), so it's untouched.
+  function _pvCloseOtherModals() {
+    document.querySelectorAll('.pv-modal').forEach(m => {
+      if (m.style.display !== 'none') m.style.display = 'none';
+    });
+  }
+
   // Isolate the listing to show only a single article
   function _setIsolatedArticleId(aid) {
     state.isolatedArticleId = aid;
@@ -8548,11 +8559,16 @@
       });
       list?.querySelectorAll('.pv-notes-cluster').forEach(cl => {
         const aid = cl.dataset.aid;
+        // Capture phase so this runs BEFORE _wireNoteCluster's own
+        // bubble-phase click handler opens the notes modal — closes
+        // any other modal first, so only the latest one stays open.
+        cl.addEventListener('click', _pvCloseOtherModals, true);
         _wireNoteCluster(cl, { id: aid, notes: (_extra.get(aid) || {}).notes });
       });
       list?.querySelectorAll('.pv-cart-row-jc-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
+          _pvCloseOtherModals();
           const aid = btn.dataset.aid;
           if (btn.dataset.hasJc !== '1') {
             PVJcUpload.open({ id: aid, title: (_extra.get(aid) || {}).title }, () => { _extra.delete(aid); render(); });
@@ -8565,7 +8581,6 @@
             if (files.length === 1) {
               window.open(API + `/jc/files/${files[0].id}/view`, '_blank', 'noopener');
             } else {
-              close();
               openDetail(aid);
             }
           } catch (err) {
@@ -8578,6 +8593,7 @@
       list?.querySelectorAll('.pv-cart-row-email-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
+          _pvCloseOtherModals();
           const aid = btn.dataset.aid;
           const full = _extra.get(aid);
           const base = items.find(a => a.id === aid);
@@ -8687,7 +8703,6 @@
       if (_wired) return;
       _wired = true;
       $('pv-cart-close')?.addEventListener('click', close);
-      document.querySelector('#pv-cart-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-cart-clear-all')?.addEventListener('click', () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) return;
