@@ -1,6 +1,6 @@
 -- The "📝 Con notas" filter (has_summary=human) queries
--- prionvault_article_note WHERE user_id = :viewer — but the only index
--- on this table starts with article_id (migration 052's
+-- prionvault_article_note filtered by the viewer's user id — but the
+-- only index on this table starts with article_id (migration 052's
 -- pv_article_note_lookup_idx), which can't accelerate a user_id-only
 -- lookup. A dedicated (user_id, article_id) index lets that query (and
 -- the sidebar/head "con notas" counters) resolve as an index-only scan
