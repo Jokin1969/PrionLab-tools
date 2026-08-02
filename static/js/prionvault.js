@@ -17863,6 +17863,25 @@
   document.addEventListener('DOMContentLoaded', updateBadge);
 })();
 
+// Keep every listing row's 🛒 button in sync with the cart, however it
+// changed — removing/clearing from the cart drawer (or from PrionPacks,
+// since it's the same shared cart) used to leave rows showing "in cart"
+// until a full page reload, because only the row's OWN click handler
+// ever repainted it, never anything reacting to changes made elsewhere.
+(function () {
+  const repaintRowCartButtons = () => {
+    document.querySelectorAll('.pv-cart-btn[data-aid]').forEach(btn => {
+      const inCart = !!window.PPCart?.has(btn.dataset.aid);
+      btn.classList.toggle('pv-cart-btn--in', inCart);
+      btn.style.background = inCart ? '#d1fae5' : '#f3f4f6';
+      btn.style.color      = inCart ? '#065f46' : '#6b7280';
+      btn.title = inCart ? 'En el carrito' : 'Añadir al carrito de PrionPacks';
+      btn.innerHTML = inCart ? '🛒 ✓' : '🛒';
+    });
+  };
+  window.addEventListener('pp-cart-changed', repaintRowCartButtons);
+})();
+
 // ── Export References ─────────────────────────────────────────────────────
 (function () {
   'use strict';
