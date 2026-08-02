@@ -10792,6 +10792,10 @@
 
     // External API used by the bulk-lookup modal to open this modal
     // pre-filled with a specific identifier and auto-trigger the lookup.
+    // opts.nav (optional): {index, total, onPrev, onNext} — when given,
+    // shows a Anterior/Siguiente bar so the operator can move through
+    // the whole not-found queue instead of getting stuck on the first
+    // item whenever CrossRef/PubMed can't resolve it either.
     window._pvOpenAddByDoi = function(identifier, opts) {
       reset();
       _addOpts = opts || {};
@@ -10800,6 +10804,25 @@
       if (_addOpts.queueLabel) {
         statusEl.textContent = _addOpts.queueLabel;
         statusEl.style.color = '#6b7280';
+      }
+      const navBar  = document.getElementById('pv-add-queue-nav');
+      const prevBtn = document.getElementById('pv-add-queue-prev');
+      const nextBtn = document.getElementById('pv-add-queue-next');
+      const webLink = document.getElementById('pv-add-queue-websearch');
+      const nav = _addOpts.nav;
+      if (navBar) {
+        navBar.style.display = nav ? 'flex' : 'none';
+        if (nav) {
+          prevBtn.disabled = nav.index <= 0;
+          prevBtn.style.opacity = prevBtn.disabled ? '0.4' : '1';
+          prevBtn.style.cursor = prevBtn.disabled ? 'default' : 'pointer';
+          nextBtn.textContent = nav.index >= nav.total - 1 ? 'Terminar' : 'Siguiente ›';
+          prevBtn.onclick = () => nav.onPrev();
+          nextBtn.onclick = () => nav.onNext();
+        }
+      }
+      if (webLink) {
+        webLink.href = 'https://scholar.google.com/scholar?q=' + encodeURIComponent(identifier || '');
       }
       setTimeout(doLookup, 80);
     };
@@ -12187,13 +12210,19 @@
         const reason = it.kind === 'unknown'
           ? '<span style="color:#b91c1c;">Formato no reconocido</span>'
           : '<span style="color:#92400e;">No está en la biblioteca</span>';
+        // Clickable → search the web for it (Google Scholar), so a
+        // not-found DOI/PMID can be tracked down and downloaded
+        // straight from here instead of copy-pasting it elsewhere.
+        const webHref = 'https://scholar.google.com/scholar?q=' + encodeURIComponent(it.input || '');
         return `
           <tr style="border-bottom:1px solid #f3f4f6;">
             <td style="padding:6px 8px;width:32px;"></td>
             <td style="padding:6px 8px;font-size:11.5px;color:#9ca3af;font-variant-numeric:tabular-nums;">${i+1}</td>
             <td style="padding:6px 8px;font-size:11px;color:#b91c1c;font-weight:700;">✗</td>
-            <td style="padding:6px 8px;font-size:11.5px;font-family:ui-monospace,monospace;color:#374151;
-                       word-break:break-all;max-width:200px;">${inp}</td>
+            <td style="padding:6px 8px;font-size:11.5px;font-family:ui-monospace,monospace;">
+              <a href="${webHref}" target="_blank" rel="noopener" title="Buscar en Google Scholar"
+                 style="color:#0F3460;word-break:break-all;">${inp} <i class="fas fa-up-right-from-square" style="font-size:9px;"></i></a>
+            </td>
             <td style="padding:6px 8px;font-size:12px;">${reason}</td>
           </tr>`;
       }).join('');
@@ -12354,28 +12383,34 @@
         } catch (e) { alert('No se pudo copiar: ' + e.message); }
       });
 
-      // Sequential "Buscar y añadir" for not-found items.
+      // Sequential "Buscar y añadir" for not-found items — with Anterior/
+      // Siguiente navigation, so an item CrossRef/PubMed also can't
+      // resolve doesn't strand the operator on it with no way onward
+      // (or back to double-check an earlier one).
       const addBtnEl = document.getElementById('pv-bulk-lookup-add');
       if (addBtnEl) addBtnEl.addEventListener('click', () => {
         if (!notFoundItems.length) return;
-        // Hide this modal while the add modal is open; re-show after sequence.
         const queue = [...notFoundItems];
         let idx = 0;
-        function openNext() {
-          if (idx >= queue.length) {
-            // All done — re-open the lookup modal.
+        function openAt(i) {
+          if (i < 0 || i >= queue.length) {
+            // Ran off either end — done, re-open the lookup modal.
             modal.style.display = 'flex';
             return;
           }
+          idx = i;
           modal.style.display = 'none';
-          const identifier = queue[idx];
-          idx++;
-          window._pvOpenAddByDoi(identifier, {
-            queueLabel: `Artículo ${idx} de ${queue.length} no encontrados`,
-            onSaved: openNext,
+          window._pvOpenAddByDoi(queue[idx], {
+            queueLabel: `Artículo ${idx + 1} de ${queue.length} no encontrados`,
+            onSaved: () => openAt(idx + 1),
+            nav: {
+              index: idx, total: queue.length,
+              onPrev: () => openAt(idx - 1),
+              onNext: () => openAt(idx + 1),
+            },
           });
         }
-        openNext();
+        openAt(0);
       });
     }
   }
