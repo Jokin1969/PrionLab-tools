@@ -8519,7 +8519,14 @@
       all.indeterminate = !all.checked && items.some(a => _selected.has(a.id));
     }
 
-    async function render() {
+    // Renders straight away from whatever's already in the PPCart cache
+    // + the _extra cache (both synchronous, in memory) — no waiting on
+    // a network round trip before the drawer shows its contents. Any
+    // article missing notes/JC data gets it filled in by a background
+    // fetch that triggers exactly one follow-up render() when it lands
+    // (see _fetchExtra's caller below), instead of the whole list
+    // waiting on that fetch to paint anything at all.
+    function render() {
       const items = window.PPCart?.getAll() || [];
       // Drop selections for articles no longer in the cart.
       [..._selected].forEach(id => { if (!items.some(a => a.id === id)) _selected.delete(id); });
@@ -8528,7 +8535,14 @@
       if (label) label.textContent = items.length
         ? `${items.length} artículo${items.length === 1 ? '' : 's'} en el carrito`
         : 'El carrito está vacío.';
-      if (items.length) await _fetchExtra(items.map(a => a.id));
+      const missing = items.filter(a => !_extra.has(a.id)).map(a => a.id);
+      if (missing.length) {
+        _fetchExtra(missing).then(() => {
+          // Only repaint if the drawer is still open and the cart
+          // hasn't changed under us in the meantime.
+          if ($('pv-cart-modal')?.style.display !== 'none') render();
+        });
+      }
       if (list) list.innerHTML = items.length ? items.map(rowHtml).join('') : `
         <div style="padding:30px 10px;text-align:center;color:#9ca3af;font-size:13px;">
           Añade artículos con el botón 🛒 del listado.
@@ -8606,12 +8620,12 @@
 
     function close() { $('pv-cart-modal').style.display = 'none'; }
 
-    async function open() {
+    function open() {
       wireOnce();
       const modal = $('pv-cart-modal');
       if (!modal) return;
       modal.style.display = 'flex';
-      await render();
+      render();
     }
 
     // ── Actions ────────────────────────────────────────────────────────
