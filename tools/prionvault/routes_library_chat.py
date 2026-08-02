@@ -110,12 +110,13 @@ def api_library_chat_ask(chat_id):
     body = request.get_json(silent=True) or {}
     question = (body.get("question") or "").strip()
     provider = (body.get("provider") or "").strip().lower() or None
+    cited_context = body.get("cited_context") or None
     if not question:
         return jsonify({"error": "empty_question"}), 400
 
     from .services import library_chat
     try:
-        result = library_chat.ask(str(chat_id), uid, question, provider)
+        result = library_chat.ask(str(chat_id), uid, question, provider, cited_context)
     except ValueError as exc:
         return jsonify({"error": "bad_request", "detail": str(exc)}), 400
     except LookupError:
@@ -131,3 +132,21 @@ def api_library_chat_ask(chat_id):
         return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
 
     return jsonify({"ok": True, **result})
+
+
+@prionvault_bp.route("/api/library-chats/<uuid:chat_id>/messages/<int:message_id>", methods=["DELETE"])
+@login_required
+def api_library_chat_delete_message(chat_id, message_id):
+    """Delete one question + its answer — the trash icon on a user bubble."""
+    uid, err = _require_user()
+    if err:
+        return err
+    from .services import library_chat
+    try:
+        ok = library_chat.delete_message_pair(str(chat_id), uid, message_id)
+    except Exception as exc:
+        logger.exception("library_chat delete message failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    if not ok:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})

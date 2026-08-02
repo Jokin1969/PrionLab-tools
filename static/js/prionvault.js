@@ -7687,7 +7687,10 @@
     const $ = id => document.getElementById(id);
     let _wired = false;
     let _currentChatId = null;
+    let _currentChatTitle = '';
+    let _currentMessages = [];
     let _chats = [];
+    let _citeBuffer = [];   // [{question, answer, source_title}] — "usar aquí" picks
     let _provider = localStorage.getItem('pv-libchat-provider') || 'anthropic';
 
     const PROVIDER_COLORS = { anthropic: '#CC785C', openai: '#10A37F', gemini: '#8b5cf6' };
@@ -7854,13 +7857,13 @@
       setTimeout(() => document.addEventListener('click', _citePopupOutsideClick, true), 0);
     }
 
-    function messageHtml(m) {
+    function bubbleHtml(m) {
       const isUser = m.role === 'user';
       const bodyHtml = isUser
         ? esc(m.content || '').replace(/\n/g, '<br>')
         : _linkCitations(_mdToHtml(m.content), m.citations);
       return `
-        <div style="display:flex;margin-bottom:14px;${isUser ? 'justify-content:flex-end;' : ''}">
+        <div style="display:flex;${isUser ? 'justify-content:flex-end;' : ''}">
           <div style="max-width:78%;padding:10px 14px;border-radius:12px;font-size:13.5px;line-height:1.55;
                       ${isUser
                         ? 'background:#059669;color:#fff;border-bottom-right-radius:3px;'
@@ -7874,6 +7877,29 @@
         </div>`;
     }
 
+    // A "pair" is one user question + its assistant answer (may be
+    // missing if the question is still pending or was never answered).
+    // Rendered together with a small toolbar under the question:
+    //   📌 cite it into the active conversation elsewhere
+    //   🚀 start a brand-new conversation from this question
+    //   🗑 delete the question + its answer (asks for confirmation)
+    function pairHtml(userMsg, assistantMsg) {
+      const mid = userMsg.id;
+      return `
+        <div class="pv-libchat-pair" data-mid="${mid}" style="margin-bottom:16px;">
+          ${bubbleHtml(userMsg)}
+          <div style="display:flex;justify-content:flex-end;gap:4px;margin:3px 2px 0;">
+            <button type="button" class="pv-pair-cite" data-mid="${mid}" title="Citar esta pregunta y su respuesta en otra conversación"
+                    style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 4px;">📌</button>
+            <button type="button" class="pv-pair-fork" data-mid="${mid}" title="Empezar una conversación nueva con esta pregunta"
+                    style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 4px;">🚀</button>
+            <button type="button" class="pv-pair-delete" data-mid="${mid}" title="Borrar esta pregunta y su respuesta"
+                    style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 4px;">🗑</button>
+          </div>
+          ${assistantMsg ? `<div style="margin-top:6px;">${bubbleHtml(assistantMsg)}</div>` : ''}
+        </div>`;
+    }
+
     function _wireThreadInteractions(el) {
       el.querySelectorAll('.pv-cite').forEach(chip => {
         chip.addEventListener('click', (e) => {
@@ -7882,18 +7908,35 @@
           if (c) _openCitePopup(chip, c);
         });
       });
+      el.querySelectorAll('.pv-pair-delete').forEach(btn => {
+        btn.addEventListener('click', () => deletePair(parseInt(btn.dataset.mid, 10)));
+      });
+      el.querySelectorAll('.pv-pair-fork').forEach(btn => {
+        btn.addEventListener('click', () => forkFromPair(parseInt(btn.dataset.mid, 10)));
+      });
+      el.querySelectorAll('.pv-pair-cite').forEach(btn => {
+        btn.addEventListener('click', () => citePair(parseInt(btn.dataset.mid, 10), btn));
+      });
     }
 
     function renderThread(chat) {
       const el = $('pv-libchat-thread');
-      if (!chat || !chat.messages || !chat.messages.length) {
+      _currentMessages = (chat && chat.messages) || [];
+      if (!_currentMessages.length) {
         el.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;
                     color:#9ca3af;font-size:13px;text-align:center;padding:24px;">
           Pregunta lo que quieras — la IA combinará lo que encuentre en PrionVault<br>
           con su propio conocimiento, dejando claro de dónde viene cada cosa.</div>`;
         return;
       }
-      el.innerHTML = chat.messages.map(messageHtml).join('');
+      const html = [];
+      for (let i = 0; i < _currentMessages.length; i++) {
+        const m = _currentMessages[i];
+        if (m.role !== 'user') continue;   // assistant turns are consumed alongside their question
+        const next = _currentMessages[i + 1];
+        html.push(pairHtml(m, next && next.role === 'assistant' ? next : null));
+      }
+      el.innerHTML = html.join('');
       _wireThreadInteractions(el);
       el.scrollTop = el.scrollHeight;
     }
@@ -7936,6 +7979,7 @@
       try {
         const chat = await api(`/library-chats/${chatId}`);
         _provider = chat.requested_provider || _provider;
+        _currentChatTitle = chat.title || '';
         paintProvider();
         renderThread(chat);
       } catch (e) {
@@ -7968,7 +8012,7 @@
       const el = $('pv-libchat-thread');
       const wasEmpty = el.querySelector('div[style*="height:100%"]');
       if (wasEmpty) el.innerHTML = '';
-      el.insertAdjacentHTML('beforeend', messageHtml({ role: 'user', content: question }));
+      el.insertAdjacentHTML('beforeend', bubbleHtml({ role: 'user', content: question }));
       el.insertAdjacentHTML('beforeend',
         `<div id="pv-libchat-pending" style="display:flex;margin-bottom:14px;">
            <div style="padding:10px 14px;border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;
@@ -7978,20 +8022,18 @@
          </div>`);
       el.scrollTop = el.scrollHeight;
 
+      const citedNow = _citeBuffer.slice();
       try {
-        const r = await api(`/library-chats/${_currentChatId}/ask`, {
-          method: 'POST', body: JSON.stringify({ question, provider: _provider }),
+        await api(`/library-chats/${_currentChatId}/ask`, {
+          method: 'POST',
+          body: JSON.stringify({ question, provider: _provider, cited_context: citedNow }),
         });
-        $('pv-libchat-pending')?.remove();
-        el.insertAdjacentHTML('beforeend', messageHtml({
-          role: 'assistant', content: r.answer, provider_label: r.provider_label,
-          switched: r.switched, citations: r.citations, cited_article_ids: r.cited_article_ids,
-        }));
-        // Scope wiring to the just-inserted bubble only — re-wiring the
-        // whole thread on every send would stack duplicate listeners on
-        // earlier messages' citation chips/cart buttons.
-        if (el.lastElementChild) _wireThreadInteractions(el.lastElementChild);
-        el.scrollTop = el.scrollHeight;
+        // Re-fetch + re-render the whole thread rather than patching the
+        // DOM in place — the new pair needs its 📌/🚀/🗑 toolbar wired
+        // the same as every other pair, and this keeps that logic in
+        // one place (renderThread) instead of duplicated here.
+        clearCiteBuffer();
+        await openChat(_currentChatId);
         await loadChats();
         renderList();
       } catch (e) {
@@ -8003,6 +8045,79 @@
       } finally {
         sendBtn.disabled = false;
       }
+    }
+
+    // ── Delete a Q&A pair ──────────────────────────────────────────────────
+    async function deletePair(userMsgId) {
+      if (!confirm('¿Borrar esta pregunta y su respuesta? No se puede deshacer.')) return;
+      try {
+        await api(`/library-chats/${_currentChatId}/messages/${userMsgId}`, { method: 'DELETE' });
+        await openChat(_currentChatId);
+        await loadChats();
+        renderList();
+      } catch (e) { alert('Error al borrar: ' + e.message); }
+    }
+
+    // ── Fork: re-ask this question as the start of a brand-new chat ────────
+    async function forkFromPair(userMsgId) {
+      const msg = _currentMessages.find(m => m.id === userMsgId);
+      if (!msg) return;
+      try {
+        const r = await api('/library-chats', { method: 'POST', body: JSON.stringify({ provider: _provider }) });
+        await api(`/library-chats/${r.chat_id}/ask`, {
+          method: 'POST', body: JSON.stringify({ question: msg.content, provider: _provider }),
+        });
+        await loadChats();
+        await openChat(r.chat_id);
+      } catch (e) { alert('Error al iniciar la conversación: ' + e.message); }
+    }
+
+    // ── Cite a pair into whatever conversation is active when the next
+    // question gets sent (see send()'s cited_context). ─────────────────────
+    function citePair(userMsgId, btn) {
+      const idx = _currentMessages.findIndex(m => m.id === userMsgId);
+      if (idx === -1) return;
+      const userMsg = _currentMessages[idx];
+      const answerMsg = _currentMessages[idx + 1];
+      if (_citeBuffer.some(c => c._mid === userMsgId)) return;   // already added
+      _citeBuffer.push({
+        _mid: userMsgId,
+        question: userMsg.content,
+        answer: (answerMsg && answerMsg.role === 'assistant') ? answerMsg.content : '',
+        source_title: _currentChatTitle,
+      });
+      btn.textContent = '✓';
+      btn.title = 'Citado — se incluirá en tu próxima pregunta';
+      renderCiteStrip();
+    }
+
+    function clearCiteBuffer() {
+      _citeBuffer = [];
+      renderCiteStrip();
+    }
+
+    function renderCiteStrip() {
+      const strip = $('pv-libchat-cite-strip');
+      if (!strip) return;
+      if (!_citeBuffer.length) { strip.style.display = 'none'; strip.innerHTML = ''; return; }
+      strip.style.display = 'flex';
+      strip.innerHTML =
+        `<span style="font-size:11px;color:#065f46;font-weight:600;flex-shrink:0;">📌 Citando:</span>` +
+        _citeBuffer.map((c, i) => `
+          <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;
+                       background:#d1fae5;color:#065f46;font-size:11px;max-width:180px;">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.question.slice(0, 40))}</span>
+            <span class="pv-cite-strip-remove" data-idx="${i}" style="cursor:pointer;font-weight:700;">×</span>
+          </span>`).join('') +
+        `<button type="button" id="pv-libchat-cite-clear" style="margin-left:auto;flex-shrink:0;
+                 border:none;background:none;color:#9ca3af;font-size:11px;cursor:pointer;">Vaciar</button>`;
+      strip.querySelectorAll('.pv-cite-strip-remove').forEach(x => {
+        x.addEventListener('click', () => {
+          _citeBuffer.splice(parseInt(x.dataset.idx, 10), 1);
+          renderCiteStrip();
+        });
+      });
+      strip.querySelector('#pv-libchat-cite-clear')?.addEventListener('click', clearCiteBuffer);
     }
 
     let _searchTimer = null;

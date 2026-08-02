@@ -100,7 +100,41 @@ def _build_pv_context(question: str, viewer_id: Optional[str]):
     return context_block, cite_dicts
 
 
-def _build_user_prompt(context_block: str, history: list[dict], question: str) -> str:
+_CITED_CONTEXT_CHAR_CAP = 8_000
+_MAX_CITED_PAIRS = 15
+
+
+def _build_cited_context_block(cited_context: Optional[list[dict]]) -> str:
+    """Render user-picked Q&A pairs brought in from OTHER conversations
+    (the "Usar aquí" feature). Kept in its own clearly-labeled section,
+    separate from the current thread's own history, so the model (and
+    the transcript) never confuses "what we already discussed here"
+    with "what the user is importing from elsewhere"."""
+    if not cited_context:
+        return ""
+    pairs = cited_context[:_MAX_CITED_PAIRS]
+    lines: list[str] = []
+    running = 0
+    for p in pairs:
+        q = (p.get("question") or "").strip()
+        a = (p.get("answer") or "").strip()
+        src = (p.get("source_title") or "").strip()
+        if not q and not a:
+            continue
+        block = (f"[De «{src or 'otra conversación'}»]\n"
+                 f"Usuario: {q}\nAsistente: {a}")
+        if running + len(block) > _CITED_CONTEXT_CHAR_CAP:
+            break
+        lines.append(block)
+        running += len(block)
+    if not lines:
+        return ""
+    return "\n=== CONTEXTO CITADO DE OTRAS CONVERSACIONES (el usuario lo trajo aquí a propósito) ===\n" + \
+        "\n\n".join(lines)
+
+
+def _build_user_prompt(context_block: str, history: list[dict], question: str,
+                       cited_context: Optional[list[dict]] = None) -> str:
     sections = []
     if context_block:
         sections.append("=== FRAGMENTOS DE PRIONVAULT (usa [N] para citarlos) ===\n" + context_block)
@@ -110,6 +144,10 @@ def _build_user_prompt(context_block: str, history: list[dict], question: str) -
             "pregunta — responde con tu conocimiento general, etiquetándolo "
             "como tal.)"
         )
+
+    cited_block = _build_cited_context_block(cited_context)
+    if cited_block:
+        sections.append(cited_block)
 
     if history:
         hist_lines: list[str] = []
@@ -226,6 +264,45 @@ def get_chat(chat_id: str, user_id: str) -> Optional[dict]:
     return out
 
 
+def delete_message_pair(chat_id: str, user_id: str, user_message_id: int) -> bool:
+    """Delete one question + its answer from a conversation — the
+    trash icon on each user bubble. `user_message_id` must be a 'user'
+    role message; the very next message in the thread is deleted
+    alongside it if (and only if) it's the assistant's reply, so a
+    trailing unanswered question doesn't take out an unrelated turn."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        owned = conn.execute(_sql("""
+            SELECT 1 FROM prionvault_library_chat
+             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+        """), {"cid": chat_id, "uid": user_id}).first()
+        if not owned:
+            return False
+        rows = conn.execute(_sql("""
+            SELECT id, role FROM prionvault_library_chat_message
+             WHERE chat_id = CAST(:cid AS uuid)
+             ORDER BY created_at, id
+        """), {"cid": chat_id}).all()
+
+    ids = [r[0] for r in rows]
+    try:
+        idx = ids.index(int(user_message_id))
+    except (ValueError, TypeError):
+        return False
+    if rows[idx][1] != "user":
+        return False
+    to_delete = [ids[idx]]
+    if idx + 1 < len(rows) and rows[idx + 1][1] == "assistant":
+        to_delete.append(ids[idx + 1])
+
+    eng = _get_engine()
+    with eng.begin() as conn:
+        conn.execute(_sql("""
+            DELETE FROM prionvault_library_chat_message WHERE id = ANY(:ids)
+        """), {"ids": to_delete})
+    return True
+
+
 def delete_chat(chat_id: str, user_id: str) -> bool:
     eng = _get_engine()
     with eng.begin() as conn:
@@ -242,7 +319,8 @@ class ChatError(RuntimeError):
         self.attempts = attempts
 
 
-def ask(chat_id: str, user_id: str, question: str, provider: Optional[str] = None) -> dict:
+def ask(chat_id: str, user_id: str, question: str, provider: Optional[str] = None,
+       cited_context: Optional[list[dict]] = None) -> dict:
     question = (question or "").strip()
     if not question:
         raise ValueError("La pregunta no puede estar vacía.")
@@ -268,7 +346,7 @@ def ask(chat_id: str, user_id: str, question: str, provider: Optional[str] = Non
     context_block, citations = _build_pv_context(question, user_id)
     retrieval_ms = int((time.monotonic() - retrieval_start) * 1000)
 
-    user_prompt = _build_user_prompt(context_block, history, question)
+    user_prompt = _build_user_prompt(context_block, history, question, cited_context)
 
     system_prompt = _SYSTEM_PROMPT
     try:
