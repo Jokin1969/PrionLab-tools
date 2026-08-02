@@ -793,6 +793,18 @@
         </label>
         <div style="flex:1;"></div>
         <!-- Cart icon — opens PrionPacks in new tab, badge shows cart count -->
+        <button id="btn-filter-notes-head" type="button"
+                title="Mostrar solo artículos con notas (sticky notes)"
+                style="position:relative;display:flex;align-items:center;justify-content:center;
+                       width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;
+                       background:#fff;cursor:pointer;flex-shrink:0;font-size:15px;
+                       transition:background 0.12s,border-color 0.12s;">📝
+          <span id="pv-notes-filter-badge"
+                style="display:none;position:absolute;top:-5px;right:-5px;
+                       background:#d97706;color:#fff;font-size:10px;font-weight:700;
+                       border-radius:9999px;padding:1px 4px;min-width:16px;text-align:center;
+                       pointer-events:none;">0</span>
+        </button>
         <button id="pv-cart-btn" type="button"
                 title="Carrito de artículos"
                 style="position:relative;display:flex;align-items:center;justify-content:center;

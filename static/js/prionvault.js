@@ -254,6 +254,12 @@
       set('count-indexed',    s.indexed);
       set('count-notes',      s.with_notes ?? 0);
       set('count-outdated-summary', s.outdated_summary ?? 0);
+      const badge = document.getElementById('pv-notes-filter-badge');
+      if (badge) {
+        const n = s.with_notes ?? 0;
+        badge.textContent = String(n);
+        badge.style.display = n > 0 ? '' : 'none';
+      }
     } catch (e) { console.error(e); }
   }
 
@@ -8396,6 +8402,11 @@
     const $ = id => document.getElementById(id);
     let _wired = false;
     const _selected = new Set();   // article ids selected INSIDE the modal
+    // PPCart only stores a reduced shape (id/title/authors/year/journal/
+    // doi/pubmed_id/has_pdf) — notes and JC status aren't in it, so a
+    // fresh fetch fills them in for display. Cached per article id so
+    // toggling a checkbox doesn't re-fetch the whole cart every time.
+    const _extra = new Map();
 
     function journalYear(a) {
       if (!a.journal) return '';
@@ -8403,9 +8414,24 @@
         (a.year ? ` <span style="color:#7a1230;font-weight:600;">(${esc(a.year)})</span>` : '');
     }
 
+    async function _fetchExtra(ids) {
+      const missing = ids.filter(id => !_extra.has(id));
+      if (!missing.length) return;
+      try {
+        const r = await api('/articles?ids=' + missing.map(encodeURIComponent).join(',') +
+                            '&page_size=' + missing.length);
+        (r.items || []).forEach(full => _extra.set(full.id, full));
+      } catch (e) { /* silent — rows just render without notes/JC state */ }
+      // Ids the fetch didn't return anything for (deleted meanwhile, etc.)
+      // still get a cache entry so we don't refetch them forever.
+      missing.forEach(id => { if (!_extra.has(id)) _extra.set(id, {}); });
+    }
+
     function rowHtml(a) {
+      const ex = _extra.get(a.id) || {};
+      const hasPdf = ex.has_pdf ?? a.has_pdf;
       const links = [
-        a.has_pdf ? `<a href="${API}/articles/${esc(a.id)}/pdf-view" target="_blank" rel="noopener"
+        hasPdf ? `<a href="${API}/articles/${esc(a.id)}/pdf-view" target="_blank" rel="noopener"
               onclick="event.stopPropagation();" style="color:#b91c1c;text-decoration:none;font-weight:600;">
               <i class="fas fa-file-pdf"></i> PDF</a>` : '',
         a.doi ? `<a href="https://doi.org/${encodeURIComponent(a.doi)}" target="_blank" rel="noopener"
@@ -8413,6 +8439,29 @@
         a.pubmed_id ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pubmed_id)}/" target="_blank" rel="noopener"
               onclick="event.stopPropagation();" style="color:#0F3460;text-decoration:none;">PMID: ${esc(a.pubmed_id)}</a>` : '',
       ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
+      const notesCluster = `<span class="pv-notes-cluster" data-aid="${esc(a.id)}"
+             style="display:inline-flex;gap:4px;vertical-align:middle;">${_noteClusterInner(ex.notes)}</span>`;
+
+      const jcHasJc = !!ex.has_jc;
+      const jcBtn = `<button type="button" class="pv-cart-row-jc-btn" data-aid="${esc(a.id)}"
+              data-has-jc="${jcHasJc ? '1' : '0'}"
+              title="${jcHasJc
+                  ? (ex.jc_presenters ? esc(`Presentado por ${ex.jc_presenters} en Journal Club — clic para abrir el documento`)
+                      : 'Presentado en Journal Club — clic para abrir el documento')
+                  : 'Sin presentación de Journal Club — clic para añadir una'}"
+              style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;
+                     border:none;cursor:pointer;vertical-align:middle;${jcHasJc
+                       ? 'background:#14532d;color:#fef08a;'
+                       : 'background:#f3f4f6;color:#9ca3af;'}">JC${jcHasJc && ex.jc_count > 1 ? ' ' + ex.jc_count : ''}</button>`;
+
+      const emailBtn = `<button type="button" class="pv-cart-row-email-btn" data-aid="${esc(a.id)}"
+              title="Enviar este artículo por email"
+              style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;
+                     font-size:10.5px;font-weight:600;background:#eef2ff;color:#4f46e5;
+                     border:none;cursor:pointer;vertical-align:middle;">
+              <i class="fas fa-paper-plane"></i></button>`;
+
       return `
         <div class="pv-cart-row" data-aid="${esc(a.id)}"
              style="display:flex;align-items:flex-start;gap:10px;padding:10px 6px;border-bottom:1px solid #f3f4f6;">
@@ -8420,12 +8469,19 @@
                  ${_selected.has(a.id) ? 'checked' : ''}
                  style="cursor:pointer;width:14px;height:14px;margin-top:3px;flex-shrink:0;">
           <div style="flex:1;min-width:0;">
-            <div style="font-size:13.5px;font-weight:600;color:#111827;line-height:1.35;
+            <div class="pv-cart-row-title" data-aid="${esc(a.id)}"
+                 title="Ver solo este artículo en el listado"
+                 style="font-size:13.5px;font-weight:600;color:#111827;line-height:1.35;cursor:pointer;
                         overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title || '(sin título)')}</div>
             <div style="margin-top:2px;font-size:12px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               ${a.authors ? esc(a.authors) : '—'}${journalYear(a)}
             </div>
-            ${links ? `<div style="margin-top:3px;font-size:11px;">${links}</div>` : ''}
+            <div style="margin-top:4px;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              ${links ? `<span>${links}</span>` : ''}
+              ${notesCluster}
+              ${jcBtn}
+              ${emailBtn}
+            </div>
           </div>
           <button type="button" class="pv-cart-row-remove" data-aid="${esc(a.id)}"
                   title="Quitar del carrito"
@@ -8452,7 +8508,7 @@
       all.indeterminate = !all.checked && items.some(a => _selected.has(a.id));
     }
 
-    function render() {
+    async function render() {
       const items = window.PPCart?.getAll() || [];
       // Drop selections for articles no longer in the cart.
       [..._selected].forEach(id => { if (!items.some(a => a.id === id)) _selected.delete(id); });
@@ -8461,6 +8517,7 @@
       if (label) label.textContent = items.length
         ? `${items.length} artículo${items.length === 1 ? '' : 's'} en el carrito`
         : 'El carrito está vacío.';
+      if (items.length) await _fetchExtra(items.map(a => a.id));
       if (list) list.innerHTML = items.length ? items.map(rowHtml).join('') : `
         <div style="padding:30px 10px;text-align:center;color:#9ca3af;font-size:13px;">
           Añade artículos con el botón 🛒 del listado.
@@ -8480,18 +8537,65 @@
           render();
         });
       });
+      // Click the title → isolate this article in the main listing,
+      // same as the 📍 pin button in the listing rows.
+      list?.querySelectorAll('.pv-cart-row-title').forEach(el => {
+        el.addEventListener('click', () => {
+          close();
+          _setIsolatedArticleId(el.dataset.aid);
+          loadArticles();
+        });
+      });
+      list?.querySelectorAll('.pv-notes-cluster').forEach(cl => {
+        const aid = cl.dataset.aid;
+        _wireNoteCluster(cl, { id: aid, notes: (_extra.get(aid) || {}).notes });
+      });
+      list?.querySelectorAll('.pv-cart-row-jc-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const aid = btn.dataset.aid;
+          if (btn.dataset.hasJc !== '1') {
+            PVJcUpload.open({ id: aid, title: (_extra.get(aid) || {}).title }, () => { _extra.delete(aid); render(); });
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const r = await api(`/articles/${aid}/jc`);
+            const files = (r.items || []).flatMap(p => p.files || []);
+            if (files.length === 1) {
+              window.open(API + `/jc/files/${files[0].id}/view`, '_blank', 'noopener');
+            } else {
+              close();
+              openDetail(aid);
+            }
+          } catch (err) {
+            alert('No se pudo abrir el Journal Club: ' + err.message);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+      list?.querySelectorAll('.pv-cart-row-email-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const aid = btn.dataset.aid;
+          const full = _extra.get(aid);
+          const base = items.find(a => a.id === aid);
+          PVEmailShare.open(full && full.title ? full : base);
+        });
+      });
       syncActionsBtn();
       syncSelectAll();
     }
 
     function close() { $('pv-cart-modal').style.display = 'none'; }
 
-    function open() {
+    async function open() {
       wireOnce();
       const modal = $('pv-cart-modal');
       if (!modal) return;
-      render();
       modal.style.display = 'flex';
+      await render();
     }
 
     // ── Actions ────────────────────────────────────────────────────────
@@ -9753,11 +9857,28 @@
                           : (id === 'btn-filter-notes' ? 'Mostrar solo artículos con notas (sticky notes)'
                                                         : 'Filtrar por artículos con notas en esta sección');
       });
+      // Head button lives on a light background, not the dark sidebar —
+      // separate (lighter) active/inactive colors from the ones above.
+      const headBtn = document.getElementById('btn-filter-notes-head');
+      if (headBtn) {
+        headBtn.style.background = active ? '#fef3c7' : '#fff';
+        headBtn.style.borderColor = active ? '#d97706' : '#d1d5db';
+        headBtn.title = active ? 'Mostrando solo artículos con notas — clic para quitar el filtro'
+                                : 'Mostrar solo artículos con notas (sticky notes)';
+      }
     }
     // Repaint after each loadArticles so active state stays in sync
     const _origLoadArticles = loadArticles;
     // Wire notes-filter button click to also repaint
     document.getElementById('btn-filter-notes')?.addEventListener('click', _paintNotesFilterBtns);
+    document.getElementById('btn-filter-notes-head')?.addEventListener('click', () => {
+      state.hasSummary = state.hasSummary === 'human' ? null : 'human';
+      state.tagId = null;
+      clearMarkFilters();
+      state.page = 1;
+      loadArticles();
+      _paintNotesFilterBtns();
+    });
 
     document.getElementById('pv-detail-close').addEventListener('click', closeDetail);
     document.querySelector('#pv-detail-modal .pv-modal-backdrop').addEventListener('click', closeDetail);
