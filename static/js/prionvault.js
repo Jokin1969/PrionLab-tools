@@ -8624,6 +8624,10 @@
       wireOnce();
       const modal = $('pv-cart-modal');
       if (!modal) return;
+      if (!(window.PPCart?.getAll() || []).length) {
+        alert('El carrito está vacío. Añade artículos con el botón 🛒 del listado.');
+        return;
+      }
       modal.style.display = 'flex';
       render();
     }
