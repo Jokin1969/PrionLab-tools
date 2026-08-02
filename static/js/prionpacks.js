@@ -1970,7 +1970,7 @@ ${refsText}`;
             <div class="pp-similar-actions">
               <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
               <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>
-              <button class="pp-btn pp-btn-sm pp-btn-add-to-cart${window.PPCart?.has(item.id) ? ' pp-btn-success' : ''}" data-cart-id="${_escHtml(item.id)}" title="${window.PPCart?.has(item.id) ? 'Ya en el carrito' : 'Añadir al carrito'}"><i class="fas fa-shopping-cart"></i>${window.PPCart?.has(item.id) ? ' ✓' : ''}</button>
+              <button class="pp-btn pp-btn-sm pp-btn-add-to-cart${window.PPImportTray?.has(item.id) ? ' pp-btn-success' : ''}" data-cart-id="${_escHtml(item.id)}" title="${window.PPImportTray?.has(item.id) ? 'Ya en el carrito' : 'Añadir al carrito'}"><i class="fas fa-shopping-cart"></i>${window.PPImportTray?.has(item.id) ? ' ✓' : ''}</button>
             </div>`;
           list.appendChild(card);
         });
@@ -2010,7 +2010,7 @@ ${refsText}`;
             const id  = btn.dataset.cartId;
             const art = items.find(a => String(a.id) === id);
             if (!art) return;
-            window.PPCart?.add(art);
+            window.PPImportTray?.add(art);
             btn.innerHTML = '<i class="fas fa-shopping-cart"></i> ✓';
             btn.classList.add('pp-btn-success');
           });
@@ -2027,13 +2027,13 @@ ${refsText}`;
 
   // ── Cart badge ────────────────────────────────────────────────────────────
   function _updateCartBadge() {
-    const n = window.PPCart?.count() ?? 0;
+    const n = window.PPImportTray?.count() ?? 0;
     document.querySelectorAll('.pp-cart-badge').forEach(el => {
       el.textContent = n;
       el.style.display = n > 0 ? '' : 'none';
     });
   }
-  window.addEventListener('pp-cart-changed', _updateCartBadge);
+  window.addEventListener('pp-tray-changed', _updateCartBadge);
 
   // ── Cart panel ────────────────────────────────────────────────────────────
   function _openCartPanel() {
@@ -2043,7 +2043,7 @@ ${refsText}`;
     if (!panel) return;
 
     const render = () => {
-      const items = window.PPCart?.getAll() || [];
+      const items = window.PPImportTray?.getAll() || [];
       const clearBtn = document.getElementById('pp-cart-clear-btn');
       if (clearBtn) clearBtn.style.display = items.length ? '' : 'none';
       label.textContent = items.length
@@ -2096,7 +2096,7 @@ ${refsText}`;
       });
 
       list.querySelectorAll('.pp-btn-cart-remove').forEach(btn => {
-        btn.addEventListener('click', () => { window.PPCart?.remove(btn.dataset.id); render(); });
+        btn.addEventListener('click', () => { window.PPImportTray?.remove(btn.dataset.id); render(); });
       });
 
       list.querySelectorAll('.pp-btn-add-similar').forEach(btn => {
@@ -2133,7 +2133,7 @@ ${refsText}`;
     panel.style.display = 'flex';
     document.getElementById('pp-cart-panel-close').onclick = () => { panel.style.display = 'none'; };
     document.getElementById('pp-cart-backdrop').onclick    = () => { panel.style.display = 'none'; };
-    document.getElementById('pp-cart-clear-btn').onclick   = () => { window.PPCart?.clear(); render(); };
+    document.getElementById('pp-cart-clear-btn').onclick   = () => { window.PPImportTray?.clear(); render(); };
   }
 
   // ── PrionVault search modal ───────────────────────────────────────────────
@@ -2178,7 +2178,7 @@ ${refsText}`;
         _artMap.clear();
         items.forEach(item => {
           _artMap.set(item.id, item);
-          const inCart   = window.PPCart?.has(item.id);
+          const inCart   = window.PPImportTray?.has(item.id);
           const thumbHtml = item.has_pdf
             ? `<a class="pp-similar-thumb-wrap" href="/prionvault/api/articles/${_escHtml(item.id)}/pdf" target="_blank" rel="noopener"><img class="pp-similar-thumb" src="/prionvault/api/articles/${_escHtml(item.id)}/thumbnail" loading="lazy" alt=""></a>`
             : '<div class="pp-similar-thumb-placeholder"></div>';
@@ -2232,7 +2232,7 @@ ${refsText}`;
           btn.addEventListener('click', () => {
             const art = _artMap.get(btn.dataset.cartId);
             if (!art) return;
-            window.PPCart?.add(art);
+            window.PPImportTray?.add(art);
             btn.innerHTML = '<i class="fas fa-shopping-cart"></i> ✓';
             btn.classList.add('pp-btn-success');
           });
@@ -2343,7 +2343,7 @@ ${refsText}`;
           actionsHtml = `<button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="general">+ General</button>
             <button class="pp-btn pp-btn-sm pp-btn-add-similar" data-aid="${_escHtml(item.id)}" data-target="intro">+ Intro</button>`;
         }
-        const _simInCart = window.PPCart?.has(item.id);
+        const _simInCart = window.PPImportTray?.has(item.id);
         actionsHtml += `<button class="pp-btn pp-btn-sm pp-btn-add-to-cart${_simInCart ? ' pp-btn-success' : ''}" data-cart-id="${_escHtml(item.id)}" title="${_simInCart ? 'Ya en el carrito' : 'Añadir al carrito'}"><i class="fas fa-shopping-cart"></i>${_simInCart ? ' ✓' : ''}</button>`;
 
         const card = document.createElement('div');
@@ -2406,7 +2406,7 @@ ${refsText}`;
           const id  = btn.dataset.cartId;
           const art = items.find(a => a.id === id);
           if (!art) return;
-          window.PPCart?.add(art);
+          window.PPImportTray?.add(art);
           btn.innerHTML = '<i class="fas fa-shopping-cart"></i> ✓';
           btn.classList.add('pp-btn-success');
         });

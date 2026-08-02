@@ -8660,9 +8660,14 @@
 
     function actionPrionPacks() {
       if (!_selected.size) return;
-      // Unchanged from before: PrionPacks' own cart panel operates on
-      // the whole cart and lets the operator choose target package(s)
-      // per item — nothing to change here, just get them there.
+      // PrionPacks has its own separate staging list (PPImportTray —
+      // NOT this cart) for picking a target package per article. Copy
+      // just the SELECTED articles there (never the whole cart) and
+      // open PrionPacks to let the operator choose the target(s); this
+      // cart is untouched either way, and clearing the tray later from
+      // inside PrionPacks won't clear this cart back here.
+      const arts = selectedArticles();
+      arts.forEach(a => window.PPImportTray?.add(a));
       window.open('/prionpacks', '_blank');
       closeActions();
     }
