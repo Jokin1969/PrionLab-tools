@@ -22,12 +22,27 @@ if os.environ.get("SENTRY_DSN"):
         "ocrmypdf: warning",
     )
 
+    # Exception TYPE names (not message text) we don't want alerts for —
+    # these fire when a browser aborts a chunked upload mid-transfer
+    # (tab closed, network dropped, page navigated away) while gunicorn
+    # is still reading the request body. It's a client-side disconnect,
+    # not a server bug: gunicorn.http.body.NoMoreData bubbles up through
+    # Werkzeug's lazy request.files/request.form parsing uncaught, since
+    # it isn't a normal WSGI/HTTPException. A matching Flask error
+    # handler (see create_app()) still returns a clean 4xx to whichever
+    # end of the connection is still listening; this just keeps the
+    # inherently-unactionable client-disconnect noise out of Sentry.
+    _SENTRY_NOISE_EXCEPTION_TYPES = ("NoMoreData",)
+
     def _sentry_filter(event, hint):
         try:
             msg = (event.get("message") or "").lower()
             if not msg and event.get("logentry"):
                 msg = (event["logentry"].get("message") or "").lower()
             if any(p in msg for p in _SENTRY_NOISE_PATTERNS):
+                return None    # drop
+            exc_values = (event.get("exception") or {}).get("values") or []
+            if any(v.get("type") in _SENTRY_NOISE_EXCEPTION_TYPES for v in exc_values):
                 return None    # drop
         except Exception:
             pass
@@ -698,6 +713,27 @@ def create_app() -> Flask:
             "commit_sha": sha,
             "commit_short": (sha[:7] if sha else None),
         })
+
+    # Browser aborted a chunked file upload mid-transfer (tab closed,
+    # network dropped) — gunicorn raises this while Werkzeug is lazily
+    # parsing request.files/request.form, uncaught by Flask's normal
+    # HTTPException handling since it isn't one. Not a server bug, so
+    # give it its own clean 400 instead of falling through to the
+    # generic 500 page/handler (see app.py's Sentry init for why it's
+    # also filtered out of error alerts). Import is defensive: local
+    # dev running the Flask/Werkzeug dev server instead of gunicorn
+    # never raises this, and may not even have gunicorn installed.
+    try:
+        from gunicorn.http.body import NoMoreData as _NoMoreData
+
+        @app.errorhandler(_NoMoreData)
+        def _client_disconnected_during_upload(e):
+            return jsonify({
+                "error": "client_disconnected",
+                "detail": "La subida se interrumpió (conexión cortada antes de completarse).",
+            }), 400
+    except ImportError:
+        pass
 
     @app.errorhandler(404)
     def not_found(e):
