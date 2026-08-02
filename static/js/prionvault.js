@@ -7743,6 +7743,17 @@
     // DOI/PMID/PDF links) and a cart button — resolved from the
     // message's own `citations` list (persisted on the message, so
     // this works identically for a fresh answer and a reloaded one).
+    //
+    // Click, not hover: the chip lives inside #pv-libchat-thread, which
+    // scrolls (overflow-y:auto) — an absolutely-positioned hover card
+    // anchored to the chip gets clipped by that scroll box even though
+    // it's visually "above" it, so hover silently did nothing. A single
+    // shared popup element appended to <body> (see _citePopupEl) and
+    // positioned with fixed coordinates from the chip's own
+    // getBoundingClientRect sidesteps that entirely.
+    const _citeRegistry = new Map();   // chip element id -> citation dict
+    let _citeSeq = 0;
+
     function _linkCitations(html, citations) {
       if (!citations || !citations.length) return html;
       const byN = new Map(citations.map(c => [c.n, c]));
@@ -7750,39 +7761,97 @@
         const n = parseInt(nStr, 10);
         const c = byN.get(n);
         if (!c) return full;
-        const meta = [c.authors, c.year, c.journal].filter(Boolean).join(' · ');
-        const doiLink = c.doi
-          ? `<a href="https://doi.org/${encodeURIComponent(c.doi)}" target="_blank" rel="noopener"
-                style="color:#1e3a8a;text-decoration:none;">DOI ↗</a>` : '';
-        const pmidLink = c.pubmed_id
-          ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(c.pubmed_id)}/" target="_blank" rel="noopener"
-                style="color:#1e3a8a;text-decoration:none;">PMID ↗</a>` : '';
-        const pdfLink = c.has_pdf
-          ? `<a href="${API}/articles/${esc(c.article_id)}/pdf-view" target="_blank" rel="noopener"
-                style="color:#b91c1c;text-decoration:none;"><i class="fas fa-file-pdf"></i> PDF</a>` : '';
-        const links = [doiLink, pmidLink, pdfLink].filter(Boolean).join(' &nbsp;·&nbsp; ');
-        return `<span class="pv-cite-wrap" style="position:relative;display:inline-block;">` +
-          `<span class="pv-cite" data-open-aid="${esc(c.article_id)}"
-                 style="color:#1e3a8a;font-weight:700;cursor:pointer;
-                        text-decoration:underline dotted;text-underline-offset:2px;">[${n}]</span>` +
-          `<span class="pv-cite-card" style="display:none;position:absolute;bottom:100%;left:0;
-                       margin-bottom:6px;width:270px;background:#fff;border:1px solid #d1d5db;
-                       border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);padding:11px 12px;
-                       z-index:50;font-size:12px;line-height:1.4;white-space:normal;cursor:default;">` +
-            `<div style="font-weight:700;color:#111827;margin-bottom:3px;">${esc(c.title || '')}</div>` +
-            (meta ? `<div style="color:#6b7280;margin-bottom:6px;">${esc(meta)}</div>` : '') +
-            (links ? `<div style="margin-bottom:8px;">${links}</div>` : '') +
-            `<button type="button" class="pv-cite-cart-btn" data-aid="${esc(c.article_id)}"
-                     data-title="${esc(c.title || '')}" data-authors="${esc(c.authors || '')}"
-                     data-year="${esc(c.year || '')}" data-journal="${esc(c.journal || '')}"
-                     data-doi="${esc(c.doi || '')}" data-pmid="${esc(c.pubmed_id || '')}"
-                     data-haspdf="${c.has_pdf ? '1' : '0'}"
-                     style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid #d1d5db;
-                            background:#f9fafb;color:#374151;font-size:11.5px;font-weight:600;cursor:pointer;">
-               🛒 Añadir al carrito
-             </button>` +
-          `</span></span>`;
+        const chipId = `pv-cite-${++_citeSeq}`;
+        _citeRegistry.set(chipId, c);
+        // Navy "tag" pill, per request — a badge, not underlined text.
+        return `<span id="${chipId}" class="pv-cite"
+                 style="display:inline-flex;align-items:center;justify-content:center;
+                        min-width:16px;height:16px;padding:0 4px;margin:0 1px;border-radius:4px;
+                        background:#1e3a8a;color:#fff;font-size:9.5px;font-weight:700;
+                        cursor:pointer;vertical-align:2px;">${n}</span>`;
       });
+    }
+
+    function _closeCitePopup() {
+      document.getElementById('pv-cite-popup')?.remove();
+      document.removeEventListener('click', _citePopupOutsideClick, true);
+    }
+    function _citePopupOutsideClick(e) {
+      const pop = document.getElementById('pv-cite-popup');
+      if (pop && !pop.contains(e.target) && !e.target.classList.contains('pv-cite')) _closeCitePopup();
+    }
+
+    function _openCitePopup(chip, c) {
+      _closeCitePopup();
+      const meta = [c.authors, c.year, c.journal].filter(Boolean).join(' · ');
+      const doiLink = c.doi
+        ? `<a href="https://doi.org/${encodeURIComponent(c.doi)}" target="_blank" rel="noopener"
+              style="color:#1e3a8a;text-decoration:none;">DOI ↗</a>` : '';
+      const pmidLink = c.pubmed_id
+        ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(c.pubmed_id)}/" target="_blank" rel="noopener"
+              style="color:#1e3a8a;text-decoration:none;">PMID ↗</a>` : '';
+      const pdfLink = c.has_pdf
+        ? `<a href="${API}/articles/${esc(c.article_id)}/pdf-view" target="_blank" rel="noopener"
+              style="color:#b91c1c;text-decoration:none;"><i class="fas fa-file-pdf"></i> PDF</a>` : '';
+      const links = [doiLink, pmidLink, pdfLink].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
+      const pop = document.createElement('div');
+      pop.id = 'pv-cite-popup';
+      pop.style.cssText = 'position:fixed;width:280px;background:#fff;border:1px solid #d1d5db;' +
+        'border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.2);padding:12px 13px;' +
+        'z-index:99999;font-size:12px;line-height:1.4;';
+      pop.innerHTML =
+        `<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;">` +
+          `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;
+                        height:16px;padding:0 4px;border-radius:4px;background:#1e3a8a;color:#fff;
+                        font-size:9.5px;font-weight:700;flex-shrink:0;">${esc(c.n)}</span>` +
+          `<button type="button" id="pv-cite-popup-close" style="all:unset;cursor:pointer;
+                   color:#9ca3af;font-size:13px;line-height:1;">×</button>` +
+        `</div>` +
+        `<div style="font-weight:700;color:#111827;margin-bottom:3px;cursor:pointer;" data-open-aid="${esc(c.article_id)}">
+           ${esc(c.title || '')}
+         </div>` +
+        (meta ? `<div style="color:#6b7280;margin-bottom:6px;">${esc(meta)}</div>` : '') +
+        (links ? `<div style="margin-bottom:8px;">${links}</div>` : '') +
+        `<button type="button" class="pv-cite-cart-btn" data-aid="${esc(c.article_id)}"
+                 data-title="${esc(c.title || '')}" data-authors="${esc(c.authors || '')}"
+                 data-year="${esc(c.year || '')}" data-journal="${esc(c.journal || '')}"
+                 data-doi="${esc(c.doi || '')}" data-pmid="${esc(c.pubmed_id || '')}"
+                 data-haspdf="${c.has_pdf ? '1' : '0'}"
+                 style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid #d1d5db;
+                        background:#f9fafb;color:#374151;font-size:11.5px;font-weight:600;cursor:pointer;">
+           🛒 Añadir al carrito
+         </button>`;
+      document.body.appendChild(pop);
+
+      // Position under the chip, flipped above if it would overflow the
+      // viewport bottom; clamped horizontally so it never runs off-screen.
+      const r = chip.getBoundingClientRect();
+      const popRect = pop.getBoundingClientRect();
+      let top = r.bottom + 6;
+      if (top + popRect.height > window.innerHeight - 8) top = r.top - popRect.height - 6;
+      let left = Math.min(r.left, window.innerWidth - popRect.width - 8);
+      left = Math.max(8, left);
+      pop.style.top = `${Math.max(8, top)}px`;
+      pop.style.left = `${left}px`;
+
+      pop.querySelector('#pv-cite-popup-close')?.addEventListener('click', _closeCitePopup);
+      pop.querySelector('[data-open-aid]')?.addEventListener('click', () => {
+        _closeCitePopup();
+        openDetail(c.article_id);
+      });
+      pop.querySelector('.pv-cite-cart-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.PPCart?.add({
+          id: c.article_id, title: c.title, authors: c.authors, year: c.year || null,
+          journal: c.journal, doi: c.doi, pubmed_id: c.pubmed_id, has_pdf: !!c.has_pdf,
+        });
+        const btn = e.currentTarget;
+        btn.textContent = '✓ En el carrito';
+        btn.disabled = true;
+      });
+
+      setTimeout(() => document.addEventListener('click', _citePopupOutsideClick, true), 0);
     }
 
     function messageHtml(m) {
@@ -7807,19 +7876,10 @@
 
     function _wireThreadInteractions(el) {
       el.querySelectorAll('.pv-cite').forEach(chip => {
-        chip.addEventListener('click', () => openDetail(chip.dataset.openAid));
-      });
-      el.querySelectorAll('.pv-cite-cart-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        chip.addEventListener('click', (e) => {
           e.stopPropagation();
-          window.PPCart?.add({
-            id: btn.dataset.aid, title: btn.dataset.title, authors: btn.dataset.authors,
-            year: btn.dataset.year || null, journal: btn.dataset.journal,
-            doi: btn.dataset.doi, pubmed_id: btn.dataset.pmid,
-            has_pdf: btn.dataset.haspdf === '1',
-          });
-          btn.textContent = '✓ En el carrito';
-          btn.disabled = true;
+          const c = _citeRegistry.get(chip.id);
+          if (c) _openCitePopup(chip, c);
         });
       });
     }
@@ -7992,7 +8052,7 @@
       wireSearch();
     }
 
-    function close() { $('pv-libchat-modal').style.display = 'none'; }
+    function close() { $('pv-libchat-modal').style.display = 'none'; _closeCitePopup(); }
 
     async function open() {
       wireOnce();
