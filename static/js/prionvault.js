@@ -5695,13 +5695,11 @@
     function sortedList(list) {
       const sorted = [...list];
       sorted.sort((a, b) => {
-        let av, bv;
+        let av, bv, useLocale = false;
         if (_sortKey === 'presenter') {
-          av = (a.presenter_name || '').toLowerCase();
-          bv = (b.presenter_name || '').toLowerCase();
+          av = a.presenter_name || ''; bv = b.presenter_name || ''; useLocale = true;
         } else if (_sortKey === 'article') {
-          av = (a.article_title || '').toLowerCase();
-          bv = (b.article_title || '').toLowerCase();
+          av = a.article_title || ''; bv = b.article_title || ''; useLocale = true;
         } else if (_sortKey === 'filetype') {
           // Sort by file format (pptx, pdf, word, excel…) — several files
           // on one presentation sort by their kinds joined alphabetically,
@@ -5712,7 +5710,12 @@
           av = a.presented_at || '';
           bv = b.presented_at || '';
         }
-        const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        // localeCompare('es') so accented letters (Á, É…) sort next to their
+        // plain counterpart (A, E…) instead of after Z, as plain `<`/`>`
+        // string comparison would do (accents sort by raw UTF-16 code point).
+        const cmp = useLocale
+          ? av.localeCompare(bv, 'es', { sensitivity: 'base' })
+          : (av < bv ? -1 : av > bv ? 1 : 0);
         return _sortAsc ? cmp : -cmp;
       });
       return sorted;
