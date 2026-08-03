@@ -360,6 +360,42 @@
     const canvas = el('div', { class: 'hn-canvas' });
     panel.appendChild(canvas);
 
+    // Resize the whole board from its bottom-right corner, down to a fixed
+    // minimum so the tabs/header/one note row always stay usable.
+    const PANEL_MIN_W = 480, PANEL_MIN_H = 360;
+    const panelResizeHandle = el('div', { class: 'hn-panel-resize', title: 'Arrastra para cambiar el tamaño del tablero' });
+    panel.appendChild(panelResizeHandle);
+    let savedSize = null;
+    try { savedSize = JSON.parse(lsGet('panel_size') || 'null'); } catch (_) { /* noop */ }
+    if (savedSize && savedSize.w && savedSize.h) {
+      panel.style.width = Math.max(PANEL_MIN_W, Math.min(window.innerWidth - 40, savedSize.w)) + 'px';
+      panel.style.height = Math.max(PANEL_MIN_H, Math.min(window.innerHeight - 40, savedSize.h)) + 'px';
+    }
+    let prSizing = false, prStartX = 0, prStartY = 0, prOrigW = 0, prOrigH = 0;
+    panelResizeHandle.addEventListener('pointerdown', (ev) => {
+      ev.stopPropagation();
+      prSizing = true; panelResizeHandle.setPointerCapture(ev.pointerId);
+      prStartX = ev.clientX; prStartY = ev.clientY;
+      const rect = panel.getBoundingClientRect();
+      prOrigW = rect.width; prOrigH = rect.height;
+      panel.classList.add('resizing');
+    });
+    panelResizeHandle.addEventListener('pointermove', (ev) => {
+      if (!prSizing) return;
+      const dx = ev.clientX - prStartX, dy = ev.clientY - prStartY;
+      const w = Math.min(window.innerWidth - 40, Math.max(PANEL_MIN_W, Math.round(prOrigW + dx)));
+      const h = Math.min(window.innerHeight - 40, Math.max(PANEL_MIN_H, Math.round(prOrigH + dy)));
+      panel.style.width = w + 'px';
+      panel.style.height = h + 'px';
+    });
+    const _endPanelResize = () => {
+      if (!prSizing) return;
+      prSizing = false; panel.classList.remove('resizing');
+      lsSet('panel_size', JSON.stringify({ w: parseFloat(panel.style.width), h: parseFloat(panel.style.height) }));
+    };
+    panelResizeHandle.addEventListener('pointerup', _endPanelResize);
+    panelResizeHandle.addEventListener('pointercancel', _endPanelResize);
+
     let users = [];
     try { users = (await api('/home-notas/usuarios')).usuarios || []; } catch (_) { /* noop */ }
 

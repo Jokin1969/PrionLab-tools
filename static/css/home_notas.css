@@ -48,6 +48,7 @@
 .hn-panel {
   position: relative; background: var(--hn-bg); border-radius: 14px;
   width: 100%; max-width: none; height: 97vh; max-height: none;
+  min-width: 480px; min-height: 360px;
   display: flex; flex-direction: column; overflow: hidden;
   box-shadow: 0 20px 60px rgba(0,0,0,.3);
 }
@@ -55,6 +56,16 @@
   display: flex; align-items: center; gap: 10px; padding: 14px 18px;
   border-bottom: 1px solid var(--hn-line); flex-shrink: 0;
 }
+.hn-panel-resize {
+  position: absolute; right: 3px; bottom: 3px; width: 20px; height: 20px;
+  cursor: nwse-resize; touch-action: none; z-index: 40; opacity: .5; transition: opacity .12s;
+  background:
+    linear-gradient(135deg, transparent 0 40%, var(--hn-mute) 40% 48%, transparent 48% 100%),
+    linear-gradient(135deg, transparent 0 62%, var(--hn-mute) 62% 70%, transparent 70% 100%),
+    linear-gradient(135deg, transparent 0 84%, var(--hn-mute) 84% 92%, transparent 92% 100%);
+}
+.hn-panel-resize:hover, .hn-panel.resizing .hn-panel-resize { opacity: 1; }
+.hn-panel.resizing { transition: none; user-select: none; }
 .hn-panel-title { font-size: 1.15rem; font-weight: 800; color: var(--hn-ink); margin-right: auto; }
 .hn-modal-close {
   background: none; border: none; font-size: 1.4rem; line-height: 1; color: var(--hn-mute);

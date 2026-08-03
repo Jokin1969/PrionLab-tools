@@ -48,6 +48,52 @@ def _fmt_nombre(first_name, last_name):
     return " ".join(filter(None, [first_name, last_name])) or "—"
 
 
+# Two historical schemas of `users` coexist across deployments (see
+# core/auth.py's _lookup_db_user_id docstring): the ORM one
+# (username, first_name, last_name, …) and a legacy PrionRead/Sequelize
+# one (name, email, role, …) actually live in this app's production DB.
+# Introspect once per process and build a name expression that works
+# against whichever is actually present, instead of hardcoding
+# first_name/last_name (which caused UndefinedColumn in production).
+_NAME_COLS_CACHE = None
+
+
+def _name_cols(s):
+    global _NAME_COLS_CACHE
+    if _NAME_COLS_CACHE is not None:
+        return _NAME_COLS_CACHE
+    cols = {r[0] for r in s.execute(sql_text(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = 'users'"
+    )).all()}
+    # Same column priority already proven against this deployment's live
+    # schema in tools/prionvault/routes_ingestion.py's _current_user_contact.
+    if "full_name" in cols:
+        _NAME_COLS_CACHE = ("full_name", None)
+    elif "name" in cols:
+        _NAME_COLS_CACHE = ("name", None)
+    elif "first_name" in cols and "last_name" in cols:
+        _NAME_COLS_CACHE = ("first_name", "last_name")
+    elif "username" in cols:
+        _NAME_COLS_CACHE = ("username", None)
+    else:
+        _NAME_COLS_CACHE = ("email", None)
+    return _NAME_COLS_CACHE
+
+
+def _name_select(s, alias):
+    """('<alias>.col1 AS <alias>_c1', '<alias>.col2 AS <alias>_c2' or NULL)."""
+    c1, c2 = _name_cols(s)
+    sel1 = f"{alias}.{c1} AS {alias}_c1"
+    sel2 = f"{alias}.{c2} AS {alias}_c2" if c2 else f"NULL AS {alias}_c2"
+    return f"{sel1}, {sel2}"
+
+
+def _name_order(alias):
+    c1, c2 = _NAME_COLS_CACHE
+    return f"{alias}.{c1}" + (f", {alias}.{c2}" if c2 else "")
+
+
 def _visible_where():
     """SQL condition (+ named params) for notes the current user may SEE."""
     return (
@@ -72,9 +118,10 @@ def _ensure_default_tablon(s):
 
 def _tablones_rows(s, uid, is_admin):
     where = _visible_where()
+    au_name = _name_select(s, "au")
     rows = s.execute(sql_text(
         f"""SELECT t.id_tablon, t.nombre, t.autor_id, t.orden,
-                   au.first_name AS autor_first, au.last_name AS autor_last,
+                   {au_name},
                    (SELECT COUNT(*) FROM home_nota n
                       WHERE n.id_tablon = t.id_tablon AND {where}) AS n,
                    (SELECT COUNT(*) FROM home_nota n
@@ -90,7 +137,7 @@ def _tablones_rows(s, uid, is_admin):
     for r in rows:
         out.append({
             "id_tablon": r["id_tablon"], "nombre": r["nombre"], "autor_id": str(r["autor_id"]) if r["autor_id"] else None,
-            "autor_nombre": _fmt_nombre(r["autor_first"], r["autor_last"]) if r["autor_id"] else None,
+            "autor_nombre": _fmt_nombre(r["au_c1"], r["au_c2"]) if r["autor_id"] else None,
             "es_mio": str(r["autor_id"]) == str(uid) if r["autor_id"] else False,
             "puede_gestionar": (str(r["autor_id"]) == str(uid) if r["autor_id"] else False) or is_admin,
             "n": r["n"], "nuevas": r["nuevas"],
@@ -105,10 +152,11 @@ def _notas_rows(s, uid, is_admin, id_tablon=None):
     if id_tablon is not None:
         extra = " AND n.id_tablon = :id_tablon"
         params["id_tablon"] = id_tablon
+    au_name = _name_select(s, "au")
+    ed_name = _name_select(s, "ed")
     rows = s.execute(sql_text(
         f"""SELECT n.*,
-                   au.first_name AS autor_first, au.last_name AS autor_last,
-                   ed.first_name AS editor_first, ed.last_name AS editor_last,
+                   {au_name}, {ed_name},
                    v.fecha_visto AS mi_visto
               FROM home_nota n
               JOIN users au ON au.id = n.autor_id
@@ -122,15 +170,16 @@ def _notas_rows(s, uid, is_admin, id_tablon=None):
     ids = [r["id_nota"] for r in rows]
     viewers_by_note = {}
     if ids:
+        u_name = _name_select(s, "u")
         vrows = s.execute(sql_text(
-            """SELECT hu.id_nota, u.id, u.first_name, u.last_name
+            f"""SELECT hu.id_nota, u.id, {u_name}
                  FROM home_nota_usuario hu JOIN users u ON u.id = hu.id_usuario
                 WHERE hu.id_nota = ANY(:ids)
-                ORDER BY u.first_name"""
+                ORDER BY {_name_order('u')}"""
         ), {"ids": ids}).mappings().all()
         for r in vrows:
             viewers_by_note.setdefault(r["id_nota"], []).append(
-                {"id_usuario": str(r["id"]), "nombre": _fmt_nombre(r["first_name"], r["last_name"])})
+                {"id_usuario": str(r["id"]), "nombre": _fmt_nombre(r["u_c1"], r["u_c2"])})
 
     out = []
     for r in rows:
@@ -141,8 +190,8 @@ def _notas_rows(s, uid, is_admin, id_tablon=None):
             "pos_x": r["pos_x"], "pos_y": r["pos_y"],
             "ancho": r["ancho"], "alto": r["alto"],
             "visibilidad": r["visibilidad"], "autor_id": str(r["autor_id"]),
-            "autor_nombre": _fmt_nombre(r["autor_first"], r["autor_last"]),
-            "editor_nombre": _fmt_nombre(r["editor_first"], r["editor_last"]) if r["editado_por"] else None,
+            "autor_nombre": _fmt_nombre(r["au_c1"], r["au_c2"]),
+            "editor_nombre": _fmt_nombre(r["ed_c1"], r["ed_c2"]) if r["editado_por"] else None,
             "fecha_creacion": r["fecha_creacion"].isoformat() if r["fecha_creacion"] else None,
             "fecha_modif": r["fecha_modif"].isoformat() if r["fecha_modif"] else None,
             "es_mia": es_mia, "puede_gestionar": es_mia or is_admin,
@@ -505,12 +554,17 @@ def home_notas_usuarios():
         return err
     s = db.Session()
     try:
+        u_name = _name_select(s, "u")
         rows = s.execute(sql_text(
-            "SELECT id, first_name, last_name, role FROM users ORDER BY first_name, last_name"
+            f"SELECT u.id, {u_name}, u.role FROM users u ORDER BY {_name_order('u')}"
         )).mappings().all()
         return jsonify({"usuarios": [
-            {"id_usuario": str(r["id"]), "nombre": _fmt_nombre(r["first_name"], r["last_name"]), "rol": r["role"]}
+            {"id_usuario": str(r["id"]), "nombre": _fmt_nombre(r["u_c1"], r["u_c2"]), "rol": r["role"]}
             for r in rows
         ]})
+    except Exception:
+        s.rollback()
+        logger.exception("home_notas_usuarios failed")
+        return jsonify({"error": "internal"}), 500
     finally:
         s.close()
