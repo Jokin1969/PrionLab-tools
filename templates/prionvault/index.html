@@ -351,6 +351,15 @@
          style="position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;
                 z-index:50;background:transparent;transition:background 0.15s;"></div>
 
+    <!-- PrionNotes entry point: global scratchpad, horizontally centered
+         at the very top of the sidebar. -->
+    <div style="display:flex;justify-content:center;padding:10px 0 0;flex-shrink:0;">
+      <button id="pvn-sidebar-btn" type="button" title="PrionNotes — notas flotantes"
+              aria-label="Abrir PrionNotes">
+        <span aria-hidden="true">🗒️</span>
+      </button>
+    </div>
+
     <!-- Brand -->
     <div style="padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0;">
       <div style="display:flex;align-items:center;gap:10px;">
@@ -1026,7 +1035,13 @@
                 display:flex;align-items:center;justify-content:space-between;gap:8px;
                 padding:12px 0 10px;border-bottom:1px solid #f3f4f6;margin-bottom:16px;">
       <!-- Left: Notes cluster -->
-      <div id="pv-detail-notes-cluster" style="display:flex;gap:4px;"></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div id="pv-detail-notes-cluster" style="display:flex;gap:4px;"></div>
+        <button id="pvn-detail-badge" type="button" class="pvn-badge pvn-badge-empty"
+                title="PrionNotes de este artículo">
+          <span aria-hidden="true">🗒️</span>
+        </button>
+      </div>
       <!-- Right: Action buttons -->
       <div style="display:flex;align-items:center;gap:8px;">
         <button id="pv-detail-cart-btn" type="button"
@@ -4413,7 +4428,54 @@
   </div>
 </div>
 
+<!-- ── PrionNotes: floating post-it board ──────────────────────────────
+     Generic entity_type/entity_id board. Reused for both the sidebar's
+     global scratchpad (entity_type='workspace', entity_id='global') and
+     the per-article board opened from the detail modal
+     (entity_type='article'). Distinct pvn- prefix throughout to avoid
+     collision with the existing per-article pp-notes-* / PVNotes system
+     (routes_notes.py), which this does not touch. -->
+<div class="pvn-backdrop" id="pvn-notes-backdrop"></div>
+<div class="pvn-panel" id="pvn-notes-panel" role="dialog" aria-label="PrionNotes">
+  <div class="pvn-header" id="pvn-notes-drag">
+    <div class="pvn-header-left">
+      <span aria-hidden="true">🗒️</span>
+      <span>PrionNotes &mdash; <strong id="pvn-notes-panel-label"></strong></span>
+    </div>
+    <button class="pvn-close" id="pvn-notes-close" title="Cerrar">×</button>
+  </div>
+  <div class="pvn-input-area">
+    <textarea id="pvn-notes-textarea" class="pvn-textarea" rows="3"
+              placeholder="Escribe una nota y pulsa Añadir (o Enter)…"></textarea>
+    <div class="pvn-toolbar">
+      <div id="pvn-notes-colors" class="pvn-color-picker"></div>
+      <button class="pvn-add-btn" id="pvn-notes-add-btn" type="button">+ Añadir</button>
+    </div>
+    <div id="pvn-notes-error" class="pvn-error" style="display:none;"></div>
+  </div>
+  <div id="pvn-notes-grid" class="pvn-grid"></div>
+</div>
+
+<!-- PrionNotes detail modal (rich edit) -->
+<div class="pvn-detail-backdrop" id="pvn-note-detail-backdrop"></div>
+<div class="pvn-detail" id="pvn-note-detail" role="dialog">
+  <div class="pvn-detail-header">
+    <div id="pvn-note-detail-colors" class="pvn-color-picker"></div>
+    <button id="pvn-note-detail-close" title="Cerrar">×</button>
+  </div>
+  <div id="pvn-note-detail-content" class="pvn-detail-content"
+       contenteditable="true" data-placeholder="Escribe tu nota aquí…"></div>
+  <div id="pvn-note-detail-error" class="pvn-error" style="display:none;padding:0 16px;"></div>
+  <div class="pvn-detail-footer">
+    <span id="pvn-note-detail-date" class="pvn-detail-date"></span>
+    <button class="pvn-delete-btn" id="pvn-note-detail-delete" type="button">Eliminar</button>
+    <button class="pvn-save-btn" id="pvn-note-detail-save" type="button">Guardar</button>
+  </div>
+</div>
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/prionnotes.css') }}">
 <script src="{{ url_for('static', filename='js/pp-cart.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pp-import-tray.js') }}"></script>
+<script src="{{ url_for('static', filename='js/prionnotes.js') }}"></script>
 <script src="{{ asset_url('js/prionvault.js') }}"></script>
 {% endblock %}
