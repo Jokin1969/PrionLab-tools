@@ -1,10 +1,9 @@
-"""Notas de Inicio — shared corkboard of sticky notes, Home page only.
+"""Notas de Inicio — shared corkboard of sticky notes, mounted in the
+PrionVault sidebar (between the brand block and the Library nav).
 
-Ported from the PrionAAV Atlas blueprint. Independent from PrionNotes
-(tools/prionvault/services/prionnotes.py) — that system is private notes
-attached to any entity; this one is a shared, multi-board system with
+Ported from the PrionAAV Atlas blueprint. Multi-board system with
 configurable per-note visibility (private / everyone / specific people)
-and per-user "seen" tracking. Do not merge the two.
+and per-user "seen" tracking.
 
 Any logged-in user (admin or reader) can use every endpoint here; per-row
 authorization is enforced in SQL/Python below, not via @admin_required.
@@ -57,6 +56,18 @@ def _visible_where():
         "    SELECT 1 FROM home_nota_usuario hu "
         "    WHERE hu.id_nota = n.id_nota AND hu.id_usuario = CAST(:uid AS uuid))))"
     )
+
+
+def _ensure_default_tablon(s):
+    """Self-heal: guarantee board id=1 ("Notas") exists before any read/write.
+    Belt-and-suspenders alongside the migration's seed insert — if the
+    migration hasn't run yet (or ran before this table existed), notes
+    would otherwise fail with "Tablón no encontrado" on first use."""
+    s.execute(sql_text(
+        "INSERT INTO home_tablon (id_tablon, nombre, autor_id, orden) "
+        "VALUES (1, 'Notas', NULL, 0) ON CONFLICT (id_tablon) DO NOTHING"
+    ))
+    s.commit()
 
 
 def _tablones_rows(s, uid, is_admin):
@@ -151,7 +162,12 @@ def home_tablones_get():
         return err
     s = db.Session()
     try:
+        _ensure_default_tablon(s)
         return jsonify({"tablones": _tablones_rows(s, uid, _is_admin())})
+    except Exception:
+        s.rollback()
+        logger.exception("home_tablones_get failed")
+        return jsonify({"error": "internal"}), 500
     finally:
         s.close()
 
@@ -259,8 +275,13 @@ def home_notas_get():
     id_tablon = request.args.get("id_tablon", type=int)
     s = db.Session()
     try:
+        _ensure_default_tablon(s)
         notas = _notas_rows(s, uid, _is_admin(), id_tablon)
         return jsonify({"notas": notas, "n": len(notas), "nuevas": sum(1 for n in notas if n["nuevo"])})
+    except Exception:
+        s.rollback()
+        logger.exception("home_notas_get failed")
+        return jsonify({"error": "internal"}), 500
     finally:
         s.close()
 
@@ -296,6 +317,7 @@ def home_notas_create():
 
     s = db.Session()
     try:
+        _ensure_default_tablon(s)
         if not s.execute(sql_text(
                 "SELECT 1 FROM home_tablon WHERE id_tablon = :id"), {"id": id_tablon}).first():
             return jsonify({"error": "Tablón no encontrado"}), 400

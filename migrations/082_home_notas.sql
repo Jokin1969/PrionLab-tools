@@ -1,10 +1,11 @@
 -- Notas de Inicio: shared corkboard of draggable/resizable sticky notes,
--- shown only on the Home page. Ported from the PrionAAV Atlas blueprint.
--- Completely independent from PrionNotes (prionnotes_entity_notes, migration
--- 081) — that system is private-per-user notes attached to any entity;
--- this one is a shared multi-board system with configurable per-note
--- visibility (private / everyone / specific people) and per-user "seen"
--- tracking. Do not merge the two.
+-- mounted in the PrionVault sidebar. Ported from the PrionAAV Atlas
+-- blueprint. A multi-board system with configurable per-note visibility
+-- (private / everyone / specific people) and per-user "seen" tracking.
+--
+-- Replaces PrionNotes (prionnotes_entity_notes, migration 081), whose
+-- code (routes/service/JS/CSS) has been removed; its table is left in
+-- place here (not dropped) since it still holds user data.
 
 BEGIN;
 

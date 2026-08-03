@@ -3842,12 +3842,6 @@
         _wireNoteCluster(detailNotesCluster, a);
       }
 
-      // Wire PrionNotes badge (generic post-it board scoped to this article)
-      const pvnDetailBadge = document.getElementById('pvn-detail-badge');
-      if (pvnDetailBadge && window.PVN) {
-        window.PVN.wireBadge(pvnDetailBadge, 'article', a.id);
-      }
-
       // Wire isolation button in detail modal nav bar
       const detailIsolateBtn = document.getElementById('pv-detail-isolate-btn');
       if (detailIsolateBtn) {

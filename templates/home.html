@@ -2,18 +2,10 @@
 
 {% block title %}Home — PrionLab Tools{% endblock %}
 
-{% block head_extra %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
-<link rel="stylesheet" href="{{ url_for('static', filename='css/home_notas.css') }}" />
-{% endblock %}
-
 {% block content %}
-<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-  <div>
-    <h1>PrionLab Tools</h1>
-    <p class="page-subtitle">{{ _('Internal tools for the prion research group') }}</p>
-  </div>
-  <span id="home-notas-icon-mount"></span>
+<div class="page-header">
+  <h1>PrionLab Tools</h1>
+  <p class="page-subtitle">{{ _('Internal tools for the prion research group') }}</p>
 </div>
 
 <section class="tools-section">
@@ -31,8 +23,4 @@
 
   </div>
 </section>
-
-{% if session.get('logged_in') %}
-<script src="{{ url_for('static', filename='js/home_notas.js') }}"></script>
-{% endif %}
 {% endblock %}

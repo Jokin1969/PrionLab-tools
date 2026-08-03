@@ -3,7 +3,8 @@
    autor y una visibilidad (privada / todos / lista de personas). Quien puede
    VER una nota puede EDITARLA — así el autor ve la respuesta del destinatario
    en la misma nota. Solo el autor (o Admin) borra o cambia a quién se
-   comparte. Independiente del sistema PrionNotes (static/js/prionnotes.js).
+   comparte. Vive en el sidebar de PrionVault (entre el bloque de marca y
+   el nav de "Library"), no en la página de Inicio.
 
    Self-contained: no shared el()/api()/toast() helpers exist in this app
    yet, so this file defines its own minimal versions below. */

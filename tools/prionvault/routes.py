@@ -4873,7 +4873,3 @@ from . import routes_notes  # noqa: F401, E402
 
 # Glossary management routes live in their own module.
 from . import routes_glossary  # noqa: F401, E402
-
-# PrionNotes (generic floating post-it board) routes live in their own
-# module. Separate from routes_notes.py's per-article sticky notes.
-from . import routes_prionnotes  # noqa: F401, E402
