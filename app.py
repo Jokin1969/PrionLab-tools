@@ -407,6 +407,9 @@ def create_app() -> Flask:
     from tools.prionread import prionread_bp
     app.register_blueprint(prionread_bp)
 
+    from tools.home_notes import home_notes_bp
+    app.register_blueprint(home_notes_bp)
+
     # PrionVault — opt-out kill switch.
     # Set DISABLE_PRIONVAULT=1 in Railway env vars to skip every
     # PrionVault-related import / registration / migration. Use as a
