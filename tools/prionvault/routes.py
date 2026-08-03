@@ -676,24 +676,14 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         # If there are no PrionPacks at all, "sin PrionPack" matches everything → no filter.
 
     # ── Glossary version filter ────────────────────────────────────────────
+    # "improved" used to mean "went through a retroactive glossary-improve
+    # batch pass" (summary_improvement_log) — that table and workflow are
+    # gone; every summary is generated with the current glossary already,
+    # so only the plain reviewed/not-reviewed distinction still applies.
     if has_glossary is True:
         conditions.append("ai_summary_glossary_version IS NOT NULL")
     elif has_glossary is False:
         conditions.append("ai_summary_glossary_version IS NULL")
-    elif has_glossary == "improved":
-        # Distinct from the boolean above: that just means "has been
-        # reviewed against some glossary version" (with or without
-        # actual changes). This is specifically the articles that came
-        # out of a real (non-dry-run) improvement pass with at least one
-        # change applied — matches exactly what the glossary dashboard's
-        # "Summaries improved" count measures, so clicking through to
-        # that count lands on the same set it counted.
-        conditions.append("""
-            articles.id IN (
-                SELECT DISTINCT article_id FROM summary_improvement_log
-                WHERE changes_count > 0 AND dry_run = FALSE
-            )
-        """)
 
     # Per-user marks: read from prionvault_user_state via _pus join.
     if color_label in _VALID_COLOR_LABELS:

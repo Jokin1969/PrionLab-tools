@@ -104,18 +104,10 @@ def _effective_system_prompt() -> tuple[str, Optional[int]]:
 
     try:
         from . import glossary_manager
-        glossary_context = glossary_manager.get_glossary_context()
+        glossary_block = glossary_manager.prompt_block()
         glossary_version = glossary_manager.get_current_glossary_version()
-
-        if glossary_context:
-            glossary_block = f"\n\nGLOSARIO DE TERMINOLOGÍA:\n{glossary_context}"
     except Exception:
-        # If new glossary system unavailable, try the old one
-        try:
-            from .glossary import glossary_prompt_block
-            glossary_block = glossary_prompt_block()
-        except Exception:
-            pass
+        pass
 
     return _SYSTEM_PROMPT + glossary_block, glossary_version
 

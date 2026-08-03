@@ -265,6 +265,17 @@ def get_glossary_context() -> str:
     return "\n".join(lines)
 
 
+def prompt_block() -> str:
+    """System-prompt fragment injecting the current glossary, or "" if
+    there are no terms yet. Shared by summary generation and both chat
+    services (article + library) so every AI-facing feature obeys the
+    exact same terminology, always the latest version."""
+    context = get_glossary_context()
+    if not context:
+        return ""
+    return f"\n\nGLOSARIO DE TERMINOLOGÍA:\n{context}"
+
+
 def get_all_terms(category: Optional[str] = None) -> list[dict]:
     """List all current glossary terms, optionally filtered by category."""
     eng = _get_engine()
@@ -431,6 +442,58 @@ def update_term(term_en: str, term_es_recommended: str, term_es_avoid: Optional[
     except Exception as e:
         logger.exception(f"Failed to update glossary term {term_en}")
         raise
+
+
+def delete_term(term_en: str) -> bool:
+    """Remove a single term from the glossary.
+
+    Like add_single_term, this rebuilds the full current term set (minus
+    the removed one) and re-imports it under a new version — consistent
+    with the append-only, full-snapshot-per-version model the rest of
+    this module uses, so deleted terms remain visible in the version
+    history rather than being physically erased from past versions.
+    """
+    term_en = (term_en or "").strip().lower()
+    if not term_en:
+        return False
+
+    eng = _get_engine()
+    with eng.connect() as conn:
+        current_version = conn.execute(sql_text(
+            "SELECT MAX(version) FROM prionvault_glossary_terms"
+        )).scalar() or 0
+
+        current_terms = conn.execute(sql_text(
+            """SELECT term_en, term_es_recommended, term_es_avoid, notes, category
+               FROM prionvault_glossary_terms
+               WHERE version = :v"""
+        ), {"v": current_version}).all() if current_version > 0 else []
+
+    remaining = [t for t in current_terms if t[0].lower() != term_en]
+    if len(remaining) == len(current_terms):
+        return False  # term wasn't found in the current version
+
+    if not remaining:
+        # import_glossary() no-ops on an empty list, so handle "delete the
+        # last remaining term" directly instead of going through it.
+        with eng.begin() as conn:
+            conn.execute(sql_text(
+                "DELETE FROM prionvault_glossary_terms WHERE version = :v"
+            ), {"v": current_version})
+        return True
+
+    all_terms = [
+        {
+            "term_en": t[0],
+            "term_es_recommended": t[1],
+            "term_es_avoid": t[2],
+            "notes": t[3],
+            "category": t[4],
+        }
+        for t in remaining
+    ]
+    import_glossary(all_terms)
+    return True
 
 
 def add_single_term(term_en: str, term_es_recommended: str, term_es_avoid: Optional[str] = None,

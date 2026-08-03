@@ -52,7 +52,7 @@
     jcYear: null,        // year of JC presentation
     hasPp: null,         // null = all, true = en algún PrionPack, false = sin pack
     ppId: '',            // specific PrionPack id (e.g. "PRP-001") or ''
-    hasGlossary: null,   // null = all, true = reviewed (any), false = not reviewed, 'improved' = has actual glossary-driven changes
+    hasGlossary: null,   // null = all, true = reviewed (has a glossary version recorded), false = not reviewed
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     indexedStatus:  '',  // '' | 'yes' | 'no'
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
@@ -2609,7 +2609,7 @@
     if (state.hasPp !== null)      params.set('has_pp', state.hasPp ? '1' : '0');
     if (state.ppId)                params.set('pp_id', state.ppId);
     if (state.hasGlossary !== null)
-      params.set('has_glossary', state.hasGlossary === 'improved' ? 'improved' : (state.hasGlossary ? '1' : '0'));
+      params.set('has_glossary', state.hasGlossary ? '1' : '0');
     if (state.abstractStatus)      params.set('abstract_status', state.abstractStatus);
     if (state.indexedStatus)       params.set('indexed_status', state.indexedStatus);
     if (state.searchFields && state.searchFields.length)
@@ -10048,17 +10048,13 @@
     // Wire focus trapping for every modal in the page. Safe / idempotent.
     document.querySelectorAll('.pv-modal').forEach(m => wireModalFocusTrap(m));
 
-    // Apply any incoming ?has_glossary= filter (e.g. from the Glossary
-    // Management dashboard's "Summaries improved" card) BEFORE the
-    // first loadArticles() call below — buildListParams() only reads
-    // from `state`, so without this the query string was silently
-    // ignored and the listing always loaded unfiltered regardless of
-    // what the link asked for.
+    // Apply any incoming ?has_glossary= filter BEFORE the first
+    // loadArticles() call below — buildListParams() only reads from
+    // `state`, so without this the query string was silently ignored.
     {
       const hg = new URLSearchParams(window.location.search).get('has_glossary');
-      if (hg === 'improved') state.hasGlossary = 'improved';
-      else if (hg === '1')   state.hasGlossary = true;
-      else if (hg === '0')   state.hasGlossary = false;
+      if (hg === '1')      state.hasGlossary = true;
+      else if (hg === '0') state.hasGlossary = false;
     }
 
     // Pull the user's previously-ticked checkboxes from the server
@@ -16753,8 +16749,7 @@
     const SAFE_DEFAULT_PREFIXES = ['article', 'evaluations', 'user_articles',
       'prionvault_article', 'prionvault_query_expansion', 'prionvault_collection_article',
       'prionvault_dismissed_duplicates', 'prionvault_user_selection', 'prionvault_user_state',
-      'prionvault_jc_', 'prionvault_scheduled_email', 'summary_correction_detail',
-      'summary_improvement_log', 'citation_references'];
+      'prionvault_jc_', 'prionvault_scheduled_email', 'citation_references'];
     const KNOWN_REGENERABLE = ['article_chunk'];
 
     function openRestoreFlow(filename, knownTables) {
@@ -17515,20 +17510,6 @@
         return html;
       })()) +
 
-      `<div data-glossary-section style="margin-bottom:20px;">
-        <h3 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#9ca3af;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid #f3f4f6;">Glosario y mejora de resúmenes</h3>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px;">
-          <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;">
-            <span style="font-size:21px;font-weight:700;color:#c2410c;line-height:1.1;">...</span>
-            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes sin revisar</span>
-          </div>
-          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;">
-            <span style="font-size:21px;font-weight:700;color:#dc2626;line-height:1.1;">...</span>
-            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes desactualizados</span>
-          </div>
-        </div>
-      </div>` +
-
       section('🔍 Verificación PDF ↔ metadatos', [
         row(2, [card('✗ Mismatches',  d.verify_mismatch, true, {pdf_verify_status:'mismatch'}, 'bad'),
                 card('⚠ Sospechosos', d.verify_suspect,  true, {pdf_verify_status:'suspect'},  'warn')]),
@@ -17618,45 +17599,6 @@
       syncMarkFilterButtons();
       loadArticles();
     };
-
-    // Fetch glossary stats and update health modal
-    (async () => {
-      try {
-        const [statsRes, unrevRes, outdRes] = await Promise.all([
-          fetch('/prionvault/api/admin/summaries/stats'),
-          fetch('/prionvault/api/admin/summaries/unreviewed?limit=1'),
-          fetch('/prionvault/api/admin/summaries/outdated?limit=1'),
-        ]);
-
-        if (!statsRes.ok || !unrevRes.ok || !outdRes.ok) return;
-
-        const stats = await statsRes.json();
-        const unreviewed = await unrevRes.json();
-        const outdated = await outdRes.json();
-
-        const unrevCount = unreviewed.total ?? 0;
-        const outdCount = outdated.total ?? 0;
-
-        // Find and replace glossary section placeholders
-        const glossarySection = body.querySelector('[data-glossary-section]');
-        if (glossarySection) {
-          const unrevCard = `<div onclick="window.location.href='/admin/glossary#summaries'" style="cursor:pointer;" onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'" onmouseleave="this.style.boxShadow='none';this.style.transform=''" class="pv-health-card" style="background:#fff7ed;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;transition:box-shadow 0.15s,transform 0.15s;">
-            <span style="font-size:21px;font-weight:700;color:#c2410c;line-height:1.1;">${unrevCount.toLocaleString()}</span>
-            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes sin revisar</span>
-          </div>`;
-
-          const outdCard = `<div onclick="window.location.href='/admin/glossary#summaries'" style="cursor:pointer;" onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'" onmouseleave="this.style.boxShadow='none';this.style.transform=''" class="pv-health-card" style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;transition:box-shadow 0.15s,transform 0.15s;">
-            <span style="font-size:21px;font-weight:700;color:#dc2626;line-height:1.1;">${outdCount.toLocaleString()}</span>
-            <span style="font-size:11.5px;color:#6b7280;line-height:1.3;">Resúmenes desactualizados</span>
-          </div>`;
-
-          glossarySection.innerHTML = `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px;">${unrevCard}${outdCard}</div>`;
-        }
-      } catch (err) {
-        // Silently fail - health modal still shows placeholder
-        console.debug('Failed to load glossary stats:', err);
-      }
-    })();
 
   };
 

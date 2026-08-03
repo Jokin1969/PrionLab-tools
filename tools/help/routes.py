@@ -974,53 +974,50 @@ _BUILTIN_ARTICLES = {
     },
 
     'prionvault-glossary': {
-        'title_es': 'Glosario de traducción para la IA',
-        'title_en': 'Translation glossary for the AI',
-        'excerpt_es': 'Fija traducciones correctas que la IA debe respetar en resúmenes y chat.',
-        'excerpt_en': 'Pin correct translations the AI must respect in summaries and chat.',
+        'title_es': 'Glosario de terminología para la IA',
+        'title_en': 'Terminology glossary for the AI',
+        'excerpt_es': 'Fija traducciones correctas que la IA respeta siempre en resúmenes y chats.',
+        'excerpt_en': 'Pin correct translations the AI always respects in summaries and chats.',
         'content_es': (
-            '**Glosario de traducción**\n\n'
+            '**Glosario de terminología**\n\n'
             'A veces la IA traduce mal un término. El glosario te permite fijar la '
             'traducción correcta para que la respete siempre. Ejemplo clásico: '
             '_bank vole_ debe ser **topillo rojo**, y nunca «musaraña de banco».\n\n'
 
             '**Dónde está**\n'
-            'En la barra lateral de PrionVault, dentro de **Miscelánea → 🗣 Glosario de '
-            'traducción** (solo administradores).\n\n'
+            'En `/prionvault/admin/glossary` (solo administradores).\n\n'
 
             '**Cómo usarlo**\n'
-            '- Escribe el **término original** (en inglés) y su **traducción correcta**, '
-            'con una nota opcional (por ejemplo, el nombre científico).\n'
-            '- Pulsa **+ Añadir**. Puedes editar, filtrar o eliminar reglas.\n\n'
+            '- Escribe el **término en inglés** y su **traducción recomendada** en español, '
+            'con "evitar", categoría y notas opcionales.\n'
+            '- Pulsa **Añadir**. Puedes editar o eliminar cualquier término directamente en '
+            'la tabla, o importar una lista entera (JSON/CSV/TSV) de una vez.\n\n'
 
             '**Qué garantiza**\n'
-            'Cada regla se inyecta como instrucción obligatoria en la IA, tanto en los '
-            '**resúmenes** (Claude, GPT y Gemini) como en el **chat del artículo**. Así, '
-            'cuando aparezca el término de origen, usará siempre tu traducción.\n\n'
-            '_Nota:_ afecta a lo que se genere a partir de ahora. Los resúmenes ya creados '
-            'con la traducción incorrecta hay que **regenerarlos** para que apliquen el glosario.'
+            'Es un único glosario compartido por **resúmenes IA**, **chat del artículo** y '
+            '**chat de biblioteca** — siempre se usa la versión más reciente, sin excepciones. '
+            'Cada resumen guarda además qué versión del glosario se usó para generarlo (el '
+            'badge 📖 v_N_ en el listado de artículos).'
         ),
         'content_en': (
-            '**Translation glossary**\n\n'
+            '**Terminology glossary**\n\n'
             'Sometimes the AI mistranslates a term. The glossary lets you pin the correct '
             'translation so it always respects it. Classic example: _bank vole_ must be '
             '**topillo rojo** in Spanish, never «musaraña de banco».\n\n'
 
             '**Where it is**\n'
-            'In the PrionVault sidebar, under **Miscellaneous → 🗣 Translation glossary** '
-            '(admins only).\n\n'
+            'At `/prionvault/admin/glossary` (admins only).\n\n'
 
             '**How to use it**\n'
-            '- Enter the **source term** (English) and its **correct translation**, with an '
-            'optional note (e.g. the scientific name).\n'
-            '- Click **+ Add**. You can edit, filter or delete rules.\n\n'
+            '- Enter the **English term** and its **recommended Spanish translation**, with '
+            'an optional "avoid" variant, category and notes.\n'
+            '- Click **Add**. You can edit or delete any term directly in the table, or '
+            'import a whole list (JSON/CSV/TSV) at once.\n\n'
 
             '**What it guarantees**\n'
-            'Each rule is injected as a mandatory instruction into the AI, both in the '
-            '**summaries** (Claude, GPT and Gemini) and in the **article chat**. So whenever '
-            'the source term appears, it will always use your translation.\n\n'
-            '_Note:_ this affects text generated from now on. Summaries already created with '
-            'the wrong translation must be **regenerated** to apply the glossary.'
+            'One glossary shared by **AI summaries**, **article chat** and **library chat** — '
+            'always the latest version, no exceptions. Every summary also records which '
+            'glossary version produced it (the 📖 v_N_ badge in the article list).'
         ),
         'page_context': 'prionvault',
         'difficulty_level': 'intermediate',

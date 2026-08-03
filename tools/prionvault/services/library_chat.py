@@ -350,8 +350,8 @@ def ask(chat_id: str, user_id: str, question: str, provider: Optional[str] = Non
 
     system_prompt = _SYSTEM_PROMPT
     try:
-        from .glossary import glossary_prompt_block
-        system_prompt = _SYSTEM_PROMPT + glossary_prompt_block()
+        from . import glossary_manager
+        system_prompt = _SYSTEM_PROMPT + glossary_manager.prompt_block()
     except Exception:
         pass
 
