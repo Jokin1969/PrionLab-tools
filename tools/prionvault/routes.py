@@ -16,7 +16,7 @@ import mimetypes
 from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
-from flask import jsonify, render_template, request, session, Response, current_app
+from flask import jsonify, render_template, request, session, Response, current_app, redirect
 from sqlalchemy import or_, func, text as sql_text
 from sqlalchemy.exc import IntegrityError, DataError
 
@@ -4611,9 +4611,29 @@ def api_jc_file_view(fid):
     # .key/"keynote" or genuinely unknown "other" file goes straight to
     # the LibreOffice-conversion fallback below).
     if kind in ("pptx", "word", "excel"):
-        temp_link = _jc.temporary_link(fid)
-        if temp_link:
-            viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(temp_link, safe="")
+        # Feed Office Online our own /office-src/<filename> URL (which
+        # 302-redirects to a freshly-minted Dropbox temp link) instead of
+        # the raw Dropbox link directly. Dropbox's files_get_temporary_link
+        # URLs (dl.dropboxusercontent.com/apitl/...) carry no file
+        # extension, and Office Online leans on the URL's extension to
+        # pick its render engine — with none, it can fail silently with
+        # the generic "we can't open this" sad-face instead of an
+        # actionable error. Fetching a fresh link at redirect time (i.e.
+        # when Microsoft's server actually requests it) also sidesteps
+        # any risk of the ~4h-lived link having gone stale between page
+        # load and Office Online's fetch.
+        from config import APP_URL
+        safe_name = re.sub(r'[^A-Za-z0-9._-]', '_', filename) or f"document.{kind}"
+        # Office Online insists on HTTPS and must reach this URL from
+        # Microsoft's own servers — request.url_root would reflect the
+        # reverse proxy's *internal* scheme (often plain http://) rather
+        # than the public https:// one, so this needs the real public
+        # base URL, same as the email-link builders (see APP_URL).
+        base = APP_URL or request.url_root.rstrip('/')
+        office_src = (f"{base}/prionvault/api/jc/files/"
+                      f"{fid}/office-src/{_urlquote(safe_name, safe='')}")
+        if base and _jc.temporary_link(fid):  # cheap existence/availability check before committing to this path
+            viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(office_src, safe="")
             html = (
                 '<!doctype html><html><head><meta charset="utf-8">'
                 f'<title>{esc_name}</title>'
@@ -4648,6 +4668,26 @@ def api_jc_file_view(fid):
         '</div></body></html>'
     )
     return Response(html, mimetype="text/html")
+
+
+@prionvault_bp.route("/api/jc/files/<uuid:fid>/office-src/<path:filename>", methods=["GET"])
+def api_jc_file_office_src(fid, filename):
+    """302-redirect to a fresh Dropbox temporary link for this JC file.
+
+    Deliberately NOT @login_required: this is the URL handed to Microsoft's
+    Office Online viewer (view.officeapps.live.com), which fetches it from
+    Microsoft's own servers with no session cookie to send. `filename` is
+    cosmetic — it only exists so this URL carries a real file extension for
+    Office Online to key its renderer off (see api_jc_file_view) — the
+    lookup itself is by `fid` alone. Exposure is bounded by the same
+    ~4h-lived Dropbox link this already handed straight to the browser
+    before this endpoint existed, plus the fid being an unguessable UUID.
+    """
+    from .services import jc as _jc
+    temp_link = _jc.temporary_link(fid)
+    if not temp_link:
+        return jsonify({"error": "unavailable"}), 502
+    return redirect(temp_link, code=302)
 
 
 @prionvault_bp.route("/api/jc/files/<uuid:fid>/office-pdf", methods=["GET"])
