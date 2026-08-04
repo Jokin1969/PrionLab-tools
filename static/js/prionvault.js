@@ -10055,23 +10055,9 @@
         });
       });
 
-    // Note-filter toggles on Colecciones and Tags headers
-    document.getElementById('btn-notes-filter-collections')?.addEventListener('click', () => {
-      state.hasSummary = state.hasSummary === 'human' ? null : 'human';
-      state.page = 1;
-      loadArticles();
-      _paintNotesFilterBtns();
-    });
-    document.getElementById('btn-notes-filter-tags')?.addEventListener('click', () => {
-      state.hasSummary = state.hasSummary === 'human' ? null : 'human';
-      state.page = 1;
-      loadArticles();
-      _paintNotesFilterBtns();
-    });
-
     function _paintNotesFilterBtns() {
       const active = state.hasSummary === 'human';
-      ['btn-notes-filter-collections', 'btn-notes-filter-tags', 'btn-filter-notes'].forEach(id => {
+      ['btn-filter-notes'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         el.style.background = active ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)';
