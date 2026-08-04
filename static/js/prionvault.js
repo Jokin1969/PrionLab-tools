@@ -775,7 +775,7 @@
                   ? '• Click: filtrar la lista\n' +
                     '• Botón ✏ a la derecha: editar\n' +
                     '• Botón 📦 a la derecha: mandar a un PrionPack\n' +
-                    '• Click derecho: eliminar'
+                    '• Botón 🗑 a la derecha (o click derecho): eliminar'
                   : 'Click para filtrar la lista');
     const miniBtn = (cls, icon, title) => `
       <span class="${cls}" data-collection-id="${esc(c.id)}"
@@ -791,7 +791,9 @@
       ? miniBtn('pv-coll-edit',      'fa-pen',
                 'Editar esta colección') +
         miniBtn('pv-coll-send-pack', 'fa-cubes-stacked',
-                'Enviar todos los artículos de esta colección a un PrionPack')
+                'Enviar todos los artículos de esta colección a un PrionPack') +
+        miniBtn('pv-coll-delete',    'fa-trash',
+                'Eliminar esta colección (los artículos no se borran)')
       : '';
     btn.innerHTML = `
       <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;flex:1;">
@@ -819,14 +821,17 @@
       refreshFilterIndicators();
       loadArticles();
     });
-    btn.addEventListener('contextmenu', ev => {
-      if (!IS_ADMIN) return;
-      ev.preventDefault();
+    function deleteThisCollection() {
       if (!confirm(`Borrar la colección "${c.name}"? (los artículos NO se borran)`)) return;
       api(`/collections/${c.id}`, { method: 'DELETE' })
         .then(() => { if (state.collectionId === c.id) state.collectionId = null;
                       refreshCollections(); loadArticles(); })
         .catch(e => alert('Error: ' + e.message));
+    }
+    btn.addEventListener('contextmenu', ev => {
+      if (!IS_ADMIN) return;
+      ev.preventDefault();
+      deleteThisCollection();
     });
     // Wire the inline admin badges (✏ edit, 📦 send-to-pack). They live
     // inside the row button so we must stopPropagation to keep the
@@ -848,6 +853,13 @@
           if (!ids.length) { alert('Esta colección no tiene artículos.'); return; }
           openBulkPackPicker(ids);
         } catch (e) { alert('No se pudo cargar la colección: ' + e.message); }
+      });
+
+      const deleteBadge = btn.querySelector('.pv-coll-delete');
+      if (deleteBadge) deleteBadge.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        deleteThisCollection();
       });
     }, 0);
     return btn;
@@ -877,6 +889,7 @@
 
   // ── Collection editor modal (create + edit, manual + smart) ────────
   let _collectionEditing = null;   // existing collection id when editing
+  let _collectionEditorOpts = {};  // { onSaved(collection) } — set per-open, e.g. by the BibTeX wizard's "Nueva colección" so it can add its selection to the freshly created collection
   let _activePrionPacks = null;    // cached: [{id, title}] of active packs
 
   async function _ensureActivePrionPacks() {
@@ -933,7 +946,7 @@
     const rulesBox  = document.getElementById('pv-coll-rules');
     const errBox    = document.getElementById('pv-coll-error');
 
-    function close() { modal.style.display = 'none'; _collectionEditing = null; }
+    function close() { modal.style.display = 'none'; _collectionEditing = null; _collectionEditorOpts = {}; }
     closeBtn.addEventListener('click', close);
     cancelBtn.addEventListener('click', close);
     modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
@@ -1010,13 +1023,16 @@
           name, description, color, kind, rules,
           group_name, subgroup_name,
         });
+        let saved;
         if (_collectionEditing) {
-          await api(`/collections/${_collectionEditing}`, { method: 'PATCH', body });
+          saved = await api(`/collections/${_collectionEditing}`, { method: 'PATCH', body });
         } else {
-          await api('/collections', { method: 'POST', body });
+          saved = await api('/collections', { method: 'POST', body });
         }
+        const onSaved = _collectionEditorOpts.onSaved;
         close();
-        refreshCollections();
+        await refreshCollections();
+        if (onSaved) onSaved(saved);
       } catch (e) {
         errBox.style.display = 'block';
         errBox.textContent = 'Error: ' + e.message;
@@ -1026,10 +1042,11 @@
     });
   }
 
-  function openCollectionEditor(existing) {
+  function openCollectionEditor(existing, opts) {
     const modal = document.getElementById('pv-collection-modal');
     if (!modal) return;
     _collectionEditing = existing ? existing.id : null;
+    _collectionEditorOpts = opts || {};
 
     // Reset all fields.
     document.getElementById('pv-coll-name').value = existing?.name || '';
@@ -11400,18 +11417,35 @@
       let collId = collSelect.value;
       if (!collId) { alert('Elige una colección primero.'); return; }
       if (!_selected.size) { alert('Selecciona al menos un artículo encontrado.'); return; }
+      if (collId === '__new__') {
+        // Route through the full collection editor (name, color, group,
+        // subgroup, smart rules) instead of a bare prompt() — a
+        // quick-create with no group was landing collections outside
+        // every folder, flat and out of place next to the sidebar's
+        // properly grouped ones. onSaved adds the current selection to
+        // whatever gets created.
+        const ids = [..._selected];
+        modal.style.display = 'none';
+        openCollectionEditor(null, {
+          onSaved: async (created) => {
+            modal.style.display = 'flex';
+            try {
+              await api(`/collections/${created.id}/articles`, {
+                method: 'POST',
+                body: JSON.stringify({ ids }),
+              });
+              uploadStatus.textContent = `✓ ${ids.length} artículo(s) añadidos a la nueva colección "${created.name}".`;
+              uploadStatus.style.color = '#15803d';
+              refreshPickers();
+            } catch (e) {
+              alert('Error al añadir a la colección: ' + e.message);
+            }
+          },
+        });
+        return;
+      }
       applyCollBtn.disabled = true;
       try {
-        if (collId === '__new__') {
-          const name = prompt('Nombre de la nueva colección:');
-          if (!name || !name.trim()) { applyCollBtn.disabled = false; return; }
-          const created = await api('/collections', {
-            method: 'POST',
-            body: JSON.stringify({ name: name.trim(), kind: 'manual' }),
-          });
-          collId = created.id;
-          await refreshCollections();
-        }
         await api(`/collections/${collId}/articles`, {
           method: 'POST',
           body: JSON.stringify({ ids: [..._selected] }),
