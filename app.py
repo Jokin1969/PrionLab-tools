@@ -143,6 +143,29 @@ def _start_maintenance_scheduler(app: Flask) -> None:
         app.logger.warning("Maintenance scheduler not started: %s", e)
 
 
+def _start_smart_tags_scheduler(app: Flask) -> None:
+    """Periodically re-sync smart tags (PrionVault) so articles added or
+    edited since a tag's last sync eventually get auto-tagged without
+    requiring the operator to hit "resync now" by hand."""
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from tools.prionvault.services.smart_tags import sync_due
+
+        scheduler = BackgroundScheduler(daemon=True, misfire_grace_time=300)
+        scheduler.add_job(
+            lambda: sync_due(interval_minutes=20),
+            trigger='interval',
+            minutes=20,
+            id='prionvault_smart_tags_sync',
+            replace_existing=True,
+        )
+        scheduler.start()
+        app._smart_tags_scheduler = scheduler
+        app.logger.info("Smart tags sync scheduler started (every 20 min)")
+    except Exception as e:
+        app.logger.warning("Smart tags scheduler not started: %s", e)
+
+
 def _start_prionpacks_backup_scheduler(app: Flask) -> None:
     """Periodically back up prionpacks.json to Dropbox if changes are detected."""
     try:
@@ -581,6 +604,14 @@ def create_app() -> Flask:
             _start_prionpacks_backup_scheduler(app)
     except Exception as e:
         app.logger.warning("PrionPacks backup scheduler init failed: %s", e)
+
+    # PrionVault smart tags sync scheduler
+    try:
+        import os as _os
+        if not app.debug or _os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            _start_smart_tags_scheduler(app)
+    except Exception as e:
+        app.logger.warning("Smart tags scheduler init failed: %s", e)
 
     # Background job manager for external API enrichment
     try:

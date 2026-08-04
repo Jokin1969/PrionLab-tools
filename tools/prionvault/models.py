@@ -214,14 +214,22 @@ class ArticleChunk(Base):
 class ArticleTag(Base):
     __tablename__ = "article_tag"
 
-    id          = Column(BigInteger, primary_key=True)
-    name        = Column(String(100), unique=True, nullable=False)
-    color       = Column(String(7))
-    created_by  = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
-    created_at  = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    id              = Column(BigInteger, primary_key=True)
+    name            = Column(String(100), unique=True, nullable=False)
+    color           = Column(String(7))
+    kind            = Column(String(20), default="manual", nullable=False)
+    rules           = Column(JSONB, default=dict, nullable=False)
+    last_synced_at  = Column(DateTime(timezone=True))
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at      = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     def to_dict(self):
-        return {"id": self.id, "name": self.name, "color": self.color}
+        return {
+            "id": self.id, "name": self.name, "color": self.color,
+            "kind": self.kind, "rules": self.rules or {},
+            "last_synced_at": self.last_synced_at.isoformat() if self.last_synced_at else None,
+            "created_by": str(self.created_by) if self.created_by else None,
+        }
 
 
 class ArticleTagLink(Base):
@@ -233,8 +241,10 @@ class ArticleTagLink(Base):
     tag_id     = Column(BigInteger,
                         ForeignKey("article_tag.id", ondelete="CASCADE"),
                         primary_key=True)
-    added_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    added_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+                        primary_key=True)
     added_at   = Column(DateTime(timezone=True), default=datetime.utcnow)
+    is_auto    = Column(Boolean, default=False, nullable=False)
 
 
 # ── Annotations ──────────────────────────────────────────────────────────────

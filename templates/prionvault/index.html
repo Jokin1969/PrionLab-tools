@@ -448,6 +448,11 @@
                        color:white;border:none;cursor:pointer;font-size:12px;line-height:1;
                        display:flex;align-items:center;justify-content:center;"
                 title="Create tag">+</button>
+        <button class="pv-admin-only" id="btn-new-smart-tag"
+                style="width:17px;height:17px;border-radius:50%;background:rgba(245,158,11,0.28);
+                       color:#fbbf24;border:none;cursor:pointer;font-size:10px;line-height:1;
+                       display:flex;align-items:center;justify-content:center;"
+                title="Nueva tag inteligente — se asigna sola según reglas"><i class="fas fa-bolt"></i></button>
       </div>
       <div id="tag-list"></div>
 
@@ -3827,12 +3832,47 @@
         </label>
       </div>
 
-      <label style="display:block;font-size:11.5px;color:#6b7280;">
-        Revista contiene
-        <input id="pv-r-journal" type="text"
-               style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
-                      font-size:12.5px;margin-top:2px;outline:none;">
-      </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          Revista contiene
+          <input id="pv-r-journal" type="text"
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Fuente de ingesta
+          <input id="pv-r-source" type="text" placeholder="pubmed, manual, dropbox..."
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          PDF
+          <select id="pv-r-has-pdf" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Con PDF</option>
+            <option value="0">Sin PDF</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          DOI
+          <select id="pv-r-has-doi" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Con DOI</option>
+            <option value="0">Sin DOI</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          PMID
+          <select id="pv-r-has-pmid" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Con PMID</option>
+            <option value="0">Sin PMID</option>
+          </select>
+        </label>
+      </div>
     </fieldset>
 
     <div id="pv-coll-error" style="display:none;font-size:12px;color:#b91c1c;
@@ -3844,6 +3884,151 @@
               style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;
                      font-size:13px;color:#374151;cursor:pointer;">Cancelar</button>
       <button id="pv-coll-save"
+              style="padding:7px 18px;border-radius:8px;border:none;background:#0F3460;
+                     color:white;font-size:13px;font-weight:600;cursor:pointer;">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Smart tag editor ─────────────────────────────────────────────── -->
+<div id="pv-tag-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:640px;">
+    <button class="pv-modal-close" id="pv-tag-close" aria-label="Close">×</button>
+    <h2 id="pv-tag-title" style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-bolt" style="color:#d97706;margin-right:8px;"></i>Nueva tag inteligente
+    </h2>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+      Se asigna sola a los artículos que cumplan estas reglas (AND entre los campos) — se
+      resincroniza al guardar y cada 20 min. Es tuya: solo tú ves los artículos que marca.
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+      <label style="font-size:12px;color:#6b7280;">
+        Nombre
+        <input id="pv-tag-name" type="text" maxlength="100"
+               style="width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                      font-size:13px;margin-top:3px;outline:none;">
+      </label>
+      <label style="font-size:12px;color:#6b7280;">
+        Color
+        <select id="pv-tag-color"
+                style="width:100%;padding:6px 9px;border:1px solid #d1d5db;border-radius:6px;
+                       font-size:13px;margin-top:3px;background:white;">
+          <option value="">(sin color)</option>
+          <option value="#ef4444">Rojo</option>
+          <option value="#fb923c">Naranja</option>
+          <option value="#f59e0b">Amarillo</option>
+          <option value="#22c55e">Verde</option>
+          <option value="#3b82f6">Azul</option>
+          <option value="#a855f7">Morado</option>
+          <option value="#ec4899">Rosa</option>
+          <option value="#06b6d4">Cian</option>
+          <option value="#6b7280">Gris</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;
+                     background:#fafafa;margin-bottom:14px;">
+      <legend style="font-size:11px;color:#6b7280;text-transform:uppercase;
+                     letter-spacing:0.05em;font-weight:600;padding:0 6px;">
+        Reglas (AND entre los campos)
+      </legend>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          Búsqueda libre (FTS)
+          <input id="pv-tr-q" type="text" placeholder="prion OR PrPSc..."
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Autores contiene
+          <input id="pv-tr-authors" type="text" placeholder="Castilla, Soto..."
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          Revista contiene
+          <input id="pv-tr-journal" type="text"
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Año ≥
+          <input id="pv-tr-year-min" type="number" min="1900" max="2100"
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Año ≤
+          <input id="pv-tr-year-max" type="number" min="1900" max="2100"
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          Resumen IA
+          <select id="pv-tr-has-summary" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="ai">Con resumen</option>
+            <option value="none">Sin resumen</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          Fuente de ingesta
+          <input id="pv-tr-source" type="text" placeholder="pubmed, manual, dropbox..."
+                 style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
+                        font-size:12.5px;margin-top:2px;outline:none;">
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <label style="font-size:11.5px;color:#6b7280;">
+          PDF
+          <select id="pv-tr-has-pdf" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Con PDF</option>
+            <option value="0">Sin PDF</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          DOI
+          <select id="pv-tr-has-doi" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Con DOI</option>
+            <option value="0">Sin DOI</option>
+          </select>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280;">
+          PMID
+          <select id="pv-tr-has-pmid" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;margin-top:2px;background:white;">
+            <option value="">cualquiera</option>
+            <option value="1">Con PMID</option>
+            <option value="0">Sin PMID</option>
+          </select>
+        </label>
+      </div>
+    </fieldset>
+
+    <div id="pv-tag-error" style="display:none;font-size:12px;color:#b91c1c;
+                                   background:#fef2f2;border-radius:7px;padding:8px 10px;
+                                   margin-bottom:10px;border:1px solid #fecaca;"></div>
+    <div id="pv-tag-sync-status" style="display:none;font-size:12px;color:#166534;
+                                   background:#ecfdf5;border-radius:7px;padding:8px 10px;
+                                   margin-bottom:10px;border:1px solid #bbf7d0;"></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button id="pv-tag-cancel"
+              style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;
+                     font-size:13px;color:#374151;cursor:pointer;">Cancelar</button>
+      <button id="pv-tag-save"
               style="padding:7px 18px;border-radius:8px;border:none;background:#0F3460;
                      color:white;font-size:13px;font-weight:600;cursor:pointer;">Guardar</button>
     </div>

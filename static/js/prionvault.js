@@ -981,10 +981,17 @@
         grab('pv-r-priority',     'priority_eq', v => parseInt(v, 10));
         grab('pv-r-color',        'color_label');
         grab('pv-r-has-summary',  'has_summary');
+        grab('pv-r-source',       'source');
         const fl = g('pv-r-is-flagged').value;
         if (fl !== '')   rules.is_flagged   = fl === '1';
         const mi = g('pv-r-is-milestone').value;
         if (mi !== '')   rules.is_milestone = mi === '1';
+        const hp = g('pv-r-has-pdf').value;
+        if (hp !== '')   rules.has_pdf  = hp === '1';
+        const hd = g('pv-r-has-doi').value;
+        if (hd !== '')   rules.has_doi  = hd === '1';
+        const hpm = g('pv-r-has-pmid').value;
+        if (hpm !== '')  rules.has_pmid = hpm === '1';
       }
 
       const group_name    = document.getElementById('pv-coll-group').value.trim() || null;
@@ -1061,10 +1068,17 @@
     document.getElementById('pv-r-priority').value = rules.priority_eq ?? '';
     document.getElementById('pv-r-color').value = rules.color_label || '';
     document.getElementById('pv-r-has-summary').value = rules.has_summary || '';
+    document.getElementById('pv-r-source').value = rules.source || '';
     document.getElementById('pv-r-is-flagged').value =
       rules.is_flagged === true ? '1' : (rules.is_flagged === false ? '0' : '');
     document.getElementById('pv-r-is-milestone').value =
       rules.is_milestone === true ? '1' : (rules.is_milestone === false ? '0' : '');
+    document.getElementById('pv-r-has-pdf').value =
+      rules.has_pdf === true ? '1' : (rules.has_pdf === false ? '0' : '');
+    document.getElementById('pv-r-has-doi').value =
+      rules.has_doi === true ? '1' : (rules.has_doi === false ? '0' : '');
+    document.getElementById('pv-r-has-pmid').value =
+      rules.has_pmid === true ? '1' : (rules.has_pmid === false ? '0' : '');
 
     document.getElementById('pv-coll-error').style.display = 'none';
     document.getElementById('pv-coll-title').innerHTML =
@@ -1871,33 +1885,56 @@
     });
   }
 
+  let _allTags = [];
+
   async function refreshTags() {
     try {
       const tags = await api('/tags');
+      _allTags = tags;
       const container = document.getElementById('tag-list');
       const countSpan = document.getElementById('tag-count');
       container.innerHTML = '';
       if (countSpan) countSpan.textContent = tags.length > 0 ? `(${tags.length})` : '';
       tags.forEach(t => {
+        const isSmart = t.kind === 'smart';
+        const canManage = IS_ADMIN || t.is_mine;
         const btn = document.createElement('button');
         btn.className = 'pv-nav-btn pv-tag-row';
         btn.dataset.tagId = t.id;
-        btn.title = IS_ADMIN
-          ? '• Click: filtrar la lista\n• Botón ✏ a la derecha: renombrar\n• Click derecho: borrar este tag'
-          : 'Click para filtrar la lista';
-        const editBtn = IS_ADMIN ? `
-          <span class="pv-tag-edit" data-tag-id="${esc(t.id)}"
-                title="Renombrar este tag"
-                style="display:inline-flex;align-items:center;justify-content:center;
-                       padding:2px 5px;border-radius:5px;cursor:pointer;
-                       background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
-                       margin-left:4px;flex-shrink:0;line-height:1;"
-                onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
-                onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
-          ><i class="fas fa-pen" style="font-size:10px;"></i></span>` : '';
+        const titleLines = ['• Click: filtrar la lista'];
+        if (isSmart) titleLines.push('• Se asigna sola según reglas' + (t.last_synced_at ? ` (última sync: ${new Date(t.last_synced_at).toLocaleString('es-ES')})` : ''));
+        if (canManage) titleLines.push(isSmart ? '• Botón ⚡ a la derecha: editar reglas / resincronizar' : '• Botón ✏ a la derecha: renombrar');
+        if (IS_ADMIN) titleLines.push('• Click derecho: borrar este tag');
+        btn.title = titleLines.join('\n');
+
+        let editBtn = '';
+        if (canManage && isSmart) {
+          editBtn = `
+            <span class="pv-tag-edit" data-tag-id="${esc(t.id)}" title="Editar reglas de esta tag inteligente"
+                  style="display:inline-flex;align-items:center;justify-content:center;
+                         padding:2px 5px;border-radius:5px;cursor:pointer;
+                         background:rgba(245,158,11,0.18);color:#fbbf24;
+                         margin-left:4px;flex-shrink:0;line-height:1;"
+                  onmouseover="this.style.background='rgba(245,158,11,0.32)';"
+                  onmouseout="this.style.background='rgba(245,158,11,0.18)';"
+            ><i class="fas fa-bolt" style="font-size:10px;"></i></span>`;
+        } else if (IS_ADMIN) {
+          editBtn = `
+            <span class="pv-tag-edit" data-tag-id="${esc(t.id)}" title="Renombrar este tag"
+                  style="display:inline-flex;align-items:center;justify-content:center;
+                         padding:2px 5px;border-radius:5px;cursor:pointer;
+                         background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
+                         margin-left:4px;flex-shrink:0;line-height:1;"
+                  onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
+                  onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
+            ><i class="fas fa-pen" style="font-size:10px;"></i></span>`;
+        }
+        const dot = isSmart
+          ? '<i class="fas fa-bolt" style="font-size:8px;flex-shrink:0;color:' + esc(t.color || '#fbbf24') + '"></i>'
+          : `<span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${esc(t.color || '#9ca3af')}"></span>`;
         btn.innerHTML = `
           <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;">
-            <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${esc(t.color || '#9ca3af')}"></span>
+            ${dot}
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</span>
           </span>
           <span style="display:inline-flex;align-items:center;flex-shrink:0;">
@@ -1919,6 +1956,7 @@
           editEl.addEventListener('click', (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
+            if (isSmart) { openTagModal(t); return; }
             const newName = (prompt('Nuevo nombre para el tag:', t.name) || '').trim();
             if (!newName || newName === t.name) return;
             api(`/tags/${t.id}`, { method: 'PUT', body: JSON.stringify({ name: newName, color: t.color }) })
@@ -1940,6 +1978,133 @@
       highlightActiveTag();
       refreshFilterIndicators();
     } catch (e) { console.error(e); }
+  }
+
+  // ── Smart tag editor modal ─────────────────────────────────────────────
+  let _tagEditing = null;
+
+  function wireTagModal() {
+    const modal = document.getElementById('pv-tag-modal');
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = '1';
+
+    const closeBtn  = document.getElementById('pv-tag-close');
+    const cancelBtn = document.getElementById('pv-tag-cancel');
+    const saveBtn   = document.getElementById('pv-tag-save');
+    const errBox    = document.getElementById('pv-tag-error');
+    const syncBox   = document.getElementById('pv-tag-sync-status');
+
+    function close() { modal.style.display = 'none'; _tagEditing = null; }
+    closeBtn.addEventListener('click', close);
+    cancelBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    saveBtn.addEventListener('click', async () => {
+      errBox.style.display = 'none';
+      syncBox.style.display = 'none';
+      const name = document.getElementById('pv-tag-name').value.trim();
+      if (!name) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'El nombre es obligatorio.';
+        return;
+      }
+      const color = document.getElementById('pv-tag-color').value || null;
+
+      const rules = {};
+      const g = id => document.getElementById(id);
+      const grab = (id, key, parser = v => v) => {
+        const v = (g(id)?.value || '').trim();
+        if (v !== '') rules[key] = parser(v);
+      };
+      grab('pv-tr-q',           'q');
+      grab('pv-tr-authors',     'authors');
+      grab('pv-tr-journal',     'journal');
+      grab('pv-tr-year-min',    'year_min', v => parseInt(v, 10));
+      grab('pv-tr-year-max',    'year_max', v => parseInt(v, 10));
+      grab('pv-tr-has-summary', 'has_summary');
+      grab('pv-tr-source',      'source');
+      const hp = g('pv-tr-has-pdf').value;
+      if (hp !== '')  rules.has_pdf  = hp === '1';
+      const hd = g('pv-tr-has-doi').value;
+      if (hd !== '')  rules.has_doi  = hd === '1';
+      const hpm = g('pv-tr-has-pmid').value;
+      if (hpm !== '') rules.has_pmid = hpm === '1';
+
+      saveBtn.disabled = true;
+      const original = saveBtn.textContent;
+      saveBtn.textContent = 'Guardando…';
+      try {
+        let sync;
+        if (_tagEditing) {
+          // Rename/recolor (if changed) then rules — two calls, but the
+          // rename endpoint is admin-only while rules can be edited by
+          // the tag's own creator, so they stay genuinely separate.
+          if (IS_ADMIN && (name !== _tagEditing.name || color !== _tagEditing.color)) {
+            await api(`/tags/${_tagEditing.id}`, { method: 'PUT', body: JSON.stringify({ name, color }) });
+          }
+          const r = await api(`/tags/${_tagEditing.id}/rules`, { method: 'PUT', body: JSON.stringify({ rules }) });
+          sync = r.sync;
+        } else {
+          const r = await api('/tags', { method: 'POST', body: JSON.stringify({ name, color, kind: 'smart', rules }) });
+          sync = r.sync;
+        }
+        if (sync) {
+          syncBox.style.display = 'block';
+          syncBox.textContent = `✓ Sincronizada: ${sync.matched} artículo${sync.matched === 1 ? '' : 's'} coinciden ahora mismo.`;
+        }
+        refreshTags();
+        setTimeout(close, sync ? 900 : 0);
+      } catch (e) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'Error: ' + (e.message || e);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = original;
+      }
+    });
+  }
+
+  function openTagModal(existing) {
+    wireTagModal();
+    const modal = document.getElementById('pv-tag-modal');
+    if (!modal) return;
+    _tagEditing = existing || null;
+
+    document.getElementById('pv-tag-name').value  = existing?.name  || '';
+    document.getElementById('pv-tag-color').value = existing?.color || '';
+
+    const rules = existing?.rules || {};
+    document.getElementById('pv-tr-q').value = rules.q || '';
+    document.getElementById('pv-tr-authors').value = rules.authors || '';
+    document.getElementById('pv-tr-journal').value = rules.journal || '';
+    document.getElementById('pv-tr-year-min').value = rules.year_min ?? '';
+    document.getElementById('pv-tr-year-max').value = rules.year_max ?? '';
+    document.getElementById('pv-tr-has-summary').value = rules.has_summary || '';
+    document.getElementById('pv-tr-source').value = rules.source || '';
+    document.getElementById('pv-tr-has-pdf').value =
+      rules.has_pdf === true ? '1' : (rules.has_pdf === false ? '0' : '');
+    document.getElementById('pv-tr-has-doi').value =
+      rules.has_doi === true ? '1' : (rules.has_doi === false ? '0' : '');
+    document.getElementById('pv-tr-has-pmid').value =
+      rules.has_pmid === true ? '1' : (rules.has_pmid === false ? '0' : '');
+
+    document.getElementById('pv-tag-error').style.display = 'none';
+    document.getElementById('pv-tag-sync-status').style.display = 'none';
+    document.getElementById('pv-tag-title').innerHTML =
+      `<i class="fas fa-bolt" style="color:#d97706;margin-right:8px;"></i>` +
+      (existing ? `Editar “${esc(existing.name)}”` : 'Nueva tag inteligente');
+    const sb = document.getElementById('pv-tag-save');
+    sb.disabled = false;
+    sb.textContent = existing ? 'Guardar cambios' : 'Crear tag';
+
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('pv-tag-name').focus(), 30);
+  }
+
+  function wireNewSmartTagButton() {
+    const btn = document.getElementById('btn-new-smart-tag');
+    if (!btn) return;
+    btn.addEventListener('click', () => openTagModal(null));
   }
 
   function highlightActiveTag() {
@@ -8761,7 +8926,10 @@
         if (!confirm(`¿Vaciar el carrito? Se quitarán los ${items.length} artículo${items.length === 1 ? '' : 's'}.`)) return;
         window.PPCart?.clear();
         _selected.clear();
-        render();
+        // An emptied cart has no way to dismiss itself otherwise (no
+        // "close" affordance once the list is blank) — close the panel
+        // instead of leaving a permanently-empty sidebar open.
+        close();
       });
       $('pv-cart-select-all')?.addEventListener('change', (e) => {
         const items = window.PPCart?.getAll() || [];
@@ -10065,6 +10233,7 @@
 
     refreshStats();
     wireNewTagButton();
+    wireNewSmartTagButton();
     refreshTags();
     wireNewCollectionButton();
     refreshCollections();
