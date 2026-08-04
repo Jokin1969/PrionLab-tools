@@ -19608,6 +19608,22 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
+          <h4>📥 Importar BibTeX (.bib) ${NEW}</h4>
+          <p>Nuevo botón <strong>"Importar BibTeX (.bib)"</strong> en <em>Entrada de artículos</em>. Sube un archivo <code>.bib</code> (de Zotero, EndNote, Google Scholar, o exportado desde el propio PrionVault) y cada entrada se compara con tu biblioteca por DOI, luego PMID y por último título:</p>
+          <ul>
+            <li><strong>Las que ya tienes:</strong> aparecen con checkbox — selecciona varias y, en un solo clic, añádeles una <strong>tag</strong> o mételas en una <strong>colección</strong> (existente o nueva, creada ahí mismo con el mismo editor completo de colecciones: nombre, color, grupo, subgrupo).</li>
+            <li><strong>Las que no encuentra:</strong> botón "Buscar" por fila que abre el flujo habitual de "Add by DOI / PMID", con navegación Anterior/Siguiente para recorrerlas todas seguidas sin tener que volver a abrir cada una a mano; si la entrada no trae DOI/PMID, se precargan título/autores/año/revista para completar rápido.</li>
+          </ul>
+
+          <h4>⚡ Tags inteligentes ${NEW}</h4>
+          <p>Además de las tags normales, ahora existen <strong>tags inteligentes</strong> (icono de rayo ⚡): se asignan solas a los artículos que cumplen unos criterios que tú defines (autores, revista, años, si tiene PDF/DOI/PMID, si tiene resumen IA, fuente…), igual que las colecciones inteligentes. A diferencia de las colecciones, se materializan de verdad (se guardan como si las hubieras puesto a mano) porque las tags se muestran en cada fila del listado — se re-sincronizan automáticamente cada 20 minutos, o al momento con el botón de resincronizar. Créalas con el botón ⚡ junto a "+ Tags" en el menú lateral.</p>
+
+          <h4>🗂️ Colecciones: borrar más fácil y sin puntitos ${NEW}</h4>
+          <p>Cada colección del menú lateral tiene ahora un icono 🗑 junto a ✏ y 📦 para eliminarla directamente (antes solo se podía con clic derecho, poco descubrible). Para borrar un grupo entero con todas sus colecciones, pasa el ratón por la cabecera del grupo y aparece una ✕. También se ha quitado el punto de color que aparecía delante del nombre de cada colección — ahora solo queda el icono de carpeta o de rayo (si es inteligente).</p>
+
+          <h4>🖥️ Visor de presentaciones de Journal Club, con fidelidad total ${NEW}</h4>
+          <p>Las presentaciones PowerPoint/Word/Excel de Journal Club se abren ahora con el visor oficial de <strong>Microsoft Office Online</strong> — se ve exactamente igual que en PowerPoint/Word, con animaciones y transiciones incluidas. Ver la pestaña <em>"Journal Club"</em> de esta ayuda para el detalle.</p>
+
           <h4>🔎 Búsqueda separada de la IA, botones Y/O, y mucho más rápida ${NEW}</h4>
           <ul>
             <li><strong>Búsqueda con IA en su propio modal:</strong> ya no comparte campo con la búsqueda estándar. El icono 🤖 junto a la barra abre un modal con un cuadro de texto grande y los tres modelos por nombre (Claude Sonnet 4.6, GPT-4.1, Gemini 2.5 Pro) para elegir antes de preguntar.</li>
@@ -19882,7 +19898,7 @@
           <p>Al pulsar sobre un archivo adjunto se abre en una pestaña nueva, siempre <strong>dentro del navegador</strong>, nunca como descarga:</p>
           <ul>
             <li><strong>PDF e imágenes:</strong> se muestran directamente.</li>
-            <li><strong>PowerPoint / Word / Excel:</strong> se convierten a PDF en el servidor la primera vez que se abren (unos segundos) y se muestran igual que un PDF; las siguientes veces son instantáneas porque el resultado queda guardado. Si por lo que sea la conversión falla, aparece un botón para descargar el original y, si Dropbox lo permite, otro para abrirlo con el visor de Office Online.</li>
+            <li><strong>PowerPoint / Word / Excel:</strong> se abren con el visor oficial de <strong>Microsoft Office Online</strong>, con fidelidad completa — animaciones, transiciones y modo presentador incluidos, sin conversión ni espera. Si el visor de Microsoft no está disponible (Dropbox no configurado, o un formato que no soporta como Keynote), cae de vuelta a una conversión a PDF hecha en el servidor la primera vez que se abre el archivo (las siguientes son instantáneas).</li>
           </ul>
 
           <h4>Aviso de presentación ya existente ${NEW}</h4>
