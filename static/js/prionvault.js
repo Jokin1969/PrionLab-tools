@@ -764,7 +764,7 @@
 
   function buildCollectionRow(c, indented) {
     const btn = document.createElement('button');
-    btn.className = 'pv-nav-btn';
+    btn.className = 'pv-nav-btn pv-coll-row';
     btn.dataset.collectionId = c.id;
     if (indented) btn.style.paddingLeft = '34px';
     const kindIcon = c.kind === 'smart'
@@ -1883,16 +1883,30 @@
         btn.className = 'pv-nav-btn';
         btn.dataset.tagId = t.id;
         btn.title = IS_ADMIN
-          ? '• Click: filtrar la lista\n• Click derecho: borrar este tag'
+          ? '• Click: filtrar la lista\n• Botón ✏ a la derecha: renombrar\n• Click derecho: borrar este tag'
           : 'Click para filtrar la lista';
+        const editBtn = IS_ADMIN ? `
+          <span class="pv-tag-edit" data-tag-id="${esc(t.id)}"
+                title="Renombrar este tag"
+                style="display:inline-flex;align-items:center;justify-content:center;
+                       padding:2px 5px;border-radius:5px;cursor:pointer;
+                       background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);
+                       margin-left:4px;flex-shrink:0;line-height:1;"
+                onmouseover="this.style.background='rgba(255,255,255,0.22)';this.style.color='white';"
+                onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)';"
+          ><i class="fas fa-pen" style="font-size:10px;"></i></span>` : '';
         btn.innerHTML = `
           <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;">
             <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${esc(t.color || '#9ca3af')}"></span>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</span>
           </span>
-          <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${t.count}</span>
+          <span style="display:inline-flex;align-items:center;flex-shrink:0;">
+            <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;">${t.count}</span>
+            ${editBtn}
+          </span>
         `;
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (ev) => {
+          if (ev.target.closest('.pv-tag-edit')) return;
           state.tagId = state.tagId === t.id ? null : t.id;
           clearMarkFilters();
           state.page = 1;
@@ -1900,6 +1914,18 @@
           highlightActiveTag();
           refreshFilterIndicators();
         });
+        const editEl = btn.querySelector('.pv-tag-edit');
+        if (editEl) {
+          editEl.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const newName = (prompt('Nuevo nombre para el tag:', t.name) || '').trim();
+            if (!newName || newName === t.name) return;
+            api(`/tags/${t.id}`, { method: 'PUT', body: JSON.stringify({ name: newName, color: t.color }) })
+              .then(() => refreshTags())
+              .catch(e => alert('Error al renombrar: ' + (e.message || e)));
+          });
+        }
         btn.addEventListener('contextmenu', ev => {
           if (!IS_ADMIN) return;
           ev.preventDefault();

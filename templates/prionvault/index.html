@@ -22,6 +22,9 @@
   }
   .pv-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: white; }
   .pv-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  /* Collection rows read slightly larger than the base nav size; tag
+     rows keep the base size so they never exceed it. */
+  .pv-nav-btn.pv-coll-row { font-size: 15px; }
 
   /* Collapsible sidebar group (uses <details>/<summary>). */
   .pv-sidebar-group > summary { list-style: none; }

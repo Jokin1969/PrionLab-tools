@@ -1691,6 +1691,41 @@ def api_delete_tag(tag_id):
         s.close()
 
 
+@prionvault_bp.route("/api/tags/<int:tag_id>", methods=["PUT"])
+@admin_required
+def api_rename_tag(tag_id):
+    """Rename a tag (and/or recolor it) in place — same row, same id,
+    so every article_tag_link row (and therefore every article's tag
+    assignment) is untouched. Distinct from delete+recreate, which
+    would sever every existing assignment."""
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get("name") or "").strip()
+    color = (data.get("color") or "").strip() or None
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    s = _session()
+    try:
+        t = s.get(models.ArticleTag, tag_id)
+        if not t:
+            return jsonify({"error": "not_found"}), 404
+        existing = s.execute(sql_text(
+            "SELECT id FROM article_tag WHERE lower(name) = lower(:n) AND id != :tid"
+        ), {"n": name, "tid": tag_id}).first()
+        if existing:
+            return jsonify({"error": "duplicate_name",
+                            "detail": f'Ya existe un tag llamado "{name}".'}), 409
+        t.name = name
+        t.color = color
+        s.commit()
+        return jsonify(t.to_dict())
+    except Exception as e:
+        s.rollback()
+        logger.exception("api_rename_tag failed")
+        return jsonify({"error": "internal_error", "detail": str(e)[:300]}), 500
+    finally:
+        s.close()
+
+
 @prionvault_bp.route("/api/tags", methods=["POST"])
 @login_required
 def api_create_tag():
