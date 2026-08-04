@@ -4633,15 +4633,20 @@ def api_jc_file_view(fid):
         office_src = (f"{base}/prionvault/api/jc/files/"
                       f"{fid}/office-src/{_urlquote(safe_name, safe='')}")
         if base and _jc.temporary_link(fid):  # cheap existence/availability check before committing to this path
-            viewer_src = "https://view.officeapps.live.com/op/embed.aspx?src=" + _urlquote(office_src, safe="")
-            html = (
-                '<!doctype html><html><head><meta charset="utf-8">'
-                f'<title>{esc_name}</title>'
-                '<style>html,body{margin:0;height:100%;background:#222;}'
-                'iframe{border:none;width:100%;height:100%;display:block;}</style></head>'
-                f'<body><iframe src="{viewer_src}" allowfullscreen></iframe></body></html>'
-            )
-            return Response(html, mimetype="text/html")
+            # view.aspx + a real browser navigation, NOT embed.aspx inside
+            # an <iframe>: Office Online's public viewer refuses to render
+            # inside a frame from an origin it doesn't recognise (this is
+            # exactly why our address bar stayed on our own domain while
+            # the sad face showed — the iframe's request was being
+            # rejected before it ever got to render anything). A working
+            # reference implementation elsewhere confirmed the tab has to
+            # actually navigate to view.officeapps.live.com — its address
+            # bar shows the Microsoft URL, not the embedding site's.
+            # /view is already opened via window.open(..., '_blank') by
+            # the frontend, so redirecting that tab straight to Microsoft
+            # reproduces the same navigation.
+            viewer_src = "https://view.officeapps.live.com/op/view.aspx?src=" + _urlquote(office_src, safe="")
+            return redirect(viewer_src, code=302)
 
     # Fallback path — Office Online unavailable (Dropbox not configured,
     # temp-link request failed) or a format it can't render (keynote,
