@@ -104,16 +104,28 @@ def _visible_where():
     )
 
 
+_DEFAULT_TABLON_CHECKED = False
+
+
 def _ensure_default_tablon(s):
     """Self-heal: guarantee board id=1 ("Notas") exists before any read/write.
     Belt-and-suspenders alongside the migration's seed insert — if the
     migration hasn't run yet (or ran before this table existed), notes
-    would otherwise fail with "Tablón no encontrado" on first use."""
+    would otherwise fail with "Tablón no encontrado" on first use.
+
+    Cached per-process after the first successful check: this used to run
+    on every single GET (an extra write+commit round trip on the hot path
+    that shows the board), when in steady state it's a no-op every time.
+    """
+    global _DEFAULT_TABLON_CHECKED
+    if _DEFAULT_TABLON_CHECKED:
+        return
     s.execute(sql_text(
         "INSERT INTO home_tablon (id_tablon, nombre, autor_id, orden) "
         "VALUES (1, 'Notas', NULL, 0) ON CONFLICT (id_tablon) DO NOTHING"
     ))
     s.commit()
+    _DEFAULT_TABLON_CHECKED = True
 
 
 def _tablones_rows(s, uid, is_admin):

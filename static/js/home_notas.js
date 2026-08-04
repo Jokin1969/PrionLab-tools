@@ -396,8 +396,11 @@
     panelResizeHandle.addEventListener('pointerup', _endPanelResize);
     panelResizeHandle.addEventListener('pointercancel', _endPanelResize);
 
+    // Fired in parallel with the tablones/notas load below, not awaited
+    // yet — the user directory is only needed once a note card is built
+    // (share modal), so it must not block getting the tablones on screen.
+    const usersPromise = api('/home-notas/usuarios').then(d => d.usuarios || []).catch(() => []);
     let users = [];
-    try { users = (await api('/home-notas/usuarios')).usuarios || []; } catch (_) { /* noop */ }
 
     let tablones = [];
     async function _loadTablones() {
@@ -408,6 +411,7 @@
       canvas.appendChild(el('p', { class: 'hn-help', text: 'No se pudieron cargar los tablones.' }));
       return;
     }
+    users = await usersPromise;
 
     const remembered = lsGet('tablon_activo');
     let activeId = tablones.some(t => String(t.id_tablon) === remembered) ? Number(remembered) : tablones[0].id_tablon;
