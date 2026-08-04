@@ -18120,6 +18120,12 @@
     const ids = _visibleIds();
     if (!ids.length) { alert('No hay referencias visibles.'); return; }
 
+    if (!confirm(`Vas a exportar ${ids.length.toLocaleString()} artículo${ids.length === 1 ? '' : 's'} ` +
+                 `en formato BibTeX (.bib), para importar en el asistente de Publicaciones del CVN ` +
+                 `Editor de FECYT.\n\n¿Continuar?`)) {
+      return;
+    }
+
     _bibtexBtn.disabled  = true;
     const orig           = _bibtexBtn.innerHTML;
     _bibtexBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…';
