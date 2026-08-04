@@ -3402,8 +3402,8 @@
     // ── Pages cell ───────────────────────────────────────────────────────
     const pagesCell = a.pdf_pages
       ? `<td style="padding:8px 8px;vertical-align:middle;text-align:center;font-size:12px;color:#374151;">
-           <span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:5px;
-                        background:#f3f4f6;font-variant-numeric:tabular-nums;">📄 ${a.pdf_pages}</span>
+           <span style="display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px 6px;border-radius:5px;
+                        background:#f3f4f6;font-variant-numeric:tabular-nums;line-height:1.1;">📄<span>${a.pdf_pages}</span></span>
          </td>`
       : `<td style="padding:8px 8px;vertical-align:middle;text-align:center;color:#d1d5db;font-size:12px;">—</td>`;
 
