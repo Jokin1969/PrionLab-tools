@@ -18112,6 +18112,48 @@
     }
   }
 
+  // ── BibTeX export (for import into the FECYT CVN Editor) ──────────────
+
+  let _bibtexBtn = null;
+
+  async function _doExportBibtex() {
+    const ids = _visibleIds();
+    if (!ids.length) { alert('No hay referencias visibles.'); return; }
+
+    _bibtexBtn.disabled  = true;
+    const orig           = _bibtexBtn.innerHTML;
+    _bibtexBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…';
+
+    try {
+      const res = await fetch('/prionvault/api/articles/export-refs-bibtex', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ article_ids: ids }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        alert('Error al exportar: ' + (err.error || res.statusText));
+        return;
+      }
+      const blob  = await res.blob();
+      const url   = URL.createObjectURL(blob);
+      const a     = document.createElement('a');
+      const ts    = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      a.href      = url;
+      a.download  = `Referencias_${ts}.bib`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      _close();
+    } catch (e) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      _bibtexBtn.disabled  = false;
+      _bibtexBtn.innerHTML = orig;
+    }
+  }
+
   // ── Gobierno Vasco export ─────────────────────────────────────────────
 
   let _govascoAbort = null;   // AbortController while a doc is generating
@@ -18244,6 +18286,7 @@
     _optionsBody  = _el('pv-er-options-body');
     _optionsEmpty = _el('pv-er-options-empty');
     _exportBtn    = _el('pv-er-export');
+    _bibtexBtn    = _el('pv-er-export-bibtex');
     _markedInput  = _el('pv-er-marked-author');
     _showLabels   = _el('pv-er-show-labels');
     _showType     = _el('pv-er-show-type');
@@ -18257,6 +18300,7 @@
     _el('pv-export-refs-backdrop')?.addEventListener('click', _close);
     _exportBtn                    ?.addEventListener('click', _doExport);
     _el('pv-er-export-govasco')   ?.addEventListener('click', _openGovascoModal);
+    _bibtexBtn                    ?.addEventListener('click', _doExportBibtex);
     _el('pv-govasco-close')       ?.addEventListener('click', _closeGovascoModal);
     _el('pv-govasco-cancel')      ?.addEventListener('click', _closeGovascoModal);
     _el('pv-govasco-modal')?.querySelector('.pv-modal-backdrop')

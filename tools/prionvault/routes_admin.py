@@ -1806,6 +1806,74 @@ def api_export_refs_docx():
         db.Session.remove()
 
 
+# ── Export references as .bib (BibTeX) ────────────────────────────────────
+# Target format for importing into the FECYT CVN Editor's "Importar
+# publicaciones" wizard, which accepts BibTeX as a source format (CVN's
+# own XML schema isn't publicly documented).
+
+@prionvault_bp.route("/api/articles/export-refs-bibtex", methods=["POST"])
+@login_required
+def api_export_refs_bibtex():
+    """Generate a .bib file from a list of article IDs.
+
+    Body JSON: { "article_ids": [...uuid...] }
+    The order of article_ids determines the order of entries.
+    """
+    from .bibtex_exporter import generate_bibtex
+
+    data = request.get_json(silent=True) or {}
+    article_ids = data.get('article_ids') or []
+
+    if not article_ids:
+        return jsonify({'error': 'article_ids required'}), 400
+
+    _MAX_REFS = 2000
+    if len(article_ids) > _MAX_REFS:
+        return jsonify({
+            'error': f'Demasiadas referencias ({len(article_ids)}). El máximo por '
+                     f'archivo es {_MAX_REFS}. Filtra o selecciona antes de exportar.'
+        }), 413
+
+    s = _session()
+    try:
+        rows = (
+            s.query(models.PrionVaultArticle)
+             .filter(models.PrionVaultArticle.id.in_(article_ids))
+             .all()
+        )
+        by_id = {str(r.id): r for r in rows}
+        ordered = [by_id[str(aid)] for aid in article_ids if str(aid) in by_id]
+
+        articles = [
+            {
+                'id':              str(a.id),
+                'title':           a.title or '',
+                'authors':         a.authors or '',
+                'year':            a.year,
+                'journal':         a.journal or '',
+                'doi':             a.doi or '',
+                'pubmed_id':       a.pubmed_id or '',
+                'source_metadata': a.source_metadata or {},
+            }
+            for a in ordered
+        ]
+
+        bib_text = generate_bibtex(articles)
+
+        filename = f'Referencias_{datetime.now().strftime("%Y%m%d")}.bib'
+        return Response(
+            bib_text,
+            mimetype='application/x-bibtex',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+    except Exception as exc:
+        s.rollback()
+        current_app.logger.exception('export-refs-bibtex failed')
+        return jsonify({'error': str(exc)}), 500
+    finally:
+        db.Session.remove()
+
+
 
 
 
