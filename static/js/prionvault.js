@@ -797,7 +797,6 @@
       : '';
     btn.innerHTML = `
       <span style="display:inline-flex;align-items:center;gap:7px;min-width:0;overflow:hidden;flex:1;">
-        <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${esc(c.color || '#9ca3af')}"></span>
         ${kindIcon}
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</span>
       </span>
