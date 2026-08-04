@@ -480,6 +480,10 @@
           <button class="pv-nav-btn pv-admin-only" id="btn-add-by-doi">
             <span><i class="fas fa-plus" style="width:13px;margin-right:6px;opacity:0.7;"></i>Add by DOI / PMID</span>
           </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-import-bibtex"
+                  title="Sube un .bib y compáralo con tu biblioteca: qué tienes, qué falta, y añade lo que tienes a tags/colecciones de golpe.">
+            <span><i class="fas fa-file-import" style="width:13px;margin-right:6px;opacity:0.7;"></i>Importar BibTeX (.bib)</span>
+          </button>
           <button class="pv-nav-btn pv-admin-only" id="btn-import-pdfs">
             <span><i class="fas fa-upload" style="width:13px;margin-right:6px;opacity:0.7;"></i>Import PDFs</span>
           </button>
@@ -3340,6 +3344,92 @@
               style="padding:8px 14px;border-radius:7px;border:none;background:#15803d;color:white;font-size:12.5px;font-weight:600;cursor:pointer;">
         ➕ Importar todos los que faltan
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── BibTeX import wizard ─────────────────────────────────────────
+     Drop a .bib file (Zotero, EndNote, Google Scholar, or PrionVault's
+     own export). Every entry is matched against the library by DOI,
+     then PMID, then normalised title. Matches can be bulk-tagged /
+     added to a collection (new or existing); misses are pushed one by
+     one through the existing Add-by-DOI queue-nav flow. -->
+<div id="pv-bibtex-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:920px;">
+    <button class="pv-modal-close" id="pv-bibtex-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-file-import" style="color:#0F3460;margin-right:8px;"></i>Importar BibTeX (.bib)
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin-bottom:12px;">
+      Sube un archivo <code>.bib</code>. Cada entrada se compara con tu biblioteca
+      (por DOI, PMID o título). Las que ya tengas podrás seleccionarlas y añadirles
+      tags o meterlas en una colección (nueva o existente); las que falten podrás
+      localizarlas una a una, igual que en "Add by DOI / PMID".
+    </p>
+
+    <div id="pv-bibtex-upload-wrap" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <input type="file" id="pv-bibtex-file" accept=".bib,.bibtex,text/plain"
+             style="font-size:12.5px;">
+      <button id="pv-bibtex-analyze" type="button"
+              style="padding:8px 16px;border-radius:8px;border:none;background:#0F3460;color:white;font-size:13px;font-weight:600;cursor:pointer;">
+        Analizar
+      </button>
+      <span id="pv-bibtex-upload-status" style="font-size:12px;color:#6b7280;"></span>
+    </div>
+
+    <!-- Counters strip (shown after analysis). -->
+    <div id="pv-bibtex-stats"
+         style="display:none;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+                gap:8px;margin-bottom:10px;"></div>
+
+    <!-- Bulk action bar — only meaningful once there's at least one match. -->
+    <div id="pv-bibtex-bulk-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;
+                margin-bottom:10px;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;
+                border-radius:8px;">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#1e3a8a;cursor:pointer;">
+        <input type="checkbox" id="pv-bibtex-select-all" style="margin:0;">
+        Seleccionar todos los encontrados
+      </label>
+      <span id="pv-bibtex-selected-count" style="font-size:11.5px;color:#3730a3;font-weight:600;"></span>
+
+      <select id="pv-bibtex-tag-select"
+              style="margin-left:auto;padding:5px 8px;border-radius:6px;border:1px solid #bfdbfe;font-size:12px;">
+        <option value="">Añadir tag…</option>
+      </select>
+      <button id="pv-bibtex-apply-tag" type="button"
+              style="padding:5px 10px;border-radius:6px;border:1px solid #0F3460;background:white;color:#0F3460;font-size:12px;font-weight:600;cursor:pointer;">
+        + Tag
+      </button>
+
+      <select id="pv-bibtex-coll-select"
+              style="padding:5px 8px;border-radius:6px;border:1px solid #bfdbfe;font-size:12px;">
+        <option value="">Añadir a colección…</option>
+        <option value="__new__">＋ Nueva colección…</option>
+      </select>
+      <button id="pv-bibtex-apply-coll" type="button"
+              style="padding:5px 10px;border-radius:6px;border:1px solid #0F3460;background:white;color:#0F3460;font-size:12px;font-weight:600;cursor:pointer;">
+        + Colección
+      </button>
+    </div>
+
+    <!-- Results — two sections, populated after analysis. -->
+    <div id="pv-bibtex-found-section" style="display:none;margin-bottom:12px;">
+      <h3 style="margin:0 0 6px;font-size:12.5px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.03em;">
+        ✓ Ya en la biblioteca
+      </h3>
+      <div id="pv-bibtex-found-list"
+           style="max-height:28vh;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;
+                  background:#fafafa;padding:6px;"></div>
+    </div>
+
+    <div id="pv-bibtex-missing-section" style="display:none;">
+      <h3 style="margin:0 0 6px;font-size:12.5px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:0.03em;">
+        ✗ No encontrados
+      </h3>
+      <div id="pv-bibtex-missing-list"
+           style="max-height:28vh;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;
+                  background:#fafafa;padding:6px;"></div>
     </div>
   </div>
 </div>

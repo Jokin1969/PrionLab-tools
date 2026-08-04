@@ -10104,6 +10104,7 @@
       wireImport();
       wireQueue();
       wireAddByDoi();
+      wireBibtexImport();
       wireJcManageButton();
       wireEditModal();
       wireBatchImport();
@@ -10985,7 +10986,23 @@
         }
       }
       if (webLink) {
-        webLink.href = 'https://scholar.google.com/scholar?q=' + encodeURIComponent(identifier || '');
+        webLink.href = 'https://scholar.google.com/scholar?q=' +
+          encodeURIComponent(identifier || (_addOpts.prefill && _addOpts.prefill.title) || '');
+      }
+      // BibTeX-import misses without a DOI/PMID have nothing to look up —
+      // skip the auto-lookup (it would just show "pega un DOI/PMID válido")
+      // and drop the parsed title/authors/year straight into the manual
+      // form instead, so the operator only has to search-and-paste a DOI.
+      if (!identifier && _addOpts.prefill) {
+        const p = _addOpts.prefill;
+        fTitle.value   = p.title   || '';
+        fAuthors.value = p.authors || '';
+        fYear.value    = p.year    || '';
+        fJournal.value = p.journal || '';
+        form.style.display = 'block';
+        statusEl.textContent = 'Sin DOI/PMID en el .bib — revisa/completa a mano o pega un identificador arriba.';
+        statusEl.style.color = '#b45309';
+        return;
       }
       setTimeout(doLookup, 80);
     };
@@ -11143,6 +11160,270 @@
           statusEl.style.color = '#b91c1c';
         }
         btnSave.disabled = false;
+      }
+    });
+  }
+
+  // ── BibTeX import wizard ─────────────────────────────────────────────
+  function wireBibtexImport() {
+    const btn      = document.getElementById('btn-import-bibtex');
+    const modal    = document.getElementById('pv-bibtex-modal');
+    if (!btn || !modal) return;
+
+    const closeBtn   = document.getElementById('pv-bibtex-close');
+    const fileInput  = document.getElementById('pv-bibtex-file');
+    const analyzeBtn = document.getElementById('pv-bibtex-analyze');
+    const uploadStatus = document.getElementById('pv-bibtex-upload-status');
+    const statsEl    = document.getElementById('pv-bibtex-stats');
+    const bulkBar    = document.getElementById('pv-bibtex-bulk-bar');
+    const selectAll  = document.getElementById('pv-bibtex-select-all');
+    const selCountEl = document.getElementById('pv-bibtex-selected-count');
+    const tagSelect  = document.getElementById('pv-bibtex-tag-select');
+    const applyTagBtn = document.getElementById('pv-bibtex-apply-tag');
+    const collSelect = document.getElementById('pv-bibtex-coll-select');
+    const applyCollBtn = document.getElementById('pv-bibtex-apply-coll');
+    const foundSection = document.getElementById('pv-bibtex-found-section');
+    const foundList  = document.getElementById('pv-bibtex-found-list');
+    const missingSection = document.getElementById('pv-bibtex-missing-section');
+    const missingList = document.getElementById('pv-bibtex-missing-list');
+
+    let _entries = [];
+    const _selected = new Set(); // matched article ids currently checked
+
+    function reset() {
+      fileInput.value = '';
+      uploadStatus.textContent = '';
+      statsEl.style.display = 'none';
+      bulkBar.style.display = 'none';
+      foundSection.style.display = 'none';
+      missingSection.style.display = 'none';
+      foundList.innerHTML = '';
+      missingList.innerHTML = '';
+      _entries = [];
+      _selected.clear();
+      if (selectAll) selectAll.checked = false;
+    }
+    function open()  { reset(); modal.style.display = 'flex'; }
+    function close() { modal.style.display = 'none'; }
+
+    btn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click', close);
+
+    function statCard(label, value, color) {
+      return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
+                <div style="font-size:10.5px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">${esc(label)}</div>
+                <div style="font-size:18px;font-weight:700;color:${color || '#111827'};font-variant-numeric:tabular-nums;">${esc(value)}</div>
+              </div>`;
+    }
+
+    function updateSelCount() {
+      selCountEl.textContent = _selected.size
+        ? `${_selected.size} seleccionado${_selected.size === 1 ? '' : 's'}`
+        : '';
+    }
+
+    function refreshPickers() {
+      tagSelect.innerHTML = '<option value="">Añadir tag…</option>' +
+        _allTags.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+      collSelect.innerHTML = '<option value="">Añadir a colección…</option>' +
+        _allCollections.filter(c => c.kind !== 'smart')
+          .map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('') +
+        '<option value="__new__">＋ Nueva colección…</option>';
+    }
+
+    function foundRowHtml(e) {
+      const meta = [e.authors ? e.authors.split(';')[0] : '', e.year, e.journal].filter(Boolean).join(' · ');
+      return `
+        <div class="pv-bibtex-found-row" data-aid="${esc(e.match.id)}"
+             style="display:flex;align-items:flex-start;gap:8px;padding:6px;border-radius:6px;cursor:pointer;">
+          <input type="checkbox" class="pv-bibtex-found-chk" data-aid="${esc(e.match.id)}" style="margin-top:2px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:500;color:#374151;">${esc(e.match.title || e.title)}</div>
+            <div style="font-size:11px;color:#9ca3af;">${esc(meta)}</div>
+          </div>
+        </div>`;
+    }
+
+    function missingRowHtml(e, idx) {
+      const meta = [e.authors ? e.authors.split(';')[0] : '', e.year, e.journal].filter(Boolean).join(' · ');
+      const idLine = [e.doi ? `DOI: ${esc(e.doi)}` : '', e.pubmed_id ? `PMID: ${esc(e.pubmed_id)}` : '']
+        .filter(Boolean).join(' · ');
+      return `
+        <div class="pv-bibtex-missing-row" data-idx="${idx}"
+             style="display:flex;align-items:flex-start;gap:8px;padding:6px;border-radius:6px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:500;color:#374151;">${esc(e.title || '(sin título)')}</div>
+            <div style="font-size:11px;color:#9ca3af;">${esc(meta)}</div>
+            ${idLine ? `<div style="font-size:11px;color:#9ca3af;">${idLine}</div>` : ''}
+          </div>
+          <button class="pv-bibtex-locate" data-idx="${idx}" type="button"
+                  style="flex-shrink:0;padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
+                         background:white;color:#374151;font-size:11.5px;font-weight:600;cursor:pointer;">
+            Buscar
+          </button>
+        </div>`;
+    }
+
+    function render() {
+      const found   = _entries.filter(e => e.match);
+      const missing = _entries.filter(e => !e.match);
+
+      statsEl.style.display = 'grid';
+      statsEl.innerHTML =
+        statCard('Entradas', _entries.length) +
+        statCard('Ya en la biblioteca', found.length, '#15803d') +
+        statCard('No encontradas', missing.length, '#b45309');
+
+      bulkBar.style.display = found.length ? 'flex' : 'none';
+      refreshPickers();
+
+      foundSection.style.display = found.length ? 'block' : 'none';
+      foundList.innerHTML = found.length
+        ? found.map(foundRowHtml).join('')
+        : '';
+
+      missingSection.style.display = missing.length ? 'block' : 'none';
+      missingList.innerHTML = missing.length
+        ? missing.map((e) => missingRowHtml(e, _entries.indexOf(e))).join('')
+        : '';
+
+      foundList.querySelectorAll('.pv-bibtex-found-chk').forEach(chk => {
+        chk.addEventListener('change', () => {
+          if (chk.checked) _selected.add(chk.dataset.aid);
+          else _selected.delete(chk.dataset.aid);
+          updateSelCount();
+        });
+      });
+      foundList.querySelectorAll('.pv-bibtex-found-row').forEach(row => {
+        row.addEventListener('click', e => {
+          if (e.target.matches('input[type=checkbox]')) return;
+          modal.style.display = 'none';
+          openDetail(row.dataset.aid);
+        });
+      });
+      missingList.querySelectorAll('.pv-bibtex-locate').forEach(b => {
+        b.addEventListener('click', e => {
+          e.stopPropagation();
+          openMissingQueue(parseInt(b.dataset.idx, 10));
+        });
+      });
+      updateSelCount();
+    }
+
+    selectAll.addEventListener('change', () => {
+      _selected.clear();
+      foundList.querySelectorAll('.pv-bibtex-found-chk').forEach(chk => {
+        chk.checked = selectAll.checked;
+        if (selectAll.checked) _selected.add(chk.dataset.aid);
+      });
+      updateSelCount();
+    });
+
+    // Push the missing entries through the existing Add-by-DOI queue-nav
+    // flow, prefilling title/authors/year/journal when there's no
+    // DOI/PMID to auto-resolve. Marking each entry's row as imported
+    // once saved, without a full re-analysis of the file.
+    function openMissingQueue(startIdx) {
+      const missingIdxs = _entries.map((e, i) => (!e.match ? i : -1)).filter(i => i >= 0);
+      let pos = missingIdxs.indexOf(startIdx);
+      if (pos < 0) pos = 0;
+      function openAt(p) {
+        if (p < 0 || p >= missingIdxs.length) { modal.style.display = 'flex'; return; }
+        pos = p;
+        const idx = missingIdxs[pos];
+        const e = _entries[idx];
+        const identifier = e.doi || e.pubmed_id || '';
+        modal.style.display = 'none';
+        window._pvOpenAddByDoi(identifier, {
+          queueLabel: `Entrada ${pos + 1} de ${missingIdxs.length} no encontradas`,
+          prefill: { title: e.title, authors: e.authors, year: e.year, journal: e.journal },
+          onSaved: () => { e.match = { id: null, title: e.title, year: e.year }; openAt(pos + 1); },
+          nav: {
+            index: pos, total: missingIdxs.length,
+            onPrev: () => openAt(pos - 1),
+            onNext: () => openAt(pos + 1),
+          },
+        });
+      }
+      openAt(pos);
+    }
+
+    analyzeBtn.addEventListener('click', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) { uploadStatus.textContent = 'Elige primero un archivo .bib.'; uploadStatus.style.color = '#b91c1c'; return; }
+      analyzeBtn.disabled = true;
+      uploadStatus.textContent = 'Analizando…';
+      uploadStatus.style.color = '#6b7280';
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(API + '/bibtex/import-parse', {
+          method: 'POST', credentials: 'same-origin', body: fd,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+        _entries = data.entries || [];
+        _selected.clear();
+        uploadStatus.textContent = `✓ ${data.total} entradas · ${data.found} ya en biblioteca · ${data.missing} no encontradas`;
+        uploadStatus.style.color = '#15803d';
+        render();
+      } catch (e) {
+        uploadStatus.textContent = 'Error: ' + e.message;
+        uploadStatus.style.color = '#b91c1c';
+      } finally {
+        analyzeBtn.disabled = false;
+      }
+    });
+
+    applyTagBtn.addEventListener('click', async () => {
+      const tagId = tagSelect.value;
+      if (!tagId) { alert('Elige una tag primero.'); return; }
+      if (!_selected.size) { alert('Selecciona al menos un artículo encontrado.'); return; }
+      applyTagBtn.disabled = true;
+      try {
+        await api('/articles/bulk-tags', {
+          method: 'POST',
+          body: JSON.stringify({ ids: [..._selected], add_tag_ids: [parseInt(tagId, 10)] }),
+        });
+        uploadStatus.textContent = `✓ Tag añadida a ${_selected.size} artículo(s).`;
+        uploadStatus.style.color = '#15803d';
+        tagSelect.value = '';
+      } catch (e) {
+        alert('Error al añadir la tag: ' + e.message);
+      } finally {
+        applyTagBtn.disabled = false;
+      }
+    });
+
+    applyCollBtn.addEventListener('click', async () => {
+      let collId = collSelect.value;
+      if (!collId) { alert('Elige una colección primero.'); return; }
+      if (!_selected.size) { alert('Selecciona al menos un artículo encontrado.'); return; }
+      applyCollBtn.disabled = true;
+      try {
+        if (collId === '__new__') {
+          const name = prompt('Nombre de la nueva colección:');
+          if (!name || !name.trim()) { applyCollBtn.disabled = false; return; }
+          const created = await api('/collections', {
+            method: 'POST',
+            body: JSON.stringify({ name: name.trim(), kind: 'manual' }),
+          });
+          collId = created.id;
+          await refreshCollections();
+        }
+        await api(`/collections/${collId}/articles`, {
+          method: 'POST',
+          body: JSON.stringify({ ids: [..._selected] }),
+        });
+        uploadStatus.textContent = `✓ ${_selected.size} artículo(s) añadidos a la colección.`;
+        uploadStatus.style.color = '#15803d';
+        refreshPickers();
+        collSelect.value = '';
+      } catch (e) {
+        alert('Error al añadir a la colección: ' + e.message);
+      } finally {
+        applyCollBtn.disabled = false;
       }
     });
   }

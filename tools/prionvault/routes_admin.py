@@ -2212,3 +2212,106 @@ def glossary_page():
     """Serve the glossary management interface."""
     return render_template("admin/glossary.html")
 
+
+
+# ── BibTeX import wizard ──────────────────────────────────────────────────
+# Lets an admin drop a .bib file (from Zotero, EndNote, Google Scholar, or
+# PrionVault's own export) and instantly see which entries are already in
+# the library vs. which are missing — then bulk-tag/collection the ones we
+# have, and locate the missing ones via the normal DOI/PMID resolver.
+_BIBTEX_IMPORT_MAX_ENTRIES = 500
+
+
+def _normalise_title_sql(col: str) -> str:
+    """SQL snippet: lowercase, strip everything but letters/digits, for a
+    forgiving exact-title match (BibTeX exports vary wildly in
+    punctuation/casing but rarely reword a title)."""
+    return f"regexp_replace(lower({col}), '[^a-z0-9]', '', 'g')"
+
+
+@prionvault_bp.route("/api/bibtex/import-parse", methods=["POST"])
+@admin_required
+def api_bibtex_import_parse():
+    """Multipart upload: `file` (.bib). Parses every entry and reports,
+    for each one, whether a matching article already exists in the
+    library (by DOI, then PMID, then normalised title).
+
+    Returns: {"entries": [{index, title, authors, year, journal, doi,
+    pubmed_id, match: {id, title, year} | null}, ...]}
+    """
+    from .bibtex_importer import parse_bibtex
+
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "no_file", "detail": "Adjunta un archivo .bib."}), 400
+    try:
+        raw = f.read()
+        content = raw.decode("utf-8-sig", errors="replace")
+    except Exception as exc:
+        return jsonify({"error": "read_failed", "detail": str(exc)[:200]}), 400
+
+    try:
+        parsed = parse_bibtex(content)
+    except Exception as exc:
+        logger.exception("bibtex parse failed")
+        return jsonify({"error": "parse_failed", "detail": str(exc)[:300]}), 400
+
+    if not parsed:
+        return jsonify({"error": "empty",
+                        "detail": "No se han encontrado entradas BibTeX válidas en el archivo."}), 400
+    if len(parsed) > _BIBTEX_IMPORT_MAX_ENTRIES:
+        return jsonify({"error": "too_many",
+                        "detail": f"Máximo {_BIBTEX_IMPORT_MAX_ENTRIES} entradas por archivo "
+                                  f"(el archivo tiene {len(parsed)})."}), 400
+
+    s = _session()
+    try:
+        title_expr = _normalise_title_sql("title")
+        entries = []
+        for i, e in enumerate(parsed):
+            match = None
+            if e["doi"]:
+                row = s.execute(sql_text(
+                    "SELECT id, title, year FROM articles WHERE lower(doi) = :d LIMIT 1"
+                ), {"d": e["doi"].lower()}).first()
+                if row:
+                    match = row
+            if not match and e["pubmed_id"]:
+                row = s.execute(sql_text(
+                    "SELECT id, title, year FROM articles WHERE pubmed_id = :p LIMIT 1"
+                ), {"p": e["pubmed_id"]}).first()
+                if row:
+                    match = row
+            if not match and e["title"]:
+                row = s.execute(sql_text(
+                    f"SELECT id, title, year FROM articles WHERE {title_expr} = :t LIMIT 1"
+                ), {"t": re.sub(r"[^a-z0-9]", "", e["title"].lower())}).first()
+                if row:
+                    match = row
+
+            entries.append({
+                "index":     i,
+                "cite_key":  e["cite_key"],
+                "title":     e["title"],
+                "authors":   e["authors"],
+                "year":      e["year"],
+                "journal":   e["journal"],
+                "doi":       e["doi"],
+                "pubmed_id": e["pubmed_id"],
+                "match": {
+                    "id":    str(match[0]),
+                    "title": match[1],
+                    "year":  match[2],
+                } if match else None,
+            })
+
+        found = sum(1 for e in entries if e["match"])
+        return jsonify({
+            "ok": True,
+            "total": len(entries),
+            "found": found,
+            "missing": len(entries) - found,
+            "entries": entries,
+        })
+    finally:
+        s.close()
