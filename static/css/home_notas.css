@@ -38,6 +38,11 @@
 #home-notas-icon-mount .hn-icon-btn:hover { background: rgba(245, 158, 11, .22); }
 #home-notas-icon-mount .hn-icon-btn.has-notes { border-color: rgba(245, 158, 11, .5); background: rgba(245, 158, 11, .2); color: #fbbf24; }
 #home-notas-icon-mount .hn-icon-btn.has-nuevas { border-color: #fca5a5; background: rgba(220, 38, 38, .18); color: #fca5a5; }
+/* Sidebar badge: plain number, no circular background. */
+#home-notas-icon-mount .hn-badge {
+  background: none; border: none; padding: 0; color: #fbbf24;
+}
+#home-notas-icon-mount .hn-icon-btn.has-nuevas .hn-badge { color: #fca5a5; }
 .hn-icon-btn.has-nuevas .hn-badge { background: #dc2626; }
 
 .hn-modal-overlay {

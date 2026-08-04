@@ -1880,7 +1880,7 @@
       if (countSpan) countSpan.textContent = tags.length > 0 ? `(${tags.length})` : '';
       tags.forEach(t => {
         const btn = document.createElement('button');
-        btn.className = 'pv-nav-btn';
+        btn.className = 'pv-nav-btn pv-tag-row';
         btn.dataset.tagId = t.id;
         btn.title = IS_ADMIN
           ? '• Click: filtrar la lista\n• Botón ✏ a la derecha: renombrar\n• Click derecho: borrar este tag'

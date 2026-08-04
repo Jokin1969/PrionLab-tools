@@ -25,6 +25,7 @@
   /* Collection rows read slightly larger than the base nav size; tag
      rows keep the base size so they never exceed it. */
   .pv-nav-btn.pv-coll-row { font-size: 15px; }
+  .pv-nav-btn.pv-tag-row { font-size: 12px; }
 
   /* Collapsible sidebar group (uses <details>/<summary>). */
   .pv-sidebar-group > summary { list-style: none; }
@@ -365,17 +366,13 @@
           <line x1="3.5" y1="3.5" x2="16.5" y2="16.5" stroke="white" stroke-width="1.1"/>
           <line x1="16.5" y1="3.5" x2="3.5" y2="16.5" stroke="white" stroke-width="1.1"/>
         </svg>
-        <div>
+        <div style="flex:1;min-width:0;">
           <div style="font-weight:700;font-size:14px;color:white;line-height:1.2;">PrionVault</div>
           <div style="font-size:10px;color:rgba(255,255,255,0.45);line-height:1.3;">Prion-research library</div>
         </div>
+        <!-- Notas de Inicio: shared multi-board sticky-notes system entry icon. -->
+        <span id="home-notas-icon-mount" style="flex-shrink:0;"></span>
       </div>
-    </div>
-
-    <!-- Notas de Inicio: shared multi-board sticky-notes system, entry
-         icon centered between the Brand block and the Library nav. -->
-    <div style="display:flex;justify-content:center;padding:10px 0;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.1);">
-      <span id="home-notas-icon-mount"></span>
     </div>
 
     <!-- Nav -->
