@@ -592,6 +592,15 @@
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
+      ${IS_ADMIN ? `<span class="pv-coll-rename"
+            data-group="${esc(group)}"
+            title="Renombrar este grupo"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   width:18px;height:18px;border-radius:4px;flex-shrink:0;margin-left:2px;
+                   color:rgba(255,255,255,0.35);cursor:pointer;visibility:hidden;"
+            onmouseover="this.style.background='rgba(255,255,255,0.18)';this.style.color='white';"
+            onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.35)';"
+      ><i class="fas fa-pen" style="font-size:9px;"></i></span>` : ''}
       ${IS_ADMIN ? `<span class="pv-coll-del"
             data-group="${esc(group)}"
             title="Borrar este grupo y todas sus colecciones (${collCount})"
@@ -602,13 +611,17 @@
             onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.35)';"
       ><i class="fas fa-times" style="font-size:10px;"></i></span>` : ''}
     `;
-    // Reveal the × on hover of the row.
+    // Reveal the ✏/× on hover of the row.
     if (IS_ADMIN) {
       btn.addEventListener('mouseenter', () => {
+        const pen = btn.querySelector('.pv-coll-rename');
+        if (pen) pen.style.visibility = 'visible';
         const x = btn.querySelector('.pv-coll-del');
         if (x) x.style.visibility = 'visible';
       });
       btn.addEventListener('mouseleave', () => {
+        const pen = btn.querySelector('.pv-coll-rename');
+        if (pen) pen.style.visibility = 'hidden';
         const x = btn.querySelector('.pv-coll-del');
         if (x) x.style.visibility = 'hidden';
       });
@@ -619,6 +632,13 @@
         ev.preventDefault();
         _toggleCollapsed(_COLL_GROUPS_KEY, group);
         renderCollectionTree();
+        return;
+      }
+      // ✏ renames the whole group (admin only).
+      if (ev.target.closest('.pv-coll-rename')) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        _renameCollectionGroup({ group, subgroup: null });
         return;
       }
       // × wipes the whole group (admin only).
@@ -677,6 +697,35 @@
     }
   }
 
+  // Admin: rename a group (or one subgroup within it) in one shot —
+  // updates every collection under it, wired to the ✏ that shows on
+  // hover next to group / subgroup headers.
+  async function _renameCollectionGroup({ group, subgroup }) {
+    if (!group) return;
+    const current = subgroup || group;
+    const label = subgroup ? 'el subgrupo' : 'el grupo';
+    const name = prompt(`Nuevo nombre para ${label} «${current}»:`, current);
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === current) return;
+    try {
+      const r = await api('/admin/collections/group', {
+        method: 'PATCH',
+        body: JSON.stringify({ group, subgroup: subgroup || undefined, new_name: trimmed }),
+      });
+      await refreshCollections();
+      if (state.collectionGroup === group &&
+          (subgroup ? state.collectionSubgroup === subgroup : true)) {
+        state.collectionGroup    = subgroup ? group : trimmed;
+        state.collectionSubgroup = subgroup ? trimmed : state.collectionSubgroup;
+        refreshFilterIndicators();
+      }
+      console.log(`Renombradas ${r.updated} colección(es) de ${label} «${current}» a «${trimmed}».`);
+    } catch (e) {
+      alert('Error al renombrar: ' + e.message);
+    }
+  }
+
   function buildSubgroupHeader(group, subgroup, colls, collapsed) {
     // Chip shows the count of DISTINCT ARTICLES across every leaf
     // collection under (group, subgroup) — deduplicating the case
@@ -716,6 +765,15 @@
         <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
+      ${IS_ADMIN ? `<span class="pv-coll-rename"
+            data-group="${esc(group)}" data-subgroup="${esc(subgroup)}"
+            title="Renombrar este subgrupo"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   width:16px;height:16px;border-radius:4px;flex-shrink:0;margin-left:2px;
+                   color:rgba(255,255,255,0.3);cursor:pointer;visibility:hidden;"
+            onmouseover="this.style.background='rgba(255,255,255,0.18)';this.style.color='white';"
+            onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.3)';"
+      ><i class="fas fa-pen" style="font-size:8px;"></i></span>` : ''}
       ${IS_ADMIN ? `<span class="pv-coll-del"
             data-group="${esc(group)}" data-subgroup="${esc(subgroup)}"
             title="Borrar este subgrupo y sus ${collCount} colección(es)"
@@ -728,10 +786,14 @@
     `;
     if (IS_ADMIN) {
       btn.addEventListener('mouseenter', () => {
+        const pen = btn.querySelector('.pv-coll-rename');
+        if (pen) pen.style.visibility = 'visible';
         const x = btn.querySelector('.pv-coll-del');
         if (x) x.style.visibility = 'visible';
       });
       btn.addEventListener('mouseleave', () => {
+        const pen = btn.querySelector('.pv-coll-rename');
+        if (pen) pen.style.visibility = 'hidden';
         const x = btn.querySelector('.pv-coll-del');
         if (x) x.style.visibility = 'hidden';
       });
@@ -741,6 +803,12 @@
         ev.preventDefault();
         _toggleCollapsed(_COLL_SUBGROUPS_KEY, `${group}::${subgroup}`);
         renderCollectionTree();
+        return;
+      }
+      if (ev.target.closest('.pv-coll-rename')) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        _renameCollectionGroup({ group, subgroup });
         return;
       }
       if (ev.target.closest('.pv-coll-del')) {

@@ -246,6 +246,37 @@ def find_in_group(group_name: str,
     return [str(r[0]) for r in rows]
 
 
+def rename_group(group_name: str, new_name: str,
+                 subgroup_name: Optional[str] = None) -> int:
+    """Rename a group (or one subgroup within it) across every collection
+    that carries it in one UPDATE — there's no dedicated group/subgroup
+    row, "the group" only exists as the shared string on each leaf
+    collection, so renaming it means renaming that string everywhere it
+    appears. Returns the number of collections updated.
+
+    subgroup_name=None renames the GROUP for every collection under it
+    (leaving each collection's own subgroup untouched). subgroup_name set
+    renames only that one subgroup's name, within that group.
+    """
+    if not group_name or not new_name or not new_name.strip():
+        raise ValueError("group_name and new_name are required")
+    new_name = new_name.strip()
+    eng = _get_engine()
+    with eng.begin() as conn:
+        if subgroup_name:
+            res = conn.execute(sql_text(
+                "UPDATE prionvault_collection SET subgroup_name = :new, updated_at = NOW() "
+                "WHERE lower(group_name) = lower(:g) "
+                "  AND lower(coalesce(subgroup_name,'')) = lower(:sg)"
+            ), {"new": new_name, "g": group_name, "sg": subgroup_name})
+        else:
+            res = conn.execute(sql_text(
+                "UPDATE prionvault_collection SET group_name = :new, updated_at = NOW() "
+                "WHERE lower(group_name) = lower(:g)"
+            ), {"new": new_name, "g": group_name})
+        return res.rowcount or 0
+
+
 def aggregate_article_ids(collection_ids: List[str], viewer_id=None) -> List[str]:
     """Union the article-id sets of many collections (manual or smart).
     Returns a deduplicated list. Cap is per-collection inside

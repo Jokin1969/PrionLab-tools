@@ -1300,6 +1300,33 @@ def api_migrations_run():
     return jsonify(summary)
 
 
+@prionvault_bp.route("/api/admin/collections/group", methods=["PATCH"])
+@admin_required
+def api_admin_rename_collection_group():
+    """Rename a group, or one subgroup within it, across every
+    collection that carries it. Mirrors the DELETE endpoint below —
+    "the group" is just a shared string on each leaf collection, so
+    renaming it means renaming that string everywhere at once.
+
+    Body: {"group": "OLD", "new_name": "NEW", "subgroup": "OLDSUB"?}
+    subgroup omitted/empty renames the GROUP; subgroup set renames only
+    that subgroup's name (within that group).
+    """
+    from .services import collections as _collections
+    data = request.get_json(force=True, silent=True) or {}
+    group    = (data.get("group") or "").strip()
+    subgroup = (data.get("subgroup") or "").strip() or None
+    new_name = (data.get("new_name") or "").strip()
+    if not group or not new_name:
+        return jsonify({"error": "group_and_new_name_required"}), 400
+    try:
+        updated = _collections.rename_group(group, new_name, subgroup_name=subgroup)
+    except ValueError as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    return jsonify({"ok": True, "updated": updated,
+                    "group": group, "subgroup": subgroup, "new_name": new_name})
+
+
 @prionvault_bp.route("/api/admin/collections/group", methods=["DELETE"])
 @admin_required
 def api_admin_delete_collection_group():
