@@ -25,6 +25,8 @@ depend on which user is looking at it.
 """
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import text as sql_text
 
 ARTICLE_LEVEL_KEYS = {
@@ -62,9 +64,22 @@ def build_where(rules: dict, viewer_id=None) -> tuple[list, dict]:
     params: dict = {}
 
     if rules.get("q"):
-        where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
-                     "coalesce(authors,'') ILIKE :q)")
-        params["q"] = f"%{rules['q']}%"
+        raw = str(rules["q"]).strip()
+        # Plain "bat" is a substring match (ILIKE '%bat%'), so it also
+        # catches "combat", "debate", "database"... — fine for most
+        # searches but wrong for a short word that's also a common
+        # substring. Wrapping the term in "double quotes" switches to a
+        # whole-word match (regex \y...\y word boundaries) instead, same
+        # convention as quoting a phrase in a search engine.
+        m = re.match(r'^"(.+)"$', raw)
+        if m:
+            where.append(r"(title ~* :q OR coalesce(abstract,'') ~* :q OR "
+                         r"coalesce(authors,'') ~* :q)")
+            params["q"] = r"\y" + re.escape(m.group(1)) + r"\y"
+        else:
+            where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
+                         "coalesce(authors,'') ILIKE :q)")
+            params["q"] = f"%{raw}%"
     if rules.get("authors"):
         where.append("coalesce(authors,'') ILIKE :authors_q")
         params["authors_q"] = f"%{rules['authors']}%"
