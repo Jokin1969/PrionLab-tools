@@ -11266,6 +11266,7 @@
     const applyTagBtn = document.getElementById('pv-bibtex-apply-tag');
     const collSelect = document.getElementById('pv-bibtex-coll-select');
     const applyCollBtn = document.getElementById('pv-bibtex-apply-coll');
+    const actionStatus = document.getElementById('pv-bibtex-action-status');
     const foundSection = document.getElementById('pv-bibtex-found-section');
     const foundList  = document.getElementById('pv-bibtex-found-list');
     const missingSection = document.getElementById('pv-bibtex-missing-section');
@@ -11274,11 +11275,17 @@
     let _entries = [];
     const _selected = new Set(); // matched article ids currently checked
 
+    function setActionStatus(text, color) {
+      actionStatus.textContent = text;
+      actionStatus.style.color = color || '#6b7280';
+      actionStatus.style.display = text ? 'block' : 'none';
+    }
     function reset() {
       fileInput.value = '';
       uploadStatus.textContent = '';
       statsEl.style.display = 'none';
       bulkBar.style.display = 'none';
+      setActionStatus('');
       foundSection.style.display = 'none';
       missingSection.style.display = 'none';
       foundList.innerHTML = '';
@@ -11462,21 +11469,26 @@
 
     applyTagBtn.addEventListener('click', async () => {
       const tagId = tagSelect.value;
+      const tagName = tagSelect.selectedOptions[0]?.textContent || '';
       if (!tagId) { alert('Elige una tag primero.'); return; }
       if (!_selected.size) { alert('Selecciona al menos un artículo encontrado.'); return; }
+      const n = _selected.size;
       applyTagBtn.disabled = true;
+      const original = applyTagBtn.textContent;
+      applyTagBtn.textContent = 'Añadiendo…';
+      setActionStatus(`⏳ Añadiendo la tag "${tagName}" a ${n} artículo(s)…`);
       try {
         await api('/articles/bulk-tags', {
           method: 'POST',
           body: JSON.stringify({ ids: [..._selected], add_tag_ids: [parseInt(tagId, 10)] }),
         });
-        uploadStatus.textContent = `✓ Tag añadida a ${_selected.size} artículo(s).`;
-        uploadStatus.style.color = '#15803d';
+        setActionStatus(`✓ Tag "${tagName}" añadida a ${n} artículo(s).`, '#15803d');
         tagSelect.value = '';
       } catch (e) {
-        alert('Error al añadir la tag: ' + e.message);
+        setActionStatus(`✗ Error al añadir la tag: ${e.message}`, '#b91c1c');
       } finally {
         applyTagBtn.disabled = false;
+        applyTagBtn.textContent = original;
       }
     });
 
@@ -11484,6 +11496,7 @@
       let collId = collSelect.value;
       if (!collId) { alert('Elige una colección primero.'); return; }
       if (!_selected.size) { alert('Selecciona al menos un artículo encontrado.'); return; }
+      const n = _selected.size;
       if (collId === '__new__') {
         // Route through the full collection editor (name, color, group,
         // subgroup, smart rules) instead of a bare prompt() — a
@@ -11496,35 +11509,39 @@
         openCollectionEditor(null, {
           onSaved: async (created) => {
             modal.style.display = 'flex';
+            setActionStatus(`⏳ Añadiendo ${ids.length} artículo(s) a la nueva colección "${created.name}"…`);
             try {
               await api(`/collections/${created.id}/articles`, {
                 method: 'POST',
                 body: JSON.stringify({ ids }),
               });
-              uploadStatus.textContent = `✓ ${ids.length} artículo(s) añadidos a la nueva colección "${created.name}".`;
-              uploadStatus.style.color = '#15803d';
+              setActionStatus(`✓ ${ids.length} artículo(s) añadidos a la nueva colección "${created.name}".`, '#15803d');
               refreshPickers();
             } catch (e) {
-              alert('Error al añadir a la colección: ' + e.message);
+              setActionStatus(`✗ Error al añadir a la colección: ${e.message}`, '#b91c1c');
             }
           },
         });
         return;
       }
+      const collName = collSelect.selectedOptions[0]?.textContent || '';
       applyCollBtn.disabled = true;
+      const original = applyCollBtn.textContent;
+      applyCollBtn.textContent = 'Añadiendo…';
+      setActionStatus(`⏳ Añadiendo ${n} artículo(s) a "${collName}"…`);
       try {
         await api(`/collections/${collId}/articles`, {
           method: 'POST',
           body: JSON.stringify({ ids: [..._selected] }),
         });
-        uploadStatus.textContent = `✓ ${_selected.size} artículo(s) añadidos a la colección.`;
-        uploadStatus.style.color = '#15803d';
+        setActionStatus(`✓ ${n} artículo(s) añadidos a "${collName}".`, '#15803d');
         refreshPickers();
         collSelect.value = '';
       } catch (e) {
-        alert('Error al añadir a la colección: ' + e.message);
+        setActionStatus(`✗ Error al añadir a la colección: ${e.message}`, '#b91c1c');
       } finally {
         applyCollBtn.disabled = false;
+        applyCollBtn.textContent = original;
       }
     });
   }
