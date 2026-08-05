@@ -69,21 +69,20 @@ def build_where(rules: dict, viewer_id=None) -> tuple[list, dict]:
         # catches "combat", "debate", "database"... — fine for most
         # searches but wrong for a short word that's also a common
         # substring. Wrapping term(s) in "double quotes" switches to a
-        # WORD-START match instead (regex \y = word boundary, anchored
-        # only at the start, not the end) — "bat" then matches "bat" AND
-        # "bats"/"batting"/etc (still no false positive on "combat",
-        # since \y only fires at an actual word boundary, and "bat"
-        # isn't at one inside "combat"). Multiple quoted terms can be
-        # OR-ed — "bat" OR "chiroptera" — for genuine synonyms; a single
-        # quoted term already covers its own plural, so quoting just
-        # "bat" alone is normally enough without needing "bat" OR "bats".
+        # STRICT whole-word match (regex \y...\y — word boundary at both
+        # ends) — "bat" then matches only the standalone word "bat",
+        # never "combat", "battle", "batch" or any other word that
+        # merely starts/contains those letters. Since a whole-word match
+        # doesn't catch the plural for free, quote both forms and OR
+        # them: "bat" OR "bats". Multiple quoted terms OR-ed together
+        # also works for genuine synonyms — "bat" OR "chiroptera".
         quoted_terms = re.findall(r'"([^"]+)"', raw)
         remainder = re.sub(r'"[^"]+"', ' ', raw)
         remainder_is_clean = not [t for t in remainder.split() if t.upper() != "OR"]
         if quoted_terms and remainder_is_clean:
             where.append(r"(title ~* :q OR coalesce(abstract,'') ~* :q OR "
                          r"coalesce(authors,'') ~* :q)")
-            params["q"] = r"\y(" + "|".join(re.escape(t) for t in quoted_terms) + ")"
+            params["q"] = r"\y(" + "|".join(re.escape(t) for t in quoted_terms) + r")\y"
         else:
             where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
                          "coalesce(authors,'') ILIKE :q)")
