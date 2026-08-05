@@ -186,7 +186,28 @@ def api_list_articles():
             logger.debug("collection load failed for %s", collection_id, exc_info=True)
             c = None
         if c and c["kind"] == "smart":
-            merged = _coll.merge_rules_into_filters(c.get("rules") or {}, {
+            rules = c.get("rules") or {}
+            # The free-text "q" rule is evaluated by TWO different search
+            # implementations that don't agree: smart_rules.build_where()
+            # (ILIKE substring, or word-boundary regex for a "quoted"
+            # term — used for the sidebar's member COUNT) vs. this
+            # endpoint's own websearch_to_tsquery + ILIKE listing search
+            # (used for what's actually SHOWN when you click the
+            # collection). A rule like q='"bat"' rendered a correct count
+            # (5) but a much looser listing (41) because the quote
+            # convention only exists in build_where. Rather than teach
+            # the listing's parser the same convention (and keep two
+            # implementations in sync forever), resolve q-having smart
+            # collections to an explicit article-id list up front — same
+            # mechanism as "Ver sólo seleccionados" — so the count and
+            # the listing are always the exact same query. Only applies
+            # when the operator hasn't typed their OWN q in the toolbar
+            # (that still narrows the collection further, as before).
+            if rules.get("q") and not q:
+                rule_ids = _coll.resolve_article_ids(collection_id, viewer_id=_viewer_id())
+                ids_filter = list(set(ids_filter) & set(rule_ids)) if ids_filter else rule_ids
+                rules = {k: v for k, v in rules.items() if k != "q"}
+            merged = _coll.merge_rules_into_filters(rules, {
                 "q": q, "authors": authors_q, "journal": journal,
                 "year_min": year_min, "year_max": year_max,
                 "tag": tag_id, "priority_eq": priority_eq,
