@@ -135,3 +135,19 @@ def api_chat_ask(chat_id):
         return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
 
     return jsonify({"ok": True, **result})
+
+
+# ── Library-wide overview ───────────────────────────────────────────────────
+
+@prionvault_bp.route("/api/chats/overview", methods=["GET"])
+@login_required
+def api_chats_overview():
+    """Every article with at least one AI-chat thread (any user), for
+    the "Chats con IA" panel in Salud biblioteca and the chat modal's
+    "Ver todos" button."""
+    from .services import article_chat
+    try:
+        return jsonify(article_chat.chats_overview())
+    except Exception:
+        logger.exception("chats overview failed")
+        return jsonify({"error": "internal_error"}), 500

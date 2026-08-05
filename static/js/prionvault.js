@@ -7917,6 +7917,7 @@
       $('pv-chat-send')?.addEventListener('click', send);
       $('pv-chat-new-btn')?.addEventListener('click', newConversation);
       $('pv-chat-history-btn')?.addEventListener('click', loadHistory);
+      $('pv-chat-overview-btn')?.addEventListener('click', () => window.openChatsOverview?.());
       const input = $('pv-chat-input');
       if (input) input.addEventListener('keydown', ev => {
         // Enter sends, Shift+Enter makes a newline.
@@ -7975,6 +7976,109 @@
     if (histBtn) histBtn.addEventListener('click', () => PVChat.open(a, { showHistory: true }));
     PVChat.updateLauncherCount(a);
   }
+
+  // ── Chats con IA — library-wide overview ──────────────────────────────
+  // Reachable from the chat modal's "📊 Ver todos" button and from the
+  // "Chats con IA" panel in Salud biblioteca. Self-contained: fetches
+  // /api/chats/overview and renders its own modal, so either caller can
+  // just invoke it with no setup.
+  window.openChatsOverview = async function openChatsOverview() {
+    const modal = document.getElementById('pv-chats-overview-modal');
+    const body  = document.getElementById('pv-chats-overview-body');
+    if (!modal || !body) return;
+
+    if (!modal.dataset.wired) {
+      modal.dataset.wired = '1';
+      const close = () => { modal.style.display = 'none'; };
+      document.getElementById('pv-chats-overview-close')?.addEventListener('click', close);
+      modal.querySelector('.pv-modal-backdrop')?.addEventListener('click', close);
+    }
+
+    modal.style.display = 'flex';
+    body.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:2rem;">Cargando…</p>';
+
+    let d;
+    try {
+      d = await api('/chats/overview');
+    } catch (e) {
+      body.innerHTML = `<p style="color:#ef4444;text-align:center;padding:2rem;">Error al cargar: ${esc(e.message)}</p>`;
+      return;
+    }
+
+    const total = d.total_articles || 0;
+    const withChat = d.articles_with_chat || 0;
+    const pct = total > 0 ? Math.round(withChat / total * 100) : 0;
+    const items = d.items || [];
+
+    const hero = `
+      <div style="text-align:center;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:12px;
+                  padding:16px 24px;margin-bottom:18px;">
+        <div style="font-size:32px;font-weight:800;color:#3730a3;line-height:1;">
+          ${withChat.toLocaleString()} <span style="font-size:18px;font-weight:600;color:#6366f1;">/ ${total.toLocaleString()}</span>
+        </div>
+        <div style="font-size:13px;color:#6b7280;margin-top:4px;">
+          artículos con al menos un chat iniciado (${pct}%)
+        </div>
+      </div>`;
+
+    if (!items.length) {
+      body.innerHTML = hero + `
+        <p style="text-align:center;color:#9ca3af;padding:24px;font-size:13px;">
+          Todavía no se ha usado el chat de IA en ningún artículo.
+        </p>`;
+      return;
+    }
+
+    const rowHtml = (it) => {
+      const meta = [
+        it.authors ? it.authors.split(';')[0] + (it.authors.includes(';') ? ' et al.' : '') : '',
+        it.year || '',
+      ].filter(Boolean).join(' · ');
+      const when = it.last_activity
+        ? new Date(it.last_activity).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '';
+      return `
+        <div class="pv-chats-ov-row" data-aid="${esc(it.article_id)}"
+             data-title="${esc(it.title || '')}" data-authors="${esc(it.authors || '')}" data-year="${esc(it.year || '')}"
+             style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:8px;cursor:pointer;
+                    border:1px solid #e5e7eb;margin-bottom:6px;transition:box-shadow 0.15s,border-color 0.15s;"
+             onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';this.style.borderColor='#c7d2fe';"
+             onmouseleave="this.style.boxShadow='none';this.style.borderColor='#e5e7eb';">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${esc(it.title || '(sin título)')}
+            </div>
+            <div style="font-size:11.5px;color:#9ca3af;margin-top:2px;">${esc(meta)}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;">
+            <span style="font-size:11px;font-weight:700;color:#0F3460;background:#eff6ff;padding:2px 8px;border-radius:20px;">
+              💬 ${it.chat_count} chat${it.chat_count === 1 ? '' : 's'} · ${it.message_count} msj.
+            </span>
+            <span style="font-size:10.5px;color:#9ca3af;">
+              ${it.users > 1 ? `${it.users} usuarios · ` : ''}${esc(when)}
+            </span>
+          </div>
+        </div>`;
+    };
+
+    body.innerHTML = hero +
+      `<div>${items.map(rowHtml).join('')}</div>` +
+      (items.length >= 300
+        ? '<p style="text-align:center;color:#9ca3af;font-size:11.5px;margin-top:10px;">Mostrando los 300 más recientes.</p>'
+        : '');
+
+    body.querySelectorAll('.pv-chats-ov-row').forEach(row => {
+      row.addEventListener('click', () => {
+        modal.style.display = 'none';
+        PVChat.open({
+          id: row.dataset.aid,
+          title: row.dataset.title,
+          authors: row.dataset.authors,
+          year: row.dataset.year || null,
+        }, { showHistory: true });
+      });
+    });
+  };
 
   // ── Library chat — persistent, memory-capable AI chat over the whole
   // library (replaces the old strict-grounding "AI search" modal). ──────
@@ -17866,7 +17970,7 @@
     modal.style.display = 'flex';
     body.innerHTML = '<p style="color:#6b7280;text-align:center;padding:2rem;">Cargando…</p>';
 
-    let d;
+    let d, chatStats = null;
     try {
       const res = await fetch('/prionvault/api/articles/health');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -17875,6 +17979,8 @@
       body.innerHTML = `<p style="color:#ef4444;text-align:center;padding:2rem;">Error al cargar: ${esc(String(err))}</p>`;
       return;
     }
+    // Best-effort — the panel still renders fine without the chat stat if this fails.
+    try { chatStats = await api('/chats/overview'); } catch (e) { /* ignore */ }
 
     const total = d.total || 0;
     const pct   = (n) => total > 0 ? ` (${Math.round(n / total * 100)}%)` : '';
@@ -18026,11 +18132,26 @@
       <span style="font-size:18px;color:#3b82f6;font-weight:700;">→</span>
     </div>`;
 
+    const chatsBtn = chatStats ? `<div onclick="window.openChatsOverview()"
+      onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'"
+      onmouseleave="this.style.boxShadow='none';this.style.transform=''"
+      style="display:flex;align-items:center;justify-content:space-between;
+             background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;
+             padding:14px 18px;margin-bottom:16px;cursor:pointer;
+             transition:box-shadow 0.15s,transform 0.15s;">
+      <span style="font-size:13.5px;font-weight:600;color:#6d28d9;">
+        💬 Chats con IA por artículo
+        <span style="font-weight:700;">— ${(chatStats.articles_with_chat||0).toLocaleString()} / ${(chatStats.total_articles||0).toLocaleString()}</span>
+      </span>
+      <span style="font-size:18px;color:#7c3aed;font-weight:700;">→</span>
+    </div>` : '';
+
     body.style.position = 'relative';
 
     body.innerHTML =
       heroCard +
       completenessBtn +
+      chatsBtn +
 
       section('Contenido', [
         row(2, [card('Con PDF',    d.with_pdf,    true, {has_pdf:'true'},  'good'),

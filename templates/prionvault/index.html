@@ -1109,8 +1109,15 @@
                        display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
           🕑 <span>Chats anteriores</span>
         </button>
+        <button id="pv-chat-overview-btn" type="button"
+                title="Ver en qué artículos se ha usado el chat de IA"
+                style="margin-left:auto;padding:4px 11px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                       font-size:12px;font-weight:600;color:#374151;cursor:pointer;
+                       display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
+          📊 <span>Ver todos</span>
+        </button>
         <button id="pv-chat-new-btn" type="button"
-                style="margin-left:auto;padding:4px 11px;border-radius:6px;border:1px solid #d1d5db;
+                style="padding:4px 11px;border-radius:6px;border:1px solid #d1d5db;
                        background:white;font-size:12px;font-weight:600;color:#0F3460;cursor:pointer;">
           + Nueva conversación
         </button>
@@ -1148,6 +1155,27 @@
       <div style="font-size:10.5px;color:#9ca3af;margin-top:5px;">
         La IA recibe el artículo (texto vectorizado), su resumen y esta conversación como contexto.
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Chats con IA — overview de toda la biblioteca ────────────────────
+     Reachable from the "📊 Ver todos" button in the per-article chat
+     modal, and from the "Chats con IA" panel in Salud biblioteca.
+     Rendered entirely by JS (openChatsOverview() in prionvault.js). -->
+<div id="pv-chats-overview-modal" class="pv-modal" style="display:none;" role="dialog" aria-modal="true">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:720px;width:92vw;max-height:88vh;overflow-y:auto;">
+    <button class="pv-modal-close" id="pv-chats-overview-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-comments" style="color:#0F3460;margin-right:8px;"></i>Chats con IA por artículo
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 14px;">
+      Todas las conversaciones de "Preguntar a la IA" sobre artículos concretos, de cualquier usuario.
+      Haz clic en un artículo para retomar su conversación.
+    </p>
+    <div id="pv-chats-overview-body">
+      <p style="color:#9ca3af;text-align:center;padding:2rem;">Cargando…</p>
     </div>
   </div>
 </div>

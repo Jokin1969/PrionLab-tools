@@ -412,3 +412,62 @@ def ask(chat_id: str, user_id: str, question: str,
         "cost_usd":           cost,
         "elapsed_ms":         elapsed_ms,
     }
+
+
+# ── Library-wide overview (admin) ───────────────────────────────────────────
+
+def chats_overview(limit: int = 300) -> dict:
+    """Library-wide view of per-article chat activity, across every user
+    — for the "Chats con IA" panel in Salud biblioteca and the chat
+    modal's "Ver todos" button.
+
+    Returns:
+      total_articles       — size of the whole library.
+      articles_with_chat    — distinct articles that have at least one
+                              chat thread from ANY user.
+      items                — one row per article with chat activity,
+                              newest activity first, capped at `limit`:
+                              article_id, title, authors, year,
+                              chat_count (threads), message_count,
+                              last_activity (ISO), users (distinct
+                              user count).
+    """
+    eng = _get_engine()
+    with eng.connect() as conn:
+        total_articles = conn.execute(_sql(
+            "SELECT COUNT(*) FROM articles"
+        )).scalar() or 0
+
+        rows = conn.execute(_sql("""
+            SELECT a.id::text            AS article_id,
+                   a.title               AS title,
+                   a.authors             AS authors,
+                   a.year                AS year,
+                   COUNT(DISTINCT c.id)  AS chat_count,
+                   COUNT(m.id)           AS message_count,
+                   COUNT(DISTINCT c.user_id) AS users,
+                   MAX(c.updated_at)     AS last_activity
+              FROM prionvault_article_chat c
+              JOIN articles a ON a.id = c.article_id
+              LEFT JOIN prionvault_article_chat_message m ON m.chat_id = c.id
+             GROUP BY a.id, a.title, a.authors, a.year
+             ORDER BY MAX(c.updated_at) DESC
+             LIMIT :limit
+        """), {"limit": int(limit)}).mappings().all()
+
+        articles_with_chat = conn.execute(_sql(
+            "SELECT COUNT(DISTINCT article_id) FROM prionvault_article_chat"
+        )).scalar() or 0
+
+    items = []
+    for r in rows:
+        d = dict(r)
+        if d.get("last_activity") is not None:
+            d["last_activity"] = d["last_activity"].isoformat()
+        items.append(d)
+
+    return {
+        "total_articles":     total_articles,
+        "articles_with_chat": articles_with_chat,
+        "items":              items,
+    }
