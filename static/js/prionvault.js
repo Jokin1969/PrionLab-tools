@@ -11318,8 +11318,8 @@
       tagSelect.innerHTML = '<option value="">Añadir tag…</option>' +
         _allTags.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
       collSelect.innerHTML = '<option value="">Añadir a colección…</option>' +
-        _allCollections.filter(c => c.kind !== 'smart')
-          .map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('') +
+        _allCollections
+          .map(c => `<option value="${esc(c.id)}">${esc(c.name)}${c.kind === 'smart' ? ' ⚡' : ''}</option>`).join('') +
         '<option value="__new__">＋ Nueva colección…</option>';
     }
 

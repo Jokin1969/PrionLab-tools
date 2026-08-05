@@ -3778,7 +3778,9 @@ def api_collections_article_ids(cid):
 @prionvault_bp.route("/api/collections/<uuid:cid>/articles", methods=["POST"])
 @admin_required
 def api_collections_add_articles(cid):
-    """Body: { ids: ["<uuid>", …] }. Manual collections only."""
+    """Body: { ids: ["<uuid>", …] }. Works for manual and smart collections
+    (a smart collection can carry extra hand-pinned articles alongside
+    its rule matches — see collections.add_articles)."""
     from .services import collections as _coll
     data = request.get_json(force=True, silent=True) or {}
     ids = data.get("ids") or []

@@ -54,7 +54,7 @@ def list_all(viewer_id=None) -> List[dict]:
         for c in items:
             if c["kind"] == "smart":
                 try:
-                    c["article_count"] = _count_smart(conn, c["rules"] or {})
+                    c["article_count"] = _count_smart(conn, c["id"], c["rules"] or {})
                 except Exception as exc:
                     logger.warning("collections: smart count failed for "
                                    "%s: %s", c["id"], exc)
@@ -185,13 +185,17 @@ def delete(cid) -> bool:
 
 
 def add_articles(cid, article_ids: List, added_by=None) -> dict:
-    """Add `article_ids` to a MANUAL collection. Returns counts.
-    Smart collections cannot be modified this way and raise ValueError."""
+    """Add `article_ids` to a collection — manual or smart.
+
+    Smart collections' membership is normally computed live from their
+    rules, but an operator can still pin extra articles onto one by
+    hand (e.g. one that doesn't quite match the rules but belongs
+    there anyway) — those rows just sit in prionvault_collection_article
+    same as a manual collection's, and resolve_article_ids() unions
+    them with the rule matches."""
     c = get(cid)
     if not c:
         raise LookupError("collection not found")
-    if c["kind"] != "manual":
-        raise ValueError("only manual collections accept add_articles")
     ids = [str(x) for x in (article_ids or []) if x]
     if not ids:
         return {"added": 0, "skipped": 0}
@@ -374,8 +378,11 @@ def resolve_article_ids(cid, limit: int = 10_000, viewer_id=None) -> List[str]:
     works for both manual and smart collections.
 
       manual → just SELECT from prionvault_collection_article.
-      smart  → evaluate the rules against `articles` live and return
-               the matching ids.
+      smart  → the rule matches UNION the manually-pinned rows in
+               prionvault_collection_article (see add_articles) — a
+               smart collection's membership isn't purely rule-driven,
+               an operator can still hand-add an article that doesn't
+               match the rules.
     """
     c = get(cid)
     if not c:
@@ -387,20 +394,31 @@ def resolve_article_ids(cid, limit: int = 10_000, viewer_id=None) -> List[str]:
     eng = _get_engine()
     with eng.connect() as conn:
         where, params = smart_rules.build_where(rules, viewer_id=viewer_id)
-        sql = "SELECT id FROM articles"
+        rule_sql = "SELECT id FROM articles"
         if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += f" LIMIT {int(limit)}"
+            rule_sql += " WHERE " + " AND ".join(where)
+        sql = (f"SELECT id FROM ({rule_sql} "
+               f"UNION SELECT article_id FROM prionvault_collection_article "
+               f"WHERE collection_id = :cid) t LIMIT {int(limit)}")
+        params = {**params, "cid": str(cid)}
         rows = conn.execute(sql_text(sql), params).all()
     return [str(r[0]) for r in rows]
 
 
-def _count_smart(conn, rules: dict) -> int:
-    """Live count of articles that match this smart collection's rules.
-
-    Built on the same helper as resolve_article_ids so the count and
-    the resolved list never disagree."""
-    return smart_rules.count_matching(rules, conn=conn)
+def _count_smart(conn, cid, rules: dict) -> int:
+    """Count of articles in a smart collection: rule matches UNION the
+    manually-pinned rows (see add_articles / resolve_article_ids) — kept
+    in lockstep with resolve_article_ids so the sidebar count and the
+    listing you get by clicking it never disagree."""
+    where, params = smart_rules.build_where(rules, viewer_id=None)
+    rule_sql = "SELECT id FROM articles"
+    if where:
+        rule_sql += " WHERE " + " AND ".join(where)
+    sql = (f"SELECT COUNT(*) FROM ({rule_sql} "
+           f"UNION SELECT article_id FROM prionvault_collection_article "
+           f"WHERE collection_id = :cid) t")
+    params = {**params, "cid": str(cid)}
+    return conn.execute(sql_text(sql), params).scalar() or 0
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

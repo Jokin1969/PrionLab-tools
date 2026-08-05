@@ -68,14 +68,22 @@ def build_where(rules: dict, viewer_id=None) -> tuple[list, dict]:
         # Plain "bat" is a substring match (ILIKE '%bat%'), so it also
         # catches "combat", "debate", "database"... — fine for most
         # searches but wrong for a short word that's also a common
-        # substring. Wrapping the term in "double quotes" switches to a
-        # whole-word match (regex \y...\y word boundaries) instead, same
-        # convention as quoting a phrase in a search engine.
-        m = re.match(r'^"(.+)"$', raw)
-        if m:
+        # substring. Wrapping term(s) in "double quotes" switches to a
+        # WORD-START match instead (regex \y = word boundary, anchored
+        # only at the start, not the end) — "bat" then matches "bat" AND
+        # "bats"/"batting"/etc (still no false positive on "combat",
+        # since \y only fires at an actual word boundary, and "bat"
+        # isn't at one inside "combat"). Multiple quoted terms can be
+        # OR-ed — "bat" OR "chiroptera" — for genuine synonyms; a single
+        # quoted term already covers its own plural, so quoting just
+        # "bat" alone is normally enough without needing "bat" OR "bats".
+        quoted_terms = re.findall(r'"([^"]+)"', raw)
+        remainder = re.sub(r'"[^"]+"', ' ', raw)
+        remainder_is_clean = not [t for t in remainder.split() if t.upper() != "OR"]
+        if quoted_terms and remainder_is_clean:
             where.append(r"(title ~* :q OR coalesce(abstract,'') ~* :q OR "
                          r"coalesce(authors,'') ~* :q)")
-            params["q"] = r"\y" + re.escape(m.group(1)) + r"\y"
+            params["q"] = r"\y(" + "|".join(re.escape(t) for t in quoted_terms) + ")"
         else:
             where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
                          "coalesce(authors,'') ILIKE :q)")
