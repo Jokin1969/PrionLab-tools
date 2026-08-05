@@ -3716,6 +3716,7 @@ def api_collections_update(cid):
             description=data.get("description"),
             rules=data.get("rules"),
             color=data.get("color"),
+            kind=data.get("kind"),
             group_name=data.get("group_name"),
             subgroup_name=data.get("subgroup_name"),
         )

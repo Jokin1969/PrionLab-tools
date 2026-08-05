@@ -127,7 +127,7 @@ def create(*, name: str, description: Optional[str] = None,
 
 
 def update(cid, *, name=None, description=None,
-           rules=None, color=None,
+           rules=None, color=None, kind=None,
            group_name=None, subgroup_name=None) -> Optional[dict]:
     """Patch a collection. None means "leave unchanged".
     Pass an empty string to clear group_name / subgroup_name."""
@@ -149,6 +149,12 @@ def update(cid, *, name=None, description=None,
     if description is not None:
         sets.append("description = :description")
         params["description"] = description
+    if kind is not None:
+        kind = kind.strip().lower()
+        if kind not in ("manual", "smart"):
+            raise ValueError("kind must be 'manual' or 'smart'")
+        sets.append("kind = :kind")
+        params["kind"] = kind
     if rules is not None:
         sets.append("rules = CAST(:rules AS jsonb)")
         params["rules"] = _json_dumps(_filter_rules(rules))
