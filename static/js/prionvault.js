@@ -8414,15 +8414,46 @@
       el.innerHTML = _chats.map(c => `
         <div class="pv-libchat-item" data-id="${esc(c.id)}"
              style="padding:9px 10px;border-bottom:1px solid #f3f4f6;cursor:pointer;
+                    display:flex;align-items:flex-start;gap:6px;
                     ${c.id === _currentChatId ? 'background:#d1fae5;' : ''}">
-          <div style="font-size:12px;font-weight:600;color:#111827;white-space:nowrap;
-                      overflow:hidden;text-overflow:ellipsis;">${esc(c.title || 'Nueva conversación')}</div>
-          <div style="font-size:10.5px;color:#9ca3af;margin-top:1px;">
-            ${fmtDate(c.updated_at)} · ${c.message_count} msj.
+          <div style="flex:1;min-width:0;">
+            <div title="${esc(c.title || 'Nueva conversación')}"
+                 style="font-size:12px;font-weight:600;color:#111827;white-space:nowrap;
+                        overflow:hidden;text-overflow:ellipsis;">${esc(c.title || 'Nueva conversación')}</div>
+            <div style="font-size:10.5px;color:#9ca3af;margin-top:1px;">
+              ${fmtDate(c.updated_at)} · ${c.message_count} msj.
+            </div>
           </div>
+          <button type="button" class="pv-libchat-delete" data-id="${esc(c.id)}"
+                  title="Borrar esta conversación entera"
+                  style="border:none;background:none;color:#9ca3af;cursor:pointer;
+                         font-size:11px;padding:2px 4px;flex-shrink:0;">🗑</button>
         </div>`).join('');
       el.querySelectorAll('.pv-libchat-item').forEach(row => {
-        row.addEventListener('click', () => openChat(row.dataset.id));
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.pv-libchat-delete')) return;
+          openChat(row.dataset.id);
+        });
+      });
+      el.querySelectorAll('.pv-libchat-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          const chat = _chats.find(c => c.id === id);
+          if (!confirm(`¿Borrar la conversación "${chat ? (chat.title || 'Nueva conversación') : ''}" entera? No se puede deshacer.`)) return;
+          try {
+            await api(`/library-chats/${id}`, { method: 'DELETE' });
+            _chats = _chats.filter(c => c.id !== id);
+            if (_currentChatId === id) {
+              _currentChatId = null;
+              if (_chats.length) await openChat(_chats[0].id);
+              else renderThread(null);
+            }
+            renderList();
+          } catch (err) {
+            alert('Error al borrar: ' + err.message);
+          }
+        });
       });
     }
 
