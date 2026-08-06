@@ -82,7 +82,10 @@ def api_library_chat_get(chat_id):
     if err:
         return err
     from .services import library_chat
-    chat = library_chat.get_chat(str(chat_id), uid)
+    # ?full=1 bypasses the default recent-only slice (see get_chat) — the
+    # chat UI's "Cargar conversación completa" link when it's truncated.
+    limit_pairs = None if request.args.get("full") == "1" else library_chat._DEFAULT_MESSAGE_PAIRS
+    chat = library_chat.get_chat(str(chat_id), uid, limit_pairs=limit_pairs)
     if not chat:
         return jsonify({"error": "not_found"}), 404
     return jsonify(chat)
@@ -168,7 +171,9 @@ def api_library_chat_report(chat_id):
     up_to = request.args.get("up_to", type=int)
 
     from .services import library_chat, chat_report
-    chat = library_chat.get_chat(str(chat_id), uid)
+    # Reports must cover the real conversation, never the recent-only
+    # slice the chat UI loads by default for speed — see get_chat().
+    chat = library_chat.get_chat(str(chat_id), uid, limit_pairs=None)
     if not chat:
         return jsonify({"error": "not_found"}), 404
 

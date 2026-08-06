@@ -8379,6 +8379,18 @@
           con su propio conocimiento, dejando claro de dónde viene cada cosa.</div>`;
         return;
       }
+      // Only the most recent messages load by default (see get_chat's
+      // limit_pairs) — a conversation used for months can otherwise take
+      // several seconds just to fetch + render every time it's opened.
+      const truncatedBanner = chat && chat.truncated
+        ? `<div style="text-align:center;margin-bottom:12px;">
+             <button type="button" id="pv-libchat-load-full"
+                     style="border:1px solid #d1d5db;background:white;color:#374151;font-size:11.5px;
+                            font-weight:600;padding:5px 12px;border-radius:20px;cursor:pointer;">
+               ↑ Mostrando las últimas ${esc(_currentMessages.length)} de ${esc(chat.total_messages)} — cargar conversación completa
+             </button>
+           </div>`
+        : '';
       const html = [];
       for (let i = 0; i < _currentMessages.length; i++) {
         const m = _currentMessages[i];
@@ -8386,9 +8398,10 @@
         const next = _currentMessages[i + 1];
         html.push(pairHtml(m, next && next.role === 'assistant' ? next : null));
       }
-      el.innerHTML = html.join('');
+      el.innerHTML = truncatedBanner + html.join('');
+      $('pv-libchat-load-full')?.addEventListener('click', () => openChat(_currentChatId, { full: true }));
       _wireThreadInteractions(el);
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = truncatedBanner ? 0 : el.scrollHeight;
     }
 
     function renderList() {
@@ -8421,13 +8434,13 @@
       } catch (e) { /* silent — list stays empty */ }
     }
 
-    async function openChat(chatId) {
+    async function openChat(chatId, opts = {}) {
       _currentChatId = chatId;
       renderList();
       $('pv-libchat-thread').innerHTML =
         '<div style="text-align:center;color:#9ca3af;padding:30px;">Cargando…</div>';
       try {
-        const chat = await api(`/library-chats/${chatId}`);
+        const chat = await api(`/library-chats/${chatId}${opts.full ? '?full=1' : ''}`);
         _provider = chat.requested_provider || _provider;
         _currentChatTitle = chat.title || '';
         paintProvider();
@@ -8623,13 +8636,16 @@
       wireOnce();
       $('pv-libchat-modal').style.display = 'flex';
       paintProvider();
-      await loadChats();
       if (_currentChatId) {
-        openChat(_currentChatId);
-      } else if (_chats.length) {
-        openChat(_chats[0].id);
+        // Reopening a chat we already know the id of (same session) —
+        // don't make the thread wait on the sidebar list finishing
+        // first, they're independent reads.
+        loadChats();
+        await openChat(_currentChatId);
       } else {
-        renderThread(null);
+        await loadChats();
+        if (_chats.length) await openChat(_chats[0].id);
+        else renderThread(null);
       }
       setTimeout(() => $('pv-libchat-input')?.focus(), 50);
     }

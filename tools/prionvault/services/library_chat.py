@@ -249,7 +249,19 @@ def create_chat(user_id: str, provider: str) -> str:
     return cid
 
 
-def get_chat(chat_id: str, user_id: str) -> Optional[dict]:
+_DEFAULT_MESSAGE_PAIRS = 25  # 50 messages — recent context is what actually matters
+                             # for continuity; older turns are one click away (full=True).
+
+
+def get_chat(chat_id: str, user_id: str, limit_pairs: Optional[int] = _DEFAULT_MESSAGE_PAIRS) -> Optional[dict]:
+    """Conversations never expire (see module docstring), so a chat used
+    heavily over months can accumulate hundreds of messages — each with
+    its own citations JSON (a dozen full article metadata dicts).
+    Re-fetching and re-rendering ALL of that every time the modal opens
+    was the actual cause of multi-second opens: a big payload over the
+    wire plus a big DOM build, not a slow query. limit_pairs=None (or
+    the /report route's full=1) still fetches everything when it's
+    actually needed."""
     eng = _get_engine()
     with eng.connect() as conn:
         head = conn.execute(_sql("""
@@ -259,15 +271,34 @@ def get_chat(chat_id: str, user_id: str) -> Optional[dict]:
         """), {"cid": chat_id, "uid": user_id}).mappings().first()
         if not head:
             return None
-        msgs = conn.execute(_sql("""
-            SELECT id, role, content, provider, model, tokens_in, tokens_out,
-                   cost_usd, fallback, cited_article_ids, citations, created_at
-              FROM prionvault_library_chat_message
+        total = conn.execute(_sql("""
+            SELECT COUNT(*) FROM prionvault_library_chat_message
              WHERE chat_id = CAST(:cid AS uuid)
-             ORDER BY created_at, id
-        """), {"cid": chat_id}).mappings().all()
+        """), {"cid": chat_id}).scalar() or 0
+
+        if limit_pairs is not None:
+            msgs = conn.execute(_sql("""
+                SELECT * FROM (
+                    SELECT id, role, content, provider, model, tokens_in, tokens_out,
+                           cost_usd, fallback, cited_article_ids, citations, created_at
+                      FROM prionvault_library_chat_message
+                     WHERE chat_id = CAST(:cid AS uuid)
+                     ORDER BY created_at DESC, id DESC
+                     LIMIT :lim
+                ) recent ORDER BY created_at, id
+            """), {"cid": chat_id, "lim": limit_pairs * 2}).mappings().all()
+        else:
+            msgs = conn.execute(_sql("""
+                SELECT id, role, content, provider, model, tokens_in, tokens_out,
+                       cost_usd, fallback, cited_article_ids, citations, created_at
+                  FROM prionvault_library_chat_message
+                 WHERE chat_id = CAST(:cid AS uuid)
+                 ORDER BY created_at, id
+            """), {"cid": chat_id}).mappings().all()
 
     out = _chat_row_to_dict(head)
+    out["total_messages"] = total
+    out["truncated"] = total > len(msgs)
     out["messages"] = []
     for m in msgs:
         md = dict(m)
