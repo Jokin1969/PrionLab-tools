@@ -16,10 +16,16 @@ served it so the UI can flag the switch.
 Conversations are persisted in `prionvault_article_chat` /
 `prionvault_article_chat_message` and never auto-expire — they are a
 research asset the lab may mine later.
+
+Each answered turn is also re-embedded as a PRIVATE article_chunk (same
+mechanism as sticky notes, see services/article_notes.py) so the
+library-wide chat can find it too — but only for the user who asked
+it, never for anyone else (see _reindex_chat_sync).
 """
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Optional
 
@@ -257,13 +263,77 @@ def create_chat(article_id: str, user_id: str, provider: str) -> str:
 
 def delete_chat(chat_id: str, user_id: str) -> bool:
     eng = _get_engine()
+    with eng.connect() as conn:
+        article_id = conn.execute(_sql("""
+            SELECT article_id::text FROM prionvault_article_chat
+             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+        """), {"cid": chat_id, "uid": user_id}).scalar()
     with eng.begin() as conn:
         res = conn.execute(_sql("""
             DELETE FROM prionvault_article_chat
              WHERE id = CAST(:cid AS uuid)
                AND user_id = CAST(:uid AS uuid)
         """), {"cid": chat_id, "uid": user_id})
-    return (res.rowcount or 0) > 0
+    deleted = (res.rowcount or 0) > 0
+    if deleted and article_id:
+        # Re-combine whatever threads are left for this user on this
+        # article (clears the chunk if that was the last one).
+        _reindex_chat_async(article_id, user_id)
+    return deleted
+
+
+# ── Search indexing (private, per user) ─────────────────────────────────────
+# So the library-wide chat can also draw on what a user has already
+# asked/learned about an article — without ever surfacing it to anyone
+# else. Same pattern as sticky notes: one combined chunk per (article,
+# user), source_field="chat", owner_user_id=user_id. retriever.search()
+# only matches an owner_user_id chunk against the viewer who owns it.
+
+_CHAT_INDEX_CHAR_CAP = 40_000  # generous but bounded — most recent turns win
+
+
+def _reindex_chat_sync(article_id: str, user_id: str) -> None:
+    """Re-embed this user's combined Q&A text for the article across ALL
+    of their chat threads on it (or clear the chunk if they have none
+    left). Runs the actual embedding call — call off the request thread,
+    see _reindex_chat_async."""
+    from ..embeddings.indexer import index_article_source, clear_source
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(_sql("""
+                SELECT m.role, m.content
+                  FROM prionvault_article_chat_message m
+                  JOIN prionvault_article_chat c ON c.id = m.chat_id
+                 WHERE c.article_id = CAST(:aid AS uuid)
+                   AND c.user_id    = CAST(:uid AS uuid)
+                 ORDER BY c.created_at, m.created_at
+            """), {"aid": article_id, "uid": user_id}).all()
+        pairs = [f"{'P' if r[0] == 'user' else 'R'}: {r[1]}"
+                 for r in rows if (r[1] or "").strip()]
+        combined = "\n\n".join(pairs)[-_CHAT_INDEX_CHAR_CAP:]
+        if combined.strip():
+            result = index_article_source(
+                article_id=article_id, source_field="chat",
+                source_text=combined, owner_user_id=user_id,
+            )
+            if result.error:
+                logger.warning("chat reindex (article=%s user=%s): %s",
+                               article_id, user_id, result.error)
+        else:
+            clear_source(article_id, "chat", owner_user_id=user_id)
+    except Exception:
+        logger.exception("chat reindex failed (article=%s user=%s)",
+                         article_id, user_id)
+
+
+def _reindex_chat_async(article_id: str, user_id: str) -> None:
+    """Fire-and-forget: the answer already reached the user, no reason
+    to make them wait on an embedding API round-trip too."""
+    threading.Thread(
+        target=_reindex_chat_sync, args=(article_id, user_id),
+        name="prionvault-chat-reindex", daemon=True,
+    ).start()
 
 
 # ── Ask ───────────────────────────────────────────────────────────────────────
@@ -398,6 +468,8 @@ def ask(chat_id: str, user_id: str, question: str,
                    title = COALESCE(title, :title)
              WHERE id = CAST(:cid AS uuid)
         """), {"cid": chat_id, "title": question[:120]})
+
+    _reindex_chat_async(article_id, user_id)
 
     return {
         "answer":             answer,

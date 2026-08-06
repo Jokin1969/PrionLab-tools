@@ -19826,6 +19826,9 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
+          <h4>💬 El chat de un artículo ahora alimenta el chat general ${NEW}</h4>
+          <p>Tus preguntas y respuestas en el chat de un artículo concreto ("Preguntar a la IA sobre este artículo") se indexan automáticamente para que el <strong>chat general</strong> también pueda encontrarlas — igual que ya pasaba con las notas Post-it. Es <strong>privado</strong>: solo tú ves lo que preguntaste al buscar en el chat general, nadie más. También hay un nuevo botón <strong>"📊 Ver todos"</strong> en el chat de artículo (y un panel en <em>Salud biblioteca</em>) que muestra en qué artículos se ha usado el chat y cuántos en total.</p>
+
           <h4>📥 Importar BibTeX (.bib) ${NEW}</h4>
           <p>Nuevo botón <strong>"Importar BibTeX (.bib)"</strong> en <em>Entrada de artículos</em>. Sube un archivo <code>.bib</code> (de Zotero, EndNote, Google Scholar, o exportado desde el propio PrionVault) y cada entrada se compara con tu biblioteca por DOI, luego PMID y por último título:</p>
           <ul>
