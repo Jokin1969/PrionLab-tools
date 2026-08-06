@@ -101,7 +101,11 @@ def _build_pv_context(question: str, viewer_id: Optional[str]):
     (context_block: str, citations: list[dict]) — empty when retrieval
     finds nothing or embeddings aren't configured."""
     try:
-        result = _retrieve(question, top_k=12, per_article_cap=2,
+        # A little extra headroom (was top_k=12/cap=2) so a curated note/
+        # chat fragment (see retriever._is_curated) has room to survive
+        # alongside the topically-relevant PDF chunks, not compete for
+        # one of only two slots on its article.
+        result = _retrieve(question, top_k=16, per_article_cap=3,
                            rerank=True, hybrid=True, viewer_id=viewer_id)
     except Exception as exc:
         logger.warning("library_chat: retrieval failed: %s", exc)

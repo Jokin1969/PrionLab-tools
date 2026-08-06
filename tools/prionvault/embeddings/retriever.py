@@ -452,10 +452,28 @@ def search(query: str, *, top_k: int = 20,
         candidate_article_ids.add(c.article_id)
     total_candidate_articles = len(candidate_article_ids)
 
-    # Apply the per-article cap on the (possibly reranked) ordered list.
+    # Curated fragments — sticky notes, per-article chat, and the
+    # "## Notas del usuario" section admins append to a summary — are
+    # deliberate researcher annotations, not incidental body text. A
+    # generic semantic reranker has no way to know that a short note
+    # ("see also Vilotte et al. 2001 for Tg338") outranks a long,
+    # topically-dense PDF paragraph for THIS purpose, so one that
+    # legitimately matched the query (BM25 or vector) could still lose
+    # out on rerank score and never reach the model. Guarantee that any
+    # such chunk which made it into the candidate pool survives to the
+    # final context, ahead of ordinary chunks — it's exactly the kind
+    # of fragment worth spending a context slot on.
+    def _is_curated(c: "RetrievedChunk") -> bool:
+        if c.source_field in ("notes", "chat"):
+            return True
+        return c.source_field == "summary_ai" and "notas del usuario" in c.chunk_text.lower()
+
+    curated_first = sorted(ordered, key=lambda c: (not _is_curated(c),))
+
+    # Apply the per-article cap on the (curated-first, reranked) list.
     seen_per_article: dict = {}
     chunks: List[RetrievedChunk] = []
-    for c in ordered:
+    for c in curated_first:
         n = seen_per_article.get(c.article_id, 0)
         if n >= per_article_cap:
             continue
