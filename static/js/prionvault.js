@@ -8940,6 +8940,10 @@
         hasPdf ? `<a href="${API}/articles/${esc(a.id)}/pdf-view" target="_blank" rel="noopener"
               onclick="event.stopPropagation();" style="color:#b91c1c;text-decoration:none;font-weight:600;">
               <i class="fas fa-file-pdf"></i> PDF</a>` : '',
+        hasPdf ? `<a href="${API}/articles/${esc(a.id)}/pdf?download=1" download
+              title="Descargar el PDF" onclick="event.stopPropagation();"
+              style="color:#6b7280;text-decoration:none;">
+              <i class="fas fa-download"></i></a>` : '',
         a.doi ? `<a href="https://doi.org/${encodeURIComponent(a.doi)}" target="_blank" rel="noopener"
               onclick="event.stopPropagation();" style="color:#0F3460;text-decoration:none;">DOI: ${esc(a.doi)}</a>` : '',
         a.pubmed_id ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pubmed_id)}/" target="_blank" rel="noopener"

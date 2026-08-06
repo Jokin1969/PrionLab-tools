@@ -784,11 +784,14 @@ def api_article_pdf(aid):
                         "detail": str(exc)[:300]}), 502
 
     filename = (dropbox_path.rsplit("/", 1)[-1] or "article.pdf").replace('"', "")
+    # ?download=1 — the cart's "⬇ Descargar PDF" button, distinct from the
+    # PDF viewer link (which stays inline so it opens in a browser tab).
+    disposition = "attachment" if request.args.get("download") == "1" else "inline"
     return Response(
         content,
         mimetype="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
             "Cache-Control": "private, max-age=600",
             "X-Frame-Options": "SAMEORIGIN",
         },
