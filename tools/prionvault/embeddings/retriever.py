@@ -554,6 +554,74 @@ def search(query: str, *, top_k: int = 20,
             if companion is not None:
                 _add(companion)
 
+    # A note's companion chunk (above) covers the article the note is
+    # ATTACHED to — but a note's whole point is often to point at a
+    # DIFFERENT article ("the real reference for this is Laude et al.
+    # 2002, DOI: ..."), which needs its own resolution: pull that
+    # referenced article's text in directly by DOI/PMID, so the claim
+    # can actually be checked instead of repeated on faith. Without
+    # this, a note that cites another paper by identifier never gets
+    # that paper's own words in front of the model at all.
+    if any(_is_curated(c) for c in chunks) and len(chunks) < top_k:
+        # DOIs can legitimately contain balanced parentheses (e.g.
+        # "10.1016/s1631-0691(02)01393-8" — a real one from this same
+        # bug report), so parens aren't excluded outright; only trailing
+        # sentence punctuation gets stripped afterwards.
+        doi_re = re.compile(r'10\.\d{4,9}/[^\s<>"\']+', re.IGNORECASE)
+        pmid_re = re.compile(r'PMID[:\s]*([0-9]{6,9})', re.IGNORECASE)
+        wanted: set = set()
+        for c in chunks:
+            if not _is_curated(c):
+                continue
+            for m in doi_re.findall(c.chunk_text):
+                wanted.add(("doi", m.rstrip(".,;")))
+            for m in pmid_re.findall(c.chunk_text):
+                wanted.add(("pmid", m))
+        known_dois = {(article_meta.get(c.article_id) or {}).get("doi") or ""
+                      for c in chunks}
+        known_dois = {d.lower() for d in known_dois if d}
+        try:
+            with eng.connect() as conn2:
+                for kind, val in wanted:
+                    if len(chunks) >= top_k:
+                        break
+                    if kind == "doi" and val.lower() in known_dois:
+                        continue
+                    where = "lower(doi) = lower(:v)" if kind == "doi" else "pubmed_id = :v"
+                    row = conn2.execute(sql_text(
+                        f"SELECT id, title, authors, year, journal, doi, pubmed_id, "
+                        f"(dropbox_path IS NOT NULL) AS has_pdf "
+                        f"FROM articles WHERE {where} LIMIT 1"
+                    ), {"v": val}).first()
+                    if not row:
+                        continue
+                    ref_aid = str(row.id)
+                    if ref_aid in seen_per_article:
+                        continue
+                    chunk_row = conn2.execute(sql_text(
+                        "SELECT chunk_text, source_field, chunk_index, tokens "
+                        "FROM article_chunk WHERE article_id = :aid AND owner_user_id IS NULL "
+                        "ORDER BY (source_field = 'abstract') DESC, "
+                        "(source_field = 'summary_ai') DESC, chunk_index ASC LIMIT 1"
+                    ), {"aid": ref_aid}).first()
+                    if not chunk_row:
+                        continue
+                    article_meta[ref_aid] = {
+                        "title": row.title or "", "authors": row.authors,
+                        "year": row.year, "journal": row.journal,
+                        "doi": row.doi, "pubmed_id": row.pubmed_id,
+                        "has_pdf": bool(row.has_pdf),
+                    }
+                    _add(RetrievedChunk(
+                        article_id=ref_aid, chunk_index=int(chunk_row.chunk_index),
+                        source_field=chunk_row.source_field,
+                        chunk_text=chunk_row.chunk_text,
+                        tokens=int(chunk_row.tokens) if chunk_row.tokens is not None else None,
+                        distance=1.0, similarity=0.0,
+                    ))
+        except Exception as exc:
+            logger.warning("note cross-reference resolution failed: %s", exc)
+
     # Group by article using the order of `chunks`
     grouped: dict = {}
     for c in chunks:
