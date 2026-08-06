@@ -516,17 +516,43 @@ def search(query: str, *, top_k: int = 20,
 
     curated_first = sorted(ordered, key=lambda c: (not _is_curated(c),))
 
+    # A note asserting a fact ("this is the first paper to...") is a
+    # lead, not a verified source — the model can only cross-check it
+    # against the article's own words if that text is ALSO in front of
+    # it. So right after each curated chunk, also pull in the best-
+    # ranked non-curated chunk for THAT SAME article (if the candidate
+    # pool has one) — the note and the actual article text arrive
+    # together, not the note floating alone.
+    best_factual_by_article: dict = {}
+    for c in ordered:
+        if not _is_curated(c) and c.article_id not in best_factual_by_article:
+            best_factual_by_article[c.article_id] = c
+
     # Apply the per-article cap on the (curated-first, reranked) list.
     seen_per_article: dict = {}
     chunks: List[RetrievedChunk] = []
-    for c in curated_first:
+    added_ids: set = set()
+
+    def _add(c) -> bool:
+        if id(c) in added_ids or len(chunks) >= top_k:
+            return False
         n = seen_per_article.get(c.article_id, 0)
         if n >= per_article_cap:
-            continue
+            return False
         seen_per_article[c.article_id] = n + 1
         chunks.append(c)
-        if len(chunks) >= top_k:
-            break
+        added_ids.add(id(c))
+        return True
+
+    for c in curated_first:
+        if not _add(c):
+            if len(chunks) >= top_k:
+                break
+            continue
+        if _is_curated(c):
+            companion = best_factual_by_article.get(c.article_id)
+            if companion is not None:
+                _add(companion)
 
     # Group by article using the order of `chunks`
     grouped: dict = {}

@@ -79,7 +79,17 @@ dilo explícitamente en tu respuesta aunque ese artículo en concreto no haya \
 salido como fragmento independiente — es la pista que el investigador dejó para \
 sí mismo, precisamente para este tipo de búsqueda.
 - Si sigues sin encontrar algo tras revisar notas y conversaciones incluidas, \
-pide un DOI/autor/año aproximado en vez de darlo por inexistente sin más."""
+pide un DOI/autor/año aproximado en vez de darlo por inexistente sin más.
+- Una nota es una PISTA fiable, no una fuente que sustituya la verificación: si \
+hace una afirmación factual concreta (p. ej. "este es el primer artículo que \
+menciona X") y el artículo que cita también aparece entre los fragmentos — como \
+Extracto del PDF, Abstract o Resumen IA, no solo como nota — contrasta la \
+afirmación contra ese texto antes de darla por buena, y dilo: "confirmado en el \
+extracto del PDF [N]" o, si el artículo referenciado NO viene con su propio \
+texto en los fragmentos, dilo también ("la nota lo indica, pero no tengo el \
+texto del artículo citado entre los fragmentos para contrastarlo directamente"). \
+No presentes una afirmación de una nota como un hecho verificado si no la has \
+podido cruzar con el contenido real del artículo."""
 
 
 def _get_engine():
