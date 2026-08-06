@@ -24,6 +24,38 @@ logger = logging.getLogger(__name__)
 # chars, since a 1-2 char token can't usefully narrow a BM25 match.
 _BM25_WORD_RE = re.compile(r"[\w\-]{3,}", re.UNICODE)
 
+# Common Spanish/English function words — pronouns, articles,
+# prepositions, conjunctions, question words, generic request verbs
+# ("dime", "puedes", "gustaría")... Verified empirically (see the git
+# history for this file) that leaving these IN the OR query is worse
+# than not filtering at all: ts_rank_cd has no IDF/rarity weighting,
+# it just sums per-lexeme weight across ALL matches, so a long PDF
+# chunk that happens to contain "que"/"por"/"para" a dozen times each
+# outranks a short, precise note whose only real match is the rare
+# term that actually matters ("Tg338") — the opposite of what BM25 is
+# supposed to reward. Stripping filler words is what makes the OR
+# query behave like a real keyword search instead of "whichever chunk
+# is longest and most grammatically ordinary".
+_BM25_STOPWORDS = frozenset("""
+dime dime puedes puedo podrías podrias gustaría gustaria quisiera quiero
+necesito favor porfavor decir dime cual cuál cuales cuáles que qué quien
+quién quienes quiénes como cómo donde dónde cuando cuándo cuanto cuánto
+cuanta cuánta por para con sin sobre entre desde hasta hacia según segun
+ante bajo tras durante mediante versus vía via los las una uno unos unas
+del al este esta estos estas ese esa esos esas aquel aquella aquellos
+aquellas mismo misma mismos mismas otro otra otros otras tal tales cada
+todo toda todos todas algún alguna algunos algunas algo alguien nada
+nadie ningún ninguna tanto tanta tantos tantas más mas menos muy tan
+solo sólo también tambien tampoco además ademas incluso aunque pero
+sino porque pues ya casi aún aun bien mal mejor peor primera primero
+primeros primeras vez veces artículo articulo the and for with from
+into onto about into over under between among during before after
+above below through please could would should tell give show find
+what which who whom whose where when why how does did doing done
+this that these those some any all each every other another same
+first once
+""".split())
+
 
 def _bm25_or_query(text: str) -> str:
     """Turn a natural-language question into an OR-of-significant-words
@@ -44,8 +76,15 @@ def _bm25_or_query(text: str) -> str:
     (same technique the main listing search uses for its own OR mode),
     so this matches any chunk containing at least one significant word
     — ts_rank_cd and the downstream RRF fusion / rerank still reward
-    chunks that match more of them."""
-    words = _BM25_WORD_RE.findall(text or "")
+    chunks that match more of them.
+
+    Filler words are stripped first (see _BM25_STOPWORDS) — leaving
+    them in actively hurts: ts_rank_cd sums weight per match with no
+    length/rarity normalisation, so a long chunk with many incidental
+    "que"/"por"/"para" matches would otherwise outrank a short note
+    whose only match is the one word that actually matters."""
+    all_words = _BM25_WORD_RE.findall(text or "")
+    words = [w for w in all_words if w.lower() not in _BM25_STOPWORDS] or all_words
     if not words:
         return text or ""
     return " OR ".join(words)
