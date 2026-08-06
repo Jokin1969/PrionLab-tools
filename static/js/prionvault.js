@@ -4238,14 +4238,24 @@
           ${a.year    ? `<span style="margin:0 4px;color:#d1d5db;">·</span>${a.year}` : ''}
           ${a.doi     ? `<span style="margin:0 4px;color:#d1d5db;">·</span>
                          <a href="https://doi.org/${esc(a.doi)}" target="_blank" rel="noopener"
-                            style="color:#0F3460;text-decoration:none;">${esc(a.doi)}</a>` : ''}
+                            style="color:#0F3460;text-decoration:none;">${esc(a.doi)}</a><button
+                            type="button" id="pv-detail-doi-copy" data-title="${esc(a.doi)}"
+                            title="Copiar DOI"
+                            style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
+                                   cursor:pointer;color:#9ca3af;font-size:11px;line-height:1;"
+                            ><i class="far fa-copy"></i></button>` : ''}
           ${a.pubmed_id ? `<span style="margin:0 4px;color:#d1d5db;">·</span>
                            <a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pubmed_id)}/"
                               target="_blank" rel="noopener"
                               title="Abrir en PubMed (útil para copiar el abstract a mano si la descarga falla)"
                               style="color:#0F3460;text-decoration:none;font-weight:600;">
                               PMID ${esc(a.pubmed_id)} ↗
-                           </a>` : ''}
+                           </a><button
+                              type="button" id="pv-detail-pmid-copy" data-title="${esc(a.pubmed_id)}"
+                              title="Copiar PMID"
+                              style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
+                                     cursor:pointer;color:#9ca3af;font-size:11px;line-height:1;"
+                              ><i class="far fa-copy"></i></button>` : ''}
         </div>
         ${a.abstract ? `
           <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Abstract</h3>
@@ -4328,6 +4338,8 @@
         </div>
       `;
       _wireCopyBtn(document.getElementById('pv-detail-title-copy'), { stopProp: false });
+      _wireCopyBtn(document.getElementById('pv-detail-doi-copy'),   { stopProp: false });
+      _wireCopyBtn(document.getElementById('pv-detail-pmid-copy'),  { stopProp: false });
       renderRatingsSection(a);
       wirePdfViewer(a);
       wirePersonalState(a);
