@@ -234,19 +234,23 @@ def _chat_row_to_dict(r) -> dict:
     return d
 
 
+def _list_chats_conn(conn, user_id: str) -> list[dict]:
+    rows = conn.execute(_sql("""
+        SELECT c.id::text AS id, c.requested_provider, c.title,
+               c.created_at, c.updated_at, COUNT(m.id) AS message_count
+          FROM prionvault_library_chat c
+          LEFT JOIN prionvault_library_chat_message m ON m.chat_id = c.id
+         WHERE c.user_id = CAST(:uid AS uuid)
+         GROUP BY c.id
+         ORDER BY c.updated_at DESC
+    """), {"uid": user_id}).mappings().all()
+    return [_chat_row_to_dict(r) for r in rows]
+
+
 def list_chats(user_id: str) -> list[dict]:
     eng = _get_engine()
     with eng.connect() as conn:
-        rows = conn.execute(_sql("""
-            SELECT c.id::text AS id, c.requested_provider, c.title,
-                   c.created_at, c.updated_at, COUNT(m.id) AS message_count
-              FROM prionvault_library_chat c
-              LEFT JOIN prionvault_library_chat_message m ON m.chat_id = c.id
-             WHERE c.user_id = CAST(:uid AS uuid)
-             GROUP BY c.id
-             ORDER BY c.updated_at DESC
-        """), {"uid": user_id}).mappings().all()
-    return [_chat_row_to_dict(r) for r in rows]
+        return _list_chats_conn(conn, user_id)
 
 
 def create_chat(user_id: str, provider: str) -> str:
@@ -278,37 +282,42 @@ def get_chat(chat_id: str, user_id: str, limit_pairs: Optional[int] = _DEFAULT_M
     actually needed."""
     eng = _get_engine()
     with eng.connect() as conn:
-        head = conn.execute(_sql("""
-            SELECT id::text AS id, requested_provider, title, created_at, updated_at
-              FROM prionvault_library_chat
-             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
-        """), {"cid": chat_id, "uid": user_id}).mappings().first()
-        if not head:
-            return None
-        total = conn.execute(_sql("""
-            SELECT COUNT(*) FROM prionvault_library_chat_message
-             WHERE chat_id = CAST(:cid AS uuid)
-        """), {"cid": chat_id}).scalar() or 0
+        return _get_chat_conn(conn, chat_id, user_id, limit_pairs)
 
-        if limit_pairs is not None:
-            msgs = conn.execute(_sql("""
-                SELECT * FROM (
-                    SELECT id, role, content, provider, model, tokens_in, tokens_out,
-                           cost_usd, fallback, cited_article_ids, citations, created_at
-                      FROM prionvault_library_chat_message
-                     WHERE chat_id = CAST(:cid AS uuid)
-                     ORDER BY created_at DESC, id DESC
-                     LIMIT :lim
-                ) recent ORDER BY created_at, id
-            """), {"cid": chat_id, "lim": limit_pairs * 2}).mappings().all()
-        else:
-            msgs = conn.execute(_sql("""
+
+def _get_chat_conn(conn, chat_id: str, user_id: str,
+                   limit_pairs: Optional[int] = _DEFAULT_MESSAGE_PAIRS) -> Optional[dict]:
+    head = conn.execute(_sql("""
+        SELECT id::text AS id, requested_provider, title, created_at, updated_at
+          FROM prionvault_library_chat
+         WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+    """), {"cid": chat_id, "uid": user_id}).mappings().first()
+    if not head:
+        return None
+    total = conn.execute(_sql("""
+        SELECT COUNT(*) FROM prionvault_library_chat_message
+         WHERE chat_id = CAST(:cid AS uuid)
+    """), {"cid": chat_id}).scalar() or 0
+
+    if limit_pairs is not None:
+        msgs = conn.execute(_sql("""
+            SELECT * FROM (
                 SELECT id, role, content, provider, model, tokens_in, tokens_out,
                        cost_usd, fallback, cited_article_ids, citations, created_at
                   FROM prionvault_library_chat_message
                  WHERE chat_id = CAST(:cid AS uuid)
-                 ORDER BY created_at, id
-            """), {"cid": chat_id}).mappings().all()
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT :lim
+            ) recent ORDER BY created_at, id
+        """), {"cid": chat_id, "lim": limit_pairs * 2}).mappings().all()
+    else:
+        msgs = conn.execute(_sql("""
+            SELECT id, role, content, provider, model, tokens_in, tokens_out,
+                   cost_usd, fallback, cited_article_ids, citations, created_at
+              FROM prionvault_library_chat_message
+             WHERE chat_id = CAST(:cid AS uuid)
+             ORDER BY created_at, id
+        """), {"cid": chat_id}).mappings().all()
 
     out = _chat_row_to_dict(head)
     out["total_messages"] = total
@@ -326,6 +335,21 @@ def get_chat(chat_id: str, user_id: str, limit_pairs: Optional[int] = _DEFAULT_M
             md["provider_label"] = PROVIDERS.get(md["provider"], {}).get("label", md["provider"])
         out["messages"].append(md)
     return out
+
+
+def open_view(user_id: str, chat_id: Optional[str] = None) -> dict:
+    """Everything the "open the chat modal" flow needs, in ONE database
+    connection / ONE HTTP round trip instead of two sequential ones
+    (list, then fetch-the-chat) — that second network round trip (auth,
+    routing, connection acquisition) was adding real wall-clock time on
+    top of the query cost itself, on every single open. Mirrors exactly
+    what the frontend used to do with loadChats() + openChat()."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        chats = _list_chats_conn(conn, user_id)
+        target_id = chat_id or (chats[0]["id"] if chats else None)
+        current = _get_chat_conn(conn, target_id, user_id) if target_id else None
+    return {"chats": chats, "current": current}
 
 
 def delete_message_pair(chat_id: str, user_id: str, user_message_id: int) -> bool:

@@ -23,6 +23,28 @@ def _require_user():
     return uid, None
 
 
+@prionvault_bp.route("/api/library-chats/open", methods=["GET"])
+@login_required
+def api_library_chat_open():
+    """One-shot combo for the modal's open() flow: the sidebar chat
+    list AND the full detail of the target chat (?chat_id=, default the
+    most recently updated one) in a single request/DB connection —
+    replaces what used to be two sequential round trips (list, then
+    fetch), which were adding real wall-clock time on top of query cost
+    on every single open."""
+    uid, err = _require_user()
+    if err:
+        return err
+    chat_id = request.args.get("chat_id") or None
+    from .services import library_chat
+    try:
+        view = library_chat.open_view(uid, chat_id)
+    except Exception as exc:
+        logger.exception("library_chat open failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify(view)
+
+
 @prionvault_bp.route("/api/library-chats", methods=["GET"])
 @login_required
 def api_library_chats_list():

@@ -8636,16 +8636,31 @@
       wireOnce();
       $('pv-libchat-modal').style.display = 'flex';
       paintProvider();
-      if (_currentChatId) {
-        // Reopening a chat we already know the id of (same session) —
-        // don't make the thread wait on the sidebar list finishing
-        // first, they're independent reads.
-        loadChats();
-        await openChat(_currentChatId);
-      } else {
-        await loadChats();
-        if (_chats.length) await openChat(_chats[0].id);
-        else renderThread(null);
+      $('pv-libchat-thread').innerHTML =
+        '<div style="text-align:center;color:#9ca3af;padding:30px;">Cargando…</div>';
+      try {
+        // One request for both the sidebar list AND the target chat's
+        // messages — used to be two sequential round trips (list, then
+        // fetch), and each network round trip (auth, routing, DB
+        // connection) costs real wall-clock time on top of the queries
+        // themselves, doubled for no reason.
+        const params = _currentChatId ? `?chat_id=${_currentChatId}` : '';
+        const view = await api(`/library-chats/open${params}`);
+        _chats = view.chats || [];
+        if (view.current) {
+          _currentChatId = view.current.id;
+          _provider = view.current.requested_provider || _provider;
+          _currentChatTitle = view.current.title || '';
+          paintProvider();
+          renderThread(view.current);
+        } else {
+          _currentChatId = null;
+          renderThread(null);
+        }
+        renderList();
+      } catch (e) {
+        $('pv-libchat-thread').innerHTML =
+          `<div style="text-align:center;color:#b91c1c;padding:30px;">Error: ${esc(e.message)}</div>`;
       }
       setTimeout(() => $('pv-libchat-input')?.focus(), 50);
     }
