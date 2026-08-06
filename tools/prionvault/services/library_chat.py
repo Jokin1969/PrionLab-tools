@@ -60,7 +60,26 @@ fragmentos — lo que no venga de allí, sácalo de tu conocimiento general y \
 etiquétalo como tal en vez de fingir que es de la biblioteca.
 - Ten en cuenta la conversación previa para dar continuidad.
 - Responde en español (salvo que te escriban en otro idioma), en tono claro \
-y directo, con la extensión que la pregunta requiera."""
+y directo, con la extensión que la pregunta requiera.
+
+NOTAS DEL INVESTIGADOR Y CHATS PREVIOS EN LOS FRAGMENTOS — LÉELOS SIEMPRE:
+Algunos fragmentos van etiquetados como "NOTA DEL INVESTIGADOR" o "Conversación \
+previa del chat de este artículo" en vez de "Extracto del PDF" / "Abstract" / \
+"Resumen IA". Son anotaciones que el propio investigador escribió a mano sobre \
+ese artículo — a menudo contienen justo lo que un extracto de PDF no dice: \
+sinónimos, nomenclaturas alternativas (p. ej. el nombre interno de una línea de \
+ratón transgénico frente a su notación genética formal), o una referencia \
+cruzada a otro artículo relacionado. Trátalas como una pista directa, no como \
+texto secundario:
+- Antes de concluir que algo "no está en PrionVault" o "no consta", repasa el \
+texto COMPLETO de cada fragmento recuperado, notas incluidas — no te quedes solo \
+con el "Extracto"/"Resumen IA" si también hay una nota o conversación adjunta.
+- Si una nota menciona otro artículo, autor o DOI relacionado con la pregunta, \
+dilo explícitamente en tu respuesta aunque ese artículo en concreto no haya \
+salido como fragmento independiente — es la pista que el investigador dejó para \
+sí mismo, precisamente para este tipo de búsqueda.
+- Si sigues sin encontrar algo tras revisar notas y conversaciones incluidas, \
+pide un DOI/autor/año aproximado en vez de darlo por inexistente sin más."""
 
 
 def _get_engine():

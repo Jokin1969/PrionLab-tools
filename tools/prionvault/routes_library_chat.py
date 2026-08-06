@@ -150,3 +150,56 @@ def api_library_chat_delete_message(chat_id, message_id):
     if not ok:
         return jsonify({"error": "not_found"}), 404
     return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/library-chats/<uuid:chat_id>/report", methods=["GET"])
+@login_required
+def api_library_chat_report(chat_id):
+    """Download a nicely-formatted report of this conversation, from the
+    start up to (and including) one message pair — the 📄 button on a
+    pair in the chat UI. ?format=pdf|docx (default pdf), ?up_to=<user
+    message id> (default: the whole conversation)."""
+    uid, err = _require_user()
+    if err:
+        return err
+    fmt = (request.args.get("format") or "pdf").strip().lower()
+    if fmt not in ("pdf", "docx"):
+        return jsonify({"error": "bad_format", "detail": "format debe ser pdf o docx"}), 400
+    up_to = request.args.get("up_to", type=int)
+
+    from .services import library_chat, chat_report
+    chat = library_chat.get_chat(str(chat_id), uid)
+    if not chat:
+        return jsonify({"error": "not_found"}), 404
+
+    messages = chat["messages"]
+    if up_to is not None:
+        idx = next((i for i, m in enumerate(messages)
+                   if m["role"] == "user" and m["id"] == up_to), None)
+        if idx is not None:
+            end = idx + 1
+            if end < len(messages) and messages[end]["role"] == "assistant":
+                end += 1
+            messages = messages[:end]
+
+    if not messages:
+        return jsonify({"error": "empty", "detail": "Esta conversación no tiene mensajes."}), 400
+
+    try:
+        if fmt == "pdf":
+            content = chat_report.render_pdf(chat, messages)
+            mimetype = "application/pdf"
+            ext = "pdf"
+        else:
+            content = chat_report.render_docx(chat, messages)
+            mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ext = "docx"
+    except Exception as exc:
+        logger.exception("chat report generation failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+
+    from flask import Response
+    filename = f"chat-prionvault-{str(chat_id)[:8]}.{ext}"
+    return Response(content, mimetype=mimetype, headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    })

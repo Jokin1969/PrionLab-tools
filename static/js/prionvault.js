@@ -8304,6 +8304,21 @@
                     style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 4px;">📌</button>
             <button type="button" class="pv-pair-fork" data-mid="${mid}" title="Empezar una conversación nueva con esta pregunta"
                     style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 4px;">🚀</button>
+            <span style="position:relative;display:inline-block;">
+              <button type="button" class="pv-pair-report" data-mid="${mid}"
+                      title="Generar informe de la conversación hasta aquí (PDF o Word)"
+                      style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 4px;">📄</button>
+              <span class="pv-pair-report-menu" style="display:none;position:absolute;right:0;top:100%;z-index:20;
+                    background:white;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.14);
+                    padding:4px;white-space:nowrap;">
+                <button type="button" class="pv-pair-report-fmt" data-mid="${mid}" data-fmt="pdf"
+                        style="display:block;width:100%;text-align:left;border:none;background:none;
+                               padding:6px 12px;font-size:12px;color:#374151;cursor:pointer;border-radius:5px;">📄 Informe en PDF</button>
+                <button type="button" class="pv-pair-report-fmt" data-mid="${mid}" data-fmt="docx"
+                        style="display:block;width:100%;text-align:left;border:none;background:none;
+                               padding:6px 12px;font-size:12px;color:#374151;cursor:pointer;border-radius:5px;">📝 Informe en Word</button>
+              </span>
+            </span>
             <button type="button" class="pv-pair-delete" data-mid="${mid}" title="Borrar esta pregunta y su respuesta"
                     style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 4px;">🗑</button>
           </div>
@@ -8328,7 +8343,31 @@
       el.querySelectorAll('.pv-pair-cite').forEach(btn => {
         btn.addEventListener('click', () => citePair(parseInt(btn.dataset.mid, 10), btn));
       });
+      el.querySelectorAll('.pv-pair-report').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const menu = btn.nextElementSibling;
+          if (!menu) return;
+          const wasOpen = menu.style.display === 'block';
+          el.querySelectorAll('.pv-pair-report-menu').forEach(m => { m.style.display = 'none'; });
+          menu.style.display = wasOpen ? 'none' : 'block';
+        });
+      });
+      el.querySelectorAll('.pv-pair-report-fmt').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const mid = btn.dataset.mid;
+          const fmt = btn.dataset.fmt;
+          window.open(`${API}/library-chats/${_currentChatId}/report?format=${fmt}&up_to=${mid}`, '_blank');
+          btn.closest('.pv-pair-report-menu').style.display = 'none';
+        });
+      });
     }
+
+    // Close any open "Informe" menu when clicking outside it.
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.pv-pair-report-menu').forEach(m => { m.style.display = 'none'; });
+    });
 
     function renderThread(chat) {
       const el = $('pv-libchat-thread');
@@ -19825,6 +19864,12 @@
       novedades: `
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
+
+          <h4>📄 Informe descargable del chat general (PDF / Word) ${NEW}</h4>
+          <p>Cada pregunta del chat general tiene ahora un botón 📄 junto a 📌/🚀/🗑 que genera un <strong>informe de toda la conversación hasta ese punto</strong>, descargable en PDF (maquetado) o Word (texto seleccionable, fácil de copiar/pegar). Incluye las fuentes de PrionVault citadas en cada respuesta.</p>
+
+          <h4>🔎 El chat general ahora lee mejor las notas y otros chats ${NEW}</h4>
+          <p>Cada fragmento que recibe la IA va etiquetado según su origen — Extracto del PDF, Resumen IA, o <strong>Nota del investigador</strong>/<strong>Conversación previa de chat</strong> (ambas privadas, solo las tuyas) — y el chat general tiene ahora instrucciones explícitas de revisar siempre esas notas y conversaciones antes de decir que algo "no está en PrionVault". Antes las leía como texto genérico y podía pasarlas por alto.</p>
 
           <h4>💬 El chat de un artículo ahora alimenta el chat general ${NEW}</h4>
           <p>Tus preguntas y respuestas en el chat de un artículo concreto ("Preguntar a la IA sobre este artículo") se indexan automáticamente para que el <strong>chat general</strong> también pueda encontrarlas — igual que ya pasaba con las notas Post-it. Es <strong>privado</strong>: solo tú ves lo que preguntaste al buscar en el chat general, nadie más. También hay un nuevo botón <strong>"📊 Ver todos"</strong> en el chat de artículo (y un panel en <em>Salud biblioteca</em>) que muestra en qué artículos se ha usado el chat y cuántos en total.</p>

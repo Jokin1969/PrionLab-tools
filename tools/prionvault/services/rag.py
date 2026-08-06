@@ -53,7 +53,13 @@ Reglas estrictas:
       Nivel de confianza: alto|medio|bajo
   según cuánto te apoyas en evidencia clara y consistente.
 - Responde en español, con terminología científica precisa, en tono conciso \
-  (3-8 frases salvo que la pregunta exija más detalle)."""
+  (3-8 frases salvo que la pregunta exija más detalle).
+- Algunos fragmentos van etiquetados "NOTA DEL INVESTIGADOR" o "Conversación \
+  previa del chat de este artículo" en vez de "Extracto del PDF"/"Resumen IA" — \
+  son anotaciones privadas del investigador, a menudo con sinónimos, \
+  nomenclaturas alternativas o referencias cruzadas que el PDF no dice \
+  literalmente. Revísalas SIEMPRE antes de concluir que "no hay evidencia \
+  suficiente" — no te bases solo en los extractos de PDF/resumen."""
 
 
 @dataclass
@@ -148,6 +154,23 @@ def _fetch_summaries(article_ids: list[str]) -> dict[str, str]:
         return {}
 
 
+# Human-readable label per article_chunk.source_field, so the model can
+# SEE what kind of fragment it's reading instead of every chunk looking
+# like undifferentiated body text. This directly matters for the two
+# private, per-user sources (sticky notes, per-article chat) — a model
+# has no reason to treat a throwaway PDF sentence and a deliberate
+# researcher cross-reference ("see also Vilotte et al. 2001 for Tg338")
+# with the same weight unless the label tells it which is which.
+_SOURCE_LABELS = {
+    "extracted_text": "Extracto del PDF",
+    "abstract":        "Abstract",
+    "summary_ai":      "Resumen IA",
+    "notes":           "NOTA DEL INVESTIGADOR (privada, escrita a mano — suele contener "
+                       "conexiones, sinónimos o referencias cruzadas que el texto del PDF no dice)",
+    "chat":            "Conversación previa del chat de este artículo (privada)",
+}
+
+
 def _build_context(chunks: List[RetrievedChunk],
                    articles: List[RetrievedArticle]
                    ) -> tuple[str, List[RagCitation]]:
@@ -182,10 +205,11 @@ def _build_context(chunks: List[RetrievedChunk],
         if meta.journal: header_bits.append(meta.journal[:80])
         if meta.doi:     header_bits.append(f"DOI:{meta.doi}")
         header = " · ".join(header_bits)
+        label = _SOURCE_LABELS.get(c.source_field, "Extracto")
         block = (
             f"[{i}] {meta.title}\n"
             f"    {header}\n"
-            f"    Extracto: {c.chunk_text}"
+            f"    {label}: {c.chunk_text}"
         )
         summary = summaries.get(meta.id)
         if summary:
