@@ -26,7 +26,7 @@ from sqlalchemy import text as _sql
 
 from .ai_summary import PROVIDERS, DEFAULT_PROVIDER
 from .rag import _chat, _classify_failure, _FALLBACK_KINDS, _estimate_cost, _parse_cited_numbers
-from ..embeddings.retriever import search as _retrieve
+from ..embeddings.retriever import search as _retrieve, _bm25_or_query
 
 logger = logging.getLogger(__name__)
 
@@ -486,6 +486,12 @@ def search_chats(user_id: str, query: str, limit: int = 15) -> list[dict]:
     except Exception as exc:
         logger.info("library_chat search: embeddings unavailable, BM25-only: %s", exc)
 
+    # Same fix as embeddings/retriever.py's hybrid search: plainto_tsquery
+    # ANDs every word, and 'simple' has no stopword list, so a natural-
+    # language search phrase ANDs together filler words too — an OR of
+    # significant words lets a real keyword match through.
+    bm25_q = _bm25_or_query(query)
+
     with eng.connect() as conn:
         if qvec:
             rows = conn.execute(_sql("""
@@ -502,11 +508,11 @@ def search_chats(user_id: str, query: str, limit: int = 15) -> list[dict]:
                 ),
                 bm25 AS (
                     SELECT m.id, m.chat_id, m.content, m.created_at,
-                           ts_rank(m.search_vector, plainto_tsquery('simple', :q)) AS score
+                           ts_rank(m.search_vector, websearch_to_tsquery('simple', :q)) AS score
                       FROM prionvault_library_chat_message m
                       JOIN prionvault_library_chat c ON c.id = m.chat_id
                      WHERE c.user_id = CAST(:uid AS uuid)
-                       AND m.search_vector @@ plainto_tsquery('simple', :q)
+                       AND m.search_vector @@ websearch_to_tsquery('simple', :q)
                      ORDER BY score DESC
                      LIMIT 30
                 ),
@@ -519,17 +525,17 @@ def search_chats(user_id: str, query: str, limit: int = 15) -> list[dict]:
                   FROM fused
                  ORDER BY id, score DESC
                  LIMIT :lim
-            """), {"qvec": qvec, "uid": user_id, "q": query, "lim": limit}).mappings().all()
+            """), {"qvec": qvec, "uid": user_id, "q": bm25_q, "lim": limit}).mappings().all()
         else:
             rows = conn.execute(_sql("""
                 SELECT m.id, m.chat_id, m.content, m.created_at
                   FROM prionvault_library_chat_message m
                   JOIN prionvault_library_chat c ON c.id = m.chat_id
                  WHERE c.user_id = CAST(:uid AS uuid)
-                   AND m.search_vector @@ plainto_tsquery('simple', :q)
-                 ORDER BY ts_rank(m.search_vector, plainto_tsquery('simple', :q)) DESC
+                   AND m.search_vector @@ websearch_to_tsquery('simple', :q)
+                 ORDER BY ts_rank(m.search_vector, websearch_to_tsquery('simple', :q)) DESC
                  LIMIT :lim
-            """), {"uid": user_id, "q": query, "lim": limit}).mappings().all()
+            """), {"uid": user_id, "q": bm25_q, "lim": limit}).mappings().all()
 
         if not rows:
             return []

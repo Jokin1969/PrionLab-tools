@@ -8,6 +8,7 @@ even if multiple chunks of the same paper matched.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -17,6 +18,37 @@ from ..ingestion.queue import _get_engine
 from .embedder import embed_query, NotConfigured
 
 logger = logging.getLogger(__name__)
+
+# Matches the significant-word extraction the main listing search
+# already uses for its own ILIKE OR-mode (routes.py) — words of 3+
+# chars, since a 1-2 char token can't usefully narrow a BM25 match.
+_BM25_WORD_RE = re.compile(r"[\w\-]{3,}", re.UNICODE)
+
+
+def _bm25_or_query(text: str) -> str:
+    """Turn a natural-language question into an OR-of-significant-words
+    string for websearch_to_tsquery.
+
+    plainto_tsquery ANDs every token together, and the 'simple' text
+    search config (chosen so acronyms/gene names aren't stemmed or
+    stopword-filtered) has NO stopword list — so a raw question like
+    "¿Cuál es el artículo que referencia... Tg338?" turns into an AND
+    of ~15 tokens including "cual", "es", "el", "que"... a conjunction
+    essentially no chunk can ever satisfy. The BM25 leg then silently
+    contributes nothing, hybrid search quietly degrades to vector-only,
+    and a distinctive exact-term query (an acronym, a gene name, a lab
+    model name) that should be a slam-dunk lexical match instead rides
+    entirely on embedding similarity — which is exactly the failure
+    mode that let a note containing "Tg338" go unretrieved. websearch_
+    to_tsquery treats a literal " OR " between bare words as a real OR
+    (same technique the main listing search uses for its own OR mode),
+    so this matches any chunk containing at least one significant word
+    — ts_rank_cd and the downstream RRF fusion / rerank still reward
+    chunks that match more of them."""
+    words = _BM25_WORD_RE.findall(text or "")
+    if not words:
+        return text or ""
+    return " OR ".join(words)
 
 
 @dataclass
@@ -249,6 +281,7 @@ def search(query: str, *, top_k: int = 20,
         hybrid_active = False
         if hybrid:
             try:
+                bm25_q = _bm25_or_query(expanded_for_bm25)
                 bm25_rows = conn.execute(sql_text(
                     """SELECT
                            c.id AS chunk_pk,
@@ -258,16 +291,16 @@ def search(query: str, *, top_k: int = 20,
                            c.chunk_text,
                            c.tokens,
                            ts_rank_cd(c.chunk_search_vector,
-                                      plainto_tsquery('simple', :q)) AS rank,
+                                      websearch_to_tsquery('simple', :q)) AS rank,
                            a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
                            (a.dropbox_path IS NOT NULL) AS has_pdf
                        FROM article_chunk c
                        JOIN articles a ON a.id = c.article_id
-                       WHERE c.chunk_search_vector @@ plainto_tsquery('simple', :q)
+                       WHERE c.chunk_search_vector @@ websearch_to_tsquery('simple', :q)
                          AND (c.owner_user_id IS NULL OR c.owner_user_id = :viewer_id)
                        ORDER BY rank DESC
                        LIMIT :k"""
-                ), {"q": expanded_for_bm25, "k": candidate_k,
+                ), {"q": bm25_q, "k": candidate_k,
                     "viewer_id": viewer_id}).all()
                 hybrid_active = True
             except Exception as exc:
