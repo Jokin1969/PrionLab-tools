@@ -9225,6 +9225,7 @@
       if (_wired) return;
       _wired = true;
       $('pv-cart-close')?.addEventListener('click', close);
+      $('pv-cart-hide')?.addEventListener('click', close);
       $('pv-cart-clear-all')?.addEventListener('click', () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) return;
