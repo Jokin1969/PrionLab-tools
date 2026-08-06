@@ -2342,3 +2342,92 @@ def api_bibtex_import_parse():
         })
     finally:
         s.close()
+
+
+# ── Retrieval diagnostics ────────────────────────────────────────────────
+# Debugging tool for "why doesn't the chat find X" reports: shows the
+# raw article_chunk rows for a specific article (source_field, whether
+# chunk_search_vector is populated, first chars of text) AND a full
+# ranking trace of what embeddings.retriever.search() actually did for
+# a query — which chunks were BM25/vector candidates, their fused/
+# rerank scores, and which ones ended up in the final context sent to
+# the model. Lets an admin see exactly where a specific fragment fell
+# out of the pipeline instead of guessing from the chat's answer alone.
+
+@prionvault_bp.route("/api/admin/debug/retrieval", methods=["GET"])
+@admin_required
+def api_admin_debug_retrieval():
+    """Query params:
+      q         — required, the question to trace through retrieval.
+      article   — optional, a title substring OR a DOI. When given,
+                  also dumps every article_chunk row for the FIRST
+                  matching article (id, source_field, owner_user_id,
+                  has_search_vector, chunk_text preview) so you can
+                  confirm a note/chat chunk actually exists and is
+                  indexed, independent of whether the query found it.
+      viewer_id — optional, impersonate this user for the private
+                  (owner_user_id-scoped) chunks — defaults to the
+                  requesting admin's own id.
+    """
+    from .embeddings.retriever import search as _retrieve
+
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"error": "q_required"}), 400
+    article_needle = (request.args.get("article") or "").strip()
+    viewer_id = (request.args.get("viewer_id") or "").strip() or _viewer_id()
+
+    s = _session()
+    try:
+        article_dump = None
+        if article_needle:
+            is_doi = "/" in article_needle or article_needle.lower().startswith("10.")
+            if is_doi:
+                row = s.execute(sql_text(
+                    "SELECT id, title, doi FROM articles WHERE lower(doi) = lower(:v) LIMIT 1"
+                ), {"v": article_needle}).first()
+            else:
+                row = s.execute(sql_text(
+                    "SELECT id, title, doi FROM articles WHERE title ILIKE :v LIMIT 1"
+                ), {"v": f"%{article_needle}%"}).first()
+            if row:
+                chunk_rows = s.execute(sql_text("""
+                    SELECT id, source_field, owner_user_id,
+                           (chunk_search_vector IS NOT NULL) AS has_search_vector,
+                           chunk_index, tokens, chunk_text
+                      FROM article_chunk
+                     WHERE article_id = :aid
+                     ORDER BY source_field, chunk_index
+                """), {"aid": str(row[0])}).all()
+                article_dump = {
+                    "article_id": str(row[0]),
+                    "title": row[1],
+                    "doi": row[2],
+                    "chunk_count": len(chunk_rows),
+                    "chunks": [{
+                        "id": c[0],
+                        "source_field": c[1],
+                        "owner_user_id": str(c[2]) if c[2] else None,
+                        "has_search_vector": c[3],
+                        "chunk_index": c[4],
+                        "tokens": c[5],
+                        "text_preview": (c[6] or "")[:400],
+                        "contains_query_terms": q.lower().split()[-1] in (c[6] or "").lower(),
+                    } for c in chunk_rows],
+                }
+            else:
+                article_dump = {"error": f"No article matched {article_needle!r}"}
+
+        result = _retrieve(q, top_k=16, per_article_cap=3, rerank=True,
+                           hybrid=True, viewer_id=viewer_id, debug=True)
+        return jsonify({
+            "query": q,
+            "viewer_id": viewer_id,
+            "article_lookup": article_dump,
+            "trace": result.debug,
+        })
+    except Exception as exc:
+        logger.exception("retrieval debug failed")
+        return jsonify({"error": "internal_error", "detail": str(exc)[:400]}), 500
+    finally:
+        s.close()

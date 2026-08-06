@@ -118,6 +118,11 @@ class RetrievalResult:
     # with: GAG → glycosaminoglycan, heparan sulfate, …" — both as a
     # confidence cue and as a debugging aid.
     expansion_matches: List[tuple] = field(default_factory=list)
+    # Populated only when search(debug=True) — full per-chunk trace
+    # (vector leg, BM25 leg, fused, reranked, final) for diagnosing why
+    # a specific chunk did or didn't make the final context. See
+    # routes_admin.py's /api/admin/debug/retrieval.
+    debug: Optional[dict] = None
 
 
 def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
@@ -193,7 +198,8 @@ def search(query: str, *, top_k: int = 20,
            rerank: bool = True,
            hybrid: bool = True,
            candidate_k: Optional[int] = None,
-           viewer_id: Optional[str] = None) -> RetrievalResult:
+           viewer_id: Optional[str] = None,
+           debug: bool = False) -> RetrievalResult:
     """Run a semantic search. Returns chunks + grouped articles.
 
     `per_article_cap` limits how many chunks of the same article appear in
@@ -279,6 +285,7 @@ def search(query: str, *, top_k: int = 20,
         # ── Lexical (BM25-style) leg of the hybrid retrieval ────────────
         bm25_rows = []
         hybrid_active = False
+        bm25_q = None
         if hybrid:
             try:
                 bm25_q = _bm25_or_query(expanded_for_bm25)
@@ -518,6 +525,49 @@ def search(query: str, *, top_k: int = 20,
     articles.sort(key=lambda a: article_order.index(a.id)
                   if a.id in article_order else 9999)
 
+    debug_trace = None
+    if debug:
+        pk_by_obj_id = {id(v): k for k, v in chunk_by_pk.items()}
+
+        def _row(c, extra=None):
+            meta = article_meta.get(c.article_id, {})
+            pk = pk_by_obj_id.get(id(c))
+            d = {
+                "article_id": c.article_id,
+                "title": (meta.get("title") or "")[:90],
+                "source_field": c.source_field,
+                "curated": _is_curated(c),
+                "distance": round(c.distance, 4),
+                "similarity": round(c.similarity, 4),
+                "rerank_score": (round(c.rerank_score, 4)
+                                if c.rerank_score is not None else None),
+                "rrf_score": round(rrf_scores.get(pk, 0.0), 6) if pk is not None else None,
+                "text_preview": c.chunk_text[:160],
+            }
+            if extra:
+                d.update(extra)
+            return d
+
+        final_pks = {id(c) for c in chunks}
+        debug_trace = {
+            "raw_query": query,
+            "expanded_for_embed": expanded_for_embed,
+            "expanded_for_bm25": expanded_for_bm25,
+            "bm25_query_sent": bm25_q if hybrid else None,
+            "vector_leg_hits": len(vec_rows),
+            "bm25_leg_hits": len(bm25_rows),
+            "hybrid_active": hybrid_active,
+            "candidate_pool_size": len(candidate_chunks),
+            "rerank_used": rerank_info.used,
+            "top_k": top_k,
+            "per_article_cap": per_article_cap,
+            "candidates_ranked": [_row(c) for c in curated_first[:40]],
+            "final_context": [_row(c, {"included": True}) for c in chunks],
+            "curated_in_pool_but_dropped": [
+                _row(c) for c in curated_first if _is_curated(c) and id(c) not in final_pks
+            ],
+        }
+
     return RetrievalResult(
         query=query,
         articles=articles,
@@ -527,4 +577,5 @@ def search(query: str, *, top_k: int = 20,
         hybrid=hybrid_info,
         total_candidate_articles=total_candidate_articles,
         expansion_matches=expansion_matches,
+        debug=debug_trace,
     )
