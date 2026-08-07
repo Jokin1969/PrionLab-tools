@@ -588,7 +588,7 @@
       ><i class="fas ${chev}" style="font-size:9px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder-open" style="font-size:11px;opacity:0.7;"></i>
-        <span style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
+        <span style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-rename"
@@ -761,7 +761,7 @@
       ><i class="fas ${chev}" style="font-size:8.5px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
-        <span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
+        <span style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-rename"
