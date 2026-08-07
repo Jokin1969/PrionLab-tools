@@ -588,8 +588,7 @@
       ><i class="fas ${chev}" style="font-size:9px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder-open" style="font-size:11px;opacity:0.7;"></i>
-        <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:14px;
-                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
+        <span style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-rename"
@@ -762,7 +761,7 @@
       ><i class="fas ${chev}" style="font-size:8.5px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
-        <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
+        <span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-rename"
@@ -842,7 +841,6 @@
                 (IS_ADMIN
                   ? '• Click: filtrar la lista\n' +
                     '• Botón ✏ a la derecha: editar\n' +
-                    '• Botón 📦 a la derecha: mandar a un PrionPack\n' +
                     '• Botón 🗑 a la derecha (o click derecho): eliminar'
                   : 'Click para filtrar la lista');
     const miniBtn = (cls, icon, title) => `
@@ -858,8 +856,6 @@
     const adminBtns = IS_ADMIN
       ? miniBtn('pv-coll-edit',      'fa-pen',
                 'Editar esta colección') +
-        miniBtn('pv-coll-send-pack', 'fa-cubes-stacked',
-                'Enviar todos los artículos de esta colección a un PrionPack') +
         miniBtn('pv-coll-delete',    'fa-trash',
                 'Eliminar esta colección (los artículos no se borran)')
       : '';
@@ -909,17 +905,6 @@
         ev.stopPropagation();
         ev.preventDefault();
         openCollectionEditor(c);
-      });
-
-      const packBadge = btn.querySelector('.pv-coll-send-pack');
-      if (packBadge) packBadge.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        try {
-          const r = await api(`/collections/${c.id}/article-ids`);
-          const ids = r.ids || [];
-          if (!ids.length) { alert('Esta colección no tiene artículos.'); return; }
-          openBulkPackPicker(ids);
-        } catch (e) { alert('No se pudo cargar la colección: ' + e.message); }
       });
 
       const deleteBadge = btn.querySelector('.pv-coll-delete');
