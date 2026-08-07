@@ -588,7 +588,7 @@
       ><i class="fas ${chev}" style="font-size:9px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder-open" style="font-size:11px;opacity:0.7;"></i>
-        <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:12px;
+        <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:14px;
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
@@ -762,7 +762,7 @@
       ><i class="fas ${chev}" style="font-size:8.5px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
-        <span style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
+        <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-rename"
@@ -2442,14 +2442,6 @@
         <i class="fas fa-wand-magic-sparkles"></i> Resúmenes IA
       </button>
 
-      <button id="pv-bulk-addpack${s}" type="button"
-              title="Añadir los artículos seleccionados a un PrionPack"
-              style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
-                     border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
-                     font-weight:600;display:inline-flex;align-items:center;gap:4px;">
-        <i class="fas fa-cubes-stacked"></i> A PrionPack
-      </button>
-
       <button id="pv-bulk-addcollection${s}" type="button"
               title="Añadir los artículos seleccionados a una colección"
               style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
@@ -2644,12 +2636,6 @@
         const btn = document.getElementById('btn-batch-summary');
         if (btn) btn.click();   // re-uses the modal's open() flow
       });
-
-    // Bulk add to PrionPack — opens the same pack picker modal as the
-    // single-article flow, but POSTs to /import-articles with the
-    // whole selection.
-    $id('pv-bulk-addpack')?.addEventListener('click',
-      () => openBulkPackPicker(Array.from(state.selectedIds)));
 
     // Bulk add to a manual Collection.
     $id('pv-bulk-addcollection')?.addEventListener('click',
