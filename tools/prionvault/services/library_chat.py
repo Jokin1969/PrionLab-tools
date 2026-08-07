@@ -89,7 +89,23 @@ extracto del PDF [N]" o, si el artículo referenciado NO viene con su propio \
 texto en los fragmentos, dilo también ("la nota lo indica, pero no tengo el \
 texto del artículo citado entre los fragmentos para contrastarlo directamente"). \
 No presentes una afirmación de una nota como un hecho verificado si no la has \
-podido cruzar con el contenido real del artículo."""
+podido cruzar con el contenido real del artículo.
+
+FRAGMENTOS DEL MISMO ARTÍCULO — VIENEN AGRUPADOS, LÉELOS COMO UN TODO:
+Cuando un artículo aporta varios fragmentos (su abstract, un extracto del PDF, \
+una nota, el resumen IA...), aparecen juntos bajo una única cabecera con \
+título/autores/año — con varios números de cita [N][M] delante si hace falta — \
+no como fuentes independientes. Une lo que dicen entre sí: si el extracto del \
+PDF describe un experimento y el abstract o la nota de ESE MISMO bloque dicen \
+"se generó una nueva línea..."/"newly developed"/"we established"/"por primera \
+vez", eso ES la presentación original de ese modelo/método/hallazgo, aunque el \
+grueso del artículo trate de otra cosa (p. ej. un modelo animal se \
+suele presentar por primera vez dentro de un artículo que además lo USA para un \
+experimento concreto, no en un "Methods paper" dedicado y separado — no asumas \
+que tiene que existir uno). Antes de decir "no encuentro el artículo que lo \
+describe por primera vez", repasa si alguno de los artículos que SÍ tienes \
+delante contiene ese lenguaje de generación/primera descripción para el término \
+buscado, en cualquiera de sus fragmentos combinados."""
 
 
 def _get_engine():

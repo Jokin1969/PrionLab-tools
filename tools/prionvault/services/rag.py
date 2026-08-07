@@ -178,45 +178,71 @@ def _build_context(chunks: List[RetrievedChunk],
     article_ids = list(by_id.keys())
     summaries = _fetch_summaries(article_ids)
 
-    citations: List[RagCitation] = []
-    parts: List[str] = []
+    # Multiple chunks of the SAME article (its abstract, a PDF extract,
+    # a researcher note, an AI summary...) used to each get their own
+    # numbered block with the full title/header repeated — so several
+    # fragments of one paper looked like several unrelated citations. A
+    # real transcript showed a model fail exactly this way: it couldn't
+    # tell that [1], [2] and [13] were the same paper's abstract, PDF
+    # extract and note, so it never combined "this note says the model
+    # was generated here" with "this abstract confirms it". Group
+    # consecutive-or-not chunks by article into ONE numbered block
+    # (title/header once, every fragment type listed inside it, the AI
+    # summary appended once) — citation numbers stay per-CHUNK
+    # (unchanged, so the frontend's [N] → citation linking still works),
+    # they just render nested under their shared article header instead
+    # of looking like N separate sources.
+    order: List[str] = []
+    by_article: dict[str, list] = {}
     for i, c in enumerate(chunks, start=1):
         meta = by_id.get(c.article_id)
         if meta is None:
             continue
-        cite = RagCitation(
-            n=i,
-            article_id=meta.id,
-            title=meta.title,
-            authors=meta.authors,
-            year=meta.year,
-            journal=meta.journal,
-            doi=meta.doi,
-            pubmed_id=meta.pubmed_id,
-            similarity=c.similarity,
-            rerank_score=c.rerank_score,
-            extract=c.chunk_text,
-            has_pdf=bool(getattr(meta, "has_pdf", False)),
-        )
-        citations.append(cite)
+        if c.article_id not in by_article:
+            order.append(c.article_id)
+            by_article[c.article_id] = []
+        by_article[c.article_id].append((i, c, meta))
+
+    citations: List[RagCitation] = []
+    parts: List[str] = []
+    for aid in order:
+        entries = by_article[aid]
+        meta = entries[0][2]
         header_bits = []
         if meta.authors: header_bits.append(meta.authors[:120])
         if meta.year:    header_bits.append(str(meta.year))
         if meta.journal: header_bits.append(meta.journal[:80])
         if meta.doi:     header_bits.append(f"DOI:{meta.doi}")
         header = " · ".join(header_bits)
-        label = _SOURCE_LABELS.get(c.source_field, "Extracto")
-        block = (
-            f"[{i}] {meta.title}\n"
-            f"    {header}\n"
-            f"    {label}: {c.chunk_text}"
-        )
+
+        nums = "".join(f"[{i}]" for i, _, _ in entries)
+        lines = [f"{nums} {meta.title}", f"    {header}"]
+        for i, c, _ in entries:
+            citations.append(RagCitation(
+                n=i,
+                article_id=meta.id,
+                title=meta.title,
+                authors=meta.authors,
+                year=meta.year,
+                journal=meta.journal,
+                doi=meta.doi,
+                pubmed_id=meta.pubmed_id,
+                similarity=c.similarity,
+                rerank_score=c.rerank_score,
+                extract=c.chunk_text,
+                has_pdf=bool(getattr(meta, "has_pdf", False)),
+            ))
+            label = _SOURCE_LABELS.get(c.source_field, "Extracto")
+            lines.append(f"    [{i}] {label}: {c.chunk_text}")
+
         summary = summaries.get(meta.id)
         if summary:
             # Cap at 800 chars so a very long summary doesn't dominate
-            # the context at the expense of other chunks.
-            block += f"\n    Resumen IA: {summary[:800]}"
-        parts.append(block)
+            # the context at the expense of other articles. Appended
+            # ONCE per article now, not once per chunk of it.
+            lines.append(f"    Resumen IA: {summary[:800]}")
+
+        parts.append("\n".join(lines))
     return "\n\n".join(parts), citations
 
 
