@@ -2427,6 +2427,14 @@
         <i class="fas fa-wand-magic-sparkles"></i> Resúmenes IA
       </button>
 
+      <button id="pv-bulk-addpack${s}" type="button"
+              title="Añadir los artículos seleccionados a un PrionPack"
+              style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
+                     border:1px solid rgba(255,255,255,0.25);cursor:pointer;font-size:12px;
+                     font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        <i class="fas fa-cubes-stacked"></i> A PrionPack
+      </button>
+
       <button id="pv-bulk-addcollection${s}" type="button"
               title="Añadir los artículos seleccionados a una colección"
               style="padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.14);color:white;
@@ -2621,6 +2629,12 @@
         const btn = document.getElementById('btn-batch-summary');
         if (btn) btn.click();   // re-uses the modal's open() flow
       });
+
+    // Bulk add to PrionPack — opens the same pack picker modal as the
+    // single-article flow, but POSTs to /import-articles with the
+    // whole selection.
+    $id('pv-bulk-addpack')?.addEventListener('click',
+      () => openBulkPackPicker(Array.from(state.selectedIds)));
 
     // Bulk add to a manual Collection.
     $id('pv-bulk-addcollection')?.addEventListener('click',
