@@ -129,11 +129,6 @@
   .pv-help-yes { color: #15803d; font-weight: 700; }
   .pv-help-no  { color: #9ca3af; }
   .pv-help-partial { color: #c2410c; font-weight: 600; }
-  .pv-help-new-badge {
-    display: inline-block; padding: 1px 7px; border-radius: 10px;
-    background: #f0fdf4; color: #15803d; border: 1px solid #86efac;
-    font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; margin-left: 6px; vertical-align: middle;
-  }
 
   /* ── Soft buttons ───────────────────────────────────────────────────── */
   .pv-btn-soft {
@@ -4391,6 +4386,12 @@
        onclick="document.getElementById('pv-help-modal').style.display='none'"></div>
   <div class="pv-modal-inner" style="max-width:900px;width:94vw;max-height:90vh;overflow-y:auto;padding:0;">
     <div style="padding:22px 28px 18px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:white;z-index:2;">
+      <button id="pv-help-pdf-btn" type="button" title="Descargar toda la Ayuda en PDF"
+              style="position:absolute;top:14px;right:52px;height:28px;padding:0 12px;
+                     border-radius:14px;border:1px solid #e5e7eb;background:white;font-size:12px;
+                     font-weight:600;color:#0F3460;cursor:pointer;display:flex;align-items:center;gap:6px;">
+        <i class="fas fa-file-pdf"></i> PDF
+      </button>
       <button class="pv-modal-close" aria-label="Cerrar"
               onclick="document.getElementById('pv-help-modal').style.display='none'">×</button>
       <h2 id="pv-help-title" style="margin:0 0 4px;font-size:18px;font-weight:700;color:#111827;">

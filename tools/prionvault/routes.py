@@ -5052,6 +5052,30 @@ def api_article_fetch_oa_pdf(aid):
     return jsonify({"ok": ok, "status": status, "dropbox_path": dropbox_path})
 
 
+@prionvault_bp.route("/api/help/report", methods=["POST"])
+@login_required
+def api_help_report():
+    """PDF of the whole Ayuda modal content — the "Descargar PDF" button
+    top-right of the modal. The Ayuda text lives client-side (see
+    prionvault.js's _helpRenderTab), so the frontend POSTs the already-
+    rendered HTML for every tab and we convert it to PDF here."""
+    payload = request.get_json(silent=True) or {}
+    sections = payload.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return jsonify({"error": "no_sections", "detail": "Falta el contenido de la ayuda."}), 400
+
+    from .services import help_report
+    try:
+        content = help_report.render_pdf(sections)
+    except Exception as exc:
+        logger.exception("help report generation failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+
+    return Response(content, mimetype="application/pdf", headers={
+        "Content-Disposition": 'attachment; filename="ayuda-prionvault.pdf"',
+    })
+
+
 # Ingestion, PDF streaming, and AI-summary routes live in their own module.
 from . import routes_ingestion  # noqa: F401, E402
 
