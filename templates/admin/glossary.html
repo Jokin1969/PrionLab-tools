@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}📚 {{ _('Glossary Management') }} — PrionLab Tools{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
+  <div>
+    <h1>📚 {{ _('Glossary') }}</h1>
+    <p class="subtitle">
+      {{ _('Biomedical EN→ES terminology. Every AI summary, article chat and library chat always uses the current version below.') }}
+    </p>
+  </div>
+  <a href="/prionvault/" class="btn btn--secondary" style="align-self: flex-start; margin-top: 4px; white-space: nowrap;">
+    ← {{ _('Back to PrionVault') }}
+  </a>
+</div>
+
+<div class="stats-grid" style="max-width:260px;">
+  <div class="stat-card">
+    <span class="stat-label">{{ _('Current version') }}</span>
+    <span class="stat-value" id="glossary-version">—</span>
+  </div>
+</div>
+
+{# ── Add / import ─────────────────────────────────────────────────────────── #}
+<section class="admin-section">
+  <h2>➕ {{ _('Add a term') }}</h2>
+  <div class="add-term-row">
+    <input type="text" id="add-term-en" placeholder="{{ _('English term') }}" />
+    <input type="text" id="add-term-es" placeholder="{{ _('Spanish (recommended)') }}" />
+    <input type="text" id="add-term-avoid" placeholder="{{ _('Avoid (optional)') }}" />
+    <input type="text" id="add-term-category" placeholder="{{ _('Category (optional)') }}" />
+    <input type="text" id="add-term-notes" placeholder="{{ _('Notes (optional)') }}" />
+    <button class="btn btn--primary" onclick="addTerm()">{{ _('Add') }}</button>
+  </div>
+  <span id="add-term-status" class="status-text"></span>
+</section>
+
+<section class="admin-section">
+  <h2>📥 {{ _('Bulk import') }}</h2>
+  <p class="help-text">
+    {{ _('Upload a JSON or CSV/TSV file to replace the whole glossary at once. Each row needs') }}
+    <code>term_en</code>, <code>term_es_recommended</code>, {{ _('and optionally') }}
+    <code>term_es_avoid</code>, <code>notes</code>, <code>category</code>.
+  </p>
+  <div class="form-group">
+    <input type="file" id="file-upload" accept=".json,.csv,.tsv,.txt" />
+  </div>
+  <div class="form-group">
+    <button id="btn-import" class="btn btn--primary" onclick="handleImport()">
+      📥 {{ _('Import terms') }}
+    </button>
+    <span id="import-status" class="status-text"></span>
+  </div>
+
+  <div id="import-results" class="import-results" style="display:none">
+    <div class="alert alert--success" id="import-success" style="display:none"></div>
+    <div class="alert alert--warning" id="import-warning" style="display:none"></div>
+    <div class="alert alert--error" id="import-error" style="display:none"></div>
+    <div id="import-errors" style="display:none">
+      <h3>{{ _('Errors (first 20):') }}</h3>
+      <ul id="errors-list"></ul>
+    </div>
+  </div>
+</section>
+
+{# ── Browse / edit / delete ───────────────────────────────────────────────── #}
+<section class="admin-section">
+  <h2>📖 {{ _('Terms') }}</h2>
+
+  <div class="browse-toolbar">
+    <input type="search" id="term-search" placeholder="{{ _('Search…') }}" oninput="renderTermsTable()" />
+    <select id="category-filter" onchange="renderTermsTable()">
+      <option value="">{{ _('All categories') }}</option>
+    </select>
+    <span id="browse-count" class="status-text"></span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('English') }}</th>
+          <th>{{ _('Spanish (recommended)') }}</th>
+          <th>{{ _('Avoid') }}</th>
+          <th>{{ _('Category') }}</th>
+          <th>{{ _('Notes') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="terms-tbody">
+        <tr><td colspan="6" class="text-center text-muted">{{ _('Loading...') }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+.admin-section { margin-bottom: 32px; }
+.subtitle { color: #6b7280; margin: 5px 0 0 0; font-size: 14px; max-width: 560px; }
+.help-text { color: #6b7280; font-size: 13px; margin-bottom: 10px; }
+.form-group { margin-bottom: 12px; }
+.form-group input[type="file"] {
+  display: block; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+  font-size: 14px; width: 100%; max-width: 500px;
+}
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
+.stat-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.stat-label { font-size: 12px; color: #6b7280; font-weight: 500; text-transform: uppercase; }
+.stat-value { font-size: 24px; font-weight: bold; color: #1f2937; }
+.status-text { margin-left: 12px; font-size: 12px; color: #6b7280; }
+.alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; display: none; }
+.alert--success { background: #ecfdf5; color: #065f46; border: 1px solid #d1fae5; }
+.alert--error { background: #fef2f2; color: #7f1d1d; border: 1px solid #fee2e2; }
+.alert--warning { background: #fffbeb; color: #78350f; border: 1px solid #fef3c7; }
+.import-results { margin-top: 16px; padding: 16px; background: #fafafa; border-radius: 8px; }
+#errors-list { list-style: none; padding: 0; margin: 0; }
+#errors-list li { padding: 6px 0; border-bottom: 1px solid #fee2e2; font-size: 12px; color: #dc2626; }
+.table-responsive { overflow-x: auto; margin: 15px 0; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table thead { background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+.data-table th { padding: 10px 12px; text-align: left; font-weight: 600; color: #374151; }
+.data-table td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.data-table tbody tr:hover { background: #fafafa; }
+.data-table input {
+  width: 100%; border: 1px solid transparent; background: transparent; font-size: 13px;
+  padding: 4px 6px; border-radius: 4px; font-family: inherit;
+}
+.data-table input:focus, .data-table input:hover { border-color: #d1d5db; background: #fff; outline: none; }
+.text-center { text-align: center; }
+.text-muted { color: #9ca3af; }
+.btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-block; }
+.btn--primary { background: #3b82f6; color: white; }
+.btn--primary:hover:not(:disabled) { background: #2563eb; }
+.btn--primary:disabled { background: #d1d5db; cursor: not-allowed; }
+.btn--secondary { background: #e5e7eb; color: #374151; }
+.btn--secondary:hover { background: #d1d5db; }
+.btn--danger { background: #fef2f2; color: #b91c1c; padding: 5px 10px; font-size: 12px; }
+.btn--danger:hover { background: #fee2e2; }
+.btn--save { background: #ecfdf5; color: #065f46; padding: 5px 10px; font-size: 12px; }
+.btn--save:hover { background: #d1fae5; }
+.add-term-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.add-term-row input {
+  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; flex: 1; min-width: 140px;
+}
+.browse-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.browse-toolbar input[type="search"], .browse-toolbar select {
+  padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;
+}
+</style>
+{% endblock %}
+
+{% block main_body %}
+{{ super() }}
+<script>
+let currentTerms = [];
+let currentCategories = [];
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text == null ? '' : String(text);
+  return div.innerHTML;
+}
+
+async function loadGlossary() {
+  try {
+    const res = await fetch('/prionvault/api/glossary/terms', { credentials: 'same-origin' });
+    const data = await res.json();
+    currentTerms = data.terms || [];
+
+    const catRes = await fetch('/prionvault/api/glossary/categories', { credentials: 'same-origin' });
+    const catData = await catRes.json();
+    currentCategories = catData.categories || [];
+
+    const verRes = await fetch('/prionvault/api/glossary/version', { credentials: 'same-origin' });
+    const verData = await verRes.json();
+    document.getElementById('glossary-version').textContent = verData.version ?? '—';
+
+    const filter = document.getElementById('category-filter');
+    const prev = filter.value;
+    filter.innerHTML = '<option value="">{{ _("All categories") }}</option>';
+    currentCategories.forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat || '';
+      opt.textContent = cat || '{{ _("Uncategorized") }}';
+      filter.appendChild(opt);
+    });
+    filter.value = prev;
+
+    renderTermsTable();
+  } catch (e) {
+    document.getElementById('terms-tbody').innerHTML =
+      `<tr><td colspan="6" class="text-center text-muted">{{ _("Error loading glossary:") }} ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function renderTermsTable() {
+  const tbody = document.getElementById('terms-tbody');
+  const catFilter = document.getElementById('category-filter').value;
+  const q = document.getElementById('term-search').value.trim().toLowerCase();
+
+  let rows = currentTerms;
+  if (catFilter) rows = rows.filter(t => (t.category || '') === catFilter);
+  if (q) {
+    rows = rows.filter(t =>
+      (t.term_en || '').toLowerCase().includes(q) ||
+      (t.term_es_recommended || '').toLowerCase().includes(q) ||
+      (t.term_es_avoid || '').toLowerCase().includes(q) ||
+      (t.notes || '').toLowerCase().includes(q)
+    );
+  }
+
+  document.getElementById('browse-count').textContent =
+    `${rows.length} / ${currentTerms.length} {{ _("terms") }}`;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">{{ _("No terms found") }}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(t => {
+    const en = escapeHtml(t.term_en);
+    return `
+    <tr data-term-en="${en}">
+      <td><input type="text" value="${en}" disabled title="{{ _('English term is the unique key — delete and re-add to rename it') }}" /></td>
+      <td><input type="text" class="f-es" value="${escapeHtml(t.term_es_recommended)}" /></td>
+      <td><input type="text" class="f-avoid" value="${escapeHtml(t.term_es_avoid || '')}" /></td>
+      <td><input type="text" class="f-category" value="${escapeHtml(t.category || '')}" /></td>
+      <td><input type="text" class="f-notes" value="${escapeHtml(t.notes || '')}" /></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn--save" onclick="saveTerm(this)">{{ _('Save') }}</button>
+        <button class="btn btn--danger" onclick="deleteTerm('${en}')">{{ _('Delete') }}</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function saveTerm(btn) {
+  const row = btn.closest('tr');
+  const term_en = row.dataset.termEn;
+  const payload = {
+    term_en,
+    term_es_recommended: row.querySelector('.f-es').value.trim(),
+    term_es_avoid: row.querySelector('.f-avoid').value.trim(),
+    category: row.querySelector('.f-category').value.trim(),
+    notes: row.querySelector('.f-notes').value.trim(),
+  };
+  if (!payload.term_es_recommended) {
+    alert('{{ _("Spanish (recommended) is required") }}');
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const res = await fetch('/prionvault/api/glossary/term', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    await loadGlossary();
+  } catch (e) {
+    alert('{{ _("Error saving term:") }} ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+async function deleteTerm(term_en) {
+  if (!confirm(`{{ _("Delete") }} "${term_en}"?`)) return;
+  try {
+    const res = await fetch('/prionvault/api/glossary/term?term_en=' + encodeURIComponent(term_en), {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    await loadGlossary();
+  } catch (e) {
+    alert('{{ _("Error deleting term:") }} ' + e.message);
+  }
+}
+
+async function addTerm() {
+  const term_en = document.getElementById('add-term-en').value.trim();
+  const term_es_recommended = document.getElementById('add-term-es').value.trim();
+  const term_es_avoid = document.getElementById('add-term-avoid').value.trim();
+  const category = document.getElementById('add-term-category').value.trim();
+  const notes = document.getElementById('add-term-notes').value.trim();
+  const status = document.getElementById('add-term-status');
+
+  if (!term_en || !term_es_recommended) {
+    status.textContent = '{{ _("English term and Spanish recommendation are required") }}';
+    return;
+  }
+
+  status.textContent = '{{ _("Adding…") }}';
+  try {
+    const res = await fetch('/prionvault/api/admin/glossary/term/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ term_en, term_es_recommended, term_es_avoid, category, notes }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    ['add-term-en', 'add-term-es', 'add-term-avoid', 'add-term-category', 'add-term-notes']
+      .forEach(id => document.getElementById(id).value = '');
+    status.textContent = `✓ {{ _("Added") }} "${term_en}"`;
+    await loadGlossary();
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
+  }
+}
+
+// ── Bulk import ──────────────────────────────────────────────────────────────
+function parseCSV(text, isTSV) {
+  const delimiter = isTSV ? '\t' : ',';
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
+  const terms = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(delimiter).map(v => v.trim());
+    if (values.length < 2) continue;
+    const term = {};
+    headers.forEach((h, idx) => { if (values[idx]) term[h] = values[idx]; });
+    terms.push(term);
+  }
+  return terms;
+}
+
+async function handleImport() {
+  const fileInput = document.getElementById('file-upload');
+  const file = fileInput.files[0];
+  if (!file) { alert('{{ _("Please select a file") }}'); return; }
+
+  const btn = document.getElementById('btn-import');
+  btn.disabled = true;
+  btn.textContent = '{{ _("Importing...") }}';
+  const status = document.getElementById('import-status');
+  status.textContent = '{{ _("Reading file...") }}';
+
+  const results = document.getElementById('import-results');
+  ['import-success', 'import-warning', 'import-error', 'import-errors'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+
+  try {
+    const text = await file.text();
+    let terms = [];
+    if (file.name.endsWith('.json')) {
+      terms = JSON.parse(text);
+      if (!Array.isArray(terms)) terms = [terms];
+    } else if (file.name.endsWith('.csv') || file.name.endsWith('.tsv')) {
+      terms = parseCSV(text, file.name.endsWith('.tsv'));
+    } else {
+      throw new Error('{{ _("Unsupported file format") }}');
+    }
+
+    status.textContent = `{{ _("Uploading") }} ${terms.length} {{ _("terms...") }}`;
+
+    const response = await fetch('/prionvault/api/glossary/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ terms }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+    results.style.display = 'block';
+    if (data.errors && data.errors.length > 0) {
+      document.getElementById('import-errors').style.display = 'block';
+      document.getElementById('errors-list').innerHTML =
+        data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('');
+      const w = document.getElementById('import-warning');
+      w.textContent = `⚠️ {{ _("Imported") }} ${data.imported}, {{ _("with") }} ${data.errors.length} {{ _("errors") }}`;
+      w.style.display = 'block';
+    } else {
+      const s = document.getElementById('import-success');
+      s.textContent = `✓ {{ _("Successfully imported") }} ${data.imported} {{ _("terms — now version") }} ${data.new_version}`;
+      s.style.display = 'block';
+    }
+
+    status.textContent = '✓ {{ _("Import complete") }}';
+    fileInput.value = '';
+    await loadGlossary();
+  } catch (e) {
+    status.textContent = '✗ {{ _("Import failed") }}';
+    results.style.display = 'block';
+    const err = document.getElementById('import-error');
+    err.textContent = `✗ {{ _("Error:") }} ${e.message}`;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📥 {{ _("Import terms") }}';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadGlossary);
+</script>
+{% endblock %}
