@@ -556,17 +556,17 @@
   }
 
   function buildGroupHeader(group, subBranch, collapsed) {
-    // Chip shows the count of DISTINCT SUBGROUPS under this group
-    // (so "PrionPacks" reports "3" — PRP-001, PRP-002, PRP-003 —
-    // not the sum of articles across them, not the number of leaf
-    // collections). The tooltip retains the deeper breakdown so the
-    // numerical context is still one hover away.
+    // Chip shows the number of DISTINCT ARTICLES across every leaf
+    // collection under this group (deduplicated — a paper filed in two
+    // child collections only counts once). The tooltip retains the
+    // subgroup/collection breakdown for extra context.
     const colls = Object.values(subBranch).flat();
     const collCount = colls.length;
     const r = (_collRollup.groups || {})[group] || {};
     const subgroupCount  = r.subgroup_count  ?? Object.keys(subBranch).filter(k => k).length;
-    const uniqueArticles = r.unique_articles ?? 0;
-    const chipNumber = subgroupCount;   // headline number
+    const rawTotal        = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
+    const uniqueArticles = r.unique_articles ?? rawTotal;
+    const chipNumber = uniqueArticles;   // headline number
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup = group;
