@@ -556,17 +556,18 @@
   }
 
   function buildGroupHeader(group, subBranch, collapsed) {
-    // Chip shows the number of DISTINCT ARTICLES across every leaf
-    // collection under this group (deduplicated — a paper filed in two
-    // child collections only counts once). The tooltip retains the
-    // subgroup/collection breakdown for extra context.
+    // Chip shows the plain SUM of article_count across every leaf
+    // collection under this group — what the user actually reads it
+    // as ("what I'd get by adding up the numbers below"). Note this can
+    // exceed the deduplicated unique-article count (kept in the
+    // tooltip) if the same paper is filed in more than one collection.
     const colls = Object.values(subBranch).flat();
     const collCount = colls.length;
     const r = (_collRollup.groups || {})[group] || {};
     const subgroupCount  = r.subgroup_count  ?? Object.keys(subBranch).filter(k => k).length;
     const rawTotal        = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
     const uniqueArticles = r.unique_articles ?? rawTotal;
-    const chipNumber = uniqueArticles;   // headline number
+    const chipNumber = rawTotal;   // headline number
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup = group;
@@ -726,19 +727,16 @@
   }
 
   function buildSubgroupHeader(group, subgroup, colls, collapsed) {
-    // Chip shows the count of DISTINCT ARTICLES across every leaf
-    // collection under (group, subgroup) — deduplicating the case
-    // where the same paper sits in two child folders. So a subgroup
-    // with one folder of 15 papers and another of 11 (4 shared)
-    // chips "17", not "26".
+    // Chip shows the plain SUM of article_count across every leaf
+    // collection under (group, subgroup) — the deduplicated unique-
+    // article count (which can be lower if the same paper sits in two
+    // child folders) is kept in the tooltip instead.
     const collCount     = colls.length;
     const rg = (_collRollup.groups || {})[group] || {};
     const rs = (rg.subgroups || {})[subgroup] || {};
-    // Fallback: if the rollup wasn't loaded yet (first paint), use
-    // the raw sum so the user sees *something* rather than 0.
     const uniqueArticles = (rs.unique_articles ?? null);
     const rawTotal       = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
-    const chipNumber     = uniqueArticles ?? rawTotal;
+    const chipNumber     = rawTotal;
     const btn = document.createElement('button');
     btn.className = 'pv-nav-btn';
     btn.dataset.collectionGroup    = group;
