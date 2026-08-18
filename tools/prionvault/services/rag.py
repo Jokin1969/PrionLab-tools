@@ -48,7 +48,9 @@ Reglas estrictas:
 - No inventes nombres, fechas, valores numéricos ni conclusiones que no \
   aparezcan en los fragmentos.
 - Cita cada afirmación usando la notación [N] (donde N es el número del \
-  fragmento). Una misma frase puede llevar varias citas: [1][3].
+  artículo fuente — un mismo artículo usa siempre el mismo N aunque \
+  aporte varios fragmentos). Una misma frase puede llevar varias citas \
+  de artículos distintos: [1][3].
 - Al final, en una línea separada, escribe exactamente:
       Nivel de confianza: alto|medio|bajo
   según cuánto te apoyas en evidencia clara y consistente.
@@ -188,26 +190,32 @@ def _build_context(chunks: List[RetrievedChunk],
     # was generated here" with "this abstract confirms it". Group
     # consecutive-or-not chunks by article into ONE numbered block
     # (title/header once, every fragment type listed inside it, the AI
-    # summary appended once) — citation numbers stay per-CHUNK
-    # (unchanged, so the frontend's [N] → citation linking still works),
-    # they just render nested under their shared article header instead
-    # of looking like N separate sources.
+    # summary appended once).
+    #
+    # Citation numbers are now per-ARTICLE (one N per paper), not
+    # per-chunk — an article contributing two chunks used to surface as
+    # e.g. both [4] and [6] in the answer, rendering as two separate
+    # citation badges pointing at the same paper, which read as a UI
+    # bug (it was really just the same source cited twice under
+    # different numbers). citations[] stays a flat list where index
+    # N-1 is citation N, so the frontend's [N] → citation lookup is
+    # unaffected — there are just fewer, deduplicated entries now.
     order: List[str] = []
     by_article: dict[str, list] = {}
-    for i, c in enumerate(chunks, start=1):
+    for c in chunks:
         meta = by_id.get(c.article_id)
         if meta is None:
             continue
         if c.article_id not in by_article:
             order.append(c.article_id)
             by_article[c.article_id] = []
-        by_article[c.article_id].append((i, c, meta))
+        by_article[c.article_id].append((c, meta))
 
     citations: List[RagCitation] = []
     parts: List[str] = []
-    for aid in order:
+    for n, aid in enumerate(order, start=1):
         entries = by_article[aid]
-        meta = entries[0][2]
+        meta = entries[0][1]
         header_bits = []
         if meta.authors: header_bits.append(meta.authors[:120])
         if meta.year:    header_bits.append(str(meta.year))
@@ -215,25 +223,12 @@ def _build_context(chunks: List[RetrievedChunk],
         if meta.doi:     header_bits.append(f"DOI:{meta.doi}")
         header = " · ".join(header_bits)
 
-        nums = "".join(f"[{i}]" for i, _, _ in entries)
-        lines = [f"{nums} {meta.title}", f"    {header}"]
-        for i, c, _ in entries:
-            citations.append(RagCitation(
-                n=i,
-                article_id=meta.id,
-                title=meta.title,
-                authors=meta.authors,
-                year=meta.year,
-                journal=meta.journal,
-                doi=meta.doi,
-                pubmed_id=meta.pubmed_id,
-                similarity=c.similarity,
-                rerank_score=c.rerank_score,
-                extract=c.chunk_text,
-                has_pdf=bool(getattr(meta, "has_pdf", False)),
-            ))
+        lines = [f"[{n}] {meta.title}", f"    {header}"]
+        extract_parts = []
+        for c, _ in entries:
             label = _SOURCE_LABELS.get(c.source_field, "Extracto")
-            lines.append(f"    [{i}] {label}: {c.chunk_text}")
+            lines.append(f"    {label}: {c.chunk_text}")
+            extract_parts.append(f"{label}: {c.chunk_text}")
 
         summary = summaries.get(meta.id)
         if summary:
@@ -241,6 +236,22 @@ def _build_context(chunks: List[RetrievedChunk],
             # the context at the expense of other articles. Appended
             # ONCE per article now, not once per chunk of it.
             lines.append(f"    Resumen IA: {summary[:800]}")
+
+        best = entries[0][0]  # highest-ranked chunk of this article — used for the citation's score fields
+        citations.append(RagCitation(
+            n=n,
+            article_id=meta.id,
+            title=meta.title,
+            authors=meta.authors,
+            year=meta.year,
+            journal=meta.journal,
+            doi=meta.doi,
+            pubmed_id=meta.pubmed_id,
+            similarity=best.similarity,
+            rerank_score=best.rerank_score,
+            extract="\n\n".join(extract_parts),
+            has_pdf=bool(getattr(meta, "has_pdf", False)),
+        ))
 
         parts.append("\n".join(lines))
     return "\n\n".join(parts), citations
