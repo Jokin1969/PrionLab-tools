@@ -9209,6 +9209,14 @@
       _wired = true;
       $('pv-cart-close')?.addEventListener('click', close);
       $('pv-cart-hide')?.addEventListener('click', close);
+      $('pv-cart-remove-unselected')?.addEventListener('click', () => {
+        const items = window.PPCart?.getAll() || [];
+        const unselected = items.filter(a => !_selected.has(a.id));
+        if (!unselected.length) { alert('No hay artículos sin seleccionar que quitar.'); return; }
+        if (!confirm(`¿Quitar del carrito los ${unselected.length} artículo${unselected.length === 1 ? '' : 's'} no seleccionado${unselected.length === 1 ? '' : 's'}?`)) return;
+        unselected.forEach(a => window.PPCart?.remove(a.id));
+        render();
+      });
       $('pv-cart-clear-all')?.addEventListener('click', () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) return;
