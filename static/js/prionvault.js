@@ -7901,14 +7901,35 @@
       }
     }
 
+    function _paintHistoryBtn(hasChats) {
+      const btn = $('pv-chat-history-btn');
+      if (!btn) return;
+      if (hasChats) {
+        btn.style.background = '#15803d';
+        btn.style.borderColor = '#15803d';
+        btn.style.color = '#fff';
+      } else {
+        btn.style.background = 'white';
+        btn.style.borderColor = '#d1d5db';
+        btn.style.color = '#374151';
+      }
+    }
+
     async function updateLauncherCount(article) {
       const badge = document.getElementById('pv-detail-chat-count');
-      if (!badge || !article) return;
+      if (!article) return;
       try {
         const r = await api(`/articles/${article.id}/chats`);
         const n = (r.chats || []).length;
-        if (n > 0) { badge.style.display = 'inline-block'; badge.textContent = n; }
-        else       { badge.style.display = 'none'; }
+        if (badge) {
+          if (n > 0) { badge.style.display = 'inline-block'; badge.textContent = n; }
+          else       { badge.style.display = 'none'; }
+        }
+        // Only paint the in-modal "Chats anteriores" button if this
+        // count is for the article currently open in the chat modal —
+        // updateLauncherCount is also called from the listing/detail
+        // page for the launcher badge, well before the modal opens.
+        if (_article && _article.id === article.id) _paintHistoryBtn(n > 0);
       } catch (e) { /* silent */ }
     }
 
@@ -7961,6 +7982,8 @@
       renderMessages([]);
       modal.style.display = 'flex';
       populateProviders();
+      _paintHistoryBtn(false);   // reset to the default colour until the count for THIS article lands
+      updateLauncherCount(article);
       if (opts.showHistory) loadHistory();
       else {
         const panel = $('pv-chat-history-panel');
