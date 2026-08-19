@@ -2930,9 +2930,13 @@
     });
   }
 
-  // Isolate the listing to show only a single article
-  function _setIsolatedArticleId(aid) {
-    state.isolatedArticleId = aid;
+  // Isolate the listing to show only the given article(s). Accepts a
+  // single id (string) or an array of ids (e.g. "show the whole cart in
+  // the listing") — state.isolatedArticleId stores whatever buildListParams
+  // hands straight to the `ids=` query param, which already accepts a
+  // comma-separated list (see _fetchExtra's use of it elsewhere).
+  function _setIsolatedArticleId(aidOrIds) {
+    state.isolatedArticleId = Array.isArray(aidOrIds) ? aidOrIds.join(',') : aidOrIds;
     state.page = 1;
     _updateIsolationIndicator();
   }
@@ -2944,11 +2948,16 @@
     _updateIsolationIndicator();
   }
 
-  // Update the isolation indicator visibility
+  // Update the isolation indicator visibility + count text
   function _updateIsolationIndicator() {
     const indicator = document.getElementById('pv-isolation-indicator');
-    if (indicator) {
-      indicator.style.display = state.isolatedArticleId ? 'inline-block' : 'none';
+    if (!indicator) return;
+    const ids = state.isolatedArticleId;
+    indicator.style.display = ids ? 'inline-block' : 'none';
+    if (ids) {
+      const n = ids.split(',').filter(Boolean).length;
+      const label = indicator.querySelector('.pv-isolation-label');
+      if (label) label.textContent = `📍 Aislado a ${n} artículo${n === 1 ? '' : 's'}`;
     }
   }
 
@@ -9303,6 +9312,13 @@
       _wired = true;
       $('pv-cart-close')?.addEventListener('click', close);
       $('pv-cart-hide')?.addEventListener('click', close);
+      $('pv-cart-show-in-list')?.addEventListener('click', () => {
+        const items = window.PPCart?.getAll() || [];
+        if (!items.length) { alert('El carrito está vacío.'); return; }
+        close();
+        _setIsolatedArticleId(items.map(a => a.id));
+        loadArticles();
+      });
       $('pv-cart-remove-unselected')?.addEventListener('click', () => {
         const items = window.PPCart?.getAll() || [];
         const unselected = items.filter(a => !_selected.has(a.id));
