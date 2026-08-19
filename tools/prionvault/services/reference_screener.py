@@ -34,6 +34,18 @@ logger = logging.getLogger(__name__)
 # on blank lines if the text is unstructured.
 _ENTRY_PREFIX_RE = re.compile(r"(?m)^\s*\d+\s*[.)]\s+")
 
+# Pasted spreadsheet/table rows ("1\tPrusiner 1998, PNAS\t10.1073/...")
+# number their rows too, but with a TAB after the number instead of a
+# "." or ")" — needs its own split pattern. Only trusted as the active
+# strategy when it matches at least twice (see parse_text), so a
+# one-off "3\tfoo" inside an unrelated paragraph doesn't misfire.
+_ROW_PREFIX_RE = re.compile(r"(?m)^\s*\d+\s*\t")
+
+# A pasted table's header row ("#\tReferencia abreviada\tDOI") isn't a
+# reference — drop it instead of showing it as a confusing
+# "unparseable" first entry.
+_HEADER_ROW_RE = re.compile(r"referencia\s+abreviada", re.IGNORECASE)
+
 # Identifier extractors. Tolerant of extra spacing / punctuation around
 # the value, and case-insensitive on the keyword.
 _PMID_RE = re.compile(r"\bPMID\s*[:#]?\s*(\d{4,9})\b", re.IGNORECASE)
@@ -41,21 +53,31 @@ _PMID_RE = re.compile(r"\bPMID\s*[:#]?\s*(\d{4,9})\b", re.IGNORECASE)
 _PMID_WORD_RE = re.compile(r"\bPubMed\s+PMID\s*[:#]?\s*(\d{4,9})\b", re.IGNORECASE)
 _PMCID_RE = re.compile(r"\b(PMC\d{4,9})\b")
 # DOIs end at whitespace, common punctuation, or sentence-ending dot
-# followed by space. The trailing-period trim mirrors what
-# tools/prionvault/services/pack_suggest.py uses elsewhere.
-_DOI_RE = re.compile(r"\b(10\.\d{4,}/[^\s'\";,)>\]]+)", re.IGNORECASE)
+# followed by space. ")" is deliberately NOT excluded here — real DOIs
+# can contain a balanced parenthetical (e.g. "10.1016/S1474-4422(22)
+# 00082-5"); excluding it truncates those mid-identifier. Any actually
+# unbalanced trailing ")" (from the DOI sitting inside a sentence's own
+# parentheses) gets stripped in _normalise_doi instead, where we can
+# check paren balance.
+_DOI_RE = re.compile(r"\b(10\.\d{4,}/[^\s'\";,>\]]+)", re.IGNORECASE)
 
 _MAX_ENTRIES = 200            # safety cap; the modal isn't a bulk importer
 _MAX_TEXT_CHARS = 200_000     # ~50 KB of pasted text covers any sensible list
 
 
 def _normalise_doi(s: str) -> str:
-    s = (s or "").strip().lower().rstrip(".,;:)")
+    s = (s or "").strip().lower().rstrip(".,;:✓✔☑")
     # Strip a trailing markdown / parenthetical artifact like
     # "doi:10.xxxx/yyyy." that the regex doesn't catch by itself.
     if s.startswith("http"):
         s = s.split("doi.org/")[-1]
-    return s
+    # _DOI_RE allows ")" inside the match (real DOIs can contain a
+    # balanced parenthetical), which also lets it swallow the closing
+    # ")" of an outer sentence like "(see 10.1016/xxx)". Strip a
+    # trailing ")" only when it's actually unbalanced.
+    while s.endswith(")") and s.count("(") < s.count(")"):
+        s = s[:-1]
+    return s.rstrip(".,;:")
 
 
 def parse_text(text: str) -> list[dict]:
@@ -67,13 +89,22 @@ def parse_text(text: str) -> list[dict]:
         return []
     text = text[:_MAX_TEXT_CHARS]
 
-    # Try numbered-prefix split first; if there's no numbering, treat
-    # each non-blank paragraph as a separate entry.
+    # Try numbered-prefix split first ("12. Author..."); then a
+    # numbered TABLE row ("12\tAuthor...\t10.xxxx/..." — pasted from a
+    # spreadsheet or a Markdown-ish table, tab-separated instead of
+    # ". "/") "); if neither matches at least twice, treat each
+    # non-blank paragraph as a separate entry.
     if _ENTRY_PREFIX_RE.search(text):
         parts = _ENTRY_PREFIX_RE.split(text)
+    elif len(_ROW_PREFIX_RE.findall(text)) >= 2:
+        parts = _ROW_PREFIX_RE.split(text)
     else:
         parts = re.split(r"\n\s*\n", text)
     parts = [p.strip() for p in parts if p and p.strip()]
+    # Drop a leading table header row ("#  Referencia abreviada  DOI")
+    # picked up as the fragment before the first numbered row/entry.
+    if parts and _HEADER_ROW_RE.search(parts[0]):
+        parts = parts[1:]
 
     out: list[dict] = []
     for idx, raw in enumerate(parts[:_MAX_ENTRIES], 1):
