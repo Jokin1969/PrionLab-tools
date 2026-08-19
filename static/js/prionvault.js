@@ -3217,9 +3217,9 @@
                        font-size:10.5px;font-weight:600;background:#eef2ff;color:#4f46e5;
                        border:none;cursor:pointer;line-height:1.2;"><i class="fas fa-paper-plane"></i></button>`,
       `<button type="button" class="pv-chat-row-btn" data-aid="${esc(a.id)}"
-                title="Preguntar a la IA sobre este artículo"
+                title="${a.has_own_chat ? 'Ya tienes una conversación sobre este artículo — clic para continuarla' : 'Preguntar a la IA sobre este artículo'}"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
-                       font-size:10.5px;font-weight:600;background:#0F3460;color:#fff;
+                       font-size:10.5px;font-weight:600;background:${a.has_own_chat ? '#15803d' : '#0F3460'};color:#fff;
                        border:none;cursor:pointer;line-height:1.2;">🤖 Chat</button>`,
       IS_ADMIN
         ? `<button type="button" class="pv-edit-row-btn" data-aid="${esc(a.id)}"

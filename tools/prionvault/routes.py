@@ -1033,6 +1033,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # Now batched here as one GROUP BY scan over the JC table.
     jc_counts: dict = {}      # aid -> int
     jc_presenters: dict = {}  # aid -> "Name1, Name2" (comma-joined, for the JC pill tooltip)
+    own_chat_ids: set = set() # aid -> viewer already has an AI-chat thread here
     if rows:
         try:
             import uuid as _uuid
@@ -1062,6 +1063,21 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                 ), {"ids": [str(i) for i in item_ids]}).all()
                 jc_counts = {r[0]: int(r[1]) for r in jc_rows}
                 jc_presenters = {r[0]: r[2] for r in jc_rows}
+
+                # has_own_chat: does THIS viewer already have an AI-chat
+                # thread on this article? (per-user, since article chats
+                # are private threads — see services/article_chat.py).
+                # Only matters for the row's 🤖 Chat button colour.
+                _chat_viewer_id = _viewer_id()
+                if _chat_viewer_id:
+                    chat_rows = _s2.execute(sql_text(
+                        "SELECT DISTINCT article_id FROM prionvault_article_chat "
+                        " WHERE article_id = ANY(CAST(:ids AS uuid[])) "
+                        "   AND user_id = CAST(:uid AS uuid)"
+                    ), {"ids": [str(i) for i in item_ids], "uid": str(_chat_viewer_id)}).all()
+                    own_chat_ids = {r[0] for r in chat_rows}
+                else:
+                    own_chat_ids = set()
 
                 # Aggregate ratings: avg + count per article id
                 rating_rows = _s2.query(
@@ -1150,6 +1166,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "jc_count":      int(jc_counts.get(aid, 0)),
             "has_jc":        bool(jc_counts.get(aid, 0)),
             "jc_presenters": jc_presenters.get(aid),
+            "has_own_chat":  aid in own_chat_ids,
             "extraction_status": d.get("extraction_status") or "pending",
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
             "added_at":      d["created_at"].isoformat() if d.get("created_at") else None,
