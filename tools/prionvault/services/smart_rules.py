@@ -65,28 +65,52 @@ def build_where(rules: dict, viewer_id=None) -> tuple[list, dict]:
 
     if rules.get("q"):
         raw = str(rules["q"]).strip()
-        # Plain "bat" is a substring match (ILIKE '%bat%'), so it also
-        # catches "combat", "debate", "database"... — fine for most
-        # searches but wrong for a short word that's also a common
-        # substring. Wrapping term(s) in "double quotes" switches to a
-        # STRICT whole-word match (regex \y...\y — word boundary at both
-        # ends) — "bat" then matches only the standalone word "bat",
-        # never "combat", "battle", "batch" or any other word that
-        # merely starts/contains those letters. Since a whole-word match
-        # doesn't catch the plural for free, quote both forms and OR
-        # them: "bat" OR "bats". Multiple quoted terms OR-ed together
-        # also works for genuine synonyms — "bat" OR "chiroptera".
-        quoted_terms = re.findall(r'"([^"]+)"', raw)
-        remainder = re.sub(r'"[^"]+"', ' ', raw)
-        remainder_is_clean = not [t for t in remainder.split() if t.upper() != "OR"]
-        if quoted_terms and remainder_is_clean:
-            where.append(r"(title ~* :q OR coalesce(abstract,'') ~* :q OR "
-                         r"coalesce(authors,'') ~* :q)")
-            params["q"] = r"\y(" + "|".join(re.escape(t) for t in quoted_terms) + r")\y"
+
+        def _group_clause(group: str, pname: str) -> tuple[str, str]:
+            """Builds one (title/abstract/authors) OR-clause for a single
+            group of the query — a bare word/phrase, or several quoted
+            terms OR-ed together (synonyms/plural forms). Returns
+            (sql_fragment, param_value)."""
+            quoted_terms = re.findall(r'"([^"]+)"', group)
+            remainder = re.sub(r'"[^"]+"', ' ', group)
+            remainder_is_clean = not [t for t in remainder.split() if t.upper() != "OR"]
+            if quoted_terms and remainder_is_clean:
+                # Plain "bat" is a substring match (ILIKE '%bat%'), so it
+                # also catches "combat", "debate", "database"... — fine
+                # for most searches but wrong for a short word that's
+                # also a common substring. Wrapping term(s) in "double
+                # quotes" switches to a STRICT whole-word match (regex
+                # \y...\y — word boundary at both ends) — "bat" then
+                # matches only the standalone word "bat", never "combat",
+                # "battle", "batch" or any other word that merely starts/
+                # contains those letters. Since a whole-word match
+                # doesn't catch the plural for free, quote both forms and
+                # OR them: "bat" OR "bats". Multiple quoted terms OR-ed
+                # together also works for genuine synonyms — "bat" OR
+                # "chiroptera".
+                return (f"(title ~* :{pname} OR coalesce(abstract,'') ~* :{pname} OR "
+                        f"coalesce(authors,'') ~* :{pname})",
+                        r"\y(" + "|".join(re.escape(t) for t in quoted_terms) + r")\y")
+            return (f"(title ILIKE :{pname} OR coalesce(abstract,'') ILIKE :{pname} OR "
+                    f"coalesce(authors,'') ILIKE :{pname})",
+                    f"%{group.strip()}%")
+
+        # Literal " AND " between groups requires EVERY group to match
+        # somewhere in the article, independently — e.g. "miRNA" AND
+        # "AAV" only matches articles that mention both words (anywhere,
+        # not necessarily adjacent), unlike a single group where multiple
+        # words are OR-ed (or, unquoted, treated as one literal phrase).
+        and_groups = [g for g in re.split(r'\bAND\b', raw) if g.strip()]
+        if len(and_groups) > 1:
+            for gi, group in enumerate(and_groups):
+                pname = f"q_and_{gi}"
+                clause, value = _group_clause(group.strip(), pname)
+                where.append(clause)
+                params[pname] = value
         else:
-            where.append("(title ILIKE :q OR coalesce(abstract,'') ILIKE :q OR "
-                         "coalesce(authors,'') ILIKE :q)")
-            params["q"] = f"%{raw}%"
+            clause, value = _group_clause(raw, "q")
+            where.append(clause)
+            params["q"] = value
     if rules.get("authors"):
         where.append("coalesce(authors,'') ILIKE :authors_q")
         params["authors_q"] = f"%{rules['authors']}%"
