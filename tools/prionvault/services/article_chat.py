@@ -25,6 +25,7 @@ it, never for anyone else (see _reindex_chat_sync).
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import Optional
@@ -484,6 +485,86 @@ def ask(chat_id: str, user_id: str, question: str,
         "cost_usd":           cost,
         "elapsed_ms":         elapsed_ms,
     }
+
+
+# ── References mentioned in the answers (for the downloadable report) ──────
+# Article chat has no structured citation list (unlike rag.py/library_chat,
+# which retrieve numbered fragments) — it dumps the article's own text into
+# context and answers freely, so a mentioned "other paper" only shows up as
+# a DOI/PMID the model happened to write out in prose. Same DOI/PMID regex
+# used for the cross-reference resolution in embeddings/retriever.py.
+_DOI_RE  = re.compile(r'10\.\d{4,9}/[^\s<>"\')\]]+', re.IGNORECASE)
+_PMID_RE = re.compile(r'PMID[:\s]*([0-9]{6,9})', re.IGNORECASE)
+
+
+def references_for_messages(messages: list[dict], exclude_article_id: str) -> list[dict]:
+    """Scan every assistant answer for DOIs/PMIDs mentioned in prose,
+    dedupe, look each one up against `articles` (so the report can link
+    straight to the PrionVault detail page when we have it), and return
+    a list of {article_id, title, authors, year, journal, doi,
+    pubmed_id, in_vault} — excluding the article the chat is about."""
+    dois: set[str] = set()
+    pmids: set[str] = set()
+    for m in messages:
+        if m.get("role") != "assistant":
+            continue
+        text = m.get("content") or ""
+        for match in _DOI_RE.findall(text):
+            doi = match.strip().rstrip(".,;:").lower()
+            if doi:
+                dois.add(doi)
+        for match in _PMID_RE.findall(text):
+            if match:
+                pmids.add(match)
+    if not dois and not pmids:
+        return []
+
+    eng = _get_engine()
+    found: dict[tuple, dict] = {}
+    try:
+        with eng.connect() as conn:
+            if dois:
+                rows = conn.execute(_sql("""
+                    SELECT id::text, title, authors, year, journal, doi, pubmed_id
+                      FROM articles WHERE lower(doi) = ANY(:dois)
+                """), {"dois": list(dois)}).mappings().all()
+                for r in rows:
+                    found[("doi", (r["doi"] or "").lower())] = dict(r)
+            if pmids:
+                rows = conn.execute(_sql("""
+                    SELECT id::text, title, authors, year, journal, doi, pubmed_id
+                      FROM articles WHERE pubmed_id = ANY(:pmids)
+                """), {"pmids": list(pmids)}).mappings().all()
+                for r in rows:
+                    found[("pmid", r["pubmed_id"])] = dict(r)
+    except Exception:
+        logger.exception("article_chat: reference lookup failed")
+
+    out: list[dict] = []
+    seen_ids: set[str] = set()
+    for doi in sorted(dois):
+        row = found.get(("doi", doi))
+        if row and row["id"] == exclude_article_id:
+            continue
+        if row and row["id"] in seen_ids:
+            continue
+        if row:
+            seen_ids.add(row["id"])
+            out.append({**row, "in_vault": True})
+        else:
+            out.append({"id": None, "title": None, "authors": None, "year": None,
+                        "journal": None, "doi": doi, "pubmed_id": None, "in_vault": False})
+    for pmid in sorted(pmids):
+        row = found.get(("pmid", pmid))
+        if row and (row["id"] == exclude_article_id or row["id"] in seen_ids):
+            continue
+        if row:
+            seen_ids.add(row["id"])
+            out.append({**row, "in_vault": True})
+        else:
+            out.append({"id": None, "title": None, "authors": None, "year": None,
+                        "journal": None, "doi": None, "pubmed_id": pmid, "in_vault": False})
+    return out
 
 
 # ── Library-wide overview (admin) ───────────────────────────────────────────

@@ -11,7 +11,7 @@ prionvault_bp as a side effect.
 """
 import logging
 
-from flask import jsonify, request
+from flask import jsonify, request, Response
 
 from core.decorators import login_required
 from . import prionvault_bp
@@ -135,6 +135,115 @@ def api_chat_ask(chat_id):
         return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
 
     return jsonify({"ok": True, **result})
+
+
+# ── Downloadable / emailable report of one conversation ──────────────────────
+
+def _build_chat_report(chat_id, uid, fmt: str):
+    """Shared by the download route and the email route: loads the chat +
+    article + references and renders the requested format. Returns
+    (content_bytes, mimetype, ext) or raises ValueError/LookupError."""
+    from .services import article_chat, chat_report
+
+    chat = article_chat.get_chat(str(chat_id), uid)
+    if not chat:
+        raise LookupError("not_found")
+    messages = chat["messages"]
+    if not messages:
+        raise ValueError("Esta conversación no tiene mensajes.")
+
+    article = article_chat._fetch_article(chat["article_id"])
+    if not article:
+        raise LookupError("article_not_found")
+
+    references = article_chat.references_for_messages(messages, chat["article_id"])
+
+    if fmt == "pdf":
+        content = chat_report.render_article_chat_pdf(article, chat, messages, references)
+        return content, "application/pdf", "pdf"
+    content = chat_report.render_article_chat_docx(article, chat, messages, references)
+    return content, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"
+
+
+@prionvault_bp.route("/api/chats/<uuid:chat_id>/report", methods=["GET"])
+@login_required
+def api_chat_report(chat_id):
+    """Download a formatted report of this article-chat conversation —
+    the "📄 Informe" button in the chat modal. ?format=pdf|docx (default
+    pdf). Headed with the article's details, one heading per question
+    with its answer underneath, and a final "Referencias" section for
+    every DOI/PMID mentioned in the answers."""
+    uid, err = _require_user()
+    if err:
+        return err
+    fmt = (request.args.get("format") or "pdf").strip().lower()
+    if fmt not in ("pdf", "docx"):
+        return jsonify({"error": "bad_format", "detail": "format debe ser pdf o docx"}), 400
+
+    try:
+        content, mimetype, ext = _build_chat_report(chat_id, uid, fmt)
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except ValueError as exc:
+        return jsonify({"error": "empty", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("article chat report generation failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+
+    filename = f"chat-articulo-{str(chat_id)[:8]}.{ext}"
+    return Response(content, mimetype=mimetype, headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    })
+
+
+@prionvault_bp.route("/api/chats/<uuid:chat_id>/report/email", methods=["POST"])
+@login_required
+def api_chat_report_email(chat_id):
+    """Same report as above, sent by email instead of downloaded."""
+    uid, err = _require_user()
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    to = (body.get("to") or "").strip()
+    fmt = (body.get("format") or "pdf").strip().lower()
+    comment = (body.get("comment") or "").strip()
+    if not to:
+        return jsonify({"error": "no_recipient", "detail": "Falta el destinatario."}), 400
+    if fmt not in ("pdf", "docx"):
+        return jsonify({"error": "bad_format", "detail": "format debe ser pdf o docx"}), 400
+
+    try:
+        content, mimetype, ext = _build_chat_report(chat_id, uid, fmt)
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except ValueError as exc:
+        return jsonify({"error": "empty", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("article chat report generation failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+
+    from .services import article_chat
+    from core.smtp_client import send_email_with_attachments
+    chat = article_chat.get_chat(str(chat_id), uid)
+    article = article_chat._fetch_article(chat["article_id"]) if chat else None
+    article_title = (article or {}).get("title") or "un artículo"
+    subject = f"Informe de conversación — {article_title}"
+    body_lines = [f"Se adjunta el informe de la conversación sobre «{article_title}» en PrionVault."]
+    if comment:
+        body_lines.append(f"\n{comment}")
+    filename = f"chat-articulo-{str(chat_id)[:8]}.{ext}"
+
+    try:
+        ok = send_email_with_attachments(
+            to=to, subject=subject, body="\n".join(body_lines),
+            attachments=[(filename, content, mimetype)],
+        )
+    except Exception as exc:
+        logger.exception("article chat report email failed")
+        return jsonify({"error": "send_failed", "detail": str(exc)[:200]}), 500
+    if not ok:
+        return jsonify({"error": "send_failed"}), 500
+    return jsonify({"ok": True})
 
 
 # ── Library-wide overview ───────────────────────────────────────────────────

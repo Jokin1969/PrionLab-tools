@@ -1104,9 +1104,16 @@
                        display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
           🕑 <span>Chats anteriores</span>
         </button>
+        <button id="pv-chat-report-btn" type="button"
+                title="Descargar o enviar por email un informe de esta conversación"
+                style="margin-left:auto;padding:4px 11px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                       font-size:12px;font-weight:600;color:#374151;cursor:pointer;
+                       display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
+          📄 <span>Informe</span>
+        </button>
         <button id="pv-chat-overview-btn" type="button"
                 title="Ver en qué artículos se ha usado el chat de IA"
-                style="margin-left:auto;padding:4px 11px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                style="padding:4px 11px;border-radius:6px;border:1px solid #d1d5db;background:white;
                        font-size:12px;font-weight:600;color:#374151;cursor:pointer;
                        display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
           📊 <span>Ver todos</span>
@@ -1173,6 +1180,56 @@
     <div id="pv-chats-overview-body">
       <p style="color:#9ca3af;text-align:center;padding:2rem;">Cargando…</p>
     </div>
+  </div>
+</div>
+
+<!-- ── Article chat report — intermediate format/destination modal ────── -->
+<div id="pv-chat-report-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:440px;">
+    <button class="pv-modal-close" id="pv-chat-report-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-file-lines" style="color:#0F3460;margin-right:8px;"></i>Informe de la conversación
+    </h2>
+    <p style="color:#6b7280;font-size:13px;line-height:1.55;margin:0 0 16px;">
+      Detalles del artículo, cada pregunta con su respuesta, y las referencias
+      mencionadas (con enlace a PrionVault, DOI y PMID cuando existan).
+    </p>
+
+    <label style="font-size:11.5px;font-weight:600;color:#6b7280;display:block;margin-bottom:6px;">Formato</label>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;
+                    border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:13px;color:#374151;">
+        <input type="radio" name="pv-chat-report-format" value="pdf" checked style="accent-color:#0F3460;">
+        <i class="fas fa-file-pdf" style="color:#b91c1c;"></i> PDF
+      </label>
+      <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;
+                    border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:13px;color:#374151;">
+        <input type="radio" name="pv-chat-report-format" value="docx" style="accent-color:#0F3460;">
+        <i class="fas fa-file-word" style="color:#1d4ed8;"></i> Word
+      </label>
+    </div>
+
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#374151;cursor:pointer;">
+      <input type="checkbox" id="pv-chat-report-email-toggle" style="accent-color:#0F3460;cursor:pointer;">
+      Enviar por email en vez de descargar
+    </label>
+    <div id="pv-chat-report-email-controls" style="display:none;margin-top:10px;">
+      <input id="pv-chat-report-to" type="email" placeholder="nombre@ejemplo.com" autocomplete="off"
+             style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13.5px;">
+      <textarea id="pv-chat-report-comment" rows="2" placeholder="Comentario opcional…"
+                style="width:100%;margin-top:8px;padding:8px 10px;border:1px solid #d1d5db;
+                       border-radius:7px;font-size:13px;font-family:inherit;resize:vertical;line-height:1.5;"></textarea>
+    </div>
+
+    <div id="pv-chat-report-status" style="font-size:12px;margin-top:10px;min-height:16px;"></div>
+
+    <button id="pv-chat-report-go" type="button"
+            style="width:100%;margin-top:14px;padding:10px;border-radius:8px;border:none;
+                   background:#0F3460;color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;
+                   display:flex;align-items:center;justify-content:center;gap:8px;">
+      <i class="fas fa-download"></i> <span id="pv-chat-report-go-label">Descargar</span>
+    </button>
   </div>
 </div>
 

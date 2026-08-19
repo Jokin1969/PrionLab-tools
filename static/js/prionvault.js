@@ -7913,6 +7913,10 @@
       $('pv-chat-new-btn')?.addEventListener('click', newConversation);
       $('pv-chat-history-btn')?.addEventListener('click', loadHistory);
       $('pv-chat-overview-btn')?.addEventListener('click', () => window.openChatsOverview?.());
+      $('pv-chat-report-btn')?.addEventListener('click', () => {
+        if (!_chatId) { alert('Escribe al menos una pregunta antes de generar un informe.'); return; }
+        PVChatReport.open(_chatId);
+      });
       const input = $('pv-chat-input');
       if (input) input.addEventListener('keydown', ev => {
         // Enter sends, Shift+Enter makes a newline.
@@ -7962,6 +7966,96 @@
     }
 
     return { open, close, updateLauncherCount };
+  })();
+
+  // ── Article chat report — intermediate format/destination modal ──────────
+  // Reuses the download-via-window.open pattern from the library chat's
+  // per-pair report button, plus a small email flow (send_email_with_
+  // attachments on the backend, same as the cart's bulk email).
+  const PVChatReport = (() => {
+    const $ = id => document.getElementById(id);
+    let _chatId = null;
+
+    function selectedFormat() {
+      const el = document.querySelector('input[name="pv-chat-report-format"]:checked');
+      return el ? el.value : 'pdf';
+    }
+
+    function syncMode() {
+      const emailOn = $('pv-chat-report-email-toggle')?.checked;
+      const controls = $('pv-chat-report-email-controls');
+      if (controls) controls.style.display = emailOn ? 'block' : 'none';
+      const label = $('pv-chat-report-go-label');
+      const icon = document.querySelector('#pv-chat-report-go i');
+      if (label) label.textContent = emailOn ? 'Enviar' : 'Descargar';
+      if (icon) icon.className = emailOn ? 'fas fa-paper-plane' : 'fas fa-download';
+    }
+
+    function setStatus(msg, isError) {
+      const el = $('pv-chat-report-status');
+      if (!el) return;
+      el.style.color = isError ? '#b91c1c' : '#15803d';
+      el.textContent = msg || '';
+    }
+
+    async function go() {
+      if (!_chatId) return;
+      const fmt = selectedFormat();
+      const emailOn = $('pv-chat-report-email-toggle')?.checked;
+      const btn = $('pv-chat-report-go');
+      if (!emailOn) {
+        window.open(`${API}/chats/${_chatId}/report?format=${fmt}`, '_blank');
+        close();
+        return;
+      }
+      const to = ($('pv-chat-report-to')?.value || '').trim();
+      if (!to) { setStatus('Escribe un destinatario.', true); return; }
+      btn.disabled = true;
+      setStatus('Enviando…', false);
+      try {
+        await api(`/chats/${_chatId}/report/email`, {
+          method: 'POST',
+          body: JSON.stringify({
+            to, format: fmt,
+            comment: ($('pv-chat-report-comment')?.value || '').trim(),
+          }),
+        });
+        setStatus('✓ Enviado', false);
+        setTimeout(close, 1400);
+      } catch (e) {
+        setStatus('Error: ' + (e.message || e), true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function close() { const m = $('pv-chat-report-modal'); if (m) m.style.display = 'none'; }
+
+    let _wired = false;
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-chat-report-close')?.addEventListener('click', close);
+      document.querySelector('#pv-chat-report-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-chat-report-email-toggle')?.addEventListener('change', syncMode);
+      $('pv-chat-report-go')?.addEventListener('click', go);
+    }
+
+    function open(chatId) {
+      _chatId = chatId;
+      wireOnce();
+      const modal = $('pv-chat-report-modal');
+      if (!modal) return;
+      setStatus('', false);
+      const emailToggle = $('pv-chat-report-email-toggle');
+      if (emailToggle) emailToggle.checked = false;
+      const to = $('pv-chat-report-to'); if (to) to.value = '';
+      const comment = $('pv-chat-report-comment'); if (comment) comment.value = '';
+      syncMode();
+      modal.style.display = 'flex';
+    }
+
+    return { open };
   })();
 
   function wireChatLauncher(a) {
