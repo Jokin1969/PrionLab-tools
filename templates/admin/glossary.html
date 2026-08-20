@@ -1,405 +1,649 @@
 {% extends "base.html" %}
 
-{% block title %}📚 {{ _('Glossary Management') }} — PrionLab Tools{% endblock %}
-
-{% block content %}
-<div class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
-  <div>
-    <h1>📚 {{ _('Glossary') }}</h1>
-    <p class="subtitle">
-      {{ _('Biomedical EN→ES terminology. Every AI summary, article chat and library chat always uses the current version below.') }}
-    </p>
-  </div>
-  <a href="/prionvault/" class="btn btn--secondary" style="align-self: flex-start; margin-top: 4px; white-space: nowrap;">
-    ← {{ _('Back to PrionVault') }}
-  </a>
-</div>
-
-<div class="stats-grid" style="max-width:260px;">
-  <div class="stat-card">
-    <span class="stat-label">{{ _('Current version') }}</span>
-    <span class="stat-value" id="glossary-version">—</span>
-  </div>
-</div>
-
-{# ── Add / import ─────────────────────────────────────────────────────────── #}
-<section class="admin-section">
-  <h2>➕ {{ _('Add a term') }}</h2>
-  <div class="add-term-row">
-    <input type="text" id="add-term-en" placeholder="{{ _('English term') }}" />
-    <input type="text" id="add-term-es" placeholder="{{ _('Spanish (recommended)') }}" />
-    <input type="text" id="add-term-avoid" placeholder="{{ _('Avoid (optional)') }}" />
-    <input type="text" id="add-term-category" placeholder="{{ _('Category (optional)') }}" />
-    <input type="text" id="add-term-notes" placeholder="{{ _('Notes (optional)') }}" />
-    <button class="btn btn--primary" onclick="addTerm()">{{ _('Add') }}</button>
-  </div>
-  <span id="add-term-status" class="status-text"></span>
-</section>
-
-<section class="admin-section">
-  <h2>📥 {{ _('Bulk import') }}</h2>
-  <p class="help-text">
-    {{ _('Upload a JSON or CSV/TSV file to replace the whole glossary at once. Each row needs') }}
-    <code>term_en</code>, <code>term_es_recommended</code>, {{ _('and optionally') }}
-    <code>term_es_avoid</code>, <code>notes</code>, <code>category</code>.
-  </p>
-  <div class="form-group">
-    <input type="file" id="file-upload" accept=".json,.csv,.tsv,.txt" />
-  </div>
-  <div class="form-group">
-    <button id="btn-import" class="btn btn--primary" onclick="handleImport()">
-      📥 {{ _('Import terms') }}
-    </button>
-    <span id="import-status" class="status-text"></span>
-  </div>
-
-  <div id="import-results" class="import-results" style="display:none">
-    <div class="alert alert--success" id="import-success" style="display:none"></div>
-    <div class="alert alert--warning" id="import-warning" style="display:none"></div>
-    <div class="alert alert--error" id="import-error" style="display:none"></div>
-    <div id="import-errors" style="display:none">
-      <h3>{{ _('Errors (first 20):') }}</h3>
-      <ul id="errors-list"></ul>
-    </div>
-  </div>
-</section>
-
-{# ── Browse / edit / delete ───────────────────────────────────────────────── #}
-<section class="admin-section">
-  <h2>📖 {{ _('Terms') }}</h2>
-
-  <div class="browse-toolbar">
-    <input type="search" id="term-search" placeholder="{{ _('Search…') }}" oninput="renderTermsTable()" />
-    <select id="category-filter" onchange="renderTermsTable()">
-      <option value="">{{ _('All categories') }}</option>
-    </select>
-    <span id="browse-count" class="status-text"></span>
-  </div>
-
-  <div class="table-responsive">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>{{ _('English') }}</th>
-          <th>{{ _('Spanish (recommended)') }}</th>
-          <th>{{ _('Avoid') }}</th>
-          <th>{{ _('Category') }}</th>
-          <th>{{ _('Notes') }}</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="terms-tbody">
-        <tr><td colspan="6" class="text-center text-muted">{{ _('Loading...') }}</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-{% endblock %}
+{% block title %}📖 {{ _('Glossary') }} — PrionLab Tools{% endblock %}
 
 {% block head_extra %}
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-.admin-section { margin-bottom: 32px; }
-.subtitle { color: #6b7280; margin: 5px 0 0 0; font-size: 14px; max-width: 560px; }
-.help-text { color: #6b7280; font-size: 13px; margin-bottom: 10px; }
-.form-group { margin-bottom: 12px; }
-.form-group input[type="file"] {
-  display: block; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;
-  font-size: 14px; width: 100%; max-width: 500px;
-}
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
-.stat-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-.stat-label { font-size: 12px; color: #6b7280; font-weight: 500; text-transform: uppercase; }
-.stat-value { font-size: 24px; font-weight: bold; color: #1f2937; }
-.status-text { margin-left: 12px; font-size: 12px; color: #6b7280; }
-.alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; display: none; }
-.alert--success { background: #ecfdf5; color: #065f46; border: 1px solid #d1fae5; }
-.alert--error { background: #fef2f2; color: #7f1d1d; border: 1px solid #fee2e2; }
-.alert--warning { background: #fffbeb; color: #78350f; border: 1px solid #fef3c7; }
-.import-results { margin-top: 16px; padding: 16px; background: #fafafa; border-radius: 8px; }
-#errors-list { list-style: none; padding: 0; margin: 0; }
-#errors-list li { padding: 6px 0; border-bottom: 1px solid #fee2e2; font-size: 12px; color: #dc2626; }
-.table-responsive { overflow-x: auto; margin: 15px 0; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.data-table thead { background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
-.data-table th { padding: 10px 12px; text-align: left; font-weight: 600; color: #374151; }
-.data-table td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-.data-table tbody tr:hover { background: #fafafa; }
-.data-table input {
-  width: 100%; border: 1px solid transparent; background: transparent; font-size: 13px;
-  padding: 4px 6px; border-radius: 4px; font-family: inherit;
-}
-.data-table input:focus, .data-table input:hover { border-color: #d1d5db; background: #fff; outline: none; }
-.text-center { text-align: center; }
-.text-muted { color: #9ca3af; }
-.btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-block; }
-.btn--primary { background: #3b82f6; color: white; }
-.btn--primary:hover:not(:disabled) { background: #2563eb; }
-.btn--primary:disabled { background: #d1d5db; cursor: not-allowed; }
-.btn--secondary { background: #e5e7eb; color: #374151; }
-.btn--secondary:hover { background: #d1d5db; }
-.btn--danger { background: #fef2f2; color: #b91c1c; padding: 5px 10px; font-size: 12px; }
-.btn--danger:hover { background: #fee2e2; }
-.btn--save { background: #ecfdf5; color: #065f46; padding: 5px 10px; font-size: 12px; }
-.btn--save:hover { background: #d1fae5; }
-.add-term-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.add-term-row input {
-  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; flex: 1; min-width: 140px;
-}
-.browse-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
-.browse-toolbar input[type="search"], .browse-toolbar select {
-  padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;
-}
+  :root {
+    --gl-bg:            #f7f8fa;
+    --gl-surface:       #ffffff;
+    --gl-surface-sunk:  #f1f3f6;
+    --gl-border:        #e2e5ea;
+    --gl-border-strong: #ccd2db;
+    --gl-ink:           #1c2430;
+    --gl-ink-soft:      #5b6472;
+    --gl-ink-faint:     #8b93a1;
+    --gl-accent:        #0F3460;
+    --gl-accent-soft:   #eef2f8;
+    --gl-accent-line:   #c9d6e8;
+    --gl-warn:          #a15c00;
+    --gl-radius:        10px;
+    --gl-shadow-1:      0 1px 2px rgba(20,30,50,0.06);
+    --gl-shadow-2:      0 8px 24px rgba(20,30,50,0.10);
+  }
+  #glossary-app * { box-sizing: border-box; }
+  #glossary-app {
+    background: var(--gl-bg);
+    color: var(--gl-ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  #glossary-app .head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 20px; margin-bottom: 28px; flex-wrap: wrap;
+  }
+  #glossary-app .head h1 {
+    font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: 28px;
+    letter-spacing: -0.01em; margin: 0 0 4px; text-wrap: balance;
+    display: flex; align-items: center; gap: 10px;
+  }
+  #glossary-app .head .sub { color: var(--gl-ink-soft); font-size: 13.5px; max-width: 50ch; }
+  #glossary-app .head .sub code {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    background: var(--gl-surface-sunk); border: 1px solid var(--gl-border);
+    padding: 1px 5px; border-radius: 4px; color: var(--gl-ink);
+  }
+  #glossary-app .back-link {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
+    color: var(--gl-ink-soft); text-decoration: none; font-size: 12.5px; font-weight: 600;
+  }
+  #glossary-app .back-link:hover { color: var(--gl-accent); }
+  #glossary-app .version-pill {
+    flex-shrink: 0; display: inline-flex; align-items: baseline; gap: 6px;
+    background: var(--gl-accent-soft); border: 1px solid var(--gl-accent-line); color: var(--gl-accent);
+    padding: 7px 14px; border-radius: 999px; font-weight: 600; font-size: 12.5px; white-space: nowrap;
+  }
+  #glossary-app .version-pill b { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 13px; }
+
+  #glossary-app .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  #glossary-app .search-field { position: relative; flex: 1 1 260px; min-width: 200px; }
+  #glossary-app .search-field svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--gl-ink-faint); pointer-events: none; }
+  #glossary-app .search-field input {
+    width: 100%; padding: 9px 12px 9px 34px; border-radius: 8px; border: 1px solid var(--gl-border-strong);
+    background: var(--gl-surface); color: var(--gl-ink); font-size: 13.5px; font-family: inherit;
+  }
+  #glossary-app .search-field input:focus-visible { outline: 2px solid var(--gl-accent); outline-offset: 1px; }
+  #glossary-app .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  #glossary-app .chip {
+    border: 1px solid var(--gl-border-strong); background: var(--gl-surface); color: var(--gl-ink-soft);
+    padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  }
+  #glossary-app .chip:hover { border-color: var(--gl-accent); color: var(--gl-accent); }
+  #glossary-app .chip.active { background: var(--gl-accent); border-color: var(--gl-accent); color: #fff; }
+  #glossary-app .spacer { flex: 1 1 auto; }
+  #glossary-app .btn {
+    display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    font-family: inherit; padding: 9px 14px; cursor: pointer; border: 1px solid transparent; white-space: nowrap;
+  }
+  #glossary-app .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  #glossary-app .btn:focus-visible { outline: 2px solid var(--gl-accent); outline-offset: 1px; }
+  #glossary-app .btn-primary { background: var(--gl-accent); color: #fff; }
+  #glossary-app .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+  #glossary-app .btn-ghost { background: var(--gl-surface); border-color: var(--gl-border-strong); color: var(--gl-ink-soft); }
+  #glossary-app .btn-ghost:hover { border-color: var(--gl-accent); color: var(--gl-accent); }
+  #glossary-app .btn-sm { padding: 6px 11px; font-size: 12.5px; }
+
+  #glossary-app .add-panel {
+    background: var(--gl-surface); border: 1px solid var(--gl-border); border-radius: var(--gl-radius);
+    box-shadow: var(--gl-shadow-1); margin-bottom: 16px; overflow: hidden;
+  }
+  #glossary-app .add-panel[data-open="false"] .add-body { display: none; }
+  #glossary-app .add-head { display: flex; align-items: center; gap: 10px; padding: 13px 16px; cursor: pointer; user-select: none; }
+  #glossary-app .add-head .ico {
+    width: 22px; height: 22px; border-radius: 6px; background: var(--gl-accent-soft); color: var(--gl-accent);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.15s ease;
+  }
+  #glossary-app .add-panel[data-open="true"] .add-head .ico { transform: rotate(45deg); }
+  #glossary-app .add-head strong { font-size: 13.5px; font-weight: 600; }
+  #glossary-app .add-head span.hint { color: var(--gl-ink-faint); font-size: 12.5px; }
+  #glossary-app .add-body { padding: 4px 16px 16px; border-top: 1px solid var(--gl-border); }
+  #glossary-app .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  #glossary-app .field { display: flex; flex-direction: column; gap: 5px; }
+  #glossary-app .field.full { grid-column: 1 / -1; }
+  #glossary-app .field label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gl-ink-faint); }
+  #glossary-app .field label .opt { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  #glossary-app .field input {
+    padding: 8px 10px; border-radius: 7px; border: 1px solid var(--gl-border-strong);
+    background: var(--gl-surface); color: var(--gl-ink); font-family: inherit; font-size: 13.5px;
+  }
+  #glossary-app .field input:focus-visible { outline: 2px solid var(--gl-accent); outline-offset: 1px; }
+  #glossary-app .add-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; }
+  #glossary-app .add-status { font-size: 12px; color: var(--gl-ink-soft); }
+  #glossary-app .add-status.error { color: #c0392b; }
+  #glossary-app .add-status.ok { color: #1a7a4c; }
+
+  #glossary-app .table-wrap { background: var(--gl-surface); border: 1px solid var(--gl-border); border-radius: var(--gl-radius); box-shadow: var(--gl-shadow-1); overflow-x: auto; }
+  #glossary-app .t-head {
+    display: grid; grid-template-columns: 1.15fr 1.35fr 1fr auto; gap: 12px; padding: 10px 16px;
+    background: var(--gl-surface-sunk); border-bottom: 1px solid var(--gl-border);
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gl-ink-faint);
+    min-width: 640px;
+  }
+  #glossary-app .t-head .col-actions { text-align: right; }
+  #glossary-app .row {
+    display: grid; grid-template-columns: 1.15fr 1.35fr 1fr auto; gap: 12px; align-items: start;
+    padding: 12px 16px; border-bottom: 1px solid var(--gl-border); min-width: 640px;
+  }
+  #glossary-app .row:last-child { border-bottom: none; }
+  #glossary-app .row:hover { background: var(--gl-surface-sunk); }
+  #glossary-app .row:hover .row-actions { opacity: 1; }
+  #glossary-app .term-en { font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: 15px; color: var(--gl-ink); }
+  #glossary-app .term-cat {
+    display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em;
+    color: var(--gl-accent); background: var(--gl-accent-soft); border: 1px solid var(--gl-accent-line);
+    padding: 1px 7px; border-radius: 5px;
+  }
+  #glossary-app .term-es { font-size: 13.5px; color: var(--gl-ink); }
+  #glossary-app .term-avoid { margin-top: 5px; font-size: 11.5px; color: var(--gl-warn); display: flex; align-items: baseline; gap: 5px; }
+  #glossary-app .term-avoid svg { flex-shrink: 0; position: relative; top: 1px; }
+  #glossary-app .term-avoid .val { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  #glossary-app .term-notes { font-size: 12.5px; color: var(--gl-ink-soft); }
+  #glossary-app .term-notes:empty::before { content: '—'; color: var(--gl-ink-faint); }
+  #glossary-app .row-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.1s ease; }
+  #glossary-app .row.editing .row-actions { opacity: 1; }
+  #glossary-app .icon-btn {
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px;
+    border: 1px solid transparent; background: transparent; color: var(--gl-ink-faint); cursor: pointer;
+  }
+  #glossary-app .icon-btn:hover { background: var(--gl-surface); border-color: var(--gl-border-strong); color: var(--gl-ink); }
+  #glossary-app .icon-btn.danger:hover { color: #c0392b; border-color: #f0c4bd; background: #fdf0ee; }
+  #glossary-app .icon-btn:focus-visible { outline: 2px solid var(--gl-accent); opacity: 1; }
+  #glossary-app .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Inline edit form (replaces the 3 read columns while editing) */
+  #glossary-app .edit-grid { grid-column: 1 / 4; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
+  #glossary-app .edit-grid input {
+    padding: 7px 9px; border-radius: 6px; border: 1px solid var(--gl-border-strong);
+    background: var(--gl-surface); color: var(--gl-ink); font-family: inherit; font-size: 12.5px; width: 100%;
+  }
+  #glossary-app .edit-grid input:focus-visible { outline: 2px solid var(--gl-accent); outline-offset: 1px; }
+  #glossary-app .edit-grid label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gl-ink-faint); display: block; margin-bottom: 3px; }
+
+  #glossary-app .empty { padding: 48px 16px; text-align: center; color: var(--gl-ink-faint); font-size: 13.5px; }
+  #glossary-app .count-line { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12px; color: var(--gl-ink-faint); font-variant-numeric: tabular-nums; flex-wrap: wrap; gap: 8px; }
+  #glossary-app .count-line a { color: var(--gl-ink-soft); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+  #glossary-app .count-line a:hover { color: var(--gl-accent); }
+
+  #glossary-app .backdrop { position: fixed; inset: 0; background: rgba(10, 14, 22, 0.45); display: none; z-index: 20; }
+  #glossary-app .backdrop[data-open="true"] { display: block; }
+  #glossary-app .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); background: var(--gl-surface);
+    box-shadow: var(--gl-shadow-2); z-index: 21; transform: translateX(100%); transition: transform 0.22s ease;
+    display: flex; flex-direction: column;
+  }
+  #glossary-app .drawer[data-open="true"] { transform: translateX(0); }
+  #glossary-app .drawer-head { padding: 20px 22px 16px; border-bottom: 1px solid var(--gl-border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  #glossary-app .drawer-head h2 { font-family: 'Source Serif 4', Georgia, serif; font-size: 19px; margin: 0 0 6px; }
+  #glossary-app .drawer-head p { margin: 0; color: var(--gl-ink-soft); font-size: 12.5px; max-width: 40ch; }
+  #glossary-app .drawer-close { width: 26px; height: 26px; border-radius: 6px; border: none; background: transparent; color: var(--gl-ink-faint); cursor: pointer; flex-shrink: 0; }
+  #glossary-app .drawer-close:hover { background: var(--gl-surface-sunk); color: var(--gl-ink); }
+  #glossary-app .drawer-body { padding: 20px 22px; overflow-y: auto; flex: 1; }
+  #glossary-app .dropzone {
+    border: 1.5px dashed var(--gl-border-strong); border-radius: var(--gl-radius); padding: 28px 16px;
+    text-align: center; color: var(--gl-ink-soft); font-size: 13px; cursor: pointer; transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  #glossary-app .dropzone:hover, #glossary-app .dropzone.drag-over { border-color: var(--gl-accent); background: var(--gl-accent-soft); }
+  #glossary-app .dropzone svg { color: var(--gl-ink-faint); margin-bottom: 8px; }
+  #glossary-app .dropzone .formats { margin-top: 6px; font-size: 11.5px; color: var(--gl-ink-faint); font-family: 'IBM Plex Mono', monospace; }
+  #glossary-app .drawer-note { margin-top: 16px; font-size: 12px; color: var(--gl-ink-faint); line-height: 1.6; }
+  #glossary-app .drawer-note code { font-family: 'IBM Plex Mono', monospace; background: var(--gl-surface-sunk); border: 1px solid var(--gl-border); padding: 1px 5px; border-radius: 4px; color: var(--gl-ink-soft); }
+  #glossary-app .drawer-status { margin-top: 14px; font-size: 12.5px; padding: 10px 12px; border-radius: 8px; display: none; }
+  #glossary-app .drawer-status.ok { display: block; background: #e9f6ef; color: #1a7a4c; border: 1px solid #c7e9d4; }
+  #glossary-app .drawer-status.error { display: block; background: #fdf0ee; color: #c0392b; border: 1px solid #f0c4bd; }
+  #glossary-app #import-file { display: none; }
+
+  @media (max-width: 720px) {
+    #glossary-app .t-head { display: none; }
+    #glossary-app .row { grid-template-columns: 1fr; gap: 6px; }
+    #glossary-app .row-actions { opacity: 1; justify-content: flex-end; }
+    #glossary-app .edit-grid { grid-template-columns: 1fr 1fr; }
+  }
 </style>
+{% endblock %}
+
+{% block content %}
+<div id="glossary-app">
+
+  <a class="back-link" href="/prionvault/">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    {{ _('Back to PrionVault') }}
+  </a>
+
+  <div class="head">
+    <div>
+      <h1>📖 {{ _('Glossary') }}</h1>
+      <div class="sub">
+        {{ _('EN→ES biomedical terminology. Every AI summary and chat cites the version below') }} —
+        {{ _('shared across PrionVault, PrionLab and PrionPacks') }}.
+      </div>
+    </div>
+    <div class="version-pill">{{ _('version') }} <b id="glossary-version">—</b></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-field">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" id="term-search" placeholder="{{ _('Search term, translation or note…') }}">
+    </div>
+    <div class="chips" id="category-chips">
+      <button class="chip active" data-cat="">{{ _('All') }}</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="btn-import">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      {{ _('Import') }}
+    </button>
+  </div>
+
+  <div class="add-panel" id="add-panel" data-open="false">
+    <div class="add-head" id="add-head">
+      <span class="ico">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </span>
+      <strong>{{ _('Add a term') }}</strong>
+      <span class="hint">— {{ _('two fields and done') }}</span>
+    </div>
+    <div class="add-body">
+      <div class="field-grid">
+        <div class="field">
+          <label for="f-en">{{ _('English') }}</label>
+          <input id="f-en" type="text" placeholder="knockdown">
+        </div>
+        <div class="field">
+          <label for="f-es">{{ _('Spanish (recommended)') }}</label>
+          <input id="f-es" type="text" placeholder="silenciamiento génico">
+        </div>
+        <div class="field">
+          <label for="f-cat">{{ _('Category') }} <span class="opt">({{ _('optional') }})</span></label>
+          <input id="f-cat" type="text" list="cat-options" placeholder="Genética">
+          <datalist id="cat-options"></datalist>
+        </div>
+        <div class="field">
+          <label for="f-avoid">{{ _('Avoid') }} <span class="opt">({{ _('optional') }})</span></label>
+          <input id="f-avoid" type="text" placeholder="knock-down, derribo génico">
+        </div>
+        <div class="field full">
+          <label for="f-notes">{{ _('Note') }} <span class="opt">({{ _('optional') }})</span></label>
+          <input id="f-notes" type="text" placeholder="{{ _('No confundir con knockout…') }}">
+        </div>
+      </div>
+      <div class="add-actions">
+        <span class="add-status" id="add-status"></span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" id="btn-cancel-add">{{ _('Cancel') }}</button>
+          <button class="btn btn-primary" id="btn-save-add">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            {{ _('Save term') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="t-head">
+      <div>{{ _('Term') }}</div>
+      <div>{{ _('Translation') }}</div>
+      <div>{{ _('Note') }}</div>
+      <div class="col-actions"></div>
+    </div>
+    <div id="terms-body">
+      <div class="empty">{{ _('Loading…') }}</div>
+    </div>
+  </div>
+
+  <div class="count-line">
+    <span id="browse-count"></span>
+    <a id="link-export">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      {{ _('Export all (.tsv)') }}
+    </a>
+  </div>
+
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div>
+      <h2>{{ _('Bulk import') }}</h2>
+      <p>{{ _('Replaces the whole glossary with the file\'s contents. Saved as a new version — nothing is lost.') }}</p>
+    </div>
+    <button class="drawer-close" id="drawer-close" aria-label="{{ _('Close') }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div class="dropzone" id="dropzone">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <div id="dropzone-label">{{ _('Drag a file here, or click to choose one') }}</div>
+      <div class="formats">.tsv · .csv · .json</div>
+    </div>
+    <input type="file" id="import-file" accept=".json,.csv,.tsv,.txt">
+    <div class="drawer-note">
+      {{ _('Expected columns:') }} <code>English</code>, <code>Castellano recomendado</code>, <code>Evitar</code>, <code>Comentario</code>, <code>Categoría</code>. {{ _('The last three are optional.') }}
+    </div>
+    <div class="drawer-status" id="drawer-status"></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block main_body %}
 {{ super() }}
 <script>
-let currentTerms = [];
-let currentCategories = [];
+(() => {
+  const API = '/prionvault/api';
+  let currentTerms = [];
+  let currentCategories = [];
+  let activeCategory = '';
+  let editingEn = null;
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text == null ? '' : String(text);
-  return div.innerHTML;
-}
-
-async function loadGlossary() {
-  try {
-    const res = await fetch('/prionvault/api/glossary/terms', { credentials: 'same-origin' });
-    const data = await res.json();
-    currentTerms = data.terms || [];
-
-    const catRes = await fetch('/prionvault/api/glossary/categories', { credentials: 'same-origin' });
-    const catData = await catRes.json();
-    currentCategories = catData.categories || [];
-
-    const verRes = await fetch('/prionvault/api/glossary/version', { credentials: 'same-origin' });
-    const verData = await verRes.json();
-    document.getElementById('glossary-version').textContent = verData.version ?? '—';
-
-    const filter = document.getElementById('category-filter');
-    const prev = filter.value;
-    filter.innerHTML = '<option value="">{{ _("All categories") }}</option>';
-    currentCategories.forEach(cat => {
-      const opt = document.createElement('option');
-      opt.value = cat || '';
-      opt.textContent = cat || '{{ _("Uncategorized") }}';
-      filter.appendChild(opt);
-    });
-    filter.value = prev;
-
-    renderTermsTable();
-  } catch (e) {
-    document.getElementById('terms-tbody').innerHTML =
-      `<tr><td colspan="6" class="text-center text-muted">{{ _("Error loading glossary:") }} ${escapeHtml(e.message)}</td></tr>`;
-  }
-}
-
-function renderTermsTable() {
-  const tbody = document.getElementById('terms-tbody');
-  const catFilter = document.getElementById('category-filter').value;
-  const q = document.getElementById('term-search').value.trim().toLowerCase();
-
-  let rows = currentTerms;
-  if (catFilter) rows = rows.filter(t => (t.category || '') === catFilter);
-  if (q) {
-    rows = rows.filter(t =>
-      (t.term_en || '').toLowerCase().includes(q) ||
-      (t.term_es_recommended || '').toLowerCase().includes(q) ||
-      (t.term_es_avoid || '').toLowerCase().includes(q) ||
-      (t.notes || '').toLowerCase().includes(q)
-    );
+  function esc(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
   }
 
-  document.getElementById('browse-count').textContent =
-    `${rows.length} / ${currentTerms.length} {{ _("terms") }}`;
-
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">{{ _("No terms found") }}</td></tr>`;
-    return;
+  async function api(path, opts = {}) {
+    const res = await fetch(API + path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
   }
 
-  tbody.innerHTML = rows.map(t => {
-    const en = escapeHtml(t.term_en);
+  async function loadGlossary() {
+    try {
+      const [termsData, catData, verData] = await Promise.all([
+        api('/glossary/terms'),
+        api('/glossary/categories'),
+        api('/glossary/version'),
+      ]);
+      currentTerms = termsData.terms || [];
+      currentCategories = catData.categories || [];
+      document.getElementById('glossary-version').textContent = verData.version ?? '—';
+
+      const chipBar = document.getElementById('category-chips');
+      chipBar.innerHTML = `<button class="chip${activeCategory === '' ? ' active' : ''}" data-cat="">{{ _('All') }}</button>` +
+        currentCategories.map(c => `<button class="chip${activeCategory === c ? ' active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+      chipBar.querySelectorAll('.chip').forEach(chip => {
+        chip.addEventListener('click', () => { activeCategory = chip.dataset.cat; renderTerms(); });
+      });
+
+      const dl = document.getElementById('cat-options');
+      dl.innerHTML = currentCategories.map(c => `<option value="${esc(c)}"></option>`).join('');
+
+      renderTerms();
+    } catch (e) {
+      document.getElementById('terms-body').innerHTML =
+        `<div class="empty">{{ _('Error loading glossary:') }} ${esc(e.message)}</div>`;
+    }
+  }
+
+  function rowActions(en, disabled) {
+    return `<div class="row-actions">
+      <button class="icon-btn edit-btn" data-en="${esc(en)}" title="{{ _('Edit') }}" ${disabled ? 'disabled' : ''}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+      </button>
+      <button class="icon-btn danger del-btn" data-en="${esc(en)}" title="{{ _('Delete') }}" ${disabled ? 'disabled' : ''}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+      </button>
+    </div>`;
+  }
+
+  function readRowHtml(t) {
+    const avoid = t.term_es_avoid
+      ? `<div class="term-avoid">
+           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+           <span class="val">${esc(t.term_es_avoid)}</span>
+         </div>` : '';
     return `
-    <tr data-term-en="${en}">
-      <td><input type="text" value="${en}" disabled title="{{ _('English term is the unique key — delete and re-add to rename it') }}" /></td>
-      <td><input type="text" class="f-es" value="${escapeHtml(t.term_es_recommended)}" /></td>
-      <td><input type="text" class="f-avoid" value="${escapeHtml(t.term_es_avoid || '')}" /></td>
-      <td><input type="text" class="f-category" value="${escapeHtml(t.category || '')}" /></td>
-      <td><input type="text" class="f-notes" value="${escapeHtml(t.notes || '')}" /></td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn--save" onclick="saveTerm(this)">{{ _('Save') }}</button>
-        <button class="btn btn--danger" onclick="deleteTerm('${en}')">{{ _('Delete') }}</button>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-async function saveTerm(btn) {
-  const row = btn.closest('tr');
-  const term_en = row.dataset.termEn;
-  const payload = {
-    term_en,
-    term_es_recommended: row.querySelector('.f-es').value.trim(),
-    term_es_avoid: row.querySelector('.f-avoid').value.trim(),
-    category: row.querySelector('.f-category').value.trim(),
-    notes: row.querySelector('.f-notes').value.trim(),
-  };
-  if (!payload.term_es_recommended) {
-    alert('{{ _("Spanish (recommended) is required") }}');
-    return;
-  }
-  btn.disabled = true;
-  try {
-    const res = await fetch('/prionvault/api/glossary/term', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    await loadGlossary();
-  } catch (e) {
-    alert('{{ _("Error saving term:") }} ' + e.message);
-    btn.disabled = false;
-  }
-}
-
-async function deleteTerm(term_en) {
-  if (!confirm(`{{ _("Delete") }} "${term_en}"?`)) return;
-  try {
-    const res = await fetch('/prionvault/api/glossary/term?term_en=' + encodeURIComponent(term_en), {
-      method: 'DELETE',
-      credentials: 'same-origin',
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    await loadGlossary();
-  } catch (e) {
-    alert('{{ _("Error deleting term:") }} ' + e.message);
-  }
-}
-
-async function addTerm() {
-  const term_en = document.getElementById('add-term-en').value.trim();
-  const term_es_recommended = document.getElementById('add-term-es').value.trim();
-  const term_es_avoid = document.getElementById('add-term-avoid').value.trim();
-  const category = document.getElementById('add-term-category').value.trim();
-  const notes = document.getElementById('add-term-notes').value.trim();
-  const status = document.getElementById('add-term-status');
-
-  if (!term_en || !term_es_recommended) {
-    status.textContent = '{{ _("English term and Spanish recommendation are required") }}';
-    return;
+      <div>
+        <div class="term-en">${esc(t.term_en)}</div>
+        ${t.category ? `<span class="term-cat">${esc(t.category)}</span>` : ''}
+      </div>
+      <div class="term-es">${esc(t.term_es_recommended)}${avoid}</div>
+      <div class="term-notes">${esc(t.notes || '')}</div>
+      ${rowActions(t.term_en, false)}
+    `;
   }
 
-  status.textContent = '{{ _("Adding…") }}';
-  try {
-    const res = await fetch('/prionvault/api/admin/glossary/term/add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ term_en, term_es_recommended, term_es_avoid, category, notes }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-
-    ['add-term-en', 'add-term-es', 'add-term-avoid', 'add-term-category', 'add-term-notes']
-      .forEach(id => document.getElementById(id).value = '');
-    status.textContent = `✓ {{ _("Added") }} "${term_en}"`;
-    await loadGlossary();
-  } catch (e) {
-    status.textContent = '✗ ' + e.message;
+  function editRowHtml(t) {
+    const en = esc(t.term_en);
+    return `
+      <div class="edit-grid">
+        <div>
+          <label>{{ _('Spanish (recommended)') }}</label>
+          <input type="text" class="ef-es" value="${esc(t.term_es_recommended)}">
+        </div>
+        <div>
+          <label>{{ _('Avoid') }}</label>
+          <input type="text" class="ef-avoid" value="${esc(t.term_es_avoid || '')}">
+        </div>
+        <div>
+          <label>{{ _('Category') }}</label>
+          <input type="text" class="ef-cat" value="${esc(t.category || '')}" list="cat-options">
+        </div>
+        <div>
+          <label>{{ _('Note') }}</label>
+          <input type="text" class="ef-notes" value="${esc(t.notes || '')}">
+        </div>
+      </div>
+      <div class="row-actions" style="opacity:1;">
+        <button class="icon-btn save-edit-btn" data-en="${en}" title="{{ _('Save') }}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>
+        <button class="icon-btn cancel-edit-btn" title="{{ _('Cancel') }}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    `;
   }
-}
 
-// ── Bulk import ──────────────────────────────────────────────────────────────
-function parseCSV(text, isTSV) {
-  const delimiter = isTSV ? '\t' : ',';
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
-  const terms = [];
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(delimiter).map(v => v.trim());
-    if (values.length < 2) continue;
-    const term = {};
-    headers.forEach((h, idx) => { if (values[idx]) term[h] = values[idx]; });
-    terms.push(term);
+  function renderTerms() {
+    const body = document.getElementById('terms-body');
+    const q = document.getElementById('term-search').value.trim().toLowerCase();
+
+    let rows = currentTerms;
+    if (activeCategory) rows = rows.filter(t => (t.category || '') === activeCategory);
+    if (q) {
+      rows = rows.filter(t =>
+        (t.term_en || '').toLowerCase().includes(q) ||
+        (t.term_es_recommended || '').toLowerCase().includes(q) ||
+        (t.term_es_avoid || '').toLowerCase().includes(q) ||
+        (t.notes || '').toLowerCase().includes(q)
+      );
+    }
+
+    document.getElementById('browse-count').textContent =
+      `${rows.length} {{ _('of') }} ${currentTerms.length} {{ _('terms') }}`;
+
+    if (!rows.length) {
+      body.innerHTML = `<div class="empty">{{ _('No terms found') }}</div>`;
+      return;
+    }
+
+    body.innerHTML = rows.map(t => {
+      const editing = editingEn === t.term_en;
+      return `<div class="row${editing ? ' editing' : ''}" data-term-en="${esc(t.term_en)}">
+        ${editing ? editRowHtml(t) : readRowHtml(t)}
+      </div>`;
+    }).join('');
+
+    body.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => { editingEn = b.dataset.en; renderTerms(); }));
+    body.querySelectorAll('.cancel-edit-btn').forEach(b => b.addEventListener('click', () => { editingEn = null; renderTerms(); }));
+    body.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => deleteTerm(b.dataset.en)));
+    body.querySelectorAll('.save-edit-btn').forEach(b => b.addEventListener('click', () => saveTerm(b.dataset.en)));
   }
-  return terms;
-}
 
-async function handleImport() {
-  const fileInput = document.getElementById('file-upload');
-  const file = fileInput.files[0];
-  if (!file) { alert('{{ _("Please select a file") }}'); return; }
+  async function saveTerm(term_en) {
+    const row = document.querySelector(`.row[data-term-en="${CSS.escape(term_en)}"]`);
+    if (!row) return;
+    const payload = {
+      term_en,
+      term_es_recommended: row.querySelector('.ef-es').value.trim(),
+      term_es_avoid: row.querySelector('.ef-avoid').value.trim(),
+      category: row.querySelector('.ef-cat').value.trim(),
+      notes: row.querySelector('.ef-notes').value.trim(),
+    };
+    if (!payload.term_es_recommended) { alert('{{ _("Spanish (recommended) is required") }}'); return; }
+    try {
+      await api('/glossary/term', { method: 'PUT', body: JSON.stringify(payload) });
+      editingEn = null;
+      await loadGlossary();
+    } catch (e) {
+      alert('{{ _("Error saving term:") }} ' + e.message);
+    }
+  }
 
-  const btn = document.getElementById('btn-import');
-  btn.disabled = true;
-  btn.textContent = '{{ _("Importing...") }}';
-  const status = document.getElementById('import-status');
-  status.textContent = '{{ _("Reading file...") }}';
+  async function deleteTerm(term_en) {
+    if (!confirm(`{{ _("Delete") }} "${term_en}"?`)) return;
+    try {
+      await api('/glossary/term?term_en=' + encodeURIComponent(term_en), { method: 'DELETE' });
+      await loadGlossary();
+    } catch (e) {
+      alert('{{ _("Error deleting term:") }} ' + e.message);
+    }
+  }
 
-  const results = document.getElementById('import-results');
-  ['import-success', 'import-warning', 'import-error', 'import-errors'].forEach(id => {
-    document.getElementById(id).style.display = 'none';
+  // ── Add term panel ──────────────────────────────────────────────────────
+  const addPanel = document.getElementById('add-panel');
+  document.getElementById('add-head').addEventListener('click', () => {
+    const open = addPanel.getAttribute('data-open') === 'true';
+    addPanel.setAttribute('data-open', open ? 'false' : 'true');
+    if (!open) document.getElementById('f-en').focus();
+  });
+  document.getElementById('btn-cancel-add').addEventListener('click', () => {
+    addPanel.setAttribute('data-open', 'false');
+    ['f-en', 'f-es', 'f-cat', 'f-avoid', 'f-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('add-status').textContent = '';
+  });
+  document.getElementById('btn-save-add').addEventListener('click', async () => {
+    const term_en = document.getElementById('f-en').value.trim();
+    const term_es_recommended = document.getElementById('f-es').value.trim();
+    const term_es_avoid = document.getElementById('f-avoid').value.trim();
+    const category = document.getElementById('f-cat').value.trim();
+    const notes = document.getElementById('f-notes').value.trim();
+    const status = document.getElementById('add-status');
+    status.className = 'add-status';
+
+    if (!term_en || !term_es_recommended) {
+      status.className = 'add-status error';
+      status.textContent = '{{ _("English term and Spanish recommendation are required") }}';
+      return;
+    }
+    status.textContent = '{{ _("Adding…") }}';
+    try {
+      const data = await api('/admin/glossary/term/add', {
+        method: 'POST',
+        body: JSON.stringify({ term_en, term_es_recommended, term_es_avoid, category, notes }),
+      });
+      if (!data.ok) throw new Error(data.error || 'unknown error');
+      ['f-en', 'f-es', 'f-cat', 'f-avoid', 'f-notes'].forEach(id => document.getElementById(id).value = '');
+      status.className = 'add-status ok';
+      status.textContent = `✓ {{ _("Added") }} "${term_en}"`;
+      await loadGlossary();
+    } catch (e) {
+      status.className = 'add-status error';
+      status.textContent = '✗ ' + e.message;
+    }
   });
 
-  try {
-    const text = await file.text();
-    let terms = [];
-    if (file.name.endsWith('.json')) {
-      terms = JSON.parse(text);
-      if (!Array.isArray(terms)) terms = [terms];
-    } else if (file.name.endsWith('.csv') || file.name.endsWith('.tsv')) {
-      terms = parseCSV(text, file.name.endsWith('.tsv'));
-    } else {
-      throw new Error('{{ _("Unsupported file format") }}');
-    }
-
-    status.textContent = `{{ _("Uploading") }} ${terms.length} {{ _("terms...") }}`;
-
-    const response = await fetch('/prionvault/api/glossary/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ terms }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-
-    results.style.display = 'block';
-    if (data.errors && data.errors.length > 0) {
-      document.getElementById('import-errors').style.display = 'block';
-      document.getElementById('errors-list').innerHTML =
-        data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('');
-      const w = document.getElementById('import-warning');
-      w.textContent = `⚠️ {{ _("Imported") }} ${data.imported}, {{ _("with") }} ${data.errors.length} {{ _("errors") }}`;
-      w.style.display = 'block';
-    } else {
-      const s = document.getElementById('import-success');
-      s.textContent = `✓ {{ _("Successfully imported") }} ${data.imported} {{ _("terms — now version") }} ${data.new_version}`;
-      s.style.display = 'block';
-    }
-
-    status.textContent = '✓ {{ _("Import complete") }}';
-    fileInput.value = '';
-    await loadGlossary();
-  } catch (e) {
-    status.textContent = '✗ {{ _("Import failed") }}';
-    results.style.display = 'block';
-    const err = document.getElementById('import-error');
-    err.textContent = `✗ {{ _("Error:") }} ${e.message}`;
-    err.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '📥 {{ _("Import terms") }}';
+  // ── Import drawer ────────────────────────────────────────────────────────
+  const drawer = document.getElementById('drawer');
+  const backdrop = document.getElementById('backdrop');
+  function openDrawer() { drawer.setAttribute('data-open', 'true'); backdrop.setAttribute('data-open', 'true'); }
+  function closeDrawer() {
+    drawer.setAttribute('data-open', 'false'); backdrop.setAttribute('data-open', 'false');
+    document.getElementById('drawer-status').className = 'drawer-status';
+    document.getElementById('import-file').value = '';
   }
-}
+  document.getElementById('btn-import').addEventListener('click', openDrawer);
+  document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+  backdrop.addEventListener('click', closeDrawer);
 
-document.addEventListener('DOMContentLoaded', loadGlossary);
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('import-file');
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; handleImport(); }
+  });
+  fileInput.addEventListener('change', handleImport);
+
+  function parseCSV(text, isTSV) {
+    const delimiter = isTSV ? '\t' : ',';
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
+    const terms = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(delimiter).map(v => v.trim());
+      if (values.length < 2) continue;
+      const term = {};
+      headers.forEach((h, idx) => { if (values[idx]) term[h] = values[idx]; });
+      terms.push(term);
+    }
+    return terms;
+  }
+
+  async function handleImport() {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const status = document.getElementById('drawer-status');
+    const label = document.getElementById('dropzone-label');
+    label.textContent = '{{ _("Reading file…") }}';
+    status.className = 'drawer-status';
+
+    try {
+      const text = await file.text();
+      let terms = [];
+      if (file.name.endsWith('.json')) {
+        terms = JSON.parse(text);
+        if (!Array.isArray(terms)) terms = [terms];
+      } else if (file.name.endsWith('.csv') || file.name.endsWith('.tsv')) {
+        terms = parseCSV(text, file.name.endsWith('.tsv'));
+      } else {
+        throw new Error('{{ _("Unsupported file format") }}');
+      }
+
+      label.textContent = `{{ _("Uploading") }} ${terms.length} {{ _("terms…") }}`;
+      const data = await api('/glossary/import', { method: 'POST', body: JSON.stringify({ terms }) });
+
+      if (data.errors && data.errors.length > 0) {
+        status.className = 'drawer-status error';
+        status.textContent = `⚠️ {{ _("Imported") }} ${data.imported}, {{ _("with") }} ${data.errors.length} {{ _("errors") }} — ${data.errors.slice(0, 3).join('; ')}`;
+      } else {
+        status.className = 'drawer-status ok';
+        status.textContent = `✓ {{ _("Successfully imported") }} ${data.imported} {{ _("terms — now version") }} ${data.new_version}`;
+      }
+      label.textContent = '{{ _("Drag a file here, or click to choose one") }}';
+      fileInput.value = '';
+      await loadGlossary();
+    } catch (e) {
+      status.className = 'drawer-status error';
+      status.textContent = '✗ {{ _("Error:") }} ' + e.message;
+      label.textContent = '{{ _("Drag a file here, or click to choose one") }}';
+    }
+  }
+
+  // ── Search + export ─────────────────────────────────────────────────────
+  document.getElementById('term-search').addEventListener('input', renderTerms);
+  document.getElementById('link-export').addEventListener('click', () => {
+    const header = 'English\tCastellano recomendado\tEvitar\tComentario\tCategoría';
+    const lines = currentTerms.map(t => [t.term_en, t.term_es_recommended, t.term_es_avoid || '', t.notes || '', t.category || ''].join('\t'));
+    const blob = new Blob([header + '\n' + lines.join('\n')], { type: 'text/tab-separated-values' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'glosario.tsv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  loadGlossary();
+})();
 </script>
 {% endblock %}
