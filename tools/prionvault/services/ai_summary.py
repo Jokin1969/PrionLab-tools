@@ -58,12 +58,15 @@ DEFAULT_PROVIDER = "anthropic"
 EXTRACTED_TEXT_CHAR_LIMIT = 50_000
 
 # Retry an empty / transient-error response this many times before
-# giving up on a paper. Backoff is exponential (2 s, 4 s, 8 s)
-# so a transient provider-side 503 / capacity event has ~14 s to
-# clear before we bubble the failure up to the caller. That keeps
-# sync per-article calls responsive while still covering most
-# real-world rate-limit / overload blips.
-_MAX_ATTEMPTS = 2
+# giving up on a paper. Backoff is exponential (3 s, 9 s) so a
+# transient provider-side 503 / capacity event or a plain network
+# connection error (seen in production: two straight "Connection
+# error"s from Anthropic ~3s apart, PRIONVAULT-2N) has ~12 s to clear
+# before we bubble the failure up to the caller. Was 2 attempts / one
+# 3s gap — bumped after that report showed back-to-back connection
+# blips can outlast a single retry. Still bounded enough to keep this
+# synchronous per-article call responsive.
+_MAX_ATTEMPTS = 3
 _BASE_BACKOFF_S = 3.0
 
 
