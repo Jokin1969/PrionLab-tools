@@ -195,6 +195,7 @@ def add_user():
         role = request.form.get("role", "reader")
         language = request.form.get("language", "es")
         active = "true" if request.form.get("active") else "false"
+        is_jc_responsible = "true" if request.form.get("is_jc_responsible") else "false"
 
         if not password:
             flash(_("Password is required for new users."), "error")
@@ -215,6 +216,7 @@ def add_user():
             "role": role,
             "language": language,
             "active": active,
+            "is_jc_responsible": is_jc_responsible,
             "created_at": date.today().isoformat(),
             "last_login": "",
         })
@@ -240,6 +242,7 @@ def edit_user(username):
         role = request.form.get("role", user["role"])
         language = request.form.get("language", user["language"])
         active = "true" if request.form.get("active") else "false"
+        is_jc_responsible = "true" if request.form.get("is_jc_responsible") else "false"
 
         updates = {
             "full_name": full_name,
@@ -247,6 +250,7 @@ def edit_user(username):
             "role": role,
             "language": language,
             "active": active,
+            "is_jc_responsible": is_jc_responsible,
         }
 
         if password:

@@ -29,7 +29,15 @@ _LIFECYCLE_COLS = [
     "reset_token",           # opaque urlsafe token
     "reset_token_expires",   # ISO-8601 datetime, UTC
 ]
-COLUMNS = _CORE_COLS + _PROFILE_COLS + _LIFECYCLE_COLS
+# Standing responsibilities, independent of admin/reader role — checked
+# in the admin user list, not tied to any single feature's own settings
+# page. is_jc_responsible: gets emailed when someone asks (via the "JC"
+# button on an article not yet marked for Journal Club) to have it
+# considered — see tools/prionvault/services/jc.py's request-email flow.
+_ROLE_FLAG_COLS = [
+    "is_jc_responsible",     # "true" | "false"
+]
+COLUMNS = _CORE_COLS + _PROFILE_COLS + _LIFECYCLE_COLS + _ROLE_FLAG_COLS
 
 
 def load_users() -> list[dict]:
@@ -98,6 +106,18 @@ def list_admin_emails() -> list[str]:
         u["email"].strip()
         for u in load_users()
         if (u.get("role") or "").lower() == "admin"
+        and (u.get("active") or "true").lower() == "true"
+        and (u.get("email") or "").strip()
+    ]
+
+
+def list_jc_responsible() -> list[dict]:
+    """Every active user flagged as a Journal Club responsible (full
+    user dict — used when the caller needs the name, not just the
+    email, e.g. to address them by name in an email)."""
+    return [
+        u for u in load_users()
+        if (u.get("is_jc_responsible") or "").lower() == "true"
         and (u.get("active") or "true").lower() == "true"
         and (u.get("email") or "").strip()
     ]

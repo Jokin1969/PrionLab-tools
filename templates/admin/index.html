@@ -40,6 +40,7 @@
           <th>{{ _('Role') }}</th>
           <th>{{ _('Language') }}</th>
           <th>{{ _('Active') }}</th>
+          <th title="{{ _('Journal Club responsible') }}">JC</th>
           <th>{{ _('Last login') }}</th>
           <th>{{ _('Actions') }}</th>
         </tr>
@@ -54,6 +55,9 @@
           <td>{{ user.language }}</td>
           <td class="text-center">
             {{ '✓' if user.active == 'true' else '✗' }}
+          </td>
+          <td class="text-center">
+            {{ '✓' if user.is_jc_responsible == 'true' else '' }}
           </td>
           <td>{{ user.last_login or '—' }}</td>
           <td class="actions-cell">
@@ -89,7 +93,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="text-center text-muted">—</td></tr>
+        <tr><td colspan="9" class="text-center text-muted">—</td></tr>
         {% endfor %}
       </tbody>
     </table>

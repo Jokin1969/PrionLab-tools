@@ -13,16 +13,22 @@ def send_email(
     body: str,
     html: str | None = None,
     bcc: str | list[str] | None = None,
+    cc: str | list[str] | None = None,
 ) -> bool:
     if isinstance(to, str):
         to = [to]
     if isinstance(bcc, str):
         bcc = [bcc]
+    if isinstance(cc, str):
+        cc = [cc]
     bcc = [b for b in (bcc or []) if b]
+    cc = [c for c in (cc or []) if c]
 
     msg = MIMEMultipart("alternative")
     msg["From"] = CONTACT_EMAIL
     msg["To"] = ", ".join(to)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
     if html:
@@ -41,10 +47,12 @@ def send_email(
 
         # BCC recipients are added to the SMTP envelope only, never to
         # a header — that's what keeps them invisible to the To/Cc-
-        # visible recipients.
-        server.sendmail(CONTACT_EMAIL, to + bcc, msg.as_string())
+        # visible recipients. CC recipients get both: the header (so
+        # every recipient sees who else is copied) and the envelope
+        # (so they actually receive it).
+        server.sendmail(CONTACT_EMAIL, to + cc + bcc, msg.as_string())
         server.quit()
-        logger.info("Email sent to %s (bcc=%s): %s", to, bcc, subject)
+        logger.info("Email sent to %s (cc=%s, bcc=%s): %s", to, cc, bcc, subject)
         return True
     except Exception as e:
         logger.error("Failed to send email to %s: %s", to, e)
@@ -58,6 +66,7 @@ def send_email_with_attachments(
     attachments: list[tuple[str, bytes, str]],
     html: str | None = None,
     bcc: str | list[str] | None = None,
+    cc: str | list[str] | None = None,
 ) -> bool:
     """Send a multipart/mixed email with file attachments.
 
@@ -70,11 +79,16 @@ def send_email_with_attachments(
         to = [to]
     if isinstance(bcc, str):
         bcc = [bcc]
+    if isinstance(cc, str):
+        cc = [cc]
     bcc = [b for b in (bcc or []) if b]
+    cc = [c for c in (cc or []) if c]
 
     msg = MIMEMultipart("mixed")
     msg["From"] = CONTACT_EMAIL
     msg["To"] = ", ".join(to)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg["Subject"] = subject
 
     alt = MIMEMultipart("alternative")
@@ -100,10 +114,10 @@ def send_email_with_attachments(
         if SMTP_USER and SMTP_PASS:
             server.login(SMTP_USER, SMTP_PASS)
 
-        server.sendmail(CONTACT_EMAIL, to + bcc, msg.as_string())
+        server.sendmail(CONTACT_EMAIL, to + cc + bcc, msg.as_string())
         server.quit()
-        logger.info("Email (with %d attachments) sent to %s (bcc=%s): %s",
-                    len(attachments or []), to, bcc, subject)
+        logger.info("Email (with %d attachments) sent to %s (cc=%s, bcc=%s): %s",
+                    len(attachments or []), to, cc, bcc, subject)
         return True
     except Exception as e:
         logger.error("Failed to send email with attachments to %s: %s", to, e)

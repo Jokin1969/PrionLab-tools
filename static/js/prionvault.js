@@ -3726,7 +3726,7 @@
         if (jcRowBtn.dataset.hasJc !== '1') {
           // No presentation yet — skip the article search step entirely,
           // we already know which article this is.
-          PVJcUpload.open(a, () => loadArticles());
+          openJcFlow(a, () => loadArticles());
           return;
         }
         jcRowBtn.disabled = true;
@@ -5292,7 +5292,7 @@
     const btn = document.getElementById('pv-jc-add-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
-      PVJcUpload.open(a, () => { renderJcSection(a); loadArticles(); });
+      openJcFlow(a, () => { renderJcSection(a); loadArticles(); });
     });
   }
 
@@ -5597,6 +5597,92 @@
 
     return { open };
   })();
+
+  // ── Journal Club — choice gate ───────────────────────────────────────────
+  // The "JC" button used to always jump straight to PVJcUpload. Now, for an
+  // article that isn't marked for JC yet AND has no presentation, it offers
+  // a choice first: ask the JC-responsible(s) to consider it (an email, no
+  // upload needed), or go ahead and add a presentation directly (the old
+  // flow, unchanged). Already-JC articles skip this and go straight to
+  // PVJcUpload, exactly as before.
+  function _articleNeedsJcChoice(a) {
+    if (!a) return false;
+    const hasPresentation = a.has_jc || (a.jc_count || 0) > 0;
+    return !a.is_jc && !hasPresentation;
+  }
+
+  const PVJcChoice = (() => {
+    const $ = id => document.getElementById(id);
+    let _article = null;
+    let _onAddPresentation = null;
+    let _wired = false;
+
+    function close() { const m = $('pv-jc-choice-modal'); if (m) m.style.display = 'none'; }
+
+    function setStatus(msg, isError) {
+      const el = $('pv-jc-choice-status');
+      if (!el) return;
+      el.style.color = isError ? '#b91c1c' : '#15803d';
+      el.textContent = msg || '';
+    }
+
+    async function requestFromResponsible() {
+      if (!_article) return;
+      const btn = $('pv-jc-choice-request');
+      if (btn) btn.disabled = true;
+      setStatus('Enviando…', false);
+      try {
+        const r = await api(`/articles/${_article.id}/jc-request`, { method: 'POST' });
+        setStatus(`✓ Enviado a ${(r.sent || []).length} responsable${(r.sent || []).length === 1 ? '' : 's'}.`, false);
+        setTimeout(close, 1600);
+      } catch (e) {
+        if (e.status === 400 && /no_jc_responsible/.test(e.message || '')) {
+          setStatus('No hay ningún usuario marcado como responsable de Journal Club (Panel de administración → Users).', true);
+        } else {
+          setStatus('Error: ' + (e.message || e), true);
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-jc-choice-close')?.addEventListener('click', close);
+      document.querySelector('#pv-jc-choice-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-jc-choice-request')?.addEventListener('click', requestFromResponsible);
+      $('pv-jc-choice-present')?.addEventListener('click', () => {
+        close();
+        if (_onAddPresentation) _onAddPresentation();
+      });
+    }
+
+    function open(article, onAddPresentation) {
+      _article = article;
+      _onAddPresentation = onAddPresentation;
+      wireOnce();
+      const modal = $('pv-jc-choice-modal');
+      if (!modal) return;
+      setStatus('', false);
+      const reqBtn = $('pv-jc-choice-request');
+      if (reqBtn) reqBtn.disabled = false;
+      modal.style.display = 'flex';
+    }
+
+    return { open };
+  })();
+
+  // Shared entry point for every "JC" button: gates on whether the
+  // article already needs no choice (already JC / already has a
+  // presentation) before falling into PVJcUpload.
+  function openJcFlow(article, onDone) {
+    if (_articleNeedsJcChoice(article)) {
+      PVJcChoice.open(article, () => PVJcUpload.open(article, onDone));
+    } else {
+      PVJcUpload.open(article, onDone);
+    }
+  }
 
   // ── Journal Club — find-article modal ───────────────────────────────────
   // Entry point for the sidebar "Añadir Journal clubs" link (open to every
@@ -9193,7 +9279,9 @@
           _pvCloseOtherModals();
           const aid = btn.dataset.aid;
           if (btn.dataset.hasJc !== '1') {
-            PVJcUpload.open({ id: aid, title: (_extra.get(aid) || {}).title }, () => { _extra.delete(aid); render(); });
+            const ex = _extra.get(aid) || {};
+            openJcFlow({ id: aid, title: ex.title, is_jc: ex.is_jc, has_jc: ex.has_jc, jc_count: ex.jc_count },
+                       () => { _extra.delete(aid); render(); });
             return;
           }
           btn.disabled = true;
@@ -20113,6 +20201,15 @@
           <h4>🧩 La extensión del navegador ya no es solo para el admin</h4>
           <p>Quien tenga instalada la <strong>extensión de PrionVault</strong> ahora puede añadir artículos directamente, sea admin o no — antes, si no eras admin, la extensión solo enviaba un email al administrador para que lo añadiera él a mano. Además, al añadir un artículo <strong>con PDF</strong> desde la extensión, ahora pasa por el mismo procesamiento completo que un email a prionvault@ o prionvault_lab@ (extracción, metadatos, resumen IA) en vez de quedarse solo con el PDF subido — el panel muestra "Recibido — procesando…" mientras tanto, en vez de un enlace inmediato. Como con el buzón de lectores, si quien la usa no es admin, el administrador recibe un aviso por email cuando termina, sin identificar a quién lo añadió.</p>
           <p>El administrador puede ver ambas claves de la extensión (admin y usuarios) y descargar el <code>.zip</code> de instalación desde <strong>Panel de administración → System</strong>, y tiene un botón para <strong>enviarle a cualquier usuario un email con las instrucciones de instalación, su clave, y la extensión adjunta</strong> — sin tener que explicárselo uno por uno.</p>
+
+          <h4>📖 El botón "JC" pregunta antes de abrir el modal de presentación</h4>
+          <p>Al pulsar el botón <strong>"JC"</strong> de un artículo que todavía NO está marcado para Journal Club (ni tiene ninguna presentación), aparece un modal previo con dos opciones:</p>
+          <ul>
+            <li><strong>Informar al responsable:</strong> envía un email — con los datos completos del artículo y el PDF, igual de cuidado que el de "Enviar por email" — a quien esté marcado como <em>responsable de Journal Club</em>, pidiéndole que valore incluirlo. El administrador va en copia. Si hay varios responsables, se les envía a todos.</li>
+            <li><strong>Añadir presentación:</strong> sigue con el flujo de siempre (subir el documento de la sesión).</li>
+          </ul>
+          <p>Si el artículo ya está marcado para Journal Club o ya tiene alguna presentación, el botón "JC" va directo al flujo de siempre — este modal previo no aparece.</p>
+          <p>Para marcar a alguien como responsable de Journal Club (y que reciba estos emails), edítalo desde <strong>Panel de administración → Users → Edit</strong> y marca la casilla <em>"Journal Club responsible"</em>. Se puede marcar a más de una persona.</p>
 
           <h4>📖 Glosario rediseñado</h4>
           <p>La página de gestión del <a href="/prionvault/admin/glossary" target="_blank">Glosario</a> (terminología EN→ES que usan todos los resúmenes IA y chats) tiene un diseño más simple: añadir un término es un panel de un clic con solo dos campos obligatorios, la importación masiva se ha movido a un panel lateral discreto, las categorías son chips de filtro rápido, y hay una opción nueva para exportar todo el glosario a <code>.tsv</code>. Sigue siendo una página aparte (no un modal de PrionVault), así que se puede seguir usando igual desde otras herramientas del laboratorio.</p>

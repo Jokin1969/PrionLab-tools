@@ -61,6 +61,18 @@
       <label for="active" class="form-label form-label--inline">{{ _('Active') }}</label>
     </div>
 
+    <div class="form-group form-group--inline">
+      <input type="checkbox" id="is_jc_responsible" name="is_jc_responsible"
+             class="form-checkbox"
+             {{ 'checked' if form.get('is_jc_responsible') == 'true' }} />
+      <label for="is_jc_responsible" class="form-label form-label--inline">
+        {{ _('Journal Club responsible') }}
+      </label>
+    </div>
+    <p class="form-hint" style="margin-top:-8px;">
+      {{ _('Receives the "please consider this for Journal Club" email when someone requests it from an article not yet marked for JC.') }}
+    </p>
+
     <hr class="form-divider" />
 
     <div class="form-group">

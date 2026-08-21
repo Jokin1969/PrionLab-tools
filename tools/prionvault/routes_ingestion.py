@@ -2105,6 +2105,31 @@ def api_article_email(aid):
     return jsonify({"ok": True, **result})
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/jc-request", methods=["POST"])
+@login_required
+def api_article_jc_request(aid):
+    """"JC" button, first choice, on an article not yet marked is_jc:
+    emails every JC-responsible user (with the article's full data +
+    PDF, CC'd to every admin) asking them to consider it for Journal
+    Club — instead of adding a presentation directly."""
+    from .services import article_share
+    me = _current_user_contact()
+    try:
+        result = article_share.send_jc_request_email(
+            str(aid), requester_name=me.get("name") or "")
+    except LookupError as exc:
+        if str(exc) == "no_jc_responsible":
+            return jsonify({"error": "no_jc_responsible",
+                            "detail": "No hay ningún usuario marcado como responsable de Journal Club."}), 400
+        return jsonify({"error": "not_found"}), 404
+    except RuntimeError as exc:
+        return jsonify({"error": "send_failed", "detail": str(exc)}), 502
+    except Exception as exc:
+        logger.exception("JC request email failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"ok": True, **result})
+
+
 @prionvault_bp.route("/api/articles/email-list", methods=["POST"])
 @login_required
 def api_articles_email_list():

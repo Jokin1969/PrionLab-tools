@@ -394,3 +394,76 @@ def send_article_email(article_id: str, to: str,
         "attached_pdf": bool(attachments),
         "has_pdf": bool(a.get("dropbox_path") or a.get("pdf_md5")),
     }
+
+
+# ── Journal Club inclusion request ──────────────────────────────────────────
+# The "JC" button on an article not yet marked is_jc offers a choice: add a
+# presentation directly, or ask the JC-responsible(s) to consider it. This
+# builds that request — same polished article-details-+-PDF email as
+# send_article_email, addressed to whoever is flagged responsible
+# (core.users.list_jc_responsible), CC'd to every admin.
+
+def send_jc_request_email(article_id: str, requester_name: str = "") -> dict:
+    """Emails every JC-responsible user asking them to consider this
+    article for Journal Club, CC'ing every admin. Raises if there's no
+    responsible configured, the article doesn't exist, or SMTP isn't
+    set up."""
+    from core.users import list_jc_responsible, list_admin_emails
+
+    responsibles = list_jc_responsible()
+    if not responsibles:
+        raise LookupError("no_jc_responsible")
+
+    a = _fetch_article(article_id)
+    if not a:
+        raise LookupError("article_not_found")
+
+    from config import smtp_configured
+    if not smtp_configured():
+        raise RuntimeError("El servidor de correo no está configurado.")
+
+    base = _base_url()
+    admins = list_admin_emails()
+    requester = (requester_name or "").strip()
+
+    # Best-effort PDF attachment, built once and reused for every send.
+    attachments = []
+    try:
+        from .email_digest import _collect_pdf_attachments
+        attachments, _ = _collect_pdf_attachments([a])
+    except Exception as exc:
+        logger.warning("article_share: PDF collect failed for JC request: %s", exc)
+
+    subject = f"Journal Club · ¿Incluimos este artículo? — {a.get('title') or ''}"[:160]
+    sent, failed = [], []
+    for u in responsibles:
+        to = (u.get("email") or "").strip()
+        if not to:
+            continue
+        name = (u.get("full_name") or u.get("username") or "").strip()
+        greeting = f"Hola {name}," if name else "Hola,"
+        by = f" {requester}" if requester else " un compañero/a"
+        comment = (
+            f"{greeting}\n\n"
+            f"Te escribo (envío automático desde PrionVault, solicitado por{by}) "
+            f"para pedirte que valores incluir este artículo como futura sesión "
+            f"de Journal Club. Tienes todos los datos y el PDF (si está "
+            f"disponible) más abajo."
+        )
+        html = build_share_html(a, base, "", True, comment)
+        plain = _plain(a, base, "", True, comment)
+        try:
+            if attachments:
+                from core.smtp_client import send_email_with_attachments
+                ok = send_email_with_attachments(to, subject, plain, attachments,
+                                                 html=html, cc=admins)
+            else:
+                from core.smtp_client import send_email
+                ok = send_email(to, subject, plain, html=html, cc=admins)
+        except Exception:
+            logger.exception("article_share: JC request send to %s failed", to)
+            ok = False
+        (sent if ok else failed).append(to)
+
+    return {"ok": bool(sent), "sent": sent, "failed": failed,
+            "attached_pdf": bool(attachments)}
