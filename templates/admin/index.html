@@ -22,7 +22,12 @@
 <section class="admin-section">
   <div class="admin-section__header">
     <h2>{{ _('Users') }}</h2>
-    <a href="{{ url_for('admin.add_user') }}" class="btn btn--primary btn--sm">+ {{ _('Add user') }}</a>
+    <div style="display:flex;gap:8px;">
+      <button type="button" id="btn-open-ext-email" class="btn btn--secondary btn--sm">
+        🧩 {{ _('Email about the extension') }}
+      </button>
+      <a href="{{ url_for('admin.add_user') }}" class="btn btn--primary btn--sm">+ {{ _('Add user') }}</a>
+    </div>
   </div>
 
   <div class="table-responsive">
@@ -91,6 +96,48 @@
   </div>
 </section>
 
+{# ── Modal: email users about the PrionVault browser extension ───────────── #}
+<div id="ext-email-modal" style="display:none;position:fixed;inset:0;z-index:200;">
+  <div style="position:absolute;inset:0;background:rgba(17,24,39,0.5);" onclick="closeExtEmailModal()"></div>
+  <div style="position:relative;max-width:480px;margin:60px auto;background:#fff;border-radius:12px;
+              padding:24px;box-shadow:0 10px 30px rgba(0,0,0,0.2);max-height:80vh;overflow-y:auto;">
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#111827;">
+      🧩 {{ _('Email about the extension') }}
+    </h2>
+    <p style="color:#6b7280;font-size:13px;line-height:1.55;margin:0 0 14px;">
+      {{ _('Sends each selected user a ready-to-follow email: what the extension does, how to install it, their key, and the .zip (or a download link).') }}
+    </p>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <label style="font-size:11.5px;font-weight:600;color:#6b7280;">{{ _('Recipients') }}</label>
+      <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="checkbox" id="ext-email-select-all" checked> {{ _('Select all') }}
+      </label>
+    </div>
+    <div id="ext-email-user-list" style="max-height:220px;overflow-y:auto;border:1px solid #e5e7eb;
+                border-radius:8px;padding:8px 10px;">
+      {% for user in users %}
+        {% if user.email and user.active == 'true' %}
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:13px;color:#111827;cursor:pointer;">
+          <input type="checkbox" class="ext-email-user" value="{{ user.username }}" checked>
+          <span>{{ user.full_name or user.username }}</span>
+          <span style="color:#9ca3af;font-size:11.5px;">{{ user.email }}</span>
+        </label>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div id="ext-email-status" style="font-size:12px;margin-top:10px;min-height:16px;"></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button type="button" class="btn btn--secondary btn--sm" onclick="closeExtEmailModal()">{{ _('Cancel') }}</button>
+      <button type="button" class="btn btn--primary btn--sm" id="btn-send-ext-email" onclick="sendExtEmail()">
+        {{ _('Send') }}
+      </button>
+    </div>
+  </div>
+</div>
+
 {# ── Section B: System ───────────────────────────────────────────────────── #}
 <section class="admin-section">
   <h2>{{ _('System') }}</h2>
@@ -124,6 +171,20 @@
       <div class="system-card__label">{{ _('App version') }}</div>
       <div class="system-card__value">{{ version }}</div>
     </div>
+
+    <div class="system-card">
+      <div class="system-card__label">🧩 {{ _('Extension key — admin') }}</div>
+      <div class="system-card__value {{ 'value--ok' if ext_admin_key else 'value--err' }}" style="font-family:monospace;font-size:12px;word-break:break-all;">
+        {% if ext_admin_key %}{{ ext_admin_key }}{% else %}✗ {{ _('PRIONVAULT_EXTENSION_API_KEY not set') }}{% endif %}
+      </div>
+    </div>
+
+    <div class="system-card">
+      <div class="system-card__label">🧩 {{ _('Extension key — other users') }}</div>
+      <div class="system-card__value {{ 'value--ok' if ext_reader_key else 'value--err' }}" style="font-family:monospace;font-size:12px;word-break:break-all;">
+        {% if ext_reader_key %}{{ ext_reader_key }}{% else %}✗ {{ _('PRIONVAULT_EXTENSION_READER_KEY not set') }}{% endif %}
+      </div>
+    </div>
   </div>
 
   <div class="system-actions">
@@ -133,6 +194,9 @@
     <form method="POST" action="{{ url_for('admin.test_email') }}" style="display:inline">
       <button type="submit" class="btn btn--secondary">{{ _('Send test email') }}</button>
     </form>
+    <a href="{{ url_for('prionvault.download_extension') }}" class="btn btn--secondary">
+      ⬇ {{ _('Download extension (.zip)') }}
+    </a>
   </div>
 </section>
 
@@ -196,6 +260,55 @@ async function migrateRefs() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Vincular referencias por DOI/PMID';
+  }
+}
+
+// ── Email users about the browser extension ──────────────────────────────
+function openExtEmailModal() {
+  document.getElementById('ext-email-modal').style.display = 'block';
+  document.getElementById('ext-email-status').textContent = '';
+}
+function closeExtEmailModal() {
+  document.getElementById('ext-email-modal').style.display = 'none';
+}
+document.getElementById('btn-open-ext-email')?.addEventListener('click', openExtEmailModal);
+document.getElementById('ext-email-select-all')?.addEventListener('change', (e) => {
+  document.querySelectorAll('.ext-email-user').forEach(cb => { cb.checked = e.target.checked; });
+});
+
+async function sendExtEmail() {
+  const usernames = Array.from(document.querySelectorAll('.ext-email-user:checked')).map(cb => cb.value);
+  const status = document.getElementById('ext-email-status');
+  const btn = document.getElementById('btn-send-ext-email');
+  if (!usernames.length) {
+    status.style.color = '#dc2626';
+    status.textContent = 'Selecciona al menos un destinatario.';
+    return;
+  }
+  btn.disabled = true;
+  status.style.color = '#6b7280';
+  status.textContent = 'Enviando…';
+  try {
+    const res = await fetch('{{ url_for("admin.send_extension_email") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ usernames }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const sentN = (data.sent || []).length;
+    const failedN = (data.failed || []).length;
+    status.style.color = failedN ? '#d97706' : '#16a34a';
+    status.textContent = failedN
+      ? `✓ Enviado a ${sentN} — ✗ falló para: ${data.failed.join(', ')}`
+      : `✓ Enviado a ${sentN} usuario${sentN === 1 ? '' : 's'}.`;
+    if (!failedN) setTimeout(closeExtEmailModal, 1600);
+  } catch (e) {
+    status.style.color = '#dc2626';
+    status.textContent = '✗ ' + e.message;
+  } finally {
+    btn.disabled = false;
   }
 }
 </script>

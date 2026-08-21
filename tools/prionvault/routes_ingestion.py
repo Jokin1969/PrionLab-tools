@@ -20,7 +20,6 @@ import io
 import logging
 import os
 import threading
-import zipfile
 from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
@@ -2301,17 +2300,8 @@ def import_from_email():
 @login_required
 def download_extension():
     """Serve the prionvault-extension/ folder as a ZIP for Chrome installation."""
-    ext_dir = os.path.join(os.path.dirname(__file__), "..", "..", "prionvault-extension")
-    ext_dir = os.path.normpath(ext_dir)
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, _dirs, files in os.walk(ext_dir):
-            for fname in files:
-                fpath = os.path.join(root, fname)
-                arcname = os.path.relpath(fpath, ext_dir)
-                zf.write(fpath, arcname)
-    buf.seek(0)
+    from .services.extension_onboarding import build_extension_zip
+    buf = io.BytesIO(build_extension_zip())
     return send_file(
         buf,
         mimetype="application/zip",

@@ -145,7 +145,40 @@ def index():
         last_sync=_last_sync(),
         disk_mb=_data_dir_mb(),
         log_lines=_recent_logs(),
+        ext_admin_key=os.environ.get("PRIONVAULT_EXTENSION_API_KEY", "").strip(),
+        ext_reader_key=os.environ.get("PRIONVAULT_EXTENSION_READER_KEY", "").strip(),
     )
+
+
+@admin_bp.route("/extension/send-email", methods=["POST"])
+@admin_required
+def send_extension_email():
+    """Emails the PrionVault browser-extension onboarding message (what
+    it does, how to install it, the reader key, the .zip) to the
+    selected users — one at a time so no recipient sees anyone else's
+    address. See services/extension_onboarding.py for the email itself."""
+    data = request.get_json(force=True, silent=True) or {}
+    usernames = data.get("usernames")
+    if not isinstance(usernames, list) or not usernames:
+        return {"error": "usernames (non-empty list) is required"}, 400
+
+    reader_key = os.environ.get("PRIONVAULT_EXTENSION_READER_KEY", "").strip()
+    all_users = {u["username"]: u for u in load_users()}
+
+    from tools.prionvault.services.extension_onboarding import send_onboarding_email
+    sent, failed = [], []
+    for uname in usernames:
+        u = all_users.get(uname)
+        email = (u or {}).get("email", "").strip()
+        if not u or not email:
+            failed.append(uname)
+            continue
+        if send_onboarding_email(email, reader_key):
+            sent.append(uname)
+        else:
+            failed.append(uname)
+
+    return {"ok": True, "sent": sent, "failed": failed}
 
 
 # ── User management ──────────────────────────────────────────────────────────

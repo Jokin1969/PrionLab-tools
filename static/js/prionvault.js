@@ -10683,6 +10683,15 @@
         history.replaceState(null, '', cleanUrl || window.location.pathname);
         openDetail(openId);
       }
+      // ?help=1 — deep link straight into the Ayuda modal, e.g. from an
+      // email pointing a reader at the extension's help section.
+      if (new URLSearchParams(window.location.search).get('help') === '1') {
+        const cleanUrl = window.location.pathname +
+          (window.location.search.replace(/([?&])help=1/g, '$1').replace(/[?&]$/, '') || '') +
+          window.location.hash;
+        history.replaceState(null, '', cleanUrl || window.location.pathname);
+        window.openPrionVaultHelp?.();
+      }
     });
   }
 
