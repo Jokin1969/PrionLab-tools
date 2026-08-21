@@ -20097,8 +20097,24 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
+          <h4>📧 Envía artículos por email sin ser admin</h4>
+          <p>Hay un segundo buzón, <strong>prionvault_lab@joaquincastilla.com</strong>, para quien no es administrador: manda un email con el PDF adjunto y PrionVault lo procesa igual que si lo subieras desde la app — comprobación de duplicados, extracción de metadatos, resumen IA incluido. Solo funciona si escribes desde <strong>el email con el que inicias sesión</strong> en la aplicación (se comprueba contra tu cuenta de usuario); cualquier otra dirección se ignora. Al terminar recibes la respuesta con el resultado (ya estaba en la biblioteca, se añadió con su resumen, o el error si algo falló) — el administrador recibe una copia oculta de esa misma respuesta, así que sabe quién ha enviado qué y cómo ha ido, sin que tú lo notes.</p>
+
+          <h4>📖 Glosario rediseñado</h4>
+          <p>La página de gestión del <a href="/prionvault/admin/glossary" target="_blank">Glosario</a> (terminología EN→ES que usan todos los resúmenes IA y chats) tiene un diseño más simple: añadir un término es un panel de un clic con solo dos campos obligatorios, la importación masiva se ha movido a un panel lateral discreto, las categorías son chips de filtro rápido, y hay una opción nueva para exportar todo el glosario a <code>.tsv</code>. Sigue siendo una página aparte (no un modal de PrionVault), así que se puede seguir usando igual desde otras herramientas del laboratorio.</p>
+
           <h4>📄 Informe descargable del chat general (PDF / Word)</h4>
           <p>Cada pregunta del chat general tiene ahora un botón 📄 junto a 📌/🚀/🗑 que genera un <strong>informe de toda la conversación hasta ese punto</strong>, descargable en PDF (maquetado) o Word (texto seleccionable, fácil de copiar/pegar). Incluye las fuentes de PrionVault citadas en cada respuesta.</p>
+
+          <h4>📄 Informe del chat de un artículo, con opción de enviarlo por email</h4>
+          <p>El chat de un artículo concreto ("Preguntar a la IA sobre este artículo") tiene ahora un botón <strong>"📄 Informe"</strong> que abre un modal para elegir PDF o Word y, si quieres, enviarlo por email en vez de descargarlo. El documento se encabeza con los datos del artículo, cada pregunta como epígrafe seguida de su respuesta, y si el chat menciona otros artículos por DOI o PMID, termina con un apartado de <strong>Referencias</strong> enlazando a PrionVault (si está en la biblioteca), a su DOI y a su PMID.</p>
+          <p>Además, el botón <strong>"Chats anteriores"</strong> se pone en verde en cuanto abres el modal si el artículo ya tiene conversaciones previas — antes había que pulsarlo para saberlo.</p>
+
+          <h4>🎯 Citas del chat corregidas — un artículo ya no aparece con dos números distintos</h4>
+          <p>Cuando un artículo aportaba varios fragmentos al contexto (su abstract y un extracto del PDF, por ejemplo), cada uno se numeraba por separado — el mismo artículo podía citarse como <code>[4]</code> en una frase y <code>[6]</code> en otra, mostrando dos badges azules distintos para la misma fuente. Ahora cada artículo tiene siempre un único número de cita, sin importar cuántos fragmentos aporte.</p>
+
+          <h4>🛒 Carrito: ver en listado y quitar no seleccionados</h4>
+          <p>Dos botones nuevos en el carrito de PrionPacks: <strong>"Ver en listado"</strong> aísla el listado principal a exactamente los artículos que tienes en el carrito, y <strong>"Quitar no seleccionados"</strong> elimina del carrito todo lo que no tenga la casilla marcada (lo inverso de "Vaciar carrito").</p>
 
           <h4>🔎 Búsqueda del chat general corregida — encontraba resultados casi al azar</h4>
           <p>Bug real, no solo de prompt: la mitad léxica de la búsqueda (la que complementa a la búsqueda semántica) comparaba tu pregunta completa contra cada fragmento exigiendo que <strong>todas</strong> las palabras coincidieran a la vez, incluidas las de relleno ("dime", "por favor", "cuál", "que"…) — una condición que casi ningún fragmento puede cumplir nunca. Esa mitad de la búsqueda no aportaba nada en preguntas normales, y la búsqueda quedaba en manos solo de la semántica, que para un término muy específico y poco frecuente (un acrónimo, el nombre interno de un modelo animal…) puede devolver resultados bastante alejados del tema. Ahora basta con que coincida alguna palabra significativa, como ya hacía la búsqueda estándar del listado principal en su modo "O".</p>
