@@ -94,10 +94,13 @@ function renderArticle(meta, duplicateOf) {
       ${state.serverUrl ? `<a class="pv-view-link" href="${esc(state.serverUrl)}/prionvault/?open=${esc(duplicateOf)}" target="_blank">Ver en PrionVault →</a>` : ''}
     </div>` : '';
 
-  // Only admins can create articles directly (server enforces this too —
-  // /api/articles/create and /with-pdf are @admin_required — this branch
-  // just avoids showing a button that would 403 for a reader-key user).
-  const actions = duplicateOf ? '' : (state.role === 'admin' ? `
+  // Both admin- and reader-key users can add directly — the server
+  // now accepts either (see admin_or_extension_required). Reader-key
+  // submissions with a PDF go through the full ingest pipeline
+  // (extraction/summary) in the background instead of an instant
+  // insert, and email the admin once processing finishes; the panel
+  // doesn't need to know which key is active to render this.
+  const actions = duplicateOf ? '' : `
     <div class="pv-actions" id="pv-actions">
       <button class="pv-btn pv-btn-primary" id="pv-add">
         + Añadir a PrionVault
@@ -108,13 +111,7 @@ function renderArticle(meta, duplicateOf) {
         </button>
         <p class="pv-pdf-hint">Solo funciona con PDFs de acceso abierto o si tienes acceso institucional.</p>
       ` : ''}
-    </div>` : `
-    <div class="pv-actions" id="pv-actions">
-      <button class="pv-btn pv-btn-primary" id="pv-suggest">
-        ✉️ Proponer para PrionVault
-      </button>
-      <p class="pv-pdf-hint">Se envía un email al administrador con los datos del artículo para que lo añada.</p>
-    </div>`);
+    </div>`;
 
   const abstractHtml = meta.abstract ? `
     <div class="pv-abstract-section">
@@ -199,6 +196,21 @@ function renderSuccess(articleId, withPdf) {
       <h3>¡Añadido correctamente!</h3>
       <p>${withPdf ? 'Artículo y PDF guardados.' : 'Artículo añadido con metadatos.'}</p>
       ${viewUrl ? `<a href="${esc(viewUrl)}" target="_blank">Ver en PrionVault →</a>` : ''}
+    </div>`;
+
+  document.getElementById('pv-actions')?.remove();
+}
+
+// PDF submissions go through the full ingest pipeline in the
+// background (extraction, metadata enrichment, AI summary — same as
+// emailing a PDF in) instead of an instant insert, so there's no
+// article id to link to yet.
+function renderQueued() {
+  document.getElementById('pv-action-result').innerHTML = `
+    <div class="pv-success">
+      <div class="pv-checkmark">⏳</div>
+      <h3>Recibido — procesando…</h3>
+      <p>Extracción, verificación y resumen de la IA en marcha. Aparecerá en la biblioteca en unos minutos.</p>
     </div>`;
 
   document.getElementById('pv-actions')?.remove();
@@ -290,7 +302,11 @@ async function addArticle(withPdf) {
         resultEl.innerHTML = `<div class="pv-already-in"><span class="pv-badge pv-badge-orange">⚠ Artículo ya existente</span></div>`;
         return;
       }
-      renderSuccess(result.id, true);
+      if (result.queued) {
+        renderQueued();
+      } else {
+        renderSuccess(result.id, true);
+      }
 
     } else {
       const result = await send({ type: 'CREATE', metadata });

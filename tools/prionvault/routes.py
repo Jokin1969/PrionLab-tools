@@ -20,7 +20,7 @@ from flask import jsonify, render_template, request, session, Response, current_
 from sqlalchemy import or_, func, text as sql_text
 from sqlalchemy.exc import IntegrityError, DataError
 
-from core.decorators import login_required, admin_required
+from core.decorators import login_required, admin_required, admin_or_extension_required
 from database.config import db
 from . import prionvault_bp
 from . import models
@@ -3276,15 +3276,26 @@ _CREATE_ALLOWED = {
 
 
 @prionvault_bp.route("/api/articles/with-pdf", methods=["POST"])
-@admin_required
+@admin_or_extension_required
 def api_article_create_with_pdf():
     """Create an article from caller-supplied metadata AND attach a local PDF.
 
-    Skips the metadata-extraction step of the ingest pipeline because
-    the caller (typically the Add-by-DOI modal) has already resolved
-    metadata against CrossRef / PubMed. The PDF still goes through MD5
-    dedup, Dropbox upload, and best-effort text extraction so search and
-    AI features keep working — they just don't try to re-derive the DOI.
+    Two very different paths share this route:
+
+    - Non-extension (admin browser session, typically the Add-by-DOI
+      modal): fast synchronous path, unchanged. Skips the metadata-
+      extraction step of the ingest pipeline because the caller has
+      already resolved metadata against CrossRef/PubMed — the PDF
+      still goes through MD5 dedup, Dropbox upload, and best-effort
+      text extraction, but no AI summary is generated here (that's a
+      separate, on-demand admin action).
+    - Browser-extension callers (admin- or reader-key): routed through
+      the SAME ingest queue/worker pipeline as email-ingest instead —
+      full extraction, metadata enrichment, AI summary, everything —
+      since there's no separate "generate summary later" step in the
+      extension's UI. Reader-key submissions additionally email every
+      admin once processing finishes (see ingestion/worker.py's
+      Job.notify_anonymous), phrased anonymously.
 
     Accepts multipart/form-data:
       - `pdf`       (required, file): the local PDF.
@@ -3296,6 +3307,7 @@ def api_article_create_with_pdf():
     import uuid as _uuid_mod
     from .ingestion.pdf_extractor import extract_pdf, normalise_doi
     from .ingestion.dropbox_uploader import build_path, upload_pdf
+    from core.decorators import _ext_authed, _ext_role
 
     f = request.files.get("pdf")
     if not f or not f.filename:
@@ -3328,7 +3340,9 @@ def api_article_create_with_pdf():
     s = _session()
     try:
         # Dedup: by md5 first (cheapest, identifies the exact same PDF
-        # already in the library), then by DOI / PMID.
+        # already in the library), then by DOI / PMID. Shared by both
+        # paths below — no reason to queue a job or upload to Dropbox
+        # for something we already have.
         for col, val in (("pdf_md5", pdf_md5), ("doi", doi), ("pubmed_id", pmid)):
             if not val:
                 continue
@@ -3341,6 +3355,28 @@ def api_article_create_with_pdf():
                 return jsonify({"error": "duplicate",
                                 "duplicate_of": str(row[0]),
                                 "matched_on": col}), 409
+
+        if _ext_authed():
+            if not content.startswith(b"%PDF"):
+                return jsonify({"error": "invalid_pdf",
+                                "detail": "El archivo no parece un PDF (falta cabecera %PDF)."}), 400
+
+            notify_email = None
+            notify_anonymous = False
+            if _ext_role() == "reader":
+                from core.users import list_admin_emails
+                admins = list_admin_emails()
+                if admins:
+                    notify_email = ",".join(admins)
+                    notify_anonymous = True
+
+            from .ingestion import queue as ingest_queue
+            job_id = ingest_queue.enqueue_pdf(
+                content=content, filename=f.filename, user_id=_viewer_id(),
+                notify_email=notify_email, notify_subject=title,
+                notify_anonymous=notify_anonymous,
+            )
+            return jsonify({"queued": True, "job_id": job_id}), 202
 
         # Upload to Dropbox at the canonical path. Conflicts (file already
         # at the same path on the remote) are surfaced as info, not fatal —
@@ -3411,9 +3447,16 @@ def api_article_create_with_pdf():
 
 
 @prionvault_bp.route("/api/articles/create", methods=["POST"])
-@admin_required
+@admin_or_extension_required
 def api_article_create():
-    """Create an article from supplied metadata. Returns 409 on duplicate."""
+    """Create an article from supplied metadata. Returns 409 on duplicate.
+
+    Callable by the browser extension's reader-key users too (not just
+    admins) — see admin_or_extension_required. When a reader-key
+    extension does this, there's no PDF to process further (this route
+    is metadata-only), so we just insert and immediately email every
+    admin an anonymised heads-up (see services/article_extension.py).
+    """
     import uuid as _uuid_mod
     from .ingestion.pdf_extractor import normalise_doi
 
@@ -3475,6 +3518,12 @@ def api_article_create():
         )
         s.add(a)
         s.commit()
+
+        from core.decorators import _ext_authed, _ext_role
+        if _ext_authed() and _ext_role() == "reader":
+            from .services.article_extension import notify_metadata_added
+            notify_metadata_added(payload, new_id)
+
         return jsonify(a.to_dict(include_text=True, viewer_role="admin")), 201
     except Exception as exc:
         s.rollback()

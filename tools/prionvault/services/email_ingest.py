@@ -223,6 +223,18 @@ def _decode_header(value: Optional[str]) -> str:
     return "".join(out).strip()
 
 
+# "JC" or "Journal Club" anywhere in the subject (word-boundary match,
+# so "JC" doesn't fire on words that merely contain those two letters)
+# — the reader-facing mailbox's way of asking for an article to also be
+# flagged as a Journal Club candidate. See ingestion/worker.py's
+# _apply_jc_flag.
+_JC_SUBJECT_RE = re.compile(r"\bJC\b|Journal\s+Club", re.IGNORECASE)
+
+
+def _wants_jc(subject: str) -> bool:
+    return bool(_JC_SUBJECT_RE.search(subject or ""))
+
+
 def _extract_address(header_value: str) -> str:
     """Pull just the email out of a `Name <addr@host>` style header."""
     if not header_value:
@@ -319,7 +331,8 @@ def _pdf_parts(msg: Message) -> list[tuple[str, bytes]]:
 def _enqueue(content: bytes, filename: str, *,
              notify_email: Optional[str] = None,
              notify_subject: Optional[str] = None,
-             notify_bcc: Optional[str] = None) -> Optional[int]:
+             notify_bcc: Optional[str] = None,
+             notify_jc: bool = False) -> Optional[int]:
     """Hand a PDF to the existing ingest queue, recording the email
     address to notify when the job finishes. Returns job id or None."""
     try:
@@ -329,6 +342,7 @@ def _enqueue(content: bytes, filename: str, *,
             notify_email=notify_email,
             notify_subject=notify_subject,
             notify_bcc=notify_bcc,
+            notify_jc=notify_jc,
         )
     except Exception as exc:
         logger.exception("email_ingest: enqueue_pdf failed for %s (%s)",
@@ -480,6 +494,10 @@ def _process_one(conn: imaplib.IMAP4_SSL, msg_id: bytes, cfg: dict,
         _mark_handled(conn, msg_id, proc_folder)
         return
 
+    # Only the reader-facing mailbox supports the "JC"/"Journal Club"
+    # subject keyword — the admin mailbox has no such convention.
+    wants_jc = cfg["profile"] == "lab" and _wants_jc(subject)
+
     ingested = []
     failed = []
     for filename, content in pdfs:
@@ -489,7 +507,8 @@ def _process_one(conn: imaplib.IMAP4_SSL, msg_id: bytes, cfg: dict,
         job_id = _enqueue(content, filename,
                           notify_email=from_addr,
                           notify_subject=subject,
-                          notify_bcc=bcc_str)
+                          notify_bcc=bcc_str,
+                          notify_jc=wants_jc)
         if job_id:
             ingested.append((filename, job_id))
             summary["enqueued"] += 1

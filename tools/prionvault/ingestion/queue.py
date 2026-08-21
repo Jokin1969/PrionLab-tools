@@ -177,6 +177,16 @@ class Job:
     # admin sees who submitted and how it resolved without the sender
     # knowing they're copied. Empty for every other entry point.
     notify_bcc:     Optional[str] = None
+    # When True, notify_email is an admin recipient list (not the
+    # submitter) and the worker phrases its final email in the third
+    # person — the browser extension's reader-key add-article path,
+    # where the submitter's identity is deliberately not tracked.
+    notify_anonymous: bool = False
+    # Set when the submitting email's subject asked for Journal Club
+    # inclusion (see services/email_ingest.py) — the worker flags the
+    # resulting article as a JC candidate (articles.is_jc) once it's
+    # created or found as a duplicate.
+    notify_jc:        bool = False
 
 
 # ── Enqueue ────────────────────────────────────────────────────────────────
@@ -185,7 +195,9 @@ def enqueue_pdf(*, content: bytes, filename: str,
                 source_dropbox_path: Optional[str] = None,
                 notify_email: Optional[str] = None,
                 notify_subject: Optional[str] = None,
-                notify_bcc: Optional[str] = None) -> int:
+                notify_bcc: Optional[str] = None,
+                notify_anonymous: bool = False,
+                notify_jc: bool = False) -> int:
     """Stage `content` to a temp file and create a queued job.
 
     `source_dropbox_path` (optional): when the PDF was pulled from a
@@ -207,15 +219,16 @@ def enqueue_pdf(*, content: bytes, filename: str,
             INSERT INTO prionvault_ingest_job
               (pdf_filename, pdf_md5, status, step, created_by,
                source_dropbox_path, notify_email, notify_subject, notify_bcc,
-               created_at)
+               notify_anonymous, notify_jc, created_at)
             VALUES (:fn, :md5, 'queued', 'staged', :uid, :sp,
-                    :ne, :ns, :nb, NOW())
+                    :ne, :ns, :nb, :na, :nj, NOW())
             RETURNING id
             """
         ), {"fn": str(staged), "md5": md5,
             "uid": str(user_id) if user_id else None,
             "sp": source_dropbox_path,
-            "ne": notify_email, "ns": notify_subject, "nb": notify_bcc}).first()
+            "ne": notify_email, "ns": notify_subject, "nb": notify_bcc,
+            "na": notify_anonymous, "nj": notify_jc}).first()
     return int(row[0])
 
 
@@ -298,7 +311,7 @@ def claim_next() -> Optional[Job]:
         full = conn.execute(text(
             "SELECT id, article_id, pdf_filename, pdf_md5, status, step,"
             " error, attempts, created_by, source_dropbox_path,"
-            " notify_email, notify_subject, notify_bcc "
+            " notify_email, notify_subject, notify_bcc, notify_anonymous, notify_jc "
             "FROM prionvault_ingest_job WHERE id = :id"
         ), {"id": jid}).first()
 
@@ -313,6 +326,8 @@ def claim_next() -> Optional[Job]:
         notify_email=full.notify_email,
         notify_subject=full.notify_subject,
         notify_bcc=full.notify_bcc,
+        notify_anonymous=bool(full.notify_anonymous),
+        notify_jc=bool(full.notify_jc),
     )
 
 

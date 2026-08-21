@@ -190,6 +190,7 @@ def _process_job(job: ingest_queue.Job) -> None:
             except Exception:
                 logger.exception("worker: duplicate enrichment crashed for job %d", job.id)
 
+        _apply_jc_flag(job, dup_id)
         _notify_outcome(job, status="duplicate", article_id=dup_id,
                         pdf_content=content, duplicate_reason=reason,
                         enrichment=dup_enrichment)
@@ -297,6 +298,7 @@ def _process_job(job: ingest_queue.Job) -> None:
         except Exception as exc:
             logger.exception("worker: post-ingest enrichment crashed for job %d", job.id)
 
+    _apply_jc_flag(job, article_id)
     _notify_outcome(
         job, status="done", article_id=article_id, pdf_content=content,
         is_scan=is_scan,
@@ -927,6 +929,25 @@ def _enrich_existing_article(*, article_id, content: bytes) -> dict:
     }
 
 
+def _apply_jc_flag(job: ingest_queue.Job, article_id) -> None:
+    """Mark the article as a Journal Club candidate when the email that
+    submitted it (via the reader-facing prionvault_lab@ mailbox) asked
+    for it in the subject — see services/email_ingest.py's JC keyword
+    detection. Best-effort; never breaks the ingest."""
+    if not (getattr(job, "notify_jc", False) and article_id):
+        return
+    try:
+        from sqlalchemy import text as _sql
+        eng = _get_engine()
+        with eng.begin() as conn:
+            conn.execute(_sql(
+                "UPDATE articles SET is_jc = TRUE WHERE id = CAST(:aid AS uuid)"
+            ), {"aid": str(article_id)})
+    except Exception:
+        logger.exception("worker: JC flag failed for article %s (job %d)",
+                         article_id, job.id)
+
+
 def _notify_outcome(job: ingest_queue.Job, *, status: str,
                     pdf_content: Optional[bytes],
                     article_id: Optional[str] = None,
@@ -935,11 +956,19 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
                     enrichment: Optional[dict] = None,
                     is_scan: bool = False,
                     error: Optional[str] = None) -> None:
-    """Send the operator who emailed in a final reply with the result.
+    """Send the final-outcome email.
 
-    No-op when the job didn't carry a notify_email (i.e. it didn't come
-    from the email-ingest daemon — DOI-add, Import-PDFs, Dropbox scan
-    etc. fall through this silently).
+    Normally this replies to the operator who emailed the PDF in
+    (job.notify_email). When job.notify_anonymous is set — the browser
+    extension's reader-key path, see routes.py's api_article_create_with_pdf
+    — job.notify_email instead holds the admin recipient list and the
+    wording is phrased in the third person ("un usuario ha añadido...")
+    instead of addressing "tú", since the recipient isn't who took the
+    action.
+
+    No-op when the job didn't carry a notify_email at all (i.e. it came
+    from a path with no one to notify — DOI-add, Import-PDFs, Dropbox
+    scan etc. fall through this silently).
 
     `status` is the job's terminal status: done / duplicate / failed.
     The body and subject change per status. PDF is attached when we
@@ -948,6 +977,7 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
     to = (job.notify_email or "").strip()
     if not to:
         return
+    anonymous = bool(getattr(job, "notify_anonymous", False))
 
     orig_subject = (job.notify_subject or "").strip() or "(sin asunto)"
     short_subj = orig_subject[:80]
@@ -958,20 +988,21 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
     if (not meta or not meta.get("title")) and article_id:
         meta = {**_load_article_summary(article_id), **meta}
 
+    ext_tag = " (vía extensión)" if anonymous else ""
     html = None
     if status == "done":
         if is_scan:
-            subject = f"[PrionVault] ✓ Ingerido (escaneo, OCR pendiente) — {meta.get('title') or short_subj}"
+            subject = f"[PrionVault] ✓ Ingerido (escaneo, OCR pendiente){ext_tag} — {meta.get('title') or short_subj}"
             body    = _compose_scan_body(meta, article_id, orig_subject)
         else:
-            subject = f"[PrionVault] ✓ Ingerido — {meta.get('title') or short_subj}"
-            body    = _compose_done_body(meta, article_id, orig_subject, enrichment)
+            subject = f"[PrionVault] ✓ Ingerido{ext_tag} — {meta.get('title') or short_subj}"
+            body    = _compose_done_body(meta, article_id, orig_subject, enrichment, anonymous=anonymous)
         # When the email pipeline ran, build a rich HTML confirmation
         # with the per-step checklist and the AI summary inline.
         if enrichment:
-            html = _compose_done_html(meta, article_id, orig_subject, enrichment)
+            html = _compose_done_html(meta, article_id, orig_subject, enrichment, anonymous=anonymous)
     elif status == "duplicate":
-        subject = f"[PrionVault] Ya estaba en la base — {meta.get('title') or short_subj}"
+        subject = f"[PrionVault] Ya estaba en la base{ext_tag} — {meta.get('title') or short_subj}"
         body    = _compose_duplicate_body(meta, article_id, orig_subject,
                                           duplicate_reason, enrichment)
         # When the email pipeline ran on the existing article, send the
@@ -979,10 +1010,10 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
         # carrying its AI summary.
         if enrichment:
             html = _compose_done_html(meta, article_id, orig_subject,
-                                      enrichment, duplicate=True)
+                                      enrichment, duplicate=True, anonymous=anonymous)
     else:  # failed
-        subject = f"[PrionVault] ✗ No se pudo ingerir — {short_subj}"
-        body    = _compose_failed_body(orig_subject, error)
+        subject = f"[PrionVault] ✗ No se pudo ingerir{ext_tag} — {short_subj}"
+        body    = _compose_failed_body(orig_subject, error, anonymous=anonymous)
 
     attachments: list[tuple[str, bytes, str]] = []
     if pdf_content and len(pdf_content) <= _MAX_ATTACHMENT_BYTES:
@@ -1070,12 +1101,20 @@ def _article_link(article_id) -> str:
 
 
 def _compose_done_body(meta: dict, article_id, orig_subject: str,
-                       enrichment: Optional[dict] = None) -> str:
+                       enrichment: Optional[dict] = None,
+                       anonymous: bool = False) -> str:
     lines = [
         "Hola,",
         "",
-        f"Tu artículo ya está en PrionVault. Lo encontré, lo subí a Dropbox,",
-        "extraje el texto, indexé para búsqueda y lo resumí.",
+    ]
+    if anonymous:
+        lines.append("Un usuario ha añadido este artículo a PrionVault desde la "
+                     "extensión del navegador. Lo subí a Dropbox, extraje el texto, "
+                     "indexé para búsqueda y lo resumí.")
+    else:
+        lines.append("Tu artículo ya está en PrionVault. Lo encontré, lo subí a "
+                     "Dropbox, extraje el texto, indexé para búsqueda y lo resumí.")
+    lines += [
         "",
         "DATOS DEL ARTÍCULO",
         "──────────────────",
@@ -1115,14 +1154,24 @@ def _compose_done_body(meta: dict, article_id, orig_subject: str,
             enrichment["summary_ai"].strip(),
         ]
 
-    lines += [
-        "",
-        "(Adjunto va el PDF original que enviaste.)",
-        "",
-        f"Re: {orig_subject}",
-        "",
-        "— PrionVault",
-    ]
+    if anonymous:
+        lines += [
+            "",
+            "(Adjunto va el PDF del artículo.)",
+            "",
+            "Añadido desde la extensión de PrionVault.",
+            "",
+            "— PrionVault",
+        ]
+    else:
+        lines += [
+            "",
+            "(Adjunto va el PDF original que enviaste.)",
+            "",
+            f"Re: {orig_subject}",
+            "",
+            "— PrionVault",
+        ]
     return "\n".join(lines)
 
 
@@ -1159,7 +1208,8 @@ def _summary_to_html(text: str) -> str:
 
 
 def _compose_done_html(meta: dict, article_id, orig_subject: str,
-                       enrichment: dict, duplicate: bool = False) -> str:
+                       enrichment: dict, duplicate: bool = False,
+                       anonymous: bool = False) -> str:
     import html as _html
     steps = enrichment.get("steps") or []
     summary_text = enrichment.get("summary_ai")
@@ -1196,16 +1246,32 @@ def _compose_done_html(meta: dict, article_id, orig_subject: str,
     all_ok = all(s["status"] != "fail" for s in steps)
     if duplicate:
         banner_bg = "#7c3aed" if all_ok else "#92400e"
-        banner_txt = ("Este artículo YA estaba en PrionVault. Comprobé que "
-                      "esté completo y te dejo aquí su resumen."
-                      if all_ok else
-                      "Este artículo ya estaba en PrionVault; algún paso "
-                      "necesita revisión.")
+        if anonymous:
+            banner_txt = ("Un usuario intentó añadir este artículo desde la "
+                          "extensión — YA estaba en PrionVault. Comprobé que "
+                          "esté completo y te dejo aquí su resumen."
+                          if all_ok else
+                          "Un usuario intentó añadir este artículo desde la "
+                          "extensión; ya estaba en PrionVault pero algún paso "
+                          "necesita revisión.")
+        else:
+            banner_txt = ("Este artículo YA estaba en PrionVault. Comprobé que "
+                          "esté completo y te dejo aquí su resumen."
+                          if all_ok else
+                          "Este artículo ya estaba en PrionVault; algún paso "
+                          "necesita revisión.")
     else:
         banner_bg = "#0F3460" if all_ok else "#92400e"
-        banner_txt = ("Tu artículo está completamente listo en PrionVault."
-                      if all_ok else
-                      "Tu artículo está en PrionVault; algún paso necesita revisión.")
+        if anonymous:
+            banner_txt = ("Un usuario ha añadido este artículo a PrionVault "
+                          "desde la extensión del navegador."
+                          if all_ok else
+                          "Un usuario ha añadido este artículo desde la "
+                          "extensión; algún paso necesita revisión.")
+        else:
+            banner_txt = ("Tu artículo está completamente listo en PrionVault."
+                          if all_ok else
+                          "Tu artículo está en PrionVault; algún paso necesita revisión.")
 
     summary_block = ""
     if summary_text:
@@ -1253,7 +1319,9 @@ def _compose_done_html(meta: dict, article_id, orig_subject: str,
                   font-weight:600;padding:10px 22px;border-radius:8px;text-decoration:none;">
           Ver en PrionVault →</a>
         <p style="margin:14px 0 0;font-size:11.5px;color:#9ca3af;">
-          Adjunto va el PDF original que enviaste.<br>Re: {_html.escape(orig_subject)}
+          {'Adjunto va el PDF del artículo.<br>Añadido desde la extensión de PrionVault.'
+           if anonymous else
+           f'Adjunto va el PDF original que enviaste.<br>Re: {_html.escape(orig_subject)}'}
         </p>
       </td></tr>
     </table>
@@ -1349,15 +1417,23 @@ def _compose_scan_body(meta: dict, article_id, orig_subject: str) -> str:
     return "\n".join(lines)
 
 
-def _compose_failed_body(orig_subject: str, error: Optional[str]) -> str:
+def _compose_failed_body(orig_subject: str, error: Optional[str],
+                         anonymous: bool = False) -> str:
+    intro = ("Un usuario intentó añadir un artículo desde la extensión de "
+             "PrionVault, pero no pude procesar el PDF. Detalle del fallo:"
+             if anonymous else
+             "No pude procesar el PDF que enviaste. Detalle del fallo:")
+    retry = ("El PDF original va adjunto por si quieres reintentarlo manualmente"
+             if anonymous else
+             "El PDF original va adjunto por si quieres reintentar manualmente")
     return "\n".join([
         "Hola,",
         "",
-        "No pude procesar el PDF que enviaste. Detalle del fallo:",
+        intro,
         "",
         f"  {error or 'error desconocido'}",
         "",
-        "El PDF original va adjunto por si quieres reintentar manualmente",
+        f"{retry}",
         "desde PrionVault → Import PDFs.",
         "",
         f"Re: {orig_subject}",

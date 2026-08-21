@@ -48,6 +48,26 @@ def admin_required(f):
     return decorated
 
 
+def admin_or_extension_required(f):
+    """Admin browser sessions, OR any authenticated extension key
+    (admin- or reader-role). Used by the extension's article-create
+    endpoints: readers are allowed to call them directly (unlike a
+    plain admin_required route), while a non-admin BROWSER session
+    still can't — this only relaxes the check for the extension's own
+    shared-key auth, not for regular logged-in readers using the app."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if _ext_authed():
+            return f(*args, **kwargs)
+        if not session.get("logged_in"):
+            return redirect(url_for("auth.login", next=request.full_path))
+        if session.get("role") != "admin":
+            flash("Unauthorized. Admin access required.", "error")
+            return redirect(url_for("home"))
+        return f(*args, **kwargs)
+    return decorated
+
+
 def editor_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
