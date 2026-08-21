@@ -172,6 +172,11 @@ class Job:
     # one final SMTP reply with the resolved metadata + PDF attached.
     notify_email:   Optional[str] = None
     notify_subject: Optional[str] = None
+    # Comma-separated addresses to BCC on the final outcome email — set
+    # by services/email_ingest.py for the reader-facing mailbox, so the
+    # admin sees who submitted and how it resolved without the sender
+    # knowing they're copied. Empty for every other entry point.
+    notify_bcc:     Optional[str] = None
 
 
 # ── Enqueue ────────────────────────────────────────────────────────────────
@@ -179,7 +184,8 @@ def enqueue_pdf(*, content: bytes, filename: str,
                 user_id: Optional[UUID] = None,
                 source_dropbox_path: Optional[str] = None,
                 notify_email: Optional[str] = None,
-                notify_subject: Optional[str] = None) -> int:
+                notify_subject: Optional[str] = None,
+                notify_bcc: Optional[str] = None) -> int:
     """Stage `content` to a temp file and create a queued job.
 
     `source_dropbox_path` (optional): when the PDF was pulled from a
@@ -200,16 +206,16 @@ def enqueue_pdf(*, content: bytes, filename: str,
             """
             INSERT INTO prionvault_ingest_job
               (pdf_filename, pdf_md5, status, step, created_by,
-               source_dropbox_path, notify_email, notify_subject,
+               source_dropbox_path, notify_email, notify_subject, notify_bcc,
                created_at)
             VALUES (:fn, :md5, 'queued', 'staged', :uid, :sp,
-                    :ne, :ns, NOW())
+                    :ne, :ns, :nb, NOW())
             RETURNING id
             """
         ), {"fn": str(staged), "md5": md5,
             "uid": str(user_id) if user_id else None,
             "sp": source_dropbox_path,
-            "ne": notify_email, "ns": notify_subject}).first()
+            "ne": notify_email, "ns": notify_subject, "nb": notify_bcc}).first()
     return int(row[0])
 
 
@@ -292,7 +298,7 @@ def claim_next() -> Optional[Job]:
         full = conn.execute(text(
             "SELECT id, article_id, pdf_filename, pdf_md5, status, step,"
             " error, attempts, created_by, source_dropbox_path,"
-            " notify_email, notify_subject "
+            " notify_email, notify_subject, notify_bcc "
             "FROM prionvault_ingest_job WHERE id = :id"
         ), {"id": jid}).first()
 
@@ -306,6 +312,7 @@ def claim_next() -> Optional[Job]:
         source_dropbox_path=full.source_dropbox_path,
         notify_email=full.notify_email,
         notify_subject=full.notify_subject,
+        notify_bcc=full.notify_bcc,
     )
 
 

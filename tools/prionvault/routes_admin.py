@@ -1540,12 +1540,15 @@ def api_email_ingest_status():
 @prionvault_bp.route("/api/admin/email-ingest/poll", methods=["POST"])
 @admin_required
 def api_email_ingest_poll():
-    """Force the daemon to poll the IMAP mailbox right now (instead of
+    """Force the daemon to poll an IMAP mailbox right now (instead of
     waiting for the next interval). Useful as a smoke test after
-    configuring the credentials."""
+    configuring the credentials. ?profile=admin|lab, default admin."""
     from .services import email_ingest
-    summary = email_ingest.poll_once()
-    return jsonify({"ok": True, "summary": summary,
+    profile = (request.args.get("profile") or "admin").strip().lower()
+    if profile not in ("admin", "lab"):
+        return jsonify({"error": "bad_profile", "detail": "profile debe ser admin o lab"}), 400
+    summary = email_ingest.poll_once(profile)
+    return jsonify({"ok": True, "profile": profile, "summary": summary,
                     "status": email_ingest.get_status()})
 
 

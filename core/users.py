@@ -89,6 +89,20 @@ def get_user_by_username_or_email(identifier: str) -> dict | None:
     return get_user(identifier) or get_user_by_email(identifier)
 
 
+def list_admin_emails() -> list[str]:
+    """Every active admin's email — used to BCC the admin on outcomes
+    from channels meant for non-admin users (e.g. the reader-facing
+    email-ingest mailbox), so they can see who used it and how each
+    submission resolved without the sender being aware they're copied."""
+    return [
+        u["email"].strip()
+        for u in load_users()
+        if (u.get("role") or "").lower() == "admin"
+        and (u.get("active") or "true").lower() == "true"
+        and (u.get("email") or "").strip()
+    ]
+
+
 def user_exists(username: str) -> bool:
     return get_user(username) is not None
 

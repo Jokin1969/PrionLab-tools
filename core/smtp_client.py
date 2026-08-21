@@ -12,9 +12,13 @@ def send_email(
     subject: str,
     body: str,
     html: str | None = None,
+    bcc: str | list[str] | None = None,
 ) -> bool:
     if isinstance(to, str):
         to = [to]
+    if isinstance(bcc, str):
+        bcc = [bcc]
+    bcc = [b for b in (bcc or []) if b]
 
     msg = MIMEMultipart("alternative")
     msg["From"] = CONTACT_EMAIL
@@ -35,9 +39,12 @@ def send_email(
         if SMTP_USER and SMTP_PASS:
             server.login(SMTP_USER, SMTP_PASS)
 
-        server.sendmail(CONTACT_EMAIL, to, msg.as_string())
+        # BCC recipients are added to the SMTP envelope only, never to
+        # a header — that's what keeps them invisible to the To/Cc-
+        # visible recipients.
+        server.sendmail(CONTACT_EMAIL, to + bcc, msg.as_string())
         server.quit()
-        logger.info("Email sent to %s: %s", to, subject)
+        logger.info("Email sent to %s (bcc=%s): %s", to, bcc, subject)
         return True
     except Exception as e:
         logger.error("Failed to send email to %s: %s", to, e)
@@ -50,6 +57,7 @@ def send_email_with_attachments(
     body: str,
     attachments: list[tuple[str, bytes, str]],
     html: str | None = None,
+    bcc: str | list[str] | None = None,
 ) -> bool:
     """Send a multipart/mixed email with file attachments.
 
@@ -60,6 +68,9 @@ def send_email_with_attachments(
     """
     if isinstance(to, str):
         to = [to]
+    if isinstance(bcc, str):
+        bcc = [bcc]
+    bcc = [b for b in (bcc or []) if b]
 
     msg = MIMEMultipart("mixed")
     msg["From"] = CONTACT_EMAIL
@@ -89,10 +100,10 @@ def send_email_with_attachments(
         if SMTP_USER and SMTP_PASS:
             server.login(SMTP_USER, SMTP_PASS)
 
-        server.sendmail(CONTACT_EMAIL, to, msg.as_string())
+        server.sendmail(CONTACT_EMAIL, to + bcc, msg.as_string())
         server.quit()
-        logger.info("Email (with %d attachments) sent to %s: %s",
-                    len(attachments or []), to, subject)
+        logger.info("Email (with %d attachments) sent to %s (bcc=%s): %s",
+                    len(attachments or []), to, bcc, subject)
         return True
     except Exception as e:
         logger.error("Failed to send email with attachments to %s: %s", to, e)

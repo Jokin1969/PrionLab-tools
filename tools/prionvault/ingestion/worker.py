@@ -995,9 +995,10 @@ def _notify_outcome(job: ingest_queue.Job, *, status: str,
         attachments.append((fname or "article.pdf",
                             pdf_content, "application/pdf"))
 
+    bcc = [b.strip() for b in (job.notify_bcc or "").split(",") if b.strip()]
     try:
         from core.smtp_client import send_email_with_attachments
-        send_email_with_attachments(to, subject, body, attachments, html=html)
+        send_email_with_attachments(to, subject, body, attachments, html=html, bcc=bcc)
     except Exception as exc:
         logger.warning("worker: notify-email to %s failed (%s)", to, exc)
 
