@@ -250,13 +250,69 @@ def _estimate_cost(provider: str, tokens_in: Optional[int],
 
 # ── Provider dispatch ────────────────────────────────────────────────────────
 
+# Fallback order when the requested provider is fully exhausted (all
+# retries failed) — same canonical order as the chat services'
+# Claude → GPT → Gemini chain. Fallback providers get a single
+# attempt each (no retry loop), so a sustained Anthropic outage
+# doesn't turn one summary request into 3 providers × 3 retries of
+# waiting — see PRIONVAULT-2N, which kept failing even after the
+# retry-count bump because the connection issue outlasted the whole
+# retry budget for a single provider.
+_CANONICAL_ORDER = ["anthropic", "openai", "gemini"]
+
+
+def _dispatch(provider: str, api_key: str, user_prompt: str, extracted_text,
+             system_prompt: str, glossary_version: Optional[int]) -> SummaryResult:
+    if provider == "anthropic":
+        return _call_anthropic(api_key, user_prompt, extracted_text,
+                               system_prompt, glossary_version)
+    if provider == "openai":
+        return _call_openai(api_key, user_prompt, extracted_text,
+                            system_prompt, glossary_version)
+    if provider == "gemini":
+        return _call_gemini(api_key, user_prompt, extracted_text,
+                            system_prompt, glossary_version)
+    raise ValueError(f"unknown provider: {provider!r}")
+
+
+def _call_with_retry(provider: str, api_key: str, user_prompt: str, extracted_text,
+                     system_prompt: str, glossary_version: Optional[int],
+                     max_attempts: int) -> SummaryResult:
+    last_error: Optional[Exception] = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return _dispatch(provider, api_key, user_prompt, extracted_text,
+                             system_prompt, glossary_version)
+        except RuntimeError as exc:
+            # Empty / parse-failure responses are retriable.
+            last_error = exc
+            logger.warning("ai_summary[%s] attempt %d: %s",
+                           provider, attempt, exc)
+        except Exception as exc:
+            # Network / SDK / rate-limit errors are also retriable.
+            last_error = exc
+            logger.warning("ai_summary[%s] attempt %d transient error: %s",
+                           provider, attempt, exc)
+        if attempt < max_attempts:
+            time.sleep(_BASE_BACKOFF_S ** attempt)
+    raise RuntimeError(
+        f"{provider} failed after {max_attempts} attempts: {last_error}"
+    )
+
+
 def generate_summary(*, title, authors=None, year=None, journal=None,
                      abstract=None, doi=None, pubmed_id=None,
                      extracted_text=None,
                      provider: str = DEFAULT_PROVIDER,
-                     title_hint: bool = False) -> SummaryResult:
+                     title_hint: bool = False,
+                     allow_fallback: bool = True) -> SummaryResult:
     """Generate a summary using the requested provider. Retries up to
-    _MAX_ATTEMPTS times on empty / transient errors before giving up.
+    _MAX_ATTEMPTS times on empty / transient errors before giving up on
+    that provider; if it's still down after that AND allow_fallback is
+    true (the default), falls through to the next configured provider
+    in _CANONICAL_ORDER (one attempt each, no retry loop) instead of
+    failing the whole request — the returned SummaryResult.provider
+    tells the caller which one actually answered.
 
     If glossary system is available, automatically injects current glossary
     context into system prompt and tracks glossary version in result.
@@ -265,8 +321,8 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
         raise ValueError(f"unknown provider: {provider!r}. "
                          f"Valid: {sorted(PROVIDERS)}")
 
-    api_key = os.getenv(PROVIDERS[provider]["env"], "").strip()
-    if not api_key:
+    primary_key = os.getenv(PROVIDERS[provider]["env"], "").strip()
+    if not primary_key:
         raise NotConfigured(
             f"{PROVIDERS[provider]['env']} is not set "
             f"(needed for provider={provider})"
@@ -282,33 +338,30 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
         title_hint=title_hint,
     )
 
+    chain = [provider] + ([p for p in _CANONICAL_ORDER if p != provider]
+                          if allow_fallback else [])
     last_error: Optional[Exception] = None
-    for attempt in range(1, _MAX_ATTEMPTS + 1):
+    for prov in chain:
+        is_primary = (prov == provider)
+        api_key = primary_key if is_primary else os.getenv(PROVIDERS[prov]["env"], "").strip()
+        if not api_key:
+            continue  # fallback provider has no key configured — skip silently
         try:
-            if provider == "anthropic":
-                return _call_anthropic(api_key, user_prompt, extracted_text,
-                                       system_prompt, glossary_version)
-            if provider == "openai":
-                return _call_openai(api_key, user_prompt, extracted_text,
-                                    system_prompt, glossary_version)
-            if provider == "gemini":
-                return _call_gemini(api_key, user_prompt, extracted_text,
-                                    system_prompt, glossary_version)
-        except RuntimeError as exc:
-            # Empty / parse-failure responses are retriable.
-            last_error = exc
-            logger.warning("ai_summary[%s] attempt %d: %s",
-                           provider, attempt, exc)
+            return _call_with_retry(
+                prov, api_key, user_prompt, extracted_text,
+                system_prompt, glossary_version,
+                max_attempts=_MAX_ATTEMPTS if is_primary else 1,
+            )
         except Exception as exc:
-            # Network / SDK / rate-limit errors are also retriable.
             last_error = exc
-            logger.warning("ai_summary[%s] attempt %d transient error: %s",
-                           provider, attempt, exc)
-        if attempt < _MAX_ATTEMPTS:
-            time.sleep(_BASE_BACKOFF_S ** attempt)
+            if not is_primary:
+                logger.warning("ai_summary: fallback provider %s also failed: %s", prov, exc)
+            continue
 
     raise RuntimeError(
-        f"{provider} failed after {_MAX_ATTEMPTS} attempts: {last_error}"
+        f"{provider} failed after {_MAX_ATTEMPTS} attempts"
+        f"{' (fallback chain ' + str(chain[1:]) + ' also failed)' if len(chain) > 1 else ''}"
+        f": {last_error}"
     )
 
 

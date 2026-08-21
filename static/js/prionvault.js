@@ -20194,6 +20194,9 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
+          <h4>🔁 Resúmenes IA con reintentos y cambio automático de proveedor</h4>
+          <p>Cuando falla la generación de un resumen por un corte de conexión con el proveedor de IA, ahora se reintenta hasta 3 veces (antes 2) antes de rendirse. Si el proveedor pedido sigue sin responder, PrionVault prueba automáticamente con los otros dos configurados (Claude → GPT → Gemini) en vez de dar el resumen por fallido — se guarda de cualquiera de los tres que responda, y queda registrado qué proveedor lo generó realmente. Aplica tanto al resumen individual como al proceso por lotes.</p>
+
           <h4>📧 Envía artículos por email sin ser admin</h4>
           <p>Hay un segundo buzón, <strong>prionvault_lab@joaquincastilla.com</strong>, para quien no es administrador: manda un email con el PDF adjunto y PrionVault lo procesa igual que si lo subieras desde la app — comprobación de duplicados, extracción de metadatos, resumen IA incluido. Solo funciona si escribes desde <strong>el email con el que inicias sesión</strong> en la aplicación (se comprueba contra tu cuenta de usuario); cualquier otra dirección se ignora. Al terminar recibes la respuesta con el resultado (ya estaba en la biblioteca, se añadió con su resumen, o el error si algo falló) — el administrador recibe una copia oculta de esa misma respuesta, así que sabe quién ha enviado qué y cómo ha ido, sin que tú lo notes.</p>
           <p>Truco: si en el <strong>Asunto</strong> del email pones "JC" o "Journal Club" (junto con cualquier otra palabra si quieres), el artículo se marca automáticamente como candidato a Journal Club al terminar de procesarse — sin tener que entrar en la app para marcarlo.</p>
