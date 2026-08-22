@@ -19,7 +19,25 @@ _CORE_COLS = [
 _PROFILE_COLS = [
     "affiliation", "position", "research_areas", "orcid", "bio", "lab_id",
 ]
-COLUMNS = _CORE_COLS + _PROFILE_COLS
+# Account-lifecycle columns: force-on-first-login, recovery tokens.
+# Added in Jun 2026 when the team-level password-reset flow was
+# introduced. Stored as strings in the CSV (the rest of users.csv
+# follows the same convention), parsed back to bool / datetime at
+# use sites.
+_LIFECYCLE_COLS = [
+    "must_change_pw",        # "true" | "false"
+    "reset_token",           # opaque urlsafe token
+    "reset_token_expires",   # ISO-8601 datetime, UTC
+]
+# Standing responsibilities, independent of admin/reader role — checked
+# in the admin user list, not tied to any single feature's own settings
+# page. is_jc_responsible: gets emailed when someone asks (via the "JC"
+# button on an article not yet marked for Journal Club) to have it
+# considered — see tools/prionvault/services/jc.py's request-email flow.
+_ROLE_FLAG_COLS = [
+    "is_jc_responsible",     # "true" | "false"
+]
+COLUMNS = _CORE_COLS + _PROFILE_COLS + _LIFECYCLE_COLS + _ROLE_FLAG_COLS
 
 
 def load_users() -> list[dict]:
@@ -54,6 +72,55 @@ def get_user(username: str) -> dict | None:
         if u.get("username", "").lower() == username.lower():
             return u
     return None
+
+
+def get_user_by_email(email: str) -> dict | None:
+    """Lookup by email address, case-insensitive. Returns the first
+    match (emails are de-facto unique under the standard create flow).
+    Used by /forgot-password and as a fallback for /login when the
+    operator types their email instead of their username."""
+    if not email:
+        return None
+    e = email.lower().strip()
+    for u in load_users():
+        if (u.get("email") or "").lower().strip() == e:
+            return u
+    return None
+
+
+def get_user_by_username_or_email(identifier: str) -> dict | None:
+    """Convenience for /login: try username first, then email.
+    Single source of truth for the "what is this person typing in
+    the username field" decision."""
+    if not identifier:
+        return None
+    return get_user(identifier) or get_user_by_email(identifier)
+
+
+def list_admin_emails() -> list[str]:
+    """Every active admin's email — used to BCC the admin on outcomes
+    from channels meant for non-admin users (e.g. the reader-facing
+    email-ingest mailbox), so they can see who used it and how each
+    submission resolved without the sender being aware they're copied."""
+    return [
+        u["email"].strip()
+        for u in load_users()
+        if (u.get("role") or "").lower() == "admin"
+        and (u.get("active") or "true").lower() == "true"
+        and (u.get("email") or "").strip()
+    ]
+
+
+def list_jc_responsible() -> list[dict]:
+    """Every active user flagged as a Journal Club responsible (full
+    user dict — used when the caller needs the name, not just the
+    email, e.g. to address them by name in an email)."""
+    return [
+        u for u in load_users()
+        if (u.get("is_jc_responsible") or "").lower() == "true"
+        and (u.get("active") or "true").lower() == "true"
+        and (u.get("email") or "").strip()
+    ]
 
 
 def user_exists(username: str) -> bool:
@@ -92,33 +159,75 @@ def delete_user(username: str, sync: bool = True) -> bool:
     return True
 
 
-def bootstrap_demo_users() -> None:
-    """Ensure demo accounts exist (idempotent — safe to call on every startup)."""
-    demo_accounts = [
-        {"username": "jcastilla", "full_name": "Javier Castilla", "role": "admin",
-         "email": "jcastilla@prionlab.org", "affiliation": "CReSA-IRTA",
-         "position": "PI", "research_areas": "prion diseases; neurodegeneration"},
-        {"username": "herana", "full_name": "Hasier Erana", "role": "editor",
-         "email": "herana@prionlab.org", "affiliation": "CReSA-IRTA",
-         "position": "Postdoc", "research_areas": "prion strains; PMCA"},
-        {"username": "jcharco", "full_name": "Jorge Charco", "role": "editor",
-         "email": "jcharco@prionlab.org", "affiliation": "CReSA-IRTA",
-         "position": "PhD student", "research_areas": "prion diagnostics; biomarkers"},
+def bootstrap_team_users() -> None:
+    """Seed the prion-lab team accounts (Jun 2026) with the canonical
+    starter password "12345678" and must_change_pw=true so each user
+    is forced to set their own at first login.
+
+    Idempotent: skips entries whose email is ALREADY in users.csv.
+    Username derives from the local part of the email so a user can
+    log in with either their username or their full email — the
+    auth flow accepts both.
+
+    Joaquín Castilla is explicitly excluded: he is the existing
+    admin and his account is created by bootstrap_admin_user() with
+    its own credentials. Re-seeding him here would either be a
+    no-op or wipe his current password — neither is desirable.
+    """
+    TEAM = [
+        # (display name, email)
+        ("Carlos Díaz",       "cdiaz@cicbiogune.es"),
+        ("Cristina Sampedro", "csampedro@cicbiogune.es"),
+        ("Eva Férnandez",     "efernandez@cicbiogune.es"),
+        ("Enric Vidal",       "enric.vidal@irta.cat"),
+        ("Hasier Eraña",      "herana@cicbiogune.es"),
+        ("Inés Xanco",        "ines.xanco@irta.cat"),
+        ("Josu Galarza",      "jgalarza@cicbiogune.es"),
+        ("Jorge Moreno",      "jmoreno@cicbiogune.es"),
+        ("Maitena San Juan",  "msanjuan@cicbiogune.es"),
+        ("Nuño Anjo",         "nanjo@cicbiogune.es"),
+        ("Nerea Isusi",       "nisusi@cicbiogune.es"),
+        ("Patricia Piñeiro",  "ppineiro@cicbiogune.es"),
+        ("Samanta Giler",     "samanta.giler@irta.cat"),
+        ("Sara Caballero",    "scaballero@cicbiogune.es"),
     ]
-    for demo in demo_accounts:
-        if not user_exists(demo["username"]):
-            try:
-                create_user({
-                    **demo,
-                    "password_hash": hash_password("demo123"),
-                    "language": "es",
-                    "active": "true",
-                    "created_at": date.today().isoformat(),
-                    "last_login": "",
-                    "bio": "",
-                    "orcid": "",
-                    "lab_id": "",
-                }, sync=False)
-                logger.info("Demo user created: %s", demo["username"])
-            except Exception as e:
-                logger.warning("Failed to create demo user %s: %s", demo["username"], e)
+
+    # Pre-hash the shared starter password ONCE, not per-row. bcrypt
+    # at rounds=12 is ~250 ms each — 14 of them would add 3-4 s to
+    # boot time for no benefit, since they share the same plaintext.
+    starter_hash = hash_password("12345678")
+
+    created = 0
+    for full_name, email in TEAM:
+        if email_exists(email):
+            continue
+        username = email.split("@", 1)[0].lower()
+        # Edge case: an admin manually created an account with a
+        # colliding local-part. Append a digit until we find a slot.
+        base = username
+        n = 1
+        while user_exists(username):
+            username = f"{base}{n}"
+            n += 1
+        try:
+            create_user({
+                "username":            username,
+                "password_hash":       starter_hash,
+                "full_name":           full_name,
+                "email":               email,
+                "role":                "reader",
+                "language":            "es",
+                "active":              "true",
+                "created_at":          date.today().isoformat(),
+                "last_login":          "",
+                "must_change_pw":      "true",
+                "reset_token":         "",
+                "reset_token_expires": "",
+            }, sync=False)
+            created += 1
+        except Exception as e:
+            logger.warning("Failed to seed team user %s: %s", email, e)
+    if created:
+        logger.info("Team bootstrap: created %d new user(s)", created)
+
+
