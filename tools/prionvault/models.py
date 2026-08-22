@@ -99,6 +99,9 @@ class PrionVaultArticle(Base):
     # Migration 042: token counts for cost tracking
     summary_tokens_in  = Column(Integer)
     summary_tokens_out = Column(Integer)
+    # Migration 088: JSON trail of the summary generation attempt (chain,
+    # per-attempt errors, which provider actually answered) for diagnostics
+    summary_ai_diagnostics = Column(Text)
     indexed_at         = Column(DateTime(timezone=True))
     index_version      = Column(String(40))
     source             = Column(String(40), default="manual")

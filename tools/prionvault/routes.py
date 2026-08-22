@@ -6,6 +6,7 @@ Notification/subscription routes live in routes_notifications.py.
 All three are registered on prionvault_bp via side-effect imports at the
 bottom of this file.
 """
+import json
 import logging
 import threading
 import time
@@ -1241,6 +1242,7 @@ def api_article_detail(aid):
             "pdf_metadata_match_detail", "pdf_metadata_match_checked_at",
             "summary_ai_provider", "summary_ai_model",
             "summary_tokens_in", "summary_tokens_out",
+            "summary_ai_diagnostics",
         ]
         pv_select = ", ".join(c for c in optional if c in pv_cols)
         select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -1268,7 +1270,8 @@ def api_article_detail(aid):
         # Each column is fetched individually so a missing column causes only
         # that key to be skipped, not the whole request.
         for _col in ("summary_ai_notes", "summary_ai_provider",
-                     "summary_tokens_in", "summary_tokens_out"):
+                     "summary_tokens_in", "summary_tokens_out",
+                     "summary_ai_diagnostics"):
             if _col not in d:
                 try:
                     _r = s.execute(
@@ -1321,6 +1324,11 @@ def api_article_detail(aid):
             "has_summary_human": bool(d.get("summary_human")),
             "in_prionread":  False,  # enriched below
         }
+        if is_admin and d.get("summary_ai_diagnostics"):
+            try:
+                out["summary_ai_diagnostics"] = json.loads(d["summary_ai_diagnostics"])
+            except (TypeError, ValueError):
+                out["summary_ai_diagnostics"] = None
         # PDF metadata verification (admin-only, only when verification has run)
         _pmms = d.get("pdf_metadata_match_status")
         if is_admin and _pmms:

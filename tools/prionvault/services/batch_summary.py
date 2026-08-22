@@ -312,19 +312,21 @@ def _run_batch_inner(*, viewer_user_id=None,
             with eng.begin() as conn:
                 conn.execute(sql_text(
                     """UPDATE articles
-                       SET summary_ai           = :summary,
-                           summary_ai_notes     = NULL,
-                           summary_ai_provider  = :prov,
-                           summary_ai_model     = :model,
-                           summary_tokens_in    = :tin,
-                           summary_tokens_out   = :tout,
+                       SET summary_ai              = :summary,
+                           summary_ai_notes        = NULL,
+                           summary_ai_provider     = :prov,
+                           summary_ai_model        = :model,
+                           summary_tokens_in       = :tin,
+                           summary_tokens_out      = :tout,
                            ai_summary_glossary_version = :gv,
-                           updated_at           = NOW()
+                           summary_ai_diagnostics  = :diag,
+                           updated_at              = NOW()
                        WHERE id = :aid"""
-                ), {"summary": result.text, "aid": article_id, "prov": provider,
+                ), {"summary": result.text, "aid": article_id, "prov": result.provider,
                     "model": result.model,
                     "tin": int(result.tokens_in or 0), "tout": int(result.tokens_out or 0),
-                    "gv": result.glossary_version})
+                    "gv": result.glossary_version,
+                    "diag": _json_dumps(result.diagnostics) if result.diagnostics else None})
         except Exception as exc:
             logger.exception("batch_summary: persisting summary for %s failed", article_id)
             with _lock:

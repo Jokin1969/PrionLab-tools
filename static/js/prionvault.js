@@ -130,6 +130,112 @@
     });
   }
 
+  // ── AI summary diagnostics modal ──────────────────────────────────────
+  // Renders the fallback trail captured by ai_summary.py's generate_summary()
+  // (which provider answered, the full chain, and the per-attempt errors)
+  // so admins can see WHY a call fell back from Claude to GPT/Gemini even
+  // when nothing reached Sentry (e.g. a transient connection error that
+  // succeeded on retry, or on the next provider in the chain).
+  const _AI_DIAG_PROVIDER_LABEL = { anthropic: 'Claude', openai: 'GPT', gemini: 'Gemini' };
+
+  function _aiDiagText(a, diag) {
+    const lines = [];
+    lines.push(`Artículo: ${a.title || a.id}`);
+    lines.push(`Proveedor solicitado: ${_AI_DIAG_PROVIDER_LABEL[diag.requested_provider] || diag.requested_provider}`);
+    lines.push(`Proveedor que respondió: ${_AI_DIAG_PROVIDER_LABEL[diag.used_provider] || diag.used_provider}`);
+    lines.push(`¿Hubo fallback?: ${diag.fell_back ? 'Sí' : 'No'}`);
+    lines.push(`Cadena intentada: ${(diag.chain || []).map(p => _AI_DIAG_PROVIDER_LABEL[p] || p).join(' → ')}`);
+    lines.push(`Inicio: ${diag.started_at || '—'}`);
+    lines.push(`Fin: ${diag.finished_at || '—'}`);
+    if (diag.skipped && diag.skipped.length) {
+      lines.push('');
+      lines.push('Proveedores omitidos:');
+      diag.skipped.forEach(s => lines.push(`  - ${_AI_DIAG_PROVIDER_LABEL[s.provider] || s.provider}: ${s.reason}`));
+    }
+    if (diag.attempts && diag.attempts.length) {
+      lines.push('');
+      lines.push('Intentos:');
+      diag.attempts.forEach(at => {
+        lines.push(`  - [${_AI_DIAG_PROVIDER_LABEL[at.provider] || at.provider}] intento ${at.attempt} `
+          + `(${at.elapsed_ms} ms) → ${at.error_type}: ${at.error}`);
+      });
+    } else {
+      lines.push('');
+      lines.push('Sin errores registrados — el proveedor solicitado respondió a la primera.');
+    }
+    return lines.join('\n');
+  }
+
+  function openAiDiagModal(a) {
+    const diag = a.summary_ai_diagnostics;
+    const modal = document.getElementById('pv-ai-diag-modal');
+    const body = document.getElementById('pv-ai-diag-body');
+    if (!modal || !body || !diag) return;
+
+    const provLabel = p => _AI_DIAG_PROVIDER_LABEL[p] || p || '—';
+    const chainHtml = (diag.chain || []).map((p, i) => {
+      const isUsed = p === diag.used_provider;
+      return `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;
+                     font-size:11.5px;font-weight:600;
+                     background:${isUsed ? '#dcfce7' : '#f3f4f6'};color:${isUsed ? '#15803d' : '#6b7280'};">
+                ${esc(provLabel(p))}${isUsed ? ' ✓' : ''}
+              </span>`
+        + (i < diag.chain.length - 1 ? '<span style="color:#d1d5db;">→</span>' : '');
+    }).join(' ');
+
+    const attemptsHtml = (diag.attempts && diag.attempts.length)
+      ? diag.attempts.map(at => `
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:7px;padding:8px 10px;margin-bottom:6px;">
+            <div style="font-weight:600;color:#991b1b;font-size:12px;">
+              ${esc(provLabel(at.provider))} — intento ${esc(at.attempt)} (${esc(at.elapsed_ms)} ms)
+            </div>
+            <div style="color:#b91c1c;font-size:11.5px;margin-top:2px;">
+              ${esc(at.error_type)}: ${esc(at.error)}
+            </div>
+          </div>`).join('')
+      : `<div style="color:#15803d;font-size:12px;">Sin errores registrados — el proveedor solicitado
+           respondió a la primera, sin necesidad de reintentos ni fallback.</div>`;
+
+    const skippedHtml = (diag.skipped && diag.skipped.length)
+      ? `<div style="margin-top:10px;font-size:11.5px;color:#9ca3af;">
+           Omitidos (sin API key configurada): ${diag.skipped.map(s => esc(provLabel(s.provider))).join(', ')}
+         </div>`
+      : '';
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-bottom:10px;">
+        <span style="color:#9ca3af;">Solicitado:</span><span>${esc(provLabel(diag.requested_provider))}</span>
+        <span style="color:#9ca3af;">Respondió:</span>
+        <span style="font-weight:600;color:${diag.fell_back ? '#b45309' : '#15803d'};">
+          ${esc(provLabel(diag.used_provider))}${diag.fell_back ? ' (fallback)' : ''}
+        </span>
+        <span style="color:#9ca3af;">Inicio:</span><span>${esc(diag.started_at || '—')}</span>
+        <span style="color:#9ca3af;">Fin:</span><span>${esc(diag.finished_at || '—')}</span>
+      </div>
+      <div style="margin-bottom:10px;">${chainHtml}</div>
+      ${attemptsHtml}
+      ${skippedHtml}
+    `;
+
+    modal.dataset.copyText = _aiDiagText(a, diag);
+    modal.style.display = 'flex';
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pv-ai-diag-close')?.addEventListener('click', () => {
+      const m = document.getElementById('pv-ai-diag-modal');
+      if (m) m.style.display = 'none';
+    });
+    document.querySelector('#pv-ai-diag-modal .pv-modal-backdrop')?.addEventListener('click', () => {
+      const m = document.getElementById('pv-ai-diag-modal');
+      if (m) m.style.display = 'none';
+    });
+    _wireCopyBtn(document.getElementById('pv-ai-diag-copy'), {
+      getValue: () => document.getElementById('pv-ai-diag-modal')?.dataset.copyText || '',
+      stopProp: false,
+    });
+  });
+
   // Lightweight Markdown rendering for AI summaries.
   // Handles the three constructs the model actually produces:
   //   ## Heading       → coloured uppercase block
@@ -9950,12 +10056,23 @@
          </div>`
       : '';
     const modelLine = (a.summary_ai && a.summary_ai_model)
-      ? `<div style="margin-top:4px;font-size:11px;color:#9ca3af;">Modelo: ${esc(a.summary_ai_model)}</div>`
+      ? `<div style="margin-top:4px;font-size:11px;color:#9ca3af;display:flex;align-items:center;gap:6px;">
+           <span>Modelo: ${esc(a.summary_ai_model)}</span>
+           ${(IS_ADMIN && a.summary_ai_diagnostics) ? `
+             <button id="pv-ai-diag-btn" type="button" title="Ver diagnóstico de la generación (cadena de fallback, errores por intento)"
+                     style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px;
+                            padding:0 2px;line-height:1;" aria-label="Diagnóstico">🛈</button>` : ''}
+         </div>`
       : '';
     block.innerHTML = header + body + notesHtml + modelLine +
       `<div id="pv-ai-status" style="margin-top:6px;font-size:11.5px;color:#9ca3af;"></div>`;
 
     if (!IS_ADMIN) return;
+
+    const diagBtn = document.getElementById('pv-ai-diag-btn');
+    if (diagBtn) {
+      diagBtn.addEventListener('click', () => openAiDiagModal(a));
+    }
 
     // "Limpiar error" button inside the notes warning box
     const clearNotesBtn = document.getElementById('pv-detail-clear-notes');
@@ -20195,7 +20312,8 @@
           <h3>Últimas novedades en PrionVault</h3>
 
           <h4>🔁 Resúmenes IA con reintentos y cambio automático de proveedor</h4>
-          <p>Cuando falla la generación de un resumen por un corte de conexión con el proveedor de IA, ahora se reintenta hasta 3 veces (antes 2) antes de rendirse. Si el proveedor pedido sigue sin responder, PrionVault prueba automáticamente con los otros dos configurados (Claude → GPT → Gemini) en vez de dar el resumen por fallido — se guarda de cualquiera de los tres que responda, y queda registrado qué proveedor lo generó realmente. Aplica tanto al resumen individual como al proceso por lotes.</p>
+          <p>Cuando falla la generación de un resumen por un corte de conexión con el proveedor de IA, ahora se reintenta hasta 3 veces (antes 2) antes de rendirse. Si el proveedor pedido sigue sin responder, PrionVault prueba automáticamente con los otros dos configurados (Claude → GPT → Gemini) en vez de dar el resumen por fallido — se guarda de cualquiera de los tres que responda, y queda registrado qué proveedor lo generó realmente. Aplica tanto al resumen individual como al proceso por lotes. El proveedor Claude usa ahora <strong>Sonnet 5</strong> (antes Haiku 4.5).</p>
+          <p>Cada vez que se genera un resumen queda guardado un pequeño diagnóstico técnico: qué proveedor respondió, si hubo fallback, y el error exacto de cada intento fallido. En la ficha del artículo, junto a la línea "Modelo:", aparece un icono <strong>🛈</strong> cuando hay diagnóstico disponible — al pulsarlo se abre un modal con el detalle completo y un botón para copiarlo (útil para reportar un fallo).</p>
 
           <h4>📧 Envía artículos por email sin ser admin</h4>
           <p>Hay un segundo buzón, <strong>prionvault_lab@joaquincastilla.com</strong>, para quien no es administrador: manda un email con el PDF adjunto y PrionVault lo procesa igual que si lo subieras desde la app — comprobación de duplicados, extracción de metadatos, resumen IA incluido. Solo funciona si escribes desde <strong>el email con el que inicias sesión</strong> en la aplicación (se comprueba contra tu cuenta de usuario); cualquier otra dirección se ignora. Al terminar recibes la respuesta con el resultado (ya estaba en la biblioteca, se añadió con su resumen, o el error si algo falló) — el administrador recibe una copia oculta de esa misma respuesta, así que sabe quién ha enviado qué y cómo ha ido, sin que tú lo notes.</p>

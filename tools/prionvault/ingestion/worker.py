@@ -9,6 +9,7 @@ job at a time and processes the full pipeline:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -635,16 +636,18 @@ def _save_summary_row(eng, article_id, res) -> None:
         with eng.begin() as conn:
             conn.execute(text(
                 """UPDATE articles
-                      SET summary_ai          = :t,
-                          summary_ai_provider = :p,
-                          summary_ai_model    = :m,
-                          summary_ai_notes    = NULL,
-                          summary_tokens_in   = :tin,
-                          summary_tokens_out  = :tout,
-                          updated_at          = NOW()
+                      SET summary_ai             = :t,
+                          summary_ai_provider     = :p,
+                          summary_ai_model        = :m,
+                          summary_ai_notes        = NULL,
+                          summary_tokens_in       = :tin,
+                          summary_tokens_out      = :tout,
+                          summary_ai_diagnostics  = :diag,
+                          updated_at              = NOW()
                     WHERE id = :aid"""
             ), {"t": res.text, "p": res.provider, "m": res.model,
                 "tin": res.tokens_in, "tout": res.tokens_out,
+                "diag": json.dumps(res.diagnostics) if res.diagnostics else None,
                 "aid": str(article_id)})
     except Exception as exc:
         logger.warning("post-enrich: summary save failed for %s: %s",

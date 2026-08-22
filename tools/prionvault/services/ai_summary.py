@@ -22,6 +22,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -231,6 +232,7 @@ class SummaryResult:
     tokens_out:          Optional[int] = None
     cost_usd:            Optional[float] = None
     glossary_version:    Optional[int] = None
+    diagnostics:         Optional[dict] = None
 
 
 class NotConfigured(RuntimeError):
@@ -277,9 +279,10 @@ def _dispatch(provider: str, api_key: str, user_prompt: str, extracted_text,
 
 def _call_with_retry(provider: str, api_key: str, user_prompt: str, extracted_text,
                      system_prompt: str, glossary_version: Optional[int],
-                     max_attempts: int) -> SummaryResult:
+                     max_attempts: int, attempts_log: Optional[list] = None) -> SummaryResult:
     last_error: Optional[Exception] = None
     for attempt in range(1, max_attempts + 1):
+        t0 = time.monotonic()
         try:
             return _dispatch(provider, api_key, user_prompt, extracted_text,
                              system_prompt, glossary_version)
@@ -288,11 +291,23 @@ def _call_with_retry(provider: str, api_key: str, user_prompt: str, extracted_te
             last_error = exc
             logger.warning("ai_summary[%s] attempt %d: %s",
                            provider, attempt, exc)
+            if attempts_log is not None:
+                attempts_log.append({
+                    "provider": provider, "attempt": attempt,
+                    "error_type": type(exc).__name__, "error": str(exc)[:500],
+                    "elapsed_ms": int((time.monotonic() - t0) * 1000),
+                })
         except Exception as exc:
             # Network / SDK / rate-limit errors are also retriable.
             last_error = exc
             logger.warning("ai_summary[%s] attempt %d transient error: %s",
                            provider, attempt, exc)
+            if attempts_log is not None:
+                attempts_log.append({
+                    "provider": provider, "attempt": attempt,
+                    "error_type": type(exc).__name__, "error": str(exc)[:500],
+                    "elapsed_ms": int((time.monotonic() - t0) * 1000),
+                })
         if attempt < max_attempts:
             time.sleep(_BASE_BACKOFF_S ** attempt)
     raise RuntimeError(
@@ -341,17 +356,33 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
     chain = [provider] + ([p for p in _CANONICAL_ORDER if p != provider]
                           if allow_fallback else [])
     last_error: Optional[Exception] = None
+    attempts_log: list = []
+    skipped: list = []
+    started_at = datetime.utcnow().isoformat() + "Z"
     for prov in chain:
         is_primary = (prov == provider)
         api_key = primary_key if is_primary else os.getenv(PROVIDERS[prov]["env"], "").strip()
         if not api_key:
+            skipped.append({"provider": prov, "reason": "no_api_key_configured"})
             continue  # fallback provider has no key configured — skip silently
         try:
-            return _call_with_retry(
+            result = _call_with_retry(
                 prov, api_key, user_prompt, extracted_text,
                 system_prompt, glossary_version,
                 max_attempts=_MAX_ATTEMPTS if is_primary else 1,
+                attempts_log=attempts_log,
             )
+            result.diagnostics = {
+                "requested_provider": provider,
+                "used_provider":      prov,
+                "fell_back":          prov != provider,
+                "chain":              chain,
+                "skipped":            skipped,
+                "attempts":           attempts_log,
+                "started_at":         started_at,
+                "finished_at":        datetime.utcnow().isoformat() + "Z",
+            }
+            return result
         except Exception as exc:
             last_error = exc
             if not is_primary:

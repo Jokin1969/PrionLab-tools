@@ -17,6 +17,7 @@ Registered on prionvault_bp via side-effect import at the bottom of routes.py.
 """
 import hashlib
 import io
+import json
 import logging
 import os
 import threading
@@ -1820,16 +1821,18 @@ def api_generate_summary(aid):
         try:
             s.execute(sql_text(
                 """UPDATE articles
-                   SET summary_ai_provider = :prov,
-                       summary_ai_model    = :model,
-                       summary_ai_notes    = NULL,
-                       summary_tokens_in   = :tin,
-                       summary_tokens_out  = :tout
+                   SET summary_ai_provider    = :prov,
+                       summary_ai_model       = :model,
+                       summary_ai_notes       = NULL,
+                       summary_tokens_in      = :tin,
+                       summary_tokens_out     = :tout,
+                       summary_ai_diagnostics = :diag
                    WHERE id = CAST(:aid AS uuid)"""
             ), {"prov":  result.provider,
                 "model": result.model,
                 "tin":   result.tokens_in,
                 "tout":  result.tokens_out,
+                "diag":  json.dumps(result.diagnostics) if result.diagnostics else None,
                 "aid":   str(aid)})
         except Exception as exc:
             logger.warning("api_generate_summary: could not save provider/tokens: %s", exc)
@@ -1875,6 +1878,7 @@ def api_generate_summary(aid):
             "cost_usd":           result.cost_usd,
             "elapsed_ms":         result.elapsed_ms,
             "used_full_text":     result.used_full_text,
+            "summary_ai_diagnostics": result.diagnostics,
         })
     except Exception as exc:
         s.rollback()

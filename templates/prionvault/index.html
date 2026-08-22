@@ -3864,6 +3864,33 @@
   </div>
 </div>
 
+<!-- ── AI summary diagnostics modal (how the summary was generated) ────
+     Shows the chain of providers tried, per-attempt errors, and which
+     provider actually answered — so we can see WHY a call fell back
+     from Claude to GPT/Gemini without an error ever surfacing in Sentry. -->
+<div id="pv-ai-diag-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:640px;">
+    <button class="pv-modal-close" id="pv-ai-diag-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-stethoscope" style="color:#0F3460;margin-right:8px;"></i>
+      Diagnóstico de la generación del resumen IA
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 12px;">
+      Detalle técnico de la última llamada: proveedor solicitado, cadena de
+      fallback, y el error concreto (si lo hubo) en cada intento.
+    </p>
+    <div id="pv-ai-diag-body" style="font-size:12.5px;color:#374151;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button id="pv-ai-diag-copy"
+              style="padding:6px 12px;border-radius:6px;border:1px solid #d1d5db;background:white;
+                     font-size:12.5px;font-weight:600;color:#0F3460;cursor:pointer;">
+        <i class="fas fa-copy"></i> Copiar
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Bulk add-to-collection picker ─────────────────────────────────
      Replaces the old prompt()-based numbered-list flow. Shows the full
      group → subgroup → collection tree, lets the admin tick multiple
