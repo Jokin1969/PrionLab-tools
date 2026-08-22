@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 PROVIDERS = {
     "anthropic": {
         "label":      "Claude Haiku 4.5",
-        "model":      "claude-haiku-4-5-20251001",
+        "model":      "claude-haiku-4-5",
         "env":        "ANTHROPIC_API_KEY",
         "price_in":   0.8,
         "price_out":  4.0,
