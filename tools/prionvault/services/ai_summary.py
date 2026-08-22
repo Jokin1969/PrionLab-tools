@@ -30,12 +30,12 @@ logger = logging.getLogger(__name__)
 # ── Provider catalogue ───────────────────────────────────────────────────────
 PROVIDERS = {
     "anthropic": {
-        "label":      "Claude Haiku 4.5",
-        "model":      "claude-haiku-4-5",
+        "label":      "Claude Sonnet 5",
+        "model":      "claude-sonnet-5",
         "env":        "ANTHROPIC_API_KEY",
-        "price_in":   0.8,
-        "price_out":  4.0,
-        "max_tokens": 8000,   # hard limit of the model is 8192
+        "price_in":   2.0,
+        "price_out":  10.0,
+        "max_tokens": 8000,
     },
     "openai": {
         "label":      "GPT-4.1",
