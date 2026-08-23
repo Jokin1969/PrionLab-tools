@@ -3482,14 +3482,31 @@
          style="display:none;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
                 gap:8px;margin-bottom:10px;"></div>
 
+    <!-- Select-all row for the missing entries — only shown when there's
+         something missing. Selecting entries here feeds the "Copiar DOIs
+         seleccionados" button below, for picking specific articles to
+         chase down manually instead of the all-or-nothing import. -->
+    <div id="pv-screen-refs-selectall-row" style="display:none;align-items:center;gap:6px;margin-bottom:6px;font-size:12px;color:#374151;">
+      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="checkbox" id="pv-screen-refs-select-all" style="margin:0;">
+        Seleccionar todos los que faltan
+      </label>
+      <span id="pv-screen-refs-select-count" style="color:#9ca3af;"></span>
+    </div>
+
     <!-- Results list. Cards per entry. -->
     <div id="pv-screen-refs-list"
          style="max-height:48vh;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;
                 background:#fafafa;padding:6px;"></div>
 
-    <!-- Bulk import button only shown when there's something missing. -->
+    <!-- Bulk import button + DOI-copy for a manual selection, only shown
+         when there's something missing. -->
     <div id="pv-screen-refs-actions" style="display:none;margin-top:12px;
                 display:none;justify-content:flex-end;gap:8px;">
+      <button id="pv-screen-refs-copy-dois" type="button" disabled
+              style="padding:8px 14px;border-radius:7px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">
+        📋 Copiar DOIs seleccionados
+      </button>
       <button id="pv-screen-refs-import-all" type="button"
               style="padding:8px 14px;border-radius:7px;border:none;background:#15803d;color:white;font-size:12.5px;font-weight:600;cursor:pointer;">
         ➕ Importar todos los que faltan

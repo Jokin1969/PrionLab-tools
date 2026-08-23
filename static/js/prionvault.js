@@ -17113,9 +17113,14 @@
     const stats    = document.getElementById('pv-screen-refs-stats');
     const actions  = document.getElementById('pv-screen-refs-actions');
     const importAllBtn = document.getElementById('pv-screen-refs-import-all');
+    const copyDoisBtn  = document.getElementById('pv-screen-refs-copy-dois');
+    const selectAllRow = document.getElementById('pv-screen-refs-selectall-row');
+    const selectAllCb  = document.getElementById('pv-screen-refs-select-all');
+    const selectCountEl = document.getElementById('pv-screen-refs-select-count');
     if (!btn || !modal) return;
 
     let _lastResult = null;
+    let _selected = new Set(); // indices (into _lastResult.items) the user has ticked
 
     btn.addEventListener('click', () => {
       modal.style.display = 'flex';
@@ -17186,8 +17191,25 @@
       runBtn.click();
     });
 
+    function _missingIdxs(items) {
+      return items.map((it, idx) => ({ it, idx }))
+        .filter(({ it }) => !it.in_vault && it.oa_hint !== 'unparseable')
+        .map(({ idx }) => idx);
+    }
+
+    function _updateSelectionUi(items) {
+      const missingIdxs = _missingIdxs(items);
+      const n = _selected.size;
+      copyDoisBtn.disabled = n === 0;
+      copyDoisBtn.textContent = n ? `📋 Copiar DOIs seleccionados (${n})` : '📋 Copiar DOIs seleccionados';
+      selectCountEl.textContent = n ? `${n} seleccionado${n === 1 ? '' : 's'}` : '';
+      selectAllCb.checked = missingIdxs.length > 0 && missingIdxs.every(i => _selected.has(i));
+      selectAllCb.indeterminate = n > 0 && !selectAllCb.checked;
+    }
+
     function renderResult(r) {
       const items = r.items || [];
+      _selected = new Set();
       // Stat cards
       stats.style.display = 'grid';
       stats.innerHTML =
@@ -17202,6 +17224,7 @@
           '<div style="text-align:center;color:#9ca3af;padding:30px;font-size:13px;">' +
           'No se extrajo ninguna entrada de ese texto.</div>';
         actions.style.display = 'none';
+        selectAllRow.style.display = 'none';
         return;
       }
       list.innerHTML = items.map(_refCardHtml).join('');
@@ -17234,10 +17257,55 @@
         });
       });
 
+      // Wire per-row selection checkboxes (missing entries only).
+      list.querySelectorAll('.pv-screen-select-one').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const idx = parseInt(cb.dataset.idx, 10);
+          if (cb.checked) _selected.add(idx); else _selected.delete(idx);
+          _updateSelectionUi(items);
+        });
+      });
+
+      const missingIdxs = _missingIdxs(items);
       const missing = items.some(it =>
         !it.in_vault && (it.pmid || it.doi || it.pmcid) && it.title);
       actions.style.display = missing ? 'flex' : 'none';
+      selectAllRow.style.display = missingIdxs.length ? 'flex' : 'none';
+      _updateSelectionUi(items);
     }
+
+    selectAllCb.addEventListener('change', () => {
+      const items = (_lastResult && _lastResult.items) || [];
+      const missingIdxs = _missingIdxs(items);
+      if (selectAllCb.checked) {
+        missingIdxs.forEach(i => _selected.add(i));
+      } else {
+        missingIdxs.forEach(i => _selected.delete(i));
+      }
+      list.querySelectorAll('.pv-screen-select-one').forEach(cb => {
+        cb.checked = _selected.has(parseInt(cb.dataset.idx, 10));
+      });
+      _updateSelectionUi(items);
+    });
+
+    copyDoisBtn.addEventListener('click', () => {
+      const items = (_lastResult && _lastResult.items) || [];
+      const withDoi = [..._selected].filter(idx => items[idx] && items[idx].doi);
+      const withoutDoi = _selected.size - withDoi.length;
+      const dois = withDoi.map(idx => items[idx].doi);
+      if (!dois.length) {
+        alert('Ninguno de los artículos seleccionados tiene DOI.');
+        return;
+      }
+      navigator.clipboard.writeText(dois.join('\n')).then(() => {
+        const orig = copyDoisBtn.textContent;
+        copyDoisBtn.textContent = `✓ Copiados (${dois.length})`;
+        setTimeout(() => { copyDoisBtn.textContent = orig; }, 1500);
+        if (withoutDoi > 0) {
+          alert(`${withoutDoi} de los seleccionados no tienen DOI y se han omitido de la copia.`);
+        }
+      }).catch(() => alert('No se pudo copiar al portapapeles.'));
+    });
 
     function statCard(label, value, color) {
       return `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">
@@ -17286,9 +17354,20 @@
                             style="padding:5px 11px;border-radius:5px;border:1px solid #d1d5db;background:white;color:#374151;font-size:12px;font-weight:600;cursor:pointer;">➕ Importar (sin PDF)</button>`;
     }
 
+    // Selection checkbox: only for entries that are actually missing
+    // (in_vault false, identifiers parsed) — lets the operator build a
+    // manual "go chase these DOIs down one by one" list instead of the
+    // all-or-nothing "Importar todos los que faltan" import.
+    const selectCb = (!it.in_vault && it.oa_hint !== 'unparseable')
+      ? `<input type="checkbox" class="pv-screen-select-one" data-idx="${idx}"
+                title="Seleccionar para copiar su DOI"
+                style="margin-top:2px;flex-shrink:0;accent-color:#0F3460;cursor:pointer;">`
+      : `<span style="width:13px;flex-shrink:0;"></span>`;
+
     return `
       <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
         <div style="display:flex;align-items:flex-start;gap:10px;">
+          ${selectCb}
           <div style="font-size:11px;color:#9ca3af;font-weight:700;min-width:28px;text-align:right;">${it.entry_no}.</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:600;color:#111827;line-height:1.4;">
@@ -20347,6 +20426,9 @@
       novedades: `
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
+
+          <h4>☑ Selección manual en "Cribar lista de referencias"</h4>
+          <p>Además del botón "Importar todos los que faltan" (todo o nada), ahora puedes marcar con una casilla los artículos concretos que <strong>no</strong> están en PrionVault (hay también un "Seleccionar todos los que faltan") y pulsar <strong>"📋 Copiar DOIs seleccionados"</strong> para copiar sus DOIs al portapapeles, uno por línea — útil para ir buscándolos manualmente uno a uno en vez de importarlos todos de golpe. Los artículos sin DOI se omiten de la copia (se avisa cuántos se han quedado fuera).</p>
 
           <h4>🔁 Resúmenes IA con reintentos y cambio automático de proveedor</h4>
           <p>Cuando falla la generación de un resumen por un corte de conexión con el proveedor de IA, ahora se reintenta hasta 3 veces (antes 2) antes de rendirse. Si el proveedor pedido sigue sin responder, PrionVault prueba automáticamente con los otros dos configurados (Claude → GPT → Gemini) en vez de dar el resumen por fallido — se guarda de cualquiera de los tres que responda, y queda registrado qué proveedor lo generó realmente. Aplica tanto al resumen individual como al proceso por lotes. El proveedor Claude usa ahora <strong>Sonnet 5</strong> (antes Haiku 4.5).</p>
