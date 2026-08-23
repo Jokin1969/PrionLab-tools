@@ -10166,6 +10166,7 @@
         a.summary_ai_model    = r.model || null;
         a.summary_tokens_in   = r.summary_tokens_in  || null;
         a.summary_tokens_out  = r.summary_tokens_out || null;
+        a.summary_ai_diagnostics = r.summary_ai_diagnostics || null;
         renderAiSummary(a);
         const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
         const tin  = r.tokens_in  != null ? ` · ${r.tokens_in} in` : '';
