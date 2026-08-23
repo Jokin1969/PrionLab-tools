@@ -10171,7 +10171,18 @@
         a.summary_tokens_in   = r.summary_tokens_in  || null;
         a.summary_tokens_out  = r.summary_tokens_out || null;
         a.summary_ai_diagnostics = r.summary_ai_diagnostics || null;
+        a.has_summary_ai = true;
         renderAiSummary(a);
+        // Keep the listing row's provider badge (Claude/GPT/Gemini) in sync —
+        // it's rendered from a separate copy of the article fetched when the
+        // list loaded, so without this it would keep showing whatever badge
+        // (or none) was there before this generation, until the list reloads.
+        try {
+          const listRow = document.querySelector(`tr.pv-article-row[data-aid="${a.id}"]`);
+          if (listRow) replaceRow(listRow, a);
+        } catch (rowErr) {
+          console.warn('No se pudo refrescar la fila del listado tras generar el resumen:', rowErr);
+        }
         const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
         const tin  = r.tokens_in  != null ? ` · ${r.tokens_in} in` : '';
         const tout = r.tokens_out != null ? ` / ${r.tokens_out} out` : '';
