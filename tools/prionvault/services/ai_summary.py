@@ -277,6 +277,26 @@ def _dispatch(provider: str, api_key: str, user_prompt: str, extracted_text,
     raise ValueError(f"unknown provider: {provider!r}")
 
 
+def _root_cause_text(exc: Exception) -> Optional[str]:
+    """Walk __cause__/__context__ to the deepest chained exception.
+
+    The SDKs (anthropic's APIConnectionError in particular) wrap the real
+    low-level error — e.g. httpx.ConnectError with a DNS/SSL/refused-
+    connection message — behind a generic "Connection error." string.
+    That underlying message is what actually tells us WHY it failed.
+    """
+    seen = set()
+    cur = exc
+    deepest = None
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        deepest = cur
+        cur = cur.__cause__ or cur.__context__
+    if deepest is None or deepest is exc:
+        return None
+    return f"{type(deepest).__name__}: {str(deepest)[:400]}"
+
+
 def _call_with_retry(provider: str, api_key: str, user_prompt: str, extracted_text,
                      system_prompt: str, glossary_version: Optional[int],
                      max_attempts: int, attempts_log: Optional[list] = None) -> SummaryResult:
@@ -295,6 +315,7 @@ def _call_with_retry(provider: str, api_key: str, user_prompt: str, extracted_te
                 attempts_log.append({
                     "provider": provider, "attempt": attempt,
                     "error_type": type(exc).__name__, "error": str(exc)[:500],
+                    "cause": _root_cause_text(exc),
                     "elapsed_ms": int((time.monotonic() - t0) * 1000),
                 })
         except Exception as exc:
@@ -306,6 +327,7 @@ def _call_with_retry(provider: str, api_key: str, user_prompt: str, extracted_te
                 attempts_log.append({
                     "provider": provider, "attempt": attempt,
                     "error_type": type(exc).__name__, "error": str(exc)[:500],
+                    "cause": _root_cause_text(exc),
                     "elapsed_ms": int((time.monotonic() - t0) * 1000),
                 })
         if attempt < max_attempts:

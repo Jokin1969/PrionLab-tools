@@ -158,6 +158,7 @@
       diag.attempts.forEach(at => {
         lines.push(`  - [${_AI_DIAG_PROVIDER_LABEL[at.provider] || at.provider}] intento ${at.attempt} `
           + `(${at.elapsed_ms} ms) → ${at.error_type}: ${at.error}`);
+        if (at.cause) lines.push(`      causa raíz: ${at.cause}`);
       });
     } else {
       lines.push('');
@@ -192,6 +193,9 @@
             <div style="color:#b91c1c;font-size:11.5px;margin-top:2px;">
               ${esc(at.error_type)}: ${esc(at.error)}
             </div>
+            ${at.cause ? `<div style="color:#9ca3af;font-size:11px;margin-top:2px;">
+              causa raíz: ${esc(at.cause)}
+            </div>` : ''}
           </div>`).join('')
       : `<div style="color:#15803d;font-size:12px;">Sin errores registrados — el proveedor solicitado
            respondió a la primera, sin necesidad de reintentos ni fallback.</div>`;
