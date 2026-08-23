@@ -1818,11 +1818,13 @@ def api_generate_summary(aid):
 
         # Persist provider + token counts via raw SQL to bypass any ORM
         # mapper gaps (the ORM path is kept above for summary_ai itself).
-        # Runs inside a SAVEPOINT: if summary_ai_diagnostics (or any other
-        # column here) hasn't landed on this deployment yet, the whole
-        # statement aborts with UndefinedColumn — without the savepoint
-        # that poisons the entire transaction and takes the ORM-level
-        # summary_ai save down with it (InFailedSqlTransaction on commit).
+        # Each attempt runs inside its own SAVEPOINT so a failure never
+        # poisons the outer transaction (InFailedSqlTransaction on commit,
+        # PRIONVAULT-2P). If the full UPDATE (incl. summary_ai_diagnostics)
+        # fails, retry without that column — that way a schema hiccup on
+        # the newest column never costs us summary_ai_provider/model,
+        # which the listing badge and every other UI depends on.
+        _prov_saved = False
         try:
             with s.begin_nested():
                 s.execute(sql_text(
@@ -1840,8 +1842,37 @@ def api_generate_summary(aid):
                     "tout":  result.tokens_out,
                     "diag":  json.dumps(result.diagnostics) if result.diagnostics else None,
                     "aid":   str(aid)})
+            _prov_saved = True
         except Exception as exc:
-            logger.warning("api_generate_summary: could not save provider/tokens: %s", exc)
+            logger.warning("api_generate_summary: save with diagnostics failed for %s "
+                           "(retrying without summary_ai_diagnostics): %s", aid, exc)
+
+        if not _prov_saved:
+            try:
+                with s.begin_nested():
+                    s.execute(sql_text(
+                        """UPDATE articles
+                           SET summary_ai_provider    = :prov,
+                               summary_ai_model       = :model,
+                               summary_ai_notes       = NULL,
+                               summary_tokens_in      = :tin,
+                               summary_tokens_out     = :tout
+                           WHERE id = CAST(:aid AS uuid)"""
+                    ), {"prov":  result.provider,
+                        "model": result.model,
+                        "tin":   result.tokens_in,
+                        "tout":  result.tokens_out,
+                        "aid":   str(aid)})
+                _prov_saved = True
+            except Exception as exc:
+                logger.exception("api_generate_summary: could not save provider/tokens for %s", aid)
+
+        if not _prov_saved:
+            # Neither write landed — don't claim a provider/diagnostics
+            # the DB doesn't actually have, or the listing badge and the
+            # 🛈 button would show a state that isn't really persisted.
+            result.provider = None
+            result.diagnostics = None
 
         # Usage row is best-effort. Skip the INSERT entirely if we
         # can't pin it to a user (the prionvault_usage.user_id

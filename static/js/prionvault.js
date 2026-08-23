@@ -3311,7 +3311,11 @@
       return;
     }
     const wrap = listRow.querySelector('.pv-row-badges-wrap');
-    if (wrap) wrap.insertAdjacentHTML('afterbegin', html);
+    // 'beforeend' rather than 'afterbegin': the wrap's first children are
+    // the row's primary action buttons (📍 isolate, ✉ email, 🤖 chat, …) —
+    // inserting at the front pushed the badge in front of those instead
+    // of alongside the other summary badges further along the row.
+    if (wrap) wrap.insertAdjacentHTML('beforeend', html);
   }
 
   function renderRow(a) {
