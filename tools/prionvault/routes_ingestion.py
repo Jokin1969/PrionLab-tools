@@ -1818,22 +1818,28 @@ def api_generate_summary(aid):
 
         # Persist provider + token counts via raw SQL to bypass any ORM
         # mapper gaps (the ORM path is kept above for summary_ai itself).
+        # Runs inside a SAVEPOINT: if summary_ai_diagnostics (or any other
+        # column here) hasn't landed on this deployment yet, the whole
+        # statement aborts with UndefinedColumn — without the savepoint
+        # that poisons the entire transaction and takes the ORM-level
+        # summary_ai save down with it (InFailedSqlTransaction on commit).
         try:
-            s.execute(sql_text(
-                """UPDATE articles
-                   SET summary_ai_provider    = :prov,
-                       summary_ai_model       = :model,
-                       summary_ai_notes       = NULL,
-                       summary_tokens_in      = :tin,
-                       summary_tokens_out     = :tout,
-                       summary_ai_diagnostics = :diag
-                   WHERE id = CAST(:aid AS uuid)"""
-            ), {"prov":  result.provider,
-                "model": result.model,
-                "tin":   result.tokens_in,
-                "tout":  result.tokens_out,
-                "diag":  json.dumps(result.diagnostics) if result.diagnostics else None,
-                "aid":   str(aid)})
+            with s.begin_nested():
+                s.execute(sql_text(
+                    """UPDATE articles
+                       SET summary_ai_provider    = :prov,
+                           summary_ai_model       = :model,
+                           summary_ai_notes       = NULL,
+                           summary_tokens_in      = :tin,
+                           summary_tokens_out     = :tout,
+                           summary_ai_diagnostics = :diag
+                       WHERE id = CAST(:aid AS uuid)"""
+                ), {"prov":  result.provider,
+                    "model": result.model,
+                    "tin":   result.tokens_in,
+                    "tout":  result.tokens_out,
+                    "diag":  json.dumps(result.diagnostics) if result.diagnostics else None,
+                    "aid":   str(aid)})
         except Exception as exc:
             logger.warning("api_generate_summary: could not save provider/tokens: %s", exc)
 

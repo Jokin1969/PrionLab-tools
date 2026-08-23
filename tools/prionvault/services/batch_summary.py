@@ -308,6 +308,17 @@ def _run_batch_inner(*, viewer_user_id=None,
         # failure on the usage INSERT cannot be allowed to poison the
         # main UPDATE (psycopg2: "current transaction aborted, commit
         # converts to rollback" — silently loses the summary).
+        #
+        # Tries summary_ai_diagnostics first; if that column hasn't
+        # reached this deployment yet, falls back to saving everything
+        # else so a missing diagnostics column never costs us the
+        # actual summary text for the whole batch.
+        _base_params = {
+            "summary": result.text, "aid": article_id, "prov": result.provider,
+            "model": result.model,
+            "tin": int(result.tokens_in or 0), "tout": int(result.tokens_out or 0),
+            "gv": result.glossary_version,
+        }
         try:
             with eng.begin() as conn:
                 conn.execute(sql_text(
@@ -322,18 +333,32 @@ def _run_batch_inner(*, viewer_user_id=None,
                            summary_ai_diagnostics  = :diag,
                            updated_at              = NOW()
                        WHERE id = :aid"""
-                ), {"summary": result.text, "aid": article_id, "prov": result.provider,
-                    "model": result.model,
-                    "tin": int(result.tokens_in or 0), "tout": int(result.tokens_out or 0),
-                    "gv": result.glossary_version,
+                ), {**_base_params,
                     "diag": _json_dumps(result.diagnostics) if result.diagnostics else None})
         except Exception as exc:
-            logger.exception("batch_summary: persisting summary for %s failed", article_id)
-            with _lock:
-                _state["failed"] += 1
-                _state["last_error"] = f"persist failed: {str(exc)[:160]}"
-            time.sleep(_BETWEEN_CALLS_SLEEP_S)
-            continue
+            logger.warning("batch_summary: persist with diagnostics failed for %s "
+                           "(retrying without summary_ai_diagnostics): %s", article_id, exc)
+            try:
+                with eng.begin() as conn:
+                    conn.execute(sql_text(
+                        """UPDATE articles
+                           SET summary_ai              = :summary,
+                               summary_ai_notes        = NULL,
+                               summary_ai_provider     = :prov,
+                               summary_ai_model        = :model,
+                               summary_tokens_in       = :tin,
+                               summary_tokens_out      = :tout,
+                               ai_summary_glossary_version = :gv,
+                               updated_at              = NOW()
+                           WHERE id = :aid"""
+                    ), _base_params)
+            except Exception as exc2:
+                logger.exception("batch_summary: persisting summary for %s failed", article_id)
+                with _lock:
+                    _state["failed"] += 1
+                    _state["last_error"] = f"persist failed: {str(exc2)[:160]}"
+                time.sleep(_BETWEEN_CALLS_SLEEP_S)
+                continue
 
         try:
             with eng.begin() as conn:

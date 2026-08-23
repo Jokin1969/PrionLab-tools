@@ -631,7 +631,12 @@ def _update_article_fields(eng, article_id, **fields) -> None:
 
 
 def _save_summary_row(eng, article_id, res) -> None:
-    """Persist an ai_summary.SummaryResult onto the articles row."""
+    """Persist an ai_summary.SummaryResult onto the articles row.
+
+    Tries summary_ai_diagnostics first; if that column hasn't reached
+    this deployment yet, falls back to saving everything else so a
+    missing diagnostics column never costs us the actual summary text.
+    """
     try:
         with eng.begin() as conn:
             conn.execute(text(
@@ -648,6 +653,26 @@ def _save_summary_row(eng, article_id, res) -> None:
             ), {"t": res.text, "p": res.provider, "m": res.model,
                 "tin": res.tokens_in, "tout": res.tokens_out,
                 "diag": json.dumps(res.diagnostics) if res.diagnostics else None,
+                "aid": str(article_id)})
+        return
+    except Exception as exc:
+        logger.warning("post-enrich: summary save with diagnostics failed for %s "
+                       "(retrying without summary_ai_diagnostics): %s", article_id, exc)
+
+    try:
+        with eng.begin() as conn:
+            conn.execute(text(
+                """UPDATE articles
+                      SET summary_ai             = :t,
+                          summary_ai_provider     = :p,
+                          summary_ai_model        = :m,
+                          summary_ai_notes        = NULL,
+                          summary_tokens_in       = :tin,
+                          summary_tokens_out      = :tout,
+                          updated_at              = NOW()
+                    WHERE id = :aid"""
+            ), {"t": res.text, "p": res.provider, "m": res.model,
+                "tin": res.tokens_in, "tout": res.tokens_out,
                 "aid": str(article_id)})
     except Exception as exc:
         logger.warning("post-enrich: summary save failed for %s: %s",
