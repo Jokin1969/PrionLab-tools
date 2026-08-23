@@ -18,7 +18,6 @@ from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Integer, BigInteger, Numeric,
     SmallInteger, String, Table, Text, UniqueConstraint, CHAR,
 )
-from sqlalchemy.orm import deferred
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, TSVECTOR
 from sqlalchemy.orm import relationship
 
@@ -100,13 +99,16 @@ class PrionVaultArticle(Base):
     # Migration 042: token counts for cost tracking
     summary_tokens_in  = Column(Integer)
     summary_tokens_out = Column(Integer)
-    # Migration 088: JSON trail of the summary generation attempt (chain,
-    # per-attempt errors, which provider actually answered) for diagnostics.
-    # Deferred: nothing reads this via the ORM attribute (only raw SQL, so
-    # this file can safely declare it ahead of the migration reaching prod
-    # without breaking every plain s.get(Article, id) with a missing-column
-    # error the moment it lands).
-    summary_ai_diagnostics = deferred(Column(Text))
+    # Migration 088 (summary_ai_diagnostics) is deliberately NOT mapped
+    # here. deferred() only excludes a column from the default SELECT —
+    # INSERT/UPDATE still reference every mapped column, so any ORM
+    # article creation (e.g. "Add by DOI/PMID") broke with UndefinedColumn
+    # the moment this was declared, regardless of deferred(), while the
+    # migration keeps failing to land on this deployment for reasons still
+    # not root-caused. All reads/writes of that column go through raw SQL
+    # (tools/prionvault/routes_ingestion.py, ingestion/worker.py,
+    # services/batch_summary.py), which is independent of this model and
+    # already tolerates the column being absent — leave it that way.
     indexed_at         = Column(DateTime(timezone=True))
     index_version      = Column(String(40))
     source             = Column(String(40), default="manual")
