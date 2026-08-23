@@ -423,10 +423,14 @@ def generate_summary(*, title, authors=None, year=None, journal=None,
 def _call_anthropic(api_key: str, user_prompt: str, extracted_text,
                     system_prompt: str, glossary_version: Optional[int]) -> SummaryResult:
     import anthropic
-    import httpx
     client = anthropic.Anthropic(
         api_key=api_key,
-        timeout=httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=5.0),
+        # anthropic>=1.0 vendors its own httpx fork (httpx2) — a plain
+        # httpx.Timeout is a different, incompatible type internally and
+        # produces "'Timeout' object cannot be interpreted as an integer"
+        # on every request (PRIONVAULT-2N/2P). anthropic.Timeout is the
+        # SDK's own re-export of the correct httpx2-based type.
+        timeout=anthropic.Timeout(connect=15.0, read=120.0, write=15.0, pool=5.0),
         max_retries=0,
     )
     model = PROVIDERS["anthropic"]["model"]
