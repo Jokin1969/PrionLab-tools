@@ -10799,7 +10799,7 @@
       wireSidebarGroups();
       wireAIStatus();
       wireQueryExpansion();
-      // wireGlossary(); // Moved to dedicated /prionvault/admin/glossary page
+      wireGlossaryModal();
       wireScimago();
       wireBackups();
       wireSidebarResize();
@@ -17424,7 +17424,294 @@
   // dictionary the biomedical retriever uses to broaden queries.
   // Admin-added entries persist across deploys; seed entries refresh
   // automatically when the code's _SEED_DICTIONARY changes.
-  // Glossary management moved to dedicated admin page at /prionvault/admin/glossary
+  // ── Glossary modal ───────────────────────────────────────────────────
+  // Same UI/backend as the standalone /prionvault/admin/glossary page
+  // (kept, for other tools that link to it directly), reimplemented here
+  // as a native PrionVault modal so managing terms never leaves PrionVault.
+  function wireGlossaryModal() {
+    const btn      = document.getElementById('btn-glossary');
+    const modal    = document.getElementById('pv-glossary-modal');
+    const closeBtn = document.getElementById('pv-glossary-close');
+    if (!btn || !modal) return;
+
+    let currentTerms = [];
+    let currentCategories = [];
+    let activeCategory = '';
+    let editingEn = null;
+
+    const versionEl  = document.getElementById('pvgl-version');
+    const chipBar     = document.getElementById('pvgl-chips');
+    const searchEl    = document.getElementById('pvgl-search');
+    const catOptionsEl = document.getElementById('pvgl-cat-options');
+    const body        = document.getElementById('pvgl-terms-body');
+    const countEl     = document.getElementById('pvgl-browse-count');
+    const exportLink  = document.getElementById('pvgl-link-export');
+
+    btn.addEventListener('click', () => { modal.style.display = 'flex'; loadGlossary(); });
+    closeBtn.addEventListener('click', () => { modal.style.display = 'none'; });
+    modal.querySelector('.pv-modal-backdrop').addEventListener('click',
+      () => { modal.style.display = 'none'; });
+
+    async function loadGlossary() {
+      try {
+        const [termsData, catData, verData] = await Promise.all([
+          api('/glossary/terms'),
+          api('/glossary/categories'),
+          api('/glossary/version'),
+        ]);
+        currentTerms = termsData.terms || [];
+        currentCategories = catData.categories || [];
+        versionEl.textContent = verData.version ?? '—';
+
+        chipBar.innerHTML = `<button class="pvgl-chip${activeCategory === '' ? ' active' : ''}" data-cat="" type="button">Todas</button>` +
+          currentCategories.map(c => `<button class="pvgl-chip${activeCategory === c ? ' active' : ''}" data-cat="${esc(c)}" type="button">${esc(c)}</button>`).join('');
+        chipBar.querySelectorAll('.pvgl-chip').forEach(chip => {
+          chip.addEventListener('click', () => { activeCategory = chip.dataset.cat; renderTerms(); });
+        });
+
+        catOptionsEl.innerHTML = currentCategories.map(c => `<option value="${esc(c)}"></option>`).join('');
+        renderTerms();
+      } catch (e) {
+        body.innerHTML = `<div style="padding:40px 16px;text-align:center;color:#8b93a1;font-size:13px;">Error al cargar el glosario: ${esc(e.message)}</div>`;
+      }
+    }
+
+    function rowActions(en, disabled) {
+      return `<div class="pvgl-row-actions">
+        <button class="pvgl-icon-btn pvgl-edit-btn" data-en="${esc(en)}" title="Editar" ${disabled ? 'disabled' : ''}><i class="fas fa-pen"></i></button>
+        <button class="pvgl-icon-btn danger pvgl-del-btn" data-en="${esc(en)}" title="Eliminar" ${disabled ? 'disabled' : ''}><i class="fas fa-trash"></i></button>
+      </div>`;
+    }
+
+    function readRowHtml(t) {
+      const avoid = t.term_es_avoid
+        ? `<div class="pvgl-term-avoid"><i class="fas fa-exclamation-circle"></i><span class="val">${esc(t.term_es_avoid)}</span></div>`
+        : '';
+      return `
+        <div>
+          <div class="pvgl-term-en">${esc(t.term_en)}</div>
+          ${t.category ? `<span class="pvgl-term-cat">${esc(t.category)}</span>` : ''}
+        </div>
+        <div class="pvgl-term-es">${esc(t.term_es_recommended)}${avoid}</div>
+        <div class="pvgl-term-notes">${esc(t.notes || '')}</div>
+        ${rowActions(t.term_en, false)}
+      `;
+    }
+
+    function editRowHtml(t) {
+      const en = esc(t.term_en);
+      return `
+        <div class="pvgl-edit-grid">
+          <div><label>Español (recomendado)</label><input type="text" class="pvgl-ef-es" value="${esc(t.term_es_recommended)}"></div>
+          <div><label>Evitar</label><input type="text" class="pvgl-ef-avoid" value="${esc(t.term_es_avoid || '')}"></div>
+          <div><label>Categoría</label><input type="text" class="pvgl-ef-cat" value="${esc(t.category || '')}" list="pvgl-cat-options"></div>
+          <div><label>Nota</label><input type="text" class="pvgl-ef-notes" value="${esc(t.notes || '')}"></div>
+        </div>
+        <div class="pvgl-row-actions" style="opacity:1;">
+          <button class="pvgl-icon-btn pvgl-save-edit-btn" data-en="${en}" title="Guardar"><i class="fas fa-check"></i></button>
+          <button class="pvgl-icon-btn pvgl-cancel-edit-btn" title="Cancelar"><i class="fas fa-times"></i></button>
+        </div>
+      `;
+    }
+
+    function renderTerms() {
+      const q = (searchEl.value || '').trim().toLowerCase();
+      let rows = currentTerms;
+      if (activeCategory) rows = rows.filter(t => (t.category || '') === activeCategory);
+      if (q) {
+        rows = rows.filter(t =>
+          (t.term_en || '').toLowerCase().includes(q) ||
+          (t.term_es_recommended || '').toLowerCase().includes(q) ||
+          (t.term_es_avoid || '').toLowerCase().includes(q) ||
+          (t.notes || '').toLowerCase().includes(q)
+        );
+      }
+      countEl.textContent = `${rows.length} de ${currentTerms.length} términos`;
+
+      if (!rows.length) {
+        body.innerHTML = `<div style="padding:40px 16px;text-align:center;color:#8b93a1;font-size:13px;">No se encontraron términos</div>`;
+        return;
+      }
+      body.innerHTML = rows.map(t => {
+        const editing = editingEn === t.term_en;
+        return `<div class="pvgl-row${editing ? ' editing' : ''}" data-term-en="${esc(t.term_en)}">${editing ? editRowHtml(t) : readRowHtml(t)}</div>`;
+      }).join('');
+
+      body.querySelectorAll('.pvgl-edit-btn').forEach(b => b.addEventListener('click', () => { editingEn = b.dataset.en; renderTerms(); }));
+      body.querySelectorAll('.pvgl-cancel-edit-btn').forEach(b => b.addEventListener('click', () => { editingEn = null; renderTerms(); }));
+      body.querySelectorAll('.pvgl-del-btn').forEach(b => b.addEventListener('click', () => deleteTerm(b.dataset.en)));
+      body.querySelectorAll('.pvgl-save-edit-btn').forEach(b => b.addEventListener('click', () => saveTerm(b.dataset.en)));
+    }
+
+    async function saveTerm(term_en) {
+      const row = body.querySelector(`.pvgl-row[data-term-en="${CSS.escape(term_en)}"]`);
+      if (!row) return;
+      const payload = {
+        term_en,
+        term_es_recommended: row.querySelector('.pvgl-ef-es').value.trim(),
+        term_es_avoid: row.querySelector('.pvgl-ef-avoid').value.trim(),
+        category: row.querySelector('.pvgl-ef-cat').value.trim(),
+        notes: row.querySelector('.pvgl-ef-notes').value.trim(),
+      };
+      if (!payload.term_es_recommended) { alert('El español (recomendado) es obligatorio'); return; }
+      try {
+        await api('/glossary/term', { method: 'PUT', body: JSON.stringify(payload) });
+        editingEn = null;
+        await loadGlossary();
+      } catch (e) {
+        alert('Error al guardar el término: ' + e.message);
+      }
+    }
+
+    async function deleteTerm(term_en) {
+      if (!confirm(`¿Eliminar "${term_en}"?`)) return;
+      try {
+        await api('/glossary/term?term_en=' + encodeURIComponent(term_en), { method: 'DELETE' });
+        await loadGlossary();
+      } catch (e) {
+        alert('Error al eliminar el término: ' + e.message);
+      }
+    }
+
+    // ── Add term panel ────────────────────────────────────────────────
+    const addPanel = document.getElementById('pvgl-add-panel');
+    document.getElementById('pvgl-add-head').addEventListener('click', () => {
+      const open = addPanel.getAttribute('data-open') === 'true';
+      addPanel.setAttribute('data-open', open ? 'false' : 'true');
+      if (!open) document.getElementById('pvgl-f-en').focus();
+    });
+    document.getElementById('pvgl-btn-cancel-add').addEventListener('click', () => {
+      addPanel.setAttribute('data-open', 'false');
+      ['pvgl-f-en', 'pvgl-f-es', 'pvgl-f-cat', 'pvgl-f-avoid', 'pvgl-f-notes'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('pvgl-add-status').textContent = '';
+    });
+    document.getElementById('pvgl-btn-save-add').addEventListener('click', async () => {
+      const term_en = document.getElementById('pvgl-f-en').value.trim();
+      const term_es_recommended = document.getElementById('pvgl-f-es').value.trim();
+      const term_es_avoid = document.getElementById('pvgl-f-avoid').value.trim();
+      const category = document.getElementById('pvgl-f-cat').value.trim();
+      const notes = document.getElementById('pvgl-f-notes').value.trim();
+      const status = document.getElementById('pvgl-add-status');
+      status.style.color = '#5b6472';
+
+      if (!term_en || !term_es_recommended) {
+        status.style.color = '#c0392b';
+        status.textContent = 'El término en inglés y la recomendación en español son obligatorios';
+        return;
+      }
+      status.textContent = 'Añadiendo…';
+      try {
+        const data = await api('/admin/glossary/term/add', {
+          method: 'POST',
+          body: JSON.stringify({ term_en, term_es_recommended, term_es_avoid, category, notes }),
+        });
+        if (!data.ok) throw new Error(data.error || 'error desconocido');
+        ['pvgl-f-en', 'pvgl-f-es', 'pvgl-f-cat', 'pvgl-f-avoid', 'pvgl-f-notes'].forEach(id => document.getElementById(id).value = '');
+        status.style.color = '#1a7a4c';
+        status.textContent = `✓ Añadido "${term_en}"`;
+        await loadGlossary();
+      } catch (e) {
+        status.style.color = '#c0392b';
+        status.textContent = '✗ ' + e.message;
+      }
+    });
+
+    // ── Import drawer ────────────────────────────────────────────────
+    const drawer = document.getElementById('pvgl-import-drawer');
+    const importBackdrop = document.getElementById('pvgl-import-backdrop');
+    function openDrawer() { drawer.setAttribute('data-open', 'true'); importBackdrop.setAttribute('data-open', 'true'); }
+    function closeDrawer() {
+      drawer.setAttribute('data-open', 'false'); importBackdrop.setAttribute('data-open', 'false');
+      const st = document.getElementById('pvgl-drawer-status');
+      st.style.display = 'none'; st.textContent = '';
+      document.getElementById('pvgl-import-file').value = '';
+    }
+    document.getElementById('pvgl-btn-import').addEventListener('click', openDrawer);
+    document.getElementById('pvgl-drawer-close').addEventListener('click', closeDrawer);
+    importBackdrop.addEventListener('click', closeDrawer);
+
+    const dropzone = document.getElementById('pvgl-dropzone');
+    const fileInput = document.getElementById('pvgl-import-file');
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; handleImport(); }
+    });
+    fileInput.addEventListener('change', handleImport);
+
+    function parseCSV(text, isTSV) {
+      const delimiter = isTSV ? '\t' : ',';
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
+      const terms = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(delimiter).map(v => v.trim());
+        if (values.length < 2) continue;
+        const term = {};
+        headers.forEach((h, idx) => { if (values[idx]) term[h] = values[idx]; });
+        terms.push(term);
+      }
+      return terms;
+    }
+
+    async function handleImport() {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const status = document.getElementById('pvgl-drawer-status');
+      const label = document.getElementById('pvgl-dropzone-label');
+      label.textContent = 'Leyendo archivo…';
+      status.style.display = 'none';
+
+      try {
+        const text = await file.text();
+        let terms = [];
+        if (file.name.endsWith('.json')) {
+          terms = JSON.parse(text);
+          if (!Array.isArray(terms)) terms = [terms];
+        } else if (file.name.endsWith('.csv') || file.name.endsWith('.tsv')) {
+          terms = parseCSV(text, file.name.endsWith('.tsv'));
+        } else {
+          throw new Error('Formato de archivo no soportado');
+        }
+
+        label.textContent = `Subiendo ${terms.length} términos…`;
+        const data = await api('/glossary/import', { method: 'POST', body: JSON.stringify({ terms }) });
+
+        status.style.display = 'block';
+        if (data.errors && data.errors.length > 0) {
+          status.style.background = '#fdf0ee'; status.style.color = '#c0392b'; status.style.border = '1px solid #f0c4bd';
+          status.textContent = `⚠️ Importados ${data.imported}, con ${data.errors.length} errores — ${data.errors.slice(0, 3).join('; ')}`;
+        } else {
+          status.style.background = '#e9f6ef'; status.style.color = '#1a7a4c'; status.style.border = '1px solid #c7e9d4';
+          status.textContent = `✓ Importados ${data.imported} términos correctamente — ahora versión ${data.new_version}`;
+        }
+        label.textContent = 'Arrastra un archivo aquí, o haz clic para elegir uno';
+        fileInput.value = '';
+        await loadGlossary();
+      } catch (e) {
+        status.style.display = 'block';
+        status.style.background = '#fdf0ee'; status.style.color = '#c0392b'; status.style.border = '1px solid #f0c4bd';
+        status.textContent = '✗ Error: ' + e.message;
+        label.textContent = 'Arrastra un archivo aquí, o haz clic para elegir uno';
+      }
+    }
+
+    // ── Search + export ──────────────────────────────────────────────
+    searchEl.addEventListener('input', renderTerms);
+    exportLink.addEventListener('click', () => {
+      const header = 'English\tCastellano recomendado\tEvitar\tComentario\tCategoría';
+      const lines = currentTerms.map(t => [t.term_en, t.term_es_recommended, t.term_es_avoid || '', t.notes || '', t.category || ''].join('\t'));
+      const blob = new Blob([header + '\n' + lines.join('\n')], { type: 'text/tab-separated-values' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'glosario.tsv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+  }
 
   // ── SCImago (SJR) admin modal ────────────────────────────────────────
   function wireScimago() {
@@ -20426,6 +20713,9 @@
       novedades: `
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
+
+          <h4>📖 Glosario integrado como modal de PrionVault</h4>
+          <p>El botón <strong>Glosario</strong> de la barra lateral ya no te saca de PrionVault a otra página — abre un modal, con el mismo diseño y funciones que antes (buscar, filtrar por categoría, añadir, editar en línea, importar/exportar), sin cambiar de menú. La página independiente <code>/prionvault/admin/glossary</code> se mantiene por si otras herramientas (PrionLab, PrionPacks) enlazan directamente a ella, pero desde PrionVault ya no hace falta salir.</p>
 
           <h4>☑ Selección manual en "Cribar lista de referencias"</h4>
           <p>Además del botón "Importar todos los que faltan" (todo o nada), ahora puedes marcar con una casilla los artículos concretos que <strong>no</strong> están en PrionVault (hay también un "Seleccionar todos los que faltan") y pulsar <strong>"📋 Copiar DOIs seleccionados"</strong> para copiar sus DOIs al portapapeles, uno por línea — útil para ir buscándolos manualmente uno a uno en vez de importarlos todos de golpe. Los artículos sin DOI se omiten de la copia (se avisa cuántos se han quedado fuera).</p>

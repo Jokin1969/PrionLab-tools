@@ -342,6 +342,56 @@
   .pv-rag-extract summary { list-style: none; }
   .pv-rag-extract summary::-webkit-details-marker { display: none; }
   .pv-rag-extract summary::marker                  { display: none; content: ""; }
+
+  /* ── Glossary modal ──────────────────────────────────────────────── */
+  #pvgl-add-panel[data-open="true"] #pvgl-add-body { display: block !important; }
+  #pvgl-add-head .fa-plus { transition: transform 0.15s ease; }
+  #pvgl-add-panel[data-open="true"] #pvgl-add-head .fa-plus { transform: rotate(45deg); }
+  .pvgl-chip {
+    border: 1px solid #ccd2db; background: white; color: #5b6472;
+    padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+  }
+  .pvgl-chip:hover { border-color: #0F3460; color: #0F3460; }
+  .pvgl-chip.active { background: #0F3460; border-color: #0F3460; color: #fff; }
+  .pvgl-row {
+    display: grid; grid-template-columns: 1.15fr 1.35fr 1fr auto; gap: 12px; align-items: start;
+    padding: 12px 14px; border-bottom: 1px solid #e2e5ea; min-width: 560px;
+  }
+  .pvgl-row:last-child { border-bottom: none; }
+  .pvgl-row:hover { background: #f9fafb; }
+  .pvgl-row:hover .pvgl-row-actions { opacity: 1; }
+  .pvgl-row.editing .pvgl-row-actions { opacity: 1; }
+  .pvgl-term-en { font-weight: 600; font-size: 14.5px; color: #1c2430; }
+  .pvgl-term-cat {
+    display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em;
+    color: #0F3460; background: #eef2f8; border: 1px solid #c9d6e8; padding: 1px 7px; border-radius: 5px;
+  }
+  .pvgl-term-es { font-size: 13.5px; color: #1c2430; }
+  .pvgl-term-avoid { margin-top: 5px; font-size: 11.5px; color: #a15c00; display: flex; align-items: baseline; gap: 5px; }
+  .pvgl-term-avoid .val { font-family: ui-monospace, monospace; font-size: 11px; }
+  .pvgl-term-notes { font-size: 12.5px; color: #5b6472; }
+  .pvgl-term-notes:empty::before { content: '—'; color: #8b93a1; }
+  .pvgl-row-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.1s ease; }
+  .pvgl-icon-btn {
+    width: 27px; height: 27px; display: flex; align-items: center; justify-content: center; border-radius: 6px;
+    border: 1px solid transparent; background: transparent; color: #8b93a1; cursor: pointer; font-size: 12px;
+  }
+  .pvgl-icon-btn:hover { background: white; border-color: #ccd2db; color: #1c2430; }
+  .pvgl-icon-btn.danger:hover { color: #c0392b; border-color: #f0c4bd; background: #fdf0ee; }
+  .pvgl-edit-grid { grid-column: 1 / 4; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
+  .pvgl-edit-grid input {
+    padding: 7px 9px; border-radius: 6px; border: 1px solid #ccd2db; font-family: inherit; font-size: 12.5px; width: 100%; box-sizing: border-box;
+  }
+  .pvgl-edit-grid label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #8b93a1; display: block; margin-bottom: 3px; }
+  #pvgl-import-drawer[data-open="true"] { transform: translateX(0) !important; }
+  #pvgl-import-backdrop[data-open="true"] { display: block !important; }
+  #pvgl-dropzone:hover, #pvgl-dropzone.drag-over { border-color: #0F3460 !important; background: #eef2f8; }
+  @media (max-width: 720px) {
+    .pvgl-row { grid-template-columns: 1fr; gap: 6px; }
+    .pvgl-row-actions { opacity: 1; justify-content: flex-end; }
+    .pvgl-edit-grid { grid-template-columns: 1fr 1fr; }
+  }
 </style>
 {% endblock %}
 
@@ -621,8 +671,7 @@
             <span>Estado IA</span>
           </button>
           <button class="pv-nav-btn pv-admin-only" id="btn-glossary"
-                  title="Administra el glosario de traducciones que la IA debe respetar en resúmenes y chat."
-                  onclick="window.location.href='/prionvault/admin/glossary'">
+                  title="Administra el glosario de traducciones que la IA debe respetar en resúmenes y chat.">
             <span>Glosario</span>
           </button>
           <button class="pv-nav-btn pv-admin-only" id="btn-scimago"
@@ -1600,6 +1649,139 @@
       <button id="pv-jc-upload-confirm" type="button" disabled
               style="padding:7px 18px;border-radius:7px;border:none;background:#be185d;color:#fff;
                      font-size:12.5px;font-weight:600;cursor:not-allowed;opacity:0.5;">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Glossary modal (EN→ES terminology, shared by PrionVault / PrionLab /
+     PrionPacks). Embeds the same UI that used to live on the standalone
+     /prionvault/admin/glossary page, so managing it doesn't leave
+     PrionVault's own nav/menu — same PrionVault visual language, same
+     backend routes (/api/glossary/*, /api/admin/glossary/term/add). The
+     standalone page still exists (linked tools can deep-link to it),
+     this modal is just the PrionVault-native way in. -->
+<div id="pv-glossary-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:1020px;width:94vw;height:88vh;display:flex;flex-direction:column;overflow-y:hidden;padding:0;">
+    <div style="padding:20px 24px 0;flex-shrink:0;">
+      <button class="pv-modal-close" id="pv-glossary-close" aria-label="Close">×</button>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
+        <div>
+          <h2 style="margin:0 0 3px;font-size:17px;font-weight:700;color:#111827;">
+            <i class="fas fa-book" style="color:#0F3460;margin-right:8px;"></i>Glosario
+          </h2>
+          <div style="color:#6b7280;font-size:12.5px;max-width:52ch;">
+            Terminología EN→ES. Cada resumen y chat IA cita la versión de abajo — compartido entre PrionVault, PrionLab y PrionPacks.
+          </div>
+        </div>
+        <div style="flex-shrink:0;display:inline-flex;align-items:baseline;gap:6px;background:#eef2f8;border:1px solid #c9d6e8;color:#0F3460;padding:6px 13px;border-radius:999px;font-weight:600;font-size:12px;white-space:nowrap;">
+          versión <b id="pvgl-version" style="font-variant-numeric:tabular-nums;">—</b>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="position:relative;flex:1 1 240px;min-width:180px;">
+          <i class="fas fa-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px;"></i>
+          <input type="text" id="pvgl-search" placeholder="Buscar término, traducción o nota…"
+                 style="width:100%;padding:8px 10px 8px 30px;border-radius:7px;border:1px solid #ccd2db;font-size:13px;box-sizing:border-box;">
+        </div>
+        <div id="pvgl-chips" style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="pvgl-chip active" data-cat="" type="button">Todas</button>
+        </div>
+        <div style="flex:1 1 auto;"></div>
+        <button id="pvgl-btn-import" type="button"
+                style="display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:7px;
+                       border:1px solid #ccd2db;background:white;color:#5b6472;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          <i class="fas fa-file-import"></i> Importar
+        </button>
+      </div>
+
+      <div id="pvgl-add-panel" data-open="false" style="background:white;border:1px solid #e2e5ea;border-radius:10px;margin-bottom:12px;overflow:hidden;">
+        <div id="pvgl-add-head" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none;">
+          <span style="width:20px;height:20px;border-radius:6px;background:#eef2f8;color:#0F3460;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-plus" style="font-size:10px;"></i>
+          </span>
+          <strong style="font-size:13px;">Añadir un término</strong>
+          <span style="color:#8b93a1;font-size:12px;">— dos campos y listo</span>
+        </div>
+        <div id="pvgl-add-body" style="display:none;padding:2px 14px 14px;border-top:1px solid #e2e5ea;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px;">
+            <div>
+              <label style="display:block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#8b93a1;margin-bottom:4px;">Inglés</label>
+              <input id="pvgl-f-en" type="text" placeholder="knockdown" style="width:100%;padding:7px 9px;border-radius:6px;border:1px solid #ccd2db;font-size:13px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="display:block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#8b93a1;margin-bottom:4px;">Español (recomendado)</label>
+              <input id="pvgl-f-es" type="text" placeholder="silenciamiento génico" style="width:100%;padding:7px 9px;border-radius:6px;border:1px solid #ccd2db;font-size:13px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="display:block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#8b93a1;margin-bottom:4px;">Categoría <span style="text-transform:none;font-weight:400;">(opcional)</span></label>
+              <input id="pvgl-f-cat" type="text" list="pvgl-cat-options" placeholder="Genética" style="width:100%;padding:7px 9px;border-radius:6px;border:1px solid #ccd2db;font-size:13px;box-sizing:border-box;">
+              <datalist id="pvgl-cat-options"></datalist>
+            </div>
+            <div>
+              <label style="display:block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#8b93a1;margin-bottom:4px;">Evitar <span style="text-transform:none;font-weight:400;">(opcional)</span></label>
+              <input id="pvgl-f-avoid" type="text" placeholder="knock-down, derribo génico" style="width:100%;padding:7px 9px;border-radius:6px;border:1px solid #ccd2db;font-size:13px;box-sizing:border-box;">
+            </div>
+            <div style="grid-column:1/-1;">
+              <label style="display:block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#8b93a1;margin-bottom:4px;">Nota <span style="text-transform:none;font-weight:400;">(opcional)</span></label>
+              <input id="pvgl-f-notes" type="text" placeholder="No confundir con knockout…" style="width:100%;padding:7px 9px;border-radius:6px;border:1px solid #ccd2db;font-size:13px;box-sizing:border-box;">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;">
+            <span id="pvgl-add-status" style="font-size:12px;color:#5b6472;"></span>
+            <div style="display:flex;gap:8px;">
+              <button id="pvgl-btn-cancel-add" type="button"
+                      style="padding:8px 13px;border-radius:7px;border:1px solid #ccd2db;background:white;color:#5b6472;font-size:12.5px;font-weight:600;cursor:pointer;">Cancelar</button>
+              <button id="pvgl-btn-save-add" type="button"
+                      style="padding:8px 13px;border-radius:7px;border:none;background:#0F3460;color:white;font-size:12.5px;font-weight:600;cursor:pointer;">Guardar término</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;padding:0 24px 20px;">
+      <div style="background:white;border:1px solid #e2e5ea;border-radius:10px;overflow:hidden;">
+        <div style="display:grid;grid-template-columns:1.15fr 1.35fr 1fr auto;gap:12px;padding:9px 14px;background:#f1f3f6;border-bottom:1px solid #e2e5ea;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#8b93a1;">
+          <div>Término</div><div>Traducción</div><div>Nota</div><div></div>
+        </div>
+        <div id="pvgl-terms-body">
+          <div style="padding:40px 16px;text-align:center;color:#8b93a1;font-size:13px;">Cargando…</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:#8b93a1;flex-wrap:wrap;gap:8px;">
+        <span id="pvgl-browse-count"></span>
+        <a id="pvgl-link-export" style="color:#5b6472;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+          <i class="fas fa-file-export"></i> Exportar todo (.tsv)
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk-import drawer (right-side panel, own backdrop within the modal) -->
+  <div id="pvgl-import-backdrop" style="position:fixed;inset:0;background:rgba(10,14,22,0.45);display:none;z-index:61;"></div>
+  <div id="pvgl-import-drawer" style="position:fixed;top:0;right:0;bottom:0;width:min(420px,92vw);background:white;
+              box-shadow:0 8px 24px rgba(20,30,50,0.18);z-index:62;transform:translateX(100%);transition:transform 0.22s ease;
+              display:flex;flex-direction:column;">
+    <div style="padding:20px 22px 16px;border-bottom:1px solid #e2e5ea;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div>
+        <h3 style="margin:0 0 5px;font-size:17px;font-weight:700;color:#111827;">Importación masiva</h3>
+        <p style="margin:0;color:#5b6472;font-size:12.5px;max-width:38ch;">Sustituye todo el glosario por el contenido del archivo. Se guarda como versión nueva — nada se pierde.</p>
+      </div>
+      <button id="pvgl-drawer-close" type="button" style="width:26px;height:26px;border-radius:6px;border:none;background:transparent;color:#8b93a1;cursor:pointer;flex-shrink:0;font-size:16px;">×</button>
+    </div>
+    <div style="padding:20px 22px;overflow-y:auto;flex:1;">
+      <div id="pvgl-dropzone" style="border:1.5px dashed #ccd2db;border-radius:10px;padding:26px 16px;text-align:center;color:#5b6472;font-size:13px;cursor:pointer;">
+        <i class="fas fa-file-import" style="font-size:22px;color:#8b93a1;display:block;margin-bottom:8px;"></i>
+        <div id="pvgl-dropzone-label">Arrastra un archivo aquí, o haz clic para elegir uno</div>
+        <div style="margin-top:6px;font-size:11.5px;color:#8b93a1;font-family:ui-monospace,monospace;">.tsv · .csv · .json</div>
+      </div>
+      <input type="file" id="pvgl-import-file" accept=".json,.csv,.tsv,.txt" style="display:none;">
+      <div style="margin-top:16px;font-size:12px;color:#8b93a1;line-height:1.6;">
+        Columnas esperadas: <code>English</code>, <code>Castellano recomendado</code>, <code>Evitar</code>, <code>Comentario</code>, <code>Categoría</code>. Las tres últimas son opcionales.
+      </div>
+      <div id="pvgl-drawer-status" style="display:none;margin-top:14px;font-size:12.5px;padding:10px 12px;border-radius:8px;"></div>
     </div>
   </div>
 </div>
