@@ -18,6 +18,7 @@ from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Integer, BigInteger, Numeric,
     SmallInteger, String, Table, Text, UniqueConstraint, CHAR,
 )
+from sqlalchemy.orm import deferred
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, TSVECTOR
 from sqlalchemy.orm import relationship
 
@@ -100,8 +101,12 @@ class PrionVaultArticle(Base):
     summary_tokens_in  = Column(Integer)
     summary_tokens_out = Column(Integer)
     # Migration 088: JSON trail of the summary generation attempt (chain,
-    # per-attempt errors, which provider actually answered) for diagnostics
-    summary_ai_diagnostics = Column(Text)
+    # per-attempt errors, which provider actually answered) for diagnostics.
+    # Deferred: nothing reads this via the ORM attribute (only raw SQL, so
+    # this file can safely declare it ahead of the migration reaching prod
+    # without breaking every plain s.get(Article, id) with a missing-column
+    # error the moment it lands).
+    summary_ai_diagnostics = deferred(Column(Text))
     indexed_at         = Column(DateTime(timezone=True))
     index_version      = Column(String(40))
     source             = Column(String(40), default="manual")
