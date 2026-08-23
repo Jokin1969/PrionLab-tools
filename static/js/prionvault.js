@@ -3288,6 +3288,32 @@
     });
   }
 
+  function _providerBadgeHtml(provider) {
+    if (provider === 'anthropic') return '<span class="pv-prov-badge" title="Resumen generado por Claude (Anthropic)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#5b21b6;">✦ Claude</span>';
+    if (provider === 'openai')    return '<span class="pv-prov-badge" title="Resumen generado por GPT (OpenAI)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">⬡ GPT</span>';
+    if (provider === 'gemini')    return '<span class="pv-prov-badge" title="Resumen generado por Gemini (Google)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">◈ Gemini</span>';
+    return '<span class="pv-prov-badge" title="Resumen IA (proveedor desconocido)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#f3f4f6;color:#374151;">AI ✓</span>';
+  }
+
+  // Surgical DOM patch for the listing row's provider badge — used right
+  // after generating a summary from the detail modal so the row updates
+  // without a full re-render (renderRow() depends on many list-only
+  // fields — ratings, jc_presenters, has_own_chat, etc. — that the
+  // detail-fetched article object doesn't carry, so re-invoking it there
+  // silently produced a wrong/stale row instead of throwing).
+  function _patchRowProviderBadge(articleId, provider) {
+    const listRow = document.querySelector(`tr.pv-article-row[data-aid="${articleId}"]`);
+    if (!listRow) return;
+    const html = _providerBadgeHtml(provider);
+    const existing = listRow.querySelector('.pv-prov-badge');
+    if (existing) {
+      existing.outerHTML = html;
+      return;
+    }
+    const wrap = listRow.querySelector('.pv-row-badges-wrap');
+    if (wrap) wrap.insertAdjacentHTML('afterbegin', html);
+  }
+
   function renderRow(a) {
     const row = document.createElement('tr');
     row.className = 'pv-article-row';
@@ -3338,15 +3364,7 @@
                            font-size:10.5px;font-weight:600;background:#ede9fe;color:#6d28d9;
                            border:none;cursor:pointer;line-height:1.2;">✏ Editar</button>`
         : '',
-      a.has_summary_ai
-        ? (() => {
-            const p = a.summary_ai_provider;
-            if (p === 'anthropic') return '<span title="Resumen generado por Claude (Anthropic)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#5b21b6;">✦ Claude</span>';
-            if (p === 'openai')    return '<span title="Resumen generado por GPT (OpenAI)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">⬡ GPT</span>';
-            if (p === 'gemini')    return '<span title="Resumen generado por Gemini (Google)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;">◈ Gemini</span>';
-            return '<span title="Resumen IA (proveedor desconocido)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#f3f4f6;color:#374151;">AI ✓</span>';
-          })()
-        : '',
+      a.has_summary_ai ? _providerBadgeHtml(a.summary_ai_provider) : '',
       a.ai_summary_glossary_version
         ? `<span title="Resumen mejorado con Glosario v${esc(a.ai_summary_glossary_version)}" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#f0fdf4;color:#166534;">📖 v${esc(a.ai_summary_glossary_version)}</span>`
         : '',
@@ -3577,7 +3595,7 @@
                ><i class="far fa-copy"></i></button></div>
         <div style="margin-top:2px;font-size:12px;color:#6b7280;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${authors}${journal}</div>
-        ${(tags || badges) ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;overflow:hidden;">${badges}${tags}</div>` : ''}
+        ${(tags || badges) ? `<div class="pv-row-badges-wrap" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;overflow:hidden;">${badges}${tags}</div>` : ''}
       </td>`;
 
     // ── Year cell ────────────────────────────────────────────────────────
@@ -10178,10 +10196,9 @@
         // list loaded, so without this it would keep showing whatever badge
         // (or none) was there before this generation, until the list reloads.
         try {
-          const listRow = document.querySelector(`tr.pv-article-row[data-aid="${a.id}"]`);
-          if (listRow) replaceRow(listRow, a);
+          _patchRowProviderBadge(a.id, a.summary_ai_provider);
         } catch (rowErr) {
-          console.warn('No se pudo refrescar la fila del listado tras generar el resumen:', rowErr);
+          console.warn('No se pudo refrescar la insignia de proveedor en el listado:', rowErr);
         }
         const cost = r.cost_usd != null ? ` · $${r.cost_usd.toFixed(4)}` : '';
         const tin  = r.tokens_in  != null ? ` · ${r.tokens_in} in` : '';
