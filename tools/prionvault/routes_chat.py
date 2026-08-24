@@ -137,6 +137,49 @@ def api_chat_ask(chat_id):
     return jsonify({"ok": True, **result})
 
 
+@prionvault_bp.route("/api/chats/<uuid:chat_id>/remember-note", methods=["POST"])
+@login_required
+def api_chat_remember_note(chat_id):
+    """Distil this conversation into a short reminder note and save it as
+    a sticky note on the article — "why did I care about this" for
+    future-me. Same fallback chain as regular chat questions."""
+    uid, err = _require_user()
+    if err:
+        return err
+
+    from .services import article_chat, article_notes
+    try:
+        result = article_chat.generate_remember_note(str(chat_id), uid)
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except article_chat.ChatError as exc:
+        return jsonify({
+            "error":    "all_providers_failed",
+            "detail":   str(exc)[:300],
+            "attempts": getattr(exc, "attempts", []),
+        }), 502
+    except Exception as exc:
+        logger.exception("remember_note generation failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+
+    try:
+        note = article_notes.create_note(result["article_id"], uid, result["note_text"])
+    except article_notes.NoteLimitReached as exc:
+        # The note text is still useful even if there's no free slot —
+        # hand it back so the UI can offer "copiar" instead of failing silently.
+        return jsonify({
+            "error": "limit_reached", "detail": str(exc),
+            "note_text": result["note_text"],
+        }), 409
+    except Exception as exc:
+        logger.exception("remember_note save failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+
+    return jsonify({"ok": True, "note": note, "provider": result["provider"]})
+
+
 # ── Downloadable / emailable report of one conversation ──────────────────────
 
 def _build_chat_report(chat_id, uid, fmt: str):

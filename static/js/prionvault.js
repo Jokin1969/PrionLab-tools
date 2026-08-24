@@ -7969,6 +7969,45 @@
       }
     }
 
+    async function rememberNote() {
+      if (!_chatId) {
+        alert('Escribe al menos una pregunta antes de crear una nota-recuerdo.');
+        return;
+      }
+      const btn = $('pv-chat-remember-btn');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '⏳ <span>Pensando…</span>'; }
+      try {
+        const r = await api(`/chats/${_chatId}/remember-note`, { method: 'POST' });
+        if (btn) { btn.innerHTML = '✓ <span>Guardada</span>'; }
+        // Refresh every notes cluster showing for this article (listing
+        // row + detail modal nav bar) so the new note appears right away.
+        if (_article) {
+          try {
+            const notesResp = await api(`/articles/${_article.id}/notes`);
+            _refreshNoteClusters(_article.id, notesResp.notes || [], _article);
+          } catch (_) { /* best-effort refresh */ }
+        }
+        alert(`✓ Nota-recuerdo guardada:\n\n"${r.note.body}"`);
+      } catch (e) {
+        if (e.status === 409) {
+          const noteText = (e.body && e.body.note_text) || '';
+          if (noteText && confirm(
+            `Ya tienes las 5 notas máximas en este artículo, así que no se pudo guardar.\n\n` +
+            `Nota generada:\n"${noteText}"\n\n¿Copiarla al portapapeles?`
+          )) {
+            navigator.clipboard.writeText(noteText).catch(() => {});
+          }
+        } else {
+          alert('Error al crear la nota-recuerdo: ' + e.message);
+        }
+      } finally {
+        if (btn) {
+          setTimeout(() => { btn.disabled = false; btn.innerHTML = orig; }, 1500);
+        }
+      }
+    }
+
     async function ensureConversation() {
       if (_chatId) return _chatId;
       const provider = ($('pv-chat-provider') || {}).value || 'anthropic';
@@ -8160,6 +8199,7 @@
       $('pv-chat-send')?.addEventListener('click', send);
       $('pv-chat-new-btn')?.addEventListener('click', newConversation);
       $('pv-chat-history-btn')?.addEventListener('click', loadHistory);
+      $('pv-chat-remember-btn')?.addEventListener('click', rememberNote);
       $('pv-chat-overview-btn')?.addEventListener('click', () => window.openChatsOverview?.());
       $('pv-chat-report-btn')?.addEventListener('click', () => {
         if (!_chatId) { alert('Escribe al menos una pregunta antes de generar un informe.'); return; }
@@ -20713,6 +20753,9 @@
       novedades: `
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
+
+          <h4>🧠 Botón "Recordar" en el chat de cada artículo</h4>
+          <p>En el chat de IA de un artículo, el botón <strong>🧠 Recordar</strong> pide a la IA que destile la conversación en una nota corta (2-4 frases) pensada para reconocer y localizar ese artículo más adelante — no es un resumen del artículo, sino un recordatorio de <em>por qué</em> te interesó y qué sacaste de la conversación. La nota se guarda automáticamente en <strong>Notas del artículo</strong> (mismo sistema que las notas adhesivas manuales, hasta 5 por artículo). Si ya tienes las 5 notas ocupadas, te ofrece copiar el texto generado para pegarlo tú donde prefieras.</p>
 
           <h4>📖 Glosario integrado como modal de PrionVault</h4>
           <p>El botón <strong>Glosario</strong> de la barra lateral ya no te saca de PrionVault a otra página — abre un modal, con el mismo diseño y funciones que antes (buscar, filtrar por categoría, añadir, editar en línea, importar/exportar), sin cambiar de menú. La página independiente <code>/prionvault/admin/glossary</code> se mantiene por si otras herramientas (PrionLab, PrionPacks) enlazan directamente a ella, pero desde PrionVault ya no hace falta salir.</p>

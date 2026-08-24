@@ -487,6 +487,84 @@ def ask(chat_id: str, user_id: str, question: str,
     }
 
 
+_REMEMBER_SYSTEM_PROMPT = """Ayudas a un investigador a recordar, semanas o meses \
+después, por qué le interesó un artículo científico y qué le aportó la conversación \
+que mantuvo sobre él con una IA.
+
+Se te da el título del artículo y la conversación completa (preguntas del usuario y \
+respuestas de la IA). Tu tarea es escribir una NOTA CORTA en español — 2 a 4 frases, \
+máximo unos 350 caracteres — que sirva como recordatorio para reconocer y localizar \
+este artículo más adelante entre cientos de otros.
+
+Discrimina lo importante: no resumas el artículo entero ni repitas su título tal cual. \
+Céntrate en el ángulo concreto que emergió del chat — qué buscaba el usuario, qué dato, \
+hallazgo o idea le resultó relevante, para qué podría necesitarlo después. Escribe en \
+primera persona o en tono neutro de nota personal, no como un abstract.
+
+No uses markdown, ni comillas envolventes, ni frases de relleno tipo "en esta \
+conversación se habló de...". Responde solo con el texto de la nota, nada más."""
+
+
+def generate_remember_note(chat_id: str, user_id: str) -> dict:
+    """Ask the AI to distil one conversation into a short "why did I care
+    about this article" reminder note, saved as a sticky note on the
+    article. Reuses the same provider fallback chain as ask().
+
+    Returns {"note_text": str, "article_id": str, "provider": str}.
+
+    Raises:
+      LookupError — chat not found / not owned by user
+      ValueError  — chat has no messages yet
+      ChatError   — all providers failed (carries .attempts)
+    """
+    chat = get_chat(chat_id, user_id)
+    if not chat:
+        raise LookupError("chat_not_found")
+    messages = chat.get("messages") or []
+    if not messages:
+        raise ValueError("El chat todavía no tiene ninguna pregunta.")
+
+    article_id = chat["article_id"]
+    article = _fetch_article(article_id)
+    title = (article or {}).get("title") or "(sin título)"
+
+    transcript = "\n\n".join(
+        f"{'Usuario' if m['role'] == 'user' else 'IA'}: {m['content']}"
+        for m in messages
+    )[:12000]
+    user_prompt = f"Título del artículo: {title}\n\nConversación:\n{transcript}"
+
+    primary = DEFAULT_PROVIDER
+    chain = _fallback_chain(primary)
+    attempts: list[dict] = []
+    last_exc: Optional[Exception] = None
+
+    for attempt_provider in chain:
+        try:
+            note_text, _tin, _tout, _model = _chat(
+                provider=attempt_provider,
+                system=_REMEMBER_SYSTEM_PROMPT,
+                user=user_prompt,
+            )
+            note_text = (note_text or "").strip()
+            if not note_text:
+                raise RuntimeError(
+                    f"{PROVIDERS[attempt_provider]['label']} returned an empty response")
+            return {"note_text": note_text, "article_id": article_id,
+                    "provider": attempt_provider}
+        except Exception as exc:
+            kind, reason = _classify_failure(exc)
+            attempts.append({"provider": attempt_provider, "kind": kind, "reason": reason})
+            last_exc = exc
+            logger.info("remember_note fallback: %s failed (%s — %s)",
+                        attempt_provider, kind, reason)
+            if kind not in _FALLBACK_KINDS:
+                raise ChatError(str(exc), attempts) from exc
+            continue
+
+    raise ChatError(str(last_exc) if last_exc else "all providers failed", attempts)
+
+
 # ── References mentioned in the answers (for the downloadable report) ──────
 # Article chat has no structured citation list (unlike rag.py/library_chat,
 # which retrieve numbered fragments) — it dumps the article's own text into
