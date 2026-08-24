@@ -4237,10 +4237,10 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
         <label style="font-size:11.5px;color:#6b7280;">
           Búsqueda libre (FTS)
-          <span title='Busca la palabra dentro de cualquier otra (p. ej. bat también encuentra combat, battle, batch...). Ponla entre comillas — "bat" — para que cuente SOLO esa palabra exacta (ni combat ni battle). Como el plural no cuenta como la misma palabra, únelo con OR: "bat" OR "bats". Vale igual para sinónimos: "bat" OR "chiroptera". Para exigir VARIAS palabras a la vez (que aparezcan en cualquier parte, no seguidas), únelas con AND: "miRNA" AND "AAV".'
+          <span title='Búsqueda booleana estilo PubMed. Usa AND, OR, NOT y paréntesis para agrupar — se evalúa de izquierda a derecha (los paréntesis son la única forma de forzar un orden distinto), igual que en PubMed. Añade [Ti], [Ab], [Au] o [Ja] justo después de un término para limitarlo a título, abstract, autores o revista; sin corchetes busca en los tres. Entre comillas — "bat" — el término cuenta solo como palabra exacta (ni combat ni battle); sin comillas es una coincidencia parcial. Ejemplo: Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab]).'
                 style="cursor:help;color:#9ca3af;">ⓘ</span>
           <input id="pv-r-q" type="text"
-                 placeholder="prion OR PrPSc..."
+                 placeholder='Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab])'
                  style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
                         font-size:12.5px;margin-top:2px;outline:none;">
         </label>
@@ -4420,9 +4420,9 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
         <label style="font-size:11.5px;color:#6b7280;">
           Búsqueda libre (FTS)
-          <span title='Busca la palabra dentro de cualquier otra (p. ej. bat también encuentra combat, battle, batch...). Ponla entre comillas — "bat" — para que cuente SOLO esa palabra exacta (ni combat ni battle). Como el plural no cuenta como la misma palabra, únelo con OR: "bat" OR "bats". Vale igual para sinónimos: "bat" OR "chiroptera". Para exigir VARIAS palabras a la vez (que aparezcan en cualquier parte, no seguidas), únelas con AND: "miRNA" AND "AAV".'
+          <span title='Búsqueda booleana estilo PubMed. Usa AND, OR, NOT y paréntesis para agrupar — se evalúa de izquierda a derecha (los paréntesis son la única forma de forzar un orden distinto), igual que en PubMed. Añade [Ti], [Ab], [Au] o [Ja] justo después de un término para limitarlo a título, abstract, autores o revista; sin corchetes busca en los tres. Entre comillas — "bat" — el término cuenta solo como palabra exacta (ni combat ni battle); sin comillas es una coincidencia parcial. Ejemplo: Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab]).'
                 style="cursor:help;color:#9ca3af;">ⓘ</span>
-          <input id="pv-tr-q" type="text" placeholder="prion OR PrPSc..."
+          <input id="pv-tr-q" type="text" placeholder='Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab])'
                  style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;
                         font-size:12.5px;margin-top:2px;outline:none;">
         </label>

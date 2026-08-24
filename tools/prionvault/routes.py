@@ -1808,6 +1808,12 @@ def api_create_tag():
     if kind == "smart" and not vid:
         return jsonify({"error": "not_authenticated"}), 401
     rules = smart_tags.filter_rules(data.get("rules") or {}) if kind == "smart" else {}
+    if kind == "smart" and rules.get("q"):
+        from .services.smart_rules import parse_boolean_query, QuerySyntaxError
+        try:
+            parse_boolean_query(str(rules["q"]))
+        except QuerySyntaxError as e:
+            return jsonify({"error": str(e)}), 400
 
     s = _session()
     try:
@@ -1855,6 +1861,12 @@ def api_update_tag_rules(tag_id):
         return jsonify({"error": "not_authenticated"}), 401
     data = request.get_json(force=True, silent=True) or {}
     rules = smart_tags.filter_rules(data.get("rules") or {})
+    if rules.get("q"):
+        from .services.smart_rules import parse_boolean_query, QuerySyntaxError
+        try:
+            parse_boolean_query(str(rules["q"]))
+        except QuerySyntaxError as e:
+            return jsonify({"error": str(e)}), 400
 
     s = _session()
     try:

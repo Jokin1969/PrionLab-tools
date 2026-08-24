@@ -20779,6 +20779,9 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
+          <h4>🔎 Búsqueda booleana estilo PubMed en tags y colecciones inteligentes</h4>
+          <p>El campo "Búsqueda libre" al crear/editar un <strong>tag inteligente</strong> o una <strong>colección inteligente</strong> ahora acepta una búsqueda booleana completa: <code>AND</code>, <code>OR</code>, <code>NOT</code> y paréntesis para agrupar, evaluada de izquierda a derecha igual que en PubMed (los paréntesis son la única forma de forzar un orden distinto). Puedes limitar cada término a un campo concreto añadiendo <code>[Ti]</code> (título), <code>[Ab]</code> (abstract), <code>[Au]</code> (autores) o <code>[Ja]</code> (revista) justo después — sin corchetes busca en los tres. Entre comillas, un término cuenta solo como palabra exacta. Ejemplo: <code>Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab])</code>. Un error de sintaxis (paréntesis sin cerrar, campo desconocido…) se avisa al guardar, con el motivo exacto.</p>
+
           <h4>🧠 Botón "Recordar" en el chat de cada artículo</h4>
           <p>En el chat de IA de un artículo, el botón <strong>🧠 Recordar</strong> pide a la IA que destile la conversación en una nota corta (2-4 frases) pensada para reconocer y localizar ese artículo más adelante — no es un resumen del artículo, sino un recordatorio de <em>por qué</em> te interesó y qué sacaste de la conversación. La nota se guarda automáticamente en <strong>Notas del artículo</strong> (mismo sistema que las notas adhesivas manuales, hasta 5 por artículo). Si ya tienes las 5 notas ocupadas, te ofrece copiar el texto generado para pegarlo tú donde prefieras.</p>
 

@@ -445,8 +445,15 @@ def _shape(row) -> Optional[dict]:
 
 def _filter_rules(rules: dict) -> dict:
     """Drop anything not in the allow-list so a malicious / careless
-    caller cannot smuggle SQL through the smart-rules payload."""
-    return smart_rules.filter_rules(rules, _SMART_RULE_KEYS)
+    caller cannot smuggle SQL through the smart-rules payload, and
+    validate `q`'s boolean-query syntax up front — smart collections
+    are evaluated live (see resolve_article_ids below), so a bad query
+    would otherwise only surface as an error the next time someone
+    opens the collection, not when it was saved."""
+    rules = smart_rules.filter_rules(rules, _SMART_RULE_KEYS)
+    if rules.get("q"):
+        smart_rules.parse_boolean_query(str(rules["q"]))  # raises QuerySyntaxError (a ValueError)
+    return rules
 
 
 def _json_dumps(obj) -> str:

@@ -26,6 +26,7 @@ depend on which user is looking at it.
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 from sqlalchemy import text as sql_text
 
@@ -50,6 +51,167 @@ def filter_rules(rules: dict, allowed: set[str] | None = None) -> dict:
     return {k: v for k, v in rules.items() if k in allowed}
 
 
+class QuerySyntaxError(ValueError):
+    """Raised for a malformed `q` boolean query — unbalanced
+    parentheses, an operator with nothing on one side, an unknown
+    [Field] tag, etc. Message is meant to be shown to the user as-is."""
+
+
+# PubMed-style field tags. Each maps to the article column(s) it
+# searches; a term with no tag searches all three (the old default).
+_FIELD_COLUMNS = {
+    "TI": ["title"],
+    "AB": ["abstract"],
+    "AU": ["authors"],
+    "JA": ["journal"], "JO": ["journal"], "TA": ["journal"],
+}
+_DEFAULT_COLUMNS = ["title", "abstract", "authors"]
+
+# One token = a quoted phrase, a parenthesis, a [Field] tag, or a run
+# of anything else up to the next space/paren/bracket (covers bare
+# words and the AND/OR/NOT keywords — matched case-insensitively later).
+_Q_TOKEN_RE = re.compile(r'"[^"]*"|[()]|\[[A-Za-z]{2,4}\]|[^\s()\[\]]+')
+_Q_FIELD_RE = re.compile(r'\[([A-Za-z]{2,4})\]')
+_Q_KEYWORDS = {"AND", "OR", "NOT"}
+
+
+def _q_tokenize(raw: str) -> list[str]:
+    """Tokenize, then fold consecutive bare (unquoted, non-keyword,
+    non-paren, non-tag) word tokens into one literal-phrase token —
+    preserves the old behaviour for a plain multi-word query typed
+    without any operators (e.g. `signal peptide` still means the
+    literal substring "signal peptide", not a syntax error for two
+    atoms with nothing between them)."""
+    raw_tokens = _Q_TOKEN_RE.findall(raw)
+    folded: list[str] = []
+    run: list[str] = []
+
+    def _flush():
+        if run:
+            folded.append(" ".join(run))
+            run.clear()
+
+    for t in raw_tokens:
+        is_bare_word = (
+            t not in ("(", ")")
+            and not t.startswith('"')
+            and not _Q_FIELD_RE.fullmatch(t)
+            and t.upper() not in _Q_KEYWORDS
+        )
+        if is_bare_word:
+            run.append(t)
+            continue
+        _flush()
+        folded.append(t)
+    _flush()
+    return folded
+
+
+def parse_boolean_query(raw: str) -> tuple[Optional[str], dict]:
+    """Parse a PubMed-style boolean query into a SQL fragment + params.
+
+    Grammar (left-to-right, no AND/OR precedence — exactly like PubMed:
+    parentheses are the only way to override evaluation order):
+
+        expr  := term (("AND" | "OR") term)*
+        term  := "NOT" term | "(" expr ")" | atom
+        atom  := (WORD | "phrase") ["[" Field "]"]
+
+    Field is one of Ti (title), Ab (abstract), Au (authors), Ja/Jo/Ta
+    (journal) — case-insensitive. An atom with no field tag searches
+    title + abstract + authors, same as a plain search always has.
+    A "quoted" atom matches the whole word/phrase only (word-boundary
+    regex); a bare atom is a substring match (ILIKE).
+
+    Raises QuerySyntaxError with a message safe to show the user.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None, {}
+
+    tokens = _q_tokenize(raw)
+    pos = 0
+    params: dict = {}
+    counter = [0]
+
+    def peek() -> Optional[str]:
+        return tokens[pos] if pos < len(tokens) else None
+
+    def advance() -> str:
+        nonlocal pos
+        t = tokens[pos]
+        pos += 1
+        return t
+
+    def is_operator(t: Optional[str]) -> bool:
+        return t is not None and t.upper() in ("AND", "OR")
+
+    def parse_expr() -> str:
+        left = parse_term()
+        while is_operator(peek()):
+            op = advance().upper()
+            right = parse_term()
+            left = f"({left} {op} {right})"
+        return left
+
+    def parse_term() -> str:
+        t = peek()
+        if t is None:
+            raise QuerySyntaxError(
+                "Falta un término después de un operador (AND/OR/NOT).")
+        if t.upper() == "NOT":
+            advance()
+            return f"(NOT {parse_term()})"
+        if t == "(":
+            advance()
+            inner = parse_expr()
+            if peek() != ")":
+                raise QuerySyntaxError("Falta cerrar un paréntesis: ( sin ).")
+            advance()
+            return f"({inner})"
+        if t == ")":
+            raise QuerySyntaxError("Sobra un paréntesis de cierre: ) sin (.")
+        return parse_atom()
+
+    def parse_atom() -> str:
+        t = advance()
+        if t.upper() in _Q_KEYWORDS:
+            raise QuerySyntaxError(
+                f'"{t}" no puede ir ahí — falta un término antes o después.')
+        if t.startswith('"') and t.endswith('"') and len(t) >= 2:
+            value, strict = t[1:-1], True
+        else:
+            value, strict = t, False
+        if not value.strip():
+            raise QuerySyntaxError("Término vacío (comillas sin texto dentro).")
+
+        field = None
+        m = peek()
+        if m and _Q_FIELD_RE.fullmatch(m):
+            advance()
+            field = _Q_FIELD_RE.fullmatch(m).group(1).upper()
+            if field not in _FIELD_COLUMNS:
+                raise QuerySyntaxError(
+                    f'Campo desconocido [{field}] — usa [Ti], [Ab], [Au] o [Ja].')
+
+        counter[0] += 1
+        pname = f"sq_{counter[0]}"
+        cols = _FIELD_COLUMNS.get(field, _DEFAULT_COLUMNS)
+        if strict:
+            op = "~*"
+            params[pname] = r"\y(" + re.escape(value) + r")\y"
+        else:
+            op = "ILIKE"
+            params[pname] = f"%{value}%"
+        return "(" + " OR ".join(f"coalesce({c},'') {op} :{pname}" for c in cols) + ")"
+
+    expr = parse_expr()
+    if pos != len(tokens):
+        raise QuerySyntaxError(
+            f'Token inesperado cerca de "{tokens[pos]}" — ¿falta un AND/OR?')
+    return expr, params
+
+
 def build_where(rules: dict, viewer_id=None) -> tuple[list, dict]:
     """Build a (where_clauses, params) tuple from a rule dict for the
     `articles` table. Shared by smart collections' live count/resolve
@@ -64,53 +226,10 @@ def build_where(rules: dict, viewer_id=None) -> tuple[list, dict]:
     params: dict = {}
 
     if rules.get("q"):
-        raw = str(rules["q"]).strip()
-
-        def _group_clause(group: str, pname: str) -> tuple[str, str]:
-            """Builds one (title/abstract/authors) OR-clause for a single
-            group of the query — a bare word/phrase, or several quoted
-            terms OR-ed together (synonyms/plural forms). Returns
-            (sql_fragment, param_value)."""
-            quoted_terms = re.findall(r'"([^"]+)"', group)
-            remainder = re.sub(r'"[^"]+"', ' ', group)
-            remainder_is_clean = not [t for t in remainder.split() if t.upper() != "OR"]
-            if quoted_terms and remainder_is_clean:
-                # Plain "bat" is a substring match (ILIKE '%bat%'), so it
-                # also catches "combat", "debate", "database"... — fine
-                # for most searches but wrong for a short word that's
-                # also a common substring. Wrapping term(s) in "double
-                # quotes" switches to a STRICT whole-word match (regex
-                # \y...\y — word boundary at both ends) — "bat" then
-                # matches only the standalone word "bat", never "combat",
-                # "battle", "batch" or any other word that merely starts/
-                # contains those letters. Since a whole-word match
-                # doesn't catch the plural for free, quote both forms and
-                # OR them: "bat" OR "bats". Multiple quoted terms OR-ed
-                # together also works for genuine synonyms — "bat" OR
-                # "chiroptera".
-                return (f"(title ~* :{pname} OR coalesce(abstract,'') ~* :{pname} OR "
-                        f"coalesce(authors,'') ~* :{pname})",
-                        r"\y(" + "|".join(re.escape(t) for t in quoted_terms) + r")\y")
-            return (f"(title ILIKE :{pname} OR coalesce(abstract,'') ILIKE :{pname} OR "
-                    f"coalesce(authors,'') ILIKE :{pname})",
-                    f"%{group.strip()}%")
-
-        # Literal " AND " between groups requires EVERY group to match
-        # somewhere in the article, independently — e.g. "miRNA" AND
-        # "AAV" only matches articles that mention both words (anywhere,
-        # not necessarily adjacent), unlike a single group where multiple
-        # words are OR-ed (or, unquoted, treated as one literal phrase).
-        and_groups = [g for g in re.split(r'\bAND\b', raw) if g.strip()]
-        if len(and_groups) > 1:
-            for gi, group in enumerate(and_groups):
-                pname = f"q_and_{gi}"
-                clause, value = _group_clause(group.strip(), pname)
-                where.append(clause)
-                params[pname] = value
-        else:
-            clause, value = _group_clause(raw, "q")
+        clause, q_params = parse_boolean_query(str(rules["q"]))
+        if clause:
             where.append(clause)
-            params["q"] = value
+            params.update(q_params)
     if rules.get("authors"):
         where.append("coalesce(authors,'') ILIKE :authors_q")
         params["authors_q"] = f"%{rules['authors']}%"
