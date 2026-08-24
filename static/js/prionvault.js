@@ -7730,12 +7730,29 @@
           acc.intro   += (x.data.added.intro   || 0);
           acc.general += (x.data.added.general || 0);
         }
+        if (x.data && x.data.skipped) {
+          acc.skippedIntro   += (x.data.skipped.intro   || 0);
+          acc.skippedGeneral += (x.data.skipped.general || 0);
+        }
         return acc;
-      }, { intro: 0, general: 0 });
-      statusEl.style.color = '#15803d';
-      statusEl.textContent =
-        `Hecho: ${okCount}/${results.length} packs · ` +
-        `${totals.intro} en Intro · ${totals.general} en Generales.`;
+      }, { intro: 0, general: 0, skippedIntro: 0, skippedGeneral: 0 });
+      const totalAdded = totals.intro + totals.general;
+      const totalSkipped = totals.skippedIntro + totals.skippedGeneral;
+      if (totalAdded === 0 && totalSkipped > 0) {
+        // Nothing actually landed — every target already had this
+        // reference (by DOI or article_id). Flag it clearly instead of
+        // a green "Hecho" that reads as success when it did nothing.
+        statusEl.style.color = '#b45309';
+        statusEl.textContent =
+          `⚠ No se añadió nada nuevo: ya estaban referenciados en los packs/listas elegidos ` +
+          `(${totalSkipped} ya presentes).`;
+      } else {
+        statusEl.style.color = '#15803d';
+        statusEl.textContent =
+          `Hecho: ${okCount}/${results.length} packs · ` +
+          `${totals.intro} en Intro · ${totals.general} en Generales` +
+          (totalSkipped ? ` · ${totalSkipped} ya presentes (omitidos)` : '') + '.';
+      }
       finalSave.style.opacity = '0.5';
     });
   }

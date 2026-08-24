@@ -58,6 +58,17 @@ def _extract_dois(ref) -> list[str]:
     return [m.group(0).rstrip(".,;").lower() for m in _DOI_RE.finditer(ref)]
 
 
+def _linked_article_id(ref) -> Optional[str]:
+    """Return the article_id of a "linked" reference (the structured
+    {"type": "linked", "article_id": …} dict written by the PrionVault
+    "Add to PrionPack" flow), or None for a plain-text bibliography
+    string. Mirrors tools.prionpacks.models._is_linked_ref without
+    importing prionpacks at module load time."""
+    if isinstance(ref, dict) and ref.get("type") == "linked" and ref.get("article_id"):
+        return str(ref["article_id"])
+    return None
+
+
 def _subgroup_label_for(pack: dict) -> str:
     """Stable subgroup label = the pack id only ("PRP-001"). The pack
     title is intentionally NOT part of the label — titles get edited
@@ -277,12 +288,16 @@ def sync_pack(pack: dict) -> dict:
     cids = ensure_collections_for_pack(pack)
 
     def _branch(refs, cid, kind):
-        dois = sorted({d for ref in (refs or []) for d in _extract_dois(ref)})
-        if cid is None or not dois:
-            return {"total_dois": len(dois), "matched": 0,
-                    "added": 0, "skipped": 0}
-        aids = _resolve_dois_to_article_ids(dois)
-        if not aids:
+        refs = refs or []
+        dois = sorted({d for ref in refs for d in _extract_dois(ref)})
+        # "linked" references (from the PrionVault "Add to PrionPack"
+        # flow) already carry the article_id — no DOI resolution needed,
+        # and older articles without a DOI on file would otherwise never
+        # be picked up here at all (PRIONVAULT: sidebar count stuck at 0
+        # after adding via that flow).
+        linked_aids = {aid for ref in refs if (aid := _linked_article_id(ref))}
+        aids = set(_resolve_dois_to_article_ids(dois)) | linked_aids
+        if cid is None or not aids:
             return {"total_dois": len(dois), "matched": 0,
                     "added": 0, "skipped": 0}
         try:
