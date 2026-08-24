@@ -3346,6 +3346,14 @@
       : '';
 
     const badges = [
+      a.has_pdf
+        ? `<a href="${API}/articles/${esc(a.id)}/pdf?download=1" download
+                title="Descargar el PDF directamente"
+                onclick="event.stopPropagation();"
+                style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
+                       font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;
+                       border:none;cursor:pointer;line-height:1.2;text-decoration:none;"><i class="fas fa-download"></i></a>`
+        : '',
       `<button type="button" class="pv-isolate-row-btn" data-aid="${esc(a.id)}"
                 title="Mostrar solo este artículo en el listado"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
