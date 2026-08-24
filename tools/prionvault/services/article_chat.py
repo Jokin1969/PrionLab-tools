@@ -487,22 +487,37 @@ def ask(chat_id: str, user_id: str, question: str,
     }
 
 
-_REMEMBER_SYSTEM_PROMPT = """Ayudas a un investigador a recordar, semanas o meses \
-después, por qué le interesó un artículo científico y qué le aportó la conversación \
-que mantuvo sobre él con una IA.
+_REMEMBER_SYSTEM_PROMPT = """Ayudas a un investigador a recordar, meses después, por \
+qué le importó un artículo científico y qué aprendió exactamente en la conversación \
+que mantuvo sobre él con una IA — con detalle técnico suficiente para no tener que \
+releer el artículo entero para recuperar el dato.
 
 Se te da el título del artículo y la conversación completa (preguntas del usuario y \
-respuestas de la IA). Tu tarea es escribir una NOTA CORTA en español — 2 a 4 frases, \
-máximo unos 350 caracteres — que sirva como recordatorio para reconocer y localizar \
-este artículo más adelante entre cientos de otros.
+respuestas de la IA). Escribe una NOTA en español, de unos 3 a 5 párrafos breves \
+(aprox. 800-1500 caracteres en total), que capture el contenido técnico concreto que \
+emergió en el chat — no una descripción vaga de "qué se preguntó", sino el propio \
+conocimiento: el hallazgo, el dato cuantitativo, el método experimental o el \
+razonamiento que el usuario quería fijar en la memoria.
 
-Discrimina lo importante: no resumas el artículo entero ni repitas su título tal cual. \
-Céntrate en el ángulo concreto que emergió del chat — qué buscaba el usuario, qué dato, \
-hallazgo o idea le resultó relevante, para qué podría necesitarlo después. Escribe en \
-primera persona o en tono neutro de nota personal, no como un abstract.
+Discrimina lo importante de lo accesorio: identifica cuál fue el ángulo concreto que \
+interesó al usuario en la conversación (no todo el artículo) y desarróllalo con \
+precisión — conserva cifras, porcentajes, nombres de técnicas/ensayos, comparaciones \
+y conclusiones tal como aparecen en la conversación; no los diluyas en frases genéricas \
+como "métodos funcionales" o "estrategias experimentales" cuando el chat ya dio el \
+nombre exacto del ensayo y el número concreto.
 
-No uses markdown, ni comillas envolventes, ni frases de relleno tipo "en esta \
-conversación se habló de...". Responde solo con el texto de la nota, nada más."""
+Estructura sugerida (adáptala, no la sigas rígidamente):
+1. Una frase inicial tipo "Artículo importante para recordar que…" con el hallazgo o \
+idea central que quería fijar el usuario.
+2. Uno o dos párrafos que expliquen CÓMO se demuestra ese hallazgo (metodología, datos \
+cuantitativos concretos) y, si aplica, qué solución o intervención probaron los autores.
+3. Un párrafo final que empiece por "Idea clave para futuras consultas:" con la \
+lección o principio generalizable que el usuario querría poder recuperar rápido en \
+otro contexto.
+
+No uses markdown (nada de ##, **, listas con viñetas), ni comillas envolventes, ni \
+frases de relleno tipo "en esta conversación se habló de...". Responde solo con el \
+texto de la nota, en prosa, con párrafos separados por saltos de línea."""
 
 
 def generate_remember_note(chat_id: str, user_id: str) -> dict:
