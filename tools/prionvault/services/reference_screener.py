@@ -41,6 +41,15 @@ _ENTRY_PREFIX_RE = re.compile(r"(?m)^\s*\d+\s*[.)]\s+")
 # one-off "3\tfoo" inside an unrelated paragraph doesn't misfire.
 _ROW_PREFIX_RE = re.compile(r"(?m)^\s*\d+\s*\t")
 
+# Citation-list exports (e.g. copy-pasted from a chatbot's "Sources"
+# list) number entries as one or more bracketed markers at the start of
+# a line — "[1] [3] [8] ... " — because several in-text citations can
+# point at the same source. The whole run of bracket markers is one
+# separator; everything up to the next such run (title line, domain
+# label, one or two repeated URLs) belongs to that entry. Only trusted
+# when it matches at least twice, same reasoning as the table-row regex.
+_BRACKET_PREFIX_RE = re.compile(r"(?m)^\s*(?:\[\d+\]\s*)+")
+
 # A pasted table's header row ("#\tReferencia abreviada\tDOI") isn't a
 # reference — drop it instead of showing it as a confusing
 # "unparseable" first entry.
@@ -52,14 +61,24 @@ _PMID_RE = re.compile(r"\bPMID\s*[:#]?\s*(\d{4,9})\b", re.IGNORECASE)
 # Standalone "PMID 12345" without colon (the user's example has both).
 _PMID_WORD_RE = re.compile(r"\bPubMed\s+PMID\s*[:#]?\s*(\d{4,9})\b", re.IGNORECASE)
 _PMCID_RE = re.compile(r"\b(PMC\d{4,9})\b")
+# A bare PubMed link with no "PMID:" label — pubmed.ncbi.nlm.nih.gov/
+# <pmid>/, often with a tracking querystring tacked on
+# ("?utm_source=chatgpt.com"). Common in citation lists exported from
+# chatbots / browser "Sources" panels, which link straight to PubMed
+# instead of spelling out "PMID".
+_PMID_URL_RE = re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d{4,9})", re.IGNORECASE)
 # DOIs end at whitespace, common punctuation, or sentence-ending dot
 # followed by space. ")" is deliberately NOT excluded here — real DOIs
 # can contain a balanced parenthetical (e.g. "10.1016/S1474-4422(22)
 # 00082-5"); excluding it truncates those mid-identifier. Any actually
 # unbalanced trailing ")" (from the DOI sitting inside a sentence's own
 # parentheses) gets stripped in _normalise_doi instead, where we can
-# check paren balance.
-_DOI_RE = re.compile(r"\b(10\.\d{4,}/[^\s'\";,>\]]+)", re.IGNORECASE)
+# check paren balance. "?", "#" and a further "/" are all excluded from
+# the suffix — a DOI embedded in a URL path (e.g. a journal landing
+# page ".../10.3389/abp.2026.15939/full?utm_source=...") must stop at
+# the DOI itself, not swallow the rest of the URL's path/query/fragment;
+# a genuine DOI suffix essentially never contains another "/".
+_DOI_RE = re.compile(r"\b(10\.\d{4,}/[^\s'\";,>\]?#/]+)", re.IGNORECASE)
 
 _MAX_ENTRIES = 200            # safety cap; the modal isn't a bulk importer
 _MAX_TEXT_CHARS = 200_000     # ~50 KB of pasted text covers any sensible list
@@ -92,12 +111,15 @@ def parse_text(text: str) -> list[dict]:
     # Try numbered-prefix split first ("12. Author..."); then a
     # numbered TABLE row ("12\tAuthor...\t10.xxxx/..." — pasted from a
     # spreadsheet or a Markdown-ish table, tab-separated instead of
-    # ". "/") "); if neither matches at least twice, treat each
-    # non-blank paragraph as a separate entry.
+    # ". "/") "); then bracketed citation markers ("[1] [3] [8] ...",
+    # as exported from a chatbot's "Sources" list); if none matches at
+    # least twice, treat each non-blank paragraph as a separate entry.
     if _ENTRY_PREFIX_RE.search(text):
         parts = _ENTRY_PREFIX_RE.split(text)
     elif len(_ROW_PREFIX_RE.findall(text)) >= 2:
         parts = _ROW_PREFIX_RE.split(text)
+    elif len(_BRACKET_PREFIX_RE.findall(text)) >= 2:
+        parts = _BRACKET_PREFIX_RE.split(text)
     else:
         parts = re.split(r"\n\s*\n", text)
     parts = [p.strip() for p in parts if p and p.strip()]
@@ -108,7 +130,7 @@ def parse_text(text: str) -> list[dict]:
 
     out: list[dict] = []
     for idx, raw in enumerate(parts[:_MAX_ENTRIES], 1):
-        pmid_match  = _PMID_WORD_RE.search(raw) or _PMID_RE.search(raw)
+        pmid_match  = _PMID_WORD_RE.search(raw) or _PMID_RE.search(raw) or _PMID_URL_RE.search(raw)
         pmcid_match = _PMCID_RE.search(raw)
         doi_match   = _DOI_RE.search(raw)
         pmid  = pmid_match.group(1) if pmid_match else None
