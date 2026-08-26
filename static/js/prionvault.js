@@ -21213,6 +21213,37 @@
           <h3>Journal Club (JC)</h3>
           <p>El módulo de Journal Club permite registrar las sesiones en las que se presenta y discute un artículo, con historial de presentadores, fechas y materiales adjuntos.</p>
 
+          <h4>📋 El procedimiento completo, paso a paso</h4>
+          <p>Desde que a alguien le interesa un artículo para Journal Club hasta que la sesión queda archivada, hay cuatro fases. Cada una tiene su propio botón, y cada una está pensada para que <strong>no dependas de escribir un email a mano</strong> ni de recordar los detalles.</p>
+
+          <p><strong>Fase 1 — Proponer un artículo como candidato a JC</strong></p>
+          <ul>
+            <li>Marcar un artículo como "candidato a Journal Club" (el campo <code>is_jc</code>, compartido por todo el laboratorio) está reservado al <strong>administrador</strong> desde el icono 📖 de la fila del listado — no lo puede tocar directamente ningún otro usuario, ni siquiera el responsable de JC si no es también admin.</li>
+            <li>Si tú <strong>no eres admin</strong> y quieres proponer un artículo, pulsa el botón <strong>"JC"</strong> en su ficha o en el listado. Si el artículo aún no está marcado, se abre un modal con dos opciones — elige <strong>"Informar al responsable"</strong>: se envía un email con los datos completos del artículo y el PDF a quien esté marcado como responsable de Journal Club, con el administrador en copia, pidiéndole que lo valore. No marca el artículo automáticamente — es una petición, no una confirmación.</li>
+            <li>Si el artículo <strong>todavía no está en PrionVault</strong>, envíalo por email a <code>prionvault_lab@joaquincastilla.com</code> (con el PDF adjunto si lo tienes) y escribe <strong>"JC"</strong> o <strong>"Journal Club"</strong> en el <strong>Asunto</strong> — puede llevar más palabras, basta con que contenga una de esas dos. El sistema lo procesa igual que cualquier ingesta (metadatos, PDF, resumen IA) y, en este caso, <strong>lo marca automáticamente</strong> como candidato a JC al terminar, sin que nadie tenga que tocar el icono de administrador.</li>
+          </ul>
+
+          <p><strong>Fase 2 — Convocar la sesión (fecha, hora, lugar)</strong></p>
+          <ul>
+            <li>Una vez que un artículo está marcado como candidato a JC y <strong>todavía no tiene ninguna presentación registrada</strong>, aparece el botón <strong>"📢 Convocar"</strong> junto a "Añadir presentación", en la sección Journal Club de la ficha del artículo.</li>
+            <li>Solo lo ven — y solo lo pueden usar — el <strong>administrador</strong> y quien esté marcado como <strong>responsable de Journal Club</strong>.</li>
+            <li>Al pulsarlo se abre un formulario con <strong>Cuándo</strong> (obligatorio — fecha y hora en texto libre, p. ej. "Jueves 18 de septiembre, 12:00"), <strong>Dónde</strong> (opcional) y <strong>Notas adicionales</strong> (opcional).</li>
+            <li>Al enviar, se manda un email con los datos del artículo + PDF y esos detalles a <strong>todos los usuarios activos del laboratorio</strong> de una sola vez — esta es la convocatoria oficial de la sesión.</li>
+          </ul>
+
+          <p><strong>Fase 3 — Celebrar la sesión</strong></p>
+          <p>Esta fase ocurre fuera de la aplicación — es la propia reunión de Journal Club.</p>
+
+          <p><strong>Fase 4 — Archivar la presentación</strong></p>
+          <ul>
+            <li>Al terminar la sesión, quien la presentó (o el responsable) pulsa <strong>"Añadir presentación"</strong> en la misma sección Journal Club del artículo — o el botón <strong>"JC"</strong> del listado si el artículo ya estaba marcado, que salta directo a este paso.</li>
+            <li>Se sube el documento presentado (PowerPoint, Word, Excel, PDF o imágenes — ver "Archivos adjuntos" más abajo), se indica el nombre del responsable/ponente, y la fecha se toma sola del nombre del archivo si sigue el formato <code>yyyymmdd</code> (si no, se usa la fecha de hoy).</li>
+            <li>A partir de ahí, la presentación queda archivada y visible para todo el laboratorio desde <em>"Gestión de Journal clubs"</em> (buscador, informes por año/responsable — ver más abajo) y desde la propia ficha del artículo.</li>
+          </ul>
+
+          <p><strong>Quién es "el responsable de Journal Club" y cómo se asigna</strong><br>
+          Se marca desde <strong>Panel de administración → Users → Editar</strong>, casilla <em>"Journal Club responsible"</em>. Puede haber más de una persona marcada — en ese caso, tanto el email de "Informar al responsable" (fase 1) como el botón "Convocar" (fase 2) están disponibles para todas ellas, y el email de fase 1 les llega a todas a la vez.</p>
+
           <h4>Quién puede hacer qué</h4>
           <ul>
             <li><strong>Cualquier usuario (admin y lector)</strong> puede crear una nueva entrada JC para cualquier artículo de la biblioteca.</li>
