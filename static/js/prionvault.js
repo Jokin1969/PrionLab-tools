@@ -23,6 +23,11 @@
   const IS_ADMIN = ROLE === 'admin';
   document.body.classList.toggle('pv-role-admin',  IS_ADMIN);
   document.body.classList.toggle('pv-role-reader', !IS_ADMIN);
+  // Whether this user is flagged is_jc_responsible — fetched async (it's
+  // not in the session, only in users.csv) and re-renders the currently
+  // open detail modal's JC section once known, so the "Convocar" button
+  // shows up without needing a reload.
+  let IS_JC_RESPONSIBLE = false;
 
   const state = {
     q: '',
@@ -5254,12 +5259,22 @@
             <i class="fas ${_jcSortAsc ? 'fa-arrow-up-short-wide' : 'fa-arrow-down-wide-short'}"></i> Fecha
           </button>
         </h3>
-        <button id="pv-jc-add-btn" type="button"
-                style="padding:4px 10px;font-size:12px;border-radius:6px;
-                       border:1px solid #fce7f3;background:white;color:#be185d;
-                       font-weight:600;cursor:pointer;">
-          <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir presentación
-        </button>
+        <div style="display:flex;gap:6px;">
+          ${(a.is_jc && !a.jc_count && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
+            <button id="pv-jc-convoke-btn" type="button"
+                    title="Enviar el email de convocatoria a todo el laboratorio, con fecha/hora"
+                    style="padding:4px 10px;font-size:12px;border-radius:6px;
+                           border:1px solid #fbcfe8;background:#fdf2f8;color:#9d174d;
+                           font-weight:600;cursor:pointer;">
+              <i class="fas fa-bullhorn" style="margin-right:4px;"></i>Convocar
+            </button>` : ''}
+          <button id="pv-jc-add-btn" type="button"
+                  style="padding:4px 10px;font-size:12px;border-radius:6px;
+                         border:1px solid #fce7f3;background:white;color:#be185d;
+                         font-weight:600;cursor:pointer;">
+            <i class="fas fa-plus" style="margin-right:4px;"></i>Añadir presentación
+          </button>
+        </div>
       </div>`;
     sec.innerHTML = heading +
       `<div id="pv-jc-list" style="font-size:12.5px;color:#9ca3af;">Cargando…</div>`;
@@ -5267,6 +5282,9 @@
     // JC presentations are open to any logged-in user; the server's
     // creator-or-admin gate handles per-row edit / delete safety.
     wireJcAddButton(a);
+    document.getElementById('pv-jc-convoke-btn')?.addEventListener('click', () => {
+      PVJcConvoke.open(a);
+    });
     document.getElementById('pv-jc-sort-btn')?.addEventListener('click', () => {
       _jcSortAsc = !_jcSortAsc;
       renderJcSection(a);
@@ -5808,6 +5826,79 @@
       const reqBtn = $('pv-jc-choice-request');
       if (reqBtn) reqBtn.disabled = false;
       modal.style.display = 'flex';
+    }
+
+    return { open };
+  })();
+
+  // "Convocar" button — sends the actual lab-wide announcement (date/
+  // time/location) once the responsible has picked a slot for an
+  // article already marked is_jc but not yet presented.
+  const PVJcConvoke = (() => {
+    const $ = id => document.getElementById(id);
+    let _article = null;
+    let _wired = false;
+
+    function close() { const m = $('pv-jc-convoke-modal'); if (m) m.style.display = 'none'; }
+
+    function setStatus(msg, isError) {
+      const el = $('pv-jc-convoke-status');
+      if (!el) return;
+      el.style.color = isError ? '#b91c1c' : '#15803d';
+      el.textContent = msg || '';
+    }
+
+    async function send() {
+      if (!_article) return;
+      const whenText = ($('pv-jc-convoke-when')?.value || '').trim();
+      if (!whenText) {
+        setStatus('Indica cuándo es la sesión (fecha y hora).', true);
+        return;
+      }
+      const btn = $('pv-jc-convoke-send');
+      if (btn) { btn.disabled = true; }
+      setStatus('Enviando a todo el laboratorio…', false);
+      try {
+        const r = await api(`/articles/${_article.id}/jc-convocation`, {
+          method: 'POST',
+          body: JSON.stringify({
+            when_text: whenText,
+            location_text: ($('pv-jc-convoke-where')?.value || '').trim(),
+            notes: ($('pv-jc-convoke-notes')?.value || '').trim(),
+          }),
+        });
+        setStatus(`✓ Convocatoria enviada a ${r.recipients} persona${r.recipients === 1 ? '' : 's'}.`, false);
+        setTimeout(close, 1800);
+      } catch (e) {
+        setStatus('Error: ' + (e.message || e), true);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-jc-convoke-close')?.addEventListener('click', close);
+      document.querySelector('#pv-jc-convoke-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      $('pv-jc-convoke-send')?.addEventListener('click', send);
+    }
+
+    function open(article) {
+      _article = article;
+      wireOnce();
+      const modal = $('pv-jc-convoke-modal');
+      if (!modal) return;
+      setStatus('', false);
+      const titleEl = $('pv-jc-convoke-article-title');
+      if (titleEl) titleEl.textContent = article.title || '(sin título)';
+      ['pv-jc-convoke-when', 'pv-jc-convoke-where', 'pv-jc-convoke-notes'].forEach(id => {
+        const el = $(id); if (el) el.value = '';
+      });
+      const sendBtn = $('pv-jc-convoke-send');
+      if (sendBtn) sendBtn.disabled = false;
+      modal.style.display = 'flex';
+      setTimeout(() => $('pv-jc-convoke-when')?.focus(), 50);
     }
 
     return { open };
@@ -10396,6 +10487,10 @@
 
   // ── wiring ─────────────────────────────────────────────────────────────
   function init() {
+    // Whether this user may send the JC convocation email — not in the
+    // session (only in users.csv), so fetched once up front.
+    api('/me').then(r => { IS_JC_RESPONSIBLE = !!r.is_jc_responsible; }).catch(() => {});
+
     const debounce = (fn, ms) => {
       let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
     };

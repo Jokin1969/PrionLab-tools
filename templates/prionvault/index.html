@@ -2290,6 +2290,57 @@
   </div>
 </div>
 
+<!-- ── JC convocation modal (admin / JC-responsible only) ────────────────
+     Sends the actual "come to Journal Club" announcement — date/time,
+     optional location and notes — to every active user, once an article
+     is marked is_jc and a session slot has been picked. Distinct from
+     "Informar al responsable" above, which just asks for consideration
+     before any date exists. -->
+<div id="pv-jc-convoke-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:480px;">
+    <button class="pv-modal-close" id="pv-jc-convoke-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-bullhorn" style="color:#9d174d;margin-right:8px;"></i>Convocar Journal Club
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 4px;">
+      Se enviará un email a <strong>todo el laboratorio</strong> con los datos del artículo
+      (y el PDF, si está disponible) más la fecha/hora que indiques.
+    </p>
+    <p id="pv-jc-convoke-article-title" style="color:#111827;font-size:12.5px;font-weight:600;margin:0 0 14px;"></p>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <label style="font-size:11.5px;color:#6b7280;">
+        Cuándo <span style="color:#b91c1c;">*</span>
+        <input id="pv-jc-convoke-when" type="text" placeholder="Jueves 18 de septiembre, 12:00"
+               style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;
+                      font-size:13px;margin-top:3px;box-sizing:border-box;">
+      </label>
+      <label style="font-size:11.5px;color:#6b7280;">
+        Dónde <span style="color:#9ca3af;">(opcional)</span>
+        <input id="pv-jc-convoke-where" type="text" placeholder="Sala de reuniones / enlace de videollamada"
+               style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;
+                      font-size:13px;margin-top:3px;box-sizing:border-box;">
+      </label>
+      <label style="font-size:11.5px;color:#6b7280;">
+        Notas adicionales <span style="color:#9ca3af;">(opcional)</span>
+        <textarea id="pv-jc-convoke-notes" rows="3" placeholder="Cualquier detalle extra para el aviso…"
+                  style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;
+                         font-size:13px;margin-top:3px;box-sizing:border-box;resize:vertical;"></textarea>
+      </label>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button type="button" id="pv-jc-convoke-send"
+              style="padding:9px 16px;border-radius:8px;border:none;background:#9d174d;
+                     color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-paper-plane" style="margin-right:6px;"></i>Enviar convocatoria
+      </button>
+    </div>
+    <div id="pv-jc-convoke-status" style="font-size:12px;margin-top:10px;min-height:16px;text-align:right;"></div>
+  </div>
+</div>
+
 <!-- ── Cart bulk-email modal (2+ articles selected) ────────────────────── -->
 <div id="pv-cart-email-modal" class="pv-modal" style="display:none;">
   <div class="pv-modal-backdrop"></div>

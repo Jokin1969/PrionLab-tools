@@ -126,6 +126,25 @@ def _viewer_id() -> Optional[str]:
     return uid
 
 
+def _viewer_is_jc_responsible() -> bool:
+    """True if the logged-in user is flagged is_jc_responsible in
+    users.csv (core/users.py) — independent of admin/reader role.
+    Extension requests and unauthenticated callers are never
+    responsible. Gates who may send the JC convocation broadcast."""
+    if getattr(g, "_ext_authed", False):
+        return False
+    uname = session.get("username")
+    if not uname:
+        return False
+    try:
+        from core.users import get_user
+        u = get_user(uname)
+        return bool(u and (u.get("is_jc_responsible") or "").lower() == "true")
+    except Exception:
+        logger.debug("_viewer_is_jc_responsible: lookup failed for %s", uname, exc_info=True)
+        return False
+
+
 def _session() -> SASession:
     return db.Session()
 

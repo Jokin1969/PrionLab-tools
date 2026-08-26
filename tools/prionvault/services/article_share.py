@@ -467,3 +467,78 @@ def send_jc_request_email(article_id: str, requester_name: str = "") -> dict:
 
     return {"ok": bool(sent), "sent": sent, "failed": failed,
             "attached_pdf": bool(attachments)}
+
+
+# ── Journal Club convocation (lab-wide announcement) ────────────────────────
+# Once an article is marked is_jc and the responsible has picked a date, this
+# sends the actual "come to Journal Club" announcement to every active user
+# — distinct from send_jc_request_email above, which only asks the
+# responsible to CONSIDER an article, before any date is set.
+
+def send_jc_convocation_email(article_id: str, *, when_text: str,
+                              location_text: str = "", notes: str = "",
+                              requester_name: str = "") -> dict:
+    """Emails every active user announcing a Journal Club session for
+    this article. `when_text` (date/time, free text so the responsible
+    can phrase it however — "Jueves 14 de agosto, 12:00") is required;
+    location and extra notes are optional. Sent To: the sender, Bcc:
+    everyone else, so recipients don't see the full lab's email list.
+
+    Raises ValueError if when_text is blank, LookupError if the article
+    doesn't exist or there are no active users, RuntimeError if SMTP
+    isn't configured or the send itself fails."""
+    when_text = (when_text or "").strip()
+    if not when_text:
+        raise ValueError("Falta indicar cuándo es la sesión.")
+
+    from core.users import list_active_users
+
+    a = _fetch_article(article_id)
+    if not a:
+        raise LookupError("article_not_found")
+
+    recipients = [u["email"].strip() for u in list_active_users() if u.get("email")]
+    if not recipients:
+        raise LookupError("no_active_users")
+
+    from config import smtp_configured
+    if not smtp_configured():
+        raise RuntimeError("El servidor de correo no está configurado.")
+
+    base = _base_url()
+
+    comment = (
+        f"Convocatoria de Journal Club{(' — la propone ' + requester_name) if requester_name else ''}."
+        f"\n\n📅 Cuándo: {when_text}"
+        + (f"\n📍 Dónde: {location_text.strip()}" if location_text.strip() else "")
+        + (f"\n\n{notes.strip()}" if notes.strip() else "")
+    )
+    html = build_share_html(a, base, "", True, comment)
+    plain = _plain(a, base, requester_name, True, comment)
+
+    # Best-effort PDF attachment.
+    attachments = []
+    try:
+        from .email_digest import _collect_pdf_attachments
+        attachments, _ = _collect_pdf_attachments([a])
+    except Exception as exc:
+        logger.warning("article_share: PDF collect failed for JC convocation: %s", exc)
+
+    subject = f"Journal Club — {when_text[:60]} — {a.get('title') or ''}"[:160]
+    sender = recipients[0]
+    bcc = recipients[1:] if len(recipients) > 1 else []
+    try:
+        if attachments:
+            from core.smtp_client import send_email_with_attachments
+            ok = send_email_with_attachments(sender, subject, plain, attachments,
+                                             html=html, bcc=bcc)
+        else:
+            from core.smtp_client import send_email
+            ok = send_email(sender, subject, plain, html=html, bcc=bcc)
+    except Exception as exc:
+        logger.exception("article_share: JC convocation send failed")
+        raise RuntimeError(f"El envío del email falló: {exc}") from exc
+    if not ok:
+        raise RuntimeError("El envío del email falló (revisa el servidor SMTP).")
+
+    return {"ok": True, "recipients": len(recipients), "attached_pdf": bool(attachments)}

@@ -25,7 +25,7 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
 
-from flask import Response, jsonify, redirect, render_template_string, request, send_file, url_for
+from flask import Response, jsonify, redirect, render_template_string, request, send_file, session, url_for
 from sqlalchemy import text as sql_text
 from sqlalchemy.exc import IntegrityError
 
@@ -2055,8 +2055,13 @@ def _current_user_contact() -> dict:
 @prionvault_bp.route("/api/me", methods=["GET"])
 @login_required
 def api_me():
-    """Name + email of the logged-in user (for the share-email modal)."""
-    return jsonify(_current_user_contact())
+    """Name + email of the logged-in user (for the share-email modal),
+    plus is_jc_responsible (for showing the "Convocar Journal Club"
+    button to the right people)."""
+    from ._helpers import _viewer_is_jc_responsible
+    out = _current_user_contact()
+    out["is_jc_responsible"] = _viewer_is_jc_responsible()
+    return jsonify(out)
 
 
 @prionvault_bp.route("/api/users-directory", methods=["GET"])
@@ -2167,6 +2172,43 @@ def api_article_jc_request(aid):
         return jsonify({"error": "send_failed", "detail": str(exc)}), 502
     except Exception as exc:
         logger.exception("JC request email failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"ok": True, **result})
+
+
+@prionvault_bp.route("/api/articles/<uuid:aid>/jc-convocation", methods=["POST"])
+@login_required
+def api_article_jc_convocation(aid):
+    """Send the lab-wide "come to Journal Club" announcement for this
+    article — date/time (+ optional location/notes) to every active
+    user. Restricted to admins and users flagged is_jc_responsible."""
+    from ._helpers import _viewer_is_jc_responsible
+    if not (session.get("role") == "admin" or _viewer_is_jc_responsible()):
+        return jsonify({"error": "forbidden",
+                        "detail": "Solo el administrador o el responsable de Journal Club puede convocar."}), 403
+
+    body = request.get_json(silent=True) or {}
+    when_text = (body.get("when_text") or "").strip()
+    location_text = (body.get("location_text") or "").strip()
+    notes = (body.get("notes") or "").strip()
+
+    from .services import article_share
+    me = _current_user_contact()
+    try:
+        result = article_share.send_jc_convocation_email(
+            str(aid), when_text=when_text, location_text=location_text,
+            notes=notes, requester_name=me.get("name") or "")
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except LookupError as exc:
+        if str(exc) == "article_not_found":
+            return jsonify({"error": "not_found"}), 404
+        return jsonify({"error": "no_recipients",
+                        "detail": "No hay usuarios activos a los que avisar."}), 400
+    except RuntimeError as exc:
+        return jsonify({"error": "send_failed", "detail": str(exc)}), 502
+    except Exception as exc:
+        logger.exception("JC convocation email failed")
         return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
     return jsonify({"ok": True, **result})
 

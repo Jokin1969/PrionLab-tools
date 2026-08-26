@@ -111,6 +111,16 @@ def list_admin_emails() -> list[str]:
     ]
 
 
+def list_active_users() -> list[dict]:
+    """Every active user (any role) with an email — the recipient list
+    for lab-wide broadcasts like the Journal Club convocation email."""
+    return [
+        u for u in load_users()
+        if (u.get("active") or "true").lower() == "true"
+        and (u.get("email") or "").strip()
+    ]
+
+
 def list_jc_responsible() -> list[dict]:
     """Every active user flagged as a Journal Club responsible (full
     user dict — used when the caller needs the name, not just the
