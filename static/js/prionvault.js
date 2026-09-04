@@ -3293,6 +3293,24 @@
     });
   }
 
+  // Plain-text citation block for "copy → paste into Word", used by the
+  // cart's per-row 📋 button. Real \n line breaks (not <br> — this goes
+  // straight to the clipboard as text/plain) so Word sees actual
+  // paragraph breaks instead of one run-on line.
+  function _citationText(a) {
+    const lines = [a.title || '(sin título)', ''];
+    if (a.authors) lines.push(a.authors, '');
+    const journalYear = [a.journal, a.year ? String(a.year) : ''].filter(Boolean).join(', ');
+    if (journalYear) lines.push(journalYear, '');
+    const ids = [];
+    if (a.doi)        ids.push(`DOI: ${a.doi}`);
+    if (a.pubmed_id)  ids.push(`PMID: ${a.pubmed_id}`);
+    if (ids.length) lines.push(ids.join('  ·  '));
+    // Trim a trailing blank line left by the last section not firing.
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    return lines.join('\n');
+  }
+
   function _providerBadgeHtml(provider) {
     if (provider === 'anthropic') return '<span class="pv-prov-badge" title="Resumen generado por Claude (Anthropic)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#5b21b6;">✦ Claude</span>';
     if (provider === 'openai')    return '<span class="pv-prov-badge" title="Resumen generado por GPT (OpenAI)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">⬡ GPT</span>';
@@ -9455,6 +9473,13 @@
                      border:none;cursor:pointer;vertical-align:middle;">
               <i class="fas fa-paper-plane"></i></button>`;
 
+      const copyBtn = `<button type="button" class="pv-cart-row-copy-btn" data-aid="${esc(a.id)}"
+              title="Copiar la cita (título, autores, revista, DOI/PMID) para pegar en Word"
+              style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;
+                     font-size:10.5px;font-weight:600;background:#f3f4f6;color:#374151;
+                     border:none;cursor:pointer;vertical-align:middle;">
+              <i class="fas fa-copy"></i></button>`;
+
       return `
         <div class="pv-cart-row" data-aid="${esc(a.id)}"
              style="display:flex;align-items:flex-start;gap:10px;padding:10px 6px;border-bottom:1px solid #f3f4f6;">
@@ -9474,6 +9499,7 @@
               ${notesCluster}
               ${jcBtn}
               ${emailBtn}
+              ${copyBtn}
             </div>
           </div>
           <button type="button" class="pv-cart-row-remove" data-aid="${esc(a.id)}"
@@ -9596,6 +9622,32 @@
           const full = _extra.get(aid);
           const base = items.find(a => a.id === aid);
           PVEmailShare.open(full && full.title ? full : base);
+        });
+      });
+      list?.querySelectorAll('.pv-cart-row-copy-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const aid = btn.dataset.aid;
+          const full = _extra.get(aid);
+          const base = items.find(a => a.id === aid);
+          const a = (full && full.title) ? full : base;
+          if (!a) return;
+          const icon = btn.querySelector('i');
+          const prevClass = icon ? icon.className : null;
+          try {
+            await navigator.clipboard.writeText(_citationText(a));
+            if (icon) icon.className = 'fas fa-check';
+            btn.style.background = '#dcfce7';
+            btn.style.color = '#15803d';
+          } catch (err) {
+            if (icon) icon.className = 'fas fa-xmark';
+          } finally {
+            setTimeout(() => {
+              if (icon && prevClass) icon.className = prevClass;
+              btn.style.background = '#f3f4f6';
+              btn.style.color = '#374151';
+            }, 1400);
+          }
         });
       });
       syncActionsBtn();
@@ -20888,6 +20940,9 @@
 
           <h4>🧠 Botón "Recordar" en el chat de cada artículo</h4>
           <p>En el chat de IA de un artículo, el botón <strong>🧠 Recordar</strong> pide a la IA que destile la conversación en una nota corta (2-4 frases) pensada para reconocer y localizar ese artículo más adelante — no es un resumen del artículo, sino un recordatorio de <em>por qué</em> te interesó y qué sacaste de la conversación. La nota se guarda automáticamente en <strong>Notas del artículo</strong> (mismo sistema que las notas adhesivas manuales, hasta 5 por artículo). Si ya tienes las 5 notas ocupadas, te ofrece copiar el texto generado para pegarlo tú donde prefieras.</p>
+
+          <h4>📋 Copiar cita para pegar en Word desde el carrito</h4>
+          <p>Cada artículo del carrito tiene ahora, junto al botón de enviar por email, un botón <strong>📋</strong> que copia al portapapeles el título, los autores, la revista/año y el DOI/PMID en varias líneas separadas — pégalo directamente en un Word y queda ya formateado en párrafos, sin tener que arreglar saltos de línea a mano.</p>
 
           <h4>📖 Glosario integrado como modal de PrionVault</h4>
           <p>El botón <strong>Glosario</strong> de la barra lateral ya no te saca de PrionVault a otra página — abre un modal, con el mismo diseño y funciones que antes (buscar, filtrar por categoría, añadir, editar en línea, importar/exportar), sin cambiar de menú. La página independiente <code>/prionvault/admin/glossary</code> se mantiene por si otras herramientas (PrionLab, PrionPacks) enlazan directamente a ella, pero desde PrionVault ya no hace falta salir.</p>
