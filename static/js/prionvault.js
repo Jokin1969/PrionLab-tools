@@ -10996,6 +10996,24 @@
           return;
         }
         ids.forEach(id => state.selectedIds.add(id));
+        // Also apply the "sin PDF" filter and clear anything else that
+        // could hide some of those rows — otherwise the bulk bar would
+        // say "N seleccionados" while the visible list (still under
+        // whatever filters/search were active) shows a totally
+        // different, confusing subset (or none of them at all).
+        state.q = ''; state.yearMin = null; state.yearMax = null;
+        state.journal = ''; state.authors = ''; state.tagId = null;
+        clearMarkFilters();
+        state.hasPdf = false;
+        state.page = 1;
+        const si = document.getElementById('pv-search-input');
+        if (si) { si.value = ''; const cb = document.getElementById('pv-search-clear'); if (cb) cb.style.display = 'none'; }
+        const fy1 = document.getElementById('filter-year-min'); if (fy1) fy1.value = '';
+        const fy2 = document.getElementById('filter-year-max'); if (fy2) fy2.value = '';
+        const fa = document.getElementById('filter-authors'); if (fa) fa.value = '';
+        const fj = document.getElementById('filter-journal'); if (fj) fj.value = '';
+        syncMarkFilterButtons();
+        await loadArticles();
         document.querySelectorAll('.pv-row-select').forEach(cb => {
           cb.checked = state.selectedIds.has(cb.dataset.aid);
         });
