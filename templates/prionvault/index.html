@@ -843,6 +843,17 @@
           </select>
         </label>
         <div style="flex:1;"></div>
+        <!-- Quick-select every article with no PDF, regardless of the
+             current filters — for a one-click "let me bulk-act on
+             these" (delete, tag, export DOIs to chase down…). -->
+        <button id="btn-select-no-pdf" type="button"
+                title="Seleccionar rápidamente todos los artículos sin PDF"
+                style="position:relative;display:flex;align-items:center;justify-content:center;
+                       width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;
+                       background:#fff;cursor:pointer;flex-shrink:0;font-size:15px;
+                       transition:background 0.12s,border-color 0.12s;">
+          <i class="fas fa-file-circle-xmark" style="color:#b91c1c;"></i>
+        </button>
         <!-- Cart icon — opens PrionPacks in new tab, badge shows cart count -->
         <button id="btn-filter-notes-head" type="button"
                 title="Mostrar solo artículos con notas (sticky notes)"

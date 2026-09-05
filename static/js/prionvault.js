@@ -2451,6 +2451,16 @@
     return (r.items || []).map(a => a.id);
   }
 
+  // Fetches every article id with no PDF, independent of whatever
+  // filters are currently applied — for the 📄✕ quick-select button.
+  async function fetchAllNoPdfIds() {
+    const first = await api('/articles?has_pdf=false&size=1&page=1');
+    const total = Math.min(50_000, first.total || 0);
+    if (!total) return [];
+    const r = await api('/articles?has_pdf=false&size=' + total + '&page=1');
+    return (r.items || []).map(a => a.id);
+  }
+
   async function bulkPatch(updates, opts = {}) {
     const ids = Array.from(state.selectedIds);
     if (!ids.length) return;
@@ -10971,6 +10981,32 @@
       state.page = 1;
       loadArticles();
       _paintNotesFilterBtns();
+    });
+
+    document.getElementById('btn-select-no-pdf')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const icon = btn.querySelector('i');
+      const prevClass = icon ? icon.className : null;
+      btn.disabled = true;
+      if (icon) icon.className = 'fas fa-spinner fa-spin';
+      try {
+        const ids = await fetchAllNoPdfIds();
+        if (!ids.length) {
+          alert('No hay ningún artículo sin PDF.');
+          return;
+        }
+        ids.forEach(id => state.selectedIds.add(id));
+        document.querySelectorAll('.pv-row-select').forEach(cb => {
+          cb.checked = state.selectedIds.has(cb.dataset.aid);
+        });
+        updateBulkBar();
+        syncSelectAllHeader();
+      } catch (err) {
+        alert('No se pudo seleccionar: ' + (err.message || err));
+      } finally {
+        btn.disabled = false;
+        if (icon && prevClass) icon.className = prevClass;
+      }
     });
 
     document.getElementById('pv-detail-close').addEventListener('click', closeDetail);
@@ -20939,10 +20975,19 @@
           <p>Ejemplo completo: <code>Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab])</code> — encuentra artículos donde el título contenga "Castilla" o "Desojo", <em>y además</em> el abstract contenga "avión" o "casa". Un error de sintaxis (paréntesis sin cerrar, campo desconocido…) se avisa al guardar, con el motivo exacto. El propio formulario de reglas muestra ahora esta misma explicación siempre visible, no solo al pasar el ratón por el icono ⓘ.</p>
 
           <h4>🧠 Botón "Recordar" en el chat de cada artículo</h4>
-          <p>En el chat de IA de un artículo, el botón <strong>🧠 Recordar</strong> pide a la IA que destile la conversación en una nota corta (2-4 frases) pensada para reconocer y localizar ese artículo más adelante — no es un resumen del artículo, sino un recordatorio de <em>por qué</em> te interesó y qué sacaste de la conversación. La nota se guarda automáticamente en <strong>Notas del artículo</strong> (mismo sistema que las notas adhesivas manuales, hasta 5 por artículo). Si ya tienes las 5 notas ocupadas, te ofrece copiar el texto generado para pegarlo tú donde prefieras.</p>
+          <p>En el chat de IA de un artículo, el botón <strong>🧠 Recordar</strong> pide a la IA que destile la conversación en una nota (3-5 párrafos breves, con las cifras/métodos/hallazgos concretos del chat, no una frase vaga de "me interesó X") pensada para reconocer y localizar ese artículo más adelante — no es un resumen del artículo, sino un recordatorio técnico de <em>por qué</em> te interesó y qué aprendiste en la conversación, terminando con una "Idea clave para futuras consultas". La nota se guarda automáticamente en <strong>Notas del artículo</strong> (mismo sistema que las notas adhesivas manuales, hasta 5 por artículo). Si ya tienes las 5 notas ocupadas, te ofrece copiar el texto generado para pegarlo tú donde prefieras.</p>
 
           <h4>📋 Copiar cita para pegar en Word desde el carrito</h4>
           <p>Cada artículo del carrito tiene ahora, junto al botón de enviar por email, un botón <strong>📋</strong> que copia al portapapeles el título, los autores, la revista/año y el DOI/PMID en varias líneas separadas — pégalo directamente en un Word y queda ya formateado en párrafos, sin tener que arreglar saltos de línea a mano.</p>
+
+          <h4>⬇ Descarga directa de PDF desde el listado</h4>
+          <p>En cada fila del listado, justo antes del icono 📍 (aislar artículo), hay un botón ⬇ (solo si el artículo tiene PDF) que lo descarga directamente al disco — a diferencia del enlace "PDF" existente, que lo abre en el visor del navegador. Es el mismo mecanismo que ya usaba el botón de descarga del carrito.</p>
+
+          <h4>🚫📄 Seleccionar rápidamente los artículos sin PDF</h4>
+          <p>Junto a los iconos 📝 (notas) y 🛒 (carrito), en la parte superior del listado, hay un botón nuevo que selecciona de un clic <strong>todos los artículos de la biblioteca que no tienen PDF</strong> — sin importar los filtros que tengas puestos en ese momento — y activa la barra de acciones en lote (etiquetar, borrar, exportar DOIs desde "Cribar lista de referencias", etc.) sobre esa selección.</p>
+
+          <h4>🔗 "Cribar lista de referencias" reconoce enlaces sueltos y citas numeradas entre corchetes</h4>
+          <p>Además de las bibliografías clásicas ("1. Autor..."), el cribador ahora reconoce listados exportados de un chatbot o de un panel de "Fuentes", con marcadores <code>[1] [3] [8] ...</code> al principio de línea (varios números pueden apuntar a la misma referencia) seguidos del enlace. También extrae el PMID directamente de un enlace <code>pubmed.ncbi.nlm.nih.gov/&lt;pmid&gt;/</code> aunque no ponga "PMID:", y corta correctamente el DOI cuando viene incrustado en la URL de una revista (antes se tragaba el resto de la dirección — parámetros de seguimiento incluidos).</p>
 
           <h4>📖 Glosario integrado como modal de PrionVault</h4>
           <p>El botón <strong>Glosario</strong> de la barra lateral ya no te saca de PrionVault a otra página — abre un modal, con el mismo diseño y funciones que antes (buscar, filtrar por categoría, añadir, editar en línea, importar/exportar), sin cambiar de menú. La página independiente <code>/prionvault/admin/glossary</code> se mantiene por si otras herramientas (PrionLab, PrionPacks) enlazan directamente a ella, pero desde PrionVault ya no hace falta salir.</p>
