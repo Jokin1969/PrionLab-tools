@@ -201,11 +201,22 @@ def find_pmid_in_text(text: str) -> Optional[str]:
 
 
 def _extract_first_meaningful_line(text: str) -> Optional[str]:
-    """Heuristic for `title_hint`: first non-trivial line of the first page."""
+    """Heuristic for `title_hint`: first non-trivial line of the first page.
+
+    This hint feeds crossref_by_title() when a PDF carries no DOI, so a
+    wrong pick here isn't just cosmetic — two DIFFERENT articles whose
+    running-header text is near-identical (same journal, same section,
+    same volume/issue format) can both resolve to the same CrossRef
+    record and get treated as duplicates (PRIONVAULT bug report: two
+    unrelated NEJM "Clinical implications of basic research" pieces —
+    the masthead line "n engl j med 353;11 www.nejm.org september 15,
+    2005" was being picked up as the title_hint instead of the real
+    title a couple of lines below it).
+    """
     if not text:
         return None
-    for raw in text.split("\n")[:30]:
-        line = raw.strip()
+    lines = [raw.strip() for raw in text.split("\n")[:30]]
+    for idx, line in enumerate(lines):
         # Skip page numbers, journal headers, very short lines, all-caps
         # noise common in headers.
         if len(line) < 12:
@@ -214,7 +225,67 @@ def _extract_first_meaningful_line(text: str) -> Optional[str]:
             continue
         if re.match(r"^[\d\s\.]+$", line):
             continue
-        return line[:300]
+        # Journal masthead / running-header lines: a URL, a "volume;issue"
+        # citation stamp, or — the catch-all — starting with a lowercase
+        # letter. Real article titles are essentially always capitalised;
+        # running headers and section labels ("clinical implications of
+        # basic research") are typeset in lowercase small caps that PDF
+        # text extraction reports as literal lowercase.
+        if "www." in line.lower() or "http" in line.lower():
+            continue
+        if re.search(r"\b\d+\s*;\s*\d+\b", line):
+            continue
+        if line[:1].islower():
+            continue
+        # The journal's own name as a running header ("The New England
+        # Journal of Medicine") — matched narrowly (whole line, "the …
+        # journal of …") so it doesn't false-positive on the many real
+        # titles that legitimately start with "The" or contain "journal".
+        if re.fullmatch(r"the\s+.*\bjournal\s+of\s+\w+", line, re.IGNORECASE):
+            continue
+        # Some PDFs (kerning/font-embedding artifacts) render a masthead
+        # with every letter individually spaced ("T h e n e w  e ng l a
+        # n d …"), which slips past the checks above since it isn't
+        # recognisable word-by-word. A real title's words average well
+        # over 2 letters; letter-spaced junk averages close to 1.
+        alpha_tokens = re.findall(r"[A-Za-z]+", line)
+        if alpha_tokens and sum(len(w) for w in alpha_tokens) / len(alpha_tokens) < 2.5:
+            continue
+        # Titles frequently wrap onto a second (sometimes third) PDF
+        # line ("Developing therapeutics for the diseases" / "of protein
+        # misfolding"). Taking only the first line truncates the hint —
+        # and a truncated hint can overlap a WRONG CrossRef result even
+        # more than the full title would (PRIONVAULT: missing "of
+        # protein misfolding" made "Developing therapeutics for the
+        # diseases" match an unrelated "...for PrP Prion Diseases"
+        # paper even at a 70% threshold). Glue on the next line(s) as
+        # long as this line doesn't already end a sentence and the
+        # continuation looks like more title, not an author byline
+        # (starts lowercase, or continues the same capitalisation
+        # pattern without looking like a name list).
+        def _looks_like_byline(s: str) -> bool:
+            # Degree markers, numbered-affiliation superscripts
+            # ("Giles,1,2"), or a comma-heavy "X, Y and Z" author list.
+            if re.search(r"\bph\.?\s*d\.?\b|\bm\.?\s*d\.?\b", s, re.IGNORECASE):
+                return True
+            if re.search(r"[A-Za-z],\d", s):
+                return True
+            if s.count(",") >= 2 and re.search(r"\band\b", s, re.IGNORECASE):
+                return True
+            return False
+
+        merged = line
+        j = idx + 1
+        while (j < len(lines) and j < idx + 3
+               and merged[-1:] not in ".:?!"
+               and lines[j]
+               and not _looks_like_byline(lines[j])
+               and (lines[j][:1].islower()
+                    or sum(1 for w in re.findall(r"[A-Za-z]+", lines[j]) if len(w) >= 3 and w[:1].isupper())
+                       >= max(1, len(re.findall(r"[A-Za-z]+", lines[j])) // 2))):
+            merged = f"{merged} {lines[j]}"
+            j += 1
+        return merged[:300]
     return None
 
 
