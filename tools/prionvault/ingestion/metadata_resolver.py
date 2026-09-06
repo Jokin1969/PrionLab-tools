@@ -167,7 +167,13 @@ def crossref_by_title(title_hint: str, year_hint: Optional[int] = None,
     if not items:
         return None
     # CrossRef returns by relevance; trust the first match as long as the
-    # title overlaps with our hint at >= 70% of words.
+    # title overlaps with our hint at >= 70% of words. The threshold was
+    # documented as 70% here but the check actually enforced only 50% —
+    # loose enough that two DIFFERENT papers sharing a generic opening
+    # phrase ("Developing therapeutics for...") cleared it and got
+    # assigned the SAME DOI, which then made the dedup-by-DOI check
+    # block the second, genuinely distinct PDF as if it were already in
+    # the library. Enforcing the originally intended 70% fixes that.
     best = items[0]
     best_title_list = best.get("title") or []
     best_title = (best_title_list[0] if best_title_list else "").lower()
@@ -175,7 +181,7 @@ def crossref_by_title(title_hint: str, year_hint: Optional[int] = None,
     best_words = set(re.findall(r"\w+", best_title))
     if hint_words and best_words:
         overlap = len(hint_words & best_words) / max(1, len(hint_words))
-        if overlap < 0.5:
+        if overlap < 0.7:
             return None  # too dissimilar, don't risk a wrong match
     journal_list = best.get("container-title") or []
     return Metadata(
