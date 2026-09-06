@@ -166,23 +166,34 @@ def crossref_by_title(title_hint: str, year_hint: Optional[int] = None,
     items = (r.json().get("message") or {}).get("items") or []
     if not items:
         return None
-    # CrossRef returns by relevance; trust the first match as long as the
-    # title overlaps with our hint at >= 70% of words. The threshold was
-    # documented as 70% here but the check actually enforced only 50% —
-    # loose enough that two DIFFERENT papers sharing a generic opening
-    # phrase ("Developing therapeutics for...") cleared it and got
-    # assigned the SAME DOI, which then made the dedup-by-DOI check
-    # block the second, genuinely distinct PDF as if it were already in
-    # the library. Enforcing the originally intended 70% fixes that.
+    # This path only runs when the PDF carries NO DOI of its own — the
+    # only thing telling us "this is the same paper" is a fuzzy title
+    # match against whatever the PDF's first page happened to yield as a
+    # title_hint. Because there is no DOI in the document to confirm the
+    # match, and the picked hint can still be noisy (running headers,
+    # OCR artefacts, wrapped lines), we require the titles to be a near
+    # EXACT match rather than "mostly similar" — a merely high overlap is
+    # exactly what let two different papers ("Developing therapeutics for
+    # the diseases of protein misfolding" vs. "...for PrP Prion
+    # Diseases") get assigned the same DOI and be flagged as duplicates.
+    # We use Jaccard similarity (intersection / union) instead of a
+    # hint-relative ratio so a candidate with materially more or fewer
+    # words than the hint can no longer pass just because it happens to
+    # contain the hint's words.
     best = items[0]
     best_title_list = best.get("title") or []
     best_title = (best_title_list[0] if best_title_list else "").lower()
-    hint_words = set(re.findall(r"\w+", title_hint.lower()))
-    best_words = set(re.findall(r"\w+", best_title))
-    if hint_words and best_words:
-        overlap = len(hint_words & best_words) / max(1, len(hint_words))
-        if overlap < 0.7:
-            return None  # too dissimilar, don't risk a wrong match
+    hint_norm = re.sub(r"[^\w\s]", "", title_hint.lower()).strip()
+    best_norm = re.sub(r"[^\w\s]", "", best_title).strip()
+    hint_words = set(re.findall(r"\w+", hint_norm))
+    best_words = set(re.findall(r"\w+", best_norm))
+    exact_match = bool(hint_norm) and hint_norm == best_norm
+    if not exact_match:
+        if not (hint_words and best_words):
+            return None
+        jaccard = len(hint_words & best_words) / len(hint_words | best_words)
+        if jaccard < 0.92:
+            return None  # not confidently the same paper — no DOI to confirm it
     journal_list = best.get("container-title") or []
     return Metadata(
         doi=(best.get("DOI") or "").lower() or None,
