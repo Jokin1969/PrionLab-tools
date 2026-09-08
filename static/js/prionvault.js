@@ -21192,6 +21192,7 @@
         });
       });
       document.getElementById('pv-help-pdf-btn')?.addEventListener('click', _downloadAyudaPdf);
+      document.getElementById('pv-help-pptx-btn')?.addEventListener('click', _downloadAyudaPptx);
     }
   };
 
@@ -21220,6 +21221,36 @@
       URL.revokeObjectURL(url);
     } catch (e) {
       alert('No se pudo generar el PDF: ' + (e.message || e));
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = original; }
+    }
+  }
+
+  // Same idea as _downloadAyudaPdf but for the PPTX export — same tabs
+  // payload, different backend renderer (services/help_pptx.py), so both
+  // downloads always reflect whatever the Ayuda content currently says.
+  async function _downloadAyudaPptx() {
+    const btn = document.getElementById('pv-help-pptx-btn');
+    const original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando…'; }
+    try {
+      const tabsHtml = _helpTabsHtml();
+      const sections = _HELP_TABS.map(t => ({ tab: t.key, label: t.label, html: tabsHtml[t.key] || '' }));
+      const res = await fetch(`${API}/help/pptx`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sections }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'guia-prionvault.pptx';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('No se pudo generar el PPTX: ' + (e.message || e));
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = original; }
     }

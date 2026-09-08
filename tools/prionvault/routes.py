@@ -5162,6 +5162,31 @@ def api_help_report():
     })
 
 
+@prionvault_bp.route("/api/help/pptx", methods=["POST"])
+@login_required
+def api_help_pptx():
+    """PowerPoint version of the whole Ayuda modal content — the "PPTX"
+    button next to "Descargar PDF". Same payload as /api/help/report (the
+    frontend POSTs every tab's already-rendered HTML), so both exports
+    always reflect whatever the Ayuda content currently says."""
+    payload = request.get_json(silent=True) or {}
+    sections = payload.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return jsonify({"error": "no_sections", "detail": "Falta el contenido de la ayuda."}), 400
+
+    from .services import help_pptx
+    try:
+        content = help_pptx.render_pptx(sections)
+    except Exception as exc:
+        logger.exception("help pptx generation failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+
+    return Response(content, mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    headers={
+        "Content-Disposition": 'attachment; filename="guia-prionvault.pptx"',
+    })
+
+
 # Ingestion, PDF streaming, and AI-summary routes live in their own module.
 from . import routes_ingestion  # noqa: F401, E402
 
