@@ -21271,6 +21271,21 @@
         <div class="pv-help-section">
           <h3>Últimas novedades en PrionVault</h3>
 
+          <h4>📊 Presentación PPTX de esta Ayuda, junto al PDF</h4>
+          <p>En la cabecera de este modal, junto al botón <strong>PDF</strong>, hay un botón nuevo <strong>PPTX</strong> que descarga toda esta guía como una presentación de PowerPoint: portada, una diapositiva por cada pestaña de la Ayuda, una diapositiva por cada apartado dentro de ella (dividiéndose en "(cont.)" si no cabe en una sola) y tablas nativas de PowerPoint cuando las hay. Se genera a partir del mismo contenido que ves aquí, así que <strong>siempre está al día</strong> — no hay nada que actualizar a mano cuando se añade una novedad como esta.</p>
+
+          <h4>🤖 Nota generada por IA a partir de un texto libre</h4>
+          <p>Dentro del editor de <strong>Notas</strong> de un artículo, el botón <strong>"🤖 IA"</strong> abre un pequeño modal donde escribes lo que quieras apuntar — una idea, una cita, una pregunta, algo largo o cortísimo. La IA (Claude → GPT → Gemini, igual que en resúmenes) redacta con ello una nota corta centrada en <em>tu texto</em>, usando el artículo solo como apoyo secundario, pensada para servir de recordatorio: si luego preguntas "¿qué artículo hablaba de ###?", la nota debe ser fácil de encontrar por esas palabras clave. La nota se guarda automáticamente como una más de las 5 notas del artículo; si ya las tienes todas ocupadas, te ofrece copiar el texto generado en vez de perderlo.</p>
+
+          <h4>📦 Repositorio de carritos — guardar y recuperar selecciones completas</h4>
+          <p>Dos botones nuevos en la parte superior del carrito: <strong>📦 Guardar</strong> archiva el contenido actual del carrito con un nombre y la fecha, en un repositorio propio; <strong>📂 Repositorio</strong> muestra la lista de carritos guardados (nombre, fecha y número de artículos) con un botón <strong>Recuperar</strong> por cada uno y una papelera para eliminarlo. Al recuperar un carrito guardado se sustituye por completo el contenido del carrito actual — si no está vacío, se avisa antes de continuar.</p>
+
+          <h4>🤖 Chat de IA sobre todo el carrito a la vez</h4>
+          <p>Nuevo botón <strong>🤖</strong> en la parte superior del carrito: abre una única conversación de IA que tiene en cuenta <strong>todos</strong> los artículos del carrito a la vez (no solo uno), útil para comparar o relacionar varios trabajos. Cada artículo del carrito queda igualmente registrado como si tuviera su propio chat, a efectos de las estadísticas de uso.</p>
+
+          <h4>✉️ Enviar todo el carrito por email, con los PDFs adjuntos</h4>
+          <p>Nuevo botón <strong>✉️</strong> en la parte superior del carrito: envía <strong>todos</strong> los artículos del carrito en un único email, con los PDFs disponibles adjuntos — a diferencia de la opción "Acciones → Enviar por email" ya existente, que solo manda un listado con enlaces sin adjuntar nada. Los botones de la parte superior del carrito se han rediseñado además para ser más discretos: mismo tamaño, solo icono con su descripción al pasar el ratón.</p>
+
           <h4>🔎 Búsqueda booleana estilo PubMed en tags y colecciones inteligentes</h4>
           <p>El campo "Búsqueda libre" al crear/editar un <strong>tag inteligente</strong> o una <strong>colección inteligente</strong> ahora acepta una búsqueda booleana completa, no solo palabras sueltas:</p>
           <ul>
