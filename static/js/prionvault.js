@@ -8017,6 +8017,7 @@
     let _article = null;   // { id, title }
     let _chatId  = null;   // active conversation id (null until first send)
     let _sending = false;
+    let _groupArticleIds = null;  // set when this is the cart-wide chat (several articles)
 
     const $ = id => document.getElementById(id);
 
@@ -8155,6 +8156,14 @@
     async function ensureConversation() {
       if (_chatId) return _chatId;
       const provider = ($('pv-chat-provider') || {}).value || 'anthropic';
+      if (_groupArticleIds && _groupArticleIds.length) {
+        const r = await api('/cart/chats', {
+          method: 'POST',
+          body: JSON.stringify({ article_ids: _groupArticleIds, provider }),
+        });
+        _chatId = r.chat_id;
+        return _chatId;
+      }
       const r = await api(`/articles/${_article.id}/chats`, {
         method: 'POST',
         body: JSON.stringify({ provider }),
@@ -8318,7 +8327,7 @@
 
     async function updateLauncherCount(article) {
       const badge = document.getElementById('pv-detail-chat-count');
-      if (!article) return;
+      if (!article || _groupArticleIds) return;
       try {
         const r = await api(`/articles/${article.id}/chats`);
         const n = (r.chats || []).length;
@@ -8359,6 +8368,7 @@
     function open(article, opts = {}) {
       _article = article;
       _chatId = null;
+      _groupArticleIds = opts.groupArticleIds || null;
       wireOnce();
       const modal = document.getElementById('pv-chat-modal');
       if (!modal) return;
@@ -8384,13 +8394,21 @@
       renderMessages([]);
       modal.style.display = 'flex';
       populateProviders();
-      _paintHistoryBtn(false);   // reset to the default colour until the count for THIS article lands
-      updateLauncherCount(article);
-      if (opts.showHistory) loadHistory();
-      else {
+      const historyBtn = $('pv-chat-history-btn');
+      if (historyBtn) historyBtn.style.display = _groupArticleIds ? 'none' : '';
+      if (_groupArticleIds) {
         const panel = $('pv-chat-history-panel');
         if (panel) panel.style.display = 'none';
         $('pv-chat-input')?.focus();
+      } else {
+        _paintHistoryBtn(false);   // reset to the default colour until the count for THIS article lands
+        updateLauncherCount(article);
+        if (opts.showHistory) loadHistory();
+        else {
+          const panel = $('pv-chat-history-panel');
+          if (panel) panel.style.display = 'none';
+          $('pv-chat-input')?.focus();
+        }
       }
     }
 
@@ -9722,14 +9740,34 @@
       closeActions();
     }
 
-    // ── Bulk email (2+ selected) ─────────────────────────────────────────
+    // ── Bulk email (2+ selected, or the whole cart with PDFs) ────────────
     let _bulkIds = [];
+    let _bulkEndpoint = '/articles/email-list';
     function openBulkEmail(arts) {
       _bulkIds = arts.map(a => a.id);
+      _bulkEndpoint = '/articles/email-list';
       const modal = $('pv-cart-email-modal');
       if (!modal) return;
       $('pv-cart-email-count').textContent =
         `${arts.length} artículos — se enviará un listado con enlaces, sin PDF adjunto.`;
+      $('pv-cart-email-status').textContent = '';
+      const toEl = $('pv-cart-email-to');
+      const last = (() => { try { return localStorage.getItem('pv-share-last-email') || ''; } catch (e) { return ''; } })();
+      toEl.value = last;
+      $('pv-cart-email-comment').value = '';
+      modal.style.display = 'flex';
+      toEl.focus();
+    }
+    function openCartEmail() {
+      const items = window.PPCart?.getAll() || [];
+      if (!items.length) { alert('El carrito está vacío.'); return; }
+      close();
+      _bulkIds = items.map(a => a.id);
+      _bulkEndpoint = '/articles/email-cart';
+      const modal = $('pv-cart-email-modal');
+      if (!modal) return;
+      $('pv-cart-email-count').textContent =
+        `${items.length} artículo${items.length === 1 ? '' : 's'} del carrito — se enviarán en un único email con los PDFs disponibles adjuntos.`;
       $('pv-cart-email-status').textContent = '';
       const toEl = $('pv-cart-email-to');
       const last = (() => { try { return localStorage.getItem('pv-share-last-email') || ''; } catch (e) { return ''; } })();
@@ -9749,7 +9787,7 @@
       status.style.color = '#9ca3af';
       status.textContent = 'Enviando…';
       try {
-        await api('/articles/email-list', {
+        await api(_bulkEndpoint, {
           method: 'POST',
           body: JSON.stringify({
             to, article_ids: _bulkIds,
@@ -9768,11 +9806,23 @@
       }
     }
 
+    function openCartChat() {
+      const items = window.PPCart?.getAll() || [];
+      if (!items.length) { alert('El carrito está vacío.'); return; }
+      close();
+      PVChat.open(
+        { title: `Chat sobre ${items.length} artículo${items.length === 1 ? '' : 's'} del carrito` },
+        { groupArticleIds: items.map(a => a.id) },
+      );
+    }
+
     function wireOnce() {
       if (_wired) return;
       _wired = true;
       $('pv-cart-close')?.addEventListener('click', close);
       $('pv-cart-hide')?.addEventListener('click', close);
+      $('pv-cart-chat-btn')?.addEventListener('click', openCartChat);
+      $('pv-cart-email-all-btn')?.addEventListener('click', openCartEmail);
       $('pv-cart-show-in-list')?.addEventListener('click', () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) { alert('El carrito está vacío.'); return; }

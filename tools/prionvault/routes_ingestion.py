@@ -2242,6 +2242,35 @@ def api_articles_email_list():
     return jsonify(result)
 
 
+@prionvault_bp.route("/api/articles/email-cart", methods=["POST"])
+@login_required
+def api_articles_email_cart():
+    """Email the whole cart in ONE message, with every available PDF
+    attached — the "✉️ Enviar" button at the top of the cart panel
+    (distinct from /articles/email-list, the "Acciones" bulk action,
+    which never attaches PDFs).
+
+    Request body: {to, article_ids: [...], comment}
+    """
+    body = request.get_json(silent=True) or {}
+    to = (body.get("to") or "").strip()
+    article_ids = [str(x) for x in (body.get("article_ids") or []) if x]
+    me = _current_user_contact()
+    from .services import article_share
+    try:
+        result = article_share.send_cart_email(
+            article_ids, to, sender_name=me.get("name") or "",
+            comment=body.get("comment", ""))
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    except Exception as exc:
+        logger.exception("cart email failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify(result)
+
+
 # ── Email import landing page ─────────────────────────────────────────────────
 
 _IMPORT_PAGE = """<!DOCTYPE html>

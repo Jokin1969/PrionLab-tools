@@ -22,6 +22,15 @@
   }
   .pv-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: white; }
   .pv-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ── Cart top-row buttons (discrete, uniform, icon-only) ──────────────── */
+  .pv-cart-top-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 7px; border: 1px solid #d1d5db;
+    background: #fff; color: #374151; font-size: 12.5px; cursor: pointer;
+    flex-shrink: 0; transition: background 0.12s, border-color 0.12s;
+  }
+  .pv-cart-top-btn:hover { background: #f9fafb; }
   /* Collection rows read slightly larger than the base nav size; tag
      rows keep the base size so they never exceed it. */
   .pv-nav-btn.pv-coll-row { font-size: 9px; }
@@ -2171,26 +2180,28 @@
       Todos
     </label>
     <div style="display:flex;align-items:center;gap:6px;">
-      <button id="pv-cart-show-in-list" type="button"
-              title="Aislar el listado principal a los artículos del carrito"
-              style="display:flex;align-items:center;gap:6px;
-                     padding:5px 10px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
-                     color:#374151;font-size:11.5px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-list"></i> Ver en listado
+      <button id="pv-cart-chat-btn" type="button" class="pv-cart-top-btn"
+              title="Chat con IA sobre todos los artículos del carrito"
+              style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5;">
+        <i class="fas fa-robot"></i>
       </button>
-      <button id="pv-cart-hide" type="button"
-              title="Ocultar el carrito sin vaciarlo — los artículos siguen ahí"
-              style="display:flex;align-items:center;gap:6px;
-                     padding:5px 10px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
-                     color:#374151;font-size:11.5px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-eye-slash"></i> Ocultar
+      <button id="pv-cart-email-all-btn" type="button" class="pv-cart-top-btn"
+              title="Enviar por email todos los artículos del carrito, con sus PDFs adjuntos">
+        <i class="fas fa-paper-plane"></i>
       </button>
-      <button id="pv-cart-clear-all" type="button"
+      <span style="width:1px;height:20px;background:#e5e7eb;margin:0 2px;"></span>
+      <button id="pv-cart-show-in-list" type="button" class="pv-cart-top-btn"
+              title="Aislar el listado principal a los artículos del carrito">
+        <i class="fas fa-list"></i>
+      </button>
+      <button id="pv-cart-hide" type="button" class="pv-cart-top-btn"
+              title="Ocultar el carrito sin vaciarlo — los artículos siguen ahí">
+        <i class="fas fa-eye-slash"></i>
+      </button>
+      <button id="pv-cart-clear-all" type="button" class="pv-cart-top-btn"
               title="Vaciar el carrito"
-              style="display:flex;align-items:center;gap:6px;
-                     padding:5px 10px;border-radius:7px;border:1px solid #fecaca;background:#fff;
-                     color:#b91c1c;font-size:11.5px;font-weight:600;cursor:pointer;">
-        <i class="fas fa-trash"></i> Vaciar carrito
+              style="border-color:#fecaca;color:#b91c1c;">
+        <i class="fas fa-trash"></i>
       </button>
     </div>
   </div>

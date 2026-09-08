@@ -339,6 +339,53 @@ def send_article_list_email(article_ids: list, to: str,
     return {"ok": True, "count": len(articles)}
 
 
+def send_cart_email(article_ids: list, to: str,
+                    sender_name: str = "", comment: str = "") -> dict:
+    """Send the cart's articles as ONE email, with every available PDF
+    attached — the cart-wide equivalent of send_article_email(), used by
+    the "✉️ Enviar" button at the top of the cart. Unlike
+    send_article_list_email() (the "Acciones" bulk action, links only,
+    no attachments), this one collects and attaches every PDF it can
+    find, same as the single-article email."""
+    to = (to or "").strip()
+    if not _EMAIL_RE.match(to):
+        raise ValueError("Dirección de email no válida.")
+    if not article_ids:
+        raise ValueError("No hay artículos seleccionados.")
+
+    articles = [a for a in (_fetch_article(aid) for aid in article_ids) if a]
+    if not articles:
+        raise LookupError("articles_not_found")
+
+    comment = (comment or "").strip()[:2000]
+    base = _base_url()
+    html = build_share_list_html(articles, base, sender_name, comment)
+    plain = _plain_list(articles, base, sender_name, comment)
+    subject = f"PrionVault · {len(articles)} artículos del carrito"[:160]
+
+    attachments = []
+    try:
+        from .email_digest import _collect_pdf_attachments
+        attachments, _ = _collect_pdf_attachments(articles)
+    except Exception as exc:
+        logger.warning("article_share: cart PDF collect failed: %s", exc)
+
+    from config import smtp_configured
+    if not smtp_configured():
+        raise RuntimeError("El servidor de correo no está configurado.")
+
+    if attachments:
+        from core.smtp_client import send_email_with_attachments
+        ok = send_email_with_attachments(to, subject, plain, attachments, html=html)
+    else:
+        from core.smtp_client import send_email
+        ok = send_email(to=to, subject=subject, body=plain, html=html)
+
+    if not ok:
+        raise RuntimeError("El envío del email falló (revisa el servidor SMTP).")
+    return {"ok": True, "count": len(articles), "attached_pdfs": len(attachments)}
+
+
 def render_preview(article_id: str, sender_name: str = "",
                    include_summary: bool = True, comment: str = "") -> str:
     """Return the share email HTML without sending it (for the preview)."""

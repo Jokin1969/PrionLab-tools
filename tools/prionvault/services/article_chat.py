@@ -28,6 +28,7 @@ import logging
 import re
 import threading
 import time
+import uuid
 from typing import Optional
 
 from sqlalchemy import text as _sql
@@ -60,6 +61,30 @@ Reglas:
 respuesta no está en el material disponible, dilo con claridad en lugar \
 de inventarla, y si procede aporta contexto general marcándolo como \
 conocimiento externo al artículo.
+- Sé preciso con la terminología científica y con las cifras: no \
+inventes valores, nombres ni conclusiones que no aparezcan.
+- Ten en cuenta las preguntas y respuestas previas de la conversación \
+para dar continuidad.
+- Responde en español (salvo que el usuario escriba en otro idioma), en \
+tono claro y directo, con la extensión que la pregunta requiera."""
+
+# Used instead of _SYSTEM_PROMPT when the chat spans several articles at
+# once (the cart-wide "Chat IA" button) — see create_group_chat().
+_SYSTEM_PROMPT_GROUP = """Eres un asistente de investigación científica \
+especializado en biomedicina, priones y neurodegeneración. El usuario te \
+hace preguntas sobre un CONJUNTO de varios artículos científicos (los que \
+tiene seleccionados en su carrito de PrionVault), cuyo contexto se te \
+proporciona a continuación, cada uno claramente delimitado y numerado.
+
+Reglas:
+- Responde apoyándote en el contenido de los artículos proporcionados, \
+indicando de cuál procede la información cuando sea relevante (por \
+ejemplo "según el artículo 2...").
+- Si la pregunta requiere comparar, relacionar o contrastar varios \
+artículos, hazlo explícitamente.
+- Si la respuesta no está en el material disponible, dilo con claridad \
+en lugar de inventarla, y si procede aporta contexto general marcándolo \
+como conocimiento externo a los artículos.
 - Sé preciso con la terminología científica y con las cifras: no \
 inventes valores, nombres ni conclusiones que no aparezcan.
 - Ten en cuenta las preguntas y respuestas previas de la conversación \
@@ -100,9 +125,9 @@ def _fetch_article(article_id: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
-def _fetch_article_text(article_id: str) -> str:
+def _fetch_article_text(article_id: str, cap: int = _ARTICLE_TEXT_CHAR_CAP) -> str:
     """Concatenate the article's indexed chunks (the same text used for
-    vector search) up to the char cap, in reading order."""
+    vector search) up to `cap` chars, in reading order."""
     eng = _get_engine()
     try:
         with eng.connect() as conn:
@@ -121,8 +146,8 @@ def _fetch_article_text(article_id: str) -> str:
     for (txt,) in rows:
         if not txt:
             continue
-        if running + len(txt) > _ARTICLE_TEXT_CHAR_CAP:
-            parts.append(txt[: max(0, _ARTICLE_TEXT_CHAR_CAP - running)])
+        if running + len(txt) > cap:
+            parts.append(txt[: max(0, cap - running)])
             break
         parts.append(txt)
         running += len(txt)
@@ -177,11 +202,70 @@ def _build_user_prompt(article: dict, article_text: str,
     return "\n".join(sections)
 
 
+def _build_group_user_prompt(articles: list[tuple[dict, str]],
+                             history: list[dict], question: str) -> str:
+    """Same shape as _build_user_prompt but for several articles at once
+    (the cart-wide chat) — each one gets its own clearly numbered and
+    delimited block."""
+    sections = [
+        f"Se te proporcionan {len(articles)} artículos científicos "
+        "seleccionados en el carrito. Responde considerando el conjunto."
+    ]
+    for idx, (article, article_text) in enumerate(articles, start=1):
+        meta_bits = []
+        if article.get("authors"): meta_bits.append(f"Autores: {article['authors']}")
+        line2 = []
+        if article.get("year"):    line2.append(str(article["year"]))
+        if article.get("journal"): line2.append(str(article["journal"]))
+        if article.get("doi"):     line2.append(f"DOI: {article['doi']}")
+        if article.get("pubmed_id"): line2.append(f"PMID: {article['pubmed_id']}")
+        if line2:
+            meta_bits.append(" · ".join(line2))
+
+        block = [
+            f"=== ARTÍCULO {idx} ===",
+            f"Título: {article.get('title') or '(sin título)'}",
+        ]
+        block.extend(meta_bits)
+        if article.get("abstract"):
+            block.append(f"\nAbstract:\n{article['abstract']}")
+        if article.get("summary_ai"):
+            block.append(f"\nResumen IA:\n{article['summary_ai']}")
+        if article_text:
+            block.append(f"\nTexto del artículo (extractos indexados):\n{article_text}")
+        else:
+            block.append(
+                "\n(No hay texto completo indexado para este artículo; "
+                "responde a partir del título, el abstract y el resumen si existen.)"
+            )
+        sections.append("\n".join(block))
+
+    if history:
+        hist_lines: list[str] = []
+        running = 0
+        for m in reversed(history):
+            role = "Usuario" if m["role"] == "user" else "Asistente"
+            line = f"{role}: {m['content']}"
+            if running + len(line) > _HISTORY_CHAR_CAP:
+                break
+            hist_lines.append(line)
+            running += len(line)
+        hist_lines.reverse()
+        if hist_lines:
+            sections.append("\n=== CONVERSACIÓN PREVIA ===\n" + "\n\n".join(hist_lines))
+
+    sections.append(f"\n=== PREGUNTA ACTUAL ===\n{question}")
+    return "\n".join(sections)
+
+
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 def list_chats(article_id: str, user_id: str) -> list[dict]:
     """Return the user's conversation threads for this article, newest
-    first, each with a message count and preview."""
+    first, each with a message count and preview. Cart-wide group chats
+    only show up here for their is_primary row (the others are pure
+    accounting markers with no messages of their own) — see
+    create_group_chat()."""
     eng = _get_engine()
     with eng.connect() as conn:
         rows = conn.execute(_sql("""
@@ -190,11 +274,13 @@ def list_chats(article_id: str, user_id: str) -> list[dict]:
                    c.title                          AS title,
                    c.created_at                     AS created_at,
                    c.updated_at                     AS updated_at,
+                   c.group_id::text                 AS group_id,
                    COUNT(m.id)                      AS message_count
               FROM prionvault_article_chat c
               LEFT JOIN prionvault_article_chat_message m ON m.chat_id = c.id
              WHERE c.article_id = CAST(:aid AS uuid)
                AND c.user_id    = CAST(:uid AS uuid)
+               AND c.is_primary
              GROUP BY c.id
              ORDER BY c.updated_at DESC
         """), {"aid": article_id, "uid": user_id}).mappings().all()
@@ -218,13 +304,20 @@ def get_chat(chat_id: str, user_id: str) -> Optional[dict]:
     with eng.connect() as conn:
         head = conn.execute(_sql("""
             SELECT id::text AS id, article_id::text AS article_id,
-                   requested_provider, title, created_at, updated_at
+                   requested_provider, title, created_at, updated_at,
+                   group_id::text AS group_id
               FROM prionvault_article_chat
              WHERE id = CAST(:cid AS uuid)
                AND user_id = CAST(:uid AS uuid)
         """), {"cid": chat_id, "uid": user_id}).mappings().first()
         if not head:
             return None
+        if head["group_id"]:
+            group_articles = conn.execute(_sql("""
+                SELECT article_id::text FROM prionvault_article_chat
+                 WHERE group_id = CAST(:gid AS uuid)
+                 ORDER BY created_at
+            """), {"gid": head["group_id"]}).scalars().all()
         msgs = conn.execute(_sql("""
             SELECT role, content, provider, model, tokens_in, tokens_out,
                    cost_usd, fallback, created_at
@@ -234,6 +327,8 @@ def get_chat(chat_id: str, user_id: str) -> Optional[dict]:
         """), {"cid": chat_id}).mappings().all()
 
     out = _chat_row_to_dict(head)
+    if head.get("group_id"):
+        out["group_article_ids"] = group_articles
     out["messages"] = []
     for m in msgs:
         md = dict(m)
@@ -260,6 +355,43 @@ def create_chat(article_id: str, user_id: str, provider: str) -> str:
             RETURNING id::text
         """), {"aid": article_id, "uid": user_id, "prov": provider}).scalar()
     return cid
+
+
+def create_group_chat(article_ids: list[str], user_id: str, provider: str) -> str:
+    """Start a cart-wide chat spanning several articles at once.
+
+    Inserts one prionvault_article_chat row PER article, all tagged with
+    the same group_id — this way the existing per-article "has_own_chat"
+    accounting (which only ever looked at article_id) keeps crediting
+    every article in the cart with a chat, exactly as if each had its
+    own, while the actual conversation only ever happens on the first
+    (is_primary) row, whose id is what's returned here and what the
+    frontend/ask()/get_chat() operate on. See ask() for how it pulls in
+    every group member's text when answering.
+    """
+    provider = (provider or DEFAULT_PROVIDER).strip().lower()
+    if provider not in PROVIDERS:
+        provider = DEFAULT_PROVIDER
+    article_ids = [str(a) for a in (article_ids or []) if a]
+    if not article_ids:
+        raise ValueError("No hay artículos seleccionados.")
+
+    group_id = str(uuid.uuid4())
+    primary_id = None
+    eng = _get_engine()
+    with eng.begin() as conn:
+        for i, aid in enumerate(article_ids):
+            cid = conn.execute(_sql("""
+                INSERT INTO prionvault_article_chat
+                    (article_id, user_id, requested_provider, group_id, is_primary)
+                VALUES (CAST(:aid AS uuid), CAST(:uid AS uuid), :prov,
+                        CAST(:gid AS uuid), :isprim)
+                RETURNING id::text
+            """), {"aid": aid, "uid": user_id, "prov": provider,
+                    "gid": group_id, "isprim": i == 0}).scalar()
+            if i == 0:
+                primary_id = cid
+    return primary_id
 
 
 def delete_chat(chat_id: str, user_id: str) -> bool:
@@ -366,7 +498,8 @@ def ask(chat_id: str, user_id: str, question: str,
     eng = _get_engine()
     with eng.connect() as conn:
         head = conn.execute(_sql("""
-            SELECT article_id::text AS article_id, requested_provider
+            SELECT article_id::text AS article_id, requested_provider,
+                   group_id::text AS group_id
               FROM prionvault_article_chat
              WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
         """), {"cid": chat_id, "uid": user_id}).mappings().first()
@@ -378,24 +511,44 @@ def ask(chat_id: str, user_id: str, question: str,
     if primary not in PROVIDERS:
         primary = DEFAULT_PROVIDER
 
-    article = _fetch_article(article_id)
-    if not article:
-        raise LookupError("article_not_found")
-
     # Load prior turns for continuity (before inserting the new question).
     existing = get_chat(chat_id, user_id)
     history = existing["messages"] if existing else []
 
-    article_text = _fetch_article_text(article_id)
-    user_prompt = _build_user_prompt(article, article_text, history, question)
+    group_id = head.get("group_id")
+    if group_id:
+        with eng.connect() as conn:
+            group_article_ids = conn.execute(_sql("""
+                SELECT article_id::text FROM prionvault_article_chat
+                 WHERE group_id = CAST(:gid AS uuid)
+                 ORDER BY created_at
+            """), {"gid": group_id}).scalars().all()
+        per_cap = max(8_000, _ARTICLE_TEXT_CHAR_CAP // max(1, len(group_article_ids)))
+        articles: list[tuple[dict, str]] = []
+        for aid in group_article_ids:
+            art = _fetch_article(aid)
+            if not art:
+                continue
+            articles.append((art, _fetch_article_text(aid, cap=per_cap)))
+        if not articles:
+            raise LookupError("article_not_found")
+        user_prompt = _build_group_user_prompt(articles, history, question)
+        base_system_prompt = _SYSTEM_PROMPT_GROUP
+    else:
+        article = _fetch_article(article_id)
+        if not article:
+            raise LookupError("article_not_found")
+        article_text = _fetch_article_text(article_id)
+        user_prompt = _build_user_prompt(article, article_text, history, question)
+        base_system_prompt = _SYSTEM_PROMPT
 
     # Append the admin-maintained glossary so the chat obeys the same
     # terminology as the summaries. Never let a glossary failure break
     # the answer.
-    system_prompt = _SYSTEM_PROMPT
+    system_prompt = base_system_prompt
     try:
         from . import glossary_manager
-        system_prompt = _SYSTEM_PROMPT + glossary_manager.prompt_block()
+        system_prompt = base_system_prompt + glossary_manager.prompt_block()
     except Exception:
         pass
 

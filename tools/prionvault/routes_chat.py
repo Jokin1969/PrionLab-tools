@@ -75,6 +75,31 @@ def api_article_chat_create(aid):
     return jsonify({"ok": True, "chat_id": cid})
 
 
+@prionvault_bp.route("/api/cart/chats", methods=["POST"])
+@login_required
+def api_cart_chat_create():
+    """Start (or continue) the cart-wide AI chat — one chat spanning
+    every article currently in the cart. Each article still gets
+    credited with its own chat thread (see create_group_chat)."""
+    uid, err = _require_user()
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    article_ids = [str(a) for a in (body.get("article_ids") or []) if a]
+    provider = (body.get("provider") or "anthropic").strip().lower()
+    if not article_ids:
+        return jsonify({"error": "no_articles", "detail": "El carrito está vacío."}), 400
+    from .services import article_chat
+    try:
+        cid = article_chat.create_group_chat(article_ids, uid, provider)
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "detail": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("cart chat create failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"ok": True, "chat_id": cid})
+
+
 # ── A single conversation ─────────────────────────────────────────────────────
 
 @prionvault_bp.route("/api/chats/<uuid:chat_id>", methods=["GET"])

@@ -98,6 +98,7 @@ _PRIONVAULT_MIGRATIONS = (
     "063_articles_ai_summary_glossary_version.sql",
     "066_retroactive_glossary_version_update.sql",
     "088_summary_ai_diagnostics.sql",
+    "089_group_article_chat.sql",
 )
 
 _BOOTSTRAP_SQL = """
