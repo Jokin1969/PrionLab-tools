@@ -2222,6 +2222,15 @@
         <i class="fas fa-paper-plane"></i>
       </button>
       <span style="width:1px;height:20px;background:#e5e7eb;margin:0 2px;"></span>
+      <button id="pv-cart-save-btn" type="button" class="pv-cart-top-btn"
+              title="Guardar el carrito actual en el repositorio, con nombre y fecha">
+        <i class="fas fa-box-archive"></i>
+      </button>
+      <button id="pv-cart-repo-btn" type="button" class="pv-cart-top-btn"
+              title="Repositorio de carritos guardados">
+        <i class="fas fa-folder-open"></i>
+      </button>
+      <span style="width:1px;height:20px;background:#e5e7eb;margin:0 2px;"></span>
       <button id="pv-cart-show-in-list" type="button" class="pv-cart-top-btn"
               title="Aislar el listado principal a los artículos del carrito">
         <i class="fas fa-list"></i>
@@ -2256,6 +2265,43 @@
                    transition:opacity 0.12s;">
       <i class="fas fa-bolt" style="margin-right:6px;"></i>Acciones
     </button>
+  </div>
+</div>
+
+<!-- ── Cart repository — save current cart ─────────────────────────────── -->
+<div id="pv-cart-save-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:420px;">
+    <button class="pv-modal-close" id="pv-cart-save-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
+      <i class="fas fa-box-archive" style="color:#0F3460;margin-right:6px;"></i>Guardar carrito
+    </h2>
+    <p id="pv-cart-save-count" style="color:#6b7280;font-size:12.5px;margin:0 0 14px;"></p>
+    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Nombre</label>
+    <input id="pv-cart-save-name" type="text" placeholder="Ej: Selección Journal Club marzo"
+           style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;
+                  padding:9px 12px;font-size:13.5px;font-family:inherit;">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px;">
+      <span id="pv-cart-save-status" style="font-size:12px;color:#9ca3af;flex:1;"></span>
+      <button id="pv-cart-save-go" type="button"
+              style="padding:8px 18px;border-radius:7px;border:none;background:#0F3460;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cart repository — browse / restore saved carts ──────────────────── -->
+<div id="pv-cart-repo-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:560px;">
+    <button class="pv-modal-close" id="pv-cart-repo-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
+      <i class="fas fa-folder-open" style="color:#0F3460;margin-right:6px;"></i>Repositorio de carritos
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 14px;">
+      Recuperar un carrito sustituye por completo el contenido del carrito actual.
+    </p>
+    <div id="pv-cart-repo-list" style="max-height:52vh;overflow-y:auto;"></div>
   </div>
 </div>
 

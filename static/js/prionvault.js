@@ -9806,6 +9806,125 @@
       }
     }
 
+    // ── Cart repository (save / browse / restore named snapshots) ────────
+    function openSaveCart() {
+      const items = window.PPCart?.getAll() || [];
+      if (!items.length) { alert('El carrito está vacío.'); return; }
+      const modal = $('pv-cart-save-modal');
+      if (!modal) return;
+      $('pv-cart-save-count').textContent =
+        `${items.length} artículo${items.length === 1 ? '' : 's'} en el carrito actual.`;
+      $('pv-cart-save-status').textContent = '';
+      const nameEl = $('pv-cart-save-name');
+      nameEl.value = '';
+      modal.style.display = 'flex';
+      nameEl.focus();
+    }
+    function closeSaveCart() { $('pv-cart-save-modal').style.display = 'none'; }
+
+    async function saveCartGo() {
+      const btn = $('pv-cart-save-go');
+      const status = $('pv-cart-save-status');
+      const name = ($('pv-cart-save-name').value || '').trim();
+      if (!name) { status.style.color = '#b91c1c'; status.textContent = 'Ponle un nombre.'; return; }
+      btn.disabled = true;
+      status.style.color = '#9ca3af';
+      status.textContent = 'Guardando…';
+      try {
+        await api('/carts', { method: 'POST', body: JSON.stringify({ name }) });
+        status.style.color = '#15803d';
+        status.textContent = '✓ Guardado en el repositorio';
+        setTimeout(closeSaveCart, 1200);
+      } catch (e) {
+        status.style.color = '#b91c1c';
+        status.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function _repoCartRowHtml(c) {
+      const when = c.created_at ? new Date(c.created_at).toLocaleString('es-ES', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      }) : '';
+      return `
+        <div class="pv-repo-cart-row" data-cid="${esc(c.id)}"
+             style="display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid #f3f4f6;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13.5px;font-weight:600;color:#111827;overflow:hidden;
+                        text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</div>
+            <div style="margin-top:2px;font-size:11.5px;color:#9ca3af;">
+              ${esc(when)} · ${c.count} artículo${c.count === 1 ? '' : 's'}
+            </div>
+          </div>
+          <button type="button" class="pv-repo-cart-restore" data-cid="${esc(c.id)}"
+                  style="flex-shrink:0;padding:6px 13px;border-radius:7px;border:1px solid #d1d5db;
+                         background:#fff;color:#374151;font-size:12px;font-weight:600;cursor:pointer;">
+            <i class="fas fa-rotate-left"></i> Recuperar
+          </button>
+          <button type="button" class="pv-repo-cart-delete" data-cid="${esc(c.id)}"
+                  title="Eliminar este carrito guardado"
+                  style="flex-shrink:0;border:none;background:transparent;color:#d1d5db;
+                         cursor:pointer;font-size:14px;padding:4px;"
+                  onmouseover="this.style.color='#b91c1c';" onmouseout="this.style.color='#d1d5db';">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </div>`;
+    }
+
+    async function loadRepoCarts() {
+      const list = $('pv-cart-repo-list');
+      if (!list) return;
+      list.innerHTML = '<div style="padding:20px 4px;color:#9ca3af;font-size:12.5px;">Cargando…</div>';
+      try {
+        const r = await api('/carts');
+        const carts = r.carts || [];
+        list.innerHTML = carts.length ? carts.map(_repoCartRowHtml).join('') : `
+          <div style="padding:24px 4px;text-align:center;color:#9ca3af;font-size:13px;">
+            Aún no has guardado ningún carrito.
+          </div>`;
+        list.querySelectorAll('.pv-repo-cart-restore').forEach(btn => {
+          btn.addEventListener('click', () => restoreCart(btn.dataset.cid));
+        });
+        list.querySelectorAll('.pv-repo-cart-delete').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('¿Eliminar este carrito del repositorio? No se puede deshacer.')) return;
+            try {
+              await api(`/carts/${btn.dataset.cid}`, { method: 'DELETE' });
+              loadRepoCarts();
+            } catch (e) { alert('No se pudo eliminar: ' + e.message); }
+          });
+        });
+      } catch (e) {
+        list.innerHTML = `<div style="padding:20px 4px;color:#b91c1c;font-size:12.5px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    function openRepoCarts() {
+      const modal = $('pv-cart-repo-modal');
+      if (!modal) return;
+      modal.style.display = 'flex';
+      loadRepoCarts();
+    }
+    function closeRepoCarts() { $('pv-cart-repo-modal').style.display = 'none'; }
+
+    async function restoreCart(cartId) {
+      const current = window.PPCart?.getAll() || [];
+      if (current.length && !confirm(
+        `El carrito actual tiene ${current.length} artículo${current.length === 1 ? '' : 's'}. ` +
+        `Al recuperar este carrito guardado se sustituirán por completo los artículos actuales. ¿Continuar?`
+      )) return;
+      try {
+        await api(`/carts/${cartId}/restore`, { method: 'POST' });
+        // PPCart's in-memory cache has no external setter (by design, to
+        // keep its public API tiny) — a reload is the simplest way to
+        // re-hydrate it from the server, same as it does on first load.
+        location.reload();
+      } catch (e) {
+        alert('No se pudo recuperar el carrito: ' + e.message);
+      }
+    }
+
     function openCartChat() {
       const items = window.PPCart?.getAll() || [];
       if (!items.length) { alert('El carrito está vacío.'); return; }
@@ -9823,6 +9942,14 @@
       $('pv-cart-hide')?.addEventListener('click', close);
       $('pv-cart-chat-btn')?.addEventListener('click', openCartChat);
       $('pv-cart-email-all-btn')?.addEventListener('click', openCartEmail);
+      $('pv-cart-save-btn')?.addEventListener('click', openSaveCart);
+      $('pv-cart-save-close')?.addEventListener('click', closeSaveCart);
+      document.querySelector('#pv-cart-save-modal .pv-modal-backdrop')?.addEventListener('click', closeSaveCart);
+      $('pv-cart-save-go')?.addEventListener('click', saveCartGo);
+      $('pv-cart-save-name')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveCartGo(); });
+      $('pv-cart-repo-btn')?.addEventListener('click', openRepoCarts);
+      $('pv-cart-repo-close')?.addEventListener('click', closeRepoCarts);
+      document.querySelector('#pv-cart-repo-modal .pv-modal-backdrop')?.addEventListener('click', closeRepoCarts);
       $('pv-cart-show-in-list')?.addEventListener('click', () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) { alert('El carrito está vacío.'); return; }

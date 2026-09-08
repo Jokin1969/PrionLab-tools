@@ -2149,6 +2149,138 @@ def api_cart_clear():
     return jsonify({"ok": True, "items": []})
 
 
+# ── Cart repository ("repositorio de carritos") ──────────────────────────────
+#
+# Snapshot the current cart under a name so it can be recalled later — the
+# "📦 Guardar carrito" / "📂 Repositorio" buttons. Restoring REPLACES
+# whatever's currently in prionvault_cart (the frontend confirms this with
+# the user first when the live cart isn't empty).
+
+@prionvault_bp.route("/api/carts", methods=["GET"])
+@admin_required
+def api_saved_carts_list():
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        rows = s.execute(sql_text("""
+            SELECT id::text AS id, name, created_at,
+                   jsonb_array_length(items) AS count
+              FROM prionvault_saved_cart
+             WHERE user_id = CAST(:uid AS uuid)
+             ORDER BY created_at DESC
+        """), {"uid": uid}).mappings().all()
+    finally:
+        s.close()
+    return jsonify({"carts": [
+        {"id": r["id"], "name": r["name"],
+         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+         "count": r["count"]}
+        for r in rows
+    ]})
+
+
+@prionvault_bp.route("/api/carts", methods=["POST"])
+@admin_required
+def api_saved_cart_create():
+    """Save a snapshot of the CURRENT cart under a name."""
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()[:200]
+    if not name:
+        return jsonify({"error": "name_required", "detail": "Ponle un nombre al carrito."}), 400
+
+    items = _cart_items(uid)
+    if not items:
+        return jsonify({"error": "cart_empty", "detail": "El carrito está vacío."}), 400
+
+    import json as _json
+    s = _session()
+    try:
+        row = s.execute(sql_text("""
+            INSERT INTO prionvault_saved_cart (user_id, name, items, created_at)
+            VALUES (CAST(:uid AS uuid), :name, CAST(:items AS jsonb), NOW())
+            RETURNING id::text AS id, created_at
+        """), {"uid": uid, "name": name, "items": _json.dumps(items)}).mappings().first()
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("saved cart create failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    finally:
+        s.close()
+    return jsonify({
+        "ok": True,
+        "cart": {"id": row["id"], "name": name,
+                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                 "count": len(items)},
+    })
+
+
+@prionvault_bp.route("/api/carts/<uuid:cart_id>", methods=["DELETE"])
+@admin_required
+def api_saved_cart_delete(cart_id):
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        res = s.execute(sql_text("""
+            DELETE FROM prionvault_saved_cart
+             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+        """), {"cid": str(cart_id), "uid": uid})
+        s.commit()
+        deleted = (res.rowcount or 0) > 0
+    finally:
+        s.close()
+    if not deleted:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/carts/<uuid:cart_id>/restore", methods=["POST"])
+@admin_required
+def api_saved_cart_restore(cart_id):
+    """Replace the current cart with this saved snapshot's articles."""
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    s = _session()
+    try:
+        row = s.execute(sql_text("""
+            SELECT items FROM prionvault_saved_cart
+             WHERE id = CAST(:cid AS uuid) AND user_id = CAST(:uid AS uuid)
+        """), {"cid": str(cart_id), "uid": uid}).mappings().first()
+        if not row:
+            return jsonify({"error": "not_found"}), 404
+        items = row["items"] or []
+        s.execute(sql_text("DELETE FROM prionvault_cart WHERE user_id = CAST(:uid AS uuid)"),
+                  {"uid": uid})
+        import json as _json
+        for item in items:
+            aid = str((item or {}).get("id") or "").strip()
+            if not aid:
+                continue
+            snapshot = {k: item.get(k) for k in
+                        ("title", "authors", "year", "journal", "doi", "pubmed_id", "has_pdf")}
+            s.execute(sql_text("""
+                INSERT INTO prionvault_cart (user_id, article_id, data, created_at)
+                VALUES (CAST(:uid AS uuid), CAST(:aid AS uuid), CAST(:data AS jsonb), NOW())
+                ON CONFLICT (user_id, article_id) DO UPDATE SET data = EXCLUDED.data
+            """), {"uid": uid, "aid": aid, "data": _json.dumps(snapshot)})
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("saved cart restore failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    finally:
+        s.close()
+    return jsonify({"ok": True, "items": _cart_items(uid)})
+
+
 # ── Glossary management (biomedical terminology normalization) ──────────────
 # Bulk import/list/categories/version live in routes_glossary.py
 # (/api/glossary/*); this is just the single-term "add" convenience the
