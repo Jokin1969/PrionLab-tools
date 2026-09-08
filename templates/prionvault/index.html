@@ -1441,6 +1441,11 @@
                 border-top:1px solid #f3f4f6;">
       <span id="pv-note-date" style="font-size:11.5px;color:#9ca3af;"></span>
       <span id="pv-note-status" style="font-size:12px;color:#9ca3af;margin-left:auto;"></span>
+      <button id="pv-note-ai-btn" type="button"
+              title="Generar una nota nueva con IA a partir de un texto que le dictes"
+              style="display:flex;align-items:center;gap:5px;padding:7px 12px;border-radius:7px;
+                     border:1px solid #c7d2fe;background:#fff;color:#4f46e5;font-size:12px;
+                     font-weight:600;cursor:pointer;"><i class="fas fa-robot"></i> IA</button>
       <button id="pv-note-to-summary" type="button"
               title="Añadir el contenido de esta nota como 'Notas del usuario' al final del resumen IA (si lo hay)"
               style="display:none;align-items:center;gap:5px;padding:7px 12px;border-radius:7px;
@@ -1456,6 +1461,33 @@
     </div>
     <div style="font-size:10.5px;color:#9ca3af;padding:0 20px 12px;background:#fff;">
       Puedes pegar imágenes directamente. Máximo 5 notas por artículo; el color es automático.
+    </div>
+  </div>
+</div>
+
+<!-- ── Notas — generador con IA (texto libre → nota nueva) ─────────────── -->
+<div id="pv-note-ai-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:520px;">
+    <button class="pv-modal-close" id="pv-note-ai-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
+      <i class="fas fa-robot" style="color:#4f46e5;margin-right:6px;"></i>Generar nota con IA
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 14px;">
+      Escribe lo que quieras apuntar (una idea, una cita, una pregunta…). La IA redactará
+      una nota corta centrada en tu texto, apoyándose en el artículo solo como contexto,
+      pensada para que luego la localices fácilmente.
+    </p>
+    <textarea id="pv-note-ai-input" rows="6" placeholder="Ej: relacionar con el ensayo de anticuerpos anti-PrP que vimos en el JC de marzo…"
+              style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;
+                     padding:10px 12px;font-size:13.5px;font-family:inherit;resize:vertical;"></textarea>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;">
+      <span id="pv-note-ai-status" style="font-size:12px;color:#9ca3af;flex:1;"></span>
+      <button id="pv-note-ai-generate" type="button"
+              style="padding:8px 18px;border-radius:7px;border:none;background:#4f46e5;color:#fff;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-wand-magic-sparkles"></i> Generar
+      </button>
     </div>
   </div>
 </div>

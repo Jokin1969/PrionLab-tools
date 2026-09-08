@@ -733,6 +733,114 @@ def generate_remember_note(chat_id: str, user_id: str) -> dict:
     raise ChatError(str(last_exc) if last_exc else "all providers failed", attempts)
 
 
+_FREETEXT_NOTE_SYSTEM_PROMPT = """Ayudas a un investigador a guardar notas rápidas de \
+recordatorio sobre un artículo científico, a partir de un texto libre que él mismo \
+escribe (una idea, una cita, una pregunta, un fragmento que le llamó la atención, \
+apuntes sueltos...).
+
+Se te da:
+1. El TEXTO DEL USUARIO — esto es el foco principal y lo más importante de la nota.
+2. El CONTEXTO DEL ARTÍCULO (título, metadatos, resumen, texto indexado) — es solo \
+apoyo, para que entiendas mejor o enriquezcas ligeramente lo que el usuario escribió. \
+NUNCA lo sustituyas ni te desvíes hacia contenido del artículo que el usuario no \
+mencionó ni relacionó con lo suyo.
+
+Escribe una NOTA breve en español (ve al grano; unas 2-4 frases suele bastar, algo más \
+solo si el propio texto del usuario lo requiere) que:
+- Se centre en lo que el usuario quiso apuntar, usando sus propias palabras, cifras y \
+términos cuando aparezcan — no lo diluyas en generalidades.
+- Esté pensada para servir de recordatorio y ser fácil de encontrar buscando por tema: \
+menciona explícitamente las palabras clave o conceptos concretos por los que él \
+buscaría después ("¿qué artículo hablaba de ###?").
+- Si el contexto del artículo aporta un dato que sitúa mejor la nota (un método, un \
+resultado relacionado), puedes añadirlo brevemente, pero sin que ocupe más que el \
+propio texto del usuario ni desplace su foco.
+- No repitas mecánicamente el título del artículo ni frases de relleno.
+
+No uses markdown (nada de ##, **, listas con viñetas), ni comillas envolventes, ni \
+frases tipo "el usuario apuntó que...". Responde solo con el texto de la nota, en \
+prosa."""
+
+# Kept modest (vs. _ARTICLE_TEXT_CHAR_CAP=80k used for full chat context) —
+# the article is meant to be SECONDARY support here, not the main subject.
+_FREETEXT_NOTE_ARTICLE_CAP = 15_000
+
+
+def generate_freetext_note(article_id: str, user_id: str, user_text: str) -> dict:
+    """Generate a sticky note from arbitrary free text the user typed in
+    (the "🤖 IA" button in the notes modal), weighting that text far more
+    heavily than the article's own content. Same provider fallback chain
+    as generate_remember_note().
+
+    Returns {"note_text", "article_id", "provider", "requested_provider",
+    "switched"}.
+
+    Raises:
+      ValueError  — empty text
+      LookupError — article not found
+      ChatError   — all providers failed (carries .attempts)
+    """
+    user_text = (user_text or "").strip()
+    if not user_text:
+        raise ValueError("Escribe el texto para la nota.")
+    user_text = user_text[:8000]
+
+    article = _fetch_article(article_id)
+    if not article:
+        raise LookupError("article_not_found")
+
+    context_bits = [f"Título: {article.get('title') or '(sin título)'}"]
+    line2 = []
+    if article.get("authors"): line2.append(f"Autores: {article['authors']}")
+    if article.get("journal"): line2.append(str(article["journal"]))
+    if article.get("year"):    line2.append(str(article["year"]))
+    if line2:
+        context_bits.append(" · ".join(line2))
+    if article.get("summary_ai"):
+        context_bits.append(f"Resumen IA:\n{article['summary_ai']}")
+    article_text = _fetch_article_text(article_id, cap=_FREETEXT_NOTE_ARTICLE_CAP)
+    if article_text:
+        context_bits.append(f"Texto del artículo (extractos indexados):\n{article_text}")
+
+    user_prompt = (
+        f"=== TEXTO DEL USUARIO (lo importante) ===\n{user_text}\n\n"
+        f"=== CONTEXTO DEL ARTÍCULO (solo apoyo) ===\n" + "\n\n".join(context_bits)
+    )
+
+    primary = DEFAULT_PROVIDER
+    chain = _fallback_chain(primary)
+    attempts: list[dict] = []
+    last_exc: Optional[Exception] = None
+
+    for attempt_provider in chain:
+        try:
+            note_text, _tin, _tout, _model = _chat(
+                provider=attempt_provider,
+                system=_FREETEXT_NOTE_SYSTEM_PROMPT,
+                user=user_prompt,
+            )
+            note_text = (note_text or "").strip()
+            if not note_text:
+                raise RuntimeError(
+                    f"{PROVIDERS[attempt_provider]['label']} returned an empty response")
+            return {
+                "note_text": note_text, "article_id": article_id,
+                "provider": attempt_provider, "requested_provider": primary,
+                "switched": attempt_provider != primary,
+            }
+        except Exception as exc:
+            kind, reason = _classify_failure(exc)
+            attempts.append({"provider": attempt_provider, "kind": kind, "reason": reason})
+            last_exc = exc
+            logger.info("freetext_note fallback: %s failed (%s — %s)",
+                        attempt_provider, kind, reason)
+            if kind not in _FALLBACK_KINDS:
+                raise ChatError(str(exc), attempts) from exc
+            continue
+
+    raise ChatError(str(last_exc) if last_exc else "all providers failed", attempts)
+
+
 # ── References mentioned in the answers (for the downloadable report) ──────
 # Article chat has no structured citation list (unlike rag.py/library_chat,
 # which retrieve numbered fragments) — it dumps the article's own text into

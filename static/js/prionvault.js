@@ -10120,6 +10120,82 @@
       } catch (e) { alert('No se pudo eliminar: ' + e.message); }
     }
 
+    function openAiNoteModal() {
+      if (!_article) return;
+      if (nextFreeIndex() == null) {
+        alert('Ya tienes las 5 notas máximas en este artículo. Elimina alguna antes de generar una nueva con IA.');
+        return;
+      }
+      const modal = $('pv-note-ai-modal');
+      if (!modal) return;
+      const input = $('pv-note-ai-input');
+      if (input) input.value = '';
+      const status = $('pv-note-ai-status');
+      if (status) status.textContent = '';
+      modal.style.display = 'flex';
+      setTimeout(() => input?.focus(), 50);
+    }
+    function closeAiNoteModal() {
+      const modal = $('pv-note-ai-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function generateAiNote() {
+      const input = $('pv-note-ai-input');
+      const text = (input?.value || '').trim();
+      const status = $('pv-note-ai-status');
+      if (!text) {
+        if (status) { status.style.color = '#b91c1c'; status.textContent = 'Escribe el texto para la nota.'; }
+        return;
+      }
+      const btn = $('pv-note-ai-generate');
+      if (btn) btn.disabled = true;
+      if (status) { status.style.color = '#9ca3af'; status.textContent = 'Generando…'; }
+      try {
+        const r = await api(`/articles/${_article.id}/notes/ai-generate`, {
+          method: 'POST',
+          body: JSON.stringify({ text }),
+        });
+        _notes.push(r.note);
+        closeAiNoteModal();
+        selectNote(r.note.id);
+        _refreshNoteClusters(_article.id, _notes, _article);
+        const noteStatus = $('pv-note-status');
+        if (noteStatus) {
+          const label = _AI_DIAG_PROVIDER_LABEL[r.provider] || r.provider;
+          if (r.switched) {
+            const reqLabel = _AI_DIAG_PROVIDER_LABEL[r.requested_provider] || r.requested_provider;
+            noteStatus.style.color = '#b45309';
+            noteStatus.textContent = `✓ Generada con ${label} (${reqLabel} no pudo responder)`;
+          } else {
+            noteStatus.style.color = '#15803d';
+            noteStatus.textContent = `✓ Generada con ${label}`;
+          }
+          setTimeout(() => { if (noteStatus) noteStatus.textContent = ''; }, 3500);
+        }
+      } catch (e) {
+        if (e.status === 409) {
+          const noteText = (e.body && e.body.note_text) || '';
+          closeAiNoteModal();
+          if (noteText && confirm(
+            `Ya tienes las 5 notas máximas en este artículo, así que no se pudo guardar.\n\n` +
+            `Nota generada:\n"${noteText}"\n\n¿Copiarla al portapapeles?`
+          )) {
+            navigator.clipboard.writeText(noteText).catch(() => {});
+          }
+        } else {
+          let detail = e.message || 'Error desconocido';
+          if (e.body && e.body.attempts && e.body.attempts.length) {
+            detail += ' — ' + e.body.attempts
+              .map(a => `${_AI_DIAG_PROVIDER_LABEL[a.provider] || a.provider}: ${a.reason}`).join('; ');
+          }
+          if (status) { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + detail; }
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
     async function handlePaste(e) {
       const items = Array.from(e.clipboardData?.items || []);
       const imgItem = items.find(it => it.type.startsWith('image/'));
@@ -10148,6 +10224,13 @@
       document.querySelector('#pv-note-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-note-save')?.addEventListener('click', save);
       $('pv-note-delete')?.addEventListener('click', del);
+      $('pv-note-ai-btn')?.addEventListener('click', openAiNoteModal);
+      $('pv-note-ai-close')?.addEventListener('click', closeAiNoteModal);
+      document.querySelector('#pv-note-ai-modal .pv-modal-backdrop')?.addEventListener('click', closeAiNoteModal);
+      $('pv-note-ai-generate')?.addEventListener('click', generateAiNote);
+      $('pv-note-ai-input')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); generateAiNote(); }
+      });
       $('pv-note-to-summary')?.addEventListener('click', () => {
         if (_activeId == null) return;
         const note = _notes.find(n => n.id === _activeId);
