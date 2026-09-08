@@ -21167,19 +21167,21 @@
   // Ordered (key, label) list matching #pv-help-tabs — used both to wire
   // the tab buttons and to walk every tab in order when building the PDF.
   const _HELP_TABS = [
-    { key: 'novedades',      label: '🆕 Novedades' },
     { key: 'roles',          label: '👤 Roles' },
     { key: 'busqueda',       label: '🔍 Búsqueda' },
+    { key: 'carrito',        label: '🛒 Carrito' },
+    { key: 'ia',             label: '🤖 IA: chats y notas' },
     { key: 'notificaciones', label: '🔔 Notificaciones' },
     { key: 'salud',          label: '❤️ Salud biblioteca' },
     { key: 'jc',             label: '📖 Journal Club' },
+    { key: 'administracion', label: '⚙️ Administración' },
   ];
 
   window.openPrionVaultHelp = function openPrionVaultHelp() {
     const modal = document.getElementById('pv-help-modal');
     if (!modal) return;
     modal.style.display = 'flex';
-    _helpRenderTab('novedades');
+    _helpRenderTab('roles');
 
     // Wire tabs (only once)
     if (!modal.dataset.wired) {
@@ -21266,201 +21268,72 @@
 
     const html = {
 
-      // ── Novedades ──────────────────────────────────────────────────────
-      novedades: `
+      // ── Carrito ───────────────────────────────────────────────────────
+      carrito: `
         <div class="pv-help-section">
-          <h3>Últimas novedades en PrionVault</h3>
+          <h3>Carrito</h3>
+          <p>El carrito (icono 🛒) sirve para reunir un grupo de artículos y operar sobre todos ellos a la vez: aislarlos en el listado, mandarlos por email, hablar con la IA sobre el conjunto, o guardarlos como una selección con nombre para recuperarla más adelante. Es compartido con PrionPacks: lo que añades desde PrionVault también aparece en PrionPacks, y viceversa.</p>
 
-          <h4>📊 Presentación PPTX de esta Ayuda, junto al PDF</h4>
-          <p>En la cabecera de este modal, junto al botón <strong>PDF</strong>, hay un botón nuevo <strong>PPTX</strong> que descarga toda esta guía como una presentación de PowerPoint: portada, una diapositiva por cada pestaña de la Ayuda, una diapositiva por cada apartado dentro de ella (dividiéndose en "(cont.)" si no cabe en una sola) y tablas nativas de PowerPoint cuando las hay. Se genera a partir del mismo contenido que ves aquí, así que <strong>siempre está al día</strong> — no hay nada que actualizar a mano cuando se añade una novedad como esta.</p>
+          <h4>Botones de la parte superior del carrito</h4>
+          <p>Son iconos discretos, todos del mismo tamaño — pasa el ratón por encima para ver qué hace cada uno:</p>
+          <ul>
+            <li><strong>🤖 Chat IA:</strong> abre una única conversación de IA que tiene en cuenta <strong>todos</strong> los artículos del carrito a la vez, útil para comparar o relacionar varios trabajos entre sí. Cada artículo del carrito queda igualmente registrado como si tuviera su propio chat, a efectos de las estadísticas de uso (ver la pestaña <em>"IA: chats y notas"</em>).</li>
+            <li><strong>✉️ Enviar:</strong> envía todos los artículos del carrito en un único email, con los PDFs disponibles adjuntos — a diferencia de la opción "Acciones → Enviar por email", que solo manda un listado con enlaces sin adjuntar nada.</li>
+            <li><strong>📦 Guardar</strong> y <strong>📂 Repositorio:</strong> ver "Repositorio de carritos" más abajo.</li>
+            <li><strong>Ver en listado:</strong> aísla el listado principal a exactamente los artículos que tienes en el carrito.</li>
+            <li><strong>Ocultar:</strong> cierra el panel del carrito sin perder los artículos que ya habías añadido (igual que la ×).</li>
+            <li><strong>Vaciar carrito:</strong> quita todos los artículos del carrito.</li>
+          </ul>
+
+          <h4>Cada artículo, dentro del carrito</h4>
+          <p>Cada fila tiene, junto a sus datos, un botón <strong>📋</strong> que copia al portapapeles el título, los autores, la revista/año y el DOI/PMID en varias líneas separadas — pégalo directamente en un Word y queda ya formateado en párrafos, sin arreglar saltos de línea a mano — y un botón <strong>✉️</strong> para enviarlo por email individualmente (con PDF adjunto).</p>
+
+          <h4>Selección y acciones en lote</h4>
+          <p>Marca las casillas de los artículos que quieras y usa <strong>"Quitar no seleccionados"</strong> (el inverso de "Vaciar carrito") o el botón <strong>"Acciones"</strong>, que ofrece enviar por email (un artículo incluye su PDF; varios, un listado con enlaces) o mandarlos a PrionPacks para añadirlos a un paquete.</p>
+
+          <h4>📦 Repositorio de carritos</h4>
+          <p>Permite guardar el contenido actual del carrito como una selección con nombre y recuperarla más adelante:</p>
+          <ul>
+            <li><strong>📦 Guardar:</strong> archiva el contenido actual del carrito con el nombre que le pongas, junto con la fecha, en un repositorio propio.</li>
+            <li><strong>📂 Repositorio:</strong> muestra la lista de carritos guardados (nombre, fecha y número de artículos), con un botón <strong>Recuperar</strong> por cada uno y una papelera para eliminarlo.</li>
+            <li>Al recuperar un carrito guardado, su contenido <strong>sustituye por completo</strong> el del carrito actual — si el carrito actual no está vacío, se avisa antes de continuar.</li>
+          </ul>
+        </div>
+      `,
+
+      // ── IA: chats y notas ─────────────────────────────────────────────
+      ia: `
+        <div class="pv-help-section">
+          <h3>Inteligencia artificial: chats y notas</h3>
+          <p>PrionVault usa una cadena de proveedores de IA con reserva automática — <strong>Claude → GPT → Gemini</strong>: si el proveedor elegido no responde (corte de conexión, límite de uso…), se reintenta hasta 3 veces y, si sigue sin responder, se prueba con los otros dos configurados en orden, sin dar el proceso por fallido. Se guarda de cualquiera de los tres que responda, y queda registrado qué proveedor lo generó realmente. Esta cadena es la que usan los resúmenes, los chats de artículo, el chat general y las notas generadas por IA.</p>
+
+          <h4>Chat de un artículo concreto</h4>
+          <p>Desde la ficha de un artículo, "Preguntar a la IA sobre este artículo" abre un chat que recibe el artículo vectorizado y su resumen como contexto.</p>
+          <ul>
+            <li><strong>🧠 Recordar:</strong> pide a la IA que destile la conversación en una nota (3-5 párrafos breves, con las cifras/métodos/hallazgos concretos del chat, no una frase vaga de "me interesó X") pensada para reconocer y localizar ese artículo más adelante — un recordatorio técnico de <em>por qué</em> te interesó y qué aprendiste, terminando con una "Idea clave para futuras consultas". Se guarda automáticamente en <strong>Notas del artículo</strong>; si ya tienes las 5 notas ocupadas, se ofrece copiar el texto generado.</li>
+            <li><strong>📄 Informe:</strong> abre un modal para elegir PDF o Word y, si quieres, enviarlo por email en vez de descargarlo. El documento se encabeza con los datos del artículo, cada pregunta como epígrafe seguida de su respuesta, y si el chat menciona otros artículos por DOI o PMID, termina con un apartado de <strong>Referencias</strong> enlazando a PrionVault (si está en la biblioteca), a su DOI y a su PMID.</li>
+            <li><strong>"Chats anteriores"</strong> se pone en verde en cuanto abres el modal si el artículo ya tiene conversaciones previas.</li>
+            <li>Tus preguntas y respuestas se indexan automáticamente para que el <strong>chat general</strong> también pueda encontrarlas — es <strong>privado</strong>: solo tú ves lo que preguntaste al buscar en el chat general. El botón <strong>"📊 Ver todos"</strong> (y un panel en <em>Salud biblioteca</em>) muestra en qué artículos se ha usado el chat y cuántos en total.</li>
+          </ul>
+
+          <h4>Chat de IA sobre todo el carrito a la vez</h4>
+          <p>El botón <strong>🤖</strong> en la parte superior del carrito abre una única conversación de IA que tiene en cuenta <strong>todos</strong> los artículos del carrito a la vez — útil para comparar o relacionar varios trabajos. Cada artículo del carrito queda igualmente registrado como si tuviera su propio chat, a efectos de las estadísticas de uso.</p>
+
+          <h4>Chat general</h4>
+          <p>Busca por significado sobre el contenido vectorizado de toda la biblioteca y responde citando las referencias usadas — cada artículo tiene siempre un único número de cita, sin importar cuántos fragmentos aporte (abstract, extracto del PDF…). Da prioridad a las <strong>notas del investigador</strong> (Post-it) y a las <strong>conversaciones de chat de artículo</strong> sobre extractos de PDF más largos, y cada fragmento va etiquetado según su origen (Extracto del PDF, Resumen IA, Nota del investigador, Conversación previa).</p>
+          <ul>
+            <li>Cada pregunta tiene un botón 📄 (junto a 📌/🚀/🗑) que genera un <strong>informe de toda la conversación hasta ese punto</strong>, descargable en PDF (maquetado) o Word (texto seleccionable).</li>
+            <li>Cada conversación se puede eliminar por completo (🗑, en la lista de chats de la barra lateral del propio chat).</li>
+          </ul>
 
           <h4>🤖 Nota generada por IA a partir de un texto libre</h4>
-          <p>Dentro del editor de <strong>Notas</strong> de un artículo, el botón <strong>"🤖 IA"</strong> abre un pequeño modal donde escribes lo que quieras apuntar — una idea, una cita, una pregunta, algo largo o cortísimo. La IA (Claude → GPT → Gemini, igual que en resúmenes) redacta con ello una nota corta centrada en <em>tu texto</em>, usando el artículo solo como apoyo secundario, pensada para servir de recordatorio: si luego preguntas "¿qué artículo hablaba de ###?", la nota debe ser fácil de encontrar por esas palabras clave. La nota se guarda automáticamente como una más de las 5 notas del artículo; si ya las tienes todas ocupadas, te ofrece copiar el texto generado en vez de perderlo.</p>
+          <p>Dentro del editor de <strong>Notas</strong> de un artículo, el botón <strong>"🤖 IA"</strong> abre un pequeño modal donde escribes lo que quieras apuntar — una idea, una cita, una pregunta, algo largo o cortísimo. La IA redacta con ello una nota corta centrada en <em>tu texto</em>, usando el artículo solo como apoyo secundario, pensada para servir de recordatorio: si luego preguntas "¿qué artículo hablaba de ###?", la nota debe ser fácil de encontrar por esas palabras clave. Se guarda automáticamente como una más de las 5 notas del artículo; si ya las tienes todas ocupadas, se ofrece copiar el texto generado.</p>
 
-          <h4>📦 Repositorio de carritos — guardar y recuperar selecciones completas</h4>
-          <p>Dos botones nuevos en la parte superior del carrito: <strong>📦 Guardar</strong> archiva el contenido actual del carrito con un nombre y la fecha, en un repositorio propio; <strong>📂 Repositorio</strong> muestra la lista de carritos guardados (nombre, fecha y número de artículos) con un botón <strong>Recuperar</strong> por cada uno y una papelera para eliminarlo. Al recuperar un carrito guardado se sustituye por completo el contenido del carrito actual — si no está vacío, se avisa antes de continuar.</p>
+          <h4>Notas, chat con IA y compartir por email</h4>
+          <p>Cada artículo admite <strong>notas de colores</strong> (hasta 5, manuales o generadas por IA) y un botón para <strong>enviarlo por email</strong> con previsualización, comentario de introducción, resumen opcional y el PDF adjunto.</p>
 
-          <h4>🤖 Chat de IA sobre todo el carrito a la vez</h4>
-          <p>Nuevo botón <strong>🤖</strong> en la parte superior del carrito: abre una única conversación de IA que tiene en cuenta <strong>todos</strong> los artículos del carrito a la vez (no solo uno), útil para comparar o relacionar varios trabajos. Cada artículo del carrito queda igualmente registrado como si tuviera su propio chat, a efectos de las estadísticas de uso.</p>
-
-          <h4>✉️ Enviar todo el carrito por email, con los PDFs adjuntos</h4>
-          <p>Nuevo botón <strong>✉️</strong> en la parte superior del carrito: envía <strong>todos</strong> los artículos del carrito en un único email, con los PDFs disponibles adjuntos — a diferencia de la opción "Acciones → Enviar por email" ya existente, que solo manda un listado con enlaces sin adjuntar nada. Los botones de la parte superior del carrito se han rediseñado además para ser más discretos: mismo tamaño, solo icono con su descripción al pasar el ratón.</p>
-
-          <h4>🔎 Búsqueda booleana estilo PubMed en tags y colecciones inteligentes</h4>
-          <p>El campo "Búsqueda libre" al crear/editar un <strong>tag inteligente</strong> o una <strong>colección inteligente</strong> ahora acepta una búsqueda booleana completa, no solo palabras sueltas:</p>
-          <ul>
-            <li><strong>AND</strong> — exige que aparezcan ambos lados. <code>miRNA AND AAV</code> solo encuentra artículos que mencionen las dos cosas.</li>
-            <li><strong>OR</strong> — basta con que aparezca uno de los dos. <code>PrPSc OR PrPres</code> encuentra cualquiera de las dos formas.</li>
-            <li><strong>NOT</strong> — excluye lo que sigue. <code>prion NOT yeast</code> descarta los artículos que mencionen "yeast".</li>
-            <li><strong>Paréntesis <code>( )</code></strong> — agrupan una parte de la búsqueda para que se evalúe junta, igual que en matemáticas. Se evalúa <em>de izquierda a derecha</em> (como en PubMed real): sin paréntesis, <code>A OR B AND C</code> se lee como <code>(A OR B) AND C</code>; con paréntesis puedes forzar cualquier otro orden.</li>
-            <li><strong>Corchetes de campo</strong> — <code>[Ti]</code> (título), <code>[Ab]</code> (abstract), <code>[Au]</code> (autores) o <code>[Ja]</code> (revista), justo pegados después de una palabra, limitan esa palabra a ese campo concreto. Sin corchetes, la palabra se busca en título + abstract + autores a la vez.</li>
-            <li><strong>Comillas</strong> — <code>"bat"</code> exige la palabra exacta (ni "combat" ni "battle"); sin comillas es una coincidencia parcial (substring).</li>
-          </ul>
-          <p>Ejemplo completo: <code>Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab])</code> — encuentra artículos donde el título contenga "Castilla" o "Desojo", <em>y además</em> el abstract contenga "avión" o "casa". Un error de sintaxis (paréntesis sin cerrar, campo desconocido…) se avisa al guardar, con el motivo exacto. El propio formulario de reglas muestra ahora esta misma explicación siempre visible, no solo al pasar el ratón por el icono ⓘ.</p>
-
-          <h4>🧠 Botón "Recordar" en el chat de cada artículo</h4>
-          <p>En el chat de IA de un artículo, el botón <strong>🧠 Recordar</strong> pide a la IA que destile la conversación en una nota (3-5 párrafos breves, con las cifras/métodos/hallazgos concretos del chat, no una frase vaga de "me interesó X") pensada para reconocer y localizar ese artículo más adelante — no es un resumen del artículo, sino un recordatorio técnico de <em>por qué</em> te interesó y qué aprendiste en la conversación, terminando con una "Idea clave para futuras consultas". La nota se guarda automáticamente en <strong>Notas del artículo</strong> (mismo sistema que las notas adhesivas manuales, hasta 5 por artículo). Si ya tienes las 5 notas ocupadas, te ofrece copiar el texto generado para pegarlo tú donde prefieras.</p>
-
-          <h4>📋 Copiar cita para pegar en Word desde el carrito</h4>
-          <p>Cada artículo del carrito tiene ahora, junto al botón de enviar por email, un botón <strong>📋</strong> que copia al portapapeles el título, los autores, la revista/año y el DOI/PMID en varias líneas separadas — pégalo directamente en un Word y queda ya formateado en párrafos, sin tener que arreglar saltos de línea a mano.</p>
-
-          <h4>⬇ Descarga directa de PDF desde el listado</h4>
-          <p>En cada fila del listado, justo antes del icono 📍 (aislar artículo), hay un botón ⬇ (solo si el artículo tiene PDF) que lo descarga directamente al disco — a diferencia del enlace "PDF" existente, que lo abre en el visor del navegador. Es el mismo mecanismo que ya usaba el botón de descarga del carrito.</p>
-
-          <h4>🚫📄 Seleccionar rápidamente los artículos sin PDF</h4>
-          <p>Junto a los iconos 📝 (notas) y 🛒 (carrito), en la parte superior del listado, hay un botón nuevo que selecciona de un clic <strong>todos los artículos de la biblioteca que no tienen PDF</strong> — sin importar los filtros que tengas puestos en ese momento — y activa la barra de acciones en lote (etiquetar, borrar, exportar DOIs desde "Cribar lista de referencias", etc.) sobre esa selección.</p>
-
-          <h4>🔗 "Cribar lista de referencias" reconoce enlaces sueltos y citas numeradas entre corchetes</h4>
-          <p>Además de las bibliografías clásicas ("1. Autor..."), el cribador ahora reconoce listados exportados de un chatbot o de un panel de "Fuentes", con marcadores <code>[1] [3] [8] ...</code> al principio de línea (varios números pueden apuntar a la misma referencia) seguidos del enlace. También extrae el PMID directamente de un enlace <code>pubmed.ncbi.nlm.nih.gov/&lt;pmid&gt;/</code> aunque no ponga "PMID:", y corta correctamente el DOI cuando viene incrustado en la URL de una revista (antes se tragaba el resto de la dirección — parámetros de seguimiento incluidos).</p>
-
-          <h4>📖 Glosario integrado como modal de PrionVault</h4>
-          <p>El botón <strong>Glosario</strong> de la barra lateral ya no te saca de PrionVault a otra página — abre un modal, con el mismo diseño y funciones que antes (buscar, filtrar por categoría, añadir, editar en línea, importar/exportar), sin cambiar de menú. La página independiente <code>/prionvault/admin/glossary</code> se mantiene por si otras herramientas (PrionLab, PrionPacks) enlazan directamente a ella, pero desde PrionVault ya no hace falta salir.</p>
-
-          <h4>☑ Selección manual en "Cribar lista de referencias"</h4>
-          <p>Además del botón "Importar todos los que faltan" (todo o nada), ahora puedes marcar con una casilla los artículos concretos que <strong>no</strong> están en PrionVault (hay también un "Seleccionar todos los que faltan") y pulsar <strong>"📋 Copiar DOIs seleccionados"</strong> para copiar sus DOIs al portapapeles, uno por línea — útil para ir buscándolos manualmente uno a uno en vez de importarlos todos de golpe. Los artículos sin DOI se omiten de la copia (se avisa cuántos se han quedado fuera).</p>
-
-          <h4>🔁 Resúmenes IA con reintentos y cambio automático de proveedor</h4>
-          <p>Cuando falla la generación de un resumen por un corte de conexión con el proveedor de IA, ahora se reintenta hasta 3 veces (antes 2) antes de rendirse. Si el proveedor pedido sigue sin responder, PrionVault prueba automáticamente con los otros dos configurados (Claude → GPT → Gemini) en vez de dar el resumen por fallido — se guarda de cualquiera de los tres que responda, y queda registrado qué proveedor lo generó realmente. Aplica tanto al resumen individual como al proceso por lotes. El proveedor Claude usa ahora <strong>Sonnet 5</strong> (antes Haiku 4.5).</p>
-          <p>Cada vez que se genera un resumen queda guardado un pequeño diagnóstico técnico: qué proveedor respondió, si hubo fallback, y el error exacto de cada intento fallido. En la ficha del artículo, junto a la línea "Modelo:", aparece un icono <strong>🛈</strong> cuando hay diagnóstico disponible — al pulsarlo se abre un modal con el detalle completo y un botón para copiarlo (útil para reportar un fallo).</p>
-
-          <h4>📧 Envía artículos por email sin ser admin</h4>
-          <p>Hay un segundo buzón, <strong>prionvault_lab@joaquincastilla.com</strong>, para quien no es administrador: manda un email con el PDF adjunto y PrionVault lo procesa igual que si lo subieras desde la app — comprobación de duplicados, extracción de metadatos, resumen IA incluido. Solo funciona si escribes desde <strong>el email con el que inicias sesión</strong> en la aplicación (se comprueba contra tu cuenta de usuario); cualquier otra dirección se ignora. Al terminar recibes la respuesta con el resultado (ya estaba en la biblioteca, se añadió con su resumen, o el error si algo falló) — el administrador recibe una copia oculta de esa misma respuesta, así que sabe quién ha enviado qué y cómo ha ido, sin que tú lo notes.</p>
-          <p>Truco: si en el <strong>Asunto</strong> del email pones "JC" o "Journal Club" (junto con cualquier otra palabra si quieres), el artículo se marca automáticamente como candidato a Journal Club al terminar de procesarse — sin tener que entrar en la app para marcarlo.</p>
-
-          <h4>🧩 La extensión del navegador ya no es solo para el admin</h4>
-          <p>Quien tenga instalada la <strong>extensión de PrionVault</strong> ahora puede añadir artículos directamente, sea admin o no — antes, si no eras admin, la extensión solo enviaba un email al administrador para que lo añadiera él a mano. Además, al añadir un artículo <strong>con PDF</strong> desde la extensión, ahora pasa por el mismo procesamiento completo que un email a prionvault@ o prionvault_lab@ (extracción, metadatos, resumen IA) en vez de quedarse solo con el PDF subido — el panel muestra "Recibido — procesando…" mientras tanto, en vez de un enlace inmediato. Como con el buzón de lectores, si quien la usa no es admin, el administrador recibe un aviso por email cuando termina, sin identificar a quién lo añadió.</p>
-          <p>El administrador puede ver ambas claves de la extensión (admin y usuarios) y descargar el <code>.zip</code> de instalación desde <strong>Panel de administración → System</strong>, y tiene un botón para <strong>enviarle a cualquier usuario un email con las instrucciones de instalación, su clave, y la extensión adjunta</strong> — sin tener que explicárselo uno por uno.</p>
-
-          <h4>📖 El botón "JC" pregunta antes de abrir el modal de presentación</h4>
-          <p>Al pulsar el botón <strong>"JC"</strong> de un artículo que todavía NO está marcado para Journal Club (ni tiene ninguna presentación), aparece un modal previo con dos opciones:</p>
-          <ul>
-            <li><strong>Informar al responsable:</strong> envía un email — con los datos completos del artículo y el PDF, igual de cuidado que el de "Enviar por email" — a quien esté marcado como <em>responsable de Journal Club</em>, pidiéndole que valore incluirlo. El administrador va en copia. Si hay varios responsables, se les envía a todos.</li>
-            <li><strong>Añadir presentación:</strong> sigue con el flujo de siempre (subir el documento de la sesión).</li>
-          </ul>
-          <p>Si el artículo ya está marcado para Journal Club o ya tiene alguna presentación, el botón "JC" va directo al flujo de siempre — este modal previo no aparece.</p>
-          <p>Para marcar a alguien como responsable de Journal Club (y que reciba estos emails), edítalo desde <strong>Panel de administración → Users → Edit</strong> y marca la casilla <em>"Journal Club responsible"</em>. Se puede marcar a más de una persona.</p>
-
-          <h4>📖 Glosario rediseñado</h4>
-          <p>La página de gestión del <a href="/prionvault/admin/glossary" target="_blank">Glosario</a> (terminología EN→ES que usan todos los resúmenes IA y chats) tiene un diseño más simple: añadir un término es un panel de un clic con solo dos campos obligatorios, la importación masiva se ha movido a un panel lateral discreto, las categorías son chips de filtro rápido, y hay una opción nueva para exportar todo el glosario a <code>.tsv</code>. Sigue siendo una página aparte (no un modal de PrionVault), así que se puede seguir usando igual desde otras herramientas del laboratorio.</p>
-
-          <h4>📄 Informe descargable del chat general (PDF / Word)</h4>
-          <p>Cada pregunta del chat general tiene ahora un botón 📄 junto a 📌/🚀/🗑 que genera un <strong>informe de toda la conversación hasta ese punto</strong>, descargable en PDF (maquetado) o Word (texto seleccionable, fácil de copiar/pegar). Incluye las fuentes de PrionVault citadas en cada respuesta.</p>
-
-          <h4>📄 Informe del chat de un artículo, con opción de enviarlo por email</h4>
-          <p>El chat de un artículo concreto ("Preguntar a la IA sobre este artículo") tiene ahora un botón <strong>"📄 Informe"</strong> que abre un modal para elegir PDF o Word y, si quieres, enviarlo por email en vez de descargarlo. El documento se encabeza con los datos del artículo, cada pregunta como epígrafe seguida de su respuesta, y si el chat menciona otros artículos por DOI o PMID, termina con un apartado de <strong>Referencias</strong> enlazando a PrionVault (si está en la biblioteca), a su DOI y a su PMID.</p>
-          <p>Además, el botón <strong>"Chats anteriores"</strong> se pone en verde en cuanto abres el modal si el artículo ya tiene conversaciones previas — antes había que pulsarlo para saberlo.</p>
-
-          <h4>🎯 Citas del chat corregidas — un artículo ya no aparece con dos números distintos</h4>
-          <p>Cuando un artículo aportaba varios fragmentos al contexto (su abstract y un extracto del PDF, por ejemplo), cada uno se numeraba por separado — el mismo artículo podía citarse como <code>[4]</code> en una frase y <code>[6]</code> en otra, mostrando dos badges azules distintos para la misma fuente. Ahora cada artículo tiene siempre un único número de cita, sin importar cuántos fragmentos aporte.</p>
-
-          <h4>🛒 Carrito: ver en listado y quitar no seleccionados</h4>
-          <p>Dos botones nuevos en el carrito de PrionPacks: <strong>"Ver en listado"</strong> aísla el listado principal a exactamente los artículos que tienes en el carrito, y <strong>"Quitar no seleccionados"</strong> elimina del carrito todo lo que no tenga la casilla marcada (lo inverso de "Vaciar carrito").</p>
-
-          <h4>🔎 Búsqueda del chat general corregida — encontraba resultados casi al azar</h4>
-          <p>Bug real, no solo de prompt: la mitad léxica de la búsqueda (la que complementa a la búsqueda semántica) comparaba tu pregunta completa contra cada fragmento exigiendo que <strong>todas</strong> las palabras coincidieran a la vez, incluidas las de relleno ("dime", "por favor", "cuál", "que"…) — una condición que casi ningún fragmento puede cumplir nunca. Esa mitad de la búsqueda no aportaba nada en preguntas normales, y la búsqueda quedaba en manos solo de la semántica, que para un término muy específico y poco frecuente (un acrónimo, el nombre interno de un modelo animal…) puede devolver resultados bastante alejados del tema. Ahora basta con que coincida alguna palabra significativa, como ya hacía la búsqueda estándar del listado principal en su modo "O".</p>
-          <p>Además, se ha reforzado la prioridad de las <strong>notas del investigador</strong> (Post-it, sección "Notas del usuario" del resumen IA) y las <strong>conversaciones de chat de artículo</strong>: si el sistema las encuentra como candidatas para la pregunta, ahora tienen garantizado un hueco en el contexto que recibe la IA, en vez de competir en igualdad con extractos de PDF más largos y perder ante el reordenamiento semántico. Cada fragmento también va etiquetado según su origen — Extracto del PDF, Resumen IA, Nota del investigador, Conversación previa — y el chat general tiene instrucciones explícitas de revisarlas siempre antes de decir que algo "no está en PrionVault".</p>
-
-          <h4>💬 El chat de un artículo ahora alimenta el chat general</h4>
-          <p>Tus preguntas y respuestas en el chat de un artículo concreto ("Preguntar a la IA sobre este artículo") se indexan automáticamente para que el <strong>chat general</strong> también pueda encontrarlas — igual que ya pasaba con las notas Post-it. Es <strong>privado</strong>: solo tú ves lo que preguntaste al buscar en el chat general, nadie más. También hay un nuevo botón <strong>"📊 Ver todos"</strong> en el chat de artículo (y un panel en <em>Salud biblioteca</em>) que muestra en qué artículos se ha usado el chat y cuántos en total.</p>
-
-          <h4>📥 Importar BibTeX (.bib)</h4>
-          <p>Nuevo botón <strong>"Importar BibTeX (.bib)"</strong> en <em>Entrada de artículos</em>. Sube un archivo <code>.bib</code> (de Zotero, EndNote, Google Scholar, o exportado desde el propio PrionVault) y cada entrada se compara con tu biblioteca por DOI, luego PMID y por último título:</p>
-          <ul>
-            <li><strong>Las que ya tienes:</strong> aparecen con checkbox — selecciona varias y, en un solo clic, añádeles una <strong>tag</strong> o mételas en una <strong>colección</strong> (existente o nueva, creada ahí mismo con el mismo editor completo de colecciones: nombre, color, grupo, subgrupo).</li>
-            <li><strong>Las que no encuentra:</strong> botón "Buscar" por fila que abre el flujo habitual de "Add by DOI / PMID", con navegación Anterior/Siguiente para recorrerlas todas seguidas sin tener que volver a abrir cada una a mano; si la entrada no trae DOI/PMID, se precargan título/autores/año/revista para completar rápido.</li>
-          </ul>
-
-          <h4>⚡ Tags inteligentes</h4>
-          <p>Además de las tags normales, ahora existen <strong>tags inteligentes</strong> (icono de rayo ⚡): se asignan solas a los artículos que cumplen unos criterios que tú defines (autores, revista, años, si tiene PDF/DOI/PMID, si tiene resumen IA, fuente…), igual que las colecciones inteligentes. A diferencia de las colecciones, se materializan de verdad (se guardan como si las hubieras puesto a mano) porque las tags se muestran en cada fila del listado — se re-sincronizan automáticamente cada 20 minutos, o al momento con el botón de resincronizar. Créalas con el botón ⚡ junto a "+ Tags" en el menú lateral.</p>
-
-          <h4>🗂️ Colecciones: borrar más fácil y sin puntitos</h4>
-          <p>Cada colección del menú lateral tiene ahora un icono 🗑 junto a ✏ y 📦 para eliminarla directamente (antes solo se podía con clic derecho, poco descubrible). Para borrar un grupo entero con todas sus colecciones, pasa el ratón por la cabecera del grupo y aparece una ✕. También se ha quitado el punto de color que aparecía delante del nombre de cada colección — ahora solo queda el icono de carpeta o de rayo (si es inteligente).</p>
-
-          <h4>🖥️ Visor de presentaciones de Journal Club, con fidelidad total</h4>
-          <p>Las presentaciones PowerPoint/Word/Excel de Journal Club se abren ahora con el visor oficial de <strong>Microsoft Office Online</strong> — se ve exactamente igual que en PowerPoint/Word, con animaciones y transiciones incluidas. Ver la pestaña <em>"Journal Club"</em> de esta ayuda para el detalle.</p>
-
-          <h4>🔎 Búsqueda separada de la IA, botones Y/O, y mucho más rápida</h4>
-          <ul>
-            <li><strong>Búsqueda con IA en su propio modal:</strong> ya no comparte campo con la búsqueda estándar. El icono 🤖 junto a la barra abre un modal con un cuadro de texto grande y los tres modelos por nombre (Claude Sonnet 4.6, GPT-4.1, Gemini 2.5 Pro) para elegir antes de preguntar.</li>
-            <li><strong>Botones Y / O en la búsqueda estándar:</strong> dentro del propio campo, controlan si varias palabras sueltas deben coincidir todas (Y, activo por defecto) o basta con que aparezca una (O).</li>
-            <li><strong>Búsqueda del listado general más rápida:</strong> se han añadido índices de PostgreSQL (trigramas) que evitan que cada búsqueda tuviera que recorrer toda la tabla de artículos — antes era la búsqueda más lenta de la aplicación en comparación con listados más pequeños como el de Journal Club.</li>
-          </ul>
-
-          <h4>📖 Gestión de Journal clubs — modal, informe PDF y más</h4>
-          <p>El enlace del menú lateral pasa a llamarse <strong>"Gestión de Journal clubs"</strong> y ahora abre un modal grande con todo el historial de JC, en vez de ir directo al buscador de artículos:</p>
-          <ul>
-            <li><strong>Listado completo y búsqueda instantánea:</strong> todas las presentaciones registradas, con buscador que filtra al instante por artículo, responsable o año — activa el botón <strong>OR</strong> junto al buscador para que baste con que coincida una palabra en vez de todas. Las columnas "Fecha" y "Responsable" se ordenan haciendo clic en su cabecera.</li>
-            <li><strong>Enlaces directos:</strong> cada fila enlaza al PDF del artículo (si lo tiene) y a su DOI/PMID, además de a los documentos de la sesión (icono grande, sin texto).</li>
-            <li><strong>Generar informe (PDF):</strong> botón que descarga un PDF con todo el historial, agrupado a elegir entre Año→Responsable o Responsable→Año, para todo o restringido a un año/responsable concreto.</li>
-            <li><strong>"Añadir nuevo JC"</strong> sigue siendo el mismo buscador de artículos de antes, ahora como una opción dentro de este modal — incluye la <strong>importación masiva desde Dropbox</strong> (carpetas <code>Journal clubs/&lt;responsable&gt;/yyyymmdd/</code> ya organizadas a mano) con su mini-informe de qué se importó bien y qué carpeta no se pudo identificar.</li>
-            <li><strong>Botón "JC" siempre visible en el listado:</strong> antes solo aparecía si el artículo ya tenía una presentación; ahora aparece siempre — gris si no tiene ninguna (clic = añadir presentación directamente para ese artículo, sin buscarlo) y verde oscuro con letra amarilla si ya tiene una o más (clic = abrir el documento, igual que antes).</li>
-            <li><strong>Borrar un archivo suelto:</strong> en la ficha del artículo, cada documento adjunto a una presentación de JC tiene ahora su propia ✕ para quitarlo (y borrarlo de Dropbox) sin tener que eliminar la presentación entera.</li>
-            <li>El resto de novedades de esta tanda (visor de Office, aviso de presentación ya existente, orden por fecha, responsable en el tooltip) se mantienen como se explicó antes — ver la pestaña <em>"Journal Club"</em> de esta ayuda para el detalle completo.</li>
-          </ul>
-
-          <h4>💾 Copias de seguridad (Backups)</h4>
-          <p>Nuevo panel de <strong>Backups</strong> (acceso de administrador) accesible desde el menú lateral: crea copias de seguridad de la base de datos bajo demanda o consulta las programadas automáticamente, verifica su integridad, ajusta la frecuencia y restaura una copia si hace falta.</p>
-
-          <h4>🤖 Resumen IA por lote — orden corregido</h4>
-          <p>Al pulsar un número preestablecido (p. ej. "100") en el modal de <strong>Resumen IA</strong> sin seleccionar artículos concretos, ahora se procesan los <strong>últimos 100 artículos añadidos a la biblioteca</strong> que aún no tienen resumen — antes se priorizaba por año de publicación más alto, no por fecha de alta en PrionVault.</p>
-
-          <h4>🏛️ Exportación Gobierno Vasco + SCImago (SJR)</h4>
-          <p>Desde el modal <strong>Exportar referencias</strong>, el botón <em>"Formato Gobierno Vasco"</em> genera el .docx con el formato exacto de la justificación (Authors / Title / Name of journal / Volume / páginas / Year / Quality indicators). Al pulsarlo se abre un pequeño diálogo con las opciones de las <strong>etiquetas</strong> de los campos:</p>
-          <ul>
-            <li><strong>Etiquetas en español</strong> (por defecto en inglés, como pide el Gobierno Vasco).</li>
-            <li><strong>Etiquetas en azul</strong> y/o <strong>en negrita</strong>, para resaltar los prefijos «Autores:», «Título:»…</li>
-          </ul>
-          <p>Los indicadores de calidad (cuartil, decil, percentil, ISSN y país) se rellenan solos a partir de los rankings de <strong>SCImago (SJR)</strong>, que se cargan por años desde <strong>Miscelánea → SCImago (SJR)</strong>. Se elige siempre el mejor cuartil/decil y se muestra la categoría entre paréntesis. Nota: el resto de ajustes de formato del modal (orden de bloques, formato de autores/título, separadores…) <em>no</em> afectan al formato Gobierno Vasco, que es fijo.</p>
-
-          <h4>📝 Revistas manuales por año</h4>
-          <p>En el modal de SCImago puedes guardar a mano revistas que SCImago no cubre (o cuyos datos quieras fijar tú). Ahora cada entrada lleva un <strong>Año</strong>: déjalo vacío para que valga para «todos los años» o indica un año concreto. Las revistas guardadas tienen <strong>prioridad</strong> sobre SCImago —si hay entrada para el año del artículo se usan sus datos; si no, la de «todos los años» y, en su defecto, SCImago. La lista de años cargados es ahora desplegable (colapsada por defecto).</p>
-
-          <h4>📖 Journal Club</h4>
-          <p>Nueva marca personal de <strong>Journal Club</strong> (icono de libro, violeta), al mismo nivel que favorito/leído/hito: márcala en la ficha, fíltrala en el listado y aplícala en lote. Está disponible tanto en la barra de acciones masivas como en el modal de <em>Búsqueda en lote de DOIs / PMIDs</em>, donde además puedes marcar los resultados con banderita, hito, favorito y leído.</p>
-
-          <h4>🗒️ Notas, chat con IA y compartir por email</h4>
-          <p>Cada artículo admite <strong>notas de colores</strong> (hasta 5), un <strong>chat con IA</strong> (Claude → GPT → Gemini con reserva automática) que recibe el artículo vectorizado y su resumen como contexto, y un botón para <strong>enviarlo por email</strong> con previsualización, comentario de introducción, resumen opcional y el PDF adjunto.</p>
-
-          <h4>🔔 Notificaciones por email</h4>
-          <p>Configura digests automáticos que te llegan por correo con los artículos más relevantes. Accede desde <strong>Miscelánea → Notificaciones</strong> en el menú lateral. Puedes crear varias suscripciones con configuraciones diferentes.</p>
-          <ul>
-            <li><strong>PrionVault Picks:</strong> artículos que hayas marcado con bandera (🚩), enviados en el período elegido.</li>
-            <li><strong>PubMed Digest:</strong> artículos nuevos en PubMed que coincidan con tus temas de interés.</li>
-            <li><strong>Incluir PDFs adjuntos:</strong> si el artículo tiene PDF en Dropbox, se adjunta al email directamente.</li>
-            <li>Configurable: frecuencia, horario, zona horaria, número de artículos y temas.</li>
-          </ul>
-
-          <h4>❤️ Salud de la biblioteca — Completitud de metadatos</h4>
-          <p>El modal de <strong>Salud biblioteca</strong> ahora incluye un sub-panel de completitud de metadatos. Pulsa el botón <em>"🗂 Completitud de metadatos →"</em> para ver cuántos artículos tienen campos vacíos: título, autores, revista, año, abstract, DOI y PMID. Cada número es clickable y filtra el listado principal directamente.</p>
-
-          <h4>👥 Roles de usuario</h4>
-          <p>PrionVault ahora soporta dos roles diferenciados: <strong>Administrador</strong> y <strong>Lector</strong>. La pestaña <em>"Roles"</em> de esta ayuda detalla exactamente qué puede hacer cada uno.</p>
-
-          <h4>✅ Selección y acciones masivas para lectores</h4>
-          <p>Los lectores pueden ahora usar las checkboxes de la tabla para seleccionar varios artículos y aplicar acciones en lote: bandera, favorito, hito, leído/no leído, color y prioridad. Las acciones destructivas (eliminar, resumir con IA, gestión de tags) siguen siendo exclusivas del administrador.</p>
-
-          <h4>🔍 Nuevos filtros de salud en el listado</h4>
-          <p>Desde el modal de Salud biblioteca puedes filtrar el listado principal por artículos a los que les falta título, autores, revista, año, abstract, DOI o PMID. Útil para completar metadatos de forma sistemática.</p>
-
-          <h4>📍 Aislar un artículo en el listado</h4>
-          <p>El icono 📍 de cada fila (y del modal de detalle) filtra el listado para mostrar <strong>solo ese artículo</strong>, sin perder el resto de filtros activos. Aparece un indicador visual con botón para quitar el aislamiento y volver a ver todos los resultados.</p>
-
-          <h4>📋 Copiar DOI y PMID con un clic</h4>
-          <p>En el modal de detalle, junto al DOI y al PMID hay un pequeño botón en superíndice que copia el identificador al portapapeles. El enlace habitual del PMID a PubMed se mantiene igual.</p>
-
-          <h4>🗑 Borrar conversaciones del chat general</h4>
-          <p>Cada conversación del chat general se puede eliminar por completo (🗑, en la lista de chats de la barra lateral del propio chat). Al pasar el ratón por encima del título de una conversación aparece el título completo, para los casos en los que queda cortado en la lista.</p>
-
-          <h4>🙈 Ocultar el carrito sin vaciarlo</h4>
-          <p>El carrito de PrionPacks tiene un botón "Ocultar" (icono de ojo tachado) junto a "Vaciar carrito" — cierra el panel sin perder los artículos que ya habías añadido, igual que la × de cerrar.</p>
-
-          <h4>🔐 Mejoras de seguridad</h4>
-          <ul>
-            <li>Límite de intentos de login (10/min, 50/hora) para proteger contra fuerza bruta.</li>
-            <li>Cabeceras HTTP de seguridad: <code>X-Frame-Options</code>, <code>X-Content-Type-Options</code>, CSP, Referrer-Policy.</li>
-            <li>Clave de sesión configurable vía <code>APP_SECRET_KEY</code> independiente de la contraseña de admin.</li>
-            <li>Rate limiting en endpoints de búsqueda DOI/PMID.</li>
-          </ul>
+          <h4>Diagnóstico de un resumen IA</h4>
+          <p>Cada vez que se genera un resumen queda guardado un pequeño diagnóstico técnico: qué proveedor respondió, si hubo reserva a otro proveedor, y el error exacto de cada intento fallido. En la ficha del artículo, junto a la línea "Modelo:", aparece un icono <strong>🛈</strong> cuando hay diagnóstico disponible — al pulsarlo se abre un modal con el detalle completo y un botón para copiarlo.</p>
         </div>
       `,
 
@@ -21567,10 +21440,32 @@
           </ul>
           <h4>Filtros del panel lateral</h4>
           <p>Filtra por año, autores, revista, colección, tag, estado PDF, estado resumen IA, bandera, hito, favorito, leído, color, prioridad, Journal Club, PrionPack y asignación PrionRead. Los filtros se combinan (AND). El contador "📝 Con notas" del menú lateral cuenta tus propias notas Post-it (no resúmenes IA) y filtra el listado a los artículos que las tienen.</p>
-          <h4>Coincidencia exacta con comillas en colecciones y tags inteligentes</h4>
-          <p>La regla de búsqueda libre (FTS) de colecciones y tags inteligentes admite palabras entre comillas, p. ej. <code>"bat" OR "bats"</code>, para exigir la palabra completa y evitar falsos positivos como "battle" o "batch" que sí capturaría la misma palabra sin comillas.</p>
           <h4>Búsqueda masiva por DOI / PMID <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
           <p>Pega varios DOIs o PMIDs separados por comas o saltos de línea en el campo de la barra de herramientas para encontrar de golpe qué artículos ya están en la biblioteca y cuáles faltan.</p>
+
+          <h4>Acciones rápidas en el listado</h4>
+          <ul>
+            <li><strong>📍 Aislar un artículo:</strong> el icono de cada fila (y del modal de detalle) filtra el listado para mostrar <strong>solo ese artículo</strong>, sin perder el resto de filtros activos. Aparece un indicador visual con botón para quitar el aislamiento.</li>
+            <li><strong>⬇ Descarga directa de PDF:</strong> justo antes del icono 📍, un botón (solo si el artículo tiene PDF) lo descarga directamente al disco — a diferencia del enlace "PDF", que lo abre en el visor del navegador.</li>
+            <li><strong>🚫📄 Seleccionar los artículos sin PDF:</strong> junto a los iconos 📝 (notas) y 🛒 (carrito), en la parte superior del listado, selecciona de un clic <strong>todos los artículos de la biblioteca que no tienen PDF</strong> — sin importar los filtros puestos en ese momento — y activa la barra de acciones en lote sobre esa selección.</li>
+            <li><strong>📋 Copiar DOI y PMID:</strong> en el modal de detalle, junto al DOI y al PMID hay un pequeño botón en superíndice que copia el identificador al portapapeles.</li>
+          </ul>
+
+          <h4>Tags y colecciones inteligentes</h4>
+          <p>Además de las tags y colecciones normales, existen versiones <strong>inteligentes</strong> (icono de rayo ⚡ para las tags): se asignan solas a los artículos que cumplen unos criterios que tú defines (autores, revista, años, si tiene PDF/DOI/PMID, si tiene resumen IA, fuente, y una búsqueda libre — ver más abajo). A diferencia de las colecciones, las tags inteligentes se materializan de verdad (se guardan como si las hubieras puesto a mano) porque se muestran en cada fila del listado — se re-sincronizan automáticamente cada 20 minutos, o al momento con el botón de resincronizar. Créalas con el botón ⚡ junto a "+ Tags" en el menú lateral.</p>
+          <p>Cada colección del menú lateral tiene un icono 🗑 junto a ✏ y 📦 para eliminarla directamente; para borrar un grupo entero, pasa el ratón por su cabecera y aparece una ✕.</p>
+
+          <h4>Búsqueda booleana estilo PubMed en tags y colecciones inteligentes</h4>
+          <p>El campo "Búsqueda libre" al crear/editar un <strong>tag inteligente</strong> o una <strong>colección inteligente</strong> acepta una búsqueda booleana completa, no solo palabras sueltas:</p>
+          <ul>
+            <li><strong>AND</strong> — exige que aparezcan ambos lados. <code>miRNA AND AAV</code> solo encuentra artículos que mencionen las dos cosas.</li>
+            <li><strong>OR</strong> — basta con que aparezca uno de los dos. <code>PrPSc OR PrPres</code> encuentra cualquiera de las dos formas.</li>
+            <li><strong>NOT</strong> — excluye lo que sigue. <code>prion NOT yeast</code> descarta los artículos que mencionen "yeast".</li>
+            <li><strong>Paréntesis <code>( )</code></strong> — agrupan una parte de la búsqueda para que se evalúe junta, igual que en matemáticas. Se evalúa <em>de izquierda a derecha</em> (como en PubMed real): sin paréntesis, <code>A OR B AND C</code> se lee como <code>(A OR B) AND C</code>; con paréntesis puedes forzar cualquier otro orden.</li>
+            <li><strong>Corchetes de campo</strong> — <code>[Ti]</code> (título), <code>[Ab]</code> (abstract), <code>[Au]</code> (autores) o <code>[Ja]</code> (revista), justo pegados después de una palabra, limitan esa palabra a ese campo concreto. Sin corchetes, la palabra se busca en título + abstract + autores a la vez.</li>
+            <li><strong>Comillas</strong> — <code>"bat"</code> exige la palabra exacta (ni "combat" ni "battle"); sin comillas es una coincidencia parcial (substring).</li>
+          </ul>
+          <p>Ejemplo completo: <code>Castilla [Ti] OR Desojo [Ti] AND (avión [Ab] OR casa [Ab])</code> — encuentra artículos donde el título contenga "Castilla" o "Desojo", <em>y además</em> el abstract contenga "avión" o "casa". Un error de sintaxis (paréntesis sin cerrar, campo desconocido…) se avisa al guardar, con el motivo exacto. El propio formulario de reglas muestra esta misma explicación siempre visible, no solo al pasar el ratón por el icono ⓘ.</p>
         </div>
       `,
 
@@ -21718,6 +21613,45 @@
 
           <h4>Acceso</h4>
           <p>Las entradas JC aparecen en el panel lateral del artículo, en la sección <em>"Journal Club"</em>. También puedes filtrar el listado principal para ver solo artículos con presentaciones JC usando el filtro correspondiente en el menú lateral.</p>
+        </div>
+      `,
+
+      // ── Administración ────────────────────────────────────────────────
+      administracion: `
+        <div class="pv-help-section">
+          <h3>Administración <span class="pv-help-chip pv-help-chip-admin">Mayormente admin</span></h3>
+
+          <h4>Añadir artículos</h4>
+          <ul>
+            <li><strong>📧 Email sin ser admin:</strong> el buzón <strong>prionvault_lab@joaquincastilla.com</strong> permite a cualquier usuario mandar un email con el PDF adjunto y que PrionVault lo procese igual que si se subiera desde la app — comprobación de duplicados, extracción de metadatos, resumen IA incluido. Solo funciona escribiendo desde <strong>el email con el que inicias sesión</strong> en la aplicación; cualquier otra dirección se ignora. Al terminar llega la respuesta con el resultado, con el administrador en copia oculta. Truco: si el <strong>Asunto</strong> incluye "JC" o "Journal Club", el artículo se marca automáticamente como candidato a Journal Club al terminar de procesarse.</li>
+            <li><strong>🧩 Extensión del navegador:</strong> disponible para cualquier usuario, admin o no. Al añadir un artículo con PDF desde la extensión, pasa por el mismo procesamiento completo (extracción, metadatos, resumen IA) que un email a prionvault@ o prionvault_lab@; si quien la usa no es admin, el administrador recibe un aviso por email cuando termina, sin identificar a quién lo añadió. El administrador puede ver ambas claves de la extensión (admin y usuarios), descargar el <code>.zip</code> de instalación y enviarle a cualquier usuario un email con las instrucciones, su clave y la extensión adjunta, todo desde <strong>Panel de administración → System</strong>.</li>
+            <li><strong>📥 Importar BibTeX (.bib):</strong> en <em>Entrada de artículos</em>. Sube un archivo <code>.bib</code> (Zotero, EndNote, Google Scholar, o exportado del propio PrionVault) y cada entrada se compara con la biblioteca por DOI, luego PMID y por último título — las que ya están permiten añadir tag/colección en lote; las que no se encuentran abren el flujo habitual de "Add by DOI / PMID" con navegación Anterior/Siguiente.</li>
+            <li><strong>🔗 Cribar lista de referencias:</strong> además de bibliografías clásicas ("1. Autor..."), reconoce listados exportados de un chatbot o de un panel de "Fuentes", con marcadores <code>[1] [3] [8] ...</code> al principio de línea seguidos del enlace, extrae el PMID directamente de un enlace <code>pubmed.ncbi.nlm.nih.gov/&lt;pmid&gt;/</code>, y corta correctamente el DOI cuando viene incrustado en la URL de una revista. Además del botón "Importar todos los que faltan", puedes marcar con casilla los artículos concretos que no están en PrionVault y pulsar <strong>"📋 Copiar DOIs seleccionados"</strong> para copiarlos uno por línea sin importarlos de golpe (los artículos sin DOI se omiten de la copia).</li>
+          </ul>
+
+          <h4>Resúmenes IA</h4>
+          <p>Al pulsar un número preestablecido (p. ej. "100") en el modal de <strong>Resumen IA</strong> sin seleccionar artículos concretos, se procesan los <strong>últimos artículos añadidos a la biblioteca</strong> que aún no tienen resumen, empezando por los más recientes en darse de alta.</p>
+
+          <h4>Exportar referencias</h4>
+          <p>Desde el modal <strong>Exportar referencias</strong>, el botón <em>"Formato Gobierno Vasco"</em> genera el .docx con el formato exacto de la justificación (Authors / Title / Name of journal / Volume / páginas / Year / Quality indicators), con opciones para las <strong>etiquetas</strong> de los campos (en español, en azul y/o en negrita). Los indicadores de calidad (cuartil, decil, percentil, ISSN y país) se rellenan solos a partir de los rankings de <strong>SCImago (SJR)</strong>, cargados por años desde <strong>Miscelánea → SCImago (SJR)</strong>; se elige siempre el mejor cuartil/decil. El resto de ajustes de formato del modal no afectan al formato Gobierno Vasco, que es fijo.</p>
+          <p>En el modal de SCImago puedes guardar a mano revistas que SCImago no cubre. Cada entrada lleva un <strong>Año</strong>: déjalo vacío para «todos los años» o indica uno concreto — las revistas guardadas tienen prioridad sobre SCImago (primero el año exacto, luego «todos los años», y en su defecto SCImago).</p>
+
+          <h4>Glosario</h4>
+          <p>El botón <strong>Glosario</strong> de la barra lateral abre un modal dentro de PrionVault (buscar, filtrar por categoría, añadir, editar en línea, importar/exportar .tsv), con el mismo contenido que la página independiente <code>/prionvault/admin/glossary</code> — esta se mantiene por si otras herramientas del laboratorio (PrionLab, PrionPacks) enlazan directamente a ella. Es la terminología EN→ES que usan todos los resúmenes IA y chats.</p>
+
+          <h4>Copias de seguridad (Backups)</h4>
+          <p>Panel de <strong>Backups</strong> accesible desde el menú lateral: crea copias de seguridad de la base de datos bajo demanda o consulta las programadas automáticamente, verifica su integridad, ajusta la frecuencia y restaura una copia si hace falta.</p>
+
+          <h4>Exportar esta Ayuda</h4>
+          <p>En la cabecera de este modal, los botones <strong>PDF</strong> y <strong>PPTX</strong> descargan toda esta guía — el PDF con el mismo texto e imágenes que ves aquí, y el PPTX como una presentación de diapositivas (portada, una diapositiva divisoria por pestaña y una por cada apartado, con tablas nativas). Ambos se generan a partir del contenido que ves en cada pestaña, así que siempre están al día.</p>
+
+          <h4>Seguridad</h4>
+          <ul>
+            <li>Límite de intentos de login (10/min, 50/hora) para proteger contra fuerza bruta.</li>
+            <li>Cabeceras HTTP de seguridad: <code>X-Frame-Options</code>, <code>X-Content-Type-Options</code>, CSP, Referrer-Policy.</li>
+            <li>Clave de sesión configurable vía <code>APP_SECRET_KEY</code> independiente de la contraseña de admin.</li>
+            <li>Rate limiting en endpoints de búsqueda DOI/PMID.</li>
+          </ul>
         </div>
       `,
     };
