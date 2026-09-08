@@ -21206,7 +21206,7 @@
     try {
       const tabsHtml = _helpTabsHtml();
       const sections = _HELP_TABS.map(t => ({ tab: t.key, label: t.label, html: tabsHtml[t.key] || '' }));
-      const res = await fetch(`${API}/help/report`, {
+      const res = await fetch('/prionvault/api/help/report', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -21236,7 +21236,7 @@
     try {
       const tabsHtml = _helpTabsHtml();
       const sections = _HELP_TABS.map(t => ({ tab: t.key, label: t.label, html: tabsHtml[t.key] || '' }));
-      const res = await fetch(`${API}/help/pptx`, {
+      const res = await fetch('/prionvault/api/help/pptx', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
