@@ -18,4 +18,12 @@ cmds = [
 cmds = ["cd prionread/frontend && VITE_SENTRY_RELEASE=$RAILWAY_GIT_COMMIT_SHA npm run build"]
 
 [start]
-cmd = "/opt/venv/bin/gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+# --timeout 360: the PrionVault AI-summary endpoint runs synchronously
+# inside the worker and can chain up to 3 providers (Claude retried up
+# to 3x, then GPT, then Gemini), each with its own client-side timeout
+# (see tools/prionvault/services/ai_summary.py) — worst case ~300s.
+# 120s used to be BELOW a single Claude read timeout (120s), so a slow
+# request got SIGABRT-killed by gunicorn's watchdog mid-retry instead of
+# failing over cleanly, logged in Sentry as an unhandled SystemExit(1)
+# (PRIONVAULT-3B). Keep this above the worst case computed there.
+cmd = "/opt/venv/bin/gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 360"

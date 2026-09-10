@@ -430,7 +430,19 @@ def _call_anthropic(api_key: str, user_prompt: str, extracted_text,
         # produces "'Timeout' object cannot be interpreted as an integer"
         # on every request (PRIONVAULT-2N/2P). anthropic.Timeout is the
         # SDK's own re-export of the correct httpx2-based type.
-        timeout=anthropic.Timeout(connect=15.0, read=120.0, write=15.0, pool=5.0),
+        #
+        # read=60s, not more: this call runs synchronously inside a
+        # gunicorn worker with a wall-clock --timeout (Procfile), and a
+        # single provider call is only one leg of generate_summary()'s
+        # retry+fallback chain (up to _MAX_ATTEMPTS tries here, then
+        # OpenAI, then Gemini). A read timeout anywhere near or above the
+        # worker timeout lets gunicorn's watchdog SIGABRT the worker
+        # mid-retry before this code ever gets to handle the timeout
+        # itself — Sentry saw that as an unhandled SystemExit(1) instead
+        # of a normal "Claude timed out, falling back" (PRIONVAULT-3B).
+        # Keep this comfortably under the gunicorn --timeout budget; see
+        # the comment there for the full worst-case-time accounting.
+        timeout=anthropic.Timeout(connect=15.0, read=60.0, write=15.0, pool=5.0),
         max_retries=0,
     )
     model = PROVIDERS["anthropic"]["model"]
@@ -527,7 +539,12 @@ def _call_gemini(api_key: str, user_prompt: str, extracted_text,
     # deprecated. Both APIs differ; we standardise on the new one.
     from google import genai
     from google.genai import types
-    client = genai.Client(api_key=api_key)
+    # Explicit timeout (ms) — the SDK default is otherwise unbounded here,
+    # which is the last and riskiest leg of generate_summary()'s fallback
+    # chain to leave unbounded. See the matching comment on the Anthropic
+    # client's timeout for why this has to stay under the gunicorn worker
+    # --timeout budget.
+    client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=60_000))
     model = PROVIDERS["gemini"]["model"]
     max_tokens = PROVIDERS["gemini"]["max_tokens"]
 
