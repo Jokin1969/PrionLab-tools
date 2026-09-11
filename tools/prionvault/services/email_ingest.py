@@ -411,8 +411,25 @@ def poll_once(profile: str = "admin") -> dict:
 
     try:
         proc_folder = _ensure_processed_folder(conn, cfg["processed_folder"])
-        conn.select(cfg["folder"])
-        typ, data = conn.uid("SEARCH", None, "UNSEEN")
+        try:
+            conn.select(cfg["folder"])
+            typ, data = conn.uid("SEARCH", None, "UNSEEN")
+        except (TimeoutError, OSError, imaplib.IMAP4.abort) as exc:
+            # The connection's socket timeout (_connect, 30s) applies to
+            # every operation on it, not just the initial handshake — an
+            # otherwise-healthy mail server can just be slow to answer
+            # SELECT/SEARCH on an occasional poll. This is the same kind
+            # of transient network blip as a connect failure (handled as
+            # a warning just above), not a bug — log it the same way
+            # instead of letting it bubble up to _run_loop's catch-all
+            # logger.exception(), which was flooding Sentry with three
+            # separate issues for what's really one recurring, harmless
+            # network hiccup (PRIONVAULT-3C). The next poll cycle retries
+            # on its own; nothing else to do here.
+            msg = f"select/search timed out: {exc}"
+            logger.warning("email_ingest[%s]: %s", profile, msg)
+            _set_state(profile, last_poll_status="error", last_poll_error=msg)
+            return {"error": msg}
         if typ != "OK":
             summary["errors"].append("search failed")
             return summary
