@@ -1,0 +1,394 @@
+/* PrionVault stylesheet
+   Brand colour: dark green (#166534, Tailwind green-800), distinct from
+   PrionPacks (teal) and PrionRead (indigo). */
+
+/* Navbar override: when the user is on /prionvault/, the global
+   .nb-link.nb-active rule forces a generic blue background. Replace it
+   with our green so PrionVault has the same colour treatment as the
+   other modules. The non-active text colour is set inline in base.html
+   so this override only kicks in for the highlighted state. */
+a.nb-link[href^="/prionvault"]              { color: #166534 !important; }
+a.nb-link[href^="/prionvault"].nb-active    {
+  background: #166534 !important;
+  color: #ffffff !important;
+}
+a.nb-link[href^="/prionvault"].nb-active:hover {
+  background: #14532d !important;
+}
+
+:root {
+  --pv-bg:        #f7f8fa;
+  --pv-card:      #ffffff;
+  --pv-border:    #e1e4e8;
+  --pv-text:      #1f2933;
+  --pv-text-dim:  #6b7280;
+  /* Dark green to match the navbar PrionVault link (#166534, Tailwind
+     green-800). Used everywhere as the brand accent. */
+  --pv-accent:    #166534;
+  --pv-accent-bg: #dcfce7;        /* green-100 */
+  --pv-accent-strong: #14532d;    /* green-900 */
+  --pv-radius:    8px;
+  --pv-radius-sm: 4px;
+}
+
+#prionvault-app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: calc(100vh - 60px);
+  background: var(--pv-bg);
+  color: var(--pv-text);
+}
+
+.pv-sidebar {
+  background: var(--pv-card);
+  border-right: 1px solid var(--pv-border);
+  padding: 18px 14px;
+  overflow-y: auto;
+}
+.pv-sidebar-header {
+  display: flex; gap: 10px; align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--pv-border);
+  margin-bottom: 12px;
+}
+.pv-brand-icon {
+  font-size: 22px; color: var(--pv-accent);
+  background: var(--pv-accent-bg);
+  width: 38px; height: 38px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pv-brand-name { display: block; font-weight: 700; font-size: 15px; }
+.pv-brand-sub  { display: block; font-size: 11px; color: var(--pv-text-dim); }
+
+.pv-sidebar-section {
+  margin: 16px 0 6px; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--pv-text-dim);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.pv-tag-add {
+  background: transparent; border: 1px solid var(--pv-border);
+  color: var(--pv-text-dim); width: 22px; height: 22px;
+  border-radius: 4px; cursor: pointer; font-weight: 700;
+}
+.pv-tag-add:hover { border-color: var(--pv-accent); color: var(--pv-accent); }
+
+.pv-nav-btn {
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  color: var(--pv-text);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.pv-nav-btn:hover:not([disabled]) { background: var(--pv-accent-bg); color: var(--pv-accent); }
+.pv-nav-btn[disabled]             { opacity: 0.45; cursor: not-allowed; }
+.pv-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; color: var(--pv-text-dim);
+}
+
+.pv-tag-list { display: flex; flex-direction: column; gap: 2px; }
+
+/* Role-based visibility — JS toggles `pv-role-admin` on <body> */
+.pv-admin-only             { display: none !important; }
+body.pv-role-admin .pv-admin-only { display: inherit !important; }
+body.pv-role-admin .pv-nav-btn.pv-admin-only,
+body.pv-role-admin button.pv-admin-only { display: flex !important; }
+
+/* Main area ────────────────────────────────────────────────── */
+.pv-main {
+  padding: 24px 28px;
+  overflow-y: auto;
+}
+
+.pv-search-bar {
+  background: var(--pv-card);
+  padding: 14px 16px;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius);
+  margin-bottom: 18px;
+}
+
+.pv-search-input-wrap {
+  position: relative;
+  margin-bottom: 10px;
+}
+.pv-search-icon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--pv-text-dim); font-size: 13px;
+}
+.pv-search-input {
+  width: 100%;
+  padding: 10px 40px 10px 36px;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-sm);
+  font-size: 14px;
+  background: #fff; color: var(--pv-text);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pv-search-input:focus {
+  border-color: var(--pv-accent);
+  box-shadow: 0 0 0 3px var(--pv-accent-bg);
+}
+.pv-search-mode {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px;
+  background: transparent; border: 1px solid transparent;
+  color: var(--pv-text-dim);
+  border-radius: 4px; cursor: pointer;
+}
+.pv-search-mode:hover    { background: rgba(0,0,0,0.04); color: var(--pv-text); }
+.pv-search-mode.is-active{ background: var(--pv-accent); color: #fff; border-color: var(--pv-accent); }
+
+.pv-filter-row {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  font-size: 12px; color: var(--pv-text-dim);
+}
+.pv-filter-row label { display: flex; align-items: center; gap: 6px; }
+.pv-filter-row input,
+.pv-filter-row select {
+  padding: 5px 8px;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-sm);
+  font-size: 13px; color: var(--pv-text);
+  background: #fff;
+}
+.pv-filter-row input[type="number"] { width: 80px; }
+
+/* Results */
+.pv-results-header {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 12px; color: var(--pv-text-dim);
+  margin-bottom: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.pv-result-sep { opacity: .5; }
+
+.pv-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 14px;
+}
+
+.pv-card {
+  background: var(--pv-card);
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color .15s, transform .1s, box-shadow .15s;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.pv-card:hover {
+  border-color: var(--pv-accent);
+  box-shadow: 0 4px 12px rgba(67, 56, 202, 0.08);
+  transform: translateY(-1px);
+}
+.pv-card-title {
+  font-weight: 600; font-size: 14px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pv-card-meta {
+  font-size: 11px; color: var(--pv-text-dim);
+  display: flex; gap: 6px; flex-wrap: wrap;
+  font-family: 'JetBrains Mono', monospace;
+}
+.pv-card-meta-sep { opacity: .5; }
+.pv-card-abstract {
+  font-size: 12px; color: var(--pv-text-dim);
+  line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pv-card-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.pv-tag-chip {
+  font-size: 10px; padding: 2px 7px; border-radius: 10px;
+  background: var(--pv-accent-bg); color: var(--pv-accent);
+  font-weight: 600;
+}
+.pv-card-flag {
+  display: inline-block; font-size: 10px;
+  padding: 1px 6px; border-radius: 8px;
+  background: #fef3c7; color: #92400e;
+  font-weight: 700;
+}
+.pv-card-flag.indexed { background: #dcfce7; color: #15803d; }
+
+.pv-prionread-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; padding: 0 2px; opacity: 0.25;
+  transition: opacity 0.15s, transform 0.1s;
+  line-height: 1;
+}
+.pv-prionread-btn:hover { opacity: 0.6; transform: scale(1.15); }
+.pv-prionread-btn.active { opacity: 1; }
+.pv-prionread-btn:disabled { cursor: wait; }
+
+/* Pagination */
+.pv-pagination { margin: 18px 0; display: flex; gap: 4px; flex-wrap: wrap; }
+.pv-pagination button {
+  background: #fff; border: 1px solid var(--pv-border);
+  padding: 4px 10px; border-radius: 4px; cursor: pointer;
+  font-size: 12px; font-family: 'JetBrains Mono', monospace;
+}
+.pv-pagination button.is-current {
+  background: var(--pv-accent); color: #fff; border-color: var(--pv-accent);
+}
+.pv-pagination button[disabled] { opacity: .4; cursor: not-allowed; }
+
+/* Modal */
+.pv-modal { position: fixed; inset: 0; z-index: 100; }
+.pv-modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+.pv-modal-card {
+  position: relative;
+  /* Push the card down so the header (PrionLab navbar + page title) is
+     never visually overlapped by the modal. 100 px top gives clearance
+     above the modal's title icon, matching the user's request. */
+  margin: 100px auto 5vh; width: min(880px, 92vw);
+  max-height: calc(100vh - 140px); overflow-y: auto;
+  background: var(--pv-card);
+  border-radius: var(--pv-radius);
+  box-shadow: 0 25px 60px rgba(0,0,0,0.25);
+  padding: 28px 32px;
+}
+.pv-modal-close {
+  position: absolute; right: 14px; top: 10px;
+  background: transparent; border: none; font-size: 26px;
+  color: var(--pv-text-dim); cursor: pointer;
+}
+.pv-modal-close:hover { color: var(--pv-text); }
+
+/* Empty state */
+.pv-empty {
+  padding: 60px 20px; text-align: center;
+  color: var(--pv-text-dim);
+}
+
+/* ── Import / Queue modals ─────────────────────────────────────────────── */
+.pv-modal-card-wide { width: min(1100px, 96vw); }
+
+.pv-dropzone {
+  display: block;
+  border: 2px dashed var(--pv-border);
+  border-radius: var(--pv-radius);
+  padding: 28px 24px;
+  text-align: center;
+  background: var(--pv-bg);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.pv-dropzone:hover,
+.pv-dropzone.is-drag {
+  border-color: var(--pv-accent);
+  background: var(--pv-accent-bg);
+}
+.pv-dropzone-inner p { font-size: 14px; }
+
+.pv-btn-soft {
+  background: #fff; border: 1px solid var(--pv-border);
+  color: var(--pv-text); padding: 6px 12px; border-radius: 4px;
+  font-size: 13px; cursor: pointer;
+}
+.pv-btn-soft:hover { border-color: var(--pv-accent); color: var(--pv-accent); }
+
+.pv-import-progress {
+  margin-top: 16px;
+  background: var(--pv-bg);
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-sm);
+  padding: 10px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--pv-text-dim);
+  max-height: 250px;
+  overflow-y: auto;
+}
+.pv-import-progress .pv-row {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 3px 0; border-bottom: 1px dashed var(--pv-border);
+}
+.pv-import-progress .pv-row:last-child { border-bottom: none; }
+.pv-import-progress .pv-row b { color: var(--pv-text); }
+
+.pv-queue-counts {
+  display: flex; gap: 14px; margin: 10px 0 14px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+.pv-queue-counts span {
+  background: var(--pv-bg); border: 1px solid var(--pv-border);
+  padding: 4px 10px; border-radius: 4px;
+}
+.pv-queue-counts .pv-pill-done   { background: #dcfce7; border-color: #86efac; color: #166534; }
+.pv-queue-counts .pv-pill-fail   { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+.pv-queue-counts .pv-pill-dup    { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.pv-queue-counts .pv-pill-proc   { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+
+.pv-queue-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pv-queue-table th, .pv-queue-table td {
+  border-bottom: 1px solid var(--pv-border);
+  padding: 6px 8px; text-align: left; vertical-align: top;
+}
+.pv-queue-table th {
+  font-weight: 700; color: var(--pv-text-dim);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+}
+.pv-queue-table td.pv-status {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+}
+.pv-queue-table td.pv-error {
+  color: #b91c1c; font-size: 11px; max-width: 280px;
+  word-break: break-word;
+}
+.pv-queue-table .pv-btn-retry {
+  background: var(--pv-accent); color: #fff; border: none;
+  padding: 4px 8px; border-radius: 4px; font-size: 11px;
+  cursor: pointer;
+}
+.pv-queue-table .pv-btn-retry:hover { background: var(--pv-accent-strong); }
+
+/* ── Touch-device polish for the collection / group chevrons ──────────
+   On a desktop the small 16-18px arrow is fine because the mouse can
+   land on it precisely. On iPad / iPhone every tap fights for ~44px
+   of target area, and missing the chevron triggers the filter switch
+   instead of toggling the fold — which feels broken.
+
+   pointer:coarse fires on every touch-primary device (iPad, iPhone,
+   most Android tablets) and stays off on desktops with a mouse, so
+   nothing about the existing desktop layout changes. We grow the
+   chevron's hit area without moving its visual size by adding
+   transparent padding and a min target size that matches Apple's
+   44px guideline. */
+@media (pointer: coarse) {
+  #collection-list .pv-coll-chevron {
+    width: 44px !important;
+    height: 44px !important;
+    /* Center the icon inside the larger box; the original styles
+       already use flex-centering so this just inherits it. */
+    margin: -8px 0 -8px -8px;   /* claw back the extra space so the
+                                   row height doesn't grow */
+  }
+  /* Make sure the icon itself stays at its original size — the
+     bigger box is purely for tap targeting. */
+  #collection-list .pv-coll-chevron i { font-size: 13px !important; }
+
+  /* Active feedback so the user knows the tap registered, even
+     before the list re-renders. */
+  #collection-list .pv-coll-chevron:active {
+    background: rgba(255,255,255,0.20) !important;
+    color: white !important;
+  }
+}

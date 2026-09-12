@@ -108,6 +108,71 @@
       <p class="empty-state">{{ _('No backups yet. Click "Create Backup Now" to start.') }}</p>
     {% endif %}
   </section>
+
+  <!-- ── Dropbox backups (mirror copy) ─────────────────────────────────── -->
+  {% if dropbox_base_dir %}
+  <section class="card mb-1">
+    <div class="card-header-row">
+      <h2 class="card-title">&#9729; {{ _('Backups in Dropbox') }}</h2>
+      <span class="text-sm text-muted"><code>{{ dropbox_base_dir }}</code></span>
+    </div>
+
+    {% if dropbox_backups %}
+      <p class="text-sm" id="dbxBackupAge"
+         data-latest="{{ dropbox_backups[0].created_at }}"
+         style="margin:.25rem 0 .75rem;color:#6b7280;">
+        {{ _('Latest:') }} <strong>{{ dropbox_backups[0].created_at[:16] }}</strong> ·
+        {{ dropbox_backups|length }} {{ _('files retained') }} ·
+        {{ _('retention') }}: {{ _('90 daily + 24 monthly') }}
+      </p>
+      <script>
+        (function () {
+          const el = document.getElementById('dbxBackupAge');
+          if (!el) return;
+          const ts = Date.parse(el.dataset.latest);
+          if (!ts) return;
+          const ageH = (Date.now() - ts) / 3_600_000;
+          if (ageH > 48) {
+            el.style.color = '#b91c1c';
+            el.style.fontWeight = '600';
+            el.insertAdjacentHTML('beforeend',
+              ' &mdash; <span title="Older than 48 h">&#9888; '
+              + Math.round(ageH) + 'h old</span>');
+          }
+        })();
+      </script>
+
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ _('Filename') }}</th>
+              <th>{{ _('Type') }}</th>
+              <th>{{ _('Size') }}</th>
+              <th>{{ _('Created') }}</th>
+              <th>{{ _('Dropbox path') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in dropbox_backups %}
+            <tr>
+              <td><code>{{ b.filename }}</code></td>
+              <td><span class="badge badge--reader">{{ b.type }}</span></td>
+              <td>{{ b.size_mb }} MB</td>
+              <td>{{ b.created_at[:16] }}</td>
+              <td><code style="font-size:11px;color:#6b7280;">{{ b.path }}</code></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state">
+        {{ _('No Dropbox backups found yet. The next scheduled run (or "Create Backup Now") will populate this folder.') }}
+      </p>
+    {% endif %}
+  </section>
+  {% endif %}
   {% endif %}
 
   <!-- ── Live monitor ─────────────────────────────────────────────────── -->
