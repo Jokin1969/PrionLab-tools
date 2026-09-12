@@ -28,6 +28,20 @@ class UploadResult:
     error:        Optional[str] = None
 
 
+def _friendly_upload_error(exc) -> str:
+    """Turn a raw dropbox.exceptions.ApiError into a message an operator
+    can act on. `insufficient_space` in particular reads as an opaque
+    Python repr by default (ApiError('...', UploadError('path',
+    UploadWriteFailed(reason=WriteError('insufficient_space', None), ...))))
+    — it means the connected Dropbox ACCOUNT is out of storage quota, not
+    a bug in PrionVault, so say that plainly instead."""
+    if "insufficient_space" in str(exc):
+        return ("Dropbox se ha quedado sin espacio de almacenamiento — "
+                "no se puede subir el PDF. Contacta con el administrador "
+                "para liberar espacio o ampliar el plan de Dropbox.")
+    return f"dropbox api error: {exc}"
+
+
 def _doi_to_slug(doi: str) -> str:
     """Convert a DOI to a filesystem-safe slug.
 
@@ -122,7 +136,7 @@ def upload_pdf(content: bytes, target_path: str,
     except dropbox.exceptions.ApiError as exc:
         return UploadResult(dropbox_path=target_path, dropbox_link=None,
                             size_bytes=len(content),
-                            error=f"dropbox api error: {exc}")
+                            error=_friendly_upload_error(exc))
     except Exception as exc:
         logger.warning("Dropbox upload failed for %s: %s", target_path, exc)
         return UploadResult(dropbox_path=target_path, dropbox_link=None,
