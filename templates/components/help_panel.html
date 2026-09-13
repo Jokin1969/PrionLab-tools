@@ -187,7 +187,7 @@
 </div>
 
 <!-- Onboarding Modal -->
-<div id="hs-onboarding" class="hs-onboarding" role="dialog" aria-modal="true">
+<div id="hs-onboarding" class="hs-onboarding hs-onboarding-modal" role="dialog" aria-modal="true">
   <div class="hs-onboarding-card">
     <div class="hs-onboarding-icon">&#10024;</div>
     <h2 class="hs-onboarding-title">{{ _('Welcome to PrionLab Tools!') }}</h2>
@@ -218,7 +218,7 @@
 
 {# Expose page context to JS #}
 <script>
-  window.HELP_PAGE_CONTEXT = {{ page_context | tojson if page_context is defined else '""' }};
+  window.HELP_PAGE_CONTEXT = {{ (page_context if page_context is defined else '') | tojson }};
   window.HELP_USER_LOGGED_IN = true;
   window.HELP_LANG = {{ session.get('language', 'es') | tojson }};
 </script>

@@ -1,0 +1,699 @@
+"""Generate a formatted .docx from a list of PrionVault references.
+
+Config schema (all keys optional — defaults applied if missing):
+{
+  "blocks": [
+    {
+      "id": "authors"|"title"|"journal"|"year"|"doi"|"pmid"|"author_position",
+      "active": true,
+      "options": { ...block-specific... }
+    }
+  ],
+  "show_labels": false,     // prefix each field with "Authors:", "Title:", etc.
+  "show_type": false,       // show "Type: Article|Review" as first field
+  "marked_author": "Joaquín Castilla"
+}
+
+Per-block options:
+  authors:   mode ("all"|"first_et_al"|"first_last"),
+             marked_bold/italic/underline (bool), marked_color ("#rrggbb"|null),
+             bold/italic/underline/color for other authors
+  title:     bold, italic, underline, color
+  journal:   bold, italic, underline, color  (default: bold+italic)
+  year:      bold, italic, underline, color  (default: bold+italic)
+  doi:       with_link (bool), bold, italic, underline, color
+  pmid:      with_link (bool), bold, italic, underline, color
+  author_position: bold, italic, underline, color
+"""
+from __future__ import annotations
+
+import io
+import re
+import unicodedata
+import zipfile as _zf
+from datetime import datetime
+from typing import Any
+
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Pt, RGBColor, Cm
+from lxml import etree
+
+ACCENT = RGBColor(0x0F, 0x34, 0x60)
+DIM    = RGBColor(0x6B, 0x72, 0x80)
+DARK   = RGBColor(0x1E, 0x2D, 0x3D)
+MID    = RGBColor(0x25, 0x63, 0xEB)   # medium blue for the Authors/Title emphasis toggle
+
+_DEFAULT_BLOCKS: list[dict] = [
+    {"id": "authors",         "active": True,  "options": {}},
+    {"id": "title",           "active": True,  "options": {"bold": True, "italic": True, "underline": True}},
+    {"id": "journal",         "active": True,  "options": {"bold": True, "italic": True}},
+    {"id": "year",            "active": True,  "options": {"bold": True, "italic": True}},
+    {"id": "doi",             "active": True,  "options": {"with_link": True}},
+    {"id": "pmid",            "active": True,  "options": {"with_link": True}},
+    {"id": "author_position", "active": False, "options": {}},
+]
+
+_LABELS = {
+    "authors":         "Authors",
+    "title":           "Title",
+    "journal":         "Journal",
+    "year":            "Year",
+    "doi":             "DOI",
+    "pmid":            "PMID",
+    "author_position": "Position",
+    "type":            "Type",
+}
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+def _norm(s: str) -> str:
+    return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('ascii').lower().strip()
+
+
+def _split_authors(raw: str) -> list[str]:
+    """Split an authors string by semicolon or comma, whichever is the primary separator."""
+    if not raw:
+        return []
+    sep = ';' if ';' in raw else ','
+    return [a.strip() for a in raw.split(sep) if a.strip()]
+
+
+def _find_marked_author_index(authors_list: list[str], marked_author: str) -> int | None:
+    if not marked_author:
+        return None
+    parts = marked_author.strip().split()
+    if not parts:
+        return None
+    last  = parts[-1]
+    first = parts[0] if len(parts) >= 2 else ''
+    initial   = first[0] if first else ''
+    norm_last  = _norm(last)
+    norm_first = _norm(first) if first else ''
+
+    for i, a in enumerate(authors_list):
+        na = _norm(a)
+        # Use word boundary to avoid partial matches (Castillo ≠ Castilla)
+        if not re.search(r'\b' + re.escape(norm_last) + r'\b', na):
+            continue
+        # Last name matched — verify first name or initial when available
+        if not first:
+            return i
+        if norm_first and norm_first in na:
+            return i
+        if initial and re.search(r'\b' + re.escape(initial.lower()) + r'\b', na):
+            return i
+    return None
+
+
+def _parse_color(hex_color: str | None) -> RGBColor | None:
+    if not hex_color:
+        return None
+    h = hex_color.lstrip('#')
+    if len(h) == 6:
+        try:
+            return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+        except ValueError:
+            pass
+    return None
+
+
+def _add_run(para, text: str, *, bold=False, italic=False, underline=False,
+             color: RGBColor | None = None, size=Pt(11)):
+    if not text:
+        return
+    r = para.add_run(text)
+    r.font.name      = 'Calibri'
+    r.font.size      = size
+    r.font.bold      = bold
+    r.font.italic    = italic
+    r.font.underline = underline
+    if color:
+        r.font.color.rgb = color
+
+
+def _sep_run(para):
+    _add_run(para, '  ·  ', color=DIM, size=Pt(11))
+
+
+def _add_hyperlink(para, text: str, url: str, opts: dict):
+    part = para.part
+    r_id = part.relate_to(
+        url,
+        'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink',
+        is_external=True,
+    )
+    hl = OxmlElement('w:hyperlink')
+    hl.set(qn('r:id'), r_id)
+
+    r = OxmlElement('w:r')
+    rPr = OxmlElement('w:rPr')
+
+    u = OxmlElement('w:u')
+    u.set(qn('w:val'), 'single')
+    rPr.append(u)
+
+    col_hex = (opts.get('color') or '#0F3460').lstrip('#')
+    col_el = OxmlElement('w:color')
+    col_el.set(qn('w:val'), col_hex)
+    rPr.append(col_el)
+
+    sz = OxmlElement('w:sz')
+    sz.set(qn('w:val'), '22')   # 11pt = 22 half-points
+    szCs = OxmlElement('w:szCs')
+    szCs.set(qn('w:val'), '22')
+    rPr.append(sz)
+    rPr.append(szCs)
+
+    if opts.get('bold'):
+        rPr.append(OxmlElement('w:b'))
+    if opts.get('italic'):
+        rPr.append(OxmlElement('w:i'))
+
+    r.append(rPr)
+
+    t = OxmlElement('w:t')
+    t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+    t.text = text
+    r.append(t)
+    hl.append(r)
+    para._p.append(hl)
+
+
+def _format_authors(
+    authors_list: list[str],
+    opts: dict,
+    marked_author: str,
+    mode: str,
+) -> list[tuple]:
+    """Return [(text, bold, italic, underline, color|None), ...] per displayed author."""
+    if mode == 'first_et_al' and len(authors_list) > 1:
+        display = [(0, authors_list[0]), (-1, 'et al.')]
+    elif mode == 'first_last' and len(authors_list) > 2:
+        display = [(0, authors_list[0]), (-1, '…'), (len(authors_list) - 1, authors_list[-1])]
+    else:
+        display = list(enumerate(authors_list))
+
+    marked_idx = _find_marked_author_index(authors_list, marked_author) if marked_author else None
+
+    result = []
+    for orig_idx, name in display:
+        is_marked = marked_idx is not None and orig_idx == marked_idx
+        if is_marked:
+            b   = opts.get('marked_bold',      False)
+            it  = opts.get('marked_italic',     False)
+            ul  = opts.get('marked_underline',  False)
+            col = _parse_color(opts.get('marked_color'))
+        else:
+            b   = opts.get('bold',      False)
+            it  = opts.get('italic',    False)
+            ul  = opts.get('underline', False)
+            col = _parse_color(opts.get('color'))
+        result.append((name, b, it, ul, col))
+    return result
+
+
+# ── Core renderer ─────────────────────────────────────────────────────────
+
+def _render_ref(para, article: dict, config: dict, number: int) -> None:
+    blocks        = config.get('blocks', _DEFAULT_BLOCKS)
+    show_labels   = config.get('show_labels', False)
+    marked_author = config.get('marked_author', '')
+
+    _add_run(para, f'[{number}] ', bold=True, color=ACCENT, size=Pt(11))
+
+    # Determine article type from source_metadata if available
+    sm = article.get('source_metadata') or {}
+    pub_type = sm.get('publication_type') or sm.get('type') or ''
+    type_str = 'Review' if 'review' in pub_type.lower() else 'Article'
+
+    first = True
+
+    if config.get('show_type', False):
+        if show_labels:
+            _add_run(para, 'Type: ', color=DIM, size=Pt(11))
+        _add_run(para, type_str, bold=True, size=Pt(11))
+        first = False
+
+    active_blocks = [b for b in blocks if b.get('active', True)]
+
+    for block in active_blocks:
+        bid  = block['id']
+        opts = block.get('options', {})
+
+        # Resolve value(s)
+        if bid == 'authors':
+            raw = (article.get('authors') or '').strip()
+            authors_list = _split_authors(raw)
+            if not authors_list:
+                continue
+        elif bid == 'title':
+            val = (article.get('title') or '').strip()
+            if not val:
+                continue
+        elif bid == 'journal':
+            val = (article.get('journal') or '').strip()
+            if not val:
+                continue
+        elif bid == 'year':
+            yr = article.get('year')
+            val = str(yr) if yr else ''
+            if not val:
+                continue
+        elif bid == 'doi':
+            val = (article.get('doi') or '').strip()
+            if not val:
+                continue
+        elif bid == 'pmid':
+            val = (article.get('pubmed_id') or '').strip()
+            if not val:
+                continue
+        elif bid == 'author_position':
+            raw = (article.get('authors') or '').strip()
+            authors_list_pos = _split_authors(raw)
+            total = len(authors_list_pos)
+            if total == 0:
+                continue
+            midx = _find_marked_author_index(authors_list_pos, marked_author)
+            if midx is None:
+                continue
+            val = f'{midx + 1}/{total}'
+        else:
+            continue
+
+        if not first:
+            _sep_run(para)
+        first = False
+
+        label_text = f'{_LABELS.get(bid, bid)}: ' if show_labels else ''
+
+        if bid == 'authors':
+            if label_text:
+                _add_run(para, label_text, color=DIM)
+            mode           = opts.get('mode', 'all')
+            sep_style      = opts.get('separator', 'comma')     # 'comma' | 'semicolon'
+            last_sep_style = opts.get('last_separator', 'and')  # 'same'  | 'and'
+            sep      = ', ' if sep_style == 'comma' else '; '
+            last_sep = (', and ' if sep_style == 'comma' else '; and ') \
+                       if last_sep_style == 'and' else sep
+
+            parts = _format_authors(authors_list, opts, marked_author, mode)
+            n = len(parts)
+            for j, (name, b, it, ul, col) in enumerate(parts):
+                if j > 0:
+                    joiner = last_sep if j == n - 1 else sep
+                    _add_run(para, joiner, color=DARK)
+                _add_run(para, name, bold=b, italic=it, underline=ul, color=col)
+
+        elif bid in ('doi', 'pmid'):
+            with_link = opts.get('with_link', True)
+            if bid == 'doi':
+                url   = f'https://doi.org/{val}' if not val.startswith('http') else val
+                label = f'doi:{val}'
+            else:
+                url   = f'https://pubmed.ncbi.nlm.nih.gov/{val}/'
+                label = f'PMID:{val}'
+
+            if label_text:
+                _add_run(para, label_text, color=DIM, size=Pt(11))
+            if with_link:
+                _add_hyperlink(para, label, url, opts)
+            else:
+                _add_run(para, label,
+                         bold=opts.get('bold', False), italic=opts.get('italic', False),
+                         underline=opts.get('underline', False),
+                         color=_parse_color(opts.get('color')), size=Pt(11))
+
+        elif bid == 'author_position':
+            if label_text:
+                _add_run(para, label_text, color=DIM)
+            _add_run(para, f'({val})',
+                     bold=opts.get('bold', False), italic=opts.get('italic', False),
+                     underline=opts.get('underline', False),
+                     color=_parse_color(opts.get('color')))
+
+        else:
+            if label_text:
+                _add_run(para, label_text, color=DIM, size=Pt(11))
+            _add_run(para, val,
+                     bold=opts.get('bold', False), italic=opts.get('italic', False),
+                     underline=opts.get('underline', False),
+                     color=_parse_color(opts.get('color')), size=Pt(11))
+
+
+# ── Document builder ──────────────────────────────────────────────────────
+
+def _patch_app_xml(data: bytes) -> bytes:
+    APP_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/extended-properties'
+    root = etree.fromstring(data)
+    for tag, val in [('AppVersion', '16.0000'), ('Application', 'Microsoft Office Word')]:
+        el = root.find(f'{{{APP_NS}}}{tag}')
+        if el is None:
+            el = etree.SubElement(root, f'{{{APP_NS}}}{tag}')
+        el.text = val
+    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+
+def _postprocess_docx(doc: "Document") -> bytes:
+    """Save + patch AppVersion so Word 365 opens it as a modern document."""
+    buf = io.BytesIO()
+    doc.save(buf)
+    raw = buf.getvalue()
+    in_buf  = io.BytesIO(raw)
+    out_buf = io.BytesIO()
+    with _zf.ZipFile(in_buf, 'r') as zin, \
+         _zf.ZipFile(out_buf, 'w', compression=_zf.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == 'docProps/app.xml':
+                data = _patch_app_xml(data)
+            zout.writestr(item, data)
+    return out_buf.getvalue()
+
+
+# ── Gobierno Vasco justification format ────────────────────────────────────
+#
+# The Basque Government asks for a per-publication block with fixed English
+# labels. Layout (missing fields are left blank):
+#
+#   Authors:  A, B, ... Y and Z.        (marked author in bold)
+#   Title: ...
+#   Name of journal: ...
+#   Volume: N   Initial pag: p1   Final pag: p2   Year: YYYY
+#
+#   Quality indicators:   Data base
+#                         Quartile
+
+def _sort_newest_first(articles: list[dict]) -> list[dict]:
+    """Sort by year descending (newest first); missing years go last."""
+    def _yr(a):
+        try:
+            return int(a.get('year') or 0)
+        except (TypeError, ValueError):
+            return 0
+    return sorted(articles, key=_yr, reverse=True)
+
+
+def _clean_category(cat: str) -> str:
+    """Normalize category display names:
+       * '... (miscellaneous)' / 'Miscellaneous ...' → 'Miscellaneous'
+       * 'Pathology and Forensic Medicine' → 'Pathology'"""
+    if cat and 'miscellaneous' in cat.lower():
+        return 'Miscellaneous'
+    if cat and cat.strip().lower() == 'pathology and forensic medicine':
+        return 'Pathology'
+    return cat or ''
+
+
+# Journals whose displayed name differs from what's stored in the library.
+_JOURNAL_DISPLAY = {
+    'proceedings of the national academy of sciences':
+        'Proceedings of the National Academy of Sciences (PNAS)',
+    'proceedings of the national academy of sciences of the united states of america':
+        'Proceedings of the National Academy of Sciences (PNAS)',
+}
+
+
+def _display_journal(name: str) -> str:
+    """Map a stored journal name to its preferred display form."""
+    key = (name or '').strip().lower()
+    return _JOURNAL_DISPLAY.get(key, (name or '').strip())
+
+
+def _format_quality(hit: dict) -> str:
+    """Build the quality-indicator string:
+       D1  → 'Q1 · D1 · P98.0'   (decile shown only when it's D1)
+       !D1 → 'Q2 · P83.4'
+    The percentile is always shown when available. Category in ()."""
+    q = hit.get('quartile') or ''
+    decile = hit.get('decile')
+    pct = hit.get('percentile')
+    bits = [q] if q else []
+    if decile == 'D1':
+        bits.append('D1')
+    if pct is not None:
+        bits.append(f'P{pct:.1f}')
+    val = ' · '.join(bits)
+    cat = _clean_category(hit.get('category') or '')
+    if cat:
+        val += f' ({cat})'
+    return val
+
+
+def _govasco_vol_pages(sm: dict) -> tuple[str, str, str]:
+    """Extract (volume, initial_page, final_page) from source_metadata,
+    tolerating the various key shapes CrossRef / PubMed leave behind."""
+    def _s(v) -> str:
+        return str(v).strip() if v not in (None, '') else ''
+    volume = _s(sm.get('volume') or sm.get('vol'))
+    ini = _s(sm.get('first_page') or sm.get('page_first') or sm.get('spage'))
+    fin = _s(sm.get('last_page') or sm.get('page_last') or sm.get('epage'))
+    if not ini and not fin:
+        pages = _s(sm.get('pages') or sm.get('page'))
+        if pages:
+            parts = re.split(r'[-–—]', pages)
+            ini = parts[0].strip()
+            fin = parts[1].strip() if len(parts) > 1 else ''
+    return volume, ini, fin
+
+
+# Field labels per language. English is the Gobierno Vasco default; the
+# export modal can switch to Spanish.
+_GOVASCO_LABELS = {
+    'en': {
+        'authors': 'Authors: ', 'title': 'Title: ',
+        'journal': 'Name of journal: ', 'volume': 'Volume: ',
+        'initial': 'Initial pag: ', 'final': 'Final pag: ', 'year': 'Year: ',
+        'doi': 'DOI: ', 'pmid': 'PMID: ', 'issn': 'ISSN: ',
+        'pubplace': 'Publication place: ',
+        'quality': 'Quality indicators: ', 'database': 'Data base ',
+        'quartile': 'Quartile ', 'and': ' and ',
+    },
+    'es': {
+        'authors': 'Autores: ', 'title': 'Título: ',
+        'journal': 'Nombre de la revista: ', 'volume': 'Volumen: ',
+        'initial': 'Pág. inicial: ', 'final': 'Pág. final: ', 'year': 'Año: ',
+        'doi': 'DOI: ', 'pmid': 'PMID: ', 'issn': 'ISSN: ',
+        'pubplace': 'Lugar de publicación: ',
+        'quality': 'Indicadores de calidad: ', 'database': 'Base de datos ',
+        'quartile': 'Cuartil ', 'and': ' y ',
+    },
+}
+
+
+def generate_govasco_docx(articles: list[dict], marked_author: str = '',
+                          lang: str = 'en', emphasis_color: bool = False,
+                          emphasis_bold: bool = False) -> bytes:
+    """Return .docx bytes with each reference in the Gobierno Vasco
+    justification layout. Missing fields are rendered as empty labels.
+    `lang` ('en' default | 'es') switches the field labels.
+    `emphasis_color` renders the field labels (Authors:, Title:, …) in
+    medium blue; `emphasis_bold` renders those labels in bold."""
+    L = _GOVASCO_LABELS.get(lang, _GOVASCO_LABELS['en'])
+    label_color = MID if emphasis_color else DARK
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+    for section in doc.sections:
+        section.top_margin = section.bottom_margin = Cm(2.5)
+        section.left_margin = section.right_margin = Cm(2.5)
+
+    def _label(para, label):
+        _add_run(para, label, bold=emphasis_bold, color=label_color, size=Pt(11))
+
+    # Default order: newest → oldest (unless the caller pre-sorted).
+    articles = _sort_newest_first(articles)
+
+    # Prefetch every journal's SCImago rows in ONE query so the loop below
+    # does no per-article DB round-trips (those pile up and can trip the
+    # gunicorn worker timeout on large exports).
+    _sci_index = {}
+    try:
+        from .services import scimago
+        _sci_index = scimago.build_lookup_index(
+            [a.get('journal') or '' for a in articles])
+    except Exception:
+        _sci_index = {}
+
+    for idx, art in enumerate(articles):
+        sm = art.get('source_metadata') or {}
+        authors_list = _split_authors((art.get('authors') or '').strip())
+        marked_idx = _find_marked_author_index(authors_list, marked_author) \
+            if marked_author else None
+
+        # Authors — comma separated, "and"/"y" before the last, marked bold.
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(0)
+        _label(p, L['authors'])
+        n = len(authors_list)
+        last_name = ''
+        for j, name in enumerate(authors_list):
+            if j > 0:
+                _add_run(para=p, text=(L['and'] if j == n - 1 else ', '),
+                         color=DARK, size=Pt(11))
+            _add_run(p, name,
+                     bold=(marked_idx is not None and j == marked_idx),
+                     size=Pt(11))
+            last_name = name
+        # Final period — but not if the last author already ends with one
+        # (avoids "Castilla J..").
+        if authors_list and not last_name.rstrip().endswith('.'):
+            _add_run(p, '.', color=DARK, size=Pt(11))
+
+        # Title
+        pt = doc.add_paragraph(); pt.paragraph_format.space_after = Pt(0)
+        _label(pt, L['title'])
+        _add_run(pt, (art.get('title') or '').strip(), size=Pt(11))
+
+        # Journal
+        pj = doc.add_paragraph(); pj.paragraph_format.space_after = Pt(0)
+        _label(pj, L['journal'])
+        _add_run(pj, _display_journal(art.get('journal') or ''), size=Pt(11))
+
+        year = art.get('year')
+
+        # SCImago lookup: ISSN, country and quality indicators — resolved
+        # against the prefetched index (no DB round-trip per article).
+        hit = None
+        try:
+            from .services import scimago
+            hit = scimago.lookup_indexed(_sci_index, art.get('journal') or '', year)
+        except Exception:
+            hit = None
+
+        # DOI · PMID · Year — DOI and PMID as hyperlinks, dot-separated.
+        doi  = (art.get('doi') or '').strip()
+        pmid = (art.get('pubmed_id') or '').strip()
+        pdp = doc.add_paragraph(); pdp.paragraph_format.space_after = Pt(0)
+        wrote_any = False
+        if doi:
+            _label(pdp, L['doi'])
+            url = doi if doi.startswith('http') else f'https://doi.org/{doi}'
+            _add_hyperlink(pdp, doi, url, {'color': '#0F3460'})
+            wrote_any = True
+        if pmid:
+            if wrote_any:
+                _add_run(pdp, '  ·  ', color=DIM, size=Pt(11))
+            _label(pdp, L['pmid'])
+            _add_hyperlink(pdp, pmid, f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/',
+                           {'color': '#0F3460'})
+            wrote_any = True
+        if year:
+            if wrote_any:
+                _add_run(pdp, '  ·  ', color=DIM, size=Pt(11))
+            _label(pdp, L['year']); _add_run(pdp, str(year), size=Pt(11))
+
+        # ISSN · Publication place (from SCImago). "Unknown" when absent.
+        issn    = (hit or {}).get('issn') or 'Unknown'
+        country = (hit or {}).get('country') or 'Unknown'
+        pip = doc.add_paragraph(); pip.paragraph_format.space_after = Pt(0)
+        _label(pip, L['issn']);     _add_run(pip, issn, size=Pt(11))
+        _add_run(pip, '\t', size=Pt(11))
+        _label(pip, L['pubplace']); _add_run(pip, country, size=Pt(11))
+
+        # Quality indicators — Data base + quality string. Rule:
+        #   D1  → "Q1 · D1"      (quartile + decile, no percentile)
+        #   !D1 → "Q2 · P83.4"   (quartile + percentile, no decile)
+        # plus the best category in parentheses ("Miscellaneous" collapsed).
+        db_val = ''
+        quartile_val = ''
+        if hit and hit.get('quartile'):
+            db_val = hit.get('database') or 'SCImago (SJR)'
+            quartile_val = _format_quality(hit)
+
+        pq = doc.add_paragraph(); pq.paragraph_format.space_after = Pt(0)
+        _label(pq, L['quality'])
+        _add_run(pq, '\t', size=Pt(11)); _label(pq, L['database']); _add_run(pq, db_val, size=Pt(11))
+        pq2 = doc.add_paragraph(); pq2.paragraph_format.space_after = Pt(0)
+        _add_run(pq2, '\t\t\t', size=Pt(11)); _label(pq2, L['quartile']); _add_run(pq2, quartile_val, size=Pt(11))
+
+        # Separator between references.
+        if idx != len(articles) - 1:
+            sep = doc.add_paragraph()
+            sep.paragraph_format.space_before = Pt(6)
+            sep.paragraph_format.space_after  = Pt(6)
+            _add_run(sep, '─' * 30, color=DIM, size=Pt(9))
+
+    return _postprocess_docx(doc)
+
+
+def generate_refs_docx(articles: list[dict], config: dict | None = None) -> bytes:
+    """Return raw .docx bytes for `articles` formatted per `config`."""
+    if config is None:
+        config = {}
+    if config.get('format') == 'govasco':
+        return generate_govasco_docx(
+            articles, config.get('marked_author', ''),
+            lang=config.get('lang', 'en'),
+            emphasis_color=bool(config.get('emphasis_color')),
+            emphasis_bold=bool(config.get('emphasis_bold')))
+    if 'blocks' not in config:
+        import copy
+        config['blocks'] = copy.deepcopy(_DEFAULT_BLOCKS)
+
+    # Default order: newest → oldest.
+    articles = _sort_newest_first(articles)
+
+    doc = Document()
+
+    # Default font: Calibri 11pt
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+
+    for section in doc.sections:
+        section.top_margin    = Cm(2.5)
+        section.bottom_margin = Cm(2.5)
+        section.left_margin   = Cm(2.5)
+        section.right_margin  = Cm(2.5)
+
+    # Title
+    tp = doc.add_paragraph()
+    r  = tp.add_run('Lista de referencias')
+    r.font.name      = 'Calibri'
+    r.font.size      = Pt(18)
+    r.font.bold      = True
+    r.font.color.rgb = ACCENT
+
+    # Subtitle / metadata
+    sp = doc.add_paragraph()
+    sp.paragraph_format.space_before = Pt(2)
+    sp.paragraph_format.space_after  = Pt(22)
+    sr = sp.add_run(
+        f'{len(articles)} referencia{"s" if len(articles) != 1 else ""}  ·  '
+        f'Exportado el {datetime.now().strftime("%d/%m/%Y")}'
+    )
+    sr.font.name      = 'Calibri'
+    sr.font.size      = Pt(11)
+    sr.font.color.rgb = DIM
+    sr.font.italic    = True
+
+    # One paragraph per reference
+    for i, art in enumerate(articles, 1):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before      = Pt(0)
+        p.paragraph_format.space_after       = Pt(8)
+        p.paragraph_format.left_indent       = Cm(0.9)
+        p.paragraph_format.first_line_indent = Cm(-0.9)
+        _render_ref(p, art, config, i)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    raw = buf.getvalue()
+
+    # Post-process: update AppVersion so Word 365 handles it as modern document
+    in_buf  = io.BytesIO(raw)
+    out_buf = io.BytesIO()
+    with _zf.ZipFile(in_buf, 'r') as zin, \
+         _zf.ZipFile(out_buf, 'w', compression=_zf.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == 'docProps/app.xml':
+                data = _patch_app_xml(data)
+            zout.writestr(item, data)
+
+    return out_buf.getvalue()
