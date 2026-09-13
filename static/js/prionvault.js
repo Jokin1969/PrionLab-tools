@@ -16789,12 +16789,24 @@
       const preset = document.querySelector('input[name="pv-pinv-preset"]:checked')?.value || 'all';
       const customQuery = document.getElementById('pv-pinv-custom-query')?.value?.trim() || '';
       const minYearVal = document.getElementById('pv-pinv-harvest-year')?.value?.trim();
+      const maxYearVal = document.getElementById('pv-pinv-harvest-year-max')?.value?.trim();
       const minYear = minYearVal && /^\d{4}$/.test(minYearVal) ? parseInt(minYearVal) : null;
+      const maxYear = maxYearVal && /^\d{4}$/.test(maxYearVal) ? parseInt(maxYearVal) : null;
+      if (minYear && maxYear && minYear > maxYear) {
+        alert('El año "Desde" no puede ser posterior al año "Hasta".');
+        refrBtn.disabled = false;
+        refrBtn.innerHTML = orig;
+        return;
+      }
       try {
         await api('/admin/pubmed-inventory/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ preset, custom_query: customQuery, ...(minYear ? { min_year: minYear } : {}) }),
+          body: JSON.stringify({
+            preset, custom_query: customQuery,
+            ...(minYear ? { min_year: minYear } : {}),
+            ...(maxYear ? { max_year: maxYear } : {}),
+          }),
         });
         // The daemon polls hourly; we asked it to wake now. Stats poll
         // (every 4 s) will surface the progress strip within seconds.

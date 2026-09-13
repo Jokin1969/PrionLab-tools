@@ -662,6 +662,8 @@ def api_pubmed_inventory_refresh():
       {
         "preset":       "all" | "<preset_name>" | "custom",   (default: "all")
         "custom_query": "<pubmed query string>"               (only when preset="custom")
+        "min_year":     <int>                                 (optional, "Desde el año")
+        "max_year":     <int>                                 (optional, "Hasta el año")
       }
     We poke the daemon (in case it's listening) AND spawn a fresh
     background thread so the button works even if the daemon wasn't
@@ -673,13 +675,21 @@ def api_pubmed_inventory_refresh():
     data         = request.get_json(silent=True) or {}
     preset       = (data.get("preset") or "all").strip()
     custom_query = (data.get("custom_query") or "").strip()
-    min_year: Optional[int] = None
-    try:
-        _my_raw = data.get("min_year")
-        if _my_raw is not None:
-            min_year = int(_my_raw)
-    except (TypeError, ValueError):
-        min_year = None
+
+    def _parse_year(key: str) -> Optional[int]:
+        try:
+            raw = data.get(key)
+            return int(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    min_year = _parse_year("min_year")
+    max_year = _parse_year("max_year")
+    year_kwargs = {}
+    if min_year is not None:
+        year_kwargs["min_year"] = min_year
+    if max_year is not None:
+        year_kwargs["max_year"] = max_year
 
     pubmed_inventory.request_harvest_now()
 
@@ -688,24 +698,21 @@ def api_pubmed_inventory_refresh():
     if not pubmed_inventory.get_progress().get("running"):
         if preset == "all":
             target = pubmed_inventory.harvest_all
-            kwargs: dict = {"min_year": min_year} if min_year is not None else {}
+            kwargs: dict = dict(year_kwargs)
         elif preset == "custom" and custom_query:
             target = pubmed_inventory.harvest_once
-            kwargs = {"query": custom_query, "query_name": "custom"}
-            if min_year is not None:
-                kwargs["min_year"] = min_year
+            kwargs = {"query": custom_query, "query_name": "custom", **year_kwargs}
         elif preset in pubmed_inventory.PRESET_QUERIES:
             target = pubmed_inventory.harvest_once
             kwargs = {
                 "query":      pubmed_inventory.PRESET_QUERIES[preset],
                 "query_name": preset,
+                **year_kwargs,
             }
-            if min_year is not None:
-                kwargs["min_year"] = min_year
         else:
             # Unknown preset: fall back to running all presets.
             target = pubmed_inventory.harvest_all
-            kwargs = {"min_year": min_year} if min_year is not None else {}
+            kwargs = dict(year_kwargs)
 
         def _run():
             target(**kwargs)

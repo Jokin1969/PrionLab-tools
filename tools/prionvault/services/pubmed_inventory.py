@@ -1009,7 +1009,8 @@ def _create_article_from_meta(meta: dict, *, by_user: Optional[str]) -> str:
 
 def harvest_once(query: Optional[str] = None,
                  query_name: Optional[str] = None,
-                 min_year: Optional[int] = None) -> dict:
+                 min_year: Optional[int] = None,
+                 max_year: Optional[int] = None) -> dict:
     """Run a single harvest pass for one query.
 
     If called with no args, uses the default "prion" preset.
@@ -1021,9 +1022,12 @@ def harvest_once(query: Optional[str] = None,
     if query_name is None:
         query_name = "prion"
 
-    # Apply year filter if requested.
-    if min_year is not None:
-        query = f"({query}) AND {min_year}:3000[DP]"
+    # Apply year range filter if requested — either bound is optional,
+    # PubMed's [DP] (Date of Publication) range just needs a lo:hi pair.
+    if min_year is not None or max_year is not None:
+        lo = min_year if min_year is not None else 1900
+        hi = max_year if max_year is not None else 3000
+        query = f"({query}) AND {lo}:{hi}[DP]"
 
     if _state["running"]:
         return {"skipped": "already_running", "progress": get_progress()}
@@ -1086,18 +1090,22 @@ def harvest_once(query: Optional[str] = None,
 
 def harvest(query: Optional[str] = None,
             query_name: Optional[str] = None,
-            min_year: Optional[int] = None) -> dict:
+            min_year: Optional[int] = None,
+            max_year: Optional[int] = None) -> dict:
     """Convenience alias for harvest_once with explicit query/query_name."""
-    return harvest_once(query=query, query_name=query_name, min_year=min_year)
+    return harvest_once(query=query, query_name=query_name,
+                        min_year=min_year, max_year=max_year)
 
 
-def harvest_all(min_year: Optional[int] = None) -> list[dict]:
+def harvest_all(min_year: Optional[int] = None,
+               max_year: Optional[int] = None) -> list[dict]:
     """Run harvest_once() for every preset in PRESET_QUERIES in sequence.
     Returns a list of per-preset summaries. Used by the daemon and the
     refresh endpoint when preset='all'."""
     summaries = []
     for name, q in PRESET_QUERIES.items():
-        summary = harvest_once(query=q, query_name=name, min_year=min_year)
+        summary = harvest_once(query=q, query_name=name,
+                               min_year=min_year, max_year=max_year)
         summaries.append(summary)
     return summaries
 

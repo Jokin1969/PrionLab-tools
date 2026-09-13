@@ -3623,11 +3623,14 @@
             <input type="radio" name="pv-pinv-preset" value="custom"> Personalizada
           </label>
         </div>
-        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <label style="font-size:12.5px;color:#374151;white-space:nowrap;">Desde el año:</label>
           <input type="number" id="pv-pinv-harvest-year" placeholder="ej. 2020" min="1960" max="2030"
                  style="width:90px;padding:3px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:12.5px;">
-          <span style="font-size:11px;color:#9ca3af;">(vacío = todos los años)</span>
+          <label style="font-size:12.5px;color:#374151;white-space:nowrap;">Hasta el año:</label>
+          <input type="number" id="pv-pinv-harvest-year-max" placeholder="ej. 2024" min="1960" max="2030"
+                 style="width:90px;padding:3px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:12.5px;">
+          <span style="font-size:11px;color:#9ca3af;">(vacíos = todos los años)</span>
         </div>
         <textarea id="pv-pinv-custom-query" rows="2"
                   placeholder='Ej: "tau protein"[Title/Abstract] OR taupathy[Title/Abstract]'
