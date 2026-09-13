@@ -9,6 +9,7 @@ import threading
 import os
 import re
 from datetime import datetime
+from typing import Optional
 
 from flask import jsonify, request, session, Response, current_app, render_template
 from sqlalchemy import text as sql_text
