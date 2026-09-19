@@ -177,6 +177,29 @@ def _unflag_articles(eng, user_id: str, article_ids: list[str]) -> None:
         logger.error("email_digest: unflag failed: %s", exc)
 
 
+def _mark_articles_read(eng, user_id: str, article_ids: list[str]) -> None:
+    """Set read_at for the given articles for this user, if not already
+    read — once a PrionVault Picks digest has actually sent an article
+    (with its AI summary) to the user, it's been "read" from PrionVault's
+    point of view."""
+    if not article_ids:
+        return
+    from sqlalchemy import text as _t
+    placeholders = ", ".join(f":aid{i}" for i in range(len(article_ids)))
+    params = {f"aid{i}": aid for i, aid in enumerate(article_ids)}
+    params["uid"] = user_id
+    try:
+        with eng.begin() as conn:
+            conn.execute(_t(f"""
+                UPDATE prionvault_user_state
+                   SET read_at = COALESCE(read_at, NOW()), updated_at = NOW()
+                 WHERE user_id = :uid
+                   AND article_id::text IN ({placeholders})
+            """), params)
+    except Exception as exc:
+        logger.error("email_digest: mark_read failed: %s", exc)
+
+
 def _fetch_new_articles(topics: list[str], since: datetime,
                         oa_only: bool) -> list[dict]:
     """Return inventory rows for the given topics seen after `since` that
@@ -783,6 +806,8 @@ def send_digest_for_sub(sub_id: str, *, force: bool = False) -> bool:
         if ok and count > 0:
             _unflag_articles(eng, str(sub["user_id"]),
                              [a["article_id"] for a in articles])
+            _mark_articles_read(eng, str(sub["user_id"]),
+                                [a["article_id"] for a in articles])
 
     else:
         # ── PubMed digest (existing behaviour) ───────────────────────────
