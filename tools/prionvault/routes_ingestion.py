@@ -743,6 +743,72 @@ def api_article_upload_pdf(aid):
     })
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["DELETE"])
+@admin_required
+def api_article_delete_pdf(aid):
+    """Remove the PDF currently attached to this article — the 🗑 button
+    next to the Edit modal's PDF dropzone. Best-effort deletes the file
+    from Dropbox, then clears every PDF-related column (path, md5, size,
+    pages, OA/verification status) and the indexed extracted-text chunks,
+    so the article goes back to the same clean "no PDF" state as one
+    that never had a PDF uploaded."""
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT dropbox_path FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row:
+            return jsonify({"error": "article not found"}), 404
+        dropbox_path = row[0]
+    finally:
+        s.close()
+
+    if dropbox_path:
+        try:
+            from core.dropbox_client import get_client
+            client = get_client()
+            if client is not None:
+                client.files_delete_v2(dropbox_path)
+        except Exception as exc:
+            logger.warning("delete_pdf: dropbox delete failed for %s (%s): %s",
+                           aid, dropbox_path, exc)
+
+    s = _session()
+    try:
+        s.execute(sql_text("""
+            UPDATE articles
+               SET dropbox_path   = NULL,
+                   dropbox_link   = NULL,
+                   pdf_md5        = NULL,
+                   pdf_size_bytes = NULL,
+                   pdf_pages      = NULL,
+                   pdf_oa_status  = NULL,
+                   extraction_status             = 'pending',
+                   pdf_metadata_match_status     = NULL,
+                   pdf_metadata_match_score      = NULL,
+                   pdf_metadata_match_detail     = NULL,
+                   pdf_metadata_match_checked_at = NULL,
+                   updated_at     = NOW()
+             WHERE id = :aid
+        """), {"aid": str(aid)})
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("delete_pdf: persist failed for %s", aid)
+        return jsonify({"error": "persist_failed", "detail": str(exc)[:300]}), 500
+    finally:
+        s.close()
+
+    try:
+        from .embeddings.indexer import clear_source
+        clear_source(str(aid), "extracted_text")
+    except Exception:
+        logger.exception("delete_pdf: chunk cleanup failed for %s", aid)
+
+    _invalidate_thumb_cache(aid)
+    return jsonify({"ok": True})
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["GET"])
 @login_required
 def api_article_pdf(aid):

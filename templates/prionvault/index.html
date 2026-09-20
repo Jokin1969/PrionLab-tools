@@ -2787,18 +2787,27 @@
          article has no PDF yet, and as a smaller "Reemplazar PDF" hint
          once one's attached. -->
     <div id="pv-edit-pdf-attach" style="display:none;margin-bottom:10px;">
-      <label id="pv-edit-pdf-drop"
-             style="display:block;border:2px dashed #d1d5db;border-radius:8px;
-                    padding:14px;text-align:center;cursor:pointer;
-                    background:#f9fafb;font-size:13px;color:#374151;
-                    transition:background 0.15s,border-color 0.15s;">
-        <i class="fas fa-paperclip" style="margin-right:6px;color:#0F3460;"></i>
-        <span id="pv-edit-pdf-drop-text">
-          <strong>Adjuntar PDF</strong> — arrastra un archivo aquí o pulsa para seleccionar.
-        </span>
-        <input type="file" id="pv-edit-pdf-file" accept="application/pdf"
-               style="display:none;">
-      </label>
+      <div style="display:flex;align-items:stretch;gap:6px;">
+        <label id="pv-edit-pdf-drop"
+               style="flex:1;display:block;border:2px dashed #d1d5db;border-radius:8px;
+                      padding:14px;text-align:center;cursor:pointer;
+                      background:#f9fafb;font-size:13px;color:#374151;
+                      transition:background 0.15s,border-color 0.15s;">
+          <i class="fas fa-paperclip" style="margin-right:6px;color:#0F3460;"></i>
+          <span id="pv-edit-pdf-drop-text">
+            <strong>Adjuntar PDF</strong> — arrastra un archivo aquí o pulsa para seleccionar.
+          </span>
+          <input type="file" id="pv-edit-pdf-file" accept="application/pdf"
+                 style="display:none;">
+        </label>
+        <button type="button" id="pv-edit-pdf-delete"
+                title="Eliminar el PDF adjunto de este artículo (Dropbox incluido)"
+                style="display:none;flex-shrink:0;padding:0 14px;border-radius:8px;
+                       border:1px solid #fecaca;background:#fff;color:#b91c1c;
+                       font-size:14px;cursor:pointer;">
+          <i class="fas fa-trash-alt"></i>
+        </button>
+      </div>
       <div id="pv-edit-pdf-upload-status"
            style="display:none;margin-top:6px;font-size:11.5px;"></div>
     </div>
@@ -2823,26 +2832,32 @@
                style="margin-top:3px;width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
       </label>
       <label style="font-size:11.5px;color:#6b7280;font-weight:600;">
-        Journal
+        Journal<button type="button" id="pv-edit-journal-copy" title="Copiar journal"
+               style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
+                      cursor:pointer;color:#9ca3af;font-size:10px;line-height:1;"
+               ><i class="far fa-copy"></i></button>
         <input type="text" id="pv-edit-journal"
                style="margin-top:3px;width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
       </label>
 
       <label style="font-size:11.5px;color:#6b7280;font-weight:600;">
-        DOI
+        DOI<button type="button" id="pv-edit-doi-copy" title="Copiar DOI"
+               style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
+                      cursor:pointer;color:#9ca3af;font-size:10px;line-height:1;"
+               ><i class="far fa-copy"></i></button>
         <div style="display:flex;gap:5px;margin-top:3px;">
           <input type="text" id="pv-edit-doi"
                  style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;">
-          <button type="button" id="pv-edit-doi-copy"
-                  title="Copiar DOI al portapapeles"
-                  style="padding:6px 8px;border-radius:6px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;font-size:12px;cursor:pointer;flex-shrink:0;">📋</button>
           <button type="button" id="pv-edit-refetch-doi"
                   title="Buscar metadatos con el DOI actual del campo (CrossRef → PubMed)"
                   style="padding:6px 10px;border-radius:6px;background:#0F3460;color:white;border:none;font-size:12px;cursor:pointer;flex-shrink:0;">🔍 Buscar</button>
         </div>
       </label>
       <label style="font-size:11.5px;color:#6b7280;font-weight:600;">
-        PMID
+        PMID<button type="button" id="pv-edit-pmid-copy" title="Copiar PMID"
+               style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
+                      cursor:pointer;color:#9ca3af;font-size:10px;line-height:1;"
+               ><i class="far fa-copy"></i></button>
         <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;">
           <input type="text" id="pv-edit-pmid"
                  style="flex:1;min-width:100px;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;">
@@ -2937,13 +2952,13 @@
                 style="padding:8px 14px;border-radius:8px;background:white;color:#b91c1c;border:1px solid #fecaca;font-size:13px;font-weight:600;cursor:pointer;">
           🗑 Borrar artículo
         </button>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button id="pv-edit-cart-btn" type="button"
                 title="Añadir al carrito de PrionPacks"
                 style="padding:8px 12px;border-radius:8px;background:#f9fafb;color:#374151;border:1px solid #d1d5db;font-size:13px;font-weight:600;cursor:pointer;">
           🛒
         </button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button id="pv-edit-prev"
                 title="Volver al artículo anterior de la lista sin guardar nada"
                 style="padding:8px 14px;border-radius:8px;background:white;color:#374151;border:1px solid #d1d5db;font-size:13px;font-weight:600;cursor:pointer;">

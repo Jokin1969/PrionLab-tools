@@ -7115,10 +7115,12 @@
     const text   = document.getElementById('pv-edit-pdf-drop-text');
     const file   = document.getElementById('pv-edit-pdf-file');
     const status = document.getElementById('pv-edit-pdf-upload-status');
+    const delBtn = document.getElementById('pv-edit-pdf-delete');
     if (!wrap || !drop || !file) return;
     wrap.style.display = '';
     status.style.display = 'none';
     status.innerHTML = '';
+    if (delBtn) delBtn.style.display = hasPdf ? 'inline-flex' : 'none';
     if (hasPdf) {
       drop.style.padding = '8px 12px';
       drop.style.fontSize = '12px';
@@ -7136,6 +7138,7 @@
     file.addEventListener('change', () => {
       if (file.files && file.files[0]) _editUploadPdf(file.files[0]);
     });
+    delBtn?.addEventListener('click', _editDeletePdf);
     // Drag-and-drop affordance. The <label> already triggers the
     // hidden <input>, but we also handle dragenter / drop so a file
     // dropped on the box is picked up directly.
@@ -7157,6 +7160,41 @@
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) _editUploadPdf(f);
     });
+  }
+
+  // "🗑" next to the dropzone: removes the PDF currently attached to the
+  // article (Dropbox file + every PDF-related column/index), so it goes
+  // back to a clean "no PDF" state — distinct from "Reemplazar PDF",
+  // which uploads a new one straight away.
+  async function _editDeletePdf() {
+    if (!_editTarget) return;
+    if (!confirm(
+      'Vas a eliminar el PDF adjunto a este artículo (se borra también de Dropbox).\n\n' +
+      'El artículo se queda sin PDF hasta que subas otro. ¿Continuar?'
+    )) return;
+    const btn = document.getElementById('pv-edit-pdf-delete');
+    const status = document.getElementById('pv-edit-pdf-upload-status');
+    if (btn) btn.disabled = true;
+    status.style.display = 'block';
+    status.style.color = '#374151';
+    status.textContent = '⏳ Eliminando PDF…';
+    try {
+      await api(`/articles/${_editTarget.id}/pdf`, { method: 'DELETE' });
+      _editTarget.has_pdf = false;
+      _editRenderPdfPreview(_editTarget);
+      _editSyncPdfAttach(false);
+      status.style.display = 'block';
+      status.style.color = '#15803d';
+      status.textContent = '✓ PDF eliminado.';
+      setTimeout(() => { status.style.display = 'none'; status.textContent = ''; }, 2000);
+      loadArticles();
+    } catch (e) {
+      status.style.display = 'block';
+      status.style.color = '#b91c1c';
+      status.textContent = 'Error al eliminar: ' + e.message;
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   async function _editUploadPdf(file) {
@@ -7439,15 +7477,17 @@
       stopProp: false,
       getValue: () => document.getElementById('pv-edit-title').value.trim(),
     });
-    document.getElementById('pv-edit-doi-copy')?.addEventListener('click', () => {
-      const val = document.getElementById('pv-edit-doi').value.trim();
-      if (!val) return;
-      navigator.clipboard.writeText(val).then(() => {
-        const btn = document.getElementById('pv-edit-doi-copy');
-        const prev = btn.textContent;
-        btn.textContent = '✓';
-        setTimeout(() => { btn.textContent = prev; }, 1500);
-      });
+    _wireCopyBtn(document.getElementById('pv-edit-journal-copy'), {
+      stopProp: false,
+      getValue: () => document.getElementById('pv-edit-journal').value.trim(),
+    });
+    _wireCopyBtn(document.getElementById('pv-edit-doi-copy'), {
+      stopProp: false,
+      getValue: () => document.getElementById('pv-edit-doi').value.trim(),
+    });
+    _wireCopyBtn(document.getElementById('pv-edit-pmid-copy'), {
+      stopProp: false,
+      getValue: () => document.getElementById('pv-edit-pmid').value.trim(),
     });
     document.getElementById('pv-edit-refetch-doi') ?.addEventListener('click', () => _editRefetch('doi'));
     document.getElementById('pv-edit-refetch-pmid')?.addEventListener('click', () => _editRefetch('pmid'));
