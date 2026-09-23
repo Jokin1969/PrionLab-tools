@@ -3387,10 +3387,10 @@
                        font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;
                        border:none;cursor:pointer;line-height:1.2;text-decoration:none;"><i class="fas fa-download"></i></a>`
         : `<button type="button" class="pv-oa-row-btn" data-aid="${esc(a.id)}"
-                title="Buscar el PDF en fuentes de acceso abierto (Unpaywall, OpenAlex)"
+                title="${a.oa_author_requested ? 'Ya se ha pedido el PDF al autor — clic para volver a intentarlo' : 'Buscar el PDF en fuentes de acceso abierto (Unpaywall, OpenAlex)'}"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
-                       font-size:10.5px;font-weight:600;background:#eef2ff;color:#4338ca;
-                       border:none;cursor:pointer;line-height:1.2;">🔓</button>`,
+                       font-size:10.5px;font-weight:600;${a.oa_author_requested ? 'background:#fef3c7;color:#92400e;' : 'background:#eef2ff;color:#4338ca;'}
+                       border:none;cursor:pointer;line-height:1.2;">${a.oa_author_requested ? '🔓✓' : '🔓'}</button>`,
       `<button type="button" class="pv-isolate-row-btn" data-aid="${esc(a.id)}"
                 title="Mostrar solo este artículo en el listado"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
@@ -4290,6 +4290,10 @@
       const detailOaBtn = document.getElementById('pv-detail-oa-btn');
       if (detailOaBtn) {
         detailOaBtn.style.display = a.has_pdf ? 'none' : '';
+        detailOaBtn.innerHTML = a.oa_author_requested ? '🔓✓' : '🔓';
+        detailOaBtn.title = a.oa_author_requested
+          ? 'Ya se ha pedido el PDF al autor — clic para volver a intentarlo'
+          : 'Buscar el PDF en fuentes de acceso abierto (Unpaywall, OpenAlex)';
         detailOaBtn.onclick = () => openOaSearchModal(a);
       }
 
@@ -7219,6 +7223,7 @@
   // Tries Unpaywall then OpenAlex (server-side, a few seconds); on failure
   // offers a ready-to-send "ask the author" email as the last resort.
   let _oaSearchWired = false;
+  let _oaCurrentArticle = null;
   function _oaStepHtml(label, state, detail) {
     const icon = state === 'pending' ? '<i class="fas fa-spinner fa-spin" style="color:#9ca3af;"></i>'
                : state === 'ok'      ? '<i class="fas fa-check" style="color:#15803d;"></i>'
@@ -7251,6 +7256,53 @@
       }
     });
     document.getElementById('pv-oa-author-email')?.addEventListener('input', _oaUpdateMailtoHref);
+    document.getElementById('pv-oa-author-requested')?.addEventListener('click', async () => {
+      const a = _oaCurrentArticle;
+      if (!a) return;
+      const btn = document.getElementById('pv-oa-author-requested');
+      btn.disabled = true;
+      try {
+        const r = await api(`/articles/${a.id}/oa-request`, { method: 'POST' });
+        a.oa_author_requested = !!r.oa_author_requested;
+        _oaSyncRequestedBtn(a.oa_author_requested);
+        _oaSyncBadge(a);
+        loadArticles();
+      } catch (e) {
+        alert('No se pudo actualizar: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  function _oaSyncRequestedBtn(requested) {
+    const btn = document.getElementById('pv-oa-author-requested');
+    if (!btn) return;
+    if (requested) {
+      btn.textContent = '✓ Ya pedido';
+      btn.style.background = '#dcfce7';
+      btn.style.color = '#15803d';
+      btn.style.borderColor = '#86efac';
+    } else {
+      btn.textContent = 'Indicar que se ha pedido';
+      btn.style.background = '#fff';
+      btn.style.color = '#374151';
+      btn.style.borderColor = '#d1d5db';
+    }
+  }
+
+  // Reflects a.oa_author_requested on the 🔓 badge wherever it's shown —
+  // the listing row (repainted via loadArticles() after a toggle) and,
+  // if the detail modal happens to be open on this same article, its
+  // nav-bar button too.
+  function _oaSyncBadge(a) {
+    const detailOaBtn = document.getElementById('pv-detail-oa-btn');
+    if (detailOaBtn) {
+      detailOaBtn.innerHTML = a.oa_author_requested ? '🔓✓' : '🔓';
+      detailOaBtn.title = a.oa_author_requested
+        ? 'Ya se ha pedido el PDF al autor — clic para volver a intentarlo'
+        : 'Buscar el PDF en fuentes de acceso abierto (Unpaywall, OpenAlex)';
+    }
   }
 
   function _oaUpdateMailtoHref() {
@@ -7264,6 +7316,7 @@
 
   async function openOaSearchModal(a) {
     _oaWireOnce();
+    _oaCurrentArticle = a;
     const modal = document.getElementById('pv-oa-search-modal');
     if (!modal) return;
     document.getElementById('pv-oa-search-article').textContent = a.title || '(sin título)';
@@ -7297,6 +7350,7 @@
         _oaUpdateMailtoHref();
         const rgLink = document.getElementById('pv-oa-researchgate-link');
         if (rgLink) rgLink.href = r.researchgate_search_url || '#';
+        _oaSyncRequestedBtn(!!a.oa_author_requested);
         authorBlock.style.display = 'block';
       }
     } catch (e) {

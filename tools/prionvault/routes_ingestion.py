@@ -764,6 +764,36 @@ def api_article_oa_search(aid):
     return jsonify(result)
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/oa-request", methods=["POST"])
+@admin_required
+def api_article_oa_request_toggle(aid):
+    """Toggle "ya se ha pedido el PDF al autor" — the button next to the
+    email template in the "🔓 Buscar PDF" modal, so the 🔓 badge can show
+    it and an operator doesn't email the same author twice by accident."""
+    s = _session()
+    try:
+        row = s.execute(sql_text(
+            "SELECT oa_author_requested_at FROM articles WHERE id = :aid"
+        ), {"aid": str(aid)}).first()
+        if not row:
+            return jsonify({"error": "not_found"}), 404
+        now_requested = row[0] is None
+        s.execute(sql_text("""
+            UPDATE articles
+               SET oa_author_requested_at = CASE WHEN :req THEN NOW() ELSE NULL END,
+                   updated_at = NOW()
+             WHERE id = :aid
+        """), {"aid": str(aid), "req": now_requested})
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("oa_request toggle failed for %s", aid)
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    finally:
+        s.close()
+    return jsonify({"ok": True, "oa_author_requested": now_requested})
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["DELETE"])
 @admin_required
 def api_article_delete_pdf(aid):

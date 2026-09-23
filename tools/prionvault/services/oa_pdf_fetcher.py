@@ -347,6 +347,10 @@ def _author_request_template(row: dict, to_email: Optional[str] = None) -> dict:
         "",
         "Thank you very much in advance.",
         "Best regards,",
+        "",
+        "Joaquín Castilla",
+        "IKERBasque Research Professor",
+        "CIC bioGUNE",
     ]
     return {"subject": subject, "body": "\n".join(lines), "to": to_email or ""}
 
