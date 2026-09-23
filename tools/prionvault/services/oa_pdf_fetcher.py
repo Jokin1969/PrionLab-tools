@@ -38,6 +38,7 @@ from sqlalchemy import text as sql_text
 from ..ingestion.queue import _get_engine
 from ..ingestion.dropbox_uploader import build_path, upload_pdf
 from . import unpaywall
+from . import openalex as _openalex
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,165 @@ def _try_pmc(pmc_id: str) -> tuple[Optional[bytes], Optional[str], Optional[str]
             return None, None, reason2
 
     return None, None, reason
+
+
+# ── On-demand single-article search ("🔓 Buscar PDF" button) ────────────────
+# Unlike _process_one() (the background daemon, Unpaywall → PMC, negative-
+# cached via pdf_oa_status='not_available'), this is triggered synchronously
+# by an operator for ONE article and tries Unpaywall → OpenAlex — a second,
+# broader open-access index (CORE/BASE/PMC/repositories) that sometimes has
+# a copy Unpaywall doesn't. When both come up empty it hands back a ready-
+# to-send "ask the corresponding author" email template instead of just
+# giving up, since that's a legitimate last resort a human can act on.
+
+_REASON_LABELS = {
+    "unpaywall_not_configured":  "Unpaywall no está configurado (falta UNPAYWALL_EMAIL)",
+    "unpaywall_lookup_failed":   "no se pudo consultar Unpaywall",
+    "unpaywall_no_oa":           "Unpaywall no tiene copia de acceso abierto",
+    "unpaywall_no_pdf_url":      "Unpaywall la marca como OA pero sin enlace directo al PDF",
+    "unpaywall_download_failed": "la descarga desde Unpaywall falló",
+}
+
+
+def _humanize_reason(code: Optional[str]) -> str:
+    return _REASON_LABELS.get(code, code or "motivo desconocido")
+
+
+def _author_request_template(row: dict) -> dict:
+    """Build a ready-to-send email asking the corresponding author for a
+    reprint — the classic, perfectly legitimate fallback academics have
+    always used for papers with no open-access copy."""
+    title   = row.get("title") or "este artículo"
+    authors = row.get("authors") or ""
+    journal = row.get("journal") or ""
+    year    = row.get("year")
+    doi     = row.get("doi") or ""
+    first_author = authors.split(";")[0].split(",")[0].strip() if authors else ""
+
+    subject = f"Solicitud de copia del artículo: {title[:120]}"
+    lines = [
+        f"Estimado/a {first_author or 'autor/a'},",
+        "",
+        "Le escribo desde nuestro grupo de investigación para solicitarle, si es posible, "
+        "una copia (reprint) de su artículo:",
+        "",
+        f"«{title}»",
+    ]
+    meta = " · ".join(x for x in [authors, journal, str(year) if year else "", doi] if x)
+    if meta:
+        lines.append(meta)
+    lines += [
+        "",
+        "No hemos podido acceder a él por las vías habituales. Le agradecería mucho que "
+        "me lo hiciera llegar si está en su mano.",
+        "",
+        "Muchas gracias de antemano.",
+        "Un cordial saludo.",
+    ]
+    return {"subject": subject, "body": "\n".join(lines)}
+
+
+def try_now(article_id: str) -> dict:
+    """Synchronous, single-article OA search for the "🔓 Buscar PDF" button.
+    Tries Unpaywall then OpenAlex (a few seconds total); on success,
+    persists the PDF exactly like _process_one() does (upload, page
+    count, pdf_oa_status). Returns:
+
+      {"ok": True,  "via": "unpaywall"|"openalex", "tried": [...]}
+      {"ok": False, "tried": [...], "mailto": {"subject", "body"}}
+    """
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text("""
+            SELECT id::text AS id, title, authors, year, journal, doi, dropbox_path
+              FROM articles WHERE id = CAST(:aid AS uuid)
+        """), {"aid": article_id}).mappings().first()
+    if not row:
+        return {"ok": False, "error": "not_found"}
+    row = dict(row)
+
+    doi = (row.get("doi") or "").strip().lower() or None
+    tried: list[dict] = []
+
+    if not doi:
+        tried.append({"source": "unpaywall", "ok": False, "reason": "el artículo no tiene DOI"})
+        tried.append({"source": "openalex", "ok": False, "reason": "el artículo no tiene DOI"})
+        return {"ok": False, "tried": tried, "mailto": _author_request_template(row)}
+
+    body: Optional[bytes] = None
+    via: Optional[str] = None
+
+    body, _src, reason = _try_unpaywall(doi)
+    tried.append({"source": "unpaywall", "ok": bool(body),
+                  "reason": None if body else _humanize_reason(reason)})
+    if body:
+        via = "unpaywall"
+
+    if not body:
+        oa_reason = None
+        info = None
+        try:
+            info = _openalex.find_open_pdf(doi)
+        except Exception as exc:
+            oa_reason = f"error al consultar OpenAlex: {exc}"
+        if info is not None:
+            if info.error and info.error not in ("not_in_openalex",):
+                oa_reason = f"error al consultar OpenAlex: {info.error}"
+            elif not info.is_oa:
+                oa_reason = "OpenAlex no tiene copia de acceso abierto"
+            elif not info.pdf_url:
+                oa_reason = "OpenAlex la marca como OA pero sin enlace directo al PDF"
+        oa_ok = False
+        if info and info.is_oa and info.pdf_url:
+            try:
+                body = _openalex.download_pdf(info.pdf_url)
+                oa_ok = True
+                via = "openalex"
+            except Exception as exc:
+                oa_reason = f"la descarga falló: {exc}"
+        tried.append({"source": "openalex", "ok": oa_ok, "reason": None if oa_ok else oa_reason})
+
+    if not body:
+        return {"ok": False, "tried": tried, "mailto": _author_request_template(row)}
+
+    md5 = hashlib.md5(body).hexdigest()
+    target = build_path(doi=doi, year=row.get("year"), md5=md5)
+    up = upload_pdf(body, target, overwrite=False)
+    if up.error and "already_exists" not in (up.error or "").lower():
+        tried.append({"source": "upload", "ok": False, "reason": up.error})
+        return {"ok": False, "tried": tried, "mailto": _author_request_template(row)}
+
+    pdf_pages = None
+    try:
+        import pdfplumber
+        import io as _io
+        with pdfplumber.open(_io.BytesIO(body)) as pdf:
+            pdf_pages = len(pdf.pages)
+    except Exception as exc:
+        logger.warning("oa_pdf_fetcher.try_now: page count failed for %s (%s)", article_id, exc)
+
+    dropbox_path = up.dropbox_path or target
+    with eng.begin() as conn:
+        conn.execute(sql_text("""
+            UPDATE articles
+               SET dropbox_path   = :p,
+                   dropbox_link   = :lnk,
+                   pdf_md5        = :m,
+                   pdf_size_bytes = :sz,
+                   pdf_pages      = COALESCE(:pages, pdf_pages),
+                   pdf_oa_status  = :status,
+                   updated_at     = NOW()
+             WHERE id = CAST(:aid AS uuid)
+        """), {
+            "aid": article_id, "p": dropbox_path, "lnk": up.dropbox_link,
+            "m": md5, "sz": len(body), "pages": pdf_pages,
+            "status": f"fetched_{via}",
+        })
+
+    _log_event(article_id, row.get("title") or "", "fetched", via=via)
+    with _lock:
+        _state["fetched"] += 1
+    return {"ok": True, "via": via, "tried": tried, "dropbox_path": dropbox_path}
 
 
 def _process_one(row: dict) -> str:

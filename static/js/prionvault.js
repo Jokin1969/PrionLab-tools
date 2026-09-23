@@ -4275,6 +4275,14 @@
         };
       }
 
+      // Wire "🔓 Buscar PDF" (open-access search) button in detail modal
+      // nav bar — only worth showing when the article has no PDF yet.
+      const detailOaBtn = document.getElementById('pv-detail-oa-btn');
+      if (detailOaBtn) {
+        detailOaBtn.style.display = a.has_pdf ? 'none' : '';
+        detailOaBtn.onclick = () => openOaSearchModal(a);
+      }
+
       // Wire Notes cluster in detail modal nav bar
       const detailNotesCluster = document.getElementById('pv-detail-notes-cluster');
       if (detailNotesCluster) {
@@ -7194,6 +7202,93 @@
       status.textContent = 'Error al eliminar: ' + e.message;
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  // ── "🔓 Buscar PDF" — on-demand open-access search ────────────────────
+  // Tries Unpaywall then OpenAlex (server-side, a few seconds); on failure
+  // offers a ready-to-send "ask the author" email as the last resort.
+  let _oaSearchWired = false;
+  function _oaStepHtml(label, state, detail) {
+    const icon = state === 'pending' ? '<i class="fas fa-spinner fa-spin" style="color:#9ca3af;"></i>'
+               : state === 'ok'      ? '<i class="fas fa-check" style="color:#15803d;"></i>'
+               :                       '<i class="fas fa-xmark" style="color:#b91c1c;"></i>';
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+      <span style="width:16px;text-align:center;flex-shrink:0;">${icon}</span>
+      <span style="font-weight:600;color:#111827;">${esc(label)}</span>
+      ${detail ? `<span style="color:#6b7280;font-size:12px;">— ${esc(detail)}</span>` : ''}
+    </div>`;
+  }
+  function _oaSourceLabel(source) {
+    return source === 'unpaywall' ? 'Unpaywall' : source === 'openalex' ? 'OpenAlex' : source;
+  }
+
+  function _oaWireOnce() {
+    if (_oaSearchWired) return;
+    _oaSearchWired = true;
+    const close = () => { document.getElementById('pv-oa-search-modal').style.display = 'none'; };
+    document.getElementById('pv-oa-search-close')?.addEventListener('click', close);
+    document.querySelector('#pv-oa-search-modal .pv-modal-backdrop')?.addEventListener('click', close);
+    document.getElementById('pv-oa-author-copy')?.addEventListener('click', async () => {
+      const subject = document.getElementById('pv-oa-author-mailto').dataset.subject || '';
+      const body = document.getElementById('pv-oa-author-mailto').dataset.body || '';
+      const btn = document.getElementById('pv-oa-author-copy');
+      const ok = await _copyToClipboard(`${subject}\n\n${body}`);
+      if (ok) {
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copiado';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      }
+    });
+    document.getElementById('pv-oa-author-email')?.addEventListener('input', _oaUpdateMailtoHref);
+  }
+
+  function _oaUpdateMailtoHref() {
+    const link = document.getElementById('pv-oa-author-mailto');
+    if (!link) return;
+    const to = (document.getElementById('pv-oa-author-email')?.value || '').trim();
+    const subject = link.dataset.subject || '';
+    const body = link.dataset.body || '';
+    link.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  async function openOaSearchModal(a) {
+    _oaWireOnce();
+    const modal = document.getElementById('pv-oa-search-modal');
+    if (!modal) return;
+    document.getElementById('pv-oa-search-article').textContent = a.title || '(sin título)';
+    const steps = document.getElementById('pv-oa-search-steps');
+    steps.innerHTML = _oaStepHtml('Unpaywall', 'pending') + _oaStepHtml('OpenAlex', 'pending');
+    document.getElementById('pv-oa-search-author').style.display = 'none';
+    modal.style.display = 'flex';
+
+    try {
+      const r = await api(`/articles/${a.id}/oa-search`, { method: 'POST' });
+      const tried = r.tried || [];
+      steps.innerHTML = tried
+        .filter(t => t.source === 'unpaywall' || t.source === 'openalex')
+        .map(t => _oaStepHtml(_oaSourceLabel(t.source), t.ok ? 'ok' : 'fail', t.reason))
+        .join('');
+      if (r.ok) {
+        steps.insertAdjacentHTML('beforeend',
+          `<div style="margin-top:6px;font-size:13px;color:#15803d;font-weight:600;">
+             ✓ PDF encontrado y adjuntado al artículo (${esc(_oaSourceLabel(r.via))}).
+           </div>`);
+        a.has_pdf = true;
+        loadArticles();
+        openDetail(a.id);
+      } else {
+        const authorBlock = document.getElementById('pv-oa-search-author');
+        const mailto = r.mailto || { subject: '', body: '' };
+        const link = document.getElementById('pv-oa-author-mailto');
+        link.dataset.subject = mailto.subject || '';
+        link.dataset.body = mailto.body || '';
+        document.getElementById('pv-oa-author-email').value = '';
+        _oaUpdateMailtoHref();
+        authorBlock.style.display = 'block';
+      }
+    } catch (e) {
+      steps.innerHTML = `<div style="color:#b91c1c;font-size:13px;">Error: ${esc(e.message)}</div>`;
     }
   }
 

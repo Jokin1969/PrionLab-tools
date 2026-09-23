@@ -1099,6 +1099,12 @@
                        background:white;font-size:14px;color:#374151;cursor:pointer;line-height:1.4;">
           🛒
         </button>
+        <button id="pv-detail-oa-btn" type="button"
+                title="Buscar el PDF en fuentes de acceso abierto (Unpaywall, OpenAlex)"
+                style="display:none;padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
+                       background:white;font-size:14px;color:#374151;cursor:pointer;line-height:1.4;">
+          🔓
+        </button>
         <button id="pv-detail-email-btn" type="button"
                 title="Enviar este artículo por email"
                 style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;
@@ -1128,6 +1134,44 @@
       </div>
     </div>
     <div id="pv-detail-content">…</div>
+  </div>
+</div>
+
+<!-- ── Open-access PDF search modal ("🔓 Buscar PDF") ───────────────────── -->
+<div id="pv-oa-search-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:520px;">
+    <button class="pv-modal-close" id="pv-oa-search-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111827;">
+      <i class="fas fa-unlock" style="color:#0F3460;margin-right:6px;"></i>Buscar PDF de acceso abierto
+    </h2>
+    <p id="pv-oa-search-article" style="color:#6b7280;font-size:12.5px;margin:0 0 14px;"></p>
+
+    <div id="pv-oa-search-steps" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;"></div>
+
+    <div id="pv-oa-search-author" style="display:none;border-top:1px solid #f3f4f6;margin-top:12px;padding-top:14px;">
+      <p style="font-size:12.5px;color:#374151;margin:0 0 8px;">
+        No se ha encontrado una copia de acceso abierto. Puedes pedírsela directamente al autor:
+      </p>
+      <label style="font-size:11.5px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">
+        Email del autor (si lo conoces)
+      </label>
+      <input id="pv-oa-author-email" type="email" placeholder="autor@universidad.edu"
+             style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;
+                    padding:8px 10px;font-size:13px;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a id="pv-oa-author-mailto" href="#"
+           style="padding:8px 14px;border-radius:7px;background:#0F3460;color:#fff;
+                  font-size:12.5px;font-weight:600;text-decoration:none;">
+          ✉️ Abrir email
+        </a>
+        <button id="pv-oa-author-copy" type="button"
+                style="padding:8px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                       color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">
+          📋 Copiar texto
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 

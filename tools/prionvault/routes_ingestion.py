@@ -743,6 +743,27 @@ def api_article_upload_pdf(aid):
     })
 
 
+@prionvault_bp.route("/api/articles/<uuid:aid>/oa-search", methods=["POST"])
+@admin_required
+def api_article_oa_search(aid):
+    """On-demand open-access PDF search — the "🔓 Buscar PDF" button in the
+    detail modal, for an article with no PDF. Tries Unpaywall then
+    OpenAlex synchronously (services/oa_pdf_fetcher.try_now); when both
+    come up empty, returns a ready-to-use "ask the corresponding author"
+    email template instead of just failing."""
+    from .services import oa_pdf_fetcher
+    try:
+        result = oa_pdf_fetcher.try_now(str(aid))
+    except Exception as exc:
+        logger.exception("oa_search failed for %s", aid)
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    if result.get("error") == "not_found":
+        return jsonify(result), 404
+    if result.get("ok"):
+        _invalidate_thumb_cache(aid)
+    return jsonify(result)
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/pdf", methods=["DELETE"])
 @admin_required
 def api_article_delete_pdf(aid):
