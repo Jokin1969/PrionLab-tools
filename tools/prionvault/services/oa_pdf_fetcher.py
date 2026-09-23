@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -266,38 +267,93 @@ def _humanize_reason(code: Optional[str]) -> str:
     return _REASON_LABELS.get(code, code or "motivo desconocido")
 
 
-def _author_request_template(row: dict) -> dict:
-    """Build a ready-to-send email asking the corresponding author for a
-    reprint — the classic, perfectly legitimate fallback academics have
-    always used for papers with no open-access copy."""
-    title   = row.get("title") or "este artículo"
+# Best-effort corresponding-author email discovery: the DOI landing page
+# (publisher site) very often prints "Correspondence to: name@host.edu"
+# in plain HTML even for papers with NO open-access PDF — this is public
+# contact information the publisher itself displays, not a bypass of
+# anything. We just don't have a good structured source for it (CrossRef
+# almost never includes author emails), so this scrapes the one
+# reliable public HTML page: whatever https://doi.org/<doi> resolves to.
+_EMAIL_RE  = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
+_MAILTO_RE = re.compile(r'mailto:([^"\'\s?<>]+)')
+_MAX_LANDING_HTML_BYTES = 400_000
+
+
+def _find_corresponding_author_email(doi: str) -> Optional[str]:
+    try:
+        r = requests.get(
+            f"https://doi.org/{doi}",
+            timeout=_TIMEOUT, allow_redirects=True,
+            headers={"User-Agent": _USER_AGENT, "Accept": "text/html"},
+        )
+        r.raise_for_status()
+    except Exception as exc:
+        logger.debug("oa_pdf_fetcher: landing page fetch failed for %s (%s)", doi, exc)
+        return None
+
+    html = r.text[:_MAX_LANDING_HTML_BYTES]
+
+    # Prefer an email/mailto found near the word "correspond" (as in
+    # "Corresponding author", "Correspondence to") over a random one.
+    for m in re.finditer(r"correspond", html, re.IGNORECASE):
+        window = html[max(0, m.start() - 50): m.start() + 400]
+        mailto = _MAILTO_RE.search(window)
+        candidate = mailto.group(1) if mailto else None
+        if not candidate:
+            plain = _EMAIL_RE.search(window)
+            candidate = plain.group(0) if plain else None
+        if candidate:
+            candidate = candidate.strip().rstrip(").,;:")
+            if _EMAIL_RE.fullmatch(candidate):
+                return candidate
+
+    # Fallback: first mailto: link anywhere on the page.
+    mailto = _MAILTO_RE.search(html)
+    if mailto:
+        candidate = mailto.group(1).strip().rstrip(").,;:")
+        if _EMAIL_RE.fullmatch(candidate):
+            return candidate
+    return None
+
+
+def _author_request_template(row: dict, to_email: Optional[str] = None) -> dict:
+    """Build a ready-to-send email (in English — the working language of
+    the international research community) asking the corresponding
+    author for a reprint. The classic, perfectly legitimate fallback
+    academics have always used for a paper with no open-access copy."""
+    title   = row.get("title") or "this article"
     authors = row.get("authors") or ""
     journal = row.get("journal") or ""
     year    = row.get("year")
     doi     = row.get("doi") or ""
     first_author = authors.split(";")[0].split(",")[0].strip() if authors else ""
 
-    subject = f"Solicitud de copia del artículo: {title[:120]}"
+    subject = f"Reprint request: {title[:120]}"
     lines = [
-        f"Estimado/a {first_author or 'autor/a'},",
+        f"Dear Dr. {first_author}," if first_author else "Dear Author,",
         "",
-        "Le escribo desde nuestro grupo de investigación para solicitarle, si es posible, "
-        "una copia (reprint) de su artículo:",
+        "I am writing on behalf of our research group to kindly ask whether you could "
+        "share a copy (reprint) of your article:",
         "",
-        f"«{title}»",
+        f'"{title}"',
     ]
     meta = " · ".join(x for x in [authors, journal, str(year) if year else "", doi] if x)
     if meta:
         lines.append(meta)
     lines += [
         "",
-        "No hemos podido acceder a él por las vías habituales. Le agradecería mucho que "
-        "me lo hiciera llegar si está en su mano.",
+        "We were unable to access it through our usual channels and would greatly "
+        "appreciate it if you could send it to us.",
         "",
-        "Muchas gracias de antemano.",
-        "Un cordial saludo.",
+        "Thank you very much in advance.",
+        "Best regards,",
     ]
-    return {"subject": subject, "body": "\n".join(lines)}
+    return {"subject": subject, "body": "\n".join(lines), "to": to_email or ""}
+
+
+def _researchgate_search_url(title: Optional[str]) -> str:
+    from urllib.parse import quote
+    return f"https://www.researchgate.net/search?q={quote((title or '').strip())}"
 
 
 def try_now(article_id: str) -> dict:
@@ -322,10 +378,22 @@ def try_now(article_id: str) -> dict:
     doi = (row.get("doi") or "").strip().lower() or None
     tried: list[dict] = []
 
+    def _fallback() -> dict:
+        # Only worth the extra network round-trip once we know we're
+        # actually going to need the "ask the author" template.
+        email = None
+        if doi:
+            try:
+                email = _find_corresponding_author_email(doi)
+            except Exception as exc:
+                logger.debug("oa_pdf_fetcher: author-email lookup failed for %s (%s)", doi, exc)
+        return _author_request_template(row, email)
+
     if not doi:
         tried.append({"source": "unpaywall", "ok": False, "reason": "el artículo no tiene DOI"})
         tried.append({"source": "openalex", "ok": False, "reason": "el artículo no tiene DOI"})
-        return {"ok": False, "tried": tried, "mailto": _author_request_template(row)}
+        return {"ok": False, "tried": tried, "mailto": _fallback(),
+                "researchgate_search_url": _researchgate_search_url(row.get("title"))}
 
     body: Optional[bytes] = None
     via: Optional[str] = None
@@ -361,14 +429,16 @@ def try_now(article_id: str) -> dict:
         tried.append({"source": "openalex", "ok": oa_ok, "reason": None if oa_ok else oa_reason})
 
     if not body:
-        return {"ok": False, "tried": tried, "mailto": _author_request_template(row)}
+        return {"ok": False, "tried": tried, "mailto": _fallback(),
+                "researchgate_search_url": _researchgate_search_url(row.get("title"))}
 
     md5 = hashlib.md5(body).hexdigest()
     target = build_path(doi=doi, year=row.get("year"), md5=md5)
     up = upload_pdf(body, target, overwrite=False)
     if up.error and "already_exists" not in (up.error or "").lower():
         tried.append({"source": "upload", "ok": False, "reason": up.error})
-        return {"ok": False, "tried": tried, "mailto": _author_request_template(row)}
+        return {"ok": False, "tried": tried, "mailto": _fallback(),
+                "researchgate_search_url": _researchgate_search_url(row.get("title"))}
 
     pdf_pages = None
     try:

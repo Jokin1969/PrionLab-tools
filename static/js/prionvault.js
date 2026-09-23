@@ -3386,7 +3386,11 @@
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
                        font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;
                        border:none;cursor:pointer;line-height:1.2;text-decoration:none;"><i class="fas fa-download"></i></a>`
-        : '',
+        : `<button type="button" class="pv-oa-row-btn" data-aid="${esc(a.id)}"
+                title="Buscar el PDF en fuentes de acceso abierto (Unpaywall, OpenAlex)"
+                style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
+                       font-size:10.5px;font-weight:600;background:#eef2ff;color:#4338ca;
+                       border:none;cursor:pointer;line-height:1.2;">🔓</button>`,
       `<button type="button" class="pv-isolate-row-btn" data-aid="${esc(a.id)}"
                 title="Mostrar solo este artículo en el listado"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
@@ -3891,6 +3895,12 @@
         e.stopPropagation();
         _setIsolatedArticleId(a.id);
         loadArticles();
+      });
+
+      const oaRowBtn = row.querySelector('.pv-oa-row-btn');
+      if (oaRowBtn) oaRowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openOaSearchModal(a);
       });
 
       const jcRowBtn = row.querySelector('.pv-row-jc-btn');
@@ -7279,12 +7289,14 @@
         openDetail(a.id);
       } else {
         const authorBlock = document.getElementById('pv-oa-search-author');
-        const mailto = r.mailto || { subject: '', body: '' };
+        const mailto = r.mailto || { subject: '', body: '', to: '' };
         const link = document.getElementById('pv-oa-author-mailto');
         link.dataset.subject = mailto.subject || '';
         link.dataset.body = mailto.body || '';
-        document.getElementById('pv-oa-author-email').value = '';
+        document.getElementById('pv-oa-author-email').value = mailto.to || '';
         _oaUpdateMailtoHref();
+        const rgLink = document.getElementById('pv-oa-researchgate-link');
+        if (rgLink) rgLink.href = r.researchgate_search_url || '#';
         authorBlock.style.display = 'block';
       }
     } catch (e) {
