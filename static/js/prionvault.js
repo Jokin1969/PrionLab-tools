@@ -3321,6 +3321,64 @@
     return lines.join('\n');
   }
 
+  // Plain-text version of the "share by email/WhatsApp" block — same
+  // fields as the HTML version below, one per line, with the full URL
+  // spelled out next to PMID/DOI (since plain text can't carry a real
+  // hyperlink, but a pasted URL is still tappable in WhatsApp/most mail
+  // clients).
+  function _shareBlockText(a) {
+    const lines = [a.title || '(sin título)'];
+    if (a.authors) lines.push(a.authors);
+    const journalYear = [a.journal, a.year ? String(a.year) : ''].filter(Boolean).join(', ');
+    if (journalYear) lines.push(journalYear);
+    if (a.pubmed_id) lines.push(`PMID: ${a.pubmed_id} — https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(a.pubmed_id)}/`);
+    if (a.doi)       lines.push(`DOI: ${a.doi} — https://doi.org/${encodeURIComponent(a.doi)}`);
+    return lines.join('\n');
+  }
+
+  // HTML version of the same block, with PMID/DOI as real <a href> links
+  // — written to the clipboard's text/html slot alongside the plain-text
+  // one above, so pasting into a rich-text target (Gmail compose,
+  // WhatsApp Web's message box, Word) keeps them clickable, while a
+  // plain-text target (a bare textarea, SMS) still gets the spelled-out
+  // URL from _shareBlockText.
+  function _shareBlockHtml(a) {
+    const lines = [`<div>${esc(a.title || '(sin título)')}</div>`];
+    if (a.authors) lines.push(`<div>${esc(a.authors)}</div>`);
+    const journalYear = [a.journal, a.year ? String(a.year) : ''].filter(Boolean).join(', ');
+    if (journalYear) lines.push(`<div>${esc(journalYear)}</div>`);
+    if (a.pubmed_id) {
+      const url = `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(a.pubmed_id)}/`;
+      lines.push(`<div>PMID: <a href="${esc(url)}">${esc(a.pubmed_id)}</a></div>`);
+    }
+    if (a.doi) {
+      const url = `https://doi.org/${encodeURIComponent(a.doi)}`;
+      lines.push(`<div>DOI: <a href="${esc(url)}">${esc(a.doi)}</a></div>`);
+    }
+    return lines.join('');
+  }
+
+  // Writes both representations to the clipboard when the browser
+  // supports the rich Clipboard API (ClipboardItem + navigator.clipboard.
+  // write), so PMID/DOI paste as clickable links in Gmail/WhatsApp/Word;
+  // falls back to a plain-text copy (via the shared _copyToClipboard,
+  // which itself falls back further to execCommand) on older browsers or
+  // insecure contexts where the rich API is unavailable.
+  async function _copyShareBlock(a) {
+    const text = _shareBlockText(a);
+    try {
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        const item = new ClipboardItem({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          'text/html':  new Blob([_shareBlockHtml(a)], { type: 'text/html' }),
+        });
+        await navigator.clipboard.write([item]);
+        return true;
+      }
+    } catch (e) { /* fall through to plain-text copy */ }
+    return _copyToClipboard(text);
+  }
+
   function _providerBadgeHtml(provider) {
     if (provider === 'anthropic') return '<span class="pv-prov-badge" title="Resumen generado por Claude (Anthropic)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#ede9fe;color:#5b21b6;">✦ Claude</span>';
     if (provider === 'openai')    return '<span class="pv-prov-badge" title="Resumen generado por GPT (OpenAI)" style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#15803d;">⬡ GPT</span>';
@@ -3641,7 +3699,12 @@
                title="Copiar título"
                style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
                       cursor:pointer;color:#9ca3af;font-size:10px;line-height:1;"
-               ><i class="far fa-copy"></i></button></div>
+               ><i class="far fa-copy"></i></button><button
+               type="button" class="pv-share-row-btn" data-aid="${esc(a.id)}"
+               title="Copiar título, autores, revista, PMID y DOI para pegar en un email o WhatsApp (PMID/DOI quedan como enlaces clicables)"
+               style="all:unset;display:inline-flex;vertical-align:super;margin-left:3px;
+                      cursor:pointer;color:#9ca3af;font-size:10px;line-height:1;"
+               ><i class="fas fa-layer-group"></i></button></div>
         <div style="margin-top:2px;font-size:12px;color:#6b7280;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${authors}${journal}</div>
         ${(tags || badges) ? `<div class="pv-row-badges-wrap" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;overflow:hidden;">${badges}${tags}</div>` : ''}
@@ -4036,6 +4099,16 @@
       if (manualUploadBtn) _wireManualUploadBtn(manualUploadBtn, a);
 
       _wireCopyBtn(row.querySelector('.pv-copy-title-btn'));
+
+      const shareRowBtn = row.querySelector('.pv-share-row-btn');
+      if (shareRowBtn) shareRowBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const icon = shareRowBtn.querySelector('i');
+        const prevClass = icon ? icon.className : null;
+        const ok = await _copyShareBlock(a);
+        if (icon) icon.className = ok ? 'fas fa-check' : 'fas fa-xmark';
+        setTimeout(() => { if (icon && prevClass) icon.className = prevClass; }, 1400);
+      });
 
       const cartBtn = row.querySelector('.pv-cart-btn');
       if (cartBtn) cartBtn.addEventListener('click', (e) => {
