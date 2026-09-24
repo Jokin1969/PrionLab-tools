@@ -1,0 +1,714 @@
+"""Top-K retrieval over the vector index.
+
+Embeds the user query with Voyage (`input_type="query"`) and ranks the
+`article_chunk` rows by cosine distance using pgvector's `<=>` operator.
+Results are grouped by article so the caller can show one card per paper
+even if multiple chunks of the same paper matched.
+"""
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass, field
+from typing import List, Optional
+
+from sqlalchemy import text as sql_text
+
+from ..ingestion.queue import _get_engine
+from .embedder import embed_query, NotConfigured
+
+logger = logging.getLogger(__name__)
+
+# Matches the significant-word extraction the main listing search
+# already uses for its own ILIKE OR-mode (routes.py) — words of 3+
+# chars, since a 1-2 char token can't usefully narrow a BM25 match.
+_BM25_WORD_RE = re.compile(r"[\w\-]{3,}", re.UNICODE)
+
+# Common Spanish/English function words — pronouns, articles,
+# prepositions, conjunctions, question words, generic request verbs
+# ("dime", "puedes", "gustaría")... Verified empirically (see the git
+# history for this file) that leaving these IN the OR query is worse
+# than not filtering at all: ts_rank_cd has no IDF/rarity weighting,
+# it just sums per-lexeme weight across ALL matches, so a long PDF
+# chunk that happens to contain "que"/"por"/"para" a dozen times each
+# outranks a short, precise note whose only real match is the rare
+# term that actually matters ("Tg338") — the opposite of what BM25 is
+# supposed to reward. Stripping filler words is what makes the OR
+# query behave like a real keyword search instead of "whichever chunk
+# is longest and most grammatically ordinary".
+_BM25_STOPWORDS = frozenset("""
+dime dime puedes puedo podrías podrias gustaría gustaria quisiera quiero
+necesito favor porfavor decir dime cual cuál cuales cuáles que qué quien
+quién quienes quiénes como cómo donde dónde cuando cuándo cuanto cuánto
+cuanta cuánta por para con sin sobre entre desde hasta hacia según segun
+ante bajo tras durante mediante versus vía via los las una uno unos unas
+del al este esta estos estas ese esa esos esas aquel aquella aquellos
+aquellas mismo misma mismos mismas otro otra otros otras tal tales cada
+todo toda todos todas algún alguna algunos algunas algo alguien nada
+nadie ningún ninguna tanto tanta tantos tantas más mas menos muy tan
+solo sólo también tambien tampoco además ademas incluso aunque pero
+sino porque pues ya casi aún aun bien mal mejor peor primera primero
+primeros primeras vez veces artículo articulo the and for with from
+into onto about into over under between among during before after
+above below through please could would should tell give show find
+what which who whom whose where when why how does did doing done
+this that these those some any all each every other another same
+first once
+""".split())
+
+
+def _bm25_or_query(text: str) -> str:
+    """Turn a natural-language question into an OR-of-significant-words
+    string for websearch_to_tsquery.
+
+    plainto_tsquery ANDs every token together, and the 'simple' text
+    search config (chosen so acronyms/gene names aren't stemmed or
+    stopword-filtered) has NO stopword list — so a raw question like
+    "¿Cuál es el artículo que referencia... Tg338?" turns into an AND
+    of ~15 tokens including "cual", "es", "el", "que"... a conjunction
+    essentially no chunk can ever satisfy. The BM25 leg then silently
+    contributes nothing, hybrid search quietly degrades to vector-only,
+    and a distinctive exact-term query (an acronym, a gene name, a lab
+    model name) that should be a slam-dunk lexical match instead rides
+    entirely on embedding similarity — which is exactly the failure
+    mode that let a note containing "Tg338" go unretrieved. websearch_
+    to_tsquery treats a literal " OR " between bare words as a real OR
+    (same technique the main listing search uses for its own OR mode),
+    so this matches any chunk containing at least one significant word
+    — ts_rank_cd and the downstream RRF fusion / rerank still reward
+    chunks that match more of them.
+
+    Filler words are stripped first (see _BM25_STOPWORDS) — leaving
+    them in actively hurts: ts_rank_cd sums weight per match with no
+    length/rarity normalisation, so a long chunk with many incidental
+    "que"/"por"/"para" matches would otherwise outrank a short note
+    whose only match is the one word that actually matters."""
+    all_words = _BM25_WORD_RE.findall(text or "")
+    words = [w for w in all_words if w.lower() not in _BM25_STOPWORDS] or all_words
+    if not words:
+        return text or ""
+    return " OR ".join(words)
+
+
+@dataclass
+class RetrievedChunk:
+    article_id:   str
+    chunk_index:  int
+    source_field: str
+    chunk_text:   str
+    tokens:       Optional[int]
+    distance:     float                 # smaller = closer (pgvector cosine)
+    similarity:   float                 # 1 - distance, 0..1
+    rerank_score: Optional[float] = None  # filled in when rerank is applied
+
+
+@dataclass
+class RetrievedArticle:
+    id:        str
+    title:     str
+    authors:   Optional[str]
+    year:      Optional[int]
+    journal:   Optional[str]
+    doi:       Optional[str]
+    pubmed_id: Optional[str]
+    best_distance:   float
+    best_similarity: float
+    # True when the article has a Dropbox-hosted PDF (dropbox_path
+    # IS NOT NULL). Surfaced to the UI so it can render a direct
+    # "Abrir PDF" link in each citation card. Defaults to False so
+    # legacy callers that don't populate it stay correct.
+    has_pdf:   bool = False
+    chunks:    List[RetrievedChunk] = field(default_factory=list)
+
+
+@dataclass
+class RerankInfo:
+    used:            bool
+    model:           Optional[str] = None
+    candidates:      int = 0    # how many we considered before rerank
+    tokens:          int = 0
+    cost_usd:        Optional[float] = None
+    elapsed_ms:      int = 0
+
+
+@dataclass
+class HybridInfo:
+    used:        bool
+    vector_hits: int = 0   # chunks returned by pgvector
+    bm25_hits:   int = 0   # chunks returned by BM25 (chunk-level tsvector)
+    fused:       int = 0   # unique chunks in the fused pool
+
+
+@dataclass
+class RetrievalResult:
+    query:      str
+    articles:   List[RetrievedArticle]   # de-duplicated, ranked by best chunk
+    raw_chunks: List[RetrievedChunk]     # full top-K, useful for the RAG prompt
+    fetched_at_distance: float            # worst (largest) distance returned
+    rerank:     Optional[RerankInfo] = None
+    hybrid:     Optional[HybridInfo] = None
+    # How many DISTINCT articles the candidate pool would have yielded
+    # before the top_k + per_article_cap truncation. The UI uses this
+    # to tell the operator "showing 50 of 137 relevant articles" and
+    # offer a "ver más" prompt. 0 when no candidates were retrieved.
+    total_candidate_articles: int = 0
+    # (term, expansions) tuples that the query expander fired on. Surfaced
+    # all the way to the UI so the user can see "I broadened your query
+    # with: GAG → glycosaminoglycan, heparan sulfate, …" — both as a
+    # confidence cue and as a debugging aid.
+    expansion_matches: List[tuple] = field(default_factory=list)
+    # Populated only when search(debug=True) — full per-chunk trace
+    # (vector leg, BM25 leg, fused, reranked, final) for diagnosing why
+    # a specific chunk did or didn't make the final context. See
+    # routes_admin.py's /api/admin/debug/retrieval.
+    debug: Optional[dict] = None
+
+
+def find_similar_articles(article_id, *, limit: int = 10) -> List[dict]:
+    """Return up to `limit` articles whose chunks are closest to a
+    representative chunk of `article_id`.
+
+    Uses the article's first extracted_text chunk (richest source) as the
+    query vector and runs a normal pgvector ORDER BY so the HNSW index
+    does the heavy lifting. Excludes the source article and groups
+    candidate chunks by article, keeping the min distance per paper.
+    """
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(sql_text(
+            """SELECT embedding::text FROM article_chunk
+               WHERE article_id = :aid AND owner_user_id IS NULL
+               ORDER BY (source_field = 'extracted_text') DESC,
+                        chunk_index ASC
+               LIMIT 1"""
+        ), {"aid": str(article_id)}).first()
+        if not row or not row[0]:
+            return []
+        vec_literal = row[0]
+
+        # Over-fetch chunks so the per-article dedup leaves us with
+        # enough distinct papers to return `limit` rows. Private-note
+        # chunks are excluded here — "similar articles" is not scoped
+        # to a viewer, so it must never match on someone's personal note.
+        candidate_k = max(limit * 8, 60)
+        rows = conn.execute(sql_text(
+            """SELECT c.article_id,
+                      c.embedding <=> (:vec)::vector AS distance,
+                      a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+                      (a.summary_ai IS NOT NULL) AS has_summary_ai,
+                      (a.dropbox_path IS NOT NULL) AS has_pdf
+               FROM article_chunk c
+               JOIN articles a ON a.id = c.article_id
+               WHERE c.article_id != :aid AND c.owner_user_id IS NULL
+               ORDER BY c.embedding <=> (:vec)::vector ASC
+               LIMIT :k"""
+        ), {"vec": vec_literal, "aid": str(article_id),
+            "k": candidate_k}).all()
+
+    best: dict = {}
+    for r in rows:
+        aid = str(r.article_id)
+        d = float(r.distance) if r.distance is not None else 1.0
+        if aid in best and best[aid]["distance"] <= d:
+            continue
+        best[aid] = {
+            "id":             aid,
+            "title":          r.title or "",
+            "authors":        r.authors,
+            "year":           r.year,
+            "journal":        r.journal,
+            "doi":            r.doi,
+            "pubmed_id":      r.pubmed_id,
+            "has_summary_ai": bool(r.has_summary_ai),
+            "has_pdf":        bool(r.has_pdf),
+            "distance":       d,
+            "similarity":     max(0.0, 1.0 - d),
+        }
+    return sorted(best.values(), key=lambda x: x["distance"])[:limit]
+
+
+# Reciprocal Rank Fusion constant. 60 is the canonical default from the
+# Cormack et al. paper; behaviour is robust to small perturbations.
+_RRF_K = 60
+
+
+def search(query: str, *, top_k: int = 20,
+           per_article_cap: int = 3,
+           rerank: bool = True,
+           hybrid: bool = True,
+           candidate_k: Optional[int] = None,
+           viewer_id: Optional[str] = None,
+           debug: bool = False) -> RetrievalResult:
+    """Run a semantic search. Returns chunks + grouped articles.
+
+    `per_article_cap` limits how many chunks of the same article appear in
+    raw_chunks, so the RAG prompt isn't dominated by a single paper.
+
+    When `hybrid` is True (default), the retriever runs both a pgvector
+    cosine search and a chunk-level BM25 full-text search, then fuses
+    the two rankings with Reciprocal Rank Fusion before the rerank step.
+    This is the recommended setting because it preserves recall on exact
+    technical tokens (PrPSc, GFAP, 14-3-3, …) that the dense embedder
+    sometimes blurs together with semantically adjacent concepts.
+
+    When `rerank` is True (default), Voyage rerank-2 re-scores the fused
+    candidate pool against the query and the final top_k is taken from
+    the re-ranked order. If VOYAGE_API_KEY is not set the rerank step is
+    skipped gracefully and the function falls back to the fused order.
+
+    `viewer_id`: sticky-note chunks (article_chunk.owner_user_id IS NOT
+    NULL) are private — only ever matched when they belong to this
+    viewer. Every other source (PDF text, abstract, AI summary) has
+    owner_user_id NULL and is visible to everyone, unaffected by this
+    param. Pass None (default) to see shared sources only.
+    """
+    query = (query or "").strip()
+    if not query:
+        return RetrievalResult(query="", articles=[], raw_chunks=[],
+                               fetched_at_distance=0.0)
+
+    # Biomedical query expansion: broaden the user's query with
+    # acronyms, synonyms and curated MeSH-derived hyper/hyponyms so
+    # the embedder sees both the original phrasing AND the vocabulary
+    # the corpus's authors actually used. Failures fall through
+    # silently — at worst we lose the expansion benefit, the
+    # original retrieval path still works.
+    expanded_for_embed = query
+    expanded_for_bm25  = query
+    expansion_matches: list[tuple[str, str]] = []
+    try:
+        from ..services.query_expansion import expand as _qx_expand
+        ex = _qx_expand(query)
+        expanded_for_embed = ex.text
+        expanded_for_bm25  = ex.bm25_query
+        expansion_matches = ex.matched
+    except Exception as exc:
+        logger.debug("query_expansion skipped: %s", exc)
+
+    qvec = embed_query(expanded_for_embed)
+    if not qvec:
+        raise RuntimeError("query embedding returned empty vector")
+    vec_literal = "[" + ",".join(f"{x:.7f}" for x in qvec) + "]"
+
+    # Over-fetch from pgvector: more candidates → better material for
+    # the reranker (or for the per-article cap when rerank is off).
+    # Cap raised to 400 (from 100/150) so a top_k=50 request has
+    # plausible headroom to detect whether MORE relevant articles
+    # exist beyond what we'll return — that's what powers the UI's
+    # "Hay N artículos más disponibles, ¿quieres ver más?" prompt.
+    # Cost of over-fetching is modest because the HNSW index makes
+    # pgvector's ORDER BY cheap regardless of LIMIT.
+    if candidate_k is None:
+        candidate_k = min(400, max(top_k * 5, 60)) if rerank else min(400, max(top_k * 3, 40))
+
+    eng = _get_engine()
+    with eng.connect() as conn:
+        vec_rows = conn.execute(sql_text(
+            """SELECT
+                   c.id AS chunk_pk,
+                   c.article_id,
+                   c.chunk_index,
+                   c.source_field,
+                   c.chunk_text,
+                   c.tokens,
+                   c.embedding <=> (:qvec)::vector AS distance,
+                   a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+                   (a.dropbox_path IS NOT NULL) AS has_pdf
+               FROM article_chunk c
+               JOIN articles a ON a.id = c.article_id
+               WHERE c.owner_user_id IS NULL OR c.owner_user_id = :viewer_id
+               ORDER BY c.embedding <=> (:qvec)::vector ASC
+               LIMIT :k"""
+        ), {"qvec": vec_literal, "k": candidate_k, "viewer_id": viewer_id}).all()
+
+        # ── Lexical (BM25-style) leg of the hybrid retrieval ────────────
+        bm25_rows = []
+        hybrid_active = False
+        bm25_q = None
+        if hybrid:
+            try:
+                bm25_q = _bm25_or_query(expanded_for_bm25)
+                bm25_rows = conn.execute(sql_text(
+                    """SELECT
+                           c.id AS chunk_pk,
+                           c.article_id,
+                           c.chunk_index,
+                           c.source_field,
+                           c.chunk_text,
+                           c.tokens,
+                           ts_rank_cd(c.chunk_search_vector,
+                                      websearch_to_tsquery('simple', :q)) AS rank,
+                           a.title, a.authors, a.year, a.journal, a.doi, a.pubmed_id,
+                           (a.dropbox_path IS NOT NULL) AS has_pdf
+                       FROM article_chunk c
+                       JOIN articles a ON a.id = c.article_id
+                       WHERE c.chunk_search_vector @@ websearch_to_tsquery('simple', :q)
+                         AND (c.owner_user_id IS NULL OR c.owner_user_id = :viewer_id)
+                       ORDER BY rank DESC
+                       LIMIT :k"""
+                ), {"q": bm25_q, "k": candidate_k,
+                    "viewer_id": viewer_id}).all()
+                hybrid_active = True
+            except Exception as exc:
+                # Column or index missing (migration 006 not applied yet?).
+                # Fall back to pure vector quietly.
+                logger.warning("BM25 leg failed, hybrid disabled: %s", exc)
+                bm25_rows = []
+                hybrid_active = False
+
+    # ── Build a chunk pool indexed by chunk_pk, collecting both legs ────
+    chunk_by_pk: dict = {}
+    article_meta: dict = {}
+
+    def _ingest_row(r, is_vec: bool):
+        pk = int(r.chunk_pk)
+        aid = str(r.article_id)
+        if aid not in article_meta:
+            article_meta[aid] = {
+                "title":     r.title or "",
+                "authors":   r.authors,
+                "year":      r.year,
+                "journal":   r.journal,
+                "doi":       r.doi,
+                "pubmed_id": r.pubmed_id,
+                "has_pdf":   bool(getattr(r, "has_pdf", False)),
+            }
+        if pk in chunk_by_pk:
+            return chunk_by_pk[pk]
+        if is_vec:
+            dist = float(r.distance) if r.distance is not None else 1.0
+            similarity = max(0.0, 1.0 - dist)
+        else:
+            # No vector distance yet for this chunk — leave a conservative
+            # default; reranking will rescue or demote it.
+            dist = 1.0
+            similarity = 0.0
+        c = RetrievedChunk(
+            article_id=aid,
+            chunk_index=int(r.chunk_index),
+            source_field=r.source_field,
+            chunk_text=r.chunk_text,
+            tokens=int(r.tokens) if r.tokens is not None else None,
+            distance=dist,
+            similarity=similarity,
+        )
+        chunk_by_pk[pk] = c
+        return c
+
+    # ── Reciprocal Rank Fusion ─────────────────────────────────────────
+    rrf_scores: dict = {}
+    for rank, r in enumerate(vec_rows):
+        _ingest_row(r, is_vec=True)
+        pk = int(r.chunk_pk)
+        rrf_scores[pk] = rrf_scores.get(pk, 0.0) + 1.0 / (_RRF_K + rank + 1)
+    for rank, r in enumerate(bm25_rows):
+        _ingest_row(r, is_vec=False)
+        pk = int(r.chunk_pk)
+        rrf_scores[pk] = rrf_scores.get(pk, 0.0) + 1.0 / (_RRF_K + rank + 1)
+
+    # When BM25 finds a chunk that wasn't in the vector top-K, we don't
+    # know its true vector similarity. Backfill the distance for those
+    # chunks with a single quick lookup so the per-article cap and the
+    # final ordering have something useful to fall back on.
+    pks_needing_dist = [
+        pk for pk, c in chunk_by_pk.items() if c.similarity == 0.0
+    ]
+    if pks_needing_dist:
+        try:
+            with eng.connect() as conn:
+                d_rows = conn.execute(sql_text(
+                    """SELECT id, embedding <=> (:qvec)::vector AS distance
+                       FROM article_chunk
+                       WHERE id = ANY(:pks)"""
+                ), {"qvec": vec_literal, "pks": pks_needing_dist}).all()
+                for dr in d_rows:
+                    c = chunk_by_pk.get(int(dr.id))
+                    if c is None:
+                        continue
+                    dist = float(dr.distance) if dr.distance is not None else 1.0
+                    c.distance = dist
+                    c.similarity = max(0.0, 1.0 - dist)
+        except Exception as exc:
+            logger.warning("backfill distances failed: %s", exc)
+
+    # Order candidates by fused RRF score when hybrid is active, otherwise
+    # by pure vector order (preserves earlier behaviour).
+    if hybrid_active:
+        candidate_chunks: List[RetrievedChunk] = [
+            chunk_by_pk[pk] for pk, _ in
+            sorted(rrf_scores.items(), key=lambda kv: -kv[1])
+        ]
+    else:
+        candidate_chunks = [
+            chunk_by_pk[int(r.chunk_pk)] for r in vec_rows
+        ]
+
+    hybrid_info = HybridInfo(
+        used=hybrid_active,
+        vector_hits=len(vec_rows),
+        bm25_hits=len(bm25_rows),
+        fused=len(candidate_chunks),
+    )
+    rerank_info = RerankInfo(used=False, candidates=len(candidate_chunks))
+
+    # ── Optional reranking step ─────────────────────────────────────────
+    ordered = candidate_chunks
+    if rerank and candidate_chunks:
+        try:
+            from .reranker import rerank as rerank_docs, NotConfigured as RerankNotConfigured
+            try:
+                docs = [c.chunk_text for c in candidate_chunks]
+                rerank_result = rerank_docs(query, docs)
+                # Voyage returns sorted-by-score by default. Map back to chunks.
+                if rerank_result.scores:
+                    score_by_idx = {s.index: s.relevance_score
+                                    for s in rerank_result.scores}
+                    for i, c in enumerate(candidate_chunks):
+                        c.rerank_score = score_by_idx.get(i)
+                    ordered = sorted(
+                        candidate_chunks,
+                        key=lambda c: (
+                            -1 * (c.rerank_score if c.rerank_score is not None else -1),
+                            c.distance,
+                        ),
+                    )
+                    rerank_info = RerankInfo(
+                        used=True,
+                        model=rerank_result.model,
+                        candidates=len(candidate_chunks),
+                        tokens=rerank_result.tokens,
+                        cost_usd=rerank_result.cost_usd,
+                        elapsed_ms=rerank_result.elapsed_ms,
+                    )
+            except RerankNotConfigured:
+                logger.info("Skipping rerank — VOYAGE_API_KEY not set")
+            except Exception as exc:
+                logger.warning("Rerank failed, falling back to vector order: %s", exc)
+        except Exception as exc:
+            # Rare: import error from reranker module itself.
+            logger.warning("Rerank module unavailable: %s", exc)
+
+    # Count how many DISTINCT articles the candidate pool would have
+    # produced if top_k were unbounded — useful for the UI's "ver más"
+    # prompt. Computed before the top_k cut so it always reflects the
+    # full retrievable set at the current similarity threshold, even
+    # when the operator hasn't paginated yet.
+    candidate_article_ids: set = set()
+    for c in ordered:
+        candidate_article_ids.add(c.article_id)
+    total_candidate_articles = len(candidate_article_ids)
+
+    # Curated fragments — sticky notes, per-article chat, and the
+    # "## Notas del usuario" section admins append to a summary — are
+    # deliberate researcher annotations, not incidental body text. A
+    # generic semantic reranker has no way to know that a short note
+    # ("see also Vilotte et al. 2001 for Tg338") outranks a long,
+    # topically-dense PDF paragraph for THIS purpose, so one that
+    # legitimately matched the query (BM25 or vector) could still lose
+    # out on rerank score and never reach the model. Guarantee that any
+    # such chunk which made it into the candidate pool survives to the
+    # final context, ahead of ordinary chunks — it's exactly the kind
+    # of fragment worth spending a context slot on.
+    def _is_curated(c: "RetrievedChunk") -> bool:
+        if c.source_field in ("notes", "chat"):
+            return True
+        return c.source_field == "summary_ai" and "notas del usuario" in c.chunk_text.lower()
+
+    curated_first = sorted(ordered, key=lambda c: (not _is_curated(c),))
+
+    # A note asserting a fact ("this is the first paper to...") is a
+    # lead, not a verified source — the model can only cross-check it
+    # against the article's own words if that text is ALSO in front of
+    # it. So right after each curated chunk, also pull in the best-
+    # ranked non-curated chunk for THAT SAME article (if the candidate
+    # pool has one) — the note and the actual article text arrive
+    # together, not the note floating alone.
+    best_factual_by_article: dict = {}
+    for c in ordered:
+        if not _is_curated(c) and c.article_id not in best_factual_by_article:
+            best_factual_by_article[c.article_id] = c
+
+    # Apply the per-article cap on the (curated-first, reranked) list.
+    seen_per_article: dict = {}
+    chunks: List[RetrievedChunk] = []
+    added_ids: set = set()
+
+    def _add(c) -> bool:
+        if id(c) in added_ids or len(chunks) >= top_k:
+            return False
+        n = seen_per_article.get(c.article_id, 0)
+        if n >= per_article_cap:
+            return False
+        seen_per_article[c.article_id] = n + 1
+        chunks.append(c)
+        added_ids.add(id(c))
+        return True
+
+    for c in curated_first:
+        if not _add(c):
+            if len(chunks) >= top_k:
+                break
+            continue
+        if _is_curated(c):
+            companion = best_factual_by_article.get(c.article_id)
+            if companion is not None:
+                _add(companion)
+
+    # A note's companion chunk (above) covers the article the note is
+    # ATTACHED to — but a note's whole point is often to point at a
+    # DIFFERENT article ("the real reference for this is Laude et al.
+    # 2002, DOI: ..."), which needs its own resolution: pull that
+    # referenced article's text in directly by DOI/PMID, so the claim
+    # can actually be checked instead of repeated on faith. Without
+    # this, a note that cites another paper by identifier never gets
+    # that paper's own words in front of the model at all.
+    if any(_is_curated(c) for c in chunks) and len(chunks) < top_k:
+        # DOIs can legitimately contain balanced parentheses (e.g.
+        # "10.1016/s1631-0691(02)01393-8" — a real one from this same
+        # bug report), so parens aren't excluded outright; only trailing
+        # sentence punctuation gets stripped afterwards.
+        doi_re = re.compile(r'10\.\d{4,9}/[^\s<>"\']+', re.IGNORECASE)
+        pmid_re = re.compile(r'PMID[:\s]*([0-9]{6,9})', re.IGNORECASE)
+        wanted: set = set()
+        for c in chunks:
+            if not _is_curated(c):
+                continue
+            for m in doi_re.findall(c.chunk_text):
+                wanted.add(("doi", m.rstrip(".,;")))
+            for m in pmid_re.findall(c.chunk_text):
+                wanted.add(("pmid", m))
+        known_dois = {(article_meta.get(c.article_id) or {}).get("doi") or ""
+                      for c in chunks}
+        known_dois = {d.lower() for d in known_dois if d}
+        try:
+            with eng.connect() as conn2:
+                for kind, val in wanted:
+                    if len(chunks) >= top_k:
+                        break
+                    if kind == "doi" and val.lower() in known_dois:
+                        continue
+                    where = "lower(doi) = lower(:v)" if kind == "doi" else "pubmed_id = :v"
+                    row = conn2.execute(sql_text(
+                        f"SELECT id, title, authors, year, journal, doi, pubmed_id, "
+                        f"(dropbox_path IS NOT NULL) AS has_pdf "
+                        f"FROM articles WHERE {where} LIMIT 1"
+                    ), {"v": val}).first()
+                    if not row:
+                        continue
+                    ref_aid = str(row.id)
+                    if ref_aid in seen_per_article:
+                        continue
+                    chunk_row = conn2.execute(sql_text(
+                        "SELECT chunk_text, source_field, chunk_index, tokens "
+                        "FROM article_chunk WHERE article_id = :aid AND owner_user_id IS NULL "
+                        "ORDER BY (source_field = 'abstract') DESC, "
+                        "(source_field = 'summary_ai') DESC, chunk_index ASC LIMIT 1"
+                    ), {"aid": ref_aid}).first()
+                    if not chunk_row:
+                        continue
+                    article_meta[ref_aid] = {
+                        "title": row.title or "", "authors": row.authors,
+                        "year": row.year, "journal": row.journal,
+                        "doi": row.doi, "pubmed_id": row.pubmed_id,
+                        "has_pdf": bool(row.has_pdf),
+                    }
+                    _add(RetrievedChunk(
+                        article_id=ref_aid, chunk_index=int(chunk_row.chunk_index),
+                        source_field=chunk_row.source_field,
+                        chunk_text=chunk_row.chunk_text,
+                        tokens=int(chunk_row.tokens) if chunk_row.tokens is not None else None,
+                        distance=1.0, similarity=0.0,
+                    ))
+        except Exception as exc:
+            logger.warning("note cross-reference resolution failed: %s", exc)
+
+    # Group by article using the order of `chunks`
+    grouped: dict = {}
+    for c in chunks:
+        grouped.setdefault(c.article_id, []).append(c)
+
+    articles: List[RetrievedArticle] = []
+    for aid, cs in grouped.items():
+        meta = article_meta.get(aid, {})
+        # Sort chunks within the article by best score (rerank if present, else distance)
+        cs.sort(key=lambda x: (
+            -1 * (x.rerank_score if x.rerank_score is not None else -1),
+            x.distance,
+        ))
+        articles.append(RetrievedArticle(
+            id=aid,
+            title=meta.get("title") or "",
+            authors=meta.get("authors"),
+            year=meta.get("year"),
+            journal=meta.get("journal"),
+            doi=meta.get("doi"),
+            pubmed_id=meta.get("pubmed_id"),
+            has_pdf=bool(meta.get("has_pdf", False)),
+            best_distance=cs[0].distance,
+            best_similarity=cs[0].similarity,
+            chunks=cs,
+        ))
+    # Sort articles to match the order they appear in `chunks`
+    article_order = []
+    seen_order: set = set()
+    for c in chunks:
+        if c.article_id not in seen_order:
+            article_order.append(c.article_id)
+            seen_order.add(c.article_id)
+    articles.sort(key=lambda a: article_order.index(a.id)
+                  if a.id in article_order else 9999)
+
+    debug_trace = None
+    if debug:
+        pk_by_obj_id = {id(v): k for k, v in chunk_by_pk.items()}
+
+        def _row(c, extra=None):
+            meta = article_meta.get(c.article_id, {})
+            pk = pk_by_obj_id.get(id(c))
+            d = {
+                "article_id": c.article_id,
+                "title": (meta.get("title") or "")[:90],
+                "source_field": c.source_field,
+                "curated": _is_curated(c),
+                "distance": round(c.distance, 4),
+                "similarity": round(c.similarity, 4),
+                "rerank_score": (round(c.rerank_score, 4)
+                                if c.rerank_score is not None else None),
+                "rrf_score": round(rrf_scores.get(pk, 0.0), 6) if pk is not None else None,
+                "text_preview": c.chunk_text[:160],
+            }
+            if extra:
+                d.update(extra)
+            return d
+
+        final_pks = {id(c) for c in chunks}
+        debug_trace = {
+            "raw_query": query,
+            "expanded_for_embed": expanded_for_embed,
+            "expanded_for_bm25": expanded_for_bm25,
+            "bm25_query_sent": bm25_q if hybrid else None,
+            "vector_leg_hits": len(vec_rows),
+            "bm25_leg_hits": len(bm25_rows),
+            "hybrid_active": hybrid_active,
+            "candidate_pool_size": len(candidate_chunks),
+            "rerank_used": rerank_info.used,
+            "top_k": top_k,
+            "per_article_cap": per_article_cap,
+            "candidates_ranked": [_row(c) for c in curated_first[:40]],
+            "final_context": [_row(c, {"included": True}) for c in chunks],
+            "curated_in_pool_but_dropped": [
+                _row(c) for c in curated_first if _is_curated(c) and id(c) not in final_pks
+            ],
+        }
+
+    return RetrievalResult(
+        query=query,
+        articles=articles,
+        raw_chunks=chunks,
+        fetched_at_distance=chunks[-1].distance if chunks else 0.0,
+        rerank=rerank_info,
+        hybrid=hybrid_info,
+        total_candidate_articles=total_candidate_articles,
+        expansion_matches=expansion_matches,
+        debug=debug_trace,
+    )

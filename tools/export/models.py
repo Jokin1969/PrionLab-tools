@@ -815,7 +815,7 @@ def init_scheduler(app) -> None:
         from apscheduler.schedulers.background import BackgroundScheduler
         import atexit
 
-        _scheduler = BackgroundScheduler(daemon=True)
+        _scheduler = BackgroundScheduler(daemon=True, misfire_grace_time=600)
 
         def _cleanup_job():
             with app.app_context():
