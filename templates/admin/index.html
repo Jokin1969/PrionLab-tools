@@ -49,8 +49,8 @@
         {% for user in users %}
         <tr class="{{ 'row--inactive' if user.active == 'false' else '' }}">
           <td><code>{{ user.username }}</code></td>
-          <td>{{ user.full_name }}</td>
-          <td>{{ user.email }}</td>
+          <td><span class="cell-ellipsis" title="{{ user.full_name }}">{{ user.full_name }}</span></td>
+          <td><span class="cell-ellipsis" title="{{ user.email }}">{{ user.email }}</span></td>
           <td><span class="badge badge--{{ user.role }}">{{ user.role }}</span></td>
           <td>{{ user.language }}</td>
           <td class="text-center">
@@ -62,15 +62,15 @@
           <td>{{ user.last_login or '—' }}</td>
           <td class="actions-cell">
             <a href="{{ url_for('admin.edit_user', username=user.username) }}"
-               class="btn btn--sm btn--secondary">{{ _('Edit') }}</a>
+               class="btn btn--sm btn--secondary btn--icon" title="{{ _('Edit') }}">✏</a>
 
             {% if user.role != 'admin' and user.username != session.get('username') and user.active == 'true' %}
               <form method="POST"
                     action="{{ url_for('admin.impersonate_user', username=user.username) }}"
                     style="display:inline">
-                <button type="submit" class="btn btn--sm btn--secondary"
-                        title="{{ _('See exactly what this user sees, with their own role and permissions') }}">
-                  👁 {{ _('View as') }}
+                <button type="submit" class="btn btn--sm btn--secondary btn--icon"
+                        title="{{ _('View as') }} — {{ _('See exactly what this user sees, with their own role and permissions') }}">
+                  👁
                 </button>
               </form>
             {% endif %}
@@ -79,14 +79,15 @@
                   action="{{ url_for('admin.reset_password', username=user.username) }}"
                   style="display:inline"
                   onsubmit="return confirm('{{ _('Reset password for') }} {{ user.username }}?')">
-              <button type="submit" class="btn btn--sm btn--warning">{{ _('Reset password') }}</button>
+              <button type="submit" class="btn btn--sm btn--warning btn--icon" title="{{ _('Reset password') }}">🔑</button>
             </form>
 
             <form method="POST"
                   action="{{ url_for('admin.toggle_user', username=user.username) }}"
                   style="display:inline">
-              <button type="submit" class="btn btn--sm">
-                {{ _('Deactivate') if user.active == 'true' else _('Activate') }}
+              <button type="submit" class="btn btn--sm btn--icon"
+                      title="{{ _('Deactivate') if user.active == 'true' else _('Activate') }}">
+                {{ '⏸' if user.active == 'true' else '▶' }}
               </button>
             </form>
 
@@ -95,11 +96,11 @@
                     action="{{ url_for('admin.delete_user_route', username=user.username) }}"
                     style="display:inline"
                     onsubmit="return confirm('{{ _('Are you sure you want to delete this user?') }}')">
-                <button type="submit" class="btn btn--sm btn--danger">{{ _('Delete') }}</button>
+                <button type="submit" class="btn btn--sm btn--danger btn--icon" title="{{ _('Delete') }}">🗑</button>
               </form>
             {% else %}
-              <button class="btn btn--sm btn--danger" disabled
-                      title="{{ _('Cannot delete this user.') }}">{{ _('Delete') }}</button>
+              <button class="btn btn--sm btn--danger btn--icon" disabled
+                      title="{{ _('Cannot delete this user.') }}">🗑</button>
             {% endif %}
           </td>
         </tr>
@@ -110,6 +111,7 @@
     </table>
   </div>
 </section>
+
 
 {# ── Modal: email users about the PrionVault browser extension ───────────── #}
 <div id="ext-email-modal" style="display:none;position:fixed;inset:0;z-index:200;">

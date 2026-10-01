@@ -404,7 +404,7 @@ a:hover { text-decoration: underline; }
   font-size: 0.875rem;
 }
 .data-table th, .data-table td {
-  padding: 0.55rem 0.75rem;
+  padding: 0.5rem 0.6rem;
   text-align: left;
   border-bottom: 1px solid var(--color-border);
 }
@@ -419,7 +419,36 @@ a:hover { text-decoration: underline; }
 .row--inactive td { opacity: 0.55; }
 .text-center { text-align: center !important; }
 .text-muted { color: var(--color-text-muted); }
-.actions-cell { white-space: nowrap; display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; }
+.actions-cell { white-space: nowrap; display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; }
+
+/* Long free-text table cells (name, email…) — clip to a sane width
+   instead of forcing the whole table into horizontal scroll; the full
+   value is still available as a tooltip via the title attribute. */
+.cell-ellipsis {
+  display: inline-block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Icon-only small action button (Edit/View as/Reset/Delete… in admin
+   tables) — same footprint regardless of label length, so a row of 4-5
+   actions stays compact instead of each spelling out its full text.
+   Selector carries two classes (not just .btn--icon) so its specificity
+   beats the later, single-class .btn--sm padding/font-size rule
+   regardless of source order. */
+.btn--sm.btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  font-size: 0.9rem;
+  line-height: 1;
+}
 
 /* Badges */
 .badge {
