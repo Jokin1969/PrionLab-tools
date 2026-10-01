@@ -196,6 +196,7 @@ def add_user():
         language = request.form.get("language", "es")
         active = "true" if request.form.get("active") else "false"
         is_jc_responsible = "true" if request.form.get("is_jc_responsible") else "false"
+        is_prionvault_admin = "true" if request.form.get("is_prionvault_admin") else "false"
 
         if not password:
             flash(_("Password is required for new users."), "error")
@@ -217,6 +218,7 @@ def add_user():
             "language": language,
             "active": active,
             "is_jc_responsible": is_jc_responsible,
+            "is_prionvault_admin": is_prionvault_admin,
             "created_at": date.today().isoformat(),
             "last_login": "",
         })
@@ -243,6 +245,7 @@ def edit_user(username):
         language = request.form.get("language", user["language"])
         active = "true" if request.form.get("active") else "false"
         is_jc_responsible = "true" if request.form.get("is_jc_responsible") else "false"
+        is_prionvault_admin = "true" if request.form.get("is_prionvault_admin") else "false"
 
         updates = {
             "full_name": full_name,
@@ -251,6 +254,7 @@ def edit_user(username):
             "language": language,
             "active": active,
             "is_jc_responsible": is_jc_responsible,
+            "is_prionvault_admin": is_prionvault_admin,
         }
 
         if password:
@@ -365,19 +369,21 @@ def impersonate_user(username):
 
     admin_username = session["username"]
     admin_snapshot = {
-        "username":  session.get("username"),
-        "role":      session.get("role"),
-        "full_name": session.get("full_name"),
-        "language":  session.get("language"),
-        "user_id":   session.get("user_id"),
+        "username":            session.get("username"),
+        "role":                session.get("role"),
+        "full_name":           session.get("full_name"),
+        "language":            session.get("language"),
+        "user_id":             session.get("user_id"),
+        "is_prionvault_admin": session.get("is_prionvault_admin"),
     }
 
     from core.auth import _lookup_db_user_id
-    session["username"]  = target["username"]
-    session["role"]      = target.get("role", "reader")
-    session["full_name"] = target.get("full_name") or target["username"]
-    session["language"]  = target.get("language") or "es"
-    session["user_id"]   = _lookup_db_user_id(target["username"])
+    session["username"]            = target["username"]
+    session["role"]                = target.get("role", "reader")
+    session["full_name"]           = target.get("full_name") or target["username"]
+    session["language"]            = target.get("language") or "es"
+    session["user_id"]             = _lookup_db_user_id(target["username"])
+    session["is_prionvault_admin"] = target.get("is_prionvault_admin", "false")
 
     session["impersonation_admin"]   = admin_snapshot
     session["impersonation_log_id"]  = _log_impersonation_start(admin_username, target["username"])

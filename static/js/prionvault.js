@@ -21,8 +21,10 @@
   const ROLE     = (document.querySelector('meta[name="pv-user-role"]')?.content || '').trim();
   const USER_ID  = (document.querySelector('meta[name="pv-user-id"]')?.content || '').trim();
   const IS_ADMIN = ROLE === 'admin';
+  const IS_PV_USER_ADMIN = (document.querySelector('meta[name="pv-user-is-pv-admin"]')?.content || '') === '1';
   document.body.classList.toggle('pv-role-admin',  IS_ADMIN);
   document.body.classList.toggle('pv-role-reader', !IS_ADMIN);
+  document.body.classList.toggle('pv-role-pvadmin', IS_PV_USER_ADMIN);
   // Whether this user is flagged is_jc_responsible — fetched async (it's
   // not in the session, only in users.csv) and re-renders the currently
   // open detail modal's JC section once known, so the "Convocar" button
@@ -11602,6 +11604,7 @@
       wireGlossaryModal();
       wireScimago();
       wireBackups();
+      wirePvUserAdmin();
       wireSidebarResize();
       wireMobileDrawer();
       wireBulkBar();
@@ -18822,6 +18825,264 @@
   }
 
   // ── Backups panel ──────────────────────────────────────────────────────
+  // ── PrionVault's own user-management mini-panel ("Administración") ───────
+  // Independent from the main PrionLab admin panel — reachable by a real
+  // global admin OR anyone flagged is_prionvault_admin. Backed by
+  // tools/prionvault/routes_user_admin.py, which enforces the same
+  // guardrails server-side (never trust the UI alone): a flag-only
+  // (non-global-admin) user-admin can't touch another admin account, set
+  // anyone's global role, or deactivate themselves.
+  function wirePvUserAdmin() {
+    const openBtn = document.getElementById('btn-pv-user-admin');
+    const modal   = document.getElementById('pv-user-admin-modal');
+    const body    = document.getElementById('pv-user-admin-body');
+    if (!openBtn || !modal || !body) return;
+
+    let _users = [];
+    let _formMode = null;   // 'new' | 'edit' | null
+
+    function roleBadge(role) {
+      const colors = { admin: '#1A5A9A', editor: '#1A7A4A', reader: '#555' };
+      const bg     = { admin: '#E6F0FF', editor: '#E6F9F0', reader: '#F0F0F0' };
+      return `<span style="display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.04em;padding:1px 7px;border-radius:99px;
+                    background:${bg[role] || '#F0F0F0'};color:${colors[role] || '#555'};">${esc(role || '?')}</span>`;
+    }
+
+    function canFullyEdit(u) { return IS_ADMIN || u.role !== 'admin'; }
+
+    function userRowHtml(u) {
+      const editable = canFullyEdit(u);
+      return `
+        <tr data-username="${esc(u.username)}" style="border-bottom:1px solid #f3f4f6;${u.active ? '' : 'opacity:0.5;'}">
+          <td style="padding:7px 8px;"><code>${esc(u.username)}</code></td>
+          <td style="padding:7px 8px;">${esc(u.full_name || '')}</td>
+          <td style="padding:7px 8px;font-size:12px;color:#6b7280;">${esc(u.email || '')}</td>
+          <td style="padding:7px 8px;">${roleBadge(u.role)}</td>
+          <td style="padding:7px 8px;text-align:center;">${u.is_prionvault_admin ? '✓' : ''}</td>
+          <td style="padding:7px 8px;text-align:center;">${u.active ? '✓' : '✗'}</td>
+          <td style="padding:7px 8px;white-space:nowrap;">
+            <button type="button" class="pv-ua-edit-btn" data-username="${esc(u.username)}"
+                    title="Editar" ${editable ? '' : 'disabled'}
+                    style="border:none;background:#f3f4f6;color:#374151;border-radius:5px;
+                           padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">✏</button>
+            <button type="button" class="pv-ua-toggle-btn" data-username="${esc(u.username)}"
+                    title="${u.active ? 'Desactivar' : 'Activar'}" ${editable ? '' : 'disabled'}
+                    style="border:none;background:#f3f4f6;color:#374151;border-radius:5px;
+                           padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">${u.active ? '⏸' : '▶'}</button>
+            <button type="button" class="pv-ua-reset-btn" data-username="${esc(u.username)}"
+                    title="Resetear contraseña" ${editable ? '' : 'disabled'}
+                    style="border:none;background:#fef3c7;color:#92400e;border-radius:5px;
+                           padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">🔑</button>
+          </td>
+        </tr>`;
+    }
+
+    function formHtml(mode, u) {
+      const isEdit = mode === 'edit';
+      return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${isEdit
+            ? `<input type="hidden" id="pv-ua-f-username" value="${esc(u.username)}">`
+            : `<label style="font-size:11.5px;color:#6b7280;font-weight:600;">Usuario
+                 <input type="text" id="pv-ua-f-username" autocomplete="off"
+                        style="width:100%;box-sizing:border-box;margin-top:3px;padding:6px 9px;
+                               border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+               </label>
+               <label style="font-size:11.5px;color:#6b7280;font-weight:600;">Contraseña
+                 <input type="password" id="pv-ua-f-password" autocomplete="new-password"
+                        style="width:100%;box-sizing:border-box;margin-top:3px;padding:6px 9px;
+                               border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+               </label>`}
+          <label style="font-size:11.5px;color:#6b7280;font-weight:600;">Nombre completo
+            <input type="text" id="pv-ua-f-fullname" value="${esc(u.full_name || '')}"
+                   style="width:100%;box-sizing:border-box;margin-top:3px;padding:6px 9px;
+                          border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+          </label>
+          <label style="font-size:11.5px;color:#6b7280;font-weight:600;">Email
+            <input type="email" id="pv-ua-f-email" value="${esc(u.email || '')}"
+                   style="width:100%;box-sizing:border-box;margin-top:3px;padding:6px 9px;
+                          border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+          </label>
+          <label style="font-size:11.5px;color:#6b7280;font-weight:600;">Idioma
+            <select id="pv-ua-f-language"
+                    style="width:100%;box-sizing:border-box;margin-top:3px;padding:6px 9px;
+                           border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+              <option value="es" ${(u.language || 'es') === 'es' ? 'selected' : ''}>Español</option>
+              <option value="en" ${u.language === 'en' ? 'selected' : ''}>English</option>
+            </select>
+          </label>
+          ${IS_ADMIN ? `<label style="font-size:11.5px;color:#6b7280;font-weight:600;">Rol general
+            <select id="pv-ua-f-role"
+                    style="width:100%;box-sizing:border-box;margin-top:3px;padding:6px 9px;
+                           border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+              <option value="reader" ${(u.role || 'reader') === 'reader' ? 'selected' : ''}>Reader</option>
+              <option value="editor" ${u.role === 'editor' ? 'selected' : ''}>Editor</option>
+              <option value="admin"  ${u.role === 'admin'  ? 'selected' : ''}>Admin</option>
+            </select>
+          </label>` : ''}
+          <label style="grid-column:1/-1;display:flex;align-items:center;gap:7px;
+                        font-size:12.5px;color:#374151;font-weight:600;margin-top:4px;">
+            <input type="checkbox" id="pv-ua-f-pvadmin" ${u.is_prionvault_admin ? 'checked' : ''}>
+            Administrador de usuarios de PrionVault
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+          <button type="button" id="pv-ua-f-save"
+                  style="padding:7px 16px;border-radius:7px;border:none;background:#0F3460;
+                         color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;">Guardar</button>
+          <button type="button" id="pv-ua-f-cancel"
+                  style="padding:7px 16px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                         color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Cancelar</button>
+          <span id="pv-ua-f-status" style="font-size:12px;color:#6b7280;"></span>
+        </div>`;
+    }
+
+    function setStatus(msg, color) {
+      const el = document.getElementById('pv-ua-status');
+      if (el) { el.style.color = color || '#6b7280'; el.textContent = msg || ''; }
+    }
+
+    function openForm(mode, u) {
+      _formMode = mode;
+      const wrap = document.getElementById('pv-ua-new-form');
+      if (!wrap) return;
+      wrap.innerHTML = formHtml(mode, u || {});
+      wrap.style.display = 'block';
+      document.getElementById('pv-ua-f-cancel').addEventListener('click', closeForm);
+      document.getElementById('pv-ua-f-save').addEventListener('click', () => saveForm(mode, u));
+    }
+
+    function closeForm() {
+      _formMode = null;
+      const wrap = document.getElementById('pv-ua-new-form');
+      if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+    }
+
+    async function saveForm(mode, original) {
+      const fstatus = document.getElementById('pv-ua-f-status');
+      const saveBtn = document.getElementById('pv-ua-f-save');
+      const username  = document.getElementById('pv-ua-f-username').value.trim().toLowerCase();
+      const fullName  = document.getElementById('pv-ua-f-fullname').value.trim();
+      const email     = document.getElementById('pv-ua-f-email').value.trim();
+      const language  = document.getElementById('pv-ua-f-language').value;
+      const pvAdmin   = document.getElementById('pv-ua-f-pvadmin').checked;
+      const roleEl    = document.getElementById('pv-ua-f-role');
+
+      if (!username) { fstatus.style.color = '#b91c1c'; fstatus.textContent = 'Falta el usuario.'; return; }
+
+      saveBtn.disabled = true;
+      fstatus.style.color = '#6b7280';
+      fstatus.textContent = 'Guardando…';
+      try {
+        if (mode === 'new') {
+          const password = document.getElementById('pv-ua-f-password').value;
+          if (!password) { throw new Error('Falta la contraseña.'); }
+          const payload = { username, password, full_name: fullName, email, language, is_prionvault_admin: pvAdmin };
+          if (roleEl) payload.role = roleEl.value;
+          await api('/admin/pv-users', { method: 'POST', body: JSON.stringify(payload) });
+        } else {
+          const payload = { full_name: fullName, email, language, is_prionvault_admin: pvAdmin };
+          if (roleEl) payload.role = roleEl.value;
+          await api(`/admin/pv-users/${encodeURIComponent(username)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+        }
+        closeForm();
+        setStatus('✓ Guardado.', '#15803d');
+        await load();
+      } catch (e) {
+        fstatus.style.color = '#b91c1c';
+        fstatus.textContent = 'Error: ' + e.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+
+    function wireRowButtons() {
+      document.querySelectorAll('.pv-ua-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const u = _users.find(x => x.username === btn.dataset.username);
+          if (u) openForm('edit', u);
+        });
+      });
+      document.querySelectorAll('.pv-ua-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            await api(`/admin/pv-users/${encodeURIComponent(btn.dataset.username)}/toggle`, { method: 'POST' });
+            await load();
+          } catch (e) {
+            setStatus('Error: ' + e.message, '#b91c1c');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+      document.querySelectorAll('.pv-ua-reset-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(`¿Resetear la contraseña de ${btn.dataset.username}?`)) return;
+          btn.disabled = true;
+          try {
+            const r = await api(`/admin/pv-users/${encodeURIComponent(btn.dataset.username)}/reset-password`, { method: 'POST' });
+            alert(`Nueva contraseña para ${btn.dataset.username}:\n\n${r.password}\n\nCópiala ahora — no se volverá a mostrar.`);
+          } catch (e) {
+            setStatus('Error: ' + e.message, '#b91c1c');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    function render() {
+      body.innerHTML = `
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+          <button type="button" id="pv-ua-new-btn"
+                  style="padding:7px 14px;border-radius:7px;border:none;background:#0F3460;
+                         color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;">
+            + Nuevo usuario
+          </button>
+        </div>
+        <div id="pv-ua-new-form" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;
+                    border-radius:8px;padding:12px 14px;margin-bottom:14px;"></div>
+        <div id="pv-ua-status" style="font-size:12.5px;margin-bottom:8px;min-height:16px;"></div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead>
+              <tr style="border-bottom:1px solid #e5e7eb;color:#6b7280;text-align:left;">
+                <th style="padding:6px 8px;">Usuario</th>
+                <th style="padding:6px 8px;">Nombre</th>
+                <th style="padding:6px 8px;">Email</th>
+                <th style="padding:6px 8px;">Rol</th>
+                <th style="padding:6px 8px;text-align:center;" title="Administrador de usuarios de PrionVault">PV-Admin</th>
+                <th style="padding:6px 8px;text-align:center;">Activo</th>
+                <th style="padding:6px 8px;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="pv-ua-tbody">${_users.map(userRowHtml).join('')}</tbody>
+          </table>
+        </div>`;
+      document.getElementById('pv-ua-new-btn').addEventListener('click', () => openForm('new'));
+      wireRowButtons();
+    }
+
+    async function load() {
+      setStatus('Cargando…', '#9ca3af');
+      try {
+        const r = await api('/admin/pv-users');
+        _users = r.users || [];
+        render();
+        setStatus('', '#6b7280');
+      } catch (e) {
+        body.innerHTML = `<div style="color:#b91c1c;font-size:13px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    openBtn.addEventListener('click', () => {
+      modal.style.display = 'flex';
+      load();
+    });
+  }
+
   function wireBackups() {
     const openBtn = document.getElementById('btn-backups');
     const modal   = document.getElementById('pv-backups-modal');

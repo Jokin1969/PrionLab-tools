@@ -299,6 +299,7 @@ def login():
             session["role"] = user.get("role", "reader")
             session["full_name"] = user.get("full_name", username)
             session["language"] = user.get("language", "es")
+            session["is_prionvault_admin"] = user.get("is_prionvault_admin", "false")
             # Resolve the DB-side UUID so tools that key off users.id
             # (PrionVault, PrionPacks, …) can authenticate the viewer.
             uid = _lookup_db_user_id(session["username"])

@@ -36,6 +36,13 @@ _LIFECYCLE_COLS = [
 # considered — see tools/prionvault/services/jc.py's request-email flow.
 _ROLE_FLAG_COLS = [
     "is_jc_responsible",     # "true" | "false"
+    # Grants PrionVault's own, independent user-management mini-panel
+    # (Miscelánea → Administración in the PrionVault sidebar) to a
+    # non-admin user — lets them manage user accounts WITHOUT the
+    # broader PrionLab admin panel (backups, database, other tools).
+    # Checked by core.decorators.prionvault_user_admin_required, never
+    # by the regular @admin_required used everywhere else.
+    "is_prionvault_admin",   # "true" | "false"
 ]
 COLUMNS = _CORE_COLS + _PROFILE_COLS + _LIFECYCLE_COLS + _ROLE_FLAG_COLS
 

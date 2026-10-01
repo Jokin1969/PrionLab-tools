@@ -16,6 +16,7 @@
   {% if session.get('user_id') %}
   <meta name="pv-user-id"   content="{{ session.user_id }}">
   <meta name="pv-user-role" content="{{ session.get('role') or 'unknown' }}">
+  <meta name="pv-user-is-pv-admin" content="{{ '1' if (session.get('role') == 'admin' or session.get('is_prionvault_admin') == 'true') else '0' }}">
   {% endif %}
 
   {# ── Browser-side Sentry ──────────────────────────────────────────────

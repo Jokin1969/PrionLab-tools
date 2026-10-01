@@ -5211,3 +5211,6 @@ from . import routes_notes  # noqa: F401, E402
 
 # Glossary management routes live in their own module.
 from . import routes_glossary  # noqa: F401, E402
+
+# PrionVault's own independent user-management mini-panel.
+from . import routes_user_admin  # noqa: F401, E402

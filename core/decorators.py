@@ -95,3 +95,35 @@ def reader_required(f):
             return redirect(url_for("auth.login", next=request.full_path))
         return f(*args, **kwargs)
     return decorated
+
+
+def is_prionvault_user_admin() -> bool:
+    """True for a real global admin, OR a user carrying the
+    is_prionvault_admin flag — PrionVault's own, independent
+    user-management permission (Miscelánea → Administración in its
+    sidebar). Does NOT grant anything outside that one mini-panel —
+    every other admin-only check in PrionVault keeps using the regular
+    global role via @admin_required."""
+    if session.get("role") == "admin":
+        return True
+    return session.get("is_prionvault_admin") == "true"
+
+
+def prionvault_user_admin_required(f):
+    """Gate for PrionVault's own user-management panel — a real global
+    admin, or a user explicitly flagged is_prionvault_admin, but NOT a
+    plain editor/reader. See is_prionvault_user_admin()."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if _ext_authed():
+            if _ext_role() == "admin":
+                return f(*args, **kwargs)
+            return jsonify({"error": "forbidden",
+                            "detail": "prionvault user-admin access required"}), 403
+        if not session.get("logged_in"):
+            return redirect(url_for("auth.login", next=request.full_path))
+        if not is_prionvault_user_admin():
+            flash("Unauthorized. PrionVault user-admin access required.", "error")
+            return redirect(url_for("home"))
+        return f(*args, **kwargs)
+    return decorated

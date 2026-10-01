@@ -73,6 +73,18 @@
       {{ _('Receives the "please consider this for Journal Club" email when someone requests it from an article not yet marked for JC.') }}
     </p>
 
+    <div class="form-group form-group--inline">
+      <input type="checkbox" id="is_prionvault_admin" name="is_prionvault_admin"
+             class="form-checkbox"
+             {{ 'checked' if form.get('is_prionvault_admin') == 'true' }} />
+      <label for="is_prionvault_admin" class="form-label form-label--inline">
+        {{ _('PrionVault user-admin') }}
+      </label>
+    </div>
+    <p class="form-hint" style="margin-top:-8px;">
+      {{ _('Gives access to PrionVault\'s own user-management mini-panel (Miscelánea → Administración), independent of this global role — lets them manage accounts WITHOUT the rest of the admin panel (backups, database, other tools).') }}
+    </p>
+
     <hr class="form-divider" />
 
     <div class="form-group">

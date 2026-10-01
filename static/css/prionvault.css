@@ -103,6 +103,20 @@ body.pv-role-admin .pv-admin-only { display: inherit !important; }
 body.pv-role-admin .pv-nav-btn.pv-admin-only,
 body.pv-role-admin button.pv-admin-only { display: flex !important; }
 
+/* Same idea, but for the union of "real global admin" OR "flagged
+   PrionVault user-admin" (see core/decorators.py's
+   is_prionvault_user_admin) — JS toggles `pv-role-pvadmin` on <body>.
+   Used only by the Miscelánea group wrapper and its "Administración"
+   item, so a flag-only (non-global-admin) user-admin can reach that one
+   button without the rest of Miscelánea's admin-only tools lighting up. */
+.pv-admin-or-pvadmin-only  { display: none !important; }
+body.pv-role-admin   .pv-admin-or-pvadmin-only,
+body.pv-role-pvadmin .pv-admin-or-pvadmin-only { display: inherit !important; }
+body.pv-role-admin   .pv-nav-btn.pv-admin-or-pvadmin-only,
+body.pv-role-admin   button.pv-admin-or-pvadmin-only,
+body.pv-role-pvadmin .pv-nav-btn.pv-admin-or-pvadmin-only,
+body.pv-role-pvadmin button.pv-admin-or-pvadmin-only { display: flex !important; }
+
 /* Main area ────────────────────────────────────────────────── */
 .pv-main {
   padding: 24px 28px;
