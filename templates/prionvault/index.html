@@ -672,6 +672,10 @@
                   title="Gestiona usuarios (crear, editar, activar/desactivar, resetear contraseña) sin salir de PrionVault.">
             <span>Administración</span>
           </button>
+          <button class="pv-nav-btn pv-admin-only" id="btn-pv-view-as"
+                  title="Ver PrionVault tal como lo ve otro usuario (sesión completa, con banner para volver).">
+            <span>👁 Ver como</span>
+          </button>
           <button class="pv-nav-btn" id="btn-notifications"
                   title="Configura el digest semanal por email: temas, frecuencia, horario y más.">
             <span>Notificaciones</span>
@@ -4882,6 +4886,33 @@
       Panel de administración de PrionLab.
     </p>
     <div id="pv-user-admin-body"></div>
+  </div>
+</div>
+
+<!-- ── "Ver como" (view-as / impersonation) modal ──────────────────────────
+     Reuses the existing PrionLab-wide impersonation backend
+     (tools/admin impersonate_user / stop_impersonation) — this is just a
+     PrionVault-side entry point so an admin doesn't have to leave
+     PrionVault to pick a user, and lands back inside PrionVault (via the
+     `next` redirect) instead of the PrionLab admin home. True
+     global-admin only — same restrictions as the PrionLab admin panel's
+     own "View as" button: no self, no other admins. -->
+<div id="pv-view-as-modal" class="pv-modal" style="display:none;" role="dialog"
+     aria-modal="true" aria-labelledby="pv-view-as-title">
+  <div class="pv-modal-backdrop"
+       onclick="document.getElementById('pv-view-as-modal').style.display='none'"></div>
+  <div class="pv-modal-inner" style="max-width:520px;width:94vw;max-height:90vh;overflow-y:auto;">
+    <button class="pv-modal-close" aria-label="Close"
+            onclick="document.getElementById('pv-view-as-modal').style.display='none'">×</button>
+    <h2 id="pv-view-as-title" style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-eye" style="color:#0F3460;margin-right:8px;"></i>Ver PrionVault como…
+    </h2>
+    <p style="color:#6b7280;font-size:12.5px;margin:0 0 16px;">
+      Entras con la sesión completa de ese usuario — verás PrionVault (y el resto de la app)
+      tal cual lo ve él. Un banner arriba te permite volver a tu sesión en cualquier momento.
+      No disponible para otros administradores.
+    </p>
+    <div id="pv-view-as-body"></div>
   </div>
 </div>
 

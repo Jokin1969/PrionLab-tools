@@ -390,6 +390,12 @@ def impersonate_user(username):
 
     flash(_("Viendo la aplicación como %(name)s.",
             name=target.get("full_name") or target["username"]), "success")
+    # Optional same-site redirect target (e.g. straight into PrionVault
+    # when "Ver como" was launched from its own sidebar) — only ever a
+    # local path, never an external URL, to avoid an open redirect.
+    next_url = request.values.get("next", "")
+    if next_url.startswith("/") and not next_url.startswith("//"):
+        return redirect(next_url)
     return redirect(url_for("home"))
 
 
@@ -408,6 +414,9 @@ def stop_impersonation():
     session.pop("impersonation_admin", None)
     session.pop("impersonation_log_id", None)
     flash(_("Has vuelto a tu sesión de administrador."), "success")
+    next_url = request.values.get("next", "")
+    if next_url.startswith("/") and not next_url.startswith("//"):
+        return redirect(next_url)
     return redirect(url_for("admin.index"))
 
 

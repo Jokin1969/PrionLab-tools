@@ -11658,6 +11658,7 @@
       wireGlossaryModal();
       wireScimago();
       wireBackups();
+      wirePvViewAs();
       wirePvUserAdmin();
       wireSidebarResize();
       wireMobileDrawer();
@@ -19137,6 +19138,53 @@
       } catch (e) {
         body.innerHTML = `<div style="color:#b91c1c;font-size:13px;">Error: ${esc(e.message)}</div>`;
       }
+    }
+
+    openBtn.addEventListener('click', () => {
+      modal.style.display = 'flex';
+      load();
+    });
+  }
+
+  // "Ver como" — PrionVault-side entry point into the existing PrionLab
+  // impersonation feature (tools/admin impersonate_user), so a real admin
+  // can jump straight into "what does this user see in PrionVault"
+  // without leaving PrionVault first. True global-admin only.
+  function wirePvViewAs() {
+    const openBtn = document.getElementById('btn-pv-view-as');
+    const modal   = document.getElementById('pv-view-as-modal');
+    const body    = document.getElementById('pv-view-as-body');
+    if (!openBtn || !modal || !body) return;
+
+    async function load() {
+      body.innerHTML = '<p style="color:#9ca3af;font-size:12.5px;">Cargando…</p>';
+      let users;
+      try {
+        const r = await api('/admin/pv-users');
+        users = (r.users || []).filter(u => u.role !== 'admin' && u.active);
+      } catch (e) {
+        body.innerHTML = `<p style="color:#b91c1c;font-size:12.5px;">Error: ${esc(e.message)}</p>`;
+        return;
+      }
+      if (!users.length) {
+        body.innerHTML = '<p style="color:#9ca3af;font-size:12.5px;">No hay usuarios no-administradores activos.</p>';
+        return;
+      }
+      body.innerHTML = users.map(u => `
+        <form method="POST" action="/admin/users/${encodeURIComponent(u.username)}/impersonate"
+              style="display:flex;align-items:center;justify-content:space-between;gap:10px;
+                     padding:9px 4px;border-bottom:1px solid #f3f4f6;">
+          <input type="hidden" name="next" value="/prionvault">
+          <span style="font-size:13px;color:#111827;">
+            <strong>${esc(u.full_name || u.username)}</strong>
+            <span style="color:#9ca3af;font-size:11.5px;"> · ${esc(u.username)} · ${esc(u.role)}</span>
+          </span>
+          <button type="submit"
+                  style="padding:5px 12px;border-radius:7px;border:none;background:#0F3460;
+                         color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+            👁 Ver como
+          </button>
+        </form>`).join('');
     }
 
     openBtn.addEventListener('click', () => {
