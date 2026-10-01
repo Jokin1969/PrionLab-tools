@@ -961,15 +961,16 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         "      AND _pus.user_id = CAST(:_viewer_uid AS uuid)",
     ]
     if tag_id:
-        # Per-user tag filter (migration 038): only surface articles
-        # where the CURRENT VIEWER tagged them, not just anyone.
-        # Without the added_by clause readers would see articles
-        # admins tagged but they themselves didn't, which contradicts
-        # the new per-user semantics.
+        # Tags are shared for reading/filtering: any article anyone
+        # tagged with this tag shows up for every viewer, regardless of
+        # who added the link (added_by is still recorded per-row, for
+        # ownership checks on write operations only). EXISTS rather than
+        # a JOIN so two different users tagging the same article with
+        # the same tag doesn't duplicate the row.
         join_parts.append(
-            "JOIN article_tag_link ON article_tag_link.article_id = articles.id "
-            "AND article_tag_link.tag_id  = :tag_id "
-            "AND article_tag_link.added_by = CAST(:_viewer_uid AS uuid)"
+            "JOIN LATERAL (SELECT 1 FROM article_tag_link "
+            " WHERE article_tag_link.article_id = articles.id "
+            "   AND article_tag_link.tag_id = :tag_id LIMIT 1) _tag_match ON TRUE"
         )
         params["tag_id"] = tag_id
     # Manual collection membership join — smart collections are
@@ -1347,21 +1348,22 @@ def api_article_detail(aid):
             out["pdf_size_bytes"]   = d.get("pdf_size_bytes")
             out["pdf_dropbox_path"] = d.get("dropbox_path")
 
-        # Per-user tag chips (migration 038): show only the tags the
-        # CURRENT VIEWER has assigned to this article, not anyone
-        # else's.
+        # Tag chips: shared — show every tag ANY user assigned to this
+        # article, with `mine` marking the ones the CURRENT VIEWER
+        # personally added (relevant for removing a tag, still
+        # ownership-gated).
         try:
             from sqlalchemy.orm import Session as _SASession
             with _SASession(db.engine) as _s2:
                 tag_rows = _s2.execute(sql_text(
-                    "SELECT t.id, t.name, t.color "
+                    "SELECT DISTINCT ON (t.id) t.id, t.name, t.color, "
+                    "       bool_or(l.added_by = CAST(:vuid AS uuid)) OVER (PARTITION BY t.id) AS mine "
                     "  FROM article_tag t "
                     "  JOIN article_tag_link l ON l.tag_id = t.id "
-                    " WHERE l.article_id = :aid "
-                    "   AND l.added_by   = CAST(:vuid AS uuid)"
+                    " WHERE l.article_id = :aid"
                 ), {"aid": str(aid),
                     "vuid": str(_vuid) if _vuid else None}).all()
-                out["tags"] = [{"id": r.id, "name": r.name, "color": r.color}
+                out["tags"] = [{"id": r.id, "name": r.name, "color": r.color, "mine": bool(r.mine)}
                                for r in tag_rows]
         except Exception as exc:
             logger.warning("Could not load tags for article %s: %s", aid, exc)
@@ -1699,23 +1701,23 @@ def api_article_health():
 @login_required
 def api_list_tags():
     """List every tag the dictionary knows about, with `count` reflecting
-    how many articles the CURRENT VIEWER has tagged with each. The
-    dictionary itself stays global (admins curate the palette) — only
-    the assignments are per-user since migration 038."""
+    how many articles ANY user has tagged with each — tags are shared
+    for reading/filtering (whoever applied one, everyone sees it), even
+    though each assignment still records who added it (`added_by`,
+    kept for `is_mine` / ownership checks on write operations)."""
     s = _session()
     try:
         rows = s.execute(sql_text(
             """
             SELECT t.id, t.name, t.color, t.kind, t.rules, t.last_synced_at,
                    t.created_by,
-                   count(l.article_id) FILTER (WHERE l.added_by = CAST(:vuid AS uuid))
-                                       AS n_articles
+                   count(l.article_id) AS n_articles
               FROM article_tag t
          LEFT JOIN article_tag_link l ON l.tag_id = t.id
           GROUP BY t.id
           ORDER BY t.name
             """
-        ), {"vuid": str(_viewer_id()) if _viewer_id() else None}).all()
+        )).all()
         return jsonify([
             {"id": r.id, "name": r.name, "color": r.color, "count": r.n_articles,
              "kind": r.kind, "rules": dict(r.rules or {}),
