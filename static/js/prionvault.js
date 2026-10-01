@@ -5992,13 +5992,23 @@
       el.textContent = msg || '';
     }
 
+    function _fmtWhen(dtLocalVal) {
+      if (!dtLocalVal) return '';
+      const d = new Date(dtLocalVal);
+      if (isNaN(d.getTime())) return '';
+      const dateStr = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+      const timeStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      return `${dateStr.charAt(0).toUpperCase()}${dateStr.slice(1)}, ${timeStr}`;
+    }
+
     async function send() {
       if (!_article) return;
-      const whenText = ($('pv-jc-convoke-when')?.value || '').trim();
-      if (!whenText) {
+      const whenVal = ($('pv-jc-convoke-when')?.value || '').trim();
+      if (!whenVal) {
         setStatus('Indica cuándo es la sesión (fecha y hora).', true);
         return;
       }
+      const whenText = _fmtWhen(whenVal);
       const scheduleVal = ($('pv-jc-convoke-schedule')?.value || '').trim();
       const btn = $('pv-jc-convoke-send');
       if (btn) { btn.disabled = true; }
