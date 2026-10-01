@@ -18860,6 +18860,7 @@
           <td style="padding:7px 8px;font-size:12px;color:#6b7280;">${esc(u.email || '')}</td>
           <td style="padding:7px 8px;">${roleBadge(u.role)}</td>
           <td style="padding:7px 8px;text-align:center;">${u.is_prionvault_admin ? '✓' : ''}</td>
+          <td style="padding:7px 8px;text-align:center;" title="${u.is_jc_responsible ? 'Responsable de Journal Club' : ''}">${u.is_jc_responsible ? '📖' : ''}</td>
           <td style="padding:7px 8px;text-align:center;">${u.active ? '✓' : '✗'}</td>
           <td style="padding:7px 8px;white-space:nowrap;">
             <button type="button" class="pv-ua-edit-btn" data-username="${esc(u.username)}"
@@ -18926,6 +18927,11 @@
             <input type="checkbox" id="pv-ua-f-pvadmin" ${u.is_prionvault_admin ? 'checked' : ''}>
             Administrador de usuarios de PrionVault
           </label>
+          <label style="grid-column:1/-1;display:flex;align-items:center;gap:7px;
+                        font-size:12.5px;color:#374151;font-weight:600;margin-top:-2px;">
+            <input type="checkbox" id="pv-ua-f-jc" ${u.is_jc_responsible ? 'checked' : ''}>
+            Responsable de Journal Club
+          </label>
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
           <button type="button" id="pv-ua-f-save"
@@ -18967,6 +18973,7 @@
       const email     = document.getElementById('pv-ua-f-email').value.trim();
       const language  = document.getElementById('pv-ua-f-language').value;
       const pvAdmin   = document.getElementById('pv-ua-f-pvadmin').checked;
+      const jcResp    = document.getElementById('pv-ua-f-jc').checked;
       const roleEl    = document.getElementById('pv-ua-f-role');
 
       if (!username) { fstatus.style.color = '#b91c1c'; fstatus.textContent = 'Falta el usuario.'; return; }
@@ -18978,11 +18985,11 @@
         if (mode === 'new') {
           const password = document.getElementById('pv-ua-f-password').value;
           if (!password) { throw new Error('Falta la contraseña.'); }
-          const payload = { username, password, full_name: fullName, email, language, is_prionvault_admin: pvAdmin };
+          const payload = { username, password, full_name: fullName, email, language, is_prionvault_admin: pvAdmin, is_jc_responsible: jcResp };
           if (roleEl) payload.role = roleEl.value;
           await api('/admin/pv-users', { method: 'POST', body: JSON.stringify(payload) });
         } else {
-          const payload = { full_name: fullName, email, language, is_prionvault_admin: pvAdmin };
+          const payload = { full_name: fullName, email, language, is_prionvault_admin: pvAdmin, is_jc_responsible: jcResp };
           if (roleEl) payload.role = roleEl.value;
           await api(`/admin/pv-users/${encodeURIComponent(username)}`, { method: 'PATCH', body: JSON.stringify(payload) });
         }
@@ -19054,6 +19061,7 @@
                 <th style="padding:6px 8px;">Email</th>
                 <th style="padding:6px 8px;">Rol</th>
                 <th style="padding:6px 8px;text-align:center;" title="Administrador de usuarios de PrionVault">PV-Admin</th>
+                <th style="padding:6px 8px;text-align:center;" title="Responsable de Journal Club">JC</th>
                 <th style="padding:6px 8px;text-align:center;">Activo</th>
                 <th style="padding:6px 8px;">Acciones</th>
               </tr>

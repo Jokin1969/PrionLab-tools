@@ -59,6 +59,7 @@ def _public_user(u: dict) -> dict:
         "language":            u.get("language"),
         "active":              u.get("active") == "true",
         "is_prionvault_admin": u.get("is_prionvault_admin") == "true",
+        "is_jc_responsible":   u.get("is_jc_responsible") == "true",
     }
 
 
@@ -78,6 +79,7 @@ def api_pv_users_create():
     email = (data.get("email") or "").strip()
     language = (data.get("language") or "es").strip()
     is_pv_admin = bool(data.get("is_prionvault_admin"))
+    is_jc = bool(data.get("is_jc_responsible"))
 
     if not username or not password:
         return jsonify({"error": "username_and_password_required"}), 400
@@ -103,6 +105,7 @@ def api_pv_users_create():
         "language":            language,
         "active":              "true",
         "is_prionvault_admin": "true" if is_pv_admin else "false",
+        "is_jc_responsible":   "true" if is_jc else "false",
         "created_at":          date.today().isoformat(),
         "last_login":          "",
     })
@@ -124,6 +127,9 @@ def api_pv_users_update(username):
 
     if "is_prionvault_admin" in data:
         updates["is_prionvault_admin"] = "true" if data["is_prionvault_admin"] else "false"
+
+    if "is_jc_responsible" in data:
+        updates["is_jc_responsible"] = "true" if data["is_jc_responsible"] else "false"
 
     if "role" in data:
         if not _is_global_admin():
