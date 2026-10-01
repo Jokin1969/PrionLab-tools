@@ -58,6 +58,19 @@
   {% block head_extra %}{% endblock %}
 </head>
 <body data-page-context="{{ page_context | default('') }}" data-lang="{{ current_locale }}">
+  {% if session.get('impersonation_admin') %}
+  <div style="position:sticky;top:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+              gap:14px;padding:8px 16px;background:#b45309;color:#fff;font-size:13px;font-weight:600;
+              flex-wrap:wrap;text-align:center;">
+    <span>👁 {{ _('Viendo la aplicación como') }} <strong>{{ session.get('full_name') or session.get('username') }}</strong>
+      ({{ session.get('role') }}) — {{ _('cualquier acción la hace esta cuenta.') }}</span>
+    <form method="POST" action="{{ url_for('admin.stop_impersonation') }}" style="display:inline;margin:0;">
+      <button type="submit" style="padding:3px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.6);
+                                    background:rgba(255,255,255,0.15);color:#fff;font-size:12.5px;
+                                    font-weight:700;cursor:pointer;">{{ _('Salir') }}</button>
+    </form>
+  </div>
+  {% endif %}
   <header class="site-header">
     <div class="nb-container">
 

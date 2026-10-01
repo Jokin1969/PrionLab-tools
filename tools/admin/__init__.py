@@ -11,7 +11,7 @@ from flask_babel import gettext as _
 
 import config
 from core.auth import hash_password, verify_password
-from core.decorators import admin_required
+from core.decorators import admin_required, login_required
 from core.users import (create_user, delete_user, get_user, load_users,
                         update_user, user_exists)
 
@@ -292,6 +292,116 @@ def toggle_user(username):
         flash(_("User activated."), "success")
     else:
         flash(_("User deactivated."), "success")
+    return redirect(url_for("admin.index"))
+
+
+# ── "Ver como" — full-session impersonation (admin → any non-admin user) ────
+# Lets an admin see exactly what another user's role/permissions show them —
+# the whole session (username, role, full_name, language, the PrionVault-
+# side DB user_id) is swapped to that user's, so every page and action
+# behaves exactly as if they were that person, not just a simulated view.
+# The admin's own session is stashed under "impersonation_admin" so
+# stop_impersonation() can restore it, and every start/stop is written to
+# impersonation_log for audit (see migrations/092_impersonation_log.sql).
+
+def _log_impersonation_start(admin_username: str, target_username: str):
+    from database.config import db
+    from sqlalchemy import text as sql_text
+    s = db.Session()
+    try:
+        row = s.execute(sql_text("""
+            INSERT INTO impersonation_log (admin_username, target_username, started_at)
+            VALUES (:a, :t, NOW())
+            RETURNING id
+        """), {"a": admin_username, "t": target_username}).first()
+        s.commit()
+        return row[0] if row else None
+    except Exception:
+        s.rollback()
+        logger.exception("impersonation log start failed")
+        return None
+    finally:
+        s.close()
+
+
+def _log_impersonation_end(log_id) -> None:
+    if not log_id:
+        return
+    from database.config import db
+    from sqlalchemy import text as sql_text
+    s = db.Session()
+    try:
+        s.execute(sql_text(
+            "UPDATE impersonation_log SET ended_at = NOW() WHERE id = :id"
+        ), {"id": log_id})
+        s.commit()
+    except Exception:
+        s.rollback()
+        logger.exception("impersonation log end failed")
+    finally:
+        s.close()
+
+
+@admin_bp.route("/users/<username>/impersonate", methods=["POST"])
+@admin_required
+def impersonate_user(username):
+    if session.get("impersonation_admin"):
+        flash(_("Ya estás viendo la aplicación como otro usuario — sal primero."), "error")
+        return redirect(url_for("home"))
+    if username == session.get("username"):
+        flash(_("No puedes verte a ti mismo como otro usuario."), "error")
+        return redirect(url_for("admin.index"))
+
+    target = get_user(username)
+    if not target:
+        flash(_("User not found."), "error")
+        return redirect(url_for("admin.index"))
+    if (target.get("role") or "").strip() == "admin":
+        flash(_("No se puede ver la aplicación como otro administrador."), "error")
+        return redirect(url_for("admin.index"))
+    if target.get("active", "true") != "true":
+        flash(_("Ese usuario está desactivado."), "error")
+        return redirect(url_for("admin.index"))
+
+    admin_username = session["username"]
+    admin_snapshot = {
+        "username":  session.get("username"),
+        "role":      session.get("role"),
+        "full_name": session.get("full_name"),
+        "language":  session.get("language"),
+        "user_id":   session.get("user_id"),
+    }
+
+    from core.auth import _lookup_db_user_id
+    session["username"]  = target["username"]
+    session["role"]      = target.get("role", "reader")
+    session["full_name"] = target.get("full_name") or target["username"]
+    session["language"]  = target.get("language") or "es"
+    session["user_id"]   = _lookup_db_user_id(target["username"])
+
+    session["impersonation_admin"]   = admin_snapshot
+    session["impersonation_log_id"]  = _log_impersonation_start(admin_username, target["username"])
+
+    flash(_("Viendo la aplicación como %(name)s.",
+            name=target.get("full_name") or target["username"]), "success")
+    return redirect(url_for("home"))
+
+
+@admin_bp.route("/impersonate/stop", methods=["POST"])
+@login_required
+def stop_impersonation():
+    # Deliberately NOT @admin_required — while impersonating, session["role"]
+    # is the target user's role, so that decorator would reject the very
+    # request meant to undo it. Gate on the stashed snapshot instead.
+    snap = session.get("impersonation_admin")
+    if not snap:
+        return redirect(url_for("home"))
+    _log_impersonation_end(session.get("impersonation_log_id"))
+    for key, value in snap.items():
+        session[key] = value
+    session.pop("impersonation_admin", None)
+    session.pop("impersonation_log_id", None)
+    flash(_("Has vuelto a tu sesión de administrador."), "success")
     return redirect(url_for("admin.index"))
 
 
