@@ -2308,10 +2308,20 @@ def api_article_jc_convocation(aid):
     when_text = (body.get("when_text") or "").strip()
     location_text = (body.get("location_text") or "").strip()
     notes = (body.get("notes") or "").strip()
+    scheduled_at_str = body.get("scheduled_at")
 
     from .services import article_share
     me = _current_user_contact()
     try:
+        if scheduled_at_str:
+            from datetime import datetime
+            scheduled_at = datetime.fromisoformat(scheduled_at_str)
+            result = article_share.schedule_jc_convocation(
+                str(aid), scheduled_at, when_text=when_text,
+                location_text=location_text, notes=notes,
+                requester_name=me.get("name") or "")
+            return jsonify({"ok": True, "scheduled": True, **result})
+
         result = article_share.send_jc_convocation_email(
             str(aid), when_text=when_text, location_text=location_text,
             notes=notes, requester_name=me.get("name") or "")

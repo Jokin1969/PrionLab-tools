@@ -208,6 +208,11 @@ class MaintenanceScheduler:
             send_pending_scheduled_emails()
         except Exception as exc:
             logger.warning("Scheduled email send error: %s", exc)
+        try:
+            from tools.prionvault.services.article_share import send_pending_jc_convocations
+            send_pending_jc_convocations()
+        except Exception as exc:
+            logger.warning("Scheduled JC convocation send error: %s", exc)
 
     def run_reminders(self) -> None:
         """Send any pending one-time reminders ('Recordatorios')."""

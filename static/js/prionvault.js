@@ -3632,6 +3632,11 @@
                                    : (IS_ADMIN ? 'Marcar para Journal Club' : 'No está en Journal Club')}"
                   style="background:none;border:none;padding:0;font-size:13px;line-height:1;
                          cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${jcColor};"><i class="fas fa-book-open"></i></button>
+          ${(a.is_jc && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
+          <button class="pv-jc-convoke-row-btn"
+                  title="Convocar Journal Club — enviar fecha/hora a todo el laboratorio"
+                  style="background:none;border:none;padding:0;font-size:13px;line-height:1;
+                         cursor:pointer;color:#9d174d;"><i class="fas fa-bullhorn"></i></button>` : ''}
           <button class="pv-favorite-btn"
                   data-active="${a.is_favorite ? '1' : '0'}"
                   title="${a.is_favorite ? 'Quitar de mis favoritos' : 'Añadir a mis favoritos'}"
@@ -3835,6 +3840,11 @@
         return;
       }
       openDetail(a.id, { openPdf: true });
+    });
+
+    row.querySelector('.pv-jc-convoke-row-btn')?.addEventListener('click', e => {
+      e.stopPropagation();
+      PVJcConvoke.open(a);
     });
 
     row.querySelector('.pv-favorite-btn').addEventListener('click', async e => {
@@ -4458,6 +4468,15 @@
                            : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
             <span style="font-size:12px;line-height:1;color:${a.is_jc ? '#7c3aed' : '#9ca3af'};"><i class="fas fa-book-open"></i></span>
             ${a.is_jc ? 'En Journal Club' : 'Marcar para Journal Club'}
+          </button>` : ''}
+          ${(a.is_jc && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
+          <button id="pv-detail-jc-convoke" type="button"
+                  title="Convocar Journal Club — enviar fecha/hora a todo el laboratorio"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;
+                         background:#fdf2f8;color:#9d174d;border:1px solid #fbcfe8;">
+            <span style="font-size:12px;line-height:1;"><i class="fas fa-bullhorn"></i></span>
+            Convocar
           </button>` : ''}
         </div>`;
 
@@ -5980,19 +5999,24 @@
         setStatus('Indica cuándo es la sesión (fecha y hora).', true);
         return;
       }
+      const scheduleVal = ($('pv-jc-convoke-schedule')?.value || '').trim();
       const btn = $('pv-jc-convoke-send');
       if (btn) { btn.disabled = true; }
-      setStatus('Enviando a todo el laboratorio…', false);
+      setStatus(scheduleVal ? 'Programando…' : 'Enviando a todo el laboratorio…', false);
       try {
+        const payload = {
+          when_text: whenText,
+          location_text: ($('pv-jc-convoke-where')?.value || '').trim(),
+          notes: ($('pv-jc-convoke-notes')?.value || '').trim(),
+        };
+        if (scheduleVal) payload.scheduled_at = new Date(scheduleVal).toISOString();
         const r = await api(`/articles/${_article.id}/jc-convocation`, {
           method: 'POST',
-          body: JSON.stringify({
-            when_text: whenText,
-            location_text: ($('pv-jc-convoke-where')?.value || '').trim(),
-            notes: ($('pv-jc-convoke-notes')?.value || '').trim(),
-          }),
+          body: JSON.stringify(payload),
         });
-        setStatus(`✓ Convocatoria enviada a ${r.recipients} persona${r.recipients === 1 ? '' : 's'}.`, false);
+        setStatus(r.scheduled
+          ? `✓ Convocatoria programada.`
+          : `✓ Convocatoria enviada a ${r.recipients} persona${r.recipients === 1 ? '' : 's'}.`, false);
         setTimeout(close, 1800);
       } catch (e) {
         setStatus('Error: ' + (e.message || e), true);
@@ -6017,9 +6041,11 @@
       setStatus('', false);
       const titleEl = $('pv-jc-convoke-article-title');
       if (titleEl) titleEl.textContent = article.title || '(sin título)';
-      ['pv-jc-convoke-when', 'pv-jc-convoke-where', 'pv-jc-convoke-notes'].forEach(id => {
+      ['pv-jc-convoke-when', 'pv-jc-convoke-notes', 'pv-jc-convoke-schedule'].forEach(id => {
         const el = $(id); if (el) el.value = '';
       });
+      const whereEl = $('pv-jc-convoke-where');
+      if (whereEl) whereEl.value = 'Sala de seminarios';
       const sendBtn = $('pv-jc-convoke-send');
       if (sendBtn) sendBtn.disabled = false;
       modal.style.display = 'flex';
@@ -11035,8 +11061,26 @@
       a.is_jc = !!r.is_jc;
       const fresh = renderPersonalChip(a, 'jc');
       jcBtn.outerHTML = fresh;
+      document.getElementById('pv-detail-jc-convoke')?.remove();
+      if (a.is_jc && (IS_ADMIN || IS_JC_RESPONSIBLE)) {
+        document.getElementById('pv-detail-jc')?.insertAdjacentHTML('afterend', `
+          <button id="pv-detail-jc-convoke" type="button"
+                  title="Convocar Journal Club — enviar fecha/hora a todo el laboratorio"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;
+                         background:#fdf2f8;color:#9d174d;border:1px solid #fbcfe8;">
+            <span style="font-size:12px;line-height:1;"><i class="fas fa-bullhorn"></i></span>
+            Convocar
+          </button>`);
+        document.getElementById('pv-detail-jc-convoke')?.addEventListener('click', () => {
+          PVJcConvoke.open(a);
+        });
+      }
       wirePersonalState(a);
     }));
+    document.getElementById('pv-detail-jc-convoke')?.addEventListener('click', () => {
+      PVJcConvoke.open(a);
+    });
   }
 
   function renderPersonalChip(a, kind) {

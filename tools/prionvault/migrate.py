@@ -101,6 +101,7 @@ _PRIONVAULT_MIGRATIONS = (
     "089_group_article_chat.sql",
     "090_saved_carts.sql",
     "091_oa_author_requested.sql",
+    "093_jc_convocation_schedule.sql",
 )
 
 _BOOTSTRAP_SQL = """

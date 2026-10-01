@@ -589,3 +589,85 @@ def send_jc_convocation_email(article_id: str, *, when_text: str,
         raise RuntimeError("El envío del email falló (revisa el servidor SMTP).")
 
     return {"ok": True, "recipients": len(recipients), "attached_pdf": bool(attachments)}
+
+
+# ── Journal Club convocation — scheduled send ───────────────────────────────
+# Lets the responsible pick a future send time for the lab-wide
+# announcement above, instead of only "send now" — mirrors
+# scheduled_email.py's article-email scheduling, in its own table since
+# a convocation has no single `to` recipient.
+
+def schedule_jc_convocation(article_id: str, scheduled_at, *, when_text: str,
+                            location_text: str = "", notes: str = "",
+                            requester_name: str = "") -> dict:
+    """Save a JC convocation to be sent at a future time. Raises
+    ValueError if when_text is blank or scheduled_at isn't in the
+    future, LookupError if the article doesn't exist."""
+    from datetime import datetime, timezone
+    from sqlalchemy import text as _t
+
+    when_text = (when_text or "").strip()
+    if not when_text:
+        raise ValueError("Falta indicar cuándo es la sesión.")
+    if not _fetch_article(article_id):
+        raise LookupError("article_not_found")
+
+    if not scheduled_at.tzinfo:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    if scheduled_at <= datetime.now(timezone.utc):
+        raise ValueError("scheduled_at must be in the future")
+
+    eng = _get_engine()
+    with eng.begin() as conn:
+        conn.execute(_t("""
+            INSERT INTO prionvault_jc_convocation_schedule
+              (article_id, when_text, location_text, notes, requester_name, scheduled_at)
+            VALUES (CAST(:aid AS uuid), :when_text, :loc, :notes, :req, :sch_at)
+        """), {
+            "aid": article_id, "when_text": when_text, "loc": location_text,
+            "notes": notes, "req": requester_name, "sch_at": scheduled_at,
+        })
+    return {"ok": True, "scheduled_for": scheduled_at.isoformat()}
+
+
+def send_pending_jc_convocations() -> dict:
+    """Send any JC convocations whose scheduled_at has passed. Called by
+    APScheduler every minute, same job as scheduled article emails."""
+    from sqlalchemy import text as _t
+
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(_t("""
+            SELECT id::text, article_id::text, when_text, location_text,
+                   notes, requester_name
+              FROM prionvault_jc_convocation_schedule
+             WHERE scheduled_at <= NOW() AND sent_at IS NULL
+             ORDER BY scheduled_at ASC
+             LIMIT 50
+        """)).mappings().all()
+
+    results = {"sent": 0, "failed": 0}
+    for row in rows:
+        try:
+            send_jc_convocation_email(
+                row["article_id"], when_text=row["when_text"],
+                location_text=row["location_text"], notes=row["notes"],
+                requester_name=row["requester_name"])
+            with eng.begin() as conn:
+                conn.execute(_t("""
+                    UPDATE prionvault_jc_convocation_schedule
+                       SET sent_at = NOW() WHERE id = CAST(:id AS uuid)
+                """), {"id": row["id"]})
+            results["sent"] += 1
+        except Exception as exc:
+            logger.exception("Failed to send scheduled JC convocation %s", row["id"])
+            results["failed"] += 1
+            try:
+                with eng.begin() as conn:
+                    conn.execute(_t("""
+                        UPDATE prionvault_jc_convocation_schedule
+                           SET error_msg = :err WHERE id = CAST(:id AS uuid)
+                    """), {"id": row["id"], "err": str(exc)[:500]})
+            except Exception:
+                logger.exception("Also failed to record error for %s", row["id"])
+    return results
