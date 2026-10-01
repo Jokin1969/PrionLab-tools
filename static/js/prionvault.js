@@ -19324,7 +19324,14 @@
           onTick: j => { createStatusEl.textContent = stageLabel(j.stage); },
         });
         if (job.status === 'success') {
-          createStatusEl.textContent = `✓ Backup creado (${job.result?.size_mb ?? '?'} MB)`;
+          if (job.result?.dropbox_error) {
+            createStatusEl.textContent = `⚠ Backup creado localmente (${job.result?.size_mb ?? '?'} MB) `
+              + `pero NO se pudo subir a Dropbox — por eso no aparece en esta lista`
+              + (job.result?.dropbox_error ? `: ${job.result.dropbox_error}` : '.')
+              + ' Revisa el espacio disponible en Dropbox.';
+          } else {
+            createStatusEl.textContent = `✓ Backup creado (${job.result?.size_mb ?? '?'} MB)`;
+          }
           loadList();
         } else {
           createStatusEl.textContent = '✗ ' + (job.error || 'Error desconocido');

@@ -91,6 +91,7 @@ class BackupManager:
                 except Exception as e:
                     logger.warning("Dropbox backup step failed "
                                    "(local copy still saved): %s", e)
+                    result["dropbox_error"] = str(e)[:300]
             self.cleanup_old_backups()
         return result
 
