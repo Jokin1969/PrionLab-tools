@@ -10237,6 +10237,59 @@
       }
     }
 
+    // ── Transfer cart to other user(s) ────────────────────────────────────
+    async function openTransferCart() {
+      const items = window.PPCart?.getAll() || [];
+      if (!items.length) { alert('El carrito está vacío.'); return; }
+      const modal = $('pv-cart-transfer-modal');
+      if (!modal) return;
+      $('pv-cart-transfer-count').textContent =
+        `${items.length} artículo${items.length === 1 ? '' : 's'} se añadirán al carrito de quien elijas.`;
+      $('pv-cart-transfer-status').textContent = '';
+      const box = $('pv-cart-transfer-users');
+      box.innerHTML = '<div style="padding:10px 4px;color:#9ca3af;font-size:12.5px;">Cargando…</div>';
+      modal.style.display = 'flex';
+      try {
+        const r = await api('/cart/transfer-targets');
+        const users = r.users || [];
+        box.innerHTML = users.length ? users.map(u => `
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:13px;
+                        color:#111827;cursor:pointer;">
+            <input type="checkbox" class="pv-cart-transfer-user" value="${esc(u.username)}"
+                   style="cursor:pointer;width:14px;height:14px;">
+            ${esc(u.full_name)}
+          </label>`).join('') : '<div style="padding:10px 4px;color:#9ca3af;font-size:12.5px;">No hay otros usuarios activos.</div>';
+      } catch (e) {
+        box.innerHTML = `<div style="padding:10px 4px;color:#b91c1c;font-size:12.5px;">Error: ${esc(e.message)}</div>`;
+      }
+    }
+    function closeTransferCart() { $('pv-cart-transfer-modal').style.display = 'none'; }
+
+    async function transferCartGo() {
+      const btn = $('pv-cart-transfer-go');
+      const status = $('pv-cart-transfer-status');
+      const usernames = Array.from(document.querySelectorAll('.pv-cart-transfer-user:checked'))
+        .map(el => el.value);
+      if (!usernames.length) {
+        status.style.color = '#b91c1c'; status.textContent = 'Elige al menos un usuario.'; return;
+      }
+      btn.disabled = true;
+      status.style.color = '#9ca3af';
+      status.textContent = 'Enviando…';
+      try {
+        const r = await api('/cart/transfer', { method: 'POST', body: JSON.stringify({ usernames }) });
+        const ok = (r.results || []).filter(x => x.ok);
+        status.style.color = '#15803d';
+        status.textContent = `✓ Enviado a ${ok.length} usuario${ok.length === 1 ? '' : 's'}.`;
+        setTimeout(closeTransferCart, 1600);
+      } catch (e) {
+        status.style.color = '#b91c1c';
+        status.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     function openCartChat() {
       const items = window.PPCart?.getAll() || [];
       if (!items.length) { alert('El carrito está vacío.'); return; }
@@ -10262,6 +10315,10 @@
       $('pv-cart-repo-btn')?.addEventListener('click', openRepoCarts);
       $('pv-cart-repo-close')?.addEventListener('click', closeRepoCarts);
       document.querySelector('#pv-cart-repo-modal .pv-modal-backdrop')?.addEventListener('click', closeRepoCarts);
+      $('pv-cart-transfer-btn')?.addEventListener('click', openTransferCart);
+      $('pv-cart-transfer-close')?.addEventListener('click', closeTransferCart);
+      document.querySelector('#pv-cart-transfer-modal .pv-modal-backdrop')?.addEventListener('click', closeTransferCart);
+      $('pv-cart-transfer-go')?.addEventListener('click', transferCartGo);
       $('pv-cart-show-in-list')?.addEventListener('click', () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) { alert('El carrito está vacío.'); return; }

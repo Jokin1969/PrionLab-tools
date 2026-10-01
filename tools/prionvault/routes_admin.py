@@ -2054,12 +2054,13 @@ def api_scimago_missing():
     return jsonify({"journals": scimago.find_missing_journals()})
 
 
-# ── PrionPacks cart (server-side, per admin) ─────────────────────────────────
+# ── PrionPacks cart (server-side, per user) ───────────────────────────────────
 #
 # The cart that stages articles for import into PrionPacks used to live in the
-# browser's localStorage (per-device). It's an admin task and the admin moves
-# between devices, so it's now persisted in `prionvault_cart` keyed by user_id
-# and gated to admins. Each row carries a display snapshot in `data`.
+# browser's localStorage (per-device). It's now persisted in `prionvault_cart`
+# keyed by user_id, open to every logged-in user (not just admins — any
+# reader builds their own cart). Each row carries a display snapshot in
+# `data`.
 
 def _cart_items(user_id: str) -> list:
     s = _session()
@@ -2081,7 +2082,7 @@ def _cart_items(user_id: str) -> list:
 
 
 @prionvault_bp.route("/api/cart", methods=["GET"])
-@admin_required
+@login_required
 def api_cart_list():
     uid = _viewer_id()
     if not uid:
@@ -2090,7 +2091,7 @@ def api_cart_list():
 
 
 @prionvault_bp.route("/api/cart", methods=["POST"])
-@admin_required
+@login_required
 def api_cart_add():
     uid = _viewer_id()
     if not uid:
@@ -2123,7 +2124,7 @@ def api_cart_add():
 
 
 @prionvault_bp.route("/api/cart/<uuid:article_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_cart_remove(article_id):
     uid = _viewer_id()
     if not uid:
@@ -2142,7 +2143,7 @@ def api_cart_remove(article_id):
 
 
 @prionvault_bp.route("/api/cart/clear", methods=["POST"])
-@admin_required
+@login_required
 def api_cart_clear():
     uid = _viewer_id()
     if not uid:
@@ -2157,6 +2158,76 @@ def api_cart_clear():
     return jsonify({"ok": True, "items": []})
 
 
+@prionvault_bp.route("/api/cart/transfer-targets", methods=["GET"])
+@login_required
+def api_cart_transfer_targets():
+    """Active users (other than the caller) the current cart could be
+    transferred to — for the "Enviar carrito a…" picker."""
+    from core.users import load_users
+    uname = session.get("username")
+    out = [{"username": u["username"], "full_name": u.get("full_name") or u["username"]}
+           for u in load_users()
+           if u.get("active", "true") == "true" and u["username"] != uname]
+    out.sort(key=lambda u: u["full_name"].lower())
+    return jsonify({"users": out})
+
+
+@prionvault_bp.route("/api/cart/transfer", methods=["POST"])
+@login_required
+def api_cart_transfer():
+    """Copy every item of the CALLER's cart into one or more other users'
+    carts. The source cart is left untouched; a target's existing items
+    are never removed — only missing ones are added (ON CONFLICT DO
+    NOTHING keeps whatever that user already had)."""
+    uid = _viewer_id()
+    if not uid:
+        return jsonify({"error": "not authenticated"}), 401
+    body = request.get_json(silent=True) or {}
+    usernames = [u.strip() for u in (body.get("usernames") or []) if u and u.strip()]
+    if not usernames:
+        return jsonify({"error": "no_targets", "detail": "Selecciona al menos un usuario."}), 400
+
+    items = _cart_items(uid)
+    if not items:
+        return jsonify({"error": "cart_empty", "detail": "Tu carrito está vacío."}), 400
+
+    from core.auth import _lookup_db_user_id
+    import json as _json
+
+    s = _session()
+    results = []
+    try:
+        for uname in usernames:
+            target_uid = _lookup_db_user_id(uname)
+            if not target_uid:
+                results.append({"username": uname, "ok": False, "error": "user_not_found"})
+                continue
+            added = 0
+            for item in items:
+                aid = item.get("id")
+                if not aid:
+                    continue
+                snapshot = {k: item.get(k) for k in
+                            ("title", "authors", "year", "journal", "doi", "pubmed_id", "has_pdf")}
+                r = s.execute(sql_text("""
+                    INSERT INTO prionvault_cart (user_id, article_id, data, created_at)
+                    VALUES (CAST(:uid AS uuid), CAST(:aid AS uuid),
+                            CAST(:data AS jsonb), NOW())
+                    ON CONFLICT (user_id, article_id) DO NOTHING
+                """), {"uid": target_uid, "aid": aid, "data": _json.dumps(snapshot)})
+                added += r.rowcount or 0
+            s.commit()
+            results.append({"username": uname, "ok": True, "added": added,
+                            "already_had": len(items) - added})
+    except Exception as exc:
+        s.rollback()
+        logger.exception("cart transfer failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    finally:
+        s.close()
+    return jsonify({"ok": True, "results": results})
+
+
 # ── Cart repository ("repositorio de carritos") ──────────────────────────────
 #
 # Snapshot the current cart under a name so it can be recalled later — the
@@ -2165,7 +2236,7 @@ def api_cart_clear():
 # the user first when the live cart isn't empty).
 
 @prionvault_bp.route("/api/carts", methods=["GET"])
-@admin_required
+@login_required
 def api_saved_carts_list():
     uid = _viewer_id()
     if not uid:
@@ -2190,7 +2261,7 @@ def api_saved_carts_list():
 
 
 @prionvault_bp.route("/api/carts", methods=["POST"])
-@admin_required
+@login_required
 def api_saved_cart_create():
     """Save a snapshot of the CURRENT cart under a name."""
     uid = _viewer_id()
@@ -2229,7 +2300,7 @@ def api_saved_cart_create():
 
 
 @prionvault_bp.route("/api/carts/<uuid:cart_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_saved_cart_delete(cart_id):
     uid = _viewer_id()
     if not uid:
@@ -2250,7 +2321,7 @@ def api_saved_cart_delete(cart_id):
 
 
 @prionvault_bp.route("/api/carts/<uuid:cart_id>/restore", methods=["POST"])
-@admin_required
+@login_required
 def api_saved_cart_restore(cart_id):
     """Replace the current cart with this saved snapshot's articles."""
     uid = _viewer_id()
