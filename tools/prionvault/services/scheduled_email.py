@@ -24,7 +24,8 @@ def schedule_article_email(
     scheduled_at: datetime,
     sender_name: str = "",
     include_summary: bool = True,
-    comment: str = ""
+    comment: str = "",
+    sender_user_id: Optional[str] = None,
 ) -> dict:
     """Save an article email to be sent at a specific time.
 
@@ -49,15 +50,18 @@ def schedule_article_email(
         with eng.begin() as conn:
             conn.execute(_t("""
                 INSERT INTO prionvault_scheduled_email
-                  (article_id, to_email, sender_name, include_summary, comment, scheduled_at)
-                VALUES (CAST(:aid AS uuid), :to, :sender, :inc_sum, :cmt, :sch_at)
+                  (article_id, to_email, sender_name, include_summary, comment,
+                   scheduled_at, sender_user_id)
+                VALUES (CAST(:aid AS uuid), :to, :sender, :inc_sum, :cmt, :sch_at,
+                        CAST(:sender_uid AS uuid))
             """), {
                 "aid": article_id,
                 "to": to_email,
                 "sender": sender_name,
                 "inc_sum": include_summary,
                 "cmt": comment,
-                "sch_at": scheduled_at
+                "sch_at": scheduled_at,
+                "sender_uid": sender_user_id,
             })
         return {
             "ok": True,
@@ -83,7 +87,7 @@ def send_pending_scheduled_emails() -> dict:
     with eng.connect() as conn:
         rows = conn.execute(_t("""
             SELECT id::text, article_id::text, to_email, sender_name,
-                   include_summary, comment
+                   include_summary, comment, sender_user_id::text AS sender_user_id
               FROM prionvault_scheduled_email
              WHERE scheduled_at <= NOW() AND sent_at IS NULL
              ORDER BY scheduled_at ASC
@@ -109,6 +113,17 @@ def send_pending_scheduled_emails() -> dict:
                        SET sent_at = NOW()
                      WHERE id = CAST(:id AS uuid)
                 """), {"id": row["id"]})
+            # Once actually sent, mark the article read for whoever
+            # scheduled it — same "it's been delivered, so it's been
+            # seen from PrionVault's point of view" logic as the
+            # PrionVault Picks digest.
+            if row["sender_user_id"]:
+                try:
+                    from .email_digest import _mark_articles_read
+                    _mark_articles_read(eng, row["sender_user_id"], [row["article_id"]])
+                except Exception:
+                    logger.exception("Failed to mark article %s read for %s",
+                                     row["article_id"], row["sender_user_id"])
             results["sent"] += 1
         except Exception as e:
             logger.exception(f"Failed to send scheduled email {row['id']}")

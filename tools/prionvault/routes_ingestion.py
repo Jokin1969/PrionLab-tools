@@ -2250,7 +2250,8 @@ def api_article_email(aid):
                 str(aid), to, scheduled_at,
                 sender_name=me.get("name") or "",
                 include_summary=body.get("include_summary", True) is not False,
-                comment=body.get("comment", ""))
+                comment=body.get("comment", ""),
+                sender_user_id=_viewer_id())
             return jsonify({"ok": True, **result})
 
         # Otherwise send now
