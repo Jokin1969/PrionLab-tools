@@ -133,16 +133,28 @@ _SEED_STYLES = [
 def _read(path: str, cols: list) -> list[dict]:
     if not os.path.exists(path):
         return []
+    # Empty / corrupt files used to hit csv.DictReader with no header,
+    # which raised "'NoneType' object is not iterable" deep inside the
+    # stdlib. The function already self-heals (returns []) but the
+    # error-level log was paging Sentry. Skip empty files outright and
+    # downgrade the catch to a warning so a stray bad row stays out of
+    # the alert stream — the caller still gets [].
+    try:
+        if os.path.getsize(path) == 0:
+            return []
+    except OSError:
+        return []
+    cols = cols or []
     try:
         with open(path, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            rows = list(reader)
+            rows = [r for r in reader if isinstance(r, dict)]
         for col in cols:
             for r in rows:
                 r.setdefault(col, "")
         return rows
     except Exception as e:
-        logger.error("CSV read error %s: %s", path, e)
+        logger.warning("CSV read error %s: %s", path, e)
         return []
 
 

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#4F46E5"/>
+  <!-- Open book: left page -->
+  <path d="M10 20 Q10 17 13 17 L30 20 L30 46 L13 43 Q10 43 10 40 Z" fill="white" opacity="0.95"/>
+  <!-- Open book: right page -->
+  <path d="M54 20 Q54 17 51 17 L34 20 L34 46 L51 43 Q54 43 54 40 Z" fill="white" opacity="0.95"/>
+  <!-- Book spine highlight -->
+  <rect x="30" y="20" width="4" height="26" rx="1" fill="#c7d2fe"/>
+  <!-- Reading lines on left page -->
+  <line x1="16" y1="26" x2="27" y2="27" stroke="#4F46E5" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <line x1="16" y1="31" x2="27" y2="32" stroke="#4F46E5" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <line x1="16" y1="36" x2="27" y2="37" stroke="#4F46E5" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <!-- Reading lines on right page -->
+  <line x1="37" y1="27" x2="48" y2="26" stroke="#4F46E5" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <line x1="37" y1="32" x2="48" y2="31" stroke="#4F46E5" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <line x1="37" y1="37" x2="48" y2="36" stroke="#4F46E5" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+</svg>

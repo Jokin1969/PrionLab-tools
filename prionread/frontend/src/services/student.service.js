@@ -1,0 +1,103 @@
+import api from './api';
+
+export const studentService = {
+  getDashboard: async () => {
+    const response = await api.get('/my-dashboard');
+    return response.data;
+  },
+
+  getMyArticles: async (filters = {}) => {
+    const params = new URLSearchParams(filters);
+    const response = await api.get(`/my-articles?${params}`);
+    return response.data;
+  },
+
+  markAsRead: async (articleId) => {
+    const response = await api.put(`/my-articles/${articleId}/mark-as-read`);
+    return response.data;
+  },
+
+  unmarkAsRead: async (articleId) => {
+    const response = await api.put(`/my-articles/${articleId}/unmark-as-read`);
+    return response.data;
+  },
+
+  getArticleDetail: async (articleId) => {
+    const response = await api.get(`/my-articles/${articleId}`);
+    return response.data;
+  },
+
+  createSummary: async (articleId, content, isAiGenerated = false) => {
+    const response = await api.post(`/my-articles/${articleId}/summary`, {
+      content,
+      is_ai_generated: isAiGenerated,
+    });
+    return response.data;
+  },
+
+  getSummary: async (articleId) => {
+    const response = await api.get(`/my-articles/${articleId}/summary`);
+    return response.data;
+  },
+
+  generateAISummary: async (articleId) => {
+    const response = await api.post(`/my-articles/${articleId}/generate-ai-summary`);
+    return response.data;
+  },
+
+  generateEvaluation: async (articleId) => {
+    const response = await api.post(`/my-articles/${articleId}/generate-evaluation`);
+    return response.data;
+  },
+
+  submitEvaluation: async (articleId, questions, answers) => {
+    const response = await api.post(`/my-articles/${articleId}/submit-evaluation`, {
+      questions,
+      answers,
+    });
+    return response.data;
+  },
+
+  getEvaluation: async (articleId) => {
+    const response = await api.get(`/my-articles/${articleId}/evaluation`);
+    return response.data;
+  },
+
+  rateArticle: async (articleId, rating, comment) => {
+    const response = await api.post(`/articles/${articleId}/ratings`, {
+      rating,
+      comment,
+    });
+    return response.data;
+  },
+
+  getArticleRatings: async (articleId) => {
+    const response = await api.get(`/articles/${articleId}/ratings`);
+    return response.data;
+  },
+
+  getMyBonus: async () => (await api.get('/my-bonus')).data,
+
+  openPdf: async (articleId) => {
+    const response = await api.get(`/articles/${articleId}/pdf/view`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    // Revoke after the tab has had time to load
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return win;
+  },
+
+  // ── Journal Club (read-only) ──────────────────────────────────────
+  // Returns the slides + handouts the lab presented for this paper, so
+  // the student can browse them before / during the read. Empty list
+  // is a valid response (most articles have not been presented).
+  getJcPresentations: async (articleId) => {
+    const response = await api.get(`/articles/${articleId}/jc`);
+    return response.data.items || [];
+  },
+
+  getJcFileUrl: async (fileId) => {
+    const response = await api.get(`/jc/files/${fileId}/url`);
+    return response.data.url;
+  },
+};
