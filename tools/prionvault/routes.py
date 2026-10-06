@@ -5216,3 +5216,6 @@ from . import routes_glossary  # noqa: F401, E402
 
 # PrionVault's own independent user-management mini-panel.
 from . import routes_user_admin  # noqa: F401, E402
+
+# Reference-suggestion modal ("Sugerir referencias").
+from . import routes_ref_suggest  # noqa: F401, E402

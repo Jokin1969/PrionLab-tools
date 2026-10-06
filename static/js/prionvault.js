@@ -9540,6 +9540,314 @@
     return { open };
   })();
 
+  // ── Reference suggestion modal ("Sugerir referencias") ───────────────
+  const PVRefSuggest = (() => {
+    const $ = id => document.getElementById(id);
+    let _wired = false;
+    let _mode = 'marked';
+    let _provider = localStorage.getItem('pv-refsuggest-provider') || 'anthropic';
+    let _style = { color: '#dc2626', bold: false, italic: false, underline: false };
+    let _result = null;      // last /ref-suggest response
+    let _choice = {};        // n -> {label, title, ...}
+    let _moreShown = new Set();
+
+    const PROVIDER_COLORS = { anthropic: '#CC785C', openai: '#10A37F', gemini: '#8b5cf6' };
+
+    function paintMode() {
+      document.querySelectorAll('.pv-refsuggest-mode-btn').forEach(b => {
+        const active = b.dataset.mode === _mode;
+        b.style.border = active ? '2px solid #0F3460' : '1px solid #d1d5db';
+        b.style.background = active ? '#eef2ff' : '#fff';
+        b.style.color = active ? '#0F3460' : '#374151';
+      });
+    }
+    function paintProvider() {
+      document.querySelectorAll('.pv-refsuggest-provider-btn').forEach(b => {
+        const active = b.dataset.provider === _provider;
+        const color = PROVIDER_COLORS[b.dataset.provider];
+        b.style.borderColor = active ? color : '#d1d5db';
+        b.style.background  = active ? color + '18' : '#fff';
+        b.style.color       = active ? color : '#374151';
+      });
+    }
+    function paintColors() {
+      document.querySelectorAll('.pv-refsuggest-color-btn').forEach(b => {
+        b.style.borderColor = b.dataset.color === _style.color ? '#111827' : 'transparent';
+      });
+    }
+    function paintStyleToggles() {
+      document.querySelectorAll('.pv-refsuggest-style-toggle').forEach(b => {
+        const on = !!_style[b.dataset.style];
+        b.style.background = on ? '#0F3460' : '#fff';
+        b.style.color = on ? '#fff' : '#111827';
+        b.style.borderColor = on ? '#0F3460' : '#d1d5db';
+      });
+    }
+    function _styleCss() {
+      let css = `color:${_style.color};`;
+      if (_style.bold) css += 'font-weight:700;';
+      if (_style.italic) css += 'font-style:italic;';
+      if (_style.underline) css += 'text-decoration:underline;';
+      return css;
+    }
+    function updateStylePreview() {
+      const el = $('pv-refsuggest-style-preview');
+      if (el) el.style.cssText = _styleCss() + 'font-size:12.5px;';
+    }
+
+    function _citeLabel(cand) {
+      if (cand.doi) return `DOI: ${cand.doi}`;
+      if (cand.pubmed_id) return `PMID: ${cand.pubmed_id}`;
+      return `[${(cand.title || '').slice(0, 40)}]`;
+    }
+
+    function _candidateLinksHtml(c) {
+      const links = [
+        c.has_pdf ? `<a href="${API}/articles/${esc(c.article_id)}/pdf-view" target="_blank" rel="noopener"
+              style="color:#b91c1c;text-decoration:none;font-weight:600;"><i class="fas fa-file-pdf"></i> PDF</a>` : '',
+        c.has_pdf ? `<a href="${API}/articles/${esc(c.article_id)}/pdf?download=1" download
+              title="Descargar el PDF" style="color:#6b7280;text-decoration:none;"><i class="fas fa-download"></i></a>` : '',
+        c.doi ? `<a href="https://doi.org/${encodeURIComponent(c.doi)}" target="_blank" rel="noopener"
+              style="color:#0F3460;text-decoration:none;">DOI: ${esc(c.doi)}</a>` : '',
+        c.pubmed_id ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(c.pubmed_id)}/" target="_blank" rel="noopener"
+              style="color:#0F3460;text-decoration:none;">PMID: ${esc(c.pubmed_id)}</a>` : '',
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      return links;
+    }
+
+    function _suggestionCardHtml(point, c, idx) {
+      const chosen = _choice[point.n] && _choice[point.n].article_id === c.article_id;
+      const journalYear = [c.journal, c.year].filter(Boolean).join(' · ');
+      return `
+        <div class="pv-refsuggest-card" data-n="${point.n}" data-aid="${esc(c.article_id)}"
+             style="border:1.5px solid ${chosen ? '#0F3460' : '#e5e7eb'};border-radius:10px;
+                    padding:12px 14px;background:${chosen ? '#eef2ff' : '#fff'};">
+          <div style="font-size:13px;font-weight:600;color:#111827;line-height:1.35;">
+            ${idx + 1}. ${esc(c.title)}
+          </div>
+          <div style="margin-top:2px;font-size:11.5px;color:#6b7280;">
+            ${c.authors ? esc((c.authors || '').split(';')[0].trim()) + (c.authors.includes(';') ? ' et al.' : '') : '—'}
+            ${journalYear ? ' · ' + esc(journalYear) : ''}
+          </div>
+          <div style="margin-top:4px;font-size:11px;">${_candidateLinksHtml(c)}</div>
+          ${c.explanation ? `
+          <div style="margin-top:8px;padding:8px 10px;background:#f9fafb;border-radius:7px;
+                      font-size:12.5px;color:#374151;line-height:1.5;">
+            <i class="fas fa-lightbulb" style="color:#d97706;margin-right:5px;"></i>${esc(c.explanation)}
+          </div>` : ''}
+          <div style="margin-top:9px;display:flex;align-items:center;gap:8px;">
+            <button type="button" class="pv-refsuggest-pick-btn" data-n="${point.n}" data-aid="${esc(c.article_id)}"
+                    style="padding:6px 12px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:600;
+                           background:${chosen ? '#b91c1c' : '#0F3460'};color:#fff;">
+              ${chosen ? '✕ Quitar' : '✓ Insertar aquí'}
+            </button>
+            <span style="font-size:11px;color:#9ca3af;">${_citeLabel(c)}</span>
+          </div>
+        </div>`;
+    }
+
+    function _pointHtml(point) {
+      const chosenLabel = _choice[point.n] ? `<span style="font-size:11.5px;font-weight:700;color:#15803d;">✓ Insertada</span>` : '';
+      const claimShort = point.claim.length > 260 ? '…' + point.claim.slice(-260) : point.claim;
+      const shown = point.suggestions || [];
+      const more = point.more_suggestions || [];
+      const moreVisible = _moreShown.has(point.n);
+      return `
+        <div class="pv-refsuggest-point" data-n="${point.n}">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;">
+            <div style="font-size:12.5px;color:#111827;">
+              <span style="display:inline-block;padding:1px 7px;border-radius:5px;background:#0F3460;color:#fff;
+                           font-size:11px;font-weight:700;margin-right:6px;">${point.n}</span>
+              <span style="color:#6b7280;">${esc(claimShort)}</span>
+            </div>
+            ${chosenLabel}
+          </div>
+          ${shown.length ? `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${shown.map((c, i) => _suggestionCardHtml(point, c, i)).join('')}
+            ${more.length ? `
+              <button type="button" class="pv-refsuggest-more-btn" data-n="${point.n}"
+                      style="align-self:flex-start;padding:5px 10px;border-radius:7px;border:1px dashed #d1d5db;
+                             background:#fff;color:#6b7280;font-size:11.5px;cursor:pointer;">
+                ${moreVisible ? 'Ocultar' : `Ver ${more.length} más`}
+              </button>
+              ${moreVisible ? `<div style="display:flex;flex-direction:column;gap:8px;">
+                ${more.map((c, i) => _suggestionCardHtml(point, c, shown.length + i)).join('')}
+              </div>` : ''}
+            ` : ''}
+          </div>` : `
+          <div style="font-size:12px;color:#9ca3af;padding:10px 4px;">
+            No he encontrado ninguna referencia de PrionVault que encaje bien aquí.
+          </div>`}
+        </div>`;
+    }
+
+    function renderPoints() {
+      const box = $('pv-refsuggest-points');
+      if (!box || !_result) return;
+      box.innerHTML = _result.points.map(_pointHtml).join('');
+      box.querySelectorAll('.pv-refsuggest-pick-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const n = parseInt(btn.dataset.n, 10);
+          const point = _result.points.find(p => p.n === n);
+          const all = [...(point.suggestions || []), ...(point.more_suggestions || [])];
+          const cand = all.find(c => c.article_id === btn.dataset.aid);
+          if (!cand) return;
+          if (_choice[n] && _choice[n].article_id === cand.article_id) {
+            delete _choice[n];
+          } else {
+            _choice[n] = { article_id: cand.article_id, title: cand.title, label: _citeLabel(cand) };
+          }
+          renderPoints();
+        });
+      });
+      box.querySelectorAll('.pv-refsuggest-more-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const n = parseInt(btn.dataset.n, 10);
+          if (_moreShown.has(n)) _moreShown.delete(n); else _moreShown.add(n);
+          renderPoints();
+        });
+      });
+    }
+
+    function _assembleFinal() {
+      if (!_result) return { text: '', html: '' };
+      const base = _result.text;
+      const chosen = _result.points
+        .filter(p => _choice[p.n])
+        .map(p => ({ start: p.replace_start, end: p.replace_end, label: _choice[p.n].label }));
+      // HTML: walk forward, ascending by start.
+      const asc = [...chosen].sort((a, b) => a.start - b.start);
+      let html = '';
+      let cursor = 0;
+      for (const s of asc) {
+        html += esc(base.slice(cursor, s.start)).replace(/\n/g, '<br>');
+        html += `<span style="${_styleCss()}">${esc(s.label)}</span>`;
+        cursor = s.end;
+      }
+      html += esc(base.slice(cursor)).replace(/\n/g, '<br>');
+      // Plain text: splice descending so earlier offsets stay valid.
+      let text = base;
+      for (const s of [...chosen].sort((a, b) => b.start - a.start)) {
+        text = text.slice(0, s.start) + s.label + text.slice(s.end);
+      }
+      return { text, html };
+    }
+
+    async function copyFinal() {
+      const { text, html } = _assembleFinal();
+      const btn = $('pv-refsuggest-copy');
+      try {
+        if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+          const item = new ClipboardItem({
+            'text/plain': new Blob([text], { type: 'text/plain' }),
+            'text/html':  new Blob([html], { type: 'text/html' }),
+          });
+          await navigator.clipboard.write([item]);
+        } else {
+          await navigator.clipboard.writeText(text);
+        }
+        if (btn) {
+          const orig = btn.innerHTML;
+          btn.innerHTML = '<i class="fas fa-check" style="margin-right:5px;"></i>Copiado';
+          setTimeout(() => { btn.innerHTML = orig; }, 1600);
+        }
+      } catch (e) {
+        alert('No se pudo copiar: ' + e.message);
+      }
+    }
+
+    function showInput() {
+      $('pv-refsuggest-input').style.display = 'flex';
+      $('pv-refsuggest-results').style.display = 'none';
+    }
+    function showResults() {
+      $('pv-refsuggest-input').style.display = 'none';
+      $('pv-refsuggest-results').style.display = 'flex';
+    }
+
+    async function go() {
+      const textarea = $('pv-refsuggest-textarea');
+      const text = (textarea?.value || '').trim();
+      const status = $('pv-refsuggest-status');
+      const btn = $('pv-refsuggest-go');
+      if (!text) { if (status) { status.style.color = '#b91c1c'; status.textContent = 'Pega un texto primero.'; } return; }
+      btn.disabled = true;
+      if (status) { status.style.color = '#6b7280'; status.textContent = 'Analizando — esto puede tardar unos segundos…'; }
+      try {
+        const r = await api('/ref-suggest', {
+          method: 'POST',
+          body: JSON.stringify({ text, mode: _mode, provider: _provider }),
+        });
+        _result = r;
+        _choice = {};
+        _moreShown = new Set();
+        renderPoints();
+        showResults();
+      } catch (e) {
+        if (status) { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e.message; }
+      } finally {
+        btn.disabled = false;
+        if (status && status.textContent.startsWith('Analizando')) status.textContent = '';
+      }
+    }
+
+    function toggleExpand() {
+      const ta = $('pv-refsuggest-textarea');
+      if (!ta) return;
+      if (ta.style.height && ta.style.height !== '') {
+        ta.style.height = '';
+        ta.rows = 7;
+      } else {
+        ta.style.height = Math.min(ta.scrollHeight + 4, 600) + 'px';
+      }
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-refsuggest-close')?.addEventListener('click', close);
+      document.querySelector('#pv-refsuggest-modal .pv-modal-backdrop')?.addEventListener('click', close);
+      document.querySelectorAll('.pv-refsuggest-mode-btn').forEach(b => {
+        b.addEventListener('click', () => { _mode = b.dataset.mode; paintMode(); });
+      });
+      document.querySelectorAll('.pv-refsuggest-provider-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          _provider = b.dataset.provider;
+          localStorage.setItem('pv-refsuggest-provider', _provider);
+          paintProvider();
+        });
+      });
+      document.querySelectorAll('.pv-refsuggest-color-btn').forEach(b => {
+        b.addEventListener('click', () => { _style.color = b.dataset.color; paintColors(); updateStylePreview(); });
+      });
+      $('pv-refsuggest-color-custom')?.addEventListener('input', e => {
+        _style.color = e.target.value; paintColors(); updateStylePreview();
+      });
+      document.querySelectorAll('.pv-refsuggest-style-toggle').forEach(b => {
+        b.addEventListener('click', () => {
+          _style[b.dataset.style] = !_style[b.dataset.style];
+          paintStyleToggles(); updateStylePreview();
+        });
+      });
+      $('pv-refsuggest-expand')?.addEventListener('click', toggleExpand);
+      $('pv-refsuggest-go')?.addEventListener('click', go);
+      $('pv-refsuggest-back')?.addEventListener('click', showInput);
+      $('pv-refsuggest-copy')?.addEventListener('click', copyFinal);
+      paintMode(); paintProvider(); paintColors(); paintStyleToggles(); updateStylePreview();
+    }
+
+    function close() { $('pv-refsuggest-modal').style.display = 'none'; }
+
+    function open() {
+      wireOnce();
+      $('pv-refsuggest-modal').style.display = 'flex';
+      showInput();
+    }
+
+    return { open };
+  })();
+
   // ── Share article by email ───────────────────────────────────────────
   const PVEmailShare = (() => {
     let _article = null;
@@ -11353,6 +11661,7 @@
     // modal with a persistent, memory-capable chat (see PVLibChat below,
     // and services/library_chat.py on the backend). ──────────────────────
     document.getElementById('btn-ai-search')?.addEventListener('click', () => PVLibChat.open());
+    document.getElementById('btn-ref-suggest')?.addEventListener('click', () => PVRefSuggest.open());
 
     // Visual signal that an input has text — easy to miss otherwise
     // when the placeholder/value contrast is low.

@@ -815,6 +815,15 @@
                        transition:background 0.12s,border-color 0.12s;">
           <i class="fas fa-robot"></i>
         </button>
+        <button id="btn-ref-suggest" type="button"
+                title="Sugerir referencias — pega un texto y encuentra qué artículos citar"
+                aria-label="Sugerir referencias"
+                style="display:flex;align-items:center;justify-content:center;
+                       width:38px;height:38px;flex-shrink:0;border-radius:8px;border:1px solid #d1d5db;
+                       background:#fff;color:#0F3460;font-size:16px;cursor:pointer;
+                       transition:background 0.12s,border-color 0.12s;">
+          <i class="fas fa-quote-right"></i>
+        </button>
         <div id="pv-bulk-lookup-wrap"
              class="pv-mobile-hide pv-admin-only"
              style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:10px;
@@ -2040,6 +2049,132 @@
           <tr><td colspan="4" style="padding:20px;text-align:center;color:#9ca3af;">Cargando…</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reference suggestion modal ("Sugerir referencias") ───────────────────
+     Two sub-views rendered by JS (PVRefSuggest in prionvault.js):
+       #pv-refsuggest-input  — paste text, pick mode + provider + style
+       #pv-refsuggest-results — per-point suggestion cards + final text
+     Only the static shell + mount points live here; everything else is
+     built by JS so point/suggestion markup can iterate freely. -->
+<div id="pv-refsuggest-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:980px;width:94vw;height:88vh;display:flex;flex-direction:column;">
+    <button class="pv-modal-close" id="pv-refsuggest-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 2px;font-size:17px;font-weight:700;color:#111827;flex-shrink:0;">
+      <i class="fas fa-quote-right" style="color:#0F3460;margin-right:8px;"></i>Sugerir referencias
+    </h2>
+    <p style="color:#6b7280;font-size:12px;margin:0 0 10px;flex-shrink:0;">
+      Pega un texto y encuentra qué artículos de PrionVault encajan como cita en cada punto, con una
+      explicación de por qué. Luego insértalas directamente, con el DOI (o PMID si no hay DOI).
+    </p>
+
+    <!-- ── Input view ────────────────────────────────────────────────── -->
+    <div id="pv-refsuggest-input" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;overflow-y:auto;">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <span style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;">Modo</span>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="pv-refsuggest-mode-btn" data-mode="marked"
+                    title='El texto ya lleva "(Ref.)" al final de las frases que quieres referenciar.'
+                    style="padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">
+              Con marcas "(Ref.)"
+            </button>
+            <button type="button" class="pv-refsuggest-mode-btn" data-mode="auto"
+                    title="La IA decide primero dónde hacen falta citas, según el contenido del texto."
+                    style="padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">
+              Automático (decide la IA)
+            </button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <span style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;">Proveedor IA</span>
+          <div id="pv-refsuggest-providers" style="display:flex;gap:6px;">
+            <button type="button" class="pv-refsuggest-provider-btn" data-provider="anthropic" style="padding:6px 10px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">Claude</button>
+            <button type="button" class="pv-refsuggest-provider-btn" data-provider="openai" style="padding:6px 10px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">GPT</button>
+            <button type="button" class="pv-refsuggest-provider-btn" data-provider="gemini" style="padding:6px 10px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">Gemini</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="position:relative;flex:1;min-height:160px;display:flex;flex-direction:column;">
+        <textarea id="pv-refsuggest-textarea" rows="7"
+                  placeholder="Pega aquí el texto. En modo &quot;Con marcas&quot;, añade (Ref.) al final de cada frase que quieras referenciar…"
+                  style="flex:1;width:100%;box-sizing:border-box;resize:none;border:1px solid #d1d5db;
+                         border-radius:10px;padding:12px 40px 12px 12px;font-size:13.5px;font-family:inherit;
+                         line-height:1.5;transition:height 0.15s ease;"></textarea>
+        <button type="button" id="pv-refsuggest-expand"
+                title="Ajustar el campo al tamaño del texto"
+                style="position:absolute;right:8px;bottom:8px;width:26px;height:26px;border-radius:6px;
+                       border:1px solid #d1d5db;background:#fff;color:#6b7280;cursor:pointer;font-size:12px;">
+          <i class="fas fa-expand"></i>
+        </button>
+      </div>
+
+      <div id="pv-refsuggest-style-panel"
+           style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 12px;
+                  background:#f9fafb;border:1px solid #e5e7eb;border-radius:9px;">
+        <span style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;">
+          Estilo de la referencia insertada
+        </span>
+        <div id="pv-refsuggest-colors" style="display:flex;gap:5px;">
+          <button type="button" class="pv-refsuggest-color-btn" data-color="#dc2626" title="Rojo (por defecto)"
+                  style="width:20px;height:20px;border-radius:50%;background:#dc2626;border:2px solid #111827;cursor:pointer;"></button>
+          <button type="button" class="pv-refsuggest-color-btn" data-color="#1d4ed8" title="Azul"
+                  style="width:20px;height:20px;border-radius:50%;background:#1d4ed8;border:2px solid transparent;cursor:pointer;"></button>
+          <button type="button" class="pv-refsuggest-color-btn" data-color="#15803d" title="Verde"
+                  style="width:20px;height:20px;border-radius:50%;background:#15803d;border:2px solid transparent;cursor:pointer;"></button>
+          <button type="button" class="pv-refsuggest-color-btn" data-color="#7c3aed" title="Morado"
+                  style="width:20px;height:20px;border-radius:50%;background:#7c3aed;border:2px solid transparent;cursor:pointer;"></button>
+          <button type="button" class="pv-refsuggest-color-btn" data-color="#111827" title="Negro"
+                  style="width:20px;height:20px;border-radius:50%;background:#111827;border:2px solid transparent;cursor:pointer;"></button>
+          <input type="color" id="pv-refsuggest-color-custom" value="#dc2626" title="Color personalizado"
+                 style="width:22px;height:22px;padding:0;border:none;border-radius:50%;cursor:pointer;">
+        </div>
+        <div style="display:flex;gap:4px;">
+          <button type="button" class="pv-refsuggest-style-toggle" data-style="bold" title="Negrita"
+                  style="width:28px;height:28px;border-radius:6px;border:1px solid #d1d5db;background:#fff;
+                         cursor:pointer;font-weight:700;font-size:12px;">B</button>
+          <button type="button" class="pv-refsuggest-style-toggle" data-style="italic" title="Cursiva"
+                  style="width:28px;height:28px;border-radius:6px;border:1px solid #d1d5db;background:#fff;
+                         cursor:pointer;font-style:italic;font-size:12px;">I</button>
+          <button type="button" class="pv-refsuggest-style-toggle" data-style="underline" title="Subrayado"
+                  style="width:28px;height:28px;border-radius:6px;border:1px solid #d1d5db;background:#fff;
+                         cursor:pointer;text-decoration:underline;font-size:12px;">U</button>
+        </div>
+        <span style="font-size:11.5px;color:#9ca3af;">Vista previa:</span>
+        <span id="pv-refsuggest-style-preview" style="font-size:12.5px;">DOI: 10.1000/example</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <button id="pv-refsuggest-go" type="button"
+                style="padding:10px 20px;border-radius:9px;border:none;background:#0F3460;color:#fff;
+                       font-size:13px;font-weight:600;cursor:pointer;">
+          <i class="fas fa-magnifying-glass" style="margin-right:6px;"></i>Analizar texto
+        </button>
+        <span id="pv-refsuggest-status" style="font-size:12.5px;color:#6b7280;"></span>
+      </div>
+    </div>
+
+    <!-- ── Results view ──────────────────────────────────────────────── -->
+    <div id="pv-refsuggest-results" style="display:none;flex:1;min-height:0;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <button id="pv-refsuggest-back" type="button"
+                style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                       color:#374151;font-size:12px;font-weight:600;cursor:pointer;">
+          <i class="fas fa-arrow-left" style="margin-right:5px;"></i>Nuevo análisis
+        </button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="pv-refsuggest-copy" type="button"
+                  style="padding:7px 14px;border-radius:7px;border:none;background:#15803d;color:#fff;
+                         font-size:12.5px;font-weight:600;cursor:pointer;">
+            <i class="fas fa-copy" style="margin-right:5px;"></i>Copiar texto con referencias
+          </button>
+        </div>
+      </div>
+      <div id="pv-refsuggest-points" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:16px;"></div>
     </div>
   </div>
 </div>
