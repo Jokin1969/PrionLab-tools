@@ -164,9 +164,14 @@ Responde SOLO con JSON estricto, sin explicación ni markdown:
 def _detect_points_ai(text: str, provider: Optional[str]) -> tuple[list[dict], dict]:
     from .llm_pool import call_llm_json_with_fallback
 
+    diag: dict = {"sentence_count": 0, "provider_used": None, "attempts": [],
+                  "raw_numbers": [], "chosen_count": 0, "out_of_range": []}
+
     spans = _split_sentences(text)
+    diag["sentence_count"] = len(spans)
     if not spans:
-        return [], None
+        diag["reason"] = "no_sentences"
+        return [], diag
     numbered = "\n".join(f"{i + 1}: {text[s:e].strip()}" for i, (s, e) in enumerate(spans))
 
     try:
@@ -175,13 +180,26 @@ def _detect_points_ai(text: str, provider: Optional[str]) -> tuple[list[dict], d
             system=_PLACEMENT_SYSTEM, user=numbered, max_tokens=800,
         )
     except RuntimeError as exc:
-        raise RefSuggestError(f"No se pudo analizar el texto: {exc}") from exc
+        diag["reason"] = "llm_call_failed"
+        diag["error"] = str(exc)
+        raise RefSuggestError(
+            f"No se pudo analizar el texto con ningún proveedor de IA "
+            f"(Claude → GPT → Gemini probados en orden). Detalle: {exc}")  from exc
+
+    diag["provider_used"] = info.get("provider")
+    diag["attempts"] = info.get("attempts") or []
 
     raw_numbers = parsed.get("sentence_numbers") or []
+    diag["raw_numbers"] = raw_numbers
     chosen = sorted({
         int(n) for n in raw_numbers
         if isinstance(n, (int, float)) and 1 <= int(n) <= len(spans)
     })
+    diag["chosen_count"] = len(chosen)
+    diag["out_of_range"] = [n for n in raw_numbers
+                            if not (isinstance(n, (int, float)) and 1 <= int(n) <= len(spans))]
+    if not chosen:
+        diag["reason"] = "model_found_nothing" if not raw_numbers else "all_out_of_range"
 
     points = []
     cursor = 0
@@ -310,16 +328,55 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
     if mode == "marked":
         points = _split_marked(text)
         if not points:
-            raise RefSuggestError(
-                'No he encontrado ninguna marca "(Ref.)" en el texto. '
-                'Añádelas al final de las frases que quieras referenciar, '
-                'o usa el modo automático.')
+            n_words = len(text.split())
+            n_markers_loose = len(re.findall(r"\bref\b", text, re.IGNORECASE))
+            detail = (
+                f'No he encontrado ninguna marca de referencia en el texto '
+                f'({n_words} palabras analizadas). Reconozco "Ref", "ref", "REF", '
+                f'con o sin punto final, con o sin "s" de plural, y con o sin '
+                f'paréntesis/corchetes — por ejemplo: (Ref.), Ref, [Refs], REF.'
+            )
+            if n_markers_loose:
+                detail += (
+                    f' He encontrado la palabra "ref" {n_markers_loose} '
+                    f'{"vez" if n_markers_loose == 1 else "veces"} en el texto, pero '
+                    f'pegada a otras palabras sin espacio o símbolo que la delimite '
+                    f'como marca — revisa que quede como palabra suelta.'
+                )
+            else:
+                detail += ' No he encontrado la palabra "ref" en ninguna forma dentro del texto.'
+            detail += ' Si prefieres no añadir marcas a mano, usa el modo automático.'
+            raise RefSuggestError(detail)
     else:
         points, placement_info = _detect_points_ai(text, provider)
         if not points:
-            raise RefSuggestError(
-                "No he identificado ninguna afirmación que parezca necesitar "
-                "una cita en este texto.")
+            n_sent = placement_info.get("sentence_count", 0) if placement_info else 0
+            reason = placement_info.get("reason") if placement_info else None
+            if reason == "no_sentences":
+                detail = ("No he podido dividir el texto en frases — compruebe que "
+                          "tiene puntuación (puntos, signos de interrogación/exclamación).")
+            elif reason == "model_found_nothing":
+                prov = placement_info.get("provider_used") or "el proveedor de IA"
+                detail = (
+                    f'He dividido el texto en {n_sent} frase{"s" if n_sent != 1 else ""} y '
+                    f'se las he pasado a {prov}, pero ha decidido que ninguna contiene una '
+                    f'afirmación concreta (dato, resultado, hallazgo) que necesite respaldo '
+                    f'bibliográfico — por ejemplo, un texto puramente introductorio o de '
+                    f'transición, sin datos concretos, da este resultado. Si crees que sí '
+                    f'debería haber encontrado algo, prueba con otro proveedor (Claude/GPT/'
+                    f'Gemini) o usa el modo manual con marcas "(Ref.)".'
+                )
+            elif reason == "all_out_of_range":
+                detail = (
+                    f'La IA devolvió números de frase fuera de rango sobre un total de '
+                    f'{n_sent} frases detectadas ({placement_info.get("out_of_range")}) — '
+                    f'probablemente una respuesta mal formada. Vuelve a intentarlo o prueba '
+                    f'con otro proveedor.'
+                )
+            else:
+                detail = (f'He dividido el texto en {n_sent} frases pero no he podido '
+                          f'identificar ningún punto que necesite cita.')
+            raise RefSuggestError(detail)
 
     truncated = len(points) > _MAX_POINTS
     points = points[:_MAX_POINTS]
@@ -358,6 +415,25 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
                 **cand,
                 "explanation": (item.get("explanation") or "").strip(),
             })
+        diagnostic = None
+        if not suggestions:
+            if not p["candidates"]:
+                diagnostic = (
+                    "La búsqueda semántica sobre la biblioteca de PrionVault no ha "
+                    "encontrado NINGÚN artículo relacionado con esta frase — ni por "
+                    "similitud de significado ni por coincidencia de términos. Puede "
+                    "que PrionVault no tenga ningún artículo sobre este tema concreto, "
+                    "o que la frase sea demasiado genérica para encontrar algo específico."
+                )
+            else:
+                considered = ", ".join(f'"{c["title"][:70]}"' for c in p["candidates"][:5])
+                diagnostic = (
+                    f"La búsqueda encontró {len(p['candidates'])} artículo"
+                    f"{'s' if len(p['candidates']) != 1 else ''} semánticamente cercano"
+                    f"{'s' if len(p['candidates']) != 1 else ''} ({considered}), pero la IA "
+                    f"consideró que ninguno respalda genuinamente esta afirmación concreta "
+                    f"— no fuerza citas que no encajen de verdad."
+                )
         out_points.append({
             "n": p["n"],
             "claim": p["claim"],
@@ -366,6 +442,7 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
             "suggestions": suggestions[:_SHOWN_BY_DEFAULT],
             "more_suggestions": suggestions[_SHOWN_BY_DEFAULT:],
             "total_candidate_articles": p["total_candidate_articles"],
+            "diagnostic": diagnostic,
         })
 
     return {

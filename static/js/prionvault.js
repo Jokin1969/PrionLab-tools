@@ -9676,8 +9676,10 @@
               </div>` : ''}
             ` : ''}
           </div>` : `
-          <div style="font-size:12px;color:#9ca3af;padding:10px 4px;">
-            No he encontrado ninguna referencia de PrionVault que encaje bien aquí.
+          <div style="font-size:12px;color:#6b7280;padding:10px 12px;background:#f9fafb;
+                      border:1px dashed #e5e7eb;border-radius:8px;line-height:1.5;">
+            <i class="fas fa-circle-info" style="color:#9ca3af;margin-right:5px;"></i>
+            ${esc(point.diagnostic || 'No he encontrado ninguna referencia de PrionVault que encaje bien aquí.')}
           </div>`}
         </div>`;
     }
