@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid as _uuid_mod
@@ -154,6 +155,32 @@ def _process_job(job: ingest_queue.Job) -> None:
             )
             # Re-check with the corrected DOI before continuing.
             dup_id, reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=md5)
+
+    if dup_id is not None and reason == "doi" and extraction.title_hint \
+            and len(extraction.title_hint) > 15:
+        # Second guard, independent of the strict-DOI one above: even the
+        # colon-labelled "DOI:" form can belong to a CITED reference, not
+        # the paper's own metadata, when a journal prints DOIs inline in
+        # its reference list (increasingly common). The telltale sign is
+        # that the extracted DOI happens to be unusually short — an older
+        # paper's DOI — while the PDF being ingested is a different,
+        # unrelated paper. Cross-check the extracted title_hint against
+        # the matched article's actual title; if they don't look like the
+        # same paper at all, the DOI hit is a false positive, so clear it
+        # and fall through to create a new article instead of silently
+        # attaching this PDF's text/file to someone else's article.
+        existing_title = _fetch_article_title(dup_id)
+        if existing_title:
+            sim = _title_similarity(extraction.title_hint, existing_title)
+            if sim < 0.35:
+                logger.info(
+                    "Job %d: title mismatch (similarity=%.2f) between extracted "
+                    "title %r and existing article %s title %r — discarding DOI "
+                    "match %s as a false positive (cited reference, not the "
+                    "paper's own DOI)",
+                    job.id, sim, extraction.title_hint, dup_id, existing_title, doi,
+                )
+                dup_id, reason = None, None
 
     if dup_id is not None:
         logger.info("Job %d duplicate of article %s (%s) — enriching missing PDF metadata",
@@ -326,6 +353,34 @@ def _process_job(job: ingest_queue.Job) -> None:
         except Exception as exc:
             logger.warning("worker: prionpack sync_doi failed for %s: %s",
                            final_doi, exc)
+
+
+def _fetch_article_title(article_id) -> Optional[str]:
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(
+                text("SELECT title FROM articles WHERE id = :aid"),
+                {"aid": str(article_id)},
+            ).first()
+        return row[0] if row and row[0] else None
+    except Exception as exc:
+        logger.warning("_fetch_article_title failed for %s: %s", article_id, exc)
+        return None
+
+
+_TITLE_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _title_similarity(a: str, b: str) -> float:
+    """Cheap, dependency-free title similarity: Jaccard overlap of
+    lowercased word sets. Good enough to tell "clearly the same paper"
+    from "clearly unrelated" — the only distinction this guard needs."""
+    wa = set(_TITLE_WORD_RE.findall((a or "").lower()))
+    wb = set(_TITLE_WORD_RE.findall((b or "").lower()))
+    if not wa or not wb:
+        return 1.0  # can't compare — don't let this guard reject on its own
+    return len(wa & wb) / len(wa | wb)
 
 
 def _enrich_duplicate(*, article_id, content: bytes, md5: str,
