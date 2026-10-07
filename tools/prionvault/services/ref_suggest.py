@@ -50,8 +50,14 @@ _MAX_POINTS       = 15         # cap LLM prompt size for texts with many markers
 _CANDIDATE_POOL   = 8          # retrieved + sent to the LLM per point
 _SHOWN_BY_DEFAULT = 5           # of which this many are shown without "ver más"
 _SNIPPET_CHARS    = 420         # per-candidate context chunk sent to the LLM
+_CONTEXT_TAIL_CHARS = 600       # how much of a claim's tail drives retrieval + explanation
 
-_REF_MARKER_RE = re.compile(r"\(\s*[Rr]ef\.?\s*\)")
+# Tolerant on purpose: any case ("Ref"/"REF"/"ref"), optional trailing
+# "." or plural "s" ("Ref", "Ref.", "Refs", "Refs."), with or without
+# surrounding ( ) or [ ], and matched as a whole word so it never fires
+# inside "reference"/"refer". Does NOT require brackets at all — a bare
+# "Ref." in running text is a valid marker too.
+_REF_MARKER_RE = re.compile(r"[\(\[]?\s*\bref\.?s?\b\s*[\)\]]?", re.IGNORECASE)
 
 _DEFAULT_PROVIDERS = ("anthropic", "openai", "gemini")
 
@@ -101,19 +107,40 @@ def _split_marked(text: str) -> list[dict]:
 # model to pick sentence NUMBERS sidesteps verbatim matching entirely —
 # the model only ever has to echo back small integers.
 
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ0-9])")
+_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?]\s+(?=[A-ZÁÉÍÓÚÑ0-9])")
+
+# Common scientific-writing abbreviations that end in "." but do NOT end
+# a sentence — "et al." and "Fig. 3" are the two that show up in nearly
+# every biomedical paragraph. Checked case-insensitively against the
+# word immediately before the period.
+_ABBREVIATIONS = {
+    "al", "fig", "figs", "eq", "eqs", "no", "nos", "vs", "cf", "ca",
+    "approx", "sp", "spp", "var", "ref", "refs", "dr", "prof", "mr",
+    "mrs", "ms", "st",
+}
+_WORD_BEFORE_DOT_RE = re.compile(r"(\w+)\.$")
 
 
 def _split_sentences(text: str) -> list[tuple[int, int]]:
     """Return [(start, end), ...] character spans for each sentence,
     covering the whole text (no gaps dropped — a trailing span with no
-    terminal punctuation is still included)."""
+    terminal punctuation is still included).
+
+    Skips splitting right after a known abbreviation ("et al.", "Fig.",
+    "e.g.", …) so "... described in Fig. 3 shows ..." doesn't get cut
+    into a dangling "... described in Fig." sentence — common enough in
+    scientific text that leaving it unhandled would degrade "auto" mode
+    on exactly the kind of writing this feature targets."""
     spans = []
     cursor = 0
-    for m in _SENTENCE_SPLIT_RE.finditer(text):
-        end = m.start()
-        if text[cursor:end].strip():
-            spans.append((cursor, end))
+    for m in _SENTENCE_BOUNDARY_RE.finditer(text):
+        split_pos = m.start() + 1  # just after the punctuation mark
+        if text[m.start()] == '.':
+            word = _WORD_BEFORE_DOT_RE.search(text[:split_pos])
+            if word and word.group(1).lower() in _ABBREVIATIONS:
+                continue
+        if text[cursor:split_pos].strip():
+            spans.append((cursor, split_pos))
         cursor = m.end()
     if text[cursor:].strip():
         spans.append((cursor, len(text)))
@@ -179,7 +206,14 @@ def _detect_points_ai(text: str, provider: Optional[str]) -> tuple[list[dict], d
 def _build_candidates(claim: str, viewer_id: Optional[str]) -> tuple[list[dict], int]:
     from ..embeddings.retriever import search as _retrieve
 
-    result = _retrieve(claim, top_k=_CANDIDATE_POOL, per_article_cap=1,
+    # Use only the TAIL of the claim as the search query — the text
+    # right before the marker is what the citation is actually
+    # attached to. Without this, a marker placed after several
+    # paragraphs (nothing since the previous marker/start) would embed
+    # the whole blob, diluting the query with earlier, less relevant
+    # sentences instead of focusing on what's actually being cited.
+    query = claim[-_CONTEXT_TAIL_CHARS:]
+    result = _retrieve(query, top_k=_CANDIDATE_POOL, per_article_cap=1,
                        rerank=True, hybrid=True, viewer_id=viewer_id)
 
     # Best snippet per article from the raw (unreranked-order-agnostic)
@@ -239,7 +273,7 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> dict:
     for p in points:
         payload.append({
             "n": p["n"],
-            "claim": p["claim"][-600:],  # the clause right before the marker matters most
+            "claim": p["claim"][-_CONTEXT_TAIL_CHARS:],  # same tail used for retrieval
             "candidates": [
                 {"article_id": c["article_id"], "title": c["title"],
                  "authors": (c["authors"] or "").split(";")[0].strip(),
