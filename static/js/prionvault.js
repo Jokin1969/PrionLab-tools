@@ -9615,8 +9615,25 @@
       return links;
     }
 
+    function _quartileBadgeHtml(c) {
+      if (!c.quartile) return '';
+      const colors = { Q1: '#15803d', Q2: '#1d4ed8', Q3: '#b45309', Q4: '#6b7280' };
+      const col = colors[c.quartile] || '#6b7280';
+      return `<span title="Cuartil de calidad de la revista (SCImago)"
+                    style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10.5px;
+                           font-weight:700;background:${col}1a;color:${col};margin-right:5px;">${esc(c.quartile)}</span>`;
+    }
+    function _fitScoreBadgeHtml(c) {
+      if (c.fit_score == null) return '';
+      const col = c.fit_score >= 70 ? '#15803d' : (c.fit_score >= 50 ? '#b45309' : '#6b7280');
+      return `<span title="Puntuación de encaje según la IA (0-100)"
+                    style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10.5px;
+                           font-weight:700;background:${col}1a;color:${col};margin-right:5px;">${c.fit_score}/100</span>`;
+    }
+
     function _suggestionCardHtml(point, c, idx) {
-      const chosen = _choice[point.n] && _choice[point.n].article_id === c.article_id;
+      const picks = _choice[point.n] || [];
+      const chosen = picks.some(x => x.article_id === c.article_id);
       const journalYear = [c.journal, c.year].filter(Boolean).join(' · ');
       return `
         <div class="pv-refsuggest-card" data-n="${point.n}" data-aid="${esc(c.article_id)}"
@@ -9629,6 +9646,7 @@
             ${c.authors ? esc((c.authors || '').split(';')[0].trim()) + (c.authors.includes(';') ? ' et al.' : '') : '—'}
             ${journalYear ? ' · ' + esc(journalYear) : ''}
           </div>
+          <div style="margin-top:5px;">${_fitScoreBadgeHtml(c)}${_quartileBadgeHtml(c)}</div>
           <div style="margin-top:4px;font-size:11px;">${_candidateLinksHtml(c)}</div>
           ${c.explanation ? `
           <div style="margin-top:8px;padding:8px 10px;background:#f9fafb;border-radius:7px;
@@ -9647,21 +9665,34 @@
     }
 
     function _pointHtml(point) {
-      const chosenLabel = _choice[point.n] ? `<span style="font-size:11.5px;font-weight:700;color:#15803d;">✓ Insertada</span>` : '';
+      const picks = _choice[point.n] || [];
+      const chosenLabel = picks.length
+        ? `<span style="font-size:11.5px;font-weight:700;color:#15803d;">✓ ${picks.length} insertada${picks.length === 1 ? '' : 's'}</span>`
+        : '';
       const claimShort = point.claim.length > 260 ? '…' + point.claim.slice(-260) : point.claim;
       const shown = point.suggestions || [];
       const more = point.more_suggestions || [];
       const moreVisible = _moreShown.has(point.n);
+      const total = point.total_candidate_articles || 0;
+      const considered = point.candidates_considered || 0;
+      const countLine = considered
+        ? `<div style="font-size:10.5px;color:#9ca3af;margin:2px 0 6px;">
+             ${shown.length + more.length} sugerencia${(shown.length + more.length) === 1 ? '' : 's'} de ${considered}
+             candidato${considered === 1 ? '' : 's'} analizado${considered === 1 ? '' : 's'}
+             ${total > considered ? ` (hay ${total} artículos relacionados en total en PrionVault; se analizaron los ${considered} más afines)` : ''}
+           </div>` : '';
       return `
         <div class="pv-refsuggest-point" data-n="${point.n}">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:2px;">
             <div style="font-size:12.5px;color:#111827;">
               <span style="display:inline-block;padding:1px 7px;border-radius:5px;background:#0F3460;color:#fff;
                            font-size:11px;font-weight:700;margin-right:6px;">${point.n}</span>
-              <span style="color:#6b7280;">${esc(claimShort)}</span>
+              <span class="pv-refsuggest-claim-hover" data-n="${point.n}"
+                    style="color:#6b7280;border-bottom:1px dotted #9ca3af;cursor:help;">${esc(claimShort)}</span>
             </div>
             ${chosenLabel}
           </div>
+          ${countLine}
           ${shown.length ? `
           <div style="display:flex;flex-direction:column;gap:8px;">
             ${shown.map((c, i) => _suggestionCardHtml(point, c, i)).join('')}
@@ -9684,6 +9715,37 @@
         </div>`;
     }
 
+    // ── Hover popup showing full surrounding context for a point's claim ──
+    let _hoverPopup = null;
+    function _ensureHoverPopup() {
+      if (_hoverPopup) return _hoverPopup;
+      _hoverPopup = document.createElement('div');
+      _hoverPopup.style.cssText = `position:fixed;z-index:10000;max-width:420px;display:none;
+        background:#111827;color:#f3f4f6;font-size:12px;line-height:1.5;padding:10px 12px;
+        border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);pointer-events:none;`;
+      document.body.appendChild(_hoverPopup);
+      return _hoverPopup;
+    }
+    function _wireClaimHover() {
+      document.querySelectorAll('.pv-refsuggest-claim-hover').forEach(el => {
+        el.addEventListener('mouseenter', e => {
+          const n = parseInt(el.dataset.n, 10);
+          const point = _result?.points.find(p => p.n === n);
+          if (!point) return;
+          const popup = _ensureHoverPopup();
+          popup.innerHTML = `${esc(point.context?.before || '')}` +
+            `<mark style="background:#facc15;color:#111827;padding:0 2px;">${esc(point.claim.slice(-260))}</mark>` +
+            `${esc(point.context?.after || '')}`;
+          popup.style.display = 'block';
+          const rect = el.getBoundingClientRect();
+          const top = Math.max(8, rect.top - 10);
+          popup.style.left = Math.min(rect.left, window.innerWidth - 440) + 'px';
+          popup.style.top = (top > 200 ? top - popup.offsetHeight - 10 : rect.bottom + 10) + 'px';
+        });
+        el.addEventListener('mouseleave', () => { if (_hoverPopup) _hoverPopup.style.display = 'none'; });
+      });
+    }
+
     function renderPoints() {
       const box = $('pv-refsuggest-points');
       if (!box || !_result) return;
@@ -9695,12 +9757,16 @@
           const all = [...(point.suggestions || []), ...(point.more_suggestions || [])];
           const cand = all.find(c => c.article_id === btn.dataset.aid);
           if (!cand) return;
-          if (_choice[n] && _choice[n].article_id === cand.article_id) {
-            delete _choice[n];
+          const picks = _choice[n] || (_choice[n] = []);
+          const idx = picks.findIndex(x => x.article_id === cand.article_id);
+          if (idx >= 0) {
+            picks.splice(idx, 1);
+            if (!picks.length) delete _choice[n];
           } else {
-            _choice[n] = { article_id: cand.article_id, title: cand.title, label: _citeLabel(cand) };
+            picks.push({ article_id: cand.article_id, title: cand.title, label: _citeLabel(cand) });
           }
           renderPoints();
+          renderPreview();
         });
       });
       box.querySelectorAll('.pv-refsuggest-more-btn').forEach(btn => {
@@ -9710,14 +9776,20 @@
           renderPoints();
         });
       });
+      _wireClaimHover();
     }
 
     function _assembleFinal() {
       if (!_result) return { text: '', html: '' };
       const base = _result.text;
+      // A point can now have MULTIPLE chosen references — join their
+      // labels so inserting several at once is just as easy as one.
       const chosen = _result.points
-        .filter(p => _choice[p.n])
-        .map(p => ({ start: p.replace_start, end: p.replace_end, label: _choice[p.n].label }));
+        .filter(p => _choice[p.n] && _choice[p.n].length)
+        .map(p => ({
+          start: p.replace_start, end: p.replace_end,
+          label: _choice[p.n].map(c => c.label).join('; '),
+        }));
       // HTML: walk forward, ascending by start.
       const asc = [...chosen].sort((a, b) => a.start - b.start);
       let html = '';
@@ -9734,6 +9806,13 @@
         text = text.slice(0, s.start) + s.label + text.slice(s.end);
       }
       return { text, html };
+    }
+
+    function renderPreview() {
+      const box = $('pv-refsuggest-preview');
+      if (!box) return;
+      const { html } = _assembleFinal();
+      box.innerHTML = html || '<span style="color:#9ca3af;">El texto con las referencias insertadas aparecerá aquí a medida que las elijas.</span>';
     }
 
     async function copyFinal() {
@@ -9785,6 +9864,7 @@
         _choice = {};
         _moreShown = new Set();
         renderPoints();
+        renderPreview();
         showResults();
       } catch (e) {
         if (status) { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e.message; }

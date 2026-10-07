@@ -168,7 +168,13 @@ def call_llm_json_with_fallback(*, providers: list[str], system: str,
             parsed = call_llm_json(provider=p, system=system, user=user,
                                    max_tokens=max_tokens)
             return parsed, {"provider": p, "attempts": attempts}
-        except (NotConfigured, RuntimeError, ValueError) as exc:
+        except Exception as exc:
+            # Deliberately broad: a raw SDK exception (timeout,
+            # connection error, malformed response) from any provider
+            # must never crash the whole request with an unhandled
+            # 500 — it should just mean "try the next provider in the
+            # chain", exactly like the already-handled NotConfigured/
+            # RuntimeError/ValueError cases.
             attempts.append({"provider": p, "error": str(exc)[:240]})
             logger.info("llm_pool fallback: %s failed (%s) — trying next", p, exc)
             continue

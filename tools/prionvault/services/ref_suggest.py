@@ -47,10 +47,15 @@ logger = logging.getLogger(__name__)
 
 _MAX_TEXT_CHARS   = 20_000     # ~3-4k words — generous for an abstract/section
 _MAX_POINTS       = 15         # cap LLM prompt size for texts with many markers
-_CANDIDATE_POOL   = 8          # retrieved + sent to the LLM per point
+_CANDIDATE_POOL   = 20          # retrieved per point — a wide first pass so the
+                                 # explain step has real material to compare, not
+                                 # just the first few plausible-looking hits
 _SHOWN_BY_DEFAULT = 5           # of which this many are shown without "ver más"
 _SNIPPET_CHARS    = 420         # per-candidate context chunk sent to the LLM
 _CONTEXT_TAIL_CHARS = 600       # how much of a claim's tail drives retrieval + explanation
+_SURROUNDING_CHARS = 300        # extra context (each side) kept for the UI hover popup
+_MIN_FIT_SCORE    = 40          # below this, the AI's own judgement says "don't force it"
+_QUARTILE_RANK    = {"Q1": 0, "Q2": 1, "Q3": 2, "Q4": 3}  # lower = better, for sorting
 
 # Tolerant on purpose: any case ("Ref"/"REF"/"ref"), optional trailing
 # "." or plural "s" ("Ref", "Ref.", "Refs", "Refs."), with or without
@@ -255,33 +260,73 @@ def _build_candidates(claim: str, viewer_id: Optional[str]) -> tuple[list[dict],
             "has_pdf":    bool(a.has_pdf),
             "snippet":    snippet_by_article.get(a.id, ""),
             "similarity": round(a.best_similarity, 4),
+            "quartile":   None,
+            "percentile": None,
         })
+
+    # Journal-quality enrichment (SCImago), batched in one query — gives
+    # the explain step the data it needs to prioritize higher-quality
+    # journals and, as a tie-breaker, more recent publications, instead
+    # of only ever seeing semantic similarity.
+    try:
+        from . import scimago
+        idx = scimago.build_lookup_index([c["journal"] for c in candidates if c["journal"]])
+        for c in candidates:
+            if not c["journal"]:
+                continue
+            info = scimago.lookup_indexed(idx, c["journal"], c["year"])
+            if info:
+                c["quartile"] = info.get("quartile")
+                c["percentile"] = info.get("percentile")
+    except Exception as exc:
+        logger.info("ref_suggest: SCImago enrichment skipped: %s", exc)
+
     return candidates, result.total_candidate_articles
 
 
 # ── Step 3: one combined explain call for every point ────────────────────────
 
-_EXPLAIN_SYSTEM = """Eres un asistente experto en investigación biomédica de \
+_EXPLAIN_SYSTEM = f"""Eres un asistente experto en investigación biomédica de \
 priones que ayuda a un investigador a encontrar las referencias bibliográficas \
 más adecuadas para afirmaciones concretas de un texto que está escribiendo.
 
 Te doy una lista de PUNTOS. Cada punto tiene una afirmación/frase ("claim") y una \
 lista de artículos CANDIDATOS (ya recuperados por búsqueda semántica sobre la \
-biblioteca de PrionVault), cada uno con un fragmento de su texto ("snippet").
+biblioteca de PrionVault — hasta {_CANDIDATE_POOL} por punto), cada uno con un \
+fragmento de su texto ("snippet"), el cuartil de calidad de su revista según \
+SCImago ("quartile": Q1 es la mejor categoría, Q4 la peor, null si no está \
+indexada) y el año de publicación.
 
-Para cada punto, decide qué candidatos encajan GENUINAMENTE como cita de esa \
-afirmación concreta — puede que ninguno, puede que varios. Para cada uno que \
-elijas, escribe una explicación breve pero sustanciosa (2-4 frases) que:
+TRABAJA CON PROFUNDIDAD — no te quedes con el primer candidato que parezca \
+razonable. Compara TODOS los candidatos de cada punto entre sí antes de decidir, \
+como haría un investigador revisando su lista de referencias con cuidado.
+
+Para cada punto, evalúa CADA candidato con un "fit_score" de 0 a 100 que exprese \
+cuánto respalda genuinamente esa afirmación concreta (100 = coincide \
+exactamente con lo que dice el snippet; 0 = no tiene relación real). Sé \
+exigente: la mayoría de candidatos semánticamente "parecidos" no son en \
+realidad una buena cita — resérvate los números altos (>70) para un respaldo \
+claro y directo.
+
+Incluye en la respuesta SOLO los candidatos con fit_score >= {_MIN_FIT_SCORE} — \
+el resto, descártalos (no fuerces citas que no encajan de verdad). Entre \
+candidatos con fit_score similar (diferencia de 15 puntos o menos), usa como \
+criterio de desempate, en este orden: 1) mejor cuartil de revista (Q1 > Q2 > Q3 \
+> Q4 > sin indexar), 2) año más reciente. No dejes que la calidad de la revista \
+o la fecha override un fit_score claramente superior — son solo desempate.
+
+Para cada candidato incluido, escribe una explicación breve pero sustanciosa \
+(2-4 frases) que:
   1. Cite qué dice exactamente la afirmación del texto.
   2. Explique qué aporta ESE artículo en relación a eso (su hallazgo, método o \
 dato concreto — usa el snippet, no generalidades).
   3. Diga por qué encajan juntos.
-Ordena los candidatos elegidos de más a menos relevante para esa afirmación \
-concreta. Si un candidato no encaja de verdad, simplemente no lo incluyas — no \
-fuerces citas.
+Ordena los candidatos elegidos de más a menos relevante (fit_score, con el \
+desempate de arriba).
 
 Responde SOLO con JSON estricto, sin markdown:
-{"points": [{"n": 1, "suggestions": [{"article_id": "...", "explanation": "..."}]}]}"""
+{{"points": [{{"n": 1, "suggestions": [{{"article_id": "...", "fit_score": 85, \
+"explanation": "..."}}]}}]}}"""
 
 
 def _explain_points(points: list[dict], provider: Optional[str]) -> dict:
@@ -295,7 +340,8 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> dict:
             "candidates": [
                 {"article_id": c["article_id"], "title": c["title"],
                  "authors": (c["authors"] or "").split(";")[0].strip(),
-                 "year": c["year"], "journal": c["journal"], "snippet": c["snippet"]}
+                 "year": c["year"], "journal": c["journal"],
+                 "quartile": c["quartile"], "snippet": c["snippet"]}
                 for c in p["candidates"]
             ],
         })
@@ -304,7 +350,7 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> dict:
     try:
         parsed, info = call_llm_json_with_fallback(
             providers=_provider_chain(provider),
-            system=_EXPLAIN_SYSTEM, user=user, max_tokens=4000,
+            system=_EXPLAIN_SYSTEM, user=user, max_tokens=6000,
         )
     except RuntimeError as exc:
         raise RefSuggestError(f"No se pudieron generar las explicaciones: {exc}") from exc
@@ -411,10 +457,32 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
             cand = by_article.get(aid)
             if not cand:
                 continue  # guard against a hallucinated / mistyped article_id
+            fit_score = item.get("fit_score")
+            try:
+                fit_score = max(0, min(100, int(fit_score)))
+            except (TypeError, ValueError):
+                fit_score = None
             suggestions.append({
                 **cand,
                 "explanation": (item.get("explanation") or "").strip(),
+                "fit_score": fit_score,
             })
+
+        # Deterministic re-sort: fit_score is the primary signal, but we
+        # don't fully trust the model's own ordering for close calls —
+        # bucket scores into bands of 15 points and, WITHIN a band, break
+        # ties by journal quartile (Q1 first) then by more recent year.
+        # This is what actually guarantees "prioriza revistas de mayor
+        # calidad, y en segundo lugar las más recientes" rather than
+        # hoping the model's free-form ordering already reflects it.
+        def _sort_key(s):
+            score = s["fit_score"] if s["fit_score"] is not None else 0
+            band = -(score // 15)
+            qrank = _QUARTILE_RANK.get(s.get("quartile"), 9)
+            year = -(s.get("year") or 0)
+            return (band, qrank, year, -score)
+        suggestions.sort(key=_sort_key)
+
         diagnostic = None
         if not suggestions:
             if not p["candidates"]:
@@ -434,6 +502,8 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
                     f"consideró que ninguno respalda genuinamente esta afirmación concreta "
                     f"— no fuerza citas que no encajen de verdad."
                 )
+        ctx_start = max(0, p["replace_start"] - _SURROUNDING_CHARS)
+        ctx_end = min(len(text), p["replace_end"] + _SURROUNDING_CHARS)
         out_points.append({
             "n": p["n"],
             "claim": p["claim"],
@@ -441,8 +511,13 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
             "replace_end": p["replace_end"],
             "suggestions": suggestions[:_SHOWN_BY_DEFAULT],
             "more_suggestions": suggestions[_SHOWN_BY_DEFAULT:],
+            "candidates_considered": len(p["candidates"]),
             "total_candidate_articles": p["total_candidate_articles"],
             "diagnostic": diagnostic,
+            "context": {
+                "before": ("…" if ctx_start > 0 else "") + text[ctx_start:p["replace_start"]],
+                "after": text[p["replace_end"]:ctx_end] + ("…" if ctx_end < len(text) else ""),
+            },
         })
 
     return {
