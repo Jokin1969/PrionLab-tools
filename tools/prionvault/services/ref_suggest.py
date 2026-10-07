@@ -90,57 +90,77 @@ def _split_marked(text: str) -> list[dict]:
 
 
 # ── Step 1b: "auto" mode — ask the LLM where citations belong ───────────────
+#
+# Earlier version asked the model to quote the exact words to anchor on,
+# then located that quote in the text with a plain substring search. That
+# broke constantly on real scientific text: the model rarely reproduces
+# special characters (α, β, en-dashes, curly quotes…) with perfect
+# byte-for-byte fidelity even when told not to change a comma, so the
+# substring search silently failed for EVERY point and the whole
+# analysis came back empty. Numbering sentences ourselves and asking the
+# model to pick sentence NUMBERS sidesteps verbatim matching entirely —
+# the model only ever has to echo back small integers.
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ0-9])")
+
+
+def _split_sentences(text: str) -> list[tuple[int, int]]:
+    """Return [(start, end), ...] character spans for each sentence,
+    covering the whole text (no gaps dropped — a trailing span with no
+    terminal punctuation is still included)."""
+    spans = []
+    cursor = 0
+    for m in _SENTENCE_SPLIT_RE.finditer(text):
+        end = m.start()
+        if text[cursor:end].strip():
+            spans.append((cursor, end))
+        cursor = m.end()
+    if text[cursor:].strip():
+        spans.append((cursor, len(text)))
+    return spans
+
 
 _PLACEMENT_SYSTEM = """Eres un asistente experto en escritura científica biomédica \
-(investigación de priones y enfermedades priónicas). Te doy un texto. Tu única \
-tarea es identificar qué frases o afirmaciones concretas necesitarían una cita \
-bibliográfica que las respalde (datos, resultados, afirmaciones específicas — no \
-frases genéricas de transición).
+(investigación de priones y enfermedades priónicas). Te doy un texto dividido en \
+frases NUMERADAS (una por línea, "N: texto"). Tu única tarea es decidir qué \
+números de frase contienen una afirmación concreta (dato, resultado, hallazgo \
+específico) que necesitaría una cita bibliográfica que la respalde — no frases \
+genéricas de transición, introducción del tema o conectores.
 
-Para cada una, devuelve una cita TEXTUAL EXACTA (copia-pega, sin modificar ni una \
-coma) de las últimas 4 a 12 palabras de la frase o cláusula justo donde debería ir \
-la marca de cita (normalmente el final de la frase, antes del punto). Debe \
-aparecer EXACTAMENTE así en el texto original — es como vamos a localizarla.
-
-Identifica como máximo 15 puntos, los más importantes. Si el texto no tiene \
-ninguna afirmación que requiera cita, devuelve una lista vacía.
+Identifica como máximo 15 frases, las más importantes. Si ninguna frase necesita \
+cita, devuelve una lista vacía.
 
 Responde SOLO con JSON estricto, sin explicación ni markdown:
-{"points": [{"quote": "..."}]}"""
+{"sentence_numbers": [3, 7, 12]}"""
 
 
 def _detect_points_ai(text: str, provider: Optional[str]) -> tuple[list[dict], dict]:
     from .llm_pool import call_llm_json_with_fallback
 
+    spans = _split_sentences(text)
+    if not spans:
+        return [], None
+    numbered = "\n".join(f"{i + 1}: {text[s:e].strip()}" for i, (s, e) in enumerate(spans))
+
     try:
         parsed, info = call_llm_json_with_fallback(
             providers=_provider_chain(provider),
-            system=_PLACEMENT_SYSTEM, user=text, max_tokens=1800,
+            system=_PLACEMENT_SYSTEM, user=numbered, max_tokens=800,
         )
     except RuntimeError as exc:
         raise RefSuggestError(f"No se pudo analizar el texto: {exc}") from exc
 
-    quotes = [q.get("quote", "").strip() for q in (parsed.get("points") or [])
-              if isinstance(q, dict) and q.get("quote", "").strip()]
-
-    # Locate each quote in the ORIGINAL text, in the order it appears —
-    # not the order the model returned them, in case it didn't preserve
-    # document order. Any quote the model paraphrased instead of copying
-    # verbatim silently fails to match and is skipped (logged for
-    # diagnosis) rather than guessed at.
-    located = []
-    for q in quotes:
-        idx = text.find(q)
-        if idx < 0:
-            logger.info("ref_suggest: placement quote not found verbatim: %r", q[:80])
-            continue
-        located.append((idx, idx + len(q)))
-    located.sort(key=lambda t: t[0])
+    raw_numbers = parsed.get("sentence_numbers") or []
+    chosen = sorted({
+        int(n) for n in raw_numbers
+        if isinstance(n, (int, float)) and 1 <= int(n) <= len(spans)
+    })
 
     points = []
     cursor = 0
     n = 0
-    for start, end in located:
+    for sentence_no in chosen:
+        _, end = spans[sentence_no - 1]
         claim = text[cursor:end].strip()
         if claim:
             n += 1
