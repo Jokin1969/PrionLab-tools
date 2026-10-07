@@ -156,17 +156,17 @@ def _process_job(job: ingest_queue.Job) -> None:
             # Re-check with the corrected DOI before continuing.
             dup_id, reason = find_duplicate(doi=doi, pmid=pmid, pdf_md5=md5)
 
-    if dup_id is not None and reason == "doi" and extraction.title_hint \
+    if dup_id is not None and reason in ("doi", "pmid") and extraction.title_hint \
             and len(extraction.title_hint) > 15:
-        # Second guard, independent of the strict-DOI one above: even the
-        # colon-labelled "DOI:" form can belong to a CITED reference, not
-        # the paper's own metadata, when a journal prints DOIs inline in
-        # its reference list (increasingly common). The telltale sign is
-        # that the extracted DOI happens to be unusually short — an older
-        # paper's DOI — while the PDF being ingested is a different,
-        # unrelated paper. Cross-check the extracted title_hint against
+        # Second guard, independent of the strict-DOI one above: a
+        # "DOI:"/"PMID:" labelled identifier can still belong to a CITED
+        # reference rather than the paper's own metadata — e.g. a journal
+        # that prints DOIs/PMIDs inline in its reference list (increasingly
+        # common), or (for PMID specifically, before this file's
+        # first-page restriction) a PMID citation appearing anywhere in
+        # the reference list. Cross-check the extracted title_hint against
         # the matched article's actual title; if they don't look like the
-        # same paper at all, the DOI hit is a false positive, so clear it
+        # same paper at all, the match is a false positive, so clear it
         # and fall through to create a new article instead of silently
         # attaching this PDF's text/file to someone else's article.
         existing_title = _fetch_article_title(dup_id)
@@ -175,10 +175,11 @@ def _process_job(job: ingest_queue.Job) -> None:
             if sim < 0.35:
                 logger.info(
                     "Job %d: title mismatch (similarity=%.2f) between extracted "
-                    "title %r and existing article %s title %r — discarding DOI "
+                    "title %r and existing article %s title %r — discarding %s "
                     "match %s as a false positive (cited reference, not the "
-                    "paper's own DOI)",
-                    job.id, sim, extraction.title_hint, dup_id, existing_title, doi,
+                    "paper's own metadata)",
+                    job.id, sim, extraction.title_hint, dup_id, existing_title,
+                    reason, (doi if reason == "doi" else pmid),
                 )
                 dup_id, reason = None, None
 

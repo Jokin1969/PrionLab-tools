@@ -193,10 +193,18 @@ def find_doi_strict(text: str) -> Optional[str]:
 
 
 def find_pmid_in_text(text: str) -> Optional[str]:
-    """Return the first plausible PubMed ID found in `text`, or None."""
+    """Return the first plausible PubMed ID found in `text`, or None.
+
+    Restricted to the first ~3000 chars (first page), same reasoning as
+    find_doi_in_text: a paper's OWN PMID (on the rare occasions it's
+    self-printed at all) appears in the header/metadata block on page
+    1. Searching the full text used to pick up a "PMID: ..." citation
+    from anywhere in the reference list — on a paper with a scrapie/
+    prion citation list that's an easy false-positive match against an
+    unrelated, already-catalogued paper."""
     if not text:
         return None
-    m = _PMID_RE.search(text)
+    m = _PMID_RE.search(text[:3000])
     return m.group(1) if m else None
 
 
