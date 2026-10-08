@@ -79,7 +79,8 @@ def _resolve(provider: str) -> tuple[str, str]:
 
 def call_llm(*, provider: str, system: str, user: str,
              max_tokens: int = 2400, temperature: float = 0.2,
-             want_json: bool = False) -> LLMResult:
+             want_json: bool = False, model: Optional[str] = None,
+             timeout: float = 60.0, max_attempts: int = _MAX_ATTEMPTS) -> LLMResult:
     """Send `system` + `user` to the chosen provider and return the
     raw text. `want_json` switches on the provider's JSON-only mode
     when available (OpenAI / Gemini); for Anthropic we rely on the
@@ -87,14 +88,18 @@ def call_llm(*, provider: str, system: str, user: str,
     """
     p, key = _resolve(provider)
     last_error: Optional[Exception] = None
-    for attempt in range(1, _MAX_ATTEMPTS + 1):
+    model = model or _MODELS[p]
+    for attempt in range(1, max_attempts + 1):
         try:
             if p == "anthropic":
-                result = _call_anthropic(key, system, user, max_tokens, temperature)
+                result = _call_anthropic(key, system, user, max_tokens, temperature,
+                                         model=model, timeout=timeout)
             elif p == "openai":
-                result = _call_openai(key, system, user, max_tokens, temperature, want_json)
+                result = _call_openai(key, system, user, max_tokens, temperature, want_json,
+                                      model=model, timeout=timeout)
             elif p == "gemini":
-                result = _call_gemini(key, system, user, max_tokens, temperature, want_json)
+                result = _call_gemini(key, system, user, max_tokens, temperature, want_json,
+                                      model=model)
             else:
                 raise ValueError(f"unsupported provider: {p}")
             # Stamp success so the "Estado IA" panel and the sticky
@@ -108,7 +113,7 @@ def call_llm(*, provider: str, system: str, user: str,
         except Exception as exc:
             last_error = exc
             logger.warning("llm_pool[%s] attempt %d: %s", p, attempt, exc)
-            if attempt < _MAX_ATTEMPTS:
+            if attempt < max_attempts:
                 time.sleep(_BASE_BACKOFF ** attempt)
     # All attempts exhausted — record the final failure so the UI
     # can flag the provider as out of credit / down.
@@ -118,17 +123,18 @@ def call_llm(*, provider: str, system: str, user: str,
     except Exception:
         pass
     raise RuntimeError(
-        f"{p} failed after {_MAX_ATTEMPTS} attempts: {last_error}"
+        f"{p} failed after {max_attempts} attempts: {last_error}"
     )
 
 
 def call_llm_json(*, provider: str, system: str, user: str,
-                  max_tokens: int = 2400) -> dict:
+                  max_tokens: int = 2400, **llm_kwargs) -> dict:
     """Convenience: call_llm() + json.loads(). Defensively strips a
     leading / trailing markdown code-fence the model sometimes adds
     despite the prompt asking for raw JSON."""
     r = call_llm(provider=provider, system=system, user=user,
-                 max_tokens=max_tokens, temperature=0.0, want_json=True)
+                 max_tokens=max_tokens, temperature=0.0, want_json=True,
+                 **llm_kwargs)
     text = r.text.strip()
     if text.startswith("```"):
         # Drop ```json or ``` fence + the trailing ```
@@ -146,7 +152,10 @@ def call_llm_json(*, provider: str, system: str, user: str,
 
 
 def call_llm_json_with_fallback(*, providers: list[str], system: str,
-                                user: str, max_tokens: int = 2400
+                                user: str, max_tokens: int = 2400,
+                                models: Optional[dict] = None,
+                                timeout: float = 60.0,
+                                max_attempts: int = _MAX_ATTEMPTS,
                                 ) -> tuple[dict, dict]:
     """Try each provider in `providers` until one returns parseable JSON.
     Empty responses, transient errors and JSON-decode failures all
@@ -166,7 +175,9 @@ def call_llm_json_with_fallback(*, providers: list[str], system: str,
         seen.add(p)
         try:
             parsed = call_llm_json(provider=p, system=system, user=user,
-                                   max_tokens=max_tokens)
+                                   max_tokens=max_tokens,
+                                   model=(models or {}).get(p),
+                                   timeout=timeout, max_attempts=max_attempts)
             return parsed, {"provider": p, "attempts": attempts}
         except Exception as exc:
             # Deliberately broad: a raw SDK exception (timeout,
@@ -187,13 +198,19 @@ def call_llm_json_with_fallback(*, providers: list[str], system: str,
 # ── Provider call implementations ────────────────────────────────────────────
 
 def _call_anthropic(api_key: str, system: str, user: str,
-                    max_tokens: int, temperature: float) -> LLMResult:
+                    max_tokens: int, temperature: float,
+                    model: Optional[str] = None, timeout: float = 60.0) -> LLMResult:
     import anthropic
-    client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
-    model = _MODELS["anthropic"]
+    client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+    model = model or _MODELS["anthropic"]
     start = time.monotonic()
+    # Newer Claude models (as used by the chat via ai_summary.PROVIDERS)
+    # are called without sampling params in production — mirror that
+    # when a caller overrides the model, and keep the old behaviour for
+    # the default cheap model.
+    extra = {"temperature": temperature} if model == _MODELS["anthropic"] else {}
     message = client.messages.create(
-        model=model, max_tokens=max_tokens, temperature=temperature,
+        model=model, max_tokens=max_tokens, **extra,
         system=[
             {
                 "type": "text",
@@ -220,10 +237,11 @@ def _call_anthropic(api_key: str, system: str, user: str,
 
 def _call_openai(api_key: str, system: str, user: str,
                  max_tokens: int, temperature: float,
-                 want_json: bool) -> LLMResult:
+                 want_json: bool, model: Optional[str] = None,
+                 timeout: float = 60.0) -> LLMResult:
     from openai import OpenAI
-    client = OpenAI(api_key=api_key, timeout=60.0)
-    model = _MODELS["openai"]
+    client = OpenAI(api_key=api_key, timeout=timeout)
+    model = model or _MODELS["openai"]
     kwargs: dict = dict(
         model=model, max_tokens=max_tokens, temperature=temperature,
         messages=[
@@ -252,11 +270,11 @@ def _call_openai(api_key: str, system: str, user: str,
 
 def _call_gemini(api_key: str, system: str, user: str,
                  max_tokens: int, temperature: float,
-                 want_json: bool) -> LLMResult:
+                 want_json: bool, model: Optional[str] = None) -> LLMResult:
     from google import genai
     from google.genai import types
     client = genai.Client(api_key=api_key)
-    model = _MODELS["gemini"]
+    model = model or _MODELS["gemini"]
     config = types.GenerateContentConfig(
         system_instruction=system,
         max_output_tokens=max_tokens,

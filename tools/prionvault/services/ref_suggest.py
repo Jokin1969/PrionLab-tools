@@ -47,14 +47,16 @@ logger = logging.getLogger(__name__)
 
 _MAX_TEXT_CHARS   = 20_000     # ~3-4k words — generous for an abstract/section
 _MAX_POINTS       = 15         # cap LLM prompt size for texts with many markers
-_CANDIDATE_POOL   = 20          # retrieved per point — a wide first pass so the
-                                 # explain step has real material to compare, not
-                                 # just the first few plausible-looking hits
+_CANDIDATE_POOL   = 15          # distinct articles per point — a wide first pass
+                                 # so the explain step has real material to compare,
+                                 # not just the first few plausible-looking hits
+_FRAGMENTS_PER_ARTICLE = 3       # same per-article depth the library chat uses
 _SHOWN_BY_DEFAULT = 5           # of which this many are shown without "ver más"
-_MAX_EXPLAIN_BLOCKS = 90        # total candidate blocks across ALL points sent to
+_MAX_EXPLAIN_BLOCKS = 60        # total candidate blocks across ALL points sent to
                                  # the explain LLM call — bounds prompt size (and
                                  # latency) regardless of how many points there are
-_SNIPPET_CHARS    = 420         # per-candidate context chunk sent to the LLM
+_SNIPPET_CHARS    = 350         # per FRAGMENT (an article contributes up to 3)
+_SUMMARY_CHARS    = 500         # the article's AI summary, appended once
 _CONTEXT_TAIL_CHARS = 600       # how much of a claim's tail drives retrieval + explanation
 _SURROUNDING_CHARS = 300        # extra context (each side) kept for the UI hover popup
 _MIN_FIT_SCORE    = 40          # below this, the AI's own judgement says "don't force it"
@@ -72,6 +74,22 @@ _DEFAULT_PROVIDERS = ("anthropic", "openai", "gemini")
 
 class RefSuggestError(RuntimeError):
     """User-facing error (bad input, no providers configured, etc.)."""
+
+
+def _chat_models() -> dict:
+    """The same (larger) models the library/article chat uses — this
+    feature needs the same quality of judgement, not llm_pool's cheap
+    defaults tuned for short structured output."""
+    from .ai_summary import PROVIDERS
+    return {p: PROVIDERS[p]["model"] for p in _DEFAULT_PROVIDERS if p in PROVIDERS}
+
+
+def _glossary_block() -> str:
+    try:
+        from . import glossary_manager
+        return glossary_manager.prompt_block()
+    except Exception:
+        return ""
 
 
 def _provider_chain(provider: Optional[str]) -> list[str]:
@@ -185,7 +203,8 @@ def _detect_points_ai(text: str, provider: Optional[str]) -> tuple[list[dict], d
     try:
         parsed, info = call_llm_json_with_fallback(
             providers=_provider_chain(provider),
-            system=_PLACEMENT_SYSTEM, user=numbered, max_tokens=800,
+            system=_PLACEMENT_SYSTEM, user=numbered, max_tokens=4000,
+            models=_chat_models(), timeout=60.0, max_attempts=1,
         )
     except RuntimeError as exc:
         diag["reason"] = "llm_call_failed"
@@ -239,19 +258,30 @@ def _build_candidates(claim: str, viewer_id: Optional[str]) -> tuple[list[dict],
     # the whole blob, diluting the query with earlier, less relevant
     # sentences instead of focusing on what's actually being cited.
     query = claim[-_CONTEXT_TAIL_CHARS:]
-    result = _retrieve(query, top_k=_CANDIDATE_POOL, per_article_cap=1,
+    # Same retrieval shape as the library chat: several fragments per
+    # article (abstract, PDF extract, the researcher's own notes / past
+    # chat turns, …), not a single random chunk. top_k counts CHUNKS.
+    result = _retrieve(query, top_k=_CANDIDATE_POOL * _FRAGMENTS_PER_ARTICLE,
+                       per_article_cap=_FRAGMENTS_PER_ARTICLE,
                        rerank=True, hybrid=True, viewer_id=viewer_id)
 
-    # Best snippet per article from the raw (unreranked-order-agnostic)
-    # chunk list — first chunk matching that article_id is good enough
-    # context for the explain prompt.
-    snippet_by_article: dict[str, str] = {}
+    from .rag import _SOURCE_LABELS, _fetch_summaries
+    fragments_by_article: dict[str, list[dict]] = {}
     for ch in result.raw_chunks:
-        if ch.article_id not in snippet_by_article:
-            snippet_by_article[ch.article_id] = (ch.chunk_text or "")[:_SNIPPET_CHARS]
+        fragments_by_article.setdefault(ch.article_id, []).append({
+            "label": _SOURCE_LABELS.get(ch.source_field, "Extracto"),
+            "text": (ch.chunk_text or "")[:_SNIPPET_CHARS],
+        })
+    articles = result.articles[:_CANDIDATE_POOL]
+    try:
+        summaries = _fetch_summaries([a.id for a in articles])
+    except Exception as exc:
+        logger.info("ref_suggest: AI summaries skipped: %s", exc)
+        summaries = {}
 
     candidates = []
-    for a in result.articles:
+    for a in articles:
+        frags = fragments_by_article.get(a.id, [])
         candidates.append({
             "article_id": a.id,
             "title":      a.title or "(sin título)",
@@ -261,7 +291,9 @@ def _build_candidates(claim: str, viewer_id: Optional[str]) -> tuple[list[dict],
             "doi":        a.doi or "",
             "pubmed_id":  a.pubmed_id or "",
             "has_pdf":    bool(a.has_pdf),
-            "snippet":    snippet_by_article.get(a.id, ""),
+            "snippet":    frags[0]["text"] if frags else "",
+            "fragments":  frags,
+            "ai_summary": (summaries.get(a.id) or "")[:_SUMMARY_CHARS],
             "similarity": round(a.best_similarity, 4),
             "quartile":   None,
             "percentile": None,
@@ -295,10 +327,34 @@ más adecuadas para afirmaciones concretas de un texto que está escribiendo.
 
 Te doy una lista de PUNTOS. Cada punto tiene una afirmación/frase ("claim") y una \
 lista de artículos CANDIDATOS (ya recuperados por búsqueda semántica sobre la \
-biblioteca de PrionVault — hasta {_CANDIDATE_POOL} por punto), cada uno con un \
-fragmento de su texto ("snippet"), el cuartil de calidad de su revista según \
-SCImago ("quartile": Q1 es la mejor categoría, Q4 la peor, null si no está \
-indexada) y el año de publicación.
+biblioteca de PrionVault — hasta {_CANDIDATE_POOL} por punto). De cada candidato \
+tienes: título, primer autor, año, revista, el cuartil de calidad de la revista \
+según SCImago ("quartile": Q1 es la mejor categoría, Q4 la peor, null si no \
+está indexada), hasta {_FRAGMENTS_PER_ARTICLE} FRAGMENTOS etiquetados de su \
+contenido ("fragments") y, cuando existe, su resumen generado por IA \
+("ai_summary").
+
+LEE CADA CANDIDATO COMO UN TODO: sus fragmentos (Abstract, Extracto del PDF, \
+Resumen IA…) y su ai_summary son partes del MISMO artículo — combínalos para \
+entender qué aporta realmente antes de puntuarlo, no juzgues por un único \
+fragmento suelto.
+
+NOTAS DEL INVESTIGADOR Y CHATS PREVIOS — LÉELOS SIEMPRE: algunos fragmentos van \
+etiquetados como "NOTA DEL INVESTIGADOR" o "Conversación previa del chat de \
+este artículo". Son anotaciones que el propio investigador escribió sobre ese \
+artículo y a menudo contienen justo la pista clave: sinónimos, nombres \
+internos frente a la nomenclatura formal (p. ej. de una línea de ratón \
+transgénico), o la indicación de que ese artículo es la referencia original de \
+un modelo/método/hallazgo. Trátalas como una pista directa y fiable para \
+decidir el encaje — pero el "explanation" debe apoyarse en lo que el artículo \
+dice (abstract/extracto/resumen); si solo la nota lo afirma, dilo.
+
+PRIMERA DESCRIPCIÓN: si la afirmación del texto habla de un modelo, método, \
+línea, cepa o hallazgo, y un candidato contiene lenguaje de presentación \
+original ("newly developed", "we generated", "we established", "por primera \
+vez", o una nota que lo indique), ese candidato es normalmente la cita \
+preferente para esa afirmación, aunque el grueso del artículo trate de otra \
+cosa.
 
 TRABAJA CON PROFUNDIDAD — no te quedes con el primer candidato que parezca \
 razonable. Compara TODOS los candidatos de cada punto entre sí antes de decidir, \
@@ -306,7 +362,7 @@ como haría un investigador revisando su lista de referencias con cuidado.
 
 Para cada punto, evalúa CADA candidato con un "fit_score" de 0 a 100 que exprese \
 cuánto respalda genuinamente esa afirmación concreta (100 = coincide \
-exactamente con lo que dice el snippet; 0 = no tiene relación real). Sé \
+exactamente con lo que dicen sus fragmentos; 0 = no tiene relación real). Sé \
 exigente: la mayoría de candidatos semánticamente "parecidos" no son en \
 realidad una buena cita — resérvate los números altos (>70) para un respaldo \
 claro y directo.
@@ -322,7 +378,7 @@ Para cada candidato incluido, escribe una explicación breve pero sustanciosa \
 (2-4 frases) que:
   1. Cite qué dice exactamente la afirmación del texto.
   2. Explique qué aporta ESE artículo en relación a eso (su hallazgo, método o \
-dato concreto — usa el snippet, no generalidades).
+dato concreto — usa los fragmentos y el resumen, no generalidades).
   3. Diga por qué encajan juntos.
 Ordena los candidatos elegidos de más a menos relevante (fit_score, con el \
 desempate de arriba).
@@ -352,7 +408,9 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> tuple[dict, 
                 {"article_id": c["article_id"], "title": c["title"],
                  "authors": (c["authors"] or "").split(";")[0].strip(),
                  "year": c["year"], "journal": c["journal"],
-                 "quartile": c["quartile"], "snippet": c["snippet"]}
+                 "quartile": c["quartile"],
+                 "fragments": c["fragments"],
+                 **({"ai_summary": c["ai_summary"]} if c["ai_summary"] else {})}
                 for c in p["candidates"][:per_point]
             ],
         })
@@ -361,7 +419,12 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> tuple[dict, 
     try:
         parsed, info = call_llm_json_with_fallback(
             providers=_provider_chain(provider),
-            system=_EXPLAIN_SYSTEM, user=user, max_tokens=6000,
+            system=_EXPLAIN_SYSTEM + _glossary_block(), user=user, max_tokens=8000,
+            # One attempt per provider with a generous timeout (bigger
+            # models, longer structured output) — retries live in the
+            # Claude → GPT → Gemini chain itself, so a slow provider can't
+            # stack 3 timeouts before the next one is even tried.
+            models=_chat_models(), timeout=120.0, max_attempts=1,
         )
     except RuntimeError as exc:
         raise RefSuggestError(f"No se pudieron generar las explicaciones: {exc}") from exc
