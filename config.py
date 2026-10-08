@@ -7,6 +7,11 @@ load_dotenv()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
 
+# Public-facing base URL (no trailing slash). Used in email links so they
+# resolve correctly in email clients. Set APP_URL in your .env / environment.
+# Example: APP_URL=https://prionlab.joaquincastilla.com
+APP_URL = os.environ.get("APP_URL", "").rstrip("/")
+
 DROPBOX_APP_KEY = os.environ.get("DROPBOX_APP_KEY", "")
 DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET", "")
 DROPBOX_REFRESH_TOKEN = os.environ.get("DROPBOX_REFRESH_TOKEN", "")
@@ -26,6 +31,9 @@ DB_PATH = os.path.join(DATA_DIR, "prionlab.db")
 
 DROPBOX_REMOTE_FOLDER = "/Web-tools/PrionLab tools"
 DROPBOX_PAPERS_FOLDER = "/Web-tools/PrionLab tools/papers"
+DROPBOX_PRIONPACKS_BACKUP_FOLDER = "/PrionLab tools/PrionPacks"
+PRIONPACKS_BACKUP_RETENTION = int(os.environ.get("PRIONPACKS_BACKUP_RETENTION", "15"))
+PRIONPACKS_BACKUP_INTERVAL_HOURS = int(os.environ.get("PRIONPACKS_BACKUP_INTERVAL_HOURS", "2"))
 
 MAX_PDF_SIZE_MB = int(os.environ.get("MAX_PDF_SIZE_MB", "30"))
 
@@ -79,7 +87,10 @@ def _derive_secret_key(password: str) -> str:
         return "dev-insecure-secret-key-set-ADMIN_PASSWORD"
     return hashlib.sha256(f"prionlab-secret:{password}".encode()).hexdigest()
 
-SECRET_KEY = _derive_secret_key(ADMIN_PASSWORD)
+# APP_SECRET_KEY takes priority over the password-derived fallback.
+# Generate a strong value once and pin it in .env:
+#   python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY = os.environ.get("APP_SECRET_KEY") or _derive_secret_key(ADMIN_PASSWORD)
 
 def dropbox_configured() -> bool:
     return all([DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN])
