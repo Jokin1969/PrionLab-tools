@@ -9692,6 +9692,19 @@
             </div>
             ${chosenLabel}
           </div>
+          ${picks.length ? `
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 4px;
+                      padding:7px 10px;background:#fff;border:1px solid #c7d2fe;border-radius:8px;">
+            <span style="font-size:10.5px;font-weight:700;color:#6b7280;text-transform:uppercase;
+                         letter-spacing:0.04em;">Sustituye a "Ref" por:</span>
+            <span style="font-size:13px;">${_citationHtml(picks)}</span>
+            <button type="button" class="pv-refsuggest-copy-cite" data-n="${point.n}"
+                    title="Copiar solo esta cita, con el formato elegido, para pegarla sobre &quot;Ref&quot; en tu texto"
+                    style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid #c7d2fe;
+                           background:#eef2ff;color:#3730a3;font-size:11.5px;font-weight:600;cursor:pointer;">
+              <i class="fas fa-copy"></i> Copiar cita
+            </button>
+          </div>` : ''}
           ${countLine}
           ${shown.length ? `
           <div style="display:flex;flex-direction:column;gap:8px;">
@@ -9769,6 +9782,16 @@
           renderPreview();
         });
       });
+      box.querySelectorAll('.pv-refsuggest-copy-cite').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const picks = _choice[parseInt(btn.dataset.n, 10)] || [];
+          if (!picks.length) return;
+          try {
+            await _copyRich(_citationHtml(picks), _citationText(picks));
+            _flashCopied(btn, 'Copiada');
+          } catch (e) { alert('No se pudo copiar: ' + e.message); }
+        });
+      });
       box.querySelectorAll('.pv-refsuggest-more-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           const n = parseInt(btn.dataset.n, 10);
@@ -9788,7 +9811,8 @@
         .filter(p => _choice[p.n] && _choice[p.n].length)
         .map(p => ({
           start: p.replace_start, end: p.replace_end,
-          label: _choice[p.n].map(c => c.label).join('; '),
+          picks: _choice[p.n],
+          label: _citationText(_choice[p.n]),
         }));
       // HTML: walk forward, ascending by start.
       const asc = [...chosen].sort((a, b) => a.start - b.start);
@@ -9796,7 +9820,7 @@
       let cursor = 0;
       for (const s of asc) {
         html += esc(base.slice(cursor, s.start)).replace(/\n/g, '<br>');
-        html += `<span style="${_styleCss()}">${esc(s.label)}</span>`;
+        html += _citationHtml(s.picks);
         cursor = s.end;
       }
       html += esc(base.slice(cursor)).replace(/\n/g, '<br>');
@@ -9808,6 +9832,10 @@
       return { text, html };
     }
 
+    function _refreshStyled() {
+      if (_result) { renderPoints(); renderPreview(); }
+    }
+
     function renderPreview() {
       const box = $('pv-refsuggest-preview');
       if (!box) return;
@@ -9815,24 +9843,65 @@
       box.innerHTML = html || '<span style="color:#9ca3af;">El texto con las referencias insertadas aparecerá aquí a medida que las elijas.</span>';
     }
 
+    // Copies RICH text (keeps color/bold/italic/underline) in a way
+    // Word, Google Docs and Gmail all honour. A bare HTML fragment
+    // written via ClipboardItem was losing the color in some paste
+    // targets; copying an actually-rendered selection makes the browser
+    // build the clipboard HTML itself (computed styles included), which
+    // is what those apps read. ClipboardItem stays as a fallback.
+    async function _copyRich(html, text) {
+      const holder = document.createElement('div');
+      holder.setAttribute('contenteditable', 'true');
+      holder.style.cssText = 'position:fixed;left:-9999px;top:0;white-space:pre-wrap;' +
+        'font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;background:#fff;';
+      holder.innerHTML = html;
+      document.body.appendChild(holder);
+      let ok = false;
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(holder);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        ok = document.execCommand('copy');
+        sel.removeAllRanges();
+      } catch (e) { ok = false; }
+      holder.remove();
+      if (ok) return;
+      const doc = `<html><head><meta charset="utf-8"></head><body>${html}</body></html>`;
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          'text/html':  new Blob([doc], { type: 'text/html' }),
+        })]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+    }
+
+    function _flashCopied(btn, label) {
+      if (!btn) return;
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-check"></i>' + (label ? ' ' + label : '');
+      setTimeout(() => { btn.innerHTML = orig; }, 1500);
+    }
+
+    // The citation exactly as it will appear in the text: always in
+    // parentheses, several references joined with "; ".
+    function _citationText(picks) {
+      return '(' + picks.map(c => c.label).join('; ') + ')';
+    }
+    function _citationHtml(picks) {
+      const st = _styleCss();
+      const fontOpen = `<font color="${_style.color}">`;
+      return `${fontOpen}<span style="${st}">${esc(_citationText(picks))}</span></font>`;
+    }
+
     async function copyFinal() {
       const { text, html } = _assembleFinal();
-      const btn = $('pv-refsuggest-copy');
       try {
-        if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
-          const item = new ClipboardItem({
-            'text/plain': new Blob([text], { type: 'text/plain' }),
-            'text/html':  new Blob([html], { type: 'text/html' }),
-          });
-          await navigator.clipboard.write([item]);
-        } else {
-          await navigator.clipboard.writeText(text);
-        }
-        if (btn) {
-          const orig = btn.innerHTML;
-          btn.innerHTML = '<i class="fas fa-check" style="margin-right:5px;"></i>Copiado';
-          setTimeout(() => { btn.innerHTML = orig; }, 1600);
-        }
+        await _copyRich(html, text);
+        _flashCopied($('pv-refsuggest-copy'), 'Copiado');
       } catch (e) {
         alert('No se pudo copiar: ' + e.message);
       }
@@ -9901,21 +9970,29 @@
         });
       });
       document.querySelectorAll('.pv-refsuggest-color-btn').forEach(b => {
-        b.addEventListener('click', () => { _style.color = b.dataset.color; paintColors(); updateStylePreview(); });
+        b.addEventListener('click', () => { _style.color = b.dataset.color; paintColors(); updateStylePreview(); _refreshStyled(); });
       });
       $('pv-refsuggest-color-custom')?.addEventListener('input', e => {
-        _style.color = e.target.value; paintColors(); updateStylePreview();
+        _style.color = e.target.value; paintColors(); updateStylePreview(); _refreshStyled();
       });
       document.querySelectorAll('.pv-refsuggest-style-toggle').forEach(b => {
         b.addEventListener('click', () => {
           _style[b.dataset.style] = !_style[b.dataset.style];
-          paintStyleToggles(); updateStylePreview();
+          paintStyleToggles(); updateStylePreview(); _refreshStyled();
         });
       });
       $('pv-refsuggest-expand')?.addEventListener('click', toggleExpand);
       $('pv-refsuggest-go')?.addEventListener('click', go);
       $('pv-refsuggest-back')?.addEventListener('click', showInput);
       $('pv-refsuggest-copy')?.addEventListener('click', copyFinal);
+      $('pv-refsuggest-preview-expand')?.addEventListener('click', () => {
+        const box = $('pv-refsuggest-preview');
+        const btn = $('pv-refsuggest-preview-expand');
+        const expanded = box.style.maxHeight === 'none';
+        box.style.maxHeight = expanded ? '110px' : 'none';
+        btn.innerHTML = expanded ? '<i class="fas fa-expand"></i>' : '<i class="fas fa-compress"></i>';
+        btn.title = expanded ? 'Mostrar todo el texto' : 'Reducir';
+      });
       paintMode(); paintProvider(); paintColors(); paintStyleToggles(); updateStylePreview();
     }
 

@@ -52,9 +52,9 @@ _CANDIDATE_POOL   = 15          # distinct articles per point — a wide first p
                                  # not just the first few plausible-looking hits
 _FRAGMENTS_PER_ARTICLE = 3       # same per-article depth the library chat uses
 _SHOWN_BY_DEFAULT = 5           # of which this many are shown without "ver más"
-_MAX_EXPLAIN_BLOCKS = 60        # total candidate blocks across ALL points sent to
-                                 # the explain LLM call — bounds prompt size (and
-                                 # latency) regardless of how many points there are
+_POINTS_PER_BATCH = 3            # points explained per LLM call (see _explain_points)
+_EXPLAIN_PER_POINT = 12          # candidates per point sent to the explain call
+_EXPLAIN_WORKERS  = 5            # concurrent explain calls
 _SNIPPET_CHARS    = 350         # per FRAGMENT (an article contributes up to 3)
 _SUMMARY_CHARS    = 500         # the article's AI summary, appended once
 _CONTEXT_TAIL_CHARS = 600       # how much of a claim's tail drives retrieval + explanation
@@ -388,16 +388,8 @@ Responde SOLO con JSON estricto, sin markdown:
 "explanation": "..."}}]}}]}}"""
 
 
-def _explain_points(points: list[dict], provider: Optional[str]) -> tuple[dict, dict, int]:
+def _explain_batch(points: list[dict], provider: Optional[str]) -> tuple[dict, dict]:
     from .llm_pool import call_llm_json_with_fallback
-
-    # Bound the TOTAL number of candidate blocks across every point, not
-    # just per point — a wide pool (_CANDIDATE_POOL) times many points
-    # produced a prompt large enough to make the combined LLM call slow
-    # enough to risk gunicorn's own worker timeout on a text with many
-    # points. Scales down gracefully (floor of 6) instead of a fixed cap
-    # that would be wasteful on a text with just one or two points.
-    per_point = max(6, min(_CANDIDATE_POOL, _MAX_EXPLAIN_BLOCKS // max(1, len(points))))
 
     payload = []
     for p in points:
@@ -411,24 +403,70 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> tuple[dict, 
                  "quartile": c["quartile"],
                  "fragments": c["fragments"],
                  **({"ai_summary": c["ai_summary"]} if c["ai_summary"] else {})}
-                for c in p["candidates"][:per_point]
+                for c in p["candidates"][:_EXPLAIN_PER_POINT]
             ],
         })
     user = json.dumps({"points": payload}, ensure_ascii=False)
+    return call_llm_json_with_fallback(
+        providers=_provider_chain(provider),
+        system=_EXPLAIN_SYSTEM + _glossary_block(), user=user, max_tokens=5000,
+        # One attempt per provider — the Claude → GPT → Gemini chain is
+        # the retry, so a slow provider can't stack timeouts.
+        models=_chat_models(), timeout=90.0, max_attempts=1,
+    )
 
-    try:
-        parsed, info = call_llm_json_with_fallback(
-            providers=_provider_chain(provider),
-            system=_EXPLAIN_SYSTEM + _glossary_block(), user=user, max_tokens=8000,
-            # One attempt per provider with a generous timeout (bigger
-            # models, longer structured output) — retries live in the
-            # Claude → GPT → Gemini chain itself, so a slow provider can't
-            # stack 3 timeouts before the next one is even tried.
-            models=_chat_models(), timeout=120.0, max_attempts=1,
-        )
-    except RuntimeError as exc:
-        raise RefSuggestError(f"No se pudieron generar las explicaciones: {exc}") from exc
-    return parsed, info, per_point
+
+def _explain_points(points: list[dict], provider: Optional[str]
+                    ) -> tuple[dict[int, list], dict[int, str], list[dict]]:
+    """Explain every point, in small batches run CONCURRENTLY.
+
+    One combined call for all points used to work for a handful of
+    "(Ref.)" markers but not for "auto" mode, which routinely finds the
+    maximum number of points: a single call then had to generate a very
+    long structured answer with the large chat models, ran past its own
+    timeout, fell through to the next provider and started over — and
+    the request got killed by gunicorn's 360 s worker limit (an HTML
+    500 with no detail, as seen from the UI). Small batches keep every
+    call's output short, run in parallel, and a failed batch only
+    affects its own points instead of the whole analysis.
+
+    Returns (suggestions_by_point, errors_by_point, infos)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    batches = [points[i:i + _POINTS_PER_BATCH]
+               for i in range(0, len(points), _POINTS_PER_BATCH)]
+
+    def run(batch):
+        try:
+            parsed, info = _explain_batch(batch, provider)
+            return batch, parsed, info, None
+        except Exception as exc:
+            logger.warning("ref_suggest: explain batch failed: %s", exc)
+            return batch, None, None, str(exc)
+
+    by_point: dict[int, list] = {}
+    errors: dict[int, str] = {}
+    infos: list[dict] = []
+    with ThreadPoolExecutor(max_workers=min(_EXPLAIN_WORKERS, len(batches))) as pool:
+        for batch, parsed, info, err in pool.map(run, batches):
+            if err:
+                for p in batch:
+                    errors[p["n"]] = err
+                continue
+            infos.append(info)
+            for item in (parsed.get("points") or []):
+                if not isinstance(item, dict):
+                    continue
+                n = item.get("n")
+                sugg = item.get("suggestions") or []
+                if isinstance(n, int) and isinstance(sugg, list):
+                    by_point[n] = sugg
+
+    if points and len(errors) == len(points):
+        raise RefSuggestError(
+            "No se pudieron generar las explicaciones con ningún proveedor de IA "
+            f"(Claude → GPT → Gemini). Detalle: {next(iter(errors.values()))}")
+    return by_point, errors, infos
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -517,17 +555,11 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
 
     points_with_candidates = [p for p in points if p["candidates"]]
     explain_info = None
-    explain_per_point = 0
+    explain_errors: dict[int, str] = {}
     explanations_by_point: dict[int, list[dict]] = {}
     if points_with_candidates:
-        parsed, explain_info, explain_per_point = _explain_points(points_with_candidates, provider)
-        for item in (parsed.get("points") or []):
-            if not isinstance(item, dict):
-                continue
-            n = item.get("n")
-            sugg = item.get("suggestions") or []
-            if isinstance(n, int) and isinstance(sugg, list):
-                explanations_by_point[n] = sugg
+        explanations_by_point, explain_errors, explain_info = _explain_points(
+            points_with_candidates, provider)
 
     out_points = []
     for p in points:
@@ -569,7 +601,13 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
 
         diagnostic = None
         if not suggestions:
-            if not p["candidates"]:
+            if p["n"] in explain_errors:
+                diagnostic = (
+                    "La búsqueda encontró candidatos para esta frase, pero la IA no pudo "
+                    "evaluarlos (fallaron Claude, GPT y Gemini para este grupo de puntos). "
+                    f"Detalle: {explain_errors[p['n']][:300]}. Vuelve a lanzar el análisis."
+                )
+            elif not p["candidates"]:
                 diagnostic = (
                     "La búsqueda semántica sobre la biblioteca de PrionVault no ha "
                     "encontrado NINGÚN artículo relacionado con esta frase — ni por "
@@ -595,7 +633,7 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
             "replace_end": p["replace_end"],
             "suggestions": suggestions[:_SHOWN_BY_DEFAULT],
             "more_suggestions": suggestions[_SHOWN_BY_DEFAULT:],
-            "candidates_considered": min(len(p["candidates"]), explain_per_point) if explain_per_point else len(p["candidates"]),
+            "candidates_considered": min(len(p["candidates"]), _EXPLAIN_PER_POINT),
             "total_candidate_articles": p["total_candidate_articles"],
             "diagnostic": diagnostic,
             "context": {
