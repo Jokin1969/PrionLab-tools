@@ -51,6 +51,9 @@ _CANDIDATE_POOL   = 20          # retrieved per point — a wide first pass so t
                                  # explain step has real material to compare, not
                                  # just the first few plausible-looking hits
 _SHOWN_BY_DEFAULT = 5           # of which this many are shown without "ver más"
+_MAX_EXPLAIN_BLOCKS = 90        # total candidate blocks across ALL points sent to
+                                 # the explain LLM call — bounds prompt size (and
+                                 # latency) regardless of how many points there are
 _SNIPPET_CHARS    = 420         # per-candidate context chunk sent to the LLM
 _CONTEXT_TAIL_CHARS = 600       # how much of a claim's tail drives retrieval + explanation
 _SURROUNDING_CHARS = 300        # extra context (each side) kept for the UI hover popup
@@ -329,8 +332,16 @@ Responde SOLO con JSON estricto, sin markdown:
 "explanation": "..."}}]}}]}}"""
 
 
-def _explain_points(points: list[dict], provider: Optional[str]) -> dict:
+def _explain_points(points: list[dict], provider: Optional[str]) -> tuple[dict, dict, int]:
     from .llm_pool import call_llm_json_with_fallback
+
+    # Bound the TOTAL number of candidate blocks across every point, not
+    # just per point — a wide pool (_CANDIDATE_POOL) times many points
+    # produced a prompt large enough to make the combined LLM call slow
+    # enough to risk gunicorn's own worker timeout on a text with many
+    # points. Scales down gracefully (floor of 6) instead of a fixed cap
+    # that would be wasteful on a text with just one or two points.
+    per_point = max(6, min(_CANDIDATE_POOL, _MAX_EXPLAIN_BLOCKS // max(1, len(points))))
 
     payload = []
     for p in points:
@@ -342,7 +353,7 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> dict:
                  "authors": (c["authors"] or "").split(";")[0].strip(),
                  "year": c["year"], "journal": c["journal"],
                  "quartile": c["quartile"], "snippet": c["snippet"]}
-                for c in p["candidates"]
+                for c in p["candidates"][:per_point]
             ],
         })
     user = json.dumps({"points": payload}, ensure_ascii=False)
@@ -354,7 +365,7 @@ def _explain_points(points: list[dict], provider: Optional[str]) -> dict:
         )
     except RuntimeError as exc:
         raise RefSuggestError(f"No se pudieron generar las explicaciones: {exc}") from exc
-    return parsed, info
+    return parsed, info, per_point
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -427,16 +438,26 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
     truncated = len(points) > _MAX_POINTS
     points = points[:_MAX_POINTS]
 
-    for p in points:
-        candidates, total = _build_candidates(p["claim"], viewer_id)
+    # Retrieval per point is independent (its own DB connection, own
+    # rerank call) — run them concurrently instead of one after another.
+    # With up to _MAX_POINTS points, each paying a real network round
+    # trip for the Voyage rerank call, a sequential loop could run long
+    # enough to hit gunicorn's own worker timeout (seen in production:
+    # a SystemExit(1) raised mid-query by gunicorn's watchdog, not a
+    # real failure) well before the explain step even starts.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(6, max(1, len(points)))) as pool:
+        results = list(pool.map(lambda p: _build_candidates(p["claim"], viewer_id), points))
+    for p, (candidates, total) in zip(points, results):
         p["candidates"] = candidates
         p["total_candidate_articles"] = total
 
     points_with_candidates = [p for p in points if p["candidates"]]
     explain_info = None
+    explain_per_point = 0
     explanations_by_point: dict[int, list[dict]] = {}
     if points_with_candidates:
-        parsed, explain_info = _explain_points(points_with_candidates, provider)
+        parsed, explain_info, explain_per_point = _explain_points(points_with_candidates, provider)
         for item in (parsed.get("points") or []):
             if not isinstance(item, dict):
                 continue
@@ -511,7 +532,7 @@ def suggest_references(text: str, mode: str, provider: Optional[str] = None,
             "replace_end": p["replace_end"],
             "suggestions": suggestions[:_SHOWN_BY_DEFAULT],
             "more_suggestions": suggestions[_SHOWN_BY_DEFAULT:],
-            "candidates_considered": len(p["candidates"]),
+            "candidates_considered": min(len(p["candidates"]), explain_per_point) if explain_per_point else len(p["candidates"]),
             "total_candidate_articles": p["total_candidate_articles"],
             "diagnostic": diagnostic,
             "context": {
