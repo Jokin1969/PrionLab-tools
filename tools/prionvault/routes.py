@@ -481,6 +481,32 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         conditions.append("articles.id::text = ANY(:ids_filter)")
         params["ids_filter"] = ids_filter
 
+    # A query that is ONE phrase wrapped in quotes ("...") is treated as
+    # a known title (or part of one): match it against the normalized
+    # title — lower-case, every run of non-alphanumerics stripped — so
+    # spacing/punctuation differences don't matter. Answered directly by
+    # the two expression indexes from migration 095 instead of the
+    # per-word ILIKE chain below (one ILIKE per word × three columns,
+    # ANDed — the dominant cost when a whole title was pasted).
+    _title_norm = None
+    _qs = (q or "").strip()
+    if (len(_qs) >= 2 and _qs[0] in '"“”' and _qs[-1] in '"“”'
+            and not any(ch in _qs[1:-1] for ch in '"“”')):
+        _title_norm = re.sub(r"[\W_]+", "", _qs[1:-1].lower())
+        if len(_title_norm) < 3:
+            _title_norm = None
+    if _title_norm:
+        # Normalize the phrase in SQL with the SAME expression as the
+        # index, so both sides agree on which characters count as
+        # alphanumeric (e.g. Greek letters) whatever the DB locale is.
+        # It folds to a constant at plan time, so the trigram index applies.
+        conditions.append(
+            "lower(regexp_replace(title, '[^[:alnum:]]+', '', 'g')) LIKE "
+            "('%' || lower(regexp_replace(:title_phrase, '[^[:alnum:]]+', '', 'g')) || '%')")
+        params["title_phrase"] = _qs[1:-1]
+        force_index_scan = True
+        q = ""
+
     if q:
         # websearch_to_tsquery (Postgres >= 11) gives the user a
         # Google-like syntax for free:
@@ -534,6 +560,13 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
 
         if not _sf:
             ilike_cols = ["title", "coalesce(authors,'')", "coalesce(abstract,'')"]
+            # A long query (typically a pasted title) made one ILIKE per
+            # word against the full abstract text — by far the most
+            # expensive column — for every word. FTS (search_vector)
+            # already covers abstracts by word, so for long queries the
+            # substring side only needs title + authors.
+            if len(words) >= 6:
+                ilike_cols = ["title", "coalesce(authors,'')"]
         else:
             ilike_cols = []
             if "title"    in _sf: ilike_cols.append("title")

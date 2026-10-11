@@ -2303,7 +2303,12 @@
   // ── render: article list ───────────────────────────────────────────────
   let _listIds = [];   // IDs in current page order — used for detail modal nav
 
+  // Only the response to the LATEST request may paint the list — a slow
+  // earlier search (e.g. one fired mid-typing) used to land after a fast
+  // later one and overwrite it with stale results.
+  let _loadSeq = 0;
   async function loadArticles() {
+    const mySeq = ++_loadSeq;
     const params = buildListParams();
 
     const tbody = document.getElementById('pv-results-tbody');
@@ -2331,6 +2336,7 @@
       } else {
         r = await api('/articles?' + params.toString());
       }
+      if (mySeq !== _loadSeq) return;
       document.getElementById('pv-result-count').textContent =
         r.total + ' result' + (r.total === 1 ? '' : 's');
       document.getElementById('pv-result-page').textContent =
@@ -2356,6 +2362,7 @@
       updateBulkBar();
       syncSelectAllHeader();
     } catch (e) {
+      if (mySeq !== _loadSeq) return;
       showEmpty('Error: ' + esc(e.message));
     }
   }
@@ -11734,6 +11741,10 @@
     searchInput.addEventListener('input', e => {
       syncClearBtn();
       state.q = e.target.value.trim();
+      // While a quoted title is still being typed/pasted (odd number of
+      // quotes), don't search yet — the half-open phrase would run the
+      // slow per-word search for nothing. The closing quote triggers it.
+      if (((state.q.match(/["“”]/g) || []).length) % 2 === 1) return;
       onSearch();
     });
     searchInput.addEventListener('keydown', e => {
