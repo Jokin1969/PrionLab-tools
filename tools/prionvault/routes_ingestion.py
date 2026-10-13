@@ -2238,6 +2238,7 @@ def api_article_email(aid):
     body = request.get_json(silent=True) or {}
     to = (body.get("to") or "").strip()
     scheduled_at_str = body.get("scheduled_at")
+    mark_read = body.get("mark_read", True) is not False
     from .services import article_share, scheduled_email
     from datetime import datetime
 
@@ -2251,7 +2252,10 @@ def api_article_email(aid):
                 sender_name=me.get("name") or "",
                 include_summary=body.get("include_summary", True) is not False,
                 comment=body.get("comment", ""),
-                sender_user_id=_viewer_id())
+                # The stored sender is only used to mark the article read
+                # once the scheduled email goes out — leave it empty when
+                # the user unticked "Marcar como leído".
+                sender_user_id=_viewer_id() if mark_read else None)
             return jsonify({"ok": True, **result})
 
         # Otherwise send now
@@ -2266,7 +2270,17 @@ def api_article_email(aid):
     except Exception as exc:
         logger.exception("article email failed")
         return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
-    return jsonify({"ok": True, **result})
+
+    marked_read = False
+    uid = _viewer_id()
+    if mark_read and uid:
+        try:
+            from .services.email_digest import _mark_articles_read
+            from .ingestion.queue import _get_engine
+            marked_read = _mark_articles_read(_get_engine(), uid, [str(aid)])
+        except Exception:
+            logger.exception("article email: mark read failed for %s", aid)
+    return jsonify({"ok": True, **result, "marked_read": marked_read})
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/jc-request", methods=["POST"])

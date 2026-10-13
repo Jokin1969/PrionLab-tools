@@ -177,27 +177,33 @@ def _unflag_articles(eng, user_id: str, article_ids: list[str]) -> None:
         logger.error("email_digest: unflag failed: %s", exc)
 
 
-def _mark_articles_read(eng, user_id: str, article_ids: list[str]) -> None:
+def _mark_articles_read(eng, user_id: str, article_ids: list[str]) -> bool:
     """Set read_at for the given articles for this user, if not already
     read — once a PrionVault Picks digest has actually sent an article
     (with its AI summary) to the user, it's been "read" from PrionVault's
     point of view."""
     if not article_ids:
-        return
+        return False
     from sqlalchemy import text as _t
-    placeholders = ", ".join(f":aid{i}" for i in range(len(article_ids)))
-    params = {f"aid{i}": aid for i, aid in enumerate(article_ids)}
-    params["uid"] = user_id
+    # UPSERT, not UPDATE: a user who never touched an article has no
+    # prionvault_user_state row for it yet, and a plain UPDATE silently
+    # did nothing in that (very common) case.
     try:
         with eng.begin() as conn:
-            conn.execute(_t(f"""
-                UPDATE prionvault_user_state
-                   SET read_at = COALESCE(read_at, NOW()), updated_at = NOW()
-                 WHERE user_id = :uid
-                   AND article_id::text IN ({placeholders})
-            """), params)
+            conn.execute(_t("""
+                INSERT INTO prionvault_user_state
+                    (user_id, article_id, read_at, created_at, updated_at)
+                SELECT CAST(:uid AS uuid), x.article_id, NOW(), NOW(), NOW()
+                  FROM unnest(CAST(:ids AS uuid[])) AS x(article_id)
+                  JOIN articles a ON a.id = x.article_id
+                ON CONFLICT (user_id, article_id) DO UPDATE
+                   SET read_at = COALESCE(prionvault_user_state.read_at, NOW()),
+                       updated_at = NOW()
+            """), {"uid": str(user_id), "ids": [str(a) for a in article_ids]})
+        return True
     except Exception as exc:
         logger.error("email_digest: mark_read failed: %s", exc)
+        return False
 
 
 def _fetch_new_articles(topics: list[str], since: datetime,

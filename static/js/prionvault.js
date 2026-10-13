@@ -10135,6 +10135,8 @@
       if (ctog) ctog.checked = !!lastComment;
       const incS = $('pv-email-include-summary');
       if (incS) incS.checked = true;
+      const mr = $('pv-email-mark-read');
+      if (mr) mr.checked = true;
       // Reset schedule toggle
       const stog = $('pv-email-schedule-toggle');
       if (stog) {
@@ -10187,7 +10189,8 @@
       }
 
       try {
-        const payload = { to, ...opts };
+        const markRead = $('pv-email-mark-read')?.checked !== false;
+        const payload = { to, ...opts, mark_read: markRead };
         if (scheduledAt) payload.scheduled_at = scheduledAt;
         const r = await api(`/articles/${_article.id}/email`, {
           method: 'POST',
@@ -10205,6 +10208,18 @@
           const pdfNote = r.attached_pdf ? ' (con PDF adjunto)'
             : (r.has_pdf ? ' (sin PDF: no disponible o demasiado grande)' : ' (este artículo no tiene PDF)');
           status.textContent = '✓ Enviado' + pdfNote;
+          if (markRead && r.marked_read) {
+            _article.is_read = true;
+            // Light in-place repaint of the listing's ✓ — the article
+            // object passed in may be a partial one (e.g. from the cart),
+            // so don't rebuild the whole row from it.
+            const btn = document.querySelector(`tr[data-aid="${_article.id}"] .pv-read-btn`);
+            if (btn) {
+              btn.dataset.active = '1';
+              btn.style.color = '#15803d';
+              btn.title = 'Marcar como no leído';
+            }
+          }
         }
         setTimeout(close, 1800);
       } catch (e) {
