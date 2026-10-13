@@ -516,6 +516,69 @@ def send_jc_request_email(article_id: str, requester_name: str = "") -> dict:
             "attached_pdf": bool(attachments)}
 
 
+def send_jc_claim_email(article_id: str, presenter_name: str) -> dict:
+    """Tell every JC-responsible user (CC admins) that `presenter_name`
+    has reserved this article to present it in Journal Club, so they can
+    schedule the session. Raises LookupError("no_jc_responsible") /
+    ("article_not_found"), RuntimeError if SMTP isn't configured."""
+    from core.users import list_jc_responsible, list_admin_emails
+
+    responsibles = list_jc_responsible()
+    if not responsibles:
+        raise LookupError("no_jc_responsible")
+    a = _fetch_article(article_id)
+    if not a:
+        raise LookupError("article_not_found")
+    from config import smtp_configured
+    if not smtp_configured():
+        raise RuntimeError("El servidor de correo no está configurado.")
+
+    base = _base_url()
+    admins = list_admin_emails()
+    presenter = (presenter_name or "").strip() or "Un compañero/a"
+
+    attachments = []
+    try:
+        from .email_digest import _collect_pdf_attachments
+        attachments, _ = _collect_pdf_attachments([a])
+    except Exception as exc:
+        logger.warning("article_share: PDF collect failed for JC claim: %s", exc)
+
+    subject = f"Journal Club · {presenter} presentará: {a.get('title') or ''}"[:160]
+    sent, failed = [], []
+    for u in responsibles:
+        to = (u.get("email") or "").strip()
+        if not to:
+            continue
+        name = (u.get("full_name") or u.get("username") or "").strip()
+        greeting = f"Hola {name}," if name else "Hola,"
+        comment = (
+            f"{greeting}\n\n"
+            f"{presenter} ha elegido este artículo en PrionVault para presentarlo "
+            f"en Journal Club. Queda atento/a a que le avises de cuándo será su "
+            f"presentación: cuando lo anuncies con el botón «Convocar» de "
+            f"PrionVault, se le desbloqueará la subida de la presentación.\n\n"
+            f"El artículo ha quedado reservado (botón JC en rojo) y ya no aparece "
+            f"como disponible para Journal Club. Si hubiera que liberarlo, puedes "
+            f"hacerlo tú o un administrador desde ese mismo botón."
+        )
+        html = build_share_html(a, base, "", True, comment)
+        plain = _plain(a, base, "", True, comment)
+        try:
+            if attachments:
+                from core.smtp_client import send_email_with_attachments
+                ok = send_email_with_attachments(to, subject, plain, attachments,
+                                                 html=html, cc=admins)
+            else:
+                from core.smtp_client import send_email
+                ok = send_email(to, subject, plain, html=html, cc=admins)
+        except Exception:
+            logger.exception("article_share: JC claim email to %s failed", to)
+            ok = False
+        (sent if ok else failed).append(to)
+    return {"ok": bool(sent), "sent": sent, "failed": failed}
+
+
 # ── Journal Club convocation (lab-wide announcement) ────────────────────────
 # Once an article is marked is_jc and the responsible has picked a date, this
 # sends the actual "come to Journal Club" announcement to every active user
@@ -554,9 +617,19 @@ def send_jc_convocation_email(article_id: str, *, when_text: str,
 
     base = _base_url()
 
+    presenter = ""
+    try:
+        from sqlalchemy import text as _t
+        with _get_engine().connect() as conn:
+            presenter = (conn.execute(_t(
+                "SELECT jc_claimed_by_name FROM articles WHERE id = CAST(:aid AS uuid)"
+            ), {"aid": str(article_id)}).scalar() or "").strip()
+    except Exception:
+        presenter = ""   # column not migrated yet — just omit the line
     comment = (
         f"Convocatoria de Journal Club{(' — la propone ' + requester_name) if requester_name else ''}."
-        f"\n\n📅 Cuándo: {when_text}"
+        + (f"\n\n🎤 Presenta: {presenter}" if presenter else "")
+        + f"\n\n📅 Cuándo: {when_text}"
         + (f"\n📍 Dónde: {location_text.strip()}" if location_text.strip() else "")
         + (f"\n\n{notes.strip()}" if notes.strip() else "")
     )
@@ -587,6 +660,19 @@ def send_jc_convocation_email(article_id: str, *, when_text: str,
         raise RuntimeError(f"El envío del email falló: {exc}") from exc
     if not ok:
         raise RuntimeError("El envío del email falló (revisa el servidor SMTP).")
+
+    # Announcing the session unlocks a reserved article's JC button for
+    # its presenter (they can now upload the presentation). Also covers
+    # scheduled convocations — this runs when the email actually goes out.
+    try:
+        from sqlalchemy import text as _t
+        with _get_engine().begin() as conn:
+            conn.execute(_t("""
+                UPDATE articles SET jc_announced_at = COALESCE(jc_announced_at, NOW())
+                 WHERE id = CAST(:aid AS uuid) AND jc_claimed_by IS NOT NULL
+            """), {"aid": str(article_id)})
+    except Exception:
+        logger.exception("article_share: could not unlock JC claim for %s", article_id)
 
     return {"ok": True, "recipients": len(recipients), "attached_pdf": bool(attachments)}
 

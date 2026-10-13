@@ -966,7 +966,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
          "pdf_metadata_match_status", "summary_ai_provider",
          "summary_ai_model",
          "summary_tokens_in", "summary_tokens_out",
-         "ai_summary_glossary_version"]
+         "ai_summary_glossary_version",
+         "jc_claimed_by", "jc_claimed_by_name", "jc_claimed_at", "jc_announced_at"]
         if c in pv_cols
     )
     # has_summary_* are computed booleans — cheaper than transferring full text.
@@ -1220,6 +1221,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             "is_favorite":    (user_states.get(aid) or {}).get("is_favorite", False),
             "is_read":        (user_states.get(aid) or {}).get("is_read", False),
             "is_jc":          bool(d.get("is_jc")),   # shared, article-level
+            **_jc_claim_fields(d),
             "read_at":        (user_states.get(aid) or {}).get("read_at"),
             "notes":          note_stubs.get(aid_str, []),
             "prionpacks":     [{"id": p, "title": pp_titles.get(p, p)} for p in pp_ids],
@@ -1278,6 +1280,7 @@ def api_article_detail(aid):
             "summary_ai_provider", "summary_ai_model",
             "summary_tokens_in", "summary_tokens_out",
             "summary_ai_diagnostics",
+            "jc_claimed_by", "jc_claimed_by_name", "jc_claimed_at", "jc_announced_at",
         ]
         pv_select = ", ".join(c for c in optional if c in pv_cols)
         select_cols = base_cols + (f", {pv_select}" if pv_select else "")
@@ -1344,6 +1347,7 @@ def api_article_detail(aid):
             "jc_count":      int(d.get("jc_count") or 0),
             "has_jc":        bool(d.get("jc_count") or 0),
             "is_jc":         bool(d.get("is_jc")),   # shared Journal Club mark
+            **_jc_claim_fields(d),
             "extraction_status": d.get("extraction_status") or "pending",
             "extraction_error":  d.get("extraction_error"),
             "indexed_at":    d["indexed_at"].isoformat() if d.get("indexed_at") else None,
@@ -2251,6 +2255,18 @@ def api_set_favorite(aid):
         return jsonify({"error": "internal error", "detail": str(exc)[:300]}), 500
     finally:
         s.close()
+
+
+def _jc_claim_fields(d: dict) -> dict:
+    """Journal Club reservation state of an article row (migration 096)."""
+    def iso(v):
+        return v.isoformat() if hasattr(v, "isoformat") else v
+    return {
+        "jc_claimed_by":      d.get("jc_claimed_by"),
+        "jc_claimed_by_name": d.get("jc_claimed_by_name"),
+        "jc_claimed_at":      iso(d.get("jc_claimed_at")),
+        "jc_announced_at":    iso(d.get("jc_announced_at")),
+    }
 
 
 @prionvault_bp.route("/api/articles/<uuid:aid>/jc-mark", methods=["POST"])
@@ -4502,6 +4518,10 @@ def api_jc_create(aid):
     admin gate downstream.
     """
     from .services import jc as _jc
+    from .routes_jc_claim import check_can_upload_presentation
+    blocked = check_can_upload_presentation(aid)
+    if blocked:
+        return blocked
     data = request.form if request.form else (request.get_json(silent=True) or {})
     presented_at = (data.get("presented_at") or "").strip()
     presenter_name = (data.get("presenter_name") or "").strip()
@@ -5252,3 +5272,6 @@ from . import routes_user_admin  # noqa: F401, E402
 
 # Reference-suggestion modal ("Sugerir referencias").
 from . import routes_ref_suggest  # noqa: F401, E402
+
+# Journal Club reservation flow (reserve / release / unlock).
+from . import routes_jc_claim  # noqa: F401, E402

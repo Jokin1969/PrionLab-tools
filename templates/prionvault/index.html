@@ -1952,7 +1952,7 @@
                      color:#6b7280;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
         <i class="fas fa-people-arrows" style="margin-right:5px;"></i>Repetidos
       </button>
-      <button id="pv-jc-manage-verify-btn" type="button"
+      <button id="pv-jc-manage-verify-btn" type="button" class="pv-admin-only"
               title="Verificar en Dropbox que todos los archivos enlazados siguen existiendo con el mismo nombre y ruta (detecta archivos renombrados/movidos/borrados tras enlazarlos)."
               style="padding:8px 10px;border-radius:8px;border:1px solid #d1d5db;background:#fff;
                      color:#6b7280;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
@@ -2647,6 +2647,22 @@
       </button>
     </div>
     <div id="pv-jc-choice-status" style="font-size:12px;margin-top:12px;min-height:16px;"></div>
+  </div>
+</div>
+
+<!-- ── JC reservation modal ───────────────────────────────────────────────
+     Rendered step by step by PVJcClaim in prionvault.js: identity check →
+     article details + "¿Quieres presentarlo?" → confirmation; or, for an
+     already-reserved article, its status (and release/unlock actions for
+     the JC responsible / admins). -->
+<div id="pv-jc-claim-modal" class="pv-modal" style="display:none;">
+  <div class="pv-modal-backdrop"></div>
+  <div class="pv-modal-inner" style="max-width:620px;max-height:90vh;overflow-y:auto;">
+    <button class="pv-modal-close" id="pv-jc-claim-close" aria-label="Close">×</button>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111827;">
+      <i class="fas fa-chalkboard-teacher" style="color:#be185d;margin-right:8px;"></i>Journal Club
+    </h2>
+    <div id="pv-jc-claim-body"></div>
   </div>
 </div>
 

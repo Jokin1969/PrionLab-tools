@@ -3551,18 +3551,16 @@
       // grey one jumps straight into "add presentation" for THIS article
       // (no need to search for it, we already know it); clicking a
       // green one (has_jc) opens the existing document(s) as before.
-      `<button type="button" class="pv-row-jc-btn" data-aid="${esc(a.id)}" data-has-jc="${a.has_jc ? '1' : '0'}"
-              title="${a.has_jc
-                  ? (a.jc_presenters
-                      ? esc(`Presentado por ${a.jc_presenters} en Journal Club — clic para abrir el documento`)
-                      : (a.jc_count > 1
-                          ? esc(a.jc_count + ' presentaciones en Journal Club — clic para abrir el documento')
-                          : 'Presentado en Journal Club — clic para abrir el documento'))
-                  : 'Sin presentación de Journal Club — clic para añadir una'}"
+      (() => {
+        const look = _jcButtonLook(a);
+        const title = a.has_jc && a.jc_presenters
+          ? `Presentado por ${a.jc_presenters} en Journal Club — clic para verlo en Gestión de Journal clubs`
+          : look.title;
+        return `<button type="button" class="pv-row-jc-btn" data-aid="${esc(a.id)}"
+              title="${esc(title)}"
               style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;
-                     border:none;cursor:pointer;${a.has_jc
-                       ? 'background:#14532d;color:#fef08a;'
-                       : 'background:#f3f4f6;color:#9ca3af;'}">JC${a.has_jc && a.jc_count > 1 ? ' ' + a.jc_count : ''}</button>`,
+                     border:none;cursor:pointer;${look.css}">${look.label}${a.has_jc && a.jc_count > 1 ? ' ' + a.jc_count : ''}</button>`;
+      })(),
       (a.prionpacks && a.prionpacks.length)
         ? `<a href="/prionpacks/index?open=${esc(a.prionpacks[0].id)}"
               target="_blank" rel="noopener"
@@ -3639,7 +3637,7 @@
                                    : (IS_ADMIN ? 'Marcar para Journal Club' : 'No está en Journal Club')}"
                   style="background:none;border:none;padding:0;font-size:13px;line-height:1;
                          cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${jcColor};"><i class="fas fa-book-open"></i></button>
-          ${(a.is_jc && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
+          ${(_jcConvocable(a) && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
           <button class="pv-jc-convoke-row-btn"
                   title="Convocar Journal Club — enviar fecha/hora a todo el laboratorio"
                   style="background:none;border:none;padding:0;font-size:13px;line-height:1;
@@ -3988,28 +3986,9 @@
       const jcRowBtn = row.querySelector('.pv-row-jc-btn');
       if (jcRowBtn) jcRowBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (jcRowBtn.dataset.hasJc !== '1') {
-          // No presentation yet — skip the article search step entirely,
-          // we already know which article this is.
-          openJcFlow(a, () => loadArticles());
-          return;
-        }
         jcRowBtn.disabled = true;
-        try {
-          const r = await api(`/articles/${a.id}/jc`);
-          const files = (r.items || []).flatMap(p => p.files || []);
-          if (files.length === 1) {
-            window.open(API + `/jc/files/${files[0].id}/view`, '_blank', 'noopener');
-          } else {
-            // Several files (or none yet attached) — open the article so
-            // the operator can see/pick from the full Journal Club list.
-            openDetail(a.id);
-          }
-        } catch (err) {
-          alert('No se pudo abrir el Journal Club: ' + err.message);
-        } finally {
-          jcRowBtn.disabled = false;
-        }
+        try { await openJcButton(a, () => loadArticles()); }
+        finally { jcRowBtn.disabled = false; }
       });
 
       const emailRowBtn = row.querySelector('.pv-email-row-btn');
@@ -4476,7 +4455,7 @@
             <span style="font-size:12px;line-height:1;color:${a.is_jc ? '#7c3aed' : '#9ca3af'};"><i class="fas fa-book-open"></i></span>
             ${a.is_jc ? 'En Journal Club' : 'Marcar para Journal Club'}
           </button>` : ''}
-          ${(a.is_jc && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
+          ${(_jcConvocable(a) && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
           <button id="pv-detail-jc-convoke" type="button"
                   title="Convocar Journal Club — enviar fecha/hora a todo el laboratorio"
                   style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
@@ -5411,7 +5390,7 @@
           </button>
         </h3>
         <div style="display:flex;gap:6px;">
-          ${(a.is_jc && !a.jc_count && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
+          ${(_jcConvocable(a) && !a.jc_count && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
             <button id="pv-jc-convoke-btn" type="button"
                     title="Enviar el email de convocatoria a todo el laboratorio, con fecha/hora"
                     style="padding:4px 10px;font-size:12px;border-radius:6px;
@@ -5601,7 +5580,12 @@
     const btn = document.getElementById('pv-jc-add-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
-      openJcFlow(a, () => { renderJcSection(a); loadArticles(); });
+      const done = () => { renderJcSection(a); loadArticles(); };
+      // A free blue-book or reserved article goes through the
+      // reservation flow (respects the lock); otherwise — e.g. adding a
+      // second presentation — the usual add flow.
+      if (!a.has_jc && !(a.jc_count > 0) && (a.is_jc || a.jc_claimed_by)) openJcButton(a, done);
+      else openJcFlow(a, done);
     });
   }
 
@@ -6071,6 +6055,231 @@
 
     return { open };
   })();
+
+  // ── Journal Club reservation flow ────────────────────────────────────
+  // A blue-book (is_jc) article picked by someone to present is RESERVED:
+  // its JC button turns red and locked, and it leaves the blue-book list.
+  // Announcing the session (Convocar) unlocks it for the presenter, who
+  // then uploads the presentation; after that the button is green and
+  // opens "Gestión de Journal clubs" on that article.
+  function _jcConvocable(a) {
+    return !!(a && (a.is_jc || (a.jc_claimed_by && !a.has_jc && !(a.jc_count > 0))));
+  }
+  function _jcReserved(a) {
+    return !!(a && a.jc_claimed_by && !a.has_jc && !(a.jc_count > 0));
+  }
+  // Style + tooltip for every "JC" text button (listing, cart).
+  function _jcButtonLook(a) {
+    if (a.has_jc || a.jc_count > 0) {
+      return { css: 'background:#14532d;color:#fef08a;', label: 'JC',
+               title: 'Presentado en Journal Club — clic para verlo en Gestión de Journal clubs' };
+    }
+    if (_jcReserved(a)) {
+      const who = a.jc_claimed_by_name || 'otra persona';
+      return a.jc_announced_at
+        ? { css: 'background:#b91c1c;color:#fff;', label: 'JC',
+            title: `Reservado para que lo presente ${who} — sesión anunciada: ya se puede subir la presentación` }
+        : { css: 'background:#b91c1c;color:#fff;', label: '🔒 JC',
+            title: `Reservado para que lo presente ${who} — bloqueado hasta que se anuncie la sesión` };
+    }
+    if (a.is_jc) {
+      return { css: 'background:#dbeafe;color:#1d4ed8;', label: 'JC',
+               title: 'Disponible para Journal Club — clic para presentarlo tú' };
+    }
+    return { css: 'background:#f3f4f6;color:#9ca3af;', label: 'JC',
+             title: 'Sin presentación de Journal Club — clic para añadir una' };
+  }
+
+  const PVJcClaim = (() => {
+    const $ = id => document.getElementById(id);
+    let _wired = false;
+    let _onDone = null;
+    let _state = null;
+
+    function close() { const m = $('pv-jc-claim-modal'); if (m) m.style.display = 'none'; }
+    function body(html) { $('pv-jc-claim-body').innerHTML = html; }
+    function btn(id, label, primary, color) {
+      const bg = primary ? (color || '#0F3460') : '#fff';
+      const fg = primary ? '#fff' : '#374151';
+      const border = primary ? 'none' : '1px solid #d1d5db';
+      return `<button type="button" id="${id}" style="padding:8px 16px;border-radius:8px;border:${border};
+                background:${bg};color:${fg};font-size:13px;font-weight:600;cursor:pointer;">${label}</button>`;
+    }
+    function fmt(iso) {
+      return iso ? new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    }
+    function articleCard(st) {
+      const meta = [st.authors ? st.authors.split(';')[0].trim() + (st.authors.includes(';') ? ' et al.' : '') : '',
+                    st.journal, st.year].filter(Boolean).join(' · ');
+      const links = [
+        st.has_pdf ? `<a href="${API}/articles/${esc(st.id)}/pdf-view" target="_blank" rel="noopener" style="color:#b91c1c;font-weight:600;text-decoration:none;"><i class="fas fa-file-pdf"></i> PDF</a>` : '',
+        st.doi ? `<a href="https://doi.org/${encodeURIComponent(st.doi)}" target="_blank" rel="noopener" style="color:#0F3460;text-decoration:none;">DOI: ${esc(st.doi)}</a>` : '',
+        st.pubmed_id ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(st.pubmed_id)}/" target="_blank" rel="noopener" style="color:#0F3460;text-decoration:none;">PMID: ${esc(st.pubmed_id)}</a>` : '',
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      return `
+        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;background:#f9fafb;margin:10px 0 14px;">
+          <div style="font-size:14px;font-weight:700;color:#111827;line-height:1.4;">${supHtml(st.title || '(sin título)')}</div>
+          ${meta ? `<div style="font-size:12px;color:#6b7280;margin-top:3px;">${esc(meta)}</div>` : ''}
+          ${links ? `<div style="font-size:11.5px;margin-top:5px;">${links}</div>` : ''}
+          ${st.abstract ? `<div style="font-size:12.5px;color:#374151;line-height:1.55;margin-top:9px;max-height:220px;overflow-y:auto;">${esc(st.abstract)}</div>` : ''}
+        </div>`;
+    }
+    function respNames(st) {
+      const n = (st.responsibles || []).filter(Boolean);
+      if (!n.length) return 'el responsable de Journal Club';
+      return n.length === 1 ? n[0] : n.slice(0, -1).join(', ') + ' y ' + n[n.length - 1];
+    }
+
+    function stepIdentity() {
+      const me = _state.viewer.name || '(usuario sin nombre)';
+      body(`
+        <p style="font-size:14px;color:#111827;margin:4px 0 6px;">Vas a reservar este artículo para presentarlo en Journal Club.</p>
+        <p style="font-size:14px;color:#111827;margin:0 0 16px;">¿Eres <strong>${esc(me)}</strong>?</p>
+        <div style="display:flex;gap:8px;">${btn('pv-jcc-yes', 'Sí, soy yo', true)}${btn('pv-jcc-no', 'No')}</div>`);
+      $('pv-jcc-yes').onclick = stepConfirm;
+      $('pv-jcc-no').onclick = () => body(`
+        <p style="font-size:13.5px;color:#374151;line-height:1.55;">
+          Entonces no se reserva nada. Si has entrado con la cuenta de otra persona, cierra sesión y entra con la tuya
+          para que la reserva quede a tu nombre.</p>
+        <div style="margin-top:14px;">${btn('pv-jcc-close', 'Cerrar', true)}</div>`);
+      $('pv-jcc-no').addEventListener('click', () => { const c = $('pv-jcc-close'); if (c) c.onclick = close; });
+    }
+
+    function stepConfirm() {
+      body(`
+        <p style="font-size:14px;color:#111827;margin:4px 0 0;">¿Quieres presentar este artículo en Journal Club?</p>
+        ${articleCard(_state)}
+        <div style="display:flex;gap:8px;align-items:center;">
+          ${btn('pv-jcc-accept', '✓ Sí, quiero presentarlo', true, '#15803d')}${btn('pv-jcc-cancel', 'Cancelar')}
+          <span id="pv-jcc-status" style="font-size:12.5px;color:#6b7280;"></span>
+        </div>`);
+      $('pv-jcc-cancel').onclick = close;
+      $('pv-jcc-accept').onclick = async () => {
+        $('pv-jcc-accept').disabled = true;
+        $('pv-jcc-status').textContent = 'Reservando…';
+        try {
+          const r = await api(`/articles/${_state.id}/jc-claim`, { method: 'POST' });
+          _state.responsibles = r.responsibles || _state.responsibles;
+          const note = r.email_sent ? ''
+            : `<p style="font-size:12px;color:#b45309;margin-top:10px;">No se pudo enviar el aviso por email${r.email_error ? ' (' + esc(r.email_error) + ')' : ''}; coméntaselo directamente.</p>`;
+          body(`
+            <div style="font-size:30px;margin:2px 0 6px;">🎉</div>
+            <p style="font-size:14.5px;color:#111827;font-weight:700;margin:0 0 6px;">¡Fenomenal, ${esc(_state.viewer.name || '')}!</p>
+            <p style="font-size:13.5px;color:#374151;line-height:1.6;margin:0;">
+              El artículo queda reservado para ti: nadie más podrá cogerlo y ya no aparece como disponible para Journal Club.
+              Hemos avisado a <strong>${esc(respNames(_state))}</strong>, que te dirá cuándo será tu presentación.
+              Cuando se anuncie la sesión se desbloqueará el botón <strong>JC</strong> de este artículo para que subas tu presentación.</p>
+            ${note}
+            <div style="margin-top:16px;">${btn('pv-jcc-ok', 'Entendido', true)}</div>`);
+          $('pv-jcc-ok').onclick = () => { close(); if (_onDone) _onDone(); };
+        } catch (e) {
+          $('pv-jcc-status').style.color = '#b91c1c';
+          $('pv-jcc-status').textContent = 'Error: ' + e.message;
+          $('pv-jcc-accept').disabled = false;
+          if (e.status === 409 && _onDone) _onDone();
+        }
+      };
+    }
+
+    function stepReserved() {
+      const st = _state;
+      const who = st.jc_claimed_by_name || 'otra persona';
+      const since = st.jc_claimed_at ? ` desde el ${fmt(st.jc_claimed_at)}` : '';
+      const announced = st.jc_announced_at
+        ? `<p style="font-size:12.5px;color:#15803d;margin:6px 0 0;">✓ Sesión anunciada el ${fmt(st.jc_announced_at)} — ya puede subir la presentación.</p>`
+        : `<p style="font-size:12.5px;color:#b45309;margin:6px 0 0;">🔒 Bloqueado hasta que se anuncie la sesión (botón «Convocar»).</p>`;
+      if (st.viewer.is_manager) {
+        body(`
+          <p style="font-size:13.5px;color:#111827;margin:4px 0 0;">Reservado para que lo presente <strong>${esc(who)}</strong>${esc(since)}.</p>
+          ${announced}
+          ${articleCard(st)}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            ${btn('pv-jcc-upload', 'Subir presentación', true, '#15803d')}
+            ${st.jc_announced_at ? '' : btn('pv-jcc-unlock', '🔓 Desbloquear para ' + esc(who.split(' ')[0]))}
+            ${btn('pv-jcc-release', 'Liberar (vuelve a estar disponible)', true, '#b91c1c')}
+            <span id="pv-jcc-status" style="font-size:12.5px;color:#6b7280;"></span>
+          </div>`);
+        $('pv-jcc-upload').onclick = () => { close(); PVJcUpload.open(st, _onDone); };
+        if ($('pv-jcc-unlock')) $('pv-jcc-unlock').onclick = () => act('jc-unlock', 'Desbloqueado.');
+        $('pv-jcc-release').onclick = () => {
+          if (!confirm(`¿Liberar este artículo? ${who} dejará de tenerlo reservado y volverá a aparecer como disponible para Journal Club.`)) return;
+          act('jc-release', 'Liberado.');
+        };
+      } else if (st.viewer.is_claimant) {
+        body(`
+          <p style="font-size:13.5px;color:#374151;line-height:1.6;margin:4px 0 0;">
+            Tienes este artículo reservado para presentarlo${esc(since)}. Podrás subir la presentación en cuanto
+            <strong>${esc(respNames(st))}</strong> anuncie la sesión.</p>
+          ${articleCard(st)}
+          <div>${btn('pv-jcc-close', 'Cerrar', true)}</div>`);
+        $('pv-jcc-close').onclick = close;
+      } else {
+        body(`
+          <p style="font-size:13.5px;color:#374151;line-height:1.6;margin:4px 0 0;">
+            🔒 Este artículo está reservado para que lo presente <strong>${esc(who)}</strong>${esc(since)} en Journal Club.
+            Solo ${esc(respNames(st))} o un administrador pueden liberarlo.</p>
+          <div style="margin-top:14px;">${btn('pv-jcc-close', 'Cerrar', true)}</div>`);
+        $('pv-jcc-close').onclick = close;
+      }
+    }
+
+    async function act(endpoint, okMsg) {
+      const status = $('pv-jcc-status');
+      if (status) { status.style.color = '#6b7280'; status.textContent = 'Guardando…'; }
+      try {
+        await api(`/articles/${_state.id}/${endpoint}`, { method: 'POST' });
+        if (status) { status.style.color = '#15803d'; status.textContent = '✓ ' + okMsg; }
+        setTimeout(() => { close(); if (_onDone) _onDone(); }, 900);
+      } catch (e) {
+        if (status) { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e.message; }
+      }
+    }
+
+    function wireOnce() {
+      if (_wired) return;
+      _wired = true;
+      $('pv-jc-claim-close')?.addEventListener('click', close);
+      document.querySelector('#pv-jc-claim-modal .pv-modal-backdrop')?.addEventListener('click', close);
+    }
+
+    function show(state, mode, onDone) {
+      wireOnce();
+      _state = state; _onDone = onDone;
+      $('pv-jc-claim-modal').style.display = 'flex';
+      if (mode === 'claim') stepIdentity(); else stepReserved();
+    }
+    return { show };
+  })();
+
+  // Single entry point for every JC button (listing, cart, detail). Always
+  // re-reads the article's JC state from the server, so a stale row can't
+  // let two people reserve the same article.
+  async function openJcButton(article, onDone) {
+    let st;
+    try {
+      st = await api(`/articles/${article.id}/jc-state`);
+    } catch (e) {
+      alert('No se pudo consultar el Journal Club de este artículo: ' + e.message);
+      return;
+    }
+    if (st.has_jc) {
+      PVJcManage.open(st.title || '');
+      return;
+    }
+    if (st.jc_claimed_by) {
+      if (st.viewer.is_claimant && st.jc_announced_at && !st.viewer.is_manager) {
+        PVJcUpload.open(st, onDone);
+        return;
+      }
+      PVJcClaim.show(st, 'reserved', onDone);
+      return;
+    }
+    if (st.is_jc) {
+      PVJcClaim.show(st, 'claim', onDone);
+      return;
+    }
+    openJcFlow(st, onDone);
+  }
 
   // Shared entry point for every "JC" button: gates on whether the
   // article already needs no choice (already JC / already has a
@@ -6758,8 +6967,12 @@
       });
     }
 
-    function open() {
+    function open(searchText) {
       wireOnce();
+      if (typeof searchText === 'string') {
+        const si = document.getElementById('pv-jc-manage-search');
+        if (si) si.value = searchText;
+      }
       document.getElementById('pv-jc-manage-modal').style.display = 'flex';
       load();
     }
@@ -6767,9 +6980,12 @@
     return { open, reload: load };
   })();
 
+  // Wired for every role (it used to be wired only inside the admin-only
+  // init block, so the sidebar button did nothing for anyone else).
   function wireJcManageButton() {
     document.getElementById('btn-manage-jc')?.addEventListener('click', () => PVJcManage.open());
   }
+
 
   function addJcFilesViaPicker(a, presentationId) {
     const input = document.createElement('input');
@@ -10284,16 +10500,13 @@
              style="display:inline-flex;gap:4px;vertical-align:middle;">${_noteClusterInner(ex.notes)}</span>`;
 
       const jcHasJc = !!ex.has_jc;
+      const jcLook = _jcButtonLook(ex);
       const jcBtn = `<button type="button" class="pv-cart-row-jc-btn" data-aid="${esc(a.id)}"
-              data-has-jc="${jcHasJc ? '1' : '0'}"
-              title="${jcHasJc
-                  ? (ex.jc_presenters ? esc(`Presentado por ${ex.jc_presenters} en Journal Club — clic para abrir el documento`)
-                      : 'Presentado en Journal Club — clic para abrir el documento')
-                  : 'Sin presentación de Journal Club — clic para añadir una'}"
+              title="${esc(jcHasJc && ex.jc_presenters
+                  ? `Presentado por ${ex.jc_presenters} en Journal Club — clic para verlo en Gestión de Journal clubs`
+                  : jcLook.title)}"
               style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;
-                     border:none;cursor:pointer;vertical-align:middle;${jcHasJc
-                       ? 'background:#14532d;color:#fef08a;'
-                       : 'background:#f3f4f6;color:#9ca3af;'}">JC${jcHasJc && ex.jc_count > 1 ? ' ' + ex.jc_count : ''}</button>`;
+                     border:none;cursor:pointer;vertical-align:middle;${jcLook.css}">${jcLook.label}${jcHasJc && ex.jc_count > 1 ? ' ' + ex.jc_count : ''}</button>`;
 
       const emailBtn = `<button type="button" class="pv-cart-row-email-btn" data-aid="${esc(a.id)}"
               title="Enviar este artículo por email"
@@ -10421,23 +10634,9 @@
           e.stopPropagation();
           _pvCloseOtherModals();
           const aid = btn.dataset.aid;
-          if (btn.dataset.hasJc !== '1') {
-            const ex = _extra.get(aid) || {};
-            openJcFlow({ id: aid, title: ex.title, is_jc: ex.is_jc, has_jc: ex.has_jc, jc_count: ex.jc_count },
-                       () => { _extra.delete(aid); render(); });
-            return;
-          }
           btn.disabled = true;
           try {
-            const r = await api(`/articles/${aid}/jc`);
-            const files = (r.items || []).flatMap(p => p.files || []);
-            if (files.length === 1) {
-              window.open(API + `/jc/files/${files[0].id}/view`, '_blank', 'noopener');
-            } else {
-              openDetail(aid);
-            }
-          } catch (err) {
-            alert('No se pudo abrir el Journal Club: ' + err.message);
+            await openJcButton({ id: aid }, () => { _extra.delete(aid); render(); });
           } finally {
             btn.disabled = false;
           }
@@ -11618,7 +11817,7 @@
       const fresh = renderPersonalChip(a, 'jc');
       jcBtn.outerHTML = fresh;
       document.getElementById('pv-detail-jc-convoke')?.remove();
-      if (a.is_jc && (IS_ADMIN || IS_JC_RESPONSIBLE)) {
+      if (_jcConvocable(a) && (IS_ADMIN || IS_JC_RESPONSIBLE)) {
         document.getElementById('pv-detail-jc')?.insertAdjacentHTML('afterend', `
           <button id="pv-detail-jc-convoke" type="button"
                   title="Convocar Journal Club — enviar fecha/hora a todo el laboratorio"
@@ -12179,12 +12378,12 @@
       if (idx >= 0 && idx < _listIds.length - 1) openDetail(_listIds[idx + 1]);
     });
 
+    wireJcManageButton();
     if (IS_ADMIN) {
       wireImport();
       wireQueue();
       wireAddByDoi();
       wireBibtexImport();
-      wireJcManageButton();
       wireEditModal();
       wireBatchImport();
       wireScanFolder();
