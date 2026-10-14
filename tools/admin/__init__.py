@@ -1127,6 +1127,16 @@ def api_db_backups_health():
                         "runs": []}), 200
 
 
+@admin_bp.route("/api/db/backups/diagnose", methods=["POST"])
+@admin_required
+def api_db_backups_diagnose():
+    """Step-by-step check of everything a backup needs (DB, disk, memory,
+    Dropbox auth/space/folder/write, running backup, history, scheduler)."""
+    from flask import jsonify
+    from database.backup_diagnose import diagnose
+    return jsonify({"checks": diagnose()})
+
+
 @admin_bp.route("/api/db/backups/create", methods=["POST"])
 @admin_required
 def api_db_backups_create():

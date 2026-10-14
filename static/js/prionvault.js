@@ -3453,7 +3453,7 @@
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
                        font-size:10.5px;font-weight:600;background:#fee2e2;color:#b91c1c;
                        border:none;cursor:pointer;line-height:1.2;text-decoration:none;"><i class="fas fa-download"></i></a>`
-        : `<button type="button" class="pv-oa-row-btn" data-aid="${esc(a.id)}"
+        : !IS_ADMIN ? '' : `<button type="button" class="pv-oa-row-btn" data-aid="${esc(a.id)}"
                 title="${a.oa_author_requested ? 'Ya se ha pedido el PDF al autor — clic para volver a intentarlo' : 'Buscar el PDF en fuentes de acceso abierto (Unpaywall, OpenAlex)'}"
                 style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:4px;
                        font-size:10.5px;font-weight:600;${a.oa_author_requested ? 'background:#fef3c7;color:#92400e;' : 'background:#eef2ff;color:#4338ca;'}
@@ -3542,7 +3542,7 @@
         : '',
       (!a.has_abstract && a.abstract_unavailable)
         ? '<span title="Buscado en CrossRef / PubMed: no hay abstract disponible para este artículo." style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#e5e7eb;color:#6b7280;">📕 sin abstract (confirmado)</span>'
-        : (!a.has_abstract && (a.doi || a.pubmed_id))
+        : (IS_ADMIN && !a.has_abstract && (a.doi || a.pubmed_id))
           ? `<button type="button" class="pv-fetch-abstract-btn" data-aid="${esc(a.id)}"
                      title="Buscar abstract en CrossRef / PubMed"
                      style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10.5px;font-weight:600;background:#fef3c7;color:#92400e;border:none;cursor:pointer;">⬇ Abstract</button>`
@@ -3656,10 +3656,10 @@
       </td>`;
 
     // ── Thumbnail cell (first PDF page, shown only when PDF exists) ──────
-    const _canFetchOA = !a.has_pdf && !a.pdf_dropbox_path
+    const _canFetchOA = IS_ADMIN && !a.has_pdf && !a.pdf_dropbox_path
                         && a.pdf_oa_status !== 'not_available'
                         && (a.doi || a.pmc_id);
-    const _oaFailed  = !a.has_pdf && !a.pdf_dropbox_path
+    const _oaFailed  = IS_ADMIN && !a.has_pdf && !a.pdf_dropbox_path
                         && a.pdf_oa_status === 'not_available';
     const thumbCell = (a.has_pdf || a.pdf_dropbox_path)
       ? `<td style="padding:4px 4px;vertical-align:middle;text-align:center;">
@@ -3941,7 +3941,24 @@
       openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
     });
 
-    if (IS_ADMIN) {
+    // JC button: open to every role (it was wired inside the admin-only
+    // block below, so for anyone else the click fell through to the row
+    // and opened the article's detail modal instead).
+    const jcRowBtn = row.querySelector('.pv-row-jc-btn');
+    if (jcRowBtn) jcRowBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      jcRowBtn.disabled = true;
+      try { await openJcButton(a, () => loadArticles()); }
+      finally { jcRowBtn.disabled = false; }
+    });
+
+    // Row buttons, wired for EVERY role. This block used to be wrapped in
+    // `if (IS_ADMIN)`, so for non-admins the 📍, email, chat, notes, cart,
+    // copy and share buttons were shown but dead — the click fell through
+    // to the row and opened the article's detail modal. The few truly
+    // admin-only buttons (fetch abstract, OA fetch/upload, 🔓) are simply
+    // not rendered for non-admins, so their wiring below finds nothing.
+    {
       const fetchAbsBtn = row.querySelector('.pv-fetch-abstract-btn');
       if (fetchAbsBtn) fetchAbsBtn.addEventListener('click', async (ev) => {
         ev.stopPropagation();
@@ -3983,13 +4000,6 @@
         openOaSearchModal(a);
       });
 
-      const jcRowBtn = row.querySelector('.pv-row-jc-btn');
-      if (jcRowBtn) jcRowBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        jcRowBtn.disabled = true;
-        try { await openJcButton(a, () => loadArticles()); }
-        finally { jcRowBtn.disabled = false; }
-      });
 
       const emailRowBtn = row.querySelector('.pv-email-row-btn');
       if (emailRowBtn) emailRowBtn.addEventListener('click', (e) => {
@@ -20498,6 +20508,35 @@
         </div>`;
     }
     refreshBtn?.addEventListener('click', loadHealth);
+
+    // ── 🩺 Step-by-step diagnosis ──────────────────────────────────────
+    document.getElementById('pv-bk-diagnose')?.addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget;
+      const out = document.getElementById('pv-bk-diagnose-result');
+      btn.disabled = true;
+      out.innerHTML = '<div style="font-size:12.5px;color:#6b7280;">Comprobando (Dropbox puede tardar unos segundos)…</div>';
+      try {
+        const r = await adminApi('/api/db/backups/diagnose', { method: 'POST' });
+        const icon = { ok: ['✓', '#15803d'], warn: ['⚠', '#b45309'], fail: ['✗', '#b91c1c'], info: ['ℹ', '#1d4ed8'] };
+        out.innerHTML = `<div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+          ${(r.checks || []).map(c => {
+            const [ic, col] = icon[c.status] || ['•', '#6b7280'];
+            return `<div style="display:flex;gap:10px;padding:8px 12px;border-bottom:1px solid #f3f4f6;font-size:12.5px;
+                                ${c.status === 'fail' ? 'background:#fef2f2;' : c.status === 'warn' ? 'background:#fffbeb;' : ''}">
+              <span style="color:${col};font-weight:800;width:14px;flex-shrink:0;">${ic}</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;color:#111827;">${esc(c.name)}</div>
+                <div style="color:#374151;line-height:1.5;word-break:break-word;">${esc(c.detail || '')}</div>
+                ${c.hint ? `<div style="color:${col};margin-top:2px;">→ ${esc(c.hint)}</div>` : ''}
+              </div></div>`;
+          }).join('')}</div>`;
+        loadHealth();
+      } catch (e) {
+        out.innerHTML = `<div style="font-size:12.5px;color:#b91c1c;">No se pudo hacer el diagnóstico: ${esc(e.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
     createBtn?.addEventListener('click', () => setTimeout(loadHealth, 1500));
 
     openBtn.addEventListener('click', () => {

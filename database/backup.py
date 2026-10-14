@@ -513,35 +513,50 @@ class BackupManager:
         NOT valid JSON or a valid Postgres array literal.
         """
         out_path = BACKUP_DIR / f"csv_export_{ts}.gz"
+        tmp_path = BACKUP_DIR / f"csv_export_{ts}.gz.partial"
+        # STREAMED to disk, table by table and row batch by row batch.
+        # The previous version built the whole compressed archive in a
+        # BytesIO, each table's full uncompressed CSV in a StringIO, and
+        # fetched every row of every table at once (psycopg2's default
+        # client-side cursor) — several GB of RAM once article_chunk's
+        # embedding vectors were included, so the process was killed for
+        # running out of memory mid-backup. Output format is unchanged
+        # ("-- TABLE: name" + CSV with header + blank line per table), so
+        # verify/restore read it exactly as before.
         try:
-            import database.models as _m
             from sqlalchemy import inspect
             from sqlalchemy import text as _text
             inspector = inspect(db.engine)
-            buf = io.BytesIO()
-            with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            with gzip.open(tmp_path, "wt", encoding="utf-8", newline="") as gz:
                 for table_name in inspector.get_table_names():
                     columns = [c["name"] for c in inspector.get_columns(table_name)]
                     if not columns:
                         continue
                     select_cols = ", ".join(f'"{c}"::text AS "{c}"' for c in columns)
-                    csv_buf = io.StringIO()
-                    writer = csv.writer(csv_buf)
+                    gz.write(f"-- TABLE: {table_name}\n")
+                    writer = csv.writer(gz)
                     with db.engine.connect() as conn:
-                        result = conn.execute(_text(f'SELECT {select_cols} FROM "{table_name}"'))
+                        result = conn.execution_options(
+                            stream_results=True, max_row_buffer=2000,
+                        ).execute(_text(f'SELECT {select_cols} FROM "{table_name}"'))
                         writer.writerow(result.keys())
-                        for row in result:
-                            writer.writerow(list(row))
-                    content = f"-- TABLE: {table_name}\n{csv_buf.getvalue()}\n\n"
-                    gz.write(content.encode("utf-8"))
-            with open(out_path, "wb") as f:
-                f.write(buf.getvalue())
+                        while True:
+                            batch = result.fetchmany(2000)
+                            if not batch:
+                                break
+                            writer.writerows(list(r) for r in batch)
+                    gz.write("\n\n")
+            tmp_path.replace(out_path)
             size_mb = round(out_path.stat().st_size / (1024 * 1024), 2)
             logger.info("CSV export backup: %s (%.1f MB)", out_path.name, size_mb)
             return {"success": True, "path": str(out_path),
                     "filename": out_path.name, "size_mb": size_mb, "type": "csv_export"}
         except Exception as e:
             logger.error("CSV export backup failed: %s", e)
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
             return {"success": False, "error": str(e)}
 
     @staticmethod

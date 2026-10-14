@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 _LOCK_KEY = 0x707276626B7570          # "prvbkup" — one backup at a time, cluster-wide
 _GRACE = timedelta(hours=6)            # tolerance beyond the configured interval
-_STALE_RUNNING = timedelta(hours=3)    # a "running" row older than this is dead
+_CATCHUP_BACKOFF = timedelta(hours=12) # after a failed catch-up, wait this long before retrying
 _SHRINK_WARN = 0.7                     # warn if a backup is <70% the size of the previous one
 
 
@@ -167,26 +167,50 @@ def _last_success_at() -> Optional[datetime]:
     return None
 
 
+def close_dead_runs() -> int:
+    """Mark as failed every "running" row while no backup holds the lock."""
+    if not _lock_free():
+        return 0
+    with _engine().begin() as conn:
+        return conn.execute(_sql("""
+            UPDATE backup_run SET status = 'failed', finished_at = NOW(),
+                   error = 'Interrumpida: el proceso se detuvo a mitad de la copia '
+                           '(reinicio del servidor o falta de memoria).'
+             WHERE status = 'running'
+        """)).rowcount or 0
+
+
 def watchdog() -> dict:
     """Hourly: close dead runs, and catch up a missed backup."""
     out = {"closed_stale": 0, "caught_up": False}
     if not _lock_free():
         return out   # a backup is running right now — nothing to judge yet
 
-    with _engine().begin() as conn:
-        out["closed_stale"] = conn.execute(_sql("""
-            UPDATE backup_run SET status = 'failed', finished_at = NOW(),
-                   error = 'Interrumpida: el proceso se detuvo durante la copia (reinicio o falta de memoria).'
-             WHERE status = 'running' AND started_at < NOW() - make_interval(secs => :s)
-        """), {"s": _STALE_RUNNING.total_seconds()}).rowcount or 0
+    # A live backup ALWAYS holds the lock, so with the lock free any row
+    # still "running" belongs to a process that died mid-backup.
+    out["closed_stale"] = close_dead_runs()
 
     last = _last_success_at()
     due = _interval(_settings()) + _GRACE
     now = datetime.now(timezone.utc)
-    if last is None or now - last > due:
-        logger.warning("backup watchdog: last successful backup %s is overdue — catching up", last)
-        run_backup("catchup")
-        out["caught_up"] = True
+    if last is not None and now - last <= due:
+        return out
+    # Don't retry a failing backup every hour: a backup that kills the
+    # process (e.g. out of memory) would otherwise take the app down
+    # hourly. One catch-up attempt per _CATCHUP_BACKOFF.
+    with _engine().connect() as conn:
+        recent_fail = conn.execute(_sql("""
+            SELECT 1 FROM backup_run
+             WHERE trigger = 'catchup' AND status = 'failed'
+               AND started_at > NOW() - make_interval(secs => :s)
+             LIMIT 1
+        """), {"s": _CATCHUP_BACKOFF.total_seconds()}).first()
+    if recent_fail:
+        out["backoff"] = True
+        return out
+    logger.warning("backup watchdog: last successful backup %s is overdue — catching up", last)
+    run_backup("catchup")
+    out["caught_up"] = True
     return out
 
 
@@ -204,6 +228,10 @@ def _next_scheduled(settings: dict) -> Optional[str]:
 
 
 def health() -> dict:
+    try:
+        close_dead_runs()
+    except Exception:
+        pass
     settings = _settings()
     interval = _interval(settings)
     with _engine().connect() as conn:

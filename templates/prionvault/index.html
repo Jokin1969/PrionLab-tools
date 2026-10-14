@@ -5150,7 +5150,14 @@
 
     <!-- Backup health: last good backup, overdue/failed, next run, run log.
          Rendered by wireBackups() → loadHealth() in prionvault.js. -->
-    <div id="pv-bk-health" style="margin-bottom:14px;"></div>
+    <div id="pv-bk-health" style="margin-bottom:8px;"></div>
+    <div style="margin-bottom:14px;">
+      <button id="pv-bk-diagnose" type="button"
+              title="Comprueba paso a paso todo lo que necesita una copia: base de datos, memoria, disco, Dropbox (conexión, espacio, carpeta y escritura), copia en curso, historial y programador"
+              style="padding:7px 14px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;
+                     font-size:12.5px;font-weight:600;cursor:pointer;">🩺 Diagnosticar dónde falla</button>
+      <div id="pv-bk-diagnose-result" style="margin-top:10px;"></div>
+    </div>
 
     <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#1e40af;line-height:1.5;">
       <strong>ℹ️ Incluye <code>article_chunk</code>:</strong> los vectores de la Indexación IA
