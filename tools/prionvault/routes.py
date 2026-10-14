@@ -2269,12 +2269,25 @@ def _jc_claim_fields(d: dict) -> dict:
     }
 
 
+def _jc_curator_forbidden():
+    """The shared JC mark (blue book) is curated by admins AND the JC
+    responsible(s). Returns a 403 response for anyone else, else None."""
+    from ._helpers import _viewer_is_jc_responsible
+    if _viewer_role() == "admin" or _viewer_is_jc_responsible():
+        return None
+    return jsonify({"error": "forbidden",
+                    "detail": "Solo un administrador o el responsable de Journal Club puede marcar artículos para Journal Club."}), 403
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/jc-mark", methods=["POST"])
-@admin_required
+@login_required
 def api_set_jc(aid):
-    """Set the SHARED Journal Club mark on this article (admin-only).
-    Everyone sees it — it flags articles to be reviewed in Journal Club.
-    Body: {value: bool}."""
+    """Set the SHARED Journal Club mark on this article (admins and the
+    JC responsible). Everyone sees it — it flags articles to be reviewed
+    in Journal Club. Body: {value: bool}."""
+    denied = _jc_curator_forbidden()
+    if denied:
+        return denied
     data = request.get_json(force=True, silent=True) or {}
     value = bool(data.get("value", True))
     s = _session()
@@ -2296,10 +2309,13 @@ def api_set_jc(aid):
 
 
 @prionvault_bp.route("/api/articles/bulk-jc", methods=["POST"])
-@admin_required
+@login_required
 def api_articles_bulk_jc():
-    """Set the shared Journal Club mark on many articles at once (admin-only).
-    Body: {ids: [...uuid...], value: bool}."""
+    """Set the shared Journal Club mark on many articles at once (admins
+    and the JC responsible). Body: {ids: [...uuid...], value: bool}."""
+    denied = _jc_curator_forbidden()
+    if denied:
+        return denied
     data = request.get_json(force=True, silent=True) or {}
     ids = data.get("ids") or []
     if not isinstance(ids, list) or not ids:

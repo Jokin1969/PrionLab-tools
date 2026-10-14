@@ -3633,10 +3633,10 @@
           <span style="width:1px;height:14px;background:#e5e7eb;"></span>
           <button class="pv-jc-btn"
                   data-active="${a.is_jc ? '1' : '0'}"
-                  title="${a.is_jc ? (IS_ADMIN ? 'En Journal Club — clic para quitar' : 'Seleccionado para Journal Club')
+                  title="${a.is_jc ? ((IS_ADMIN || IS_JC_RESPONSIBLE) ? 'En Journal Club — clic para quitar' : 'Seleccionado para Journal Club')
                                    : (IS_ADMIN ? 'Marcar para Journal Club' : 'No está en Journal Club')}"
                   style="background:none;border:none;padding:0;font-size:13px;line-height:1;
-                         cursor:${IS_ADMIN ? 'pointer' : 'default'};color:${jcColor};"><i class="fas fa-book-open"></i></button>
+                         cursor:${(IS_ADMIN || IS_JC_RESPONSIBLE) ? 'pointer' : 'default'};color:${jcColor};"><i class="fas fa-book-open"></i></button>
           ${(_jcConvocable(a) && (IS_ADMIN || IS_JC_RESPONSIBLE)) ? `
           <button class="pv-jc-convoke-row-btn"
                   title="Convocar Journal Club — enviar fecha/hora a todo el laboratorio"
@@ -3872,7 +3872,8 @@
 
     row.querySelector('.pv-jc-btn').addEventListener('click', async e => {
       e.stopPropagation();
-      if (!IS_ADMIN) return;   // JC is a shared, admin-curated mark
+      // Shared mark, curated by admins and the JC responsible(s).
+      if (!(IS_ADMIN || IS_JC_RESPONSIBLE)) return;
       const btn = e.currentTarget;
       const next = btn.dataset.active !== '1';
       btn.disabled = true;
@@ -4452,13 +4453,13 @@
             <span style="font-size:13px;font-weight:800;line-height:1;color:${a.is_read ? '#15803d' : '#9ca3af'};">✓</span>
             ${a.is_read ? 'Leído por mí' : 'Marcar como leído'}
           </button>
-          ${(IS_ADMIN || a.is_jc) ? `
+          ${(IS_ADMIN || IS_JC_RESPONSIBLE || a.is_jc) ? `
           <button id="pv-detail-jc" type="button"
                   data-active="${a.is_jc ? '1' : '0'}"
-                  title="${IS_ADMIN ? 'Marca compartida — todos ven los artículos de Journal Club'
+                  title="${(IS_ADMIN || IS_JC_RESPONSIBLE) ? 'Marca compartida — todos ven los artículos de Journal Club'
                                     : 'Seleccionado para Journal Club'}"
                   style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
-                         font-size:12px;font-weight:600;cursor:${IS_ADMIN ? 'pointer' : 'default'};
+                         font-size:12px;font-weight:600;cursor:${(IS_ADMIN || IS_JC_RESPONSIBLE) ? 'pointer' : 'default'};
                          ${a.is_jc
                            ? 'background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;'
                            : 'background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;'}">
@@ -11822,7 +11823,7 @@
     }));
     // JC is a shared, admin-only mark — only admins can toggle it.
     const jcBtn = document.getElementById('pv-detail-jc');
-    if (jcBtn && IS_ADMIN) jcBtn.addEventListener('click', () => toggle(jcBtn, 'jc-mark', 'is_jc', r => {
+    if (jcBtn && (IS_ADMIN || IS_JC_RESPONSIBLE)) jcBtn.addEventListener('click', () => toggle(jcBtn, 'jc-mark', 'is_jc', r => {
       a.is_jc = !!r.is_jc;
       const fresh = renderPersonalChip(a, 'jc');
       jcBtn.outerHTML = fresh;
@@ -22946,7 +22947,7 @@
 
           <h4>Permisos adicionales, independientes del rol</h4>
           <ul>
-            <li><strong>Responsable de Journal Club:</strong> recibe los avisos de JC, puede Convocar sesiones y liberar o desbloquear reservas de artículos JC (en la tabla aparece como "parcial" para el lector: solo si tiene este permiso).</li>
+            <li><strong>Responsable de Journal Club:</strong> recibe los avisos de JC, puede marcar artículos con el libro azul, Convocar sesiones y liberar o desbloquear reservas de artículos JC (en la tabla aparece como "parcial" para el lector: solo si tiene este permiso).</li>
             <li><strong>Administrador de usuarios de PrionVault:</strong> puede gestionar usuarios desde <em>Miscelánea → Administración</em> sin tener el resto del panel de administración (ver la pestaña Administración).</li>
           </ul>
 
@@ -23138,8 +23139,8 @@
 
           <p><strong>Fase 1 — Proponer artículos candidatos (el libro azul 📖)</strong></p>
           <ul>
-            <li>Marcar un artículo como candidato a Journal Club (el libro 📖 de la fila) es cosa del <strong>administrador</strong>. Esos artículos son los que aparecen al filtrar por el libro azul: son los <strong>disponibles</strong> para que alguien los presente.</li>
-            <li>Si no eres admin y quieres proponer uno, pulsa su botón <strong>"JC"</strong> gris y elige <strong>"Informar al responsable"</strong>: le llega un email con el artículo y el PDF (con el administrador en copia) pidiéndole que lo valore.</li>
+            <li>Marcar o desmarcar un artículo como candidato a Journal Club (el libro 📖 de la fila o de la ficha) lo pueden hacer el <strong>administrador</strong> y el <strong>responsable de Journal Club</strong>. Esos artículos son los que aparecen al filtrar por el libro azul: son los <strong>disponibles</strong> para que alguien los presente.</li>
+            <li>Si no eres admin ni responsable y quieres proponer uno, pulsa su botón <strong>"JC"</strong> gris y elige <strong>"Informar al responsable"</strong>: le llega un email con el artículo y el PDF (con el administrador en copia) pidiéndole que lo valore.</li>
             <li>Si el artículo aún no está en PrionVault, envíalo a <code>prionvault_lab@joaquincastilla.com</code> con el PDF y <strong>"JC"</strong> o <strong>"Journal Club"</strong> en el Asunto: se procesa y queda marcado como candidato automáticamente.</li>
           </ul>
 

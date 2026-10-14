@@ -91,6 +91,37 @@ def _lookup_db_user_id(username: str) -> str | None:
                     continue
                 if row and row[0]:
                     return str(row[0])
+
+            # The login username often isn't stored in `users` at all —
+            # PrionRead's schema keeps the person's EMAIL and FULL NAME
+            # (e.g. "herana" logs in, but the row is "Hasier Eraña" /
+            # herana@cicbiogune.es). Match on those from users.csv
+            # before trying to create a new row: auto-provisioning can
+            # fail on this schema, and then the user had no DB identity
+            # at all — every per-user feature (chat, JC reservation,
+            # cart…) answered "not_authenticated".
+            try:
+                from core.users import load_users
+                csv_row = next((u for u in load_users()
+                                if (u.get("username") or "").lower() == username.lower()),
+                               None)
+            except Exception:
+                csv_row = None
+            if csv_row:
+                for cand, val in (("email", csv_row.get("email")),
+                                  ("name", csv_row.get("full_name"))):
+                    val = (val or "").strip()
+                    if not val or cand not in cols:
+                        continue
+                    try:
+                        row = conn.execute(_text(
+                            f"SELECT id FROM users WHERE lower({cand}) = lower(:v) LIMIT 1"
+                        ), {"v": val}).first()
+                    except Exception as exc:
+                        logger.debug("auth: probe by csv %s failed: %s", cand, exc)
+                        continue
+                    if row and row[0]:
+                        return str(row[0])
     except Exception as exc:
         logger.warning("auth: could not resolve user_id for %s: %s",
                        username, exc)
@@ -242,6 +273,9 @@ def _try_insert_user(conn, cols: set[str], new_id: str, *,
                     logger.warning("auth: INSERT-without-role failed: %s", exc3)
                     return None
         else:
+            # (A failed INSERT aborts this transaction, so no re-read is
+            # possible here; an existing row with this email is already
+            # found earlier by _lookup_db_user_id's csv email probe.)
             logger.warning("auth: INSERT failed: %s", exc)
             return None
 
