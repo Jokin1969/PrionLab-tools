@@ -22751,6 +22751,40 @@
         </div>
       `,
 
+      // ── Sugerir referencias ───────────────────────────────────────────
+      referencias: `
+        <div class="pv-help-section">
+          <h3>Sugerir referencias para un texto</h3>
+          <p>El botón con unas <strong>comillas</strong>, junto al del chat general (🤖) en la barra de búsqueda, abre un modal en el que pegas un texto que estás escribiendo (una introducción, una discusión…) y PrionVault te propone, para cada frase que necesita una cita, qué artículos de la biblioteca la respaldan mejor y por qué.</p>
+
+          <h4>Dos modos</h4>
+          <ul>
+            <li><strong>Con marcas "(Ref.)":</strong> tú indicas dónde va cada cita escribiendo una marca al final de la frase. Se reconocen muchas variantes: <code>(Ref.)</code>, <code>(Ref)</code>, <code>Ref.</code>, <code>REF</code>, <code>(Refs)</code>, <code>[ref]</code>…, con o sin paréntesis o corchetes. Cada marca es un punto numerado, y la búsqueda usa la frase justo anterior a la marca.</li>
+            <li><strong>Automático (decide la IA):</strong> sin marcas. El texto se divide en frases (sin cortar en abreviaturas como "et al." o "Fig. 3") y la IA decide cuáles contienen una afirmación concreta que necesita cita (hasta 15).</li>
+          </ul>
+
+          <h4>Cómo elige las referencias</h4>
+          <ul>
+            <li>Para cada punto busca por significado y por términos en toda la biblioteca, igual que el chat general, y le pasa a la IA hasta 3 fragmentos de cada artículo candidato (abstract, extracto del PDF, tus notas y chats previos) y su resumen IA. Si una nota tuya indica que un artículo es la referencia original de algo, la IA lo tiene en cuenta.</li>
+            <li>La IA puntúa cada candidato de <strong>0 a 100</strong> según cuánto respalda esa afirmación concreta y descarta los que no llegan a 40, sin forzar citas.</li>
+            <li>Entre candidatos con puntuación parecida (dentro de bandas de 15 puntos) se prioriza la <strong>revista de mejor cuartil SCImago</strong> (Q1 antes que Q2…) y, después, el artículo <strong>más reciente</strong>.</li>
+            <li>Usa los modelos grandes del chat (Claude, con GPT y Gemini de reserva) y respeta el glosario.</li>
+          </ul>
+
+          <h4>Los resultados</h4>
+          <ul>
+            <li>Cada punto muestra su frase (pasa el ratón por encima para ver el párrafo completo alrededor) y cuántos candidatos se analizaron de cuántos relacionados hay en PrionVault.</li>
+            <li>Cada sugerencia es una tarjeta con título, autores, revista y año, su <strong>puntuación</strong> y su <strong>cuartil</strong>, enlaces a PDF, DOI y PMID, y la <strong>explicación</strong> de por qué encaja. Se muestran 5 por defecto; si hay más, aparece "Ver N más".</li>
+            <li><strong>✓ Insertar aquí:</strong> puedes elegir <strong>una o varias</strong> referencias por punto. Encima del punto aparece la cita tal como quedará en el texto (siempre entre paréntesis, separadas por "; ", con el DOI o el PMID si no hay DOI) y un botón <strong>"Copiar cita"</strong> para pegarla sobre tu "Ref" en Word.</li>
+            <li>La <strong>vista previa</strong> de arriba muestra el texto completo con las citas ya colocadas y se actualiza al instante (el botón de abajo a la derecha la amplía).</li>
+            <li>El panel de <strong>estilo</strong> marca las citas insertadas en color, negrita, cursiva o subrayado (por defecto, rojo y texto normal). <strong>"Copiar texto con referencias"</strong> copia todo el texto con ese formato, listo para pegar en Word.</li>
+          </ul>
+
+          <h4>Si no encuentra nada</h4>
+          <p>Te explica el motivo: si no se reconoció ninguna marca, si la IA no vio ninguna afirmación que necesite cita, si la búsqueda no encontró artículos relacionados con esa frase, o si los encontró pero ninguno la respalda de verdad (indicando cuáles se descartaron).</p>
+        </div>
+      `,
+
       // ── Roles ─────────────────────────────────────────────────────────
       roles: `
         <div class="pv-help-section">
@@ -22891,7 +22925,7 @@
 
           <h4>Tipos de suscripción</h4>
           <ul>
-            <li><strong>PrionVault Picks:</strong> recopila los artículos de tu biblioteca que tengan bandera 🚩 activa en el período seleccionado (semana, quincena, mes…) y los envía en un digest estructurado.</li>
+            <li><strong>PrionVault Picks:</strong> recopila los artículos de tu biblioteca que tengan bandera 🚩 activa en el período seleccionado (semana, quincena, mes…) y los envía en un digest estructurado. Una vez enviados, a esos artículos se les quita la bandera y se marcan como <strong>leídos</strong> (✓ verde).</li>
             <li><strong>PubMed Digest:</strong> busca artículos nuevos en PubMed según los temas que configures y te los envía periódicamente.</li>
           </ul>
 
@@ -22947,35 +22981,45 @@
           <p>El módulo de Journal Club permite registrar las sesiones en las que se presenta y discute un artículo, con historial de presentadores, fechas y materiales adjuntos.</p>
 
           <h4>📋 El procedimiento completo, paso a paso</h4>
-          <p>Desde que a alguien le interesa un artículo para Journal Club hasta que la sesión queda archivada, hay cuatro fases. Cada una tiene su propio botón, y cada una está pensada para que <strong>no dependas de escribir un email a mano</strong> ni de recordar los detalles.</p>
+          <p>Desde que un artículo se propone para Journal Club hasta que la presentación queda archivada hay cinco fases. Cada una tiene su botón y <strong>no hace falta escribir ningún email a mano</strong>.</p>
 
-          <p><strong>Fase 1 — Proponer un artículo como candidato a JC</strong></p>
+          <p><strong>Fase 1 — Proponer artículos candidatos (el libro azul 📖)</strong></p>
           <ul>
-            <li>Marcar un artículo como "candidato a Journal Club" (el campo <code>is_jc</code>, compartido por todo el laboratorio) está reservado al <strong>administrador</strong> desde el icono 📖 de la fila del listado — no lo puede tocar directamente ningún otro usuario, ni siquiera el responsable de JC si no es también admin.</li>
-            <li>Si tú <strong>no eres admin</strong> y quieres proponer un artículo, pulsa el botón <strong>"JC"</strong> en su ficha o en el listado. Si el artículo aún no está marcado, se abre un modal con dos opciones — elige <strong>"Informar al responsable"</strong>: se envía un email con los datos completos del artículo y el PDF a quien esté marcado como responsable de Journal Club, con el administrador en copia, pidiéndole que lo valore. No marca el artículo automáticamente — es una petición, no una confirmación.</li>
-            <li>Si el artículo <strong>todavía no está en PrionVault</strong>, envíalo por email a <code>prionvault_lab@joaquincastilla.com</code> (con el PDF adjunto si lo tienes) y escribe <strong>"JC"</strong> o <strong>"Journal Club"</strong> en el <strong>Asunto</strong> — puede llevar más palabras, basta con que contenga una de esas dos. El sistema lo procesa igual que cualquier ingesta (metadatos, PDF, resumen IA) y, en este caso, <strong>lo marca automáticamente</strong> como candidato a JC al terminar, sin que nadie tenga que tocar el icono de administrador.</li>
+            <li>Marcar un artículo como candidato a Journal Club (el libro 📖 de la fila) es cosa del <strong>administrador</strong>. Esos artículos son los que aparecen al filtrar por el libro azul: son los <strong>disponibles</strong> para que alguien los presente.</li>
+            <li>Si no eres admin y quieres proponer uno, pulsa su botón <strong>"JC"</strong> gris y elige <strong>"Informar al responsable"</strong>: le llega un email con el artículo y el PDF (con el administrador en copia) pidiéndole que lo valore.</li>
+            <li>Si el artículo aún no está en PrionVault, envíalo a <code>prionvault_lab@joaquincastilla.com</code> con el PDF y <strong>"JC"</strong> o <strong>"Journal Club"</strong> en el Asunto: se procesa y queda marcado como candidato automáticamente.</li>
           </ul>
 
-          <p><strong>Fase 2 — Convocar la sesión (fecha, hora, lugar)</strong></p>
+          <p><strong>Fase 2 — Elegir el artículo que vas a presentar (reserva)</strong></p>
           <ul>
-            <li>Una vez que un artículo está marcado como candidato a JC y <strong>todavía no tiene ninguna presentación registrada</strong>, aparece el botón <strong>"📢 Convocar"</strong> junto a "Añadir presentación", en la sección Journal Club de la ficha del artículo.</li>
-            <li>Solo lo ven — y solo lo pueden usar — el <strong>administrador</strong> y quien esté marcado como <strong>responsable de Journal Club</strong>.</li>
-            <li>Al pulsarlo se abre un formulario con <strong>Cuándo</strong> (obligatorio — fecha y hora en texto libre, p. ej. "Jueves 18 de septiembre, 12:00"), <strong>Dónde</strong> (opcional) y <strong>Notas adicionales</strong> (opcional).</li>
-            <li>Al enviar, se manda un email con los datos del artículo + PDF y esos detalles a <strong>todos los usuarios activos del laboratorio</strong> de una sola vez — esta es la convocatoria oficial de la sesión.</li>
+            <li>Filtra por el libro azul y pulsa el botón <strong>"JC"</strong> (azul claro) del artículo que te interese.</li>
+            <li>Primero se te pregunta <strong>"¿Eres [tu nombre]?"</strong>. Solo si confirmas, se muestran todos los datos del artículo (título, autores, revista, enlaces y abstract) y la pregunta <strong>"¿Quieres presentar este artículo en Journal Club?"</strong>.</li>
+            <li>Al aceptar, el artículo queda <strong>reservado para ti</strong>: se le quita el libro azul (deja de aparecer como disponible), su botón JC pasa a <strong>rojo con candado 🔒</strong> y nadie más puede cogerlo. Si dos personas lo pulsan a la vez, solo una lo consigue.</li>
+            <li>Al <strong>responsable de Journal Club</strong> le llega un email (con los administradores en copia, el artículo y su PDF) diciendo quién lo va a presentar, para que le avise de la fecha.</li>
+            <li>Si otra persona pulsa ese botón rojo, ve para quién está reservado.</li>
           </ul>
 
-          <p><strong>Fase 3 — Celebrar la sesión</strong></p>
-          <p>Esta fase ocurre fuera de la aplicación — es la propia reunión de Journal Club.</p>
-
-          <p><strong>Fase 4 — Archivar la presentación</strong></p>
+          <p><strong>Fase 3 — Convocar la sesión (fecha, hora, lugar)</strong></p>
           <ul>
-            <li>Al terminar la sesión, quien la presentó (o el responsable) pulsa <strong>"Añadir presentación"</strong> en la misma sección Journal Club del artículo — o el botón <strong>"JC"</strong> del listado si el artículo ya estaba marcado, que salta directo a este paso.</li>
-            <li>Se sube el documento presentado (PowerPoint, Word, Excel, PDF o imágenes — ver "Archivos adjuntos" más abajo), se indica el nombre del responsable/ponente, y la fecha se toma sola del nombre del archivo si sigue el formato <code>yyyymmdd</code> (si no, se usa la fecha de hoy).</li>
-            <li>A partir de ahí, la presentación queda archivada y visible para todo el laboratorio desde <em>"Gestión de Journal clubs"</em> (buscador, informes por año/responsable — ver más abajo) y desde la propia ficha del artículo.</li>
+            <li>El botón <strong>"📢 Convocar"</strong> está en la sección Journal Club de la ficha, al lado del distintivo <em>"En Journal Club"</em> de la ficha y, como icono 📢, junto al libro de cada fila del listado. Aparece en los artículos candidatos o reservados que aún no tienen presentación, y solo lo ven el <strong>administrador</strong> y el <strong>responsable de Journal Club</strong>.</li>
+            <li>El formulario pide <strong>Cuándo</strong> (fecha y hora con calendario), <strong>Dónde</strong> (por defecto "Sala de seminarios") y <strong>Notas</strong>. Con <strong>"Programar envío"</strong> puedes dejarlo preparado para que salga en otro momento; si lo dejas vacío se envía al instante.</li>
+            <li>El email llega a <strong>todos los usuarios activos</strong>, con el artículo, el PDF y quién presenta.</li>
+            <li><strong>Enviar la convocatoria desbloquea la reserva:</strong> el botón JC sigue en rojo pero sin candado, y el presentador ya puede subir su presentación. Si se programó, se desbloquea cuando el email sale.</li>
           </ul>
+
+          <p><strong>Fase 4 — Celebrar la sesión</strong> (fuera de la aplicación).</p>
+
+          <p><strong>Fase 5 — Subir la presentación</strong></p>
+          <ul>
+            <li>El presentador pulsa el botón JC rojo (ya sin candado) y se abre directamente el modal para subir la presentación (PowerPoint, PDF, etc.). La fecha se toma del nombre del archivo si sigue el formato <code>yyyymmdd</code>.</li>
+            <li>Con la presentación subida, el botón pasa a <strong>verde</strong>. Al pulsarlo se abre <em>"Gestión de Journal clubs"</em> con ese artículo ya buscado, para abrir el documento.</li>
+          </ul>
+
+          <p><strong>Liberar o desbloquear una reserva</strong><br>
+          Solo el <strong>responsable de Journal Club</strong> o un <strong>administrador</strong>, pulsando el botón rojo del artículo: <em>Liberar</em> (vuelve el libro azul y queda disponible otra vez), <em>Desbloquear</em> (deja subir la presentación sin esperar a la convocatoria) o <em>Subir presentación</em> ellos mismos.</p>
 
           <p><strong>Quién es "el responsable de Journal Club" y cómo se asigna</strong><br>
-          Se marca desde <strong>Panel de administración → Users → Editar</strong>, casilla <em>"Journal Club responsible"</em>. Puede haber más de una persona marcada — en ese caso, tanto el email de "Informar al responsable" (fase 1) como el botón "Convocar" (fase 2) están disponibles para todas ellas, y el email de fase 1 les llega a todas a la vez.</p>
+          Se marca desde <strong>Panel de administración → Users → Editar</strong> (casilla <em>"Journal Club responsible"</em>) o desde <strong>Miscelánea → Administración</strong> en PrionVault (casilla <em>"Responsable de Journal Club"</em>; en el listado de usuarios aparece con 📖). Puede haber más de una persona: los avisos les llegan a todas y todas pueden convocar, liberar y desbloquear.</p>
 
           <h4>Quién puede hacer qué</h4>
           <ul>
@@ -22989,18 +23033,21 @@
           <p>Puedes adjuntar uno o varios archivos a cada entrada JC (presentaciones PPTX, PDFs complementarios, notas…). Los archivos se almacenan en Dropbox y están disponibles para todos los usuarios. El creador de la entrada y el administrador pueden añadir o eliminar adjuntos, incluso uno por uno (✕ junto a cada fichero, sin tener que borrar toda la presentación).</p>
 
           <h4>Gestión de Journal clubs — el modal grande</h4>
-          <p>El enlace <em>"Gestión de Journal clubs"</em> del menú lateral (antes "Añadir Journal clubs") abre un modal con tres partes:</p>
+          <p>El enlace <em>"Gestión de Journal clubs"</em> del menú lateral (antes "Añadir Journal clubs") está disponible para <strong>todos los usuarios</strong>, no solo para administradores, y abre un modal con tres partes:</p>
           <ul>
             <li><strong>Listado completo</strong> de todas las presentaciones registradas, con buscador instantáneo por artículo, responsable o año. El botón <strong>OR</strong> junto al buscador cambia el criterio de "todas las palabras deben coincidir" a "basta con que coincida una". Las columnas "Fecha" y "Responsable" se ordenan pulsando su cabecera. Cada fila enlaza directamente al PDF del artículo (si lo tiene) y a su DOI/PMID.</li>
             <li><strong>"Añadir nuevo JC"</strong> abre el mismo buscador de artículo de siempre (con la importación masiva, ver más abajo).</li>
             <li><strong>"Generar informe"</strong> descarga un PDF con todo el historial, agrupado a elegir entre Año→Responsable o Responsable→Año, para todo o restringido a un año o responsable concreto.</li>
           </ul>
 
-          <h4>El botón "JC" del listado, siempre visible</h4>
-          <p>Antes el botón "JC" de cada fila del listado principal solo aparecía si el artículo ya tenía una presentación. Ahora aparece <strong>siempre</strong>:</p>
+          <h4>Los colores del botón "JC"</h4>
+          <p>El botón "JC" aparece siempre en cada fila del listado (y en el carrito). Su color indica el estado:</p>
           <ul>
-            <li><strong>Gris</strong> ("Sin presentación de Journal Club"): el artículo no tiene ninguna todavía. Al pulsarlo se abre directamente el modal de "añadir presentación" para ese artículo — no hace falta buscarlo, ya se sabe cuál es.</li>
-            <li><strong>Verde oscuro con letra amarilla</strong>: el artículo ya tiene una o más presentaciones. Al pulsarlo se abre el documento (o la ficha del artículo, si hay varios), igual que antes.</li>
+            <li><strong>Gris:</strong> el artículo no es candidato ni tiene presentación. Al pulsarlo puedes pedir al responsable que lo valore o añadir una presentación.</li>
+            <li><strong>Azul claro:</strong> candidato disponible (libro azul). Al pulsarlo empieza la reserva para presentarlo tú.</li>
+            <li><strong>Rojo con 🔒:</strong> reservado y bloqueado hasta que se convoque la sesión.</li>
+            <li><strong>Rojo sin candado:</strong> reservado y con la sesión ya anunciada; su presentador puede subir la presentación.</li>
+            <li><strong>Verde oscuro con letra amarilla:</strong> ya tiene presentación. Al pulsarlo se abre "Gestión de Journal clubs" con ese artículo buscado.</li>
           </ul>
 
           <h4>Ver los documentos adjuntos</h4>
@@ -23053,8 +23100,19 @@
           <h4>Glosario</h4>
           <p>El botón <strong>Glosario</strong> de la barra lateral abre un modal dentro de PrionVault (buscar, filtrar por categoría, añadir, editar en línea, importar/exportar .tsv), con el mismo contenido que la página independiente <code>/prionvault/admin/glossary</code> — esta se mantiene por si otras herramientas del laboratorio (PrionLab, PrionPacks) enlazan directamente a ella. Es la terminología EN→ES que usan todos los resúmenes IA y chats.</p>
 
+          <h4>👥 Miscelánea → Administración (usuarios, sin salir de PrionVault)</h4>
+          <p>Permite gestionar usuarios desde PrionVault: crearlos, editar nombre, email e idioma, activarlos o desactivarlos, resetear su contraseña y marcar dos permisos:</p>
+          <ul>
+            <li><strong>Administrador de usuarios de PrionVault:</strong> da acceso a este mismo panel a alguien que no es administrador general, sin darle el resto del panel de administración de PrionLab (backups, base de datos, otras herramientas). Es independiente del rol general.</li>
+            <li><strong>Responsable de Journal Club</strong> (📖 en el listado de usuarios): ver la pestaña Journal Club.</li>
+          </ul>
+          <p>Por seguridad, quien solo tiene el permiso de PrionVault <strong>no puede</strong> tocar cuentas de administradores generales, cambiar el rol general de nadie (los usuarios que crea son siempre lectores) ni desactivarse a sí mismo. Eliminar usuarios sigue siendo solo desde el panel de administración de PrionLab.</p>
+
+          <h4>👁 Ver como <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
+          <p>Desde <strong>Miscelánea → 👁 Ver como</strong> (o desde el panel de administración de PrionLab) eliges un usuario no administrador y entras con su sesión completa para ver PrionVault exactamente como lo ve él. Una franja fija arriba indica que estás viéndolo como otra persona, con el botón <strong>Salir</strong> para volver a tu sesión, en la misma página donde estabas. Todo lo que hagas mientras tanto lo hace esa cuenta, y queda registrado quién lo usó y cuándo.</p>
+
           <h4>Copias de seguridad (Backups)</h4>
-          <p>Panel de <strong>Backups</strong> accesible desde el menú lateral: crea copias de seguridad de la base de datos bajo demanda o consulta las programadas automáticamente, verifica su integridad, ajusta la frecuencia y restaura una copia si hace falta.</p>
+          <p>Panel de <strong>Backups</strong> accesible desde el menú lateral: crea copias de seguridad de la base de datos bajo demanda o consulta las programadas automáticamente, verifica su integridad, ajusta la frecuencia y restaura una copia si hace falta. La lista muestra las copias guardadas en <strong>Dropbox</strong>: si al crear una copia aparece un aviso ⚠ de que no se pudo subir a Dropbox (por ejemplo, por falta de espacio), la copia se ha hecho solo en el servidor y por eso no aparece en la lista.</p>
 
           <h4>Exportar esta Ayuda</h4>
           <p>En la cabecera de este modal, los botones <strong>PDF</strong> y <strong>PPTX</strong> descargan toda esta guía — el PDF con el mismo texto e imágenes que ves aquí, y el PPTX como una presentación de diapositivas (portada, una diapositiva divisoria por pestaña y una por cada apartado, con tablas nativas). Ambos se generan a partir del contenido que ves en cada pestaña, así que siempre están al día.</p>
