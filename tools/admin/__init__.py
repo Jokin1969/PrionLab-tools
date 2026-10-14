@@ -499,7 +499,8 @@ def trigger_backup():
         import logging
         _log = logging.getLogger(__name__)
         try:
-            result = BackupManager().create_backup()
+            from database.backup_monitor import run_backup
+            result = run_backup("manual")
             if result.get("success"):
                 _log.info("Background backup completed: %s (%.1f MB)",
                           result.get("filename"), result.get("size_mb"))
@@ -1096,7 +1097,8 @@ def _run_backup_create_job(job_id):
     _set = _job_setter(job_id, "Backup create")
     try:
         _set(stage="creating_backup")
-        result = BackupManager().create_backup()
+        from database.backup_monitor import run_backup
+        result = run_backup("manual")
         if result.get("success"):
             logger.info("Backup create [%s]: success — %s", job_id, result.get("filename"))
             _set(status="success", result=result, finished_at=time.time())
@@ -1106,6 +1108,23 @@ def _run_backup_create_job(job_id):
     except Exception as e:
         logger.exception("Backup create [%s]: unexpected failure", job_id)
         _set(status="error", error=str(e)[:500], finished_at=time.time())
+
+
+@admin_bp.route("/api/db/backups/health", methods=["GET"])
+@admin_required
+def api_db_backups_health():
+    """Backup status for the Backups panel: last good backup, overdue or
+    failed, next scheduled run, and the recent run log."""
+    from flask import jsonify
+    from database.backup_monitor import health
+    try:
+        return jsonify(health())
+    except Exception as e:
+        logger.exception("backups/health failed")
+        return jsonify({"level": "unknown", "error": str(e)[:300],
+                        "problems": ["No se pudo comprobar el estado de las copias "
+                                     "(¿falta aplicar la migración 097?)."],
+                        "runs": []}), 200
 
 
 @admin_bp.route("/api/db/backups/create", methods=["POST"])

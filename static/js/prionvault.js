@@ -20131,8 +20131,10 @@
             createStatusEl.textContent = `✓ Backup creado (${job.result?.size_mb ?? '?'} MB)`;
           }
           loadList();
+          loadHealth();
         } else {
           createStatusEl.textContent = '✗ ' + (job.error || 'Error desconocido');
+          loadHealth();
         }
       } catch (e) {
         createStatusEl.textContent = '✗ ' + e.message;
@@ -20427,14 +20429,110 @@
       }
     });
 
+    // ── Backup health ("¿se están haciendo bien las copias?") ─────────
+    const _BK_TRIGGER = { scheduled: 'Programada', manual: 'Manual', catchup: 'Recuperación' };
+    const _BK_STATUS = {
+      success: ['✓ Correcta', '#15803d'],
+      partial: ['⚠ Sin subir a Dropbox', '#b45309'],
+      failed:  ['✗ Falló', '#b91c1c'],
+      running: ['… En curso', '#1d4ed8'],
+      skipped: ['Omitida', '#6b7280'],
+    };
+    function _fmtAge(h) {
+      if (h == null) return '—';
+      if (h < 1) return 'hace menos de 1 hora';
+      if (h < 48) return `hace ${Math.round(h)} h`;
+      return `hace ${Math.round(h / 24)} días`;
+    }
+    async function loadHealth() {
+      const box = document.getElementById('pv-bk-health');
+      if (!box) return;
+      box.innerHTML = '<div style="font-size:12.5px;color:#9ca3af;">Comprobando el estado de las copias…</div>';
+      let h;
+      try { h = await adminApi('/api/db/backups/health'); }
+      catch (e) {
+        box.innerHTML = `<div style="font-size:12.5px;color:#b91c1c;">No se pudo comprobar el estado: ${esc(e.message)}</div>`;
+        return;
+      }
+      _paintBackupNavDot(h.level);
+      const theme = {
+        ok:      ['#f0fdf4', '#86efac', '#15803d', '✓ Las copias de seguridad se están haciendo bien'],
+        warning: ['#fffbeb', '#fcd34d', '#b45309', '⚠ Las copias se hacen, pero hay algo que revisar'],
+        error:   ['#fef2f2', '#fca5a5', '#b91c1c', '✗ Las copias de seguridad NO se están haciendo bien'],
+      }[h.level] || ['#f9fafb', '#e5e7eb', '#6b7280', 'Estado desconocido'];
+      const freq = { daily: 'diaria', weekly: 'semanal', monthly: 'mensual' }[h.settings?.frequency] || '—';
+      const runs = h.runs || [];
+      box.innerHTML = `
+        <div style="background:${theme[0]};border:1px solid ${theme[1]};border-radius:10px;padding:12px 14px;">
+          <div style="font-weight:700;font-size:13.5px;color:${theme[2]};">${theme[3]}</div>
+          ${(h.problems || []).length ? `<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px;color:${theme[2]};">
+            ${h.problems.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+          <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:9px;font-size:12px;color:#374151;">
+            <span><strong>Última copia correcta:</strong> ${h.last_success_at ? esc(fmtDate(h.last_success_at)) + ' (' + _fmtAge(h.age_hours) + ')' : 'ninguna registrada'}</span>
+            <span><strong>Frecuencia:</strong> ${esc(freq)}</span>
+            <span><strong>Próxima programada:</strong> ${h.next_scheduled ? esc(fmtDate(h.next_scheduled)) : '—'}</span>
+            ${h.running ? '<span style="color:#1d4ed8;"><strong>Hay una copia en curso ahora mismo</strong></span>' : ''}
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:6px;">
+            Se comprueba cada hora: si falta una copia, se hace sola; si una falla o no llega a Dropbox, se avisa por email a los administradores.
+          </div>
+          <details style="margin-top:8px;">
+            <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#374151;">Historial de copias (${runs.length})</summary>
+            ${runs.length ? `<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px;background:#fff;">
+              <thead><tr style="text-align:left;color:#6b7280;border-bottom:1px solid #e5e7eb;">
+                <th style="padding:4px 6px;">Fecha</th><th style="padding:4px 6px;">Tipo</th>
+                <th style="padding:4px 6px;">Resultado</th><th style="padding:4px 6px;text-align:right;">Tamaño</th>
+                <th style="padding:4px 6px;">Detalle</th></tr></thead>
+              <tbody>${runs.map(r => {
+                const st = _BK_STATUS[r.status] || [r.status, '#6b7280'];
+                const detail = r.error || r.dropbox_error || r.warning || r.filename || '';
+                return `<tr style="border-bottom:1px solid #f3f4f6;">
+                  <td style="padding:4px 6px;white-space:nowrap;">${esc(fmtDate(r.started_at))}</td>
+                  <td style="padding:4px 6px;">${esc(_BK_TRIGGER[r.trigger] || r.trigger)}</td>
+                  <td style="padding:4px 6px;color:${st[1]};font-weight:600;white-space:nowrap;">${esc(st[0])}</td>
+                  <td style="padding:4px 6px;text-align:right;white-space:nowrap;">${r.size_mb != null ? esc(r.size_mb + ' MB') : ''}</td>
+                  <td style="padding:4px 6px;color:#6b7280;">${esc(detail)}</td></tr>`;
+              }).join('')}</tbody></table>`
+              : '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">Aún no hay copias registradas (el registro empieza con esta versión).</div>'}
+          </details>
+        </div>`;
+    }
+    refreshBtn?.addEventListener('click', loadHealth);
+    createBtn?.addEventListener('click', () => setTimeout(loadHealth, 1500));
+
     openBtn.addEventListener('click', () => {
       modal.style.display = '';
       verifyPanel.style.display = 'none';
       restorePanel.style.display = 'none';
       showTab('list');
+      loadHealth();
       loadList();
       loadSettings();
     });
+
+    // Sidebar indicator: a coloured dot on the Backups button when the
+    // last backup failed or is overdue, so it's noticed without opening it.
+    (async () => {
+      try {
+        const res = await fetch('/admin/api/db/backups/health', { credentials: 'same-origin' });
+        if (res.ok) _paintBackupNavDot((await res.json()).level);
+      } catch (e) { /* silent */ }
+    })();
+  }
+
+  function _paintBackupNavDot(level) {
+    const btn = document.getElementById('btn-backups');
+    if (!btn) return;
+    let dot = btn.querySelector('.pv-bk-nav-dot');
+    if (level !== 'error' && level !== 'warning') { dot?.remove(); return; }
+    if (!dot) {
+      dot = document.createElement('span');
+      dot.className = 'pv-bk-nav-dot';
+      dot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;vertical-align:middle;';
+      btn.appendChild(dot);
+    }
+    dot.style.background = level === 'error' ? '#ef4444' : '#f59e0b';
+    dot.title = level === 'error' ? 'Las copias de seguridad no se están haciendo bien' : 'Hay algo que revisar en las copias de seguridad';
   }
 
   function wireQueryExpansion() {
@@ -23129,6 +23227,7 @@
 
           <h4>Copias de seguridad (Backups)</h4>
           <p>Panel de <strong>Backups</strong> accesible desde el menú lateral: crea copias de seguridad de la base de datos bajo demanda o consulta las programadas automáticamente, verifica su integridad, ajusta la frecuencia y restaura una copia si hace falta. La lista muestra las copias guardadas en <strong>Dropbox</strong>: si al crear una copia aparece un aviso ⚠ de que no se pudo subir a Dropbox (por ejemplo, por falta de espacio), la copia se ha hecho solo en el servidor y por eso no aparece en la lista.</p>
+          <p><strong>Control de las copias:</strong> arriba del panel, un recuadro verde, ámbar o rojo indica si las copias se están haciendo bien: fecha de la última copia correcta, frecuencia, próxima copia programada, los problemas detectados y el historial de intentos (programadas, manuales y de recuperación, con su resultado y tamaño). El sistema lo vigila cada hora: si falta una copia (por ejemplo, porque la aplicación se estaba reiniciando a la hora programada) la hace sola, y si una copia falla, no llega a Dropbox o es mucho más pequeña que la anterior, se avisa por email a los administradores. Si hay un problema, aparece además un punto rojo o ámbar junto al botón <strong>Backups</strong> del menú lateral.</p>
 
           <h4>Exportar esta Ayuda</h4>
           <p>En la cabecera de este modal, los botones <strong>PDF</strong> y <strong>PPTX</strong> descargan toda esta guía — el PDF con el mismo texto e imágenes que ves aquí, y el PPTX como una presentación de diapositivas (portada, una diapositiva divisoria por pestaña y una por cada apartado, con tablas nativas). Ambos se generan a partir del contenido que ves en cada pestaña, así que siempre están al día.</p>

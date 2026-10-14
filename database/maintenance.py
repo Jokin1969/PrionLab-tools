@@ -63,6 +63,15 @@ class MaintenanceScheduler:
             sched.add_job(lambda: _run(self.weekly_backup),
                           CronTrigger(**_backup_cron_kwargs(backup_settings)),
                           id="weekly_backup", replace_existing=True)
+            # Hourly backup watchdog: catches up a missed scheduled backup
+            # (e.g. the app was restarting at the scheduled time) and
+            # closes runs left "running" by a dead process. First check
+            # 10 min after start-up, so a restart right after a missed
+            # slot doesn't wait a whole hour. See database/backup_monitor.py.
+            sched.add_job(lambda: _run(self.backup_watchdog),
+                          IntervalTrigger(hours=1), id="backup_watchdog",
+                          next_run_time=datetime.utcnow() + timedelta(minutes=10),
+                          replace_existing=True)
             sched.add_job(lambda: _run(self.vacuum_analyze),
                           CronTrigger(day_of_week="sun", hour=4), id="vacuum",
                           replace_existing=True)
@@ -176,14 +185,25 @@ class MaintenanceScheduler:
             return 0
 
     def weekly_backup(self) -> dict:
+        # run_backup records the attempt and holds a cluster-wide lock:
+        # every gunicorn worker runs this scheduler, so without the lock
+        # each scheduled backup ran once PER WORKER, at the same time.
         try:
-            from database.backup import BackupManager
-            result = BackupManager().create_backup()
-            logger.info("Weekly backup: %s", result)
+            from database.backup_monitor import run_backup
+            result = run_backup("scheduled")
+            logger.info("Scheduled backup: %s", result)
             return result
         except Exception as e:
             logger.error("weekly_backup: %s", e)
             return {"success": False, "error": str(e)}
+
+    def backup_watchdog(self) -> dict:
+        try:
+            from database.backup_monitor import watchdog
+            return watchdog()
+        except Exception as e:
+            logger.error("backup_watchdog: %s", e)
+            return {}
 
     def vacuum_analyze(self) -> bool:
         try:
