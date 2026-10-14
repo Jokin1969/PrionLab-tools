@@ -22687,6 +22687,7 @@
         <div class="pv-help-section">
           <h3>Carrito</h3>
           <p>El carrito (icono 🛒) sirve para reunir un grupo de artículos y operar sobre todos ellos a la vez: aislarlos en el listado, mandarlos por email, hablar con la IA sobre el conjunto, o guardarlos como una selección con nombre para recuperarla más adelante. Es compartido con PrionPacks: lo que añades desde PrionVault también aparece en PrionPacks, y viceversa.</p>
+          <p>Cada usuario tiene <strong>su propio carrito</strong>, y está disponible para <strong>todos los usuarios</strong>, no solo para administradores.</p>
 
           <h4>Botones de la parte superior del carrito</h4>
           <p>Son iconos discretos, todos del mismo tamaño — pasa el ratón por encima para ver qué hace cada uno:</p>
@@ -22694,6 +22695,7 @@
             <li><strong>🤖 Chat IA:</strong> abre una única conversación de IA que tiene en cuenta <strong>todos</strong> los artículos del carrito a la vez, útil para comparar o relacionar varios trabajos entre sí. Cada artículo del carrito queda igualmente registrado como si tuviera su propio chat, a efectos de las estadísticas de uso (ver la pestaña <em>"IA: chats y notas"</em>).</li>
             <li><strong>✉️ Enviar:</strong> envía todos los artículos del carrito en un único email, con los PDFs disponibles adjuntos — a diferencia de la opción "Acciones → Enviar por email", que solo manda un listado con enlaces sin adjuntar nada.</li>
             <li><strong>📦 Guardar</strong> y <strong>📂 Repositorio:</strong> ver "Repositorio de carritos" más abajo.</li>
+            <li><strong>↗ Enviar carrito a…:</strong> copia los artículos de tu carrito al carrito de uno o varios usuarios que elijas en un modal. <strong>Tu carrito no cambia</strong>, y en el carrito de quien lo recibe solo se <strong>añaden</strong> artículos: nunca se borra nada de lo que ya tuviera.</li>
             <li><strong>Ver en listado:</strong> aísla el listado principal a exactamente los artículos que tienes en el carrito.</li>
             <li><strong>Ocultar:</strong> cierra el panel del carrito sin perder los artículos que ya habías añadido (igual que la ×).</li>
             <li><strong>Vaciar carrito:</strong> quita todos los artículos del carrito.</li>
@@ -22805,6 +22807,12 @@
             </div>
           </div>
 
+          <h4>Permisos adicionales, independientes del rol</h4>
+          <ul>
+            <li><strong>Responsable de Journal Club:</strong> recibe los avisos de JC, puede Convocar sesiones y liberar o desbloquear reservas de artículos JC (en la tabla aparece como "parcial" para el lector: solo si tiene este permiso).</li>
+            <li><strong>Administrador de usuarios de PrionVault:</strong> puede gestionar usuarios desde <em>Miscelánea → Administración</em> sin tener el resto del panel de administración (ver la pestaña Administración).</li>
+          </ul>
+
           <h4>Tabla comparativa de capacidades</h4>
           <table class="pv-help-role-table">
             <thead>
@@ -22835,6 +22843,8 @@
               <tr><td>Marcar como hito (★)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
               <tr><td>Asignar color y prioridad</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
               <tr><td>Valorar artículo (★ rating)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Carrito propio (🛒), guardarlo y enviarlo a otros usuarios</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Sugerir referencias para un texto (IA)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
 
               <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Selección masiva</td></tr>
               <tr><td>Usar checkboxes y barra de acciones</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
@@ -22845,11 +22855,13 @@
 
               <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Colecciones y tags</td></tr>
               <tr><td>Ver colecciones y tags existentes</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
-              <tr><td>Filtrar por colección o tag</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Filtrar por colección o tag (ves los artículos que cualquiera haya etiquetado)</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
               <tr><td>Crear / editar / eliminar colecciones y tags</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${NO}</td></tr>
 
               <tr><td colspan="3" style="background:#f9fafb;font-weight:700;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;padding:6px 12px;">Journal Club</td></tr>
-              <tr><td>Ver presentaciones JC de todos</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Ver presentaciones JC de todos ("Gestión de Journal clubs")</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Reservar un artículo del libro azul para presentarlo</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
+              <tr><td>Liberar o desbloquear una reserva, Convocar sesión</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${PART}</td></tr>
               <tr><td>Crear nuevas entradas JC</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
               <tr><td>Adjuntar archivos (PPTX, PDF…) a sus propias entradas</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
               <tr><td>Editar o eliminar entradas propias</td><td style="text-align:center;">${YES}</td><td style="text-align:center;">${YES}</td></tr>
@@ -22882,12 +22894,14 @@
           <h4>Barra de búsqueda</h4>
           <p>La búsqueda de texto y la búsqueda con IA ahora están separadas — cada una en su propio campo, para que no compartan comportamiento por error:</p>
           <ul>
-            <li><strong>🔤 Búsqueda estándar</strong> (la barra de siempre): por título, autores y abstract. Admite los operadores de PostgreSQL (<code>"frase exacta"</code>, <code>BSE -review</code>, <code>Castilla OR Soto</code>) y, para varias palabras sueltas, los botones <strong>Y / O</strong> dentro del propio campo controlan si deben coincidir todas (Y, por defecto) o basta con una (O).</li>
+            <li><strong>🔤 Búsqueda estándar</strong> (la barra de siempre): por título, autores y abstract. Admite los operadores de PostgreSQL (<code>"frase exacta"</code>, <code>BSE -review</code>, <code>Castilla OR Soto</code>) y, para varias palabras sueltas, los botones <strong>AND / OR</strong> dentro del propio campo controlan si deben coincidir todas (AND, por defecto) o basta con una (OR).</li>
+            <li><strong>⚡ Título exacto entre comillas:</strong> si sabes el título de un artículo, pégalo <strong>entre comillas</strong> (<code>"Prions activate a p38 MAPK synaptotoxic signaling pathway"</code>) y PrionVault lo busca directamente en los títulos con un índice propio: responde al instante tanto si está como si no. Da igual que haya diferencias de mayúsculas, espacios, guiones o signos de puntuación, y también sirve con solo una parte del título. Mientras la comilla está abierta (la estás escribiendo) no se lanza la búsqueda; empieza al cerrarla. Las búsquedas largas <em>sin</em> comillas también son ahora más rápidas.</li>
             <li><strong>🤖 Búsqueda con IA</strong> (icono de robot, a la derecha de la barra): abre un modal aparte con un campo de texto grande para escribir la pregunta en lenguaje natural y elegir el modelo — Claude Sonnet 4.6, GPT-4.1 o Gemini 2.5 Pro, por nombre — antes de lanzarla. Busca por significado sobre el contenido vectorizado de la biblioteca y responde citando las referencias usadas.</li>
             <li><strong>🔍 Búsqueda bibliográfica:</strong> consulta PubMed y Scopus en tiempo real. Los resultados se pueden importar directamente a la biblioteca.</li>
           </ul>
           <h4>Filtros del panel lateral</h4>
           <p>Filtra por año, autores, revista, colección, tag, estado PDF, estado resumen IA, bandera, hito, favorito, leído, color, prioridad, Journal Club, PrionPack y asignación PrionRead. Los filtros se combinan (AND). El contador "📝 Con notas" del menú lateral cuenta tus propias notas Post-it (no resúmenes IA) y filtra el listado a los artículos que las tienen.</p>
+          <p><strong>Tags compartidas al consultar:</strong> el número de artículos de cada tag y el listado que aparece al pulsarla incluyen los artículos que <strong>cualquier usuario</strong> haya etiquetado, no solo los tuyos. Poner o quitar una tag a un artículo sigue siendo personal: solo puedes quitar las que pusiste tú.</p>
           <h4>Búsqueda masiva por DOI / PMID <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
           <p>Pega varios DOIs o PMIDs separados por comas o saltos de línea en el campo de la barra de herramientas para encontrar de golpe qué artículos ya están en la biblioteca y cuáles faltan.</p>
 
@@ -22897,6 +22911,8 @@
             <li><strong>⬇ Descarga directa de PDF:</strong> justo antes del icono 📍, un botón (solo si el artículo tiene PDF) lo descarga directamente al disco — a diferencia del enlace "PDF", que lo abre en el visor del navegador.</li>
             <li><strong>🚫📄 Seleccionar los artículos sin PDF:</strong> junto a los iconos 📝 (notas) y 🛒 (carrito), en la parte superior del listado, selecciona de un clic <strong>todos los artículos de la biblioteca que no tienen PDF</strong> — sin importar los filtros puestos en ese momento — y activa la barra de acciones en lote sobre esa selección.</li>
             <li><strong>📋 Copiar DOI y PMID:</strong> en el modal de detalle, junto al DOI y al PMID hay un pequeño botón en superíndice que copia el identificador al portapapeles.</li>
+            <li><strong>🔓 Buscar PDF</strong> <span class="pv-help-chip pv-help-chip-admin">Solo admin</span>: en los artículos sin PDF (en la fila del listado y en la ficha), busca una versión legal de acceso abierto en <strong>Unpaywall</strong> y luego en <strong>OpenAlex</strong>; si la encuentra, la descarga y la asocia al artículo. Si no, prepara un email en inglés para pedírsela al autor de correspondencia (con su dirección si se puede localizar y tu firma), un enlace para buscarlo en ResearchGate, y un botón <em>"Indicar que se ha solicitado"</em>: el icono pasa a 🔓✓ para que nadie lo vuelva a pedir.</li>
+            <li><strong>✉️ Enviar por email — "Marcar como leído":</strong> el modal "Enviar artículo por email" tiene esta casilla, activada por defecto: al enviarlo, el artículo queda con tu tic verde de leído. Si lo <em>programas</em>, se marca cuando el email sale de verdad.</li>
           </ul>
 
           <h4>Tags y colecciones inteligentes</h4>
