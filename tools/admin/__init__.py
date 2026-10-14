@@ -1102,6 +1102,14 @@ def _run_backup_create_job(job_id):
         if result.get("success"):
             logger.info("Backup create [%s]: success — %s", job_id, result.get("filename"))
             _set(status="success", result=result, finished_at=time.time())
+        elif result.get("skipped"):
+            # Not a failure: another backup (e.g. the automatic catch-up)
+            # is already running — the single-runner lock did its job.
+            logger.info("Backup create [%s]: skipped — %s", job_id, result.get("error"))
+            _set(status="error",
+                 error="Ya hay otra copia de seguridad en marcha (probablemente la automática). "
+                       "Espera a que termine: su resultado aparecerá en el historial de copias.",
+                 result=result, finished_at=time.time())
         else:
             logger.error("Backup create [%s]: failed — %s", job_id, result.get("error"))
             _set(status="error", error=result.get("error"), result=result, finished_at=time.time())

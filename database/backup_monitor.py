@@ -138,13 +138,17 @@ def run_backup(trigger: str = "scheduled") -> dict:
 # ── Watchdog ─────────────────────────────────────────────────────────────────
 
 def _lock_free() -> bool:
-    """True if no backup currently holds the lock (checks without keeping it)."""
+    """True if no backup currently holds the lock. Reads pg_locks instead
+    of briefly taking the lock itself — taking it, even for a moment,
+    could make a backup starting at that exact instant skip itself."""
     with _engine().connect() as conn:
-        got = conn.execute(_sql("SELECT pg_try_advisory_lock(:k)"), {"k": _LOCK_KEY}).scalar()
-        if got:
-            conn.execute(_sql("SELECT pg_advisory_unlock(:k)"), {"k": _LOCK_KEY})
-        conn.commit()
-        return bool(got)
+        held = conn.execute(_sql("""
+            SELECT EXISTS (
+              SELECT 1 FROM pg_locks
+               WHERE locktype = 'advisory' AND granted AND objsubid = 1
+                 AND ((classid::bigint << 32) | objid::bigint) = :k)
+        """), {"k": _LOCK_KEY}).scalar()
+        return not held
 
 
 def _last_success_at() -> Optional[datetime]:
