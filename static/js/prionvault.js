@@ -6018,6 +6018,7 @@
       try {
         const payload = {
           when_text: whenText,
+          presenter_name: ($('pv-jc-convoke-presenter')?.value || '').trim(),
           location_text: ($('pv-jc-convoke-where')?.value || '').trim(),
           notes: ($('pv-jc-convoke-notes')?.value || '').trim(),
         };
@@ -6058,6 +6059,20 @@
       });
       const whereEl = $('pv-jc-convoke-where');
       if (whereEl) whereEl.value = 'Sala de seminarios';
+      // Who presents: PrionVault already knows it when the article was
+      // reserved — prefill it (editable), so it never has to go in Notes.
+      const presEl = $('pv-jc-convoke-presenter');
+      const presHint = $('pv-jc-convoke-presenter-hint');
+      const fillPresenter = (name) => {
+        if (presEl) presEl.value = name || '';
+        if (presHint) presHint.textContent = name ? '(quien reservó el artículo — puedes cambiarlo)' : '(opcional)';
+      };
+      fillPresenter(article.jc_claimed_by_name || '');
+      if (!article.jc_claimed_by_name && article.id) {
+        api(`/articles/${article.id}/jc-state`)
+          .then(st => { if (st.jc_claimed_by_name && presEl && !presEl.value) fillPresenter(st.jc_claimed_by_name); })
+          .catch(() => {});
+      }
       const sendBtn = $('pv-jc-convoke-send');
       if (sendBtn) sendBtn.disabled = false;
       modal.style.display = 'flex';

@@ -2323,6 +2323,7 @@ def api_article_jc_convocation(aid):
     when_text = (body.get("when_text") or "").strip()
     location_text = (body.get("location_text") or "").strip()
     notes = (body.get("notes") or "").strip()
+    presenter_name = (body.get("presenter_name") or "").strip()
     scheduled_at_str = body.get("scheduled_at")
 
     from .services import article_share
@@ -2334,12 +2335,14 @@ def api_article_jc_convocation(aid):
             result = article_share.schedule_jc_convocation(
                 str(aid), scheduled_at, when_text=when_text,
                 location_text=location_text, notes=notes,
-                requester_name=me.get("name") or "")
+                requester_name=me.get("name") or "",
+                presenter_name=presenter_name)
             return jsonify({"ok": True, "scheduled": True, **result})
 
         result = article_share.send_jc_convocation_email(
             str(aid), when_text=when_text, location_text=location_text,
-            notes=notes, requester_name=me.get("name") or "")
+            notes=notes, requester_name=me.get("name") or "",
+            presenter_name=presenter_name)
     except ValueError as exc:
         return jsonify({"error": "bad_request", "detail": str(exc)}), 400
     except LookupError as exc:

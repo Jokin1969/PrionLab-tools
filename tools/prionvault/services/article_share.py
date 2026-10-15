@@ -637,7 +637,8 @@ def send_jc_claim_email(article_id: str, presenter_name: str) -> dict:
 
 def send_jc_convocation_email(article_id: str, *, when_text: str,
                               location_text: str = "", notes: str = "",
-                              requester_name: str = "") -> dict:
+                              requester_name: str = "",
+                              presenter_name: str = "") -> dict:
     """Emails every active user announcing a Journal Club session for
     this article. `when_text` (date/time, free text so the responsible
     can phrase it however — "Jueves 14 de agosto, 12:00") is required;
@@ -667,15 +668,17 @@ def send_jc_convocation_email(article_id: str, *, when_text: str,
 
     base = _base_url()
 
-    presenter = ""
-    try:
-        from sqlalchemy import text as _t
-        with _get_engine().connect() as conn:
-            presenter = (conn.execute(_t(
-                "SELECT jc_claimed_by_name FROM articles WHERE id = CAST(:aid AS uuid)"
-            ), {"aid": str(article_id)}).scalar() or "").strip()
-    except Exception:
-        presenter = ""   # column not migrated yet — just omit the line
+    # Who presents: as given in the modal, else the article's reservation.
+    presenter = (presenter_name or "").strip()
+    if not presenter:
+        try:
+            from sqlalchemy import text as _t
+            with _get_engine().connect() as conn:
+                presenter = (conn.execute(_t(
+                    "SELECT jc_claimed_by_name FROM articles WHERE id = CAST(:aid AS uuid)"
+                ), {"aid": str(article_id)}).scalar() or "").strip()
+        except Exception:
+            presenter = ""   # column not migrated yet — just omit the line
     comment = (
         f"Convocatoria de Journal Club{(' — la propone ' + requester_name) if requester_name else ''}."
         + (f"\n\n🎤 Presenta: {presenter}" if presenter else "")
@@ -735,7 +738,8 @@ def send_jc_convocation_email(article_id: str, *, when_text: str,
 
 def schedule_jc_convocation(article_id: str, scheduled_at, *, when_text: str,
                             location_text: str = "", notes: str = "",
-                            requester_name: str = "") -> dict:
+                            requester_name: str = "",
+                            presenter_name: str = "") -> dict:
     """Save a JC convocation to be sent at a future time. Raises
     ValueError if when_text is blank or scheduled_at isn't in the
     future, LookupError if the article doesn't exist."""
@@ -757,11 +761,13 @@ def schedule_jc_convocation(article_id: str, scheduled_at, *, when_text: str,
     with eng.begin() as conn:
         conn.execute(_t("""
             INSERT INTO prionvault_jc_convocation_schedule
-              (article_id, when_text, location_text, notes, requester_name, scheduled_at)
-            VALUES (CAST(:aid AS uuid), :when_text, :loc, :notes, :req, :sch_at)
+              (article_id, when_text, location_text, notes, requester_name,
+               scheduled_at, presenter_name)
+            VALUES (CAST(:aid AS uuid), :when_text, :loc, :notes, :req, :sch_at, :pres)
         """), {
             "aid": article_id, "when_text": when_text, "loc": location_text,
             "notes": notes, "req": requester_name, "sch_at": scheduled_at,
+            "pres": (presenter_name or "").strip() or None,
         })
     return {"ok": True, "scheduled_for": scheduled_at.isoformat()}
 
@@ -775,7 +781,7 @@ def send_pending_jc_convocations() -> dict:
     with eng.connect() as conn:
         rows = conn.execute(_t("""
             SELECT id::text, article_id::text, when_text, location_text,
-                   notes, requester_name
+                   notes, requester_name, presenter_name
               FROM prionvault_jc_convocation_schedule
              WHERE scheduled_at <= NOW() AND sent_at IS NULL
              ORDER BY scheduled_at ASC
@@ -788,7 +794,8 @@ def send_pending_jc_convocations() -> dict:
             send_jc_convocation_email(
                 row["article_id"], when_text=row["when_text"],
                 location_text=row["location_text"], notes=row["notes"],
-                requester_name=row["requester_name"])
+                requester_name=row["requester_name"],
+                presenter_name=row["presenter_name"] or "")
             with eng.begin() as conn:
                 conn.execute(_t("""
                     UPDATE prionvault_jc_convocation_schedule

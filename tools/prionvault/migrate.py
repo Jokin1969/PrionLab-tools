@@ -105,6 +105,7 @@ _PRIONVAULT_MIGRATIONS = (
     "094_scheduled_email_sender.sql",
     "095_articles_title_norm_index.sql",
     "096_articles_jc_claim.sql",
+    "098_jc_convocation_presenter.sql",
 )
 
 _BOOTSTRAP_SQL = """
