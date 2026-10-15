@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PrionVault</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<div id="pv-root">
+
+  <div id="pv-header">
+    <span class="pv-logo">🧬</span>
+    <span class="pv-title">
+      PrionVault
+      <span class="pv-subtitle">Prion Research Library</span>
+    </span>
+    <button id="pv-close" title="Cerrar panel">✕</button>
+  </div>
+
+  <div id="pv-body">
+    <!-- Content is rendered by panel.js -->
+    <div class="pv-state" id="pv-loading">
+      <div class="pv-spinner"></div>
+      <p>Buscando metadatos…</p>
+    </div>
+  </div>
+
+  <div id="pv-footer">PrionVault Extension v1.0</div>
+</div>
+<script src="panel.js"></script>
+</body>
+</html>

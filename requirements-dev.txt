@@ -1,0 +1,7 @@
+# Development-only dependencies. Not loaded by Railway in
+# production — install locally with
+#     pip install -r requirements-dev.txt
+# Run the suite from the repo root:
+#     pytest -q tests/
+
+pytest>=7.4

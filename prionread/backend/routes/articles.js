@@ -1,0 +1,96 @@
+const { Router } = require('express');
+const { authenticate, requireAdmin } = require('../middleware/auth');
+const { upload, handleUploadError } = require('../middleware/upload');
+const {
+  createArticle,
+  getArticles,
+  getArticleById,
+  updateArticle,
+  deleteArticle,
+  generateDownloadLinkHandler,
+  fetchMetadata,
+  uploadArticlePDF,
+  getDownloadLink,
+  deleteArticlePDF,
+  listDropboxFiles,
+  clearPdfLink,
+  analyzePdf,
+  viewPdf,
+  sendToProtonVault,
+  identifyPmid,
+} = require('../controllers/articleController');
+
+const router = Router();
+
+// ── Static routes first (must come before /:id) ───────────────────────────────
+
+router.post('/fetch-metadata', authenticate, requireAdmin, fetchMetadata);
+router.post('/analyze-pdf', authenticate, requireAdmin, upload.single('pdf'), handleUploadError, analyzePdf);
+router.get('/dropbox/files', authenticate, requireAdmin, listDropboxFiles);
+
+// ── Collection routes ─────────────────────────────────────────────────────────
+
+// Create: may include PDF — multer runs then error handler then controller
+router.post(
+  '/',
+  authenticate,
+  requireAdmin,
+  upload.single('pdf'),
+  handleUploadError,
+  createArticle
+);
+
+router.get('/', authenticate, getArticles);
+
+// ── Per-article routes ────────────────────────────────────────────────────────
+
+router.get('/:id', authenticate, getArticleById);
+
+// Update: may include replacement PDF
+router.put(
+  '/:id',
+  authenticate,
+  requireAdmin,
+  upload.single('pdf'),
+  handleUploadError,
+  updateArticle
+);
+
+router.delete('/:id', authenticate, requireAdmin, deleteArticle);
+
+// Download link (POST so it's not cached by browsers/proxies)
+router.post('/:id/download-link', authenticate, generateDownloadLinkHandler);
+
+// ── Ratings sub-resource ──────────────────────────────────────────────────────
+// Mounts GET|POST|DELETE /api/articles/:articleId/rate(s)
+// The ratings router uses mergeParams:true to inherit :id as :articleId
+router.use('/:articleId/ratings', require('./ratings'));
+router.use('/:articleId/rate', require('./ratings'));
+
+// ── PDF-specific sub-routes ───────────────────────────────────────────────────
+
+router.post(
+  '/:id/pdf',
+  authenticate,
+  requireAdmin,
+  upload.single('pdf'),
+  handleUploadError,
+  uploadArticlePDF
+);
+
+router.get('/:id/pdf/link', authenticate, getDownloadLink);
+router.get('/:id/pdf/view', authenticate, viewPdf);
+router.delete('/:id/pdf', authenticate, requireAdmin, deleteArticlePDF);
+router.delete('/:id/pdf-link', authenticate, requireAdmin, clearPdfLink);
+router.post('/:id/send-to-prionvault', authenticate, requireAdmin, sendToProtonVault);
+
+// AI-assisted PMID lookup: OpenAI reads the saved PDF, extracts title +
+// first-author + year, and queries PubMed esearch to resolve a PMID.
+router.post('/:id/identify-pmid', authenticate, requireAdmin, identifyPmid);
+
+// ── Journal Club (read-only from PrionRead) ──────────────────────────────────
+// Mounts GET /api/articles/:articleId/jc — file-URL route lives at
+// /api/jc/files/:fileId/url and is wired in routes/index.js.
+router.use('/:articleId/jc', require('./jc').articleScoped);
+
+module.exports = router;
