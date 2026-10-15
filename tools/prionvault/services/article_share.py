@@ -78,7 +78,8 @@ def _fetch_article(article_id: str) -> Optional[dict]:
 
 
 def build_share_html(a: dict, base_url: str, sender_name: str = "",
-                     include_summary: bool = True, comment: str = "") -> str:
+                     include_summary: bool = True, comment: str = "",
+                     jc_accept_url: str = "") -> str:
     link = f"{base_url}/prionvault/?open={a['article_id']}" if base_url else ""
 
     # Optional personal note at the top of the body.
@@ -143,6 +144,10 @@ def build_share_html(a: dict, base_url: str, sender_name: str = "",
     btn = (f'<a href="{link}" style="display:inline-block;background:#0F3460;color:#fff;'
            f'font-size:13.5px;font-weight:600;padding:10px 22px;border-radius:8px;'
            f'text-decoration:none;">Ver en PrionVault →</a>' if link else "")
+    if jc_accept_url:
+        btn += (f'&nbsp;&nbsp;<a href="{_html.escape(jc_accept_url)}" style="display:inline-block;'
+                f'background:#7c3aed;color:#fff;font-size:13.5px;font-weight:600;padding:10px 22px;'
+                f'border-radius:8px;text-decoration:none;">📖 Aceptar para Journal Club</a>')
 
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8">
@@ -177,7 +182,8 @@ def build_share_html(a: dict, base_url: str, sender_name: str = "",
 
 
 def _plain(a: dict, base_url: str, sender_name: str,
-           include_summary: bool = True, comment: str = "") -> str:
+           include_summary: bool = True, comment: str = "",
+           jc_accept_url: str = "") -> str:
     link = f"{base_url}/prionvault/?open={a['article_id']}" if base_url else ""
     lines = []
     if (comment or "").strip():
@@ -195,6 +201,8 @@ def _plain(a: dict, base_url: str, sender_name: str,
         lines += ["", "RESUMEN DE LA IA", "────────────────", a["summary_ai"].strip()]
     if link:
         lines += ["", f"Ver en PrionVault: {link}"]
+    if jc_accept_url:
+        lines += [f"Aceptar para Journal Club: {jc_accept_url}"]
     lines += ["", f"Compartido desde PrionVault{(' por ' + sender_name) if sender_name else ''}."]
     return "\n".join(lines)
 
@@ -450,12 +458,38 @@ def send_article_email(article_id: str, to: str,
 # send_article_email, addressed to whoever is flagged responsible
 # (core.users.list_jc_responsible), CC'd to every admin.
 
+# Signed, per-recipient link behind the purple "Aceptar para Journal Club"
+# button. The token names the recipient; acceptance re-checks that they are
+# STILL an admin or a JC responsible when they click. Valid for 60 days.
+_JC_ACCEPT_SALT = "prionvault-jc-accept"
+JC_ACCEPT_MAX_AGE = 60 * 24 * 3600
+
+
+def _jc_accept_serializer():
+    from flask import current_app
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(current_app.secret_key, salt=_JC_ACCEPT_SALT)
+
+
+def make_jc_accept_token(article_id: str, username: str) -> str:
+    return _jc_accept_serializer().dumps({"a": str(article_id), "u": username})
+
+
+def read_jc_accept_token(token: str) -> dict:
+    """Returns {"a": article_id, "u": username}; raises itsdangerous
+    BadSignature / SignatureExpired when invalid or too old."""
+    return _jc_accept_serializer().loads(token, max_age=JC_ACCEPT_MAX_AGE)
+
+
 def send_jc_request_email(article_id: str, requester_name: str = "") -> dict:
-    """Emails every JC-responsible user asking them to consider this
-    article for Journal Club, CC'ing every admin. Raises if there's no
-    responsible configured, the article doesn't exist, or SMTP isn't
-    set up."""
-    from core.users import list_jc_responsible, list_admin_emails
+    """Ask every JC responsible AND every admin to consider this article
+    for Journal Club — one personal email each ("Hola, <su nombre>"),
+    with the article, its PDF, and a purple "📖 Aceptar para Journal
+    Club" button that marks it as a JC candidate in one click. Someone
+    who is both admin and responsible gets a single email. Raises if
+    there's no responsible configured, the article doesn't exist, or
+    SMTP isn't set up."""
+    from core.users import list_jc_responsible, load_users
 
     responsibles = list_jc_responsible()
     if not responsibles:
@@ -469,8 +503,18 @@ def send_jc_request_email(article_id: str, requester_name: str = "") -> dict:
     if not smtp_configured():
         raise RuntimeError("El servidor de correo no está configurado.")
 
+    admins = [u for u in load_users()
+              if (u.get("role") or "").lower() == "admin"
+              and (u.get("active") or "true").lower() == "true"
+              and (u.get("email") or "").strip()]
+    recipients, seen = [], set()
+    for u in responsibles + admins:
+        em = (u.get("email") or "").strip().lower()
+        if em and em not in seen:
+            seen.add(em)
+            recipients.append(u)
+
     base = _base_url()
-    admins = list_admin_emails()
     requester = (requester_name or "").strip()
 
     # Best-effort PDF attachment, built once and reused for every send.
@@ -483,30 +527,36 @@ def send_jc_request_email(article_id: str, requester_name: str = "") -> dict:
 
     subject = f"Journal Club · ¿Incluimos este artículo? — {a.get('title') or ''}"[:160]
     sent, failed = [], []
-    for u in responsibles:
+    for u in recipients:
         to = (u.get("email") or "").strip()
-        if not to:
-            continue
         name = (u.get("full_name") or u.get("username") or "").strip()
-        greeting = f"Hola {name}," if name else "Hola,"
+        greeting = f"Hola, {name}:" if name else "Hola:"
         by = f" {requester}" if requester else " un compañero/a"
         comment = (
             f"{greeting}\n\n"
             f"Te escribo (envío automático desde PrionVault, solicitado por{by}) "
             f"para pedirte que valores incluir este artículo como futura sesión "
             f"de Journal Club. Tienes todos los datos y el PDF (si está "
-            f"disponible) más abajo."
+            f"disponible) más abajo.\n\n"
+            f"Si te parece bien, pulsa «📖 Aceptar para Journal Club» al final de "
+            f"este email: el artículo quedará marcado como disponible para Journal "
+            f"Club (libro azul). Si no, no hace falta que hagas nada."
         )
-        html = build_share_html(a, base, "", True, comment)
-        plain = _plain(a, base, "", True, comment)
+        try:
+            accept_url = (f"{base}/prionvault/jc-accept/"
+                          f"{make_jc_accept_token(article_id, u.get('username') or '')}") if base else ""
+        except Exception:
+            logger.exception("article_share: could not build JC accept link")
+            accept_url = ""
+        html = build_share_html(a, base, "", True, comment, jc_accept_url=accept_url)
+        plain = _plain(a, base, "", True, comment, jc_accept_url=accept_url)
         try:
             if attachments:
                 from core.smtp_client import send_email_with_attachments
-                ok = send_email_with_attachments(to, subject, plain, attachments,
-                                                 html=html, cc=admins)
+                ok = send_email_with_attachments(to, subject, plain, attachments, html=html)
             else:
                 from core.smtp_client import send_email
-                ok = send_email(to, subject, plain, html=html, cc=admins)
+                ok = send_email(to, subject, plain, html=html)
         except Exception:
             logger.exception("article_share: JC request send to %s failed", to)
             ok = False

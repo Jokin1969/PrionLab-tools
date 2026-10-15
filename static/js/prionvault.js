@@ -5937,7 +5937,7 @@
       setStatus('Enviando…', false);
       try {
         const r = await api(`/articles/${_article.id}/jc-request`, { method: 'POST' });
-        setStatus(`✓ Enviado a ${(r.sent || []).length} responsable${(r.sent || []).length === 1 ? '' : 's'}.`, false);
+        setStatus(`✓ Enviado a ${(r.sent || []).length} persona${(r.sent || []).length === 1 ? '' : 's'} (responsable de Journal Club y administradores).`, false);
         setTimeout(close, 1600);
       } catch (e) {
         if (e.status === 400 && /no_jc_responsible/.test(e.message || '')) {
@@ -23140,7 +23140,7 @@
           <p><strong>Fase 1 — Proponer artículos candidatos (el libro azul 📖)</strong></p>
           <ul>
             <li>Marcar o desmarcar un artículo como candidato a Journal Club (el libro 📖 de la fila o de la ficha) lo pueden hacer el <strong>administrador</strong> y el <strong>responsable de Journal Club</strong>. Esos artículos son los que aparecen al filtrar por el libro azul: son los <strong>disponibles</strong> para que alguien los presente.</li>
-            <li>Si no eres admin ni responsable y quieres proponer uno, pulsa su botón <strong>"JC"</strong> gris y elige <strong>"Informar al responsable"</strong>: le llega un email con el artículo y el PDF (con el administrador en copia) pidiéndole que lo valore.</li>
+            <li>Si no eres admin ni responsable y quieres proponer uno, pulsa su botón <strong>"JC"</strong> gris y elige <strong>"Informar al responsable"</strong>: le llega un email personal ("Hola, [su nombre]") al responsable de Journal Club y a cada administrador, con el artículo y el PDF, pidiéndoles que lo valoren. Al final del email hay un botón morado <strong>📖 Aceptar para Journal Club</strong>: quien lo pulse (solo funciona para el responsable de JC y los administradores) confirma en una página y el artículo queda marcado con el libro azul. Para rechazarlo no hace falta hacer nada.</li>
             <li>Si el artículo aún no está en PrionVault, envíalo a <code>prionvault_lab@joaquincastilla.com</code> con el PDF y <strong>"JC"</strong> o <strong>"Journal Club"</strong> en el Asunto: se procesa y queda marcado como candidato automáticamente.</li>
           </ul>
 

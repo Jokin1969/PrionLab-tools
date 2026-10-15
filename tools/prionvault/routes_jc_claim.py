@@ -217,3 +217,114 @@ def check_can_upload_presentation(aid):
         return jsonify({"error": "locked",
                         "detail": "Podrás subir la presentación cuando el responsable de Journal Club anuncie la sesión."}), 403
     return None
+
+
+# ── "📖 Aceptar para Journal Club" button in the JC request email ──────────
+# The link carries a signed token naming the recipient (admin or JC
+# responsible) — no login needed. GET only shows a confirmation page;
+# accepting is a POST, so a mail scanner that pre-opens links can't accept
+# on its own.
+
+def _accept_page(title: str, body_html: str, color: str = "#7c3aed") -> str:
+    import html as _h
+    return f"""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Journal Club · PrionVault</title></head>
+<body style="margin:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:560px;margin:48px auto;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden;">
+  <div style="background:#0F3460;padding:18px 24px;color:#fff;font-weight:800;font-size:18px;">🔬 PrionVault · Journal Club</div>
+  <div style="padding:22px 24px;">
+    <h2 style="margin:0 0 12px;font-size:17px;color:{color};">{_h.escape(title)}</h2>
+    {body_html}
+  </div>
+</div></body></html>"""
+
+
+def _resolve_accept(token):
+    """Returns (article_row, user_dict, error_message)."""
+    from itsdangerous import BadSignature, SignatureExpired
+    from .services.article_share import read_jc_accept_token
+    try:
+        data = read_jc_accept_token(token)
+    except SignatureExpired:
+        return None, None, "Este enlace ha caducado. Márcalo desde PrionVault con el libro azul 📖."
+    except BadSignature:
+        return None, None, "El enlace no es válido."
+    from core.users import get_user
+    user = get_user(data.get("u") or "")
+    if not user or (user.get("active") or "true").lower() != "true":
+        return None, None, "El usuario de este enlace no existe o está desactivado."
+    allowed = ((user.get("role") or "").lower() == "admin"
+               or (user.get("is_jc_responsible") or "").lower() == "true")
+    if not allowed:
+        return None, None, ("Solo un administrador o el responsable de Journal Club puede "
+                            "aceptar artículos para Journal Club.")
+    s = _session()
+    try:
+        r = _load(s, data.get("a"))
+    finally:
+        s.close()
+    if not r:
+        return None, None, "El artículo ya no existe en PrionVault."
+    return r, user, None
+
+
+@prionvault_bp.route("/jc-accept/<token>", methods=["GET", "POST"])
+def jc_accept(token):
+    import html as _h
+    from flask import request
+    r, user, err = _resolve_accept(token)
+    if err:
+        return _accept_page("No se ha podido aceptar", f'<p style="color:#374151;">{_h.escape(err)}</p>',
+                            "#b91c1c"), 400
+
+    title = _h.escape(r["title"] or "(sin título)")
+    meta = _h.escape(" · ".join(str(x) for x in (r["journal"], r["year"]) if x))
+    from .services.article_share import _base_url
+    link = f'{_base_url()}/prionvault/?open={r["id"]}'
+    card = (f'<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;background:#f9fafb;margin:0 0 16px;">'
+            f'<div style="font-weight:700;color:#111827;">{title}</div>'
+            f'<div style="font-size:12.5px;color:#6b7280;margin-top:3px;">{meta}</div></div>')
+    open_btn = (f'<a href="{_h.escape(link)}" style="display:inline-block;background:#0F3460;color:#fff;'
+                f'padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13.5px;">'
+                f'Ver en PrionVault →</a>')
+
+    state_msg = None
+    if r["jc_count"]:
+        state_msg = "Este artículo ya se ha presentado en Journal Club."
+    elif r["jc_claimed_by"]:
+        state_msg = f'Este artículo ya está reservado para que lo presente {r["jc_claimed_by_name"] or "alguien"}.'
+    elif r["is_jc"]:
+        state_msg = "Este artículo ya estaba aceptado para Journal Club (libro azul 📖)."
+
+    if request.method == "GET":
+        if state_msg:
+            return _accept_page("Nada que hacer", card + f'<p style="color:#374151;">{_h.escape(state_msg)}</p>' + open_btn)
+        form = (f'<form method="post" style="display:inline;">'
+                f'<button type="submit" style="background:#7c3aed;color:#fff;border:none;padding:10px 20px;'
+                f'border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;">📖 Sí, aceptar para Journal Club</button>'
+                f'</form>')
+        return _accept_page("¿Aceptar este artículo para Journal Club?", card +
+                            f'<p style="color:#374151;font-size:14px;line-height:1.55;">'
+                            f'Quedará marcado con el libro azul 📖 como disponible para que alguien lo presente.</p>'
+                            + form)
+
+    if state_msg:
+        return _accept_page("Nada que hacer", card + f'<p style="color:#374151;">{_h.escape(state_msg)}</p>' + open_btn)
+    s = _session()
+    try:
+        s.execute(sql_text("UPDATE articles SET is_jc = TRUE, updated_at = NOW() "
+                           "WHERE id = CAST(:aid AS uuid)"), {"aid": r["id"]})
+        s.commit()
+    except Exception as exc:
+        s.rollback()
+        logger.exception("jc-accept failed for %s", r["id"])
+        return _accept_page("No se ha podido aceptar", f'<p>Error: {_h.escape(str(exc)[:200])}</p>', "#b91c1c"), 500
+    finally:
+        s.close()
+    logger.info("jc-accept: %s accepted article %s for Journal Club", user.get("username"), r["id"])
+    return _accept_page("✓ Aceptado para Journal Club", card +
+                        f'<p style="color:#374151;font-size:14px;line-height:1.55;">'
+                        f'Gracias, {_h.escape(user.get("full_name") or user.get("username") or "")}. '
+                        f'El artículo ya aparece con el libro azul 📖 como disponible para Journal Club.</p>' + open_btn,
+                        "#15803d")
