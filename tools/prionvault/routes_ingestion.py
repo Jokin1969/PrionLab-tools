@@ -764,6 +764,9 @@ def api_article_oa_search(aid):
     return jsonify(result)
 
 
+_OA_REQ_COL_OK = False
+
+
 @prionvault_bp.route("/api/articles/<uuid:aid>/oa-request", methods=["POST"])
 @admin_required
 def api_article_oa_request_toggle(aid):
@@ -772,6 +775,15 @@ def api_article_oa_request_toggle(aid):
     it and an operator doesn't email the same author twice by accident."""
     s = _session()
     try:
+        # Self-heal: migration 091 never landed in some deployments, so the
+        # column may be missing. IF NOT EXISTS makes this a cheap no-op once
+        # it's there; done once per process.
+        global _OA_REQ_COL_OK
+        if not _OA_REQ_COL_OK:
+            s.execute(sql_text("ALTER TABLE articles ADD COLUMN IF NOT EXISTS "
+                               "oa_author_requested_at TIMESTAMPTZ"))
+            s.commit()
+            _OA_REQ_COL_OK = True
         row = s.execute(sql_text(
             "SELECT oa_author_requested_at FROM articles WHERE id = :aid"
         ), {"aid": str(aid)}).first()
