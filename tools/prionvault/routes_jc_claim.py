@@ -101,7 +101,7 @@ def api_jc_claim(aid):
             UPDATE articles
                SET jc_claimed_by = :uid, jc_claimed_by_name = :name,
                    jc_claimed_at = NOW(), jc_announced_at = NULL,
-                   is_jc = FALSE, updated_at = NOW()
+                   updated_at = NOW()
              WHERE id = CAST(:aid AS uuid)
                AND jc_claimed_by IS NULL
                AND is_jc IS TRUE

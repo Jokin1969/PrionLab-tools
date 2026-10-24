@@ -23154,7 +23154,7 @@
 
           <p><strong>Fase 1 — Proponer artículos candidatos (el libro azul 📖)</strong></p>
           <ul>
-            <li>Marcar o desmarcar un artículo como candidato a Journal Club (el libro 📖 de la fila o de la ficha) lo pueden hacer el <strong>administrador</strong> y el <strong>responsable de Journal Club</strong>. Esos artículos son los que aparecen al filtrar por el libro azul: son los <strong>disponibles</strong> para que alguien los presente.</li>
+            <li>Marcar o desmarcar un artículo como candidato a Journal Club (el libro 📖 de la fila o de la ficha) lo pueden hacer el <strong>administrador</strong> y el <strong>responsable de Journal Club</strong>. El libro azul significa que el artículo está <strong>en el circuito de Journal Club</strong>: disponible para que alguien lo presente o ya reservado (lo distingue el color del botón JC).</li>
             <li>Si no eres admin ni responsable y quieres proponer uno, pulsa su botón <strong>"JC"</strong> gris y elige <strong>"Informar al responsable"</strong>: le llega un email personal ("Hola, [su nombre]") al responsable de Journal Club y a cada administrador, con el artículo y el PDF, pidiéndoles que lo valoren. Al final del email hay un botón morado <strong>📖 Aceptar para Journal Club</strong>: quien lo pulse (solo funciona para el responsable de JC y los administradores) confirma en una página y el artículo queda marcado con el libro azul. Para rechazarlo no hace falta hacer nada.</li>
             <li>Si el artículo aún no está en PrionVault, envíalo a <code>prionvault_lab@joaquincastilla.com</code> con el PDF y <strong>"JC"</strong> o <strong>"Journal Club"</strong> en el Asunto: se procesa y queda marcado como candidato automáticamente.</li>
           </ul>
@@ -23163,7 +23163,7 @@
           <ul>
             <li>Filtra por el libro azul y pulsa el botón <strong>"JC"</strong> (azul claro) del artículo que te interese.</li>
             <li>Primero se te pregunta <strong>"¿Eres [tu nombre]?"</strong>. Solo si confirmas, se muestran todos los datos del artículo (título, autores, revista, enlaces y abstract) y la pregunta <strong>"¿Quieres presentar este artículo en Journal Club?"</strong>.</li>
-            <li>Al aceptar, el artículo queda <strong>reservado para ti</strong>: se le quita el libro azul (deja de aparecer como disponible), su botón JC pasa a <strong>rojo con candado 🔒</strong> y nadie más puede cogerlo. Si dos personas lo pulsan a la vez, solo una lo consigue.</li>
+            <li>Al aceptar, el artículo queda <strong>reservado para ti</strong>: conserva el libro azul (sigue en el circuito de Journal Club), su botón JC pasa a <strong>rojo con candado 🔒</strong> y nadie más puede cogerlo. Si dos personas lo pulsan a la vez, solo una lo consigue.</li>
             <li>Al <strong>responsable de Journal Club</strong> le llega un email (con los administradores en copia, el artículo y su PDF) diciendo quién lo va a presentar, para que le avise de la fecha.</li>
             <li>Si otra persona pulsa ese botón rojo, ve para quién está reservado.</li>
           </ul>
@@ -23185,7 +23185,7 @@
           </ul>
 
           <p><strong>Liberar o desbloquear una reserva</strong><br>
-          Solo el <strong>responsable de Journal Club</strong> o un <strong>administrador</strong>, pulsando el botón rojo del artículo: <em>Liberar</em> (vuelve el libro azul y queda disponible otra vez), <em>Desbloquear</em> (deja subir la presentación sin esperar a la convocatoria) o <em>Subir presentación</em> ellos mismos.</p>
+          Solo el <strong>responsable de Journal Club</strong> o un <strong>administrador</strong>, pulsando el botón rojo del artículo: <em>Liberar</em> (queda disponible otra vez), <em>Desbloquear</em> (deja subir la presentación sin esperar a la convocatoria) o <em>Subir presentación</em> ellos mismos.</p>
 
           <p><strong>Quién es "el responsable de Journal Club" y cómo se asigna</strong><br>
           Se marca desde <strong>Panel de administración → Users → Editar</strong> (casilla <em>"Journal Club responsible"</em>) o desde <strong>Miscelánea → Administración</strong> en PrionVault (casilla <em>"Responsable de Journal Club"</em>; en el listado de usuarios aparece con 📖). Puede haber más de una persona: los avisos les llegan a todas y todas pueden convocar, liberar y desbloquear.</p>
