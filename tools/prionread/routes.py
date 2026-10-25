@@ -27,7 +27,11 @@ _STRIP_HEADERS = {"content-encoding", "transfer-encoding", "connection", "keep-a
 @prionread_bp.route("/api/<path:path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 def proxy_api(path):
     url = f"{BACKEND_URL}/api/{path}"
-    headers = {k: v for k, v in request.headers if k.lower() != "host"}
+    # Never forward PrionLab's own credentials to the Node backend: the
+    # Flask session cookie and the extension key (PrionRead uses its own JWT).
+    headers = {k: v for k, v in request.headers
+               if k.lower() not in ("host", "cookie", "x-prionvault-key")}
+    cookies = {k: v for k, v in request.cookies.items() if k != "session"}
     try:
         resp = http.request(
             method=request.method,
@@ -35,7 +39,7 @@ def proxy_api(path):
             headers=headers,
             data=request.get_data(),
             params=request.args,
-            cookies=request.cookies,
+            cookies=cookies,
             allow_redirects=False,
             timeout=60,
         )

@@ -41,8 +41,11 @@ class MaintenanceScheduler:
             app = self.app
 
             def _run(fn):
+                # One worker at a time per job (each worker runs this
+                # scheduler); the backup keeps its own lock as well.
+                from database.singleton import run_once
                 with app.app_context():
-                    fn()
+                    run_once(f"maint:{fn.__name__}", fn)
 
             # Every hour: clean expired sessions
             sched.add_job(lambda: _run(self.cleanup_expired_sessions),

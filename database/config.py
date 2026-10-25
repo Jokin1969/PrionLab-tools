@@ -36,8 +36,10 @@ class DatabaseConfig:
         self.engine = create_engine(
             self.database_url,
             poolclass=QueuePool,
-            pool_size=10,
-            max_overflow=20,
+            # Per gunicorn worker (×2), plus daemon threads: keep the total
+            # well under Railway Postgres' ~100 connection limit.
+            pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
             pool_pre_ping=True,
             pool_recycle=300,
             echo=os.getenv('FLASK_ENV') == 'development',
@@ -51,11 +53,14 @@ class DatabaseConfig:
         )
         self.Session = scoped_session(session_factory)
 
-        @event.listens_for(self.engine, "connect")
-        def on_connect(dbapi_connection, connection_record):
-            # Async commit improves write throughput; safe for this workload
-            with dbapi_connection.cursor() as cur:
-                cur.execute("SET synchronous_commit = off")
+        # Async commit (faster writes, but the last ~0.5 s of commits can be
+        # lost on a Postgres crash — e.g. an email's sent_at, so it would be
+        # sent again). Off by default now; opt in with PG_ASYNC_COMMIT=1.
+        if os.getenv("PG_ASYNC_COMMIT", "") == "1":
+            @event.listens_for(self.engine, "connect")
+            def on_connect(dbapi_connection, connection_record):
+                with dbapi_connection.cursor() as cur:
+                    cur.execute("SET synchronous_commit = off")
 
     def is_configured(self) -> bool:
         return bool(self.database_url) and self.engine is not None

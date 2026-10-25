@@ -102,6 +102,11 @@ def get_status() -> dict:
         snap = {k: v for k, v in _state.items() if k != "events"}
         snap["events"] = list(reversed(_state["events"]))
     snap["totals"] = _totals()
+    if not snap.get("running") and _job_lock.running_elsewhere('pdf_metadata_verifier'):
+        # Running in the other gunicorn worker: report it as running.
+        snap["running"] = True
+        snap["phase"] = snap.get("phase") or "running"
+        snap["note"] = "En marcha en otro proceso del servidor."
     return snap
 
 
@@ -367,6 +372,8 @@ def stop_batch() -> dict:
     with _lock:
         if _state["running"]:
             _state["stop_requested"] = True
+    # The run may live in the other gunicorn worker — tell it via the DB.
+    _job_lock.request_stop('pdf_metadata_verifier')
     return get_status()
 
 

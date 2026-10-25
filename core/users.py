@@ -62,9 +62,24 @@ def _read_users() -> list[dict]:
     return rows
 
 
+_cache: dict = {"key": None, "rows": None}
+
+
 def load_users() -> list[dict]:
+    """Read users.csv, memoised on (mtime, size) — it's read on every
+    authenticated request. Returns fresh copies so callers can mutate."""
     try:
-        return _read_users()
+        st = os.stat(USERS_FILE)
+        key = (st.st_mtime_ns, st.st_size, USERS_FILE)
+    except OSError:
+        key = None
+    if key is not None and _cache["key"] == key:
+        return [dict(r) for r in _cache["rows"]]
+    try:
+        rows = _read_users()
+        if key is not None:
+            _cache["key"], _cache["rows"] = key, [dict(r) for r in rows]
+        return rows
     except Exception as e:
         logger.error("Failed to load users.csv: %s", e)
         return []

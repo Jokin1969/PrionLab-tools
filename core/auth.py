@@ -625,7 +625,7 @@ def _send_reset_email(user: dict, token: str) -> None:
         f"— PrionLab Tools"
     )
     html = (
-        f"<p>Hola <strong>{name}</strong>,</p>"
+        f"<p>Hola <strong>{__import__('html').escape(name)}</strong>,</p>"
         f"<p>Has solicitado restablecer tu contraseña en PrionLab Tools.</p>"
         f"<p>Pulsa el enlace dentro de la próxima hora para elegir una nueva:</p>"
         f"<p><a href=\"{reset_url}\">{reset_url}</a></p>"

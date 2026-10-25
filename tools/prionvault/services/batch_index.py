@@ -57,6 +57,11 @@ def get_status() -> dict:
         snap = dict(_state)
     snap["library_stats"] = _library_stats()
     snap["embed_model"] = EMBED_MODEL
+    if not snap.get("running") and _job_lock.running_elsewhere('batch_index'):
+        # Running in the other gunicorn worker: report it as running.
+        snap["running"] = True
+        snap["phase"] = snap.get("phase") or "running"
+        snap["note"] = "En marcha en otro proceso del servidor."
     return snap
 
 
@@ -143,6 +148,8 @@ def stop_batch() -> dict:
     with _lock:
         if _state["running"]:
             _state["stop_requested"] = True
+    # The run may live in the other gunicorn worker — tell it via the DB.
+    _job_lock.request_stop('batch_index')
     return get_status()
 
 

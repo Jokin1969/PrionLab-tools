@@ -4832,7 +4832,7 @@ def api_jc_file_view(fid):
         # base URL, same as the email-link builders (see APP_URL).
         base = APP_URL or request.url_root.rstrip('/')
         office_src = (f"{base}/prionvault/api/jc/files/"
-                      f"{fid}/office-src/{_urlquote(safe_name, safe='')}")
+                      f"{fid}/office-src/{_office_src_token(fid)}/{_urlquote(safe_name, safe='')}")
         if base and _jc.temporary_link(fid):  # cheap existence/availability check before committing to this path
             # view.aspx + a real browser navigation, NOT embed.aspx inside
             # an <iframe>: Office Online's public viewer refuses to render
@@ -4876,8 +4876,18 @@ def api_jc_file_view(fid):
     return Response(html, mimetype="text/html")
 
 
-@prionvault_bp.route("/api/jc/files/<uuid:fid>/office-src/<path:filename>", methods=["GET"])
-def api_jc_file_office_src(fid, filename):
+def _office_src_serializer():
+    from flask import current_app
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(current_app.secret_key, salt="prionvault-office-src")
+
+
+def _office_src_token(fid) -> str:
+    return _office_src_serializer().dumps(str(fid))
+
+
+@prionvault_bp.route("/api/jc/files/<uuid:fid>/office-src/<token>/<path:filename>", methods=["GET"])
+def api_jc_file_office_src(fid, token, filename):
     """302-redirect to a fresh Dropbox temporary link for this JC file.
 
     Deliberately NOT @login_required: this is the URL handed to Microsoft's
@@ -4885,10 +4895,16 @@ def api_jc_file_office_src(fid, filename):
     Microsoft's own servers with no session cookie to send. `filename` is
     cosmetic — it only exists so this URL carries a real file extension for
     Office Online to key its renderer off (see api_jc_file_view) — the
-    lookup itself is by `fid` alone. Exposure is bounded by the same
-    ~4h-lived Dropbox link this already handed straight to the browser
-    before this endpoint existed, plus the fid being an unguessable UUID.
+    lookup itself is by `fid` alone. `token` is a signed, 6-hour token for
+    this fid (minted by the logged-in /view request), so a URL leaked via
+    history or logs stops working instead of minting Dropbox links forever.
     """
+    from itsdangerous import BadData
+    try:
+        if _office_src_serializer().loads(token, max_age=6 * 3600) != str(fid):
+            raise BadData("fid mismatch")
+    except BadData:
+        return jsonify({"error": "link_expired"}), 403
     from .services import jc as _jc
     temp_link = _jc.temporary_link(fid)
     if not temp_link:

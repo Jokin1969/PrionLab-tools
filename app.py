@@ -150,10 +150,11 @@ def _start_smart_tags_scheduler(app: Flask) -> None:
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from tools.prionvault.services.smart_tags import sync_due
+        from database.singleton import run_once
 
         scheduler = BackgroundScheduler(daemon=True, misfire_grace_time=300)
         scheduler.add_job(
-            lambda: sync_due(interval_minutes=20),
+            lambda: run_once('smart_tags_sync', sync_due, interval_minutes=20),
             trigger='interval',
             minutes=20,
             id='prionvault_smart_tags_sync',
@@ -171,10 +172,11 @@ def _start_prionpacks_backup_scheduler(app: Flask) -> None:
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from tools.prionpacks.backup import run_backup
+        from database.singleton import run_once
 
         scheduler = BackgroundScheduler(daemon=True, misfire_grace_time=600)
         scheduler.add_job(
-            run_backup,
+            lambda: run_once('prionpacks_backup', run_backup),
             trigger='interval',
             hours=config.PRIONPACKS_BACKUP_INTERVAL_HOURS,
             id='prionpacks_dropbox_backup',

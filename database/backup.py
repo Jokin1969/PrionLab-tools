@@ -552,7 +552,13 @@ class BackupManager:
             from sqlalchemy import inspect
             from sqlalchemy import text as _text
             inspector = inspect(db.engine)
-            with gzip.open(tmp_path, "wt", encoding="utf-8", newline="") as gz:
+            # ONE read-only REPEATABLE READ transaction for every table, so
+            # the archive is a consistent snapshot (rows added mid-backup
+            # can't leave e.g. chunks pointing at a missing article).
+            snap = db.engine.connect().execution_options(
+                isolation_level="REPEATABLE READ", postgresql_readonly=True)
+            with snap, snap.begin(), \
+                    gzip.open(tmp_path, "wt", encoding="utf-8", newline="") as gz:
                 for table_name in inspector.get_table_names():
                     columns = [c["name"] for c in inspector.get_columns(table_name)]
                     if not columns:
@@ -560,16 +566,16 @@ class BackupManager:
                     select_cols = ", ".join(f'"{c}"::text AS "{c}"' for c in columns)
                     gz.write(f"-- TABLE: {table_name}\n")
                     writer = csv.writer(gz)
-                    with db.engine.connect() as conn:
-                        result = conn.execution_options(
-                            stream_results=True, max_row_buffer=2000,
-                        ).execute(_text(f'SELECT {select_cols} FROM "{table_name}"'))
-                        writer.writerow(result.keys())
-                        while True:
-                            batch = result.fetchmany(2000)
-                            if not batch:
-                                break
-                            writer.writerows(list(r) for r in batch)
+                    result = snap.execution_options(
+                        stream_results=True, max_row_buffer=2000,
+                    ).execute(_text(f'SELECT {select_cols} FROM "{table_name}"'))
+                    writer.writerow(result.keys())
+                    while True:
+                        batch = result.fetchmany(2000)
+                        if not batch:
+                            break
+                        writer.writerows(list(r) for r in batch)
+                    result.close()
                     gz.write("\n\n")
             tmp_path.replace(out_path)
             size_mb = round(out_path.stat().st_size / (1024 * 1024), 2)

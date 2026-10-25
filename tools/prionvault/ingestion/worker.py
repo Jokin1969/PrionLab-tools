@@ -544,11 +544,22 @@ def _get_articles_columns(conn) -> set:
                 "SELECT column_name FROM information_schema.columns "
                 "WHERE table_name = 'articles'"
             )).all()
-            _articles_col_cache = {r[0] for r in rows}
+            cols = {r[0] for r in rows}
         except Exception as exc:
             logger.warning("Could not introspect articles columns: %s", exc)
-            _articles_col_cache = set()
-        return _articles_col_cache
+            return set()   # don't cache a failure — retry next time
+        # Expire after 10 min so columns added by a later migration /
+        # self-heal are picked up without a restart.
+        _articles_col_cache = cols
+        _t = threading.Timer(600, _reset_articles_col_cache)
+        _t.daemon = True
+        _t.start()
+        return cols
+
+
+def _reset_articles_col_cache() -> None:
+    global _articles_col_cache
+    _articles_col_cache = None
 
 
 def _upsert_article(**kw) -> str:
@@ -1627,7 +1638,10 @@ def _run_loop() -> None:
         except Exception as exc:
             logger.exception("PrionVault worker — unexpected error on job %d", job.id)
             try:
-                ingest_queue.bump_attempt_or_fail(job.id, str(exc))
+                # Via _bump_or_fail so an email submitter is told when the
+                # job finally fails (the bare queue call never notified).
+                _bump_or_fail(job, None, error=str(exc),
+                              user_msg="Error inesperado al procesar el PDF.")
             except Exception:
                 pass
 
