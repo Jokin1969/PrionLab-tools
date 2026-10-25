@@ -4487,12 +4487,19 @@ def api_jc_bulk_import_start():
     "Importar carpeta" button in the upload modal. Runs in a
     background thread since a few hundred folders comfortably exceed
     a normal request timeout; poll .../status for progress."""
+    denied = _jc_curator_forbidden()
+    if denied:
+        return denied
     from .services import jc as _jc
     data = request.get_json(silent=True) or {}
     presenter_name = (data.get("presenter_name") or "").strip()
     if not presenter_name:
         return jsonify({"error": "missing_fields",
                         "detail": "presenter_name is required."}), 400
+    # It becomes a Dropbox folder name: no path separators / traversal.
+    if "/" in presenter_name or "\\" in presenter_name or ".." in presenter_name:
+        return jsonify({"error": "bad_presenter",
+                        "detail": "Nombre de presentador no válido."}), 400
     snap = _jc.start_bulk_import(presenter_name, created_by=_viewer_id())
     if snap is None:
         return jsonify({"error": "already_running",

@@ -281,8 +281,16 @@ def _run_migrations_inline() -> dict:
 
         runtime_ms = int((time.monotonic() - t0) * 1000)
 
-        # Record the migration as applied (even partial). Reapplying is
-        # cheap thanks to IF NOT EXISTS guards.
+        # Record only a FULL success: a migration with failed statements
+        # stays unrecorded so the next boot retries it (recording partial
+        # runs is how a missing column — e.g. 091 — went unnoticed).
+        if fails:
+            entry = {"name": fname, "sha": sha, "runtime_ms": runtime_ms,
+                     "statements_ok": ok, "statements_failed": fails}
+            summary["errors"].append(entry)
+            logger.warning("PrionVault migration %s: %d statement(s) failed — will retry next boot.",
+                           fname, len(fails))
+            continue
         try:
             with db.engine.begin() as conn:
                 conn.execute(
@@ -381,6 +389,87 @@ def _self_heal_schema() -> dict:
     if not getattr(db, "engine", None):
         return out
 
+    # One worker at a time, and never queue behind long transactions:
+    # ALTER TABLE takes an ACCESS EXCLUSIVE lock even when it's a no-op.
+    lock_conn = db.engine.connect()
+    try:
+        if not lock_conn.execute(text("SELECT pg_try_advisory_lock(7072657068)")).scalar():
+            lock_conn.close()
+            return out
+        out["columns_added"] = _heal_missing_columns(db)
+        _heal_listed_migrations(db, out)
+    finally:
+        try:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(7072657068)"))
+        except Exception:
+            pass
+        lock_conn.close()
+    if out["errors"]:
+        logger.warning("schema self-heal: completed with %d migrations needing attention",
+                       len(out["errors"]))
+    return out
+
+
+_ADD_COL_RE = None
+
+
+def _heal_missing_columns(db) -> list:
+    """Scan EVERY migration for `ALTER TABLE t ADD COLUMN IF NOT EXISTS c …`
+    and re-run only the statements whose column is actually missing in a
+    table that exists. Columns a later migration drops are left alone."""
+    import re
+    from sqlalchemy import text
+    alter_re = re.compile(r"^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:public\.)?\"?(\w+)\"?\s+(.*)$",
+                          re.I | re.S)
+    add_re = re.compile(r"ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+\"?(\w+)\"?", re.I)
+    drop_re = re.compile(r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:public\.)?\"?(\w+)\"?\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?\"?(\w+)", re.I)
+
+    candidates, dropped = [], set()
+    for path in sorted(_MIGRATIONS_DIR.glob("*.sql")):
+        blob = path.read_text()
+        for t, c in drop_re.findall(blob):
+            dropped.add((t.lower(), c.lower()))
+        for stmt in _split_sql(blob):
+            m = alter_re.match(stmt)
+            if not m:
+                continue
+            rest = re.sub(r"--[^\n]*", "", m.group(2))
+            cols = add_re.findall(rest)
+            # Only pure "ADD COLUMN IF NOT EXISTS" statements (no other actions).
+            leftover = add_re.sub("", rest)
+            if not cols or re.search(r"\b(DROP|RENAME|ALTER\s+COLUMN|SET|ADD\s+CONSTRAINT)\b", leftover, re.I):
+                continue
+            candidates.append((m.group(1).lower(), [c.lower() for c in cols], stmt, path.name))
+
+    with db.engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema()")).all()
+    existing = {(t.lower(), c.lower()) for t, c in rows}
+    tables = {t for t, _ in existing}
+
+    added = []
+    for table, cols, stmt, fname in candidates:
+        if table not in tables:
+            continue
+        missing = [c for c in cols if (table, c) not in existing and (table, c) not in dropped]
+        if not missing:
+            continue
+        try:
+            with db.engine.begin() as conn:
+                conn.exec_driver_sql("SET LOCAL lock_timeout = '5s'")
+                conn.exec_driver_sql(stmt)
+            for c in missing:
+                existing.add((table, c))
+            added.append({"file": fname, "table": table, "columns": missing})
+            logger.warning("schema self-heal: re-added %s.%s (from %s)", table, ",".join(missing), fname)
+        except Exception as exc:
+            logger.warning("schema self-heal: could not re-add %s.%s from %s (%s)",
+                           table, ",".join(missing), fname, exc)
+    return added
+
+
+def _heal_listed_migrations(db, out: dict) -> None:
     for fname in _SELF_HEAL_MIGRATIONS:
         path = _MIGRATIONS_DIR / fname
         if not path.exists():
@@ -390,6 +479,7 @@ def _self_heal_schema() -> dict:
         for stmt in _split_sql(path.read_text()):
             try:
                 with db.engine.begin() as conn:
+                    conn.exec_driver_sql("SET LOCAL lock_timeout = '5s'")
                     conn.exec_driver_sql(stmt)
                 ok += 1
             except Exception as exc:
@@ -408,12 +498,6 @@ def _self_heal_schema() -> dict:
             out["errors"].append(entry)
         else:
             out["ran"].append(entry)
-    if out["errors"]:
-        logger.warning("schema self-heal: completed with %d migrations needing attention",
-                       len(out["errors"]))
-    else:
-        logger.info("schema self-heal: all critical migrations re-asserted cleanly")
-    return out
 
 
 def run_pending_migrations(app=None) -> dict:

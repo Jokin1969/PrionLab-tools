@@ -46,7 +46,7 @@ SELECT extversion FROM pg_extension WHERE extname IN ('vector', 'citext');
 
 If any check fails, run the rollback:
 ```bash
-psql "$DATABASE_URL" -f migrations/001_prionvault_tables_rollback.sql
+psql "$DATABASE_URL" -f migrations/rollback/001_prionvault_tables_rollback.sql
 ```
 
 ## B. Verify PrionRead still works

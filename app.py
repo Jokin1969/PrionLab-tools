@@ -386,6 +386,9 @@ def create_app() -> Flask:
     # Slows credential-stuffing without blocking legitimate typos.
     from core.auth import login as _login_view
     limiter.limit("10 per minute; 50 per hour")(_login_view)
+    from core.auth import register as _register_view, forgot_password as _forgot_view
+    limiter.limit("5 per hour", methods=["POST"])(_register_view)
+    limiter.limit("5 per hour", methods=["POST"])(_forgot_view)
 
     from tools.admin import admin_bp
     app.register_blueprint(admin_bp)
@@ -463,6 +466,21 @@ def create_app() -> Flask:
             from tools.prionvault.routes import api_article_lookup, api_articles_lookup_bulk
             limiter.limit("60 per minute")(api_article_lookup)
             limiter.limit("30 per minute")(api_articles_lookup_bulk)
+            # Outgoing email endpoints: per-user caps (the lab shares one
+            # public IP) so a compromised/abused account can't turn the
+            # lab's SMTP into a spam relay.
+            from flask import session as _sess
+
+            def _user_key():
+                return "u:" + (_sess.get("username") or get_remote_address())
+            from tools.prionvault.routes_ingestion import (
+                api_article_email, api_article_jc_request,
+                api_articles_email_list, api_articles_email_cart)
+            from tools.prionvault.routes_chat import api_chat_report_email
+            for _v in (api_article_email, api_articles_email_list,
+                       api_articles_email_cart, api_chat_report_email):
+                limiter.limit("20 per hour; 100 per day", key_func=_user_key)(_v)
+            limiter.limit("10 per hour", key_func=_user_key)(api_article_jc_request)
         except Exception as e:
             app.logger.error('PrionVault blueprint registration failed: %s', e, exc_info=True)
 

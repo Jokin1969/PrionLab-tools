@@ -2363,7 +2363,7 @@
       syncSelectAllHeader();
     } catch (e) {
       if (mySeq !== _loadSeq) return;
-      showEmpty('Error: ' + esc(e.message));
+      showEmpty('Error: ' + e.message);  // showEmpty escapes
     }
   }
 
@@ -11916,7 +11916,11 @@
   function init() {
     // Whether this user may send the JC convocation email — not in the
     // session (only in users.csv), so fetched once up front.
-    api('/me').then(r => { IS_JC_RESPONSIBLE = !!r.is_jc_responsible; }).catch(() => {});
+    api('/me').then(r => {
+      IS_JC_RESPONSIBLE = !!r.is_jc_responsible;
+      // Rows drawn before /me answered hid the JC curator controls — redraw.
+      if (IS_JC_RESPONSIBLE && !IS_ADMIN) loadArticles();
+    }).catch(() => {});
 
     const debounce = (fn, ms) => {
       let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
@@ -22221,7 +22225,7 @@
         <tr data-sub-id="${sub.id}" style="border-bottom:1px solid #f3f4f6;">
           <td style="padding:10px 8px;font-size:13px;font-weight:600;color:#111827;max-width:160px;
                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            ${dot}${sub.name || 'Sin nombre'}
+            ${dot}${esc(sub.name || 'Sin nombre')}
           </td>
           <td style="padding:10px 6px;">${srcChip}</td>
           <td style="padding:10px 6px;font-size:12px;color:#6b7280;">${freqTxt} · ${dow}</td>
