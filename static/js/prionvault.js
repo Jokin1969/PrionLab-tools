@@ -3850,276 +3850,294 @@
     row.innerHTML = selectCell + marksCell + thumbCell + articleCell + yearCell + pagesCell +
                     priorityCell + linksCell + prionreadCell;
 
-    // Wire the row-level checkbox
-    const cb = row.querySelector('.pv-row-select');
-    if (cb) {
-      cb.addEventListener('click', e => {
+    // Per-row button wiring (~25 listeners) is deferred until the row is
+    // first clicked: a capture-phase listener on the row runs it just
+    // before the click reaches its target, so the target's handlers (added
+    // now) still fire for that same click — including programmatic
+    // .click() calls. Rendering a 500/1000-row page no longer creates
+    // tens of thousands of closures up front.
+    const wireRow = () => {
+      // Wire the row-level checkbox
+      const cb = row.querySelector('.pv-row-select');
+      if (cb) {
+        cb.addEventListener('click', e => {
+          e.stopPropagation();
+          if (cb.checked) state.selectedIds.add(a.id);
+          else            state.selectedIds.delete(a.id);
+          updateBulkBar();
+          syncSelectAllHeader();
+        });
+      }
+
+      // ── Wiring ──────────────────────────────────────────────────────────
+      const prBtn = row.querySelector('.pv-open-prionread-btn');
+      if (prBtn) prBtn.addEventListener('click', e => {
         e.stopPropagation();
-        if (cb.checked) state.selectedIds.add(a.id);
-        else            state.selectedIds.delete(a.id);
-        updateBulkBar();
-        syncSelectAllHeader();
+        window.open(`/prionread/admin/articles?open=${encodeURIComponent(a.id)}`,
+                    '_blank', 'noopener');
       });
-    }
 
-    // ── Wiring ──────────────────────────────────────────────────────────
-    const prBtn = row.querySelector('.pv-open-prionread-btn');
-    if (prBtn) prBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      window.open(`/prionread/admin/articles?open=${encodeURIComponent(a.id)}`,
-                  '_blank', 'noopener');
-    });
-
-    const pdfPill = row.querySelector('.pv-pdf-pill');
-    if (pdfPill) pdfPill.addEventListener('click', e => {
-      e.stopPropagation();
-      // On phones the browser hides all its chrome around an inline
-      // PDF, which trapped the operator inside the file with no way
-      // back to PrionVault. Open our /pdf-view wrapper instead — it
-      // pins a "← Volver" bar at the top and still uses the OS's
-      // native PDF viewer inside an iframe below.
-      if (window.innerWidth <= 800) {
-        window.open(`/prionvault/api/articles/${a.id}/pdf-view`,
-                    '_blank', 'noopener,noreferrer');
-        return;
-      }
-      openDetail(a.id, { openPdf: true });
-    });
-
-    row.querySelector('.pv-jc-convoke-row-btn')?.addEventListener('click', e => {
-      e.stopPropagation();
-      PVJcConvoke.open(a);
-    });
-
-    row.querySelector('.pv-favorite-btn').addEventListener('click', async e => {
-      e.stopPropagation();
-      const btn = e.currentTarget;
-      const next = btn.dataset.active !== '1';
-      btn.disabled = true;
-      try {
-        const r = await api(`/articles/${a.id}/favorite`, {
-          method: 'POST',
-          body: JSON.stringify({ value: next }),
-        });
-        a.is_favorite = !!r.is_favorite;
-        replaceRow(row, a);
-      } catch (err) {
-        btn.disabled = false;
-        alert('Error: ' + err.message);
-      }
-    });
-
-    row.querySelector('.pv-jc-btn').addEventListener('click', async e => {
-      e.stopPropagation();
-      // Shared mark, curated by admins and the JC responsible(s).
-      if (!(IS_ADMIN || IS_JC_RESPONSIBLE)) return;
-      const btn = e.currentTarget;
-      const next = btn.dataset.active !== '1';
-      btn.disabled = true;
-      try {
-        const r = await api(`/articles/${a.id}/jc-mark`, {
-          method: 'POST',
-          body: JSON.stringify({ value: next }),
-        });
-        a.is_jc = !!r.is_jc;
-        replaceRow(row, a);
-      } catch (err) {
-        btn.disabled = false;
-        alert('Error: ' + err.message);
-      }
-    });
-
-    row.querySelector('.pv-read-btn').addEventListener('click', async e => {
-      e.stopPropagation();
-      const btn = e.currentTarget;
-      const next = btn.dataset.active !== '1';
-      btn.disabled = true;
-      try {
-        const r = await api(`/articles/${a.id}/read`, {
-          method: 'POST',
-          body: JSON.stringify({ value: next }),
-        });
-        a.is_read = !!r.is_read;
-        a.read_at = r.read_at || null;
-        replaceRow(row, a);
-      } catch (err) {
-        btn.disabled = false;
-        alert('Error: ' + err.message);
-      }
-    });
-
-    // Per-user marks (flag / milestone / color / priority) — available to
-    // every logged-in user since they're personal (migration 037). Each user
-    // organizes their own; readers included.
-    row.querySelector('.pv-milestone-btn').addEventListener('click', e => {
-      e.stopPropagation();
-      const next = e.currentTarget.dataset.active !== '1';
-      patchArticleInline(a, { is_milestone: next }, () => {
-        a.is_milestone = next;
-        if (next) a.priority = 5;
-        replaceRow(row, a);
+      const pdfPill = row.querySelector('.pv-pdf-pill');
+      if (pdfPill) pdfPill.addEventListener('click', e => {
+        e.stopPropagation();
+        // On phones the browser hides all its chrome around an inline
+        // PDF, which trapped the operator inside the file with no way
+        // back to PrionVault. Open our /pdf-view wrapper instead — it
+        // pins a "← Volver" bar at the top and still uses the OS's
+        // native PDF viewer inside an iframe below.
+        if (window.innerWidth <= 800) {
+          window.open(`/prionvault/api/articles/${a.id}/pdf-view`,
+                      '_blank', 'noopener,noreferrer');
+          return;
+        }
+        openDetail(a.id, { openPdf: true });
       });
-    });
 
-    row.querySelector('.pv-flag-btn').addEventListener('click', e => {
-      e.stopPropagation();
-      const next = e.currentTarget.dataset.active !== '1';
-      patchArticleInline(a, { is_flagged: next }, () => {
-        a.is_flagged = next;
-        replaceRow(row, a);
+      row.querySelector('.pv-jc-convoke-row-btn')?.addEventListener('click', e => {
+        e.stopPropagation();
+        PVJcConvoke.open(a);
       });
-    });
 
-    row.querySelector('.pv-color-dot').addEventListener('click', e => {
-      e.stopPropagation();
-      openColorPopover(e.currentTarget, a, () => replaceRow(row, a));
-    });
-
-    const prChip = row.querySelector('.pv-priority-chip');
-    if (prChip) prChip.addEventListener('click', e => {
-      e.stopPropagation();
-      openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
-    });
-
-    // JC button: open to every role (it was wired inside the admin-only
-    // block below, so for anyone else the click fell through to the row
-    // and opened the article's detail modal instead).
-    const jcRowBtn = row.querySelector('.pv-row-jc-btn');
-    if (jcRowBtn) jcRowBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      jcRowBtn.disabled = true;
-      try { await openJcButton(a, () => loadArticles()); }
-      finally { jcRowBtn.disabled = false; }
-    });
-
-    // Row buttons, wired for EVERY role. This block used to be wrapped in
-    // `if (IS_ADMIN)`, so for non-admins the 📍, email, chat, notes, cart,
-    // copy and share buttons were shown but dead — the click fell through
-    // to the row and opened the article's detail modal. The few truly
-    // admin-only buttons (fetch abstract, OA fetch/upload, 🔓) are simply
-    // not rendered for non-admins, so their wiring below finds nothing.
-    {
-      const fetchAbsBtn = row.querySelector('.pv-fetch-abstract-btn');
-      if (fetchAbsBtn) fetchAbsBtn.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        fetchAbsBtn.disabled = true;
-        const original = fetchAbsBtn.innerHTML;
-        fetchAbsBtn.innerHTML = '⏳ Buscando…';
+      row.querySelector('.pv-favorite-btn').addEventListener('click', async e => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        const next = btn.dataset.active !== '1';
+        btn.disabled = true;
         try {
-          const r = await api(`/articles/${a.id}/fetch-abstract`,
-                              { method: 'POST' });
-          if (r.ok && r.abstract) {
-            a.abstract = r.abstract;
-            a.has_abstract = true;
-            a.abstract_unavailable = false;
-            if (r.pubmed_id && !a.pubmed_id) a.pubmed_id = r.pubmed_id;
-            replaceRow(row, a);
-          } else if (r.status === 'unavailable') {
-            a.has_abstract = false;
-            a.abstract_unavailable = true;
-            if (r.pubmed_id && !a.pubmed_id) a.pubmed_id = r.pubmed_id;
-            replaceRow(row, a);
-          }
+          const r = await api(`/articles/${a.id}/favorite`, {
+            method: 'POST',
+            body: JSON.stringify({ value: next }),
+          });
+          a.is_favorite = !!r.is_favorite;
+          replaceRow(row, a);
         } catch (err) {
-          alert('No se pudo buscar el abstract: ' + err.message);
-          fetchAbsBtn.disabled = false;
-          fetchAbsBtn.innerHTML = original;
+          btn.disabled = false;
+          alert('Error: ' + err.message);
         }
       });
 
-      const isolateRowBtn = row.querySelector('.pv-isolate-row-btn');
-      if (isolateRowBtn) isolateRowBtn.addEventListener('click', (e) => {
+      row.querySelector('.pv-jc-btn').addEventListener('click', async e => {
         e.stopPropagation();
-        _setIsolatedArticleId(a.id);
-        loadArticles();
-      });
-
-      const oaRowBtn = row.querySelector('.pv-oa-row-btn');
-      if (oaRowBtn) oaRowBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openOaSearchModal(a);
-      });
-
-
-      const emailRowBtn = row.querySelector('.pv-email-row-btn');
-      if (emailRowBtn) emailRowBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        PVEmailShare.open(a);
-      });
-
-      const chatRowBtn = row.querySelector('.pv-chat-row-btn');
-      if (chatRowBtn) chatRowBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        PVChat.open(a, { showHistory: false });
-      });
-
-      const noteCluster = row.querySelector('.pv-notes-cluster');
-      if (noteCluster) _wireNoteCluster(noteCluster, a);
-
-      const indexedChip = row.querySelector('.pv-indexed-chip');
-      if (indexedChip) indexedChip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openChunksInspector(a.id, a.title);
-      });
-
-      const verifyChip = row.querySelector('.pv-verify-chip');
-      if (verifyChip) verifyChip.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        // Open the edit modal focused on this article — the verify block
-        // inside the edit modal lets the user mark OK or recheck in-place.
-        const fresh = await api(`/articles/${a.id}`);
-        openEditModal(fresh);
-      });
-
-      const editBtn = row.querySelector('.pv-edit-row-btn');
-      if (editBtn) editBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        // If we already know the PMID at list time, pop PubMed in a
-        // background tab as part of the same click. Opening before
-        // the await keeps the popup-blocker happy (user-gesture
-        // chain stays intact). Edit modal still opens.
-        if (a.pubmed_id) {
-          window.open(`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(a.pubmed_id)}/`,
-                      '_blank', 'noopener');
-        }
-        editBtn.disabled = true;
+        // Shared mark, curated by admins and the JC responsible(s).
+        if (!(IS_ADMIN || IS_JC_RESPONSIBLE)) return;
+        const btn = e.currentTarget;
+        const next = btn.dataset.active !== '1';
+        btn.disabled = true;
         try {
-          // Pull a fresh copy so the modal sees the latest fields
-          // (abstract, dropbox_path, etc.) the list view doesn't carry.
+          const r = await api(`/articles/${a.id}/jc-mark`, {
+            method: 'POST',
+            body: JSON.stringify({ value: next }),
+          });
+          a.is_jc = !!r.is_jc;
+          replaceRow(row, a);
+        } catch (err) {
+          btn.disabled = false;
+          alert('Error: ' + err.message);
+        }
+      });
+
+      row.querySelector('.pv-read-btn').addEventListener('click', async e => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        const next = btn.dataset.active !== '1';
+        btn.disabled = true;
+        try {
+          const r = await api(`/articles/${a.id}/read`, {
+            method: 'POST',
+            body: JSON.stringify({ value: next }),
+          });
+          a.is_read = !!r.is_read;
+          a.read_at = r.read_at || null;
+          replaceRow(row, a);
+        } catch (err) {
+          btn.disabled = false;
+          alert('Error: ' + err.message);
+        }
+      });
+
+      // Per-user marks (flag / milestone / color / priority) — available to
+      // every logged-in user since they're personal (migration 037). Each user
+      // organizes their own; readers included.
+      row.querySelector('.pv-milestone-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        const next = e.currentTarget.dataset.active !== '1';
+        patchArticleInline(a, { is_milestone: next }, () => {
+          a.is_milestone = next;
+          if (next) a.priority = 5;
+          replaceRow(row, a);
+        });
+      });
+
+      row.querySelector('.pv-flag-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        const next = e.currentTarget.dataset.active !== '1';
+        patchArticleInline(a, { is_flagged: next }, () => {
+          a.is_flagged = next;
+          replaceRow(row, a);
+        });
+      });
+
+      row.querySelector('.pv-color-dot').addEventListener('click', e => {
+        e.stopPropagation();
+        openColorPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+
+      const prChip = row.querySelector('.pv-priority-chip');
+      if (prChip) prChip.addEventListener('click', e => {
+        e.stopPropagation();
+        openPriorityPopover(e.currentTarget, a, () => replaceRow(row, a));
+      });
+
+      // JC button: open to every role (it was wired inside the admin-only
+      // block below, so for anyone else the click fell through to the row
+      // and opened the article's detail modal instead).
+      const jcRowBtn = row.querySelector('.pv-row-jc-btn');
+      if (jcRowBtn) jcRowBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        jcRowBtn.disabled = true;
+        try { await openJcButton(a, () => loadArticles()); }
+        finally { jcRowBtn.disabled = false; }
+      });
+
+      // Row buttons, wired for EVERY role. This block used to be wrapped in
+      // `if (IS_ADMIN)`, so for non-admins the 📍, email, chat, notes, cart,
+      // copy and share buttons were shown but dead — the click fell through
+      // to the row and opened the article's detail modal. The few truly
+      // admin-only buttons (fetch abstract, OA fetch/upload, 🔓) are simply
+      // not rendered for non-admins, so their wiring below finds nothing.
+      {
+        const fetchAbsBtn = row.querySelector('.pv-fetch-abstract-btn');
+        if (fetchAbsBtn) fetchAbsBtn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          fetchAbsBtn.disabled = true;
+          const original = fetchAbsBtn.innerHTML;
+          fetchAbsBtn.innerHTML = '⏳ Buscando…';
+          try {
+            const r = await api(`/articles/${a.id}/fetch-abstract`,
+                                { method: 'POST' });
+            if (r.ok && r.abstract) {
+              a.abstract = r.abstract;
+              a.has_abstract = true;
+              a.abstract_unavailable = false;
+              if (r.pubmed_id && !a.pubmed_id) a.pubmed_id = r.pubmed_id;
+              replaceRow(row, a);
+            } else if (r.status === 'unavailable') {
+              a.has_abstract = false;
+              a.abstract_unavailable = true;
+              if (r.pubmed_id && !a.pubmed_id) a.pubmed_id = r.pubmed_id;
+              replaceRow(row, a);
+            }
+          } catch (err) {
+            alert('No se pudo buscar el abstract: ' + err.message);
+            fetchAbsBtn.disabled = false;
+            fetchAbsBtn.innerHTML = original;
+          }
+        });
+
+        const isolateRowBtn = row.querySelector('.pv-isolate-row-btn');
+        if (isolateRowBtn) isolateRowBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          _setIsolatedArticleId(a.id);
+          loadArticles();
+        });
+
+        const oaRowBtn = row.querySelector('.pv-oa-row-btn');
+        if (oaRowBtn) oaRowBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openOaSearchModal(a);
+        });
+
+
+        const emailRowBtn = row.querySelector('.pv-email-row-btn');
+        if (emailRowBtn) emailRowBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          PVEmailShare.open(a);
+        });
+
+        const chatRowBtn = row.querySelector('.pv-chat-row-btn');
+        if (chatRowBtn) chatRowBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          PVChat.open(a, { showHistory: false });
+        });
+
+
+        const indexedChip = row.querySelector('.pv-indexed-chip');
+        if (indexedChip) indexedChip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openChunksInspector(a.id, a.title);
+        });
+
+        const verifyChip = row.querySelector('.pv-verify-chip');
+        if (verifyChip) verifyChip.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          // Open the edit modal focused on this article — the verify block
+          // inside the edit modal lets the user mark OK or recheck in-place.
           const fresh = await api(`/articles/${a.id}`);
           openEditModal(fresh);
-        } catch (err) {
-          alert('No se pudo abrir el editor: ' + err.message);
-        } finally {
-          editBtn.disabled = false;
-        }
-      });
+        });
 
-      const oaFetchBtn = row.querySelector('.pv-oa-fetch-btn');
-      if (oaFetchBtn) oaFetchBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        oaFetchBtn.disabled = true;
-        oaFetchBtn.innerHTML = '<span style="font-size:11px;line-height:1.2;">⏳</span>';
-        oaFetchBtn.title = 'Descargando…';
-        try {
-          const r = await api(`/articles/${a.id}/fetch-oa-pdf`, { method: 'POST' });
-          if (r.ok) {
-            // PDF now exists — swap button for real thumbnail
-            const td = oaFetchBtn.closest('td');
-            td.innerHTML = `<img class="pv-thumb"
-              src="/prionvault/api/articles/${esc(a.id)}/thumbnail?_=${Date.now()}"
-              loading="lazy" alt=""
-              style="display:block;width:34px;height:44px;object-fit:cover;object-position:top center;
-                     border-radius:3px;border:1px solid #e5e7eb;cursor:zoom-in;"
-              onerror="this.style.display='none'">`;
-            a.has_pdf = true;
-            a.pdf_dropbox_path = r.dropbox_path || true;
-          } else {
-            // OA not available — swap to manual upload button (persistent state)
+        const editBtn = row.querySelector('.pv-edit-row-btn');
+        if (editBtn) editBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          // If we already know the PMID at list time, pop PubMed in a
+          // background tab as part of the same click. Opening before
+          // the await keeps the popup-blocker happy (user-gesture
+          // chain stays intact). Edit modal still opens.
+          if (a.pubmed_id) {
+            window.open(`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(a.pubmed_id)}/`,
+                        '_blank', 'noopener');
+          }
+          editBtn.disabled = true;
+          try {
+            // Pull a fresh copy so the modal sees the latest fields
+            // (abstract, dropbox_path, etc.) the list view doesn't carry.
+            const fresh = await api(`/articles/${a.id}`);
+            openEditModal(fresh);
+          } catch (err) {
+            alert('No se pudo abrir el editor: ' + err.message);
+          } finally {
+            editBtn.disabled = false;
+          }
+        });
+
+        const oaFetchBtn = row.querySelector('.pv-oa-fetch-btn');
+        if (oaFetchBtn) oaFetchBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          oaFetchBtn.disabled = true;
+          oaFetchBtn.innerHTML = '<span style="font-size:11px;line-height:1.2;">⏳</span>';
+          oaFetchBtn.title = 'Descargando…';
+          try {
+            const r = await api(`/articles/${a.id}/fetch-oa-pdf`, { method: 'POST' });
+            if (r.ok) {
+              // PDF now exists — swap button for real thumbnail
+              const td = oaFetchBtn.closest('td');
+              td.innerHTML = `<img class="pv-thumb"
+                src="/prionvault/api/articles/${esc(a.id)}/thumbnail?_=${Date.now()}"
+                loading="lazy" alt=""
+                style="display:block;width:34px;height:44px;object-fit:cover;object-position:top center;
+                       border-radius:3px;border:1px solid #e5e7eb;cursor:zoom-in;"
+                onerror="this.style.display='none'">`;
+              a.has_pdf = true;
+              a.pdf_dropbox_path = r.dropbox_path || true;
+            } else {
+              // OA not available — swap to manual upload button (persistent state)
+              const td = oaFetchBtn.closest('td');
+              td.innerHTML = `<button class="pv-oa-manual-btn"
+                data-aid="${esc(a.id)}" data-title="${esc(a.title||'')}"
+                title="OA no disponible — clic para subir PDF manualmente"
+                style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                       width:34px;height:44px;border-radius:3px;border:1px solid #d1d5db;
+                       background:#f9fafb;color:#6b7280;cursor:pointer;padding:0;gap:1px;
+                       font-size:9px;font-weight:600;line-height:1.1;">
+                <span style="font-size:13px;line-height:1;">📤</span>PDF
+              </button>`;
+              _wireManualUploadBtn(td.querySelector('.pv-oa-manual-btn'), a);
+            }
+          } catch (err) {
             const td = oaFetchBtn.closest('td');
             td.innerHTML = `<button class="pv-oa-manual-btn"
               data-aid="${esc(a.id)}" data-title="${esc(a.title||'')}"
-              title="OA no disponible — clic para subir PDF manualmente"
+              title="Error al descargar — clic para subir PDF manualmente"
               style="display:flex;flex-direction:column;align-items:center;justify-content:center;
                      width:34px;height:44px;border-radius:3px;border:1px solid #d1d5db;
                      background:#f9fafb;color:#6b7280;cursor:pointer;padding:0;gap:1px;
@@ -4128,62 +4146,60 @@
             </button>`;
             _wireManualUploadBtn(td.querySelector('.pv-oa-manual-btn'), a);
           }
-        } catch (err) {
-          const td = oaFetchBtn.closest('td');
-          td.innerHTML = `<button class="pv-oa-manual-btn"
-            data-aid="${esc(a.id)}" data-title="${esc(a.title||'')}"
-            title="Error al descargar — clic para subir PDF manualmente"
-            style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                   width:34px;height:44px;border-radius:3px;border:1px solid #d1d5db;
-                   background:#f9fafb;color:#6b7280;cursor:pointer;padding:0;gap:1px;
-                   font-size:9px;font-weight:600;line-height:1.1;">
-            <span style="font-size:13px;line-height:1;">📤</span>PDF
-          </button>`;
-          _wireManualUploadBtn(td.querySelector('.pv-oa-manual-btn'), a);
-        }
-      });
+        });
 
+
+
+        const shareRowBtn = row.querySelector('.pv-share-row-btn');
+        if (shareRowBtn) shareRowBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const icon = shareRowBtn.querySelector('i');
+          const prevClass = icon ? icon.className : null;
+          const ok = await _copyShareBlock(a);
+          if (icon) icon.className = ok ? 'fas fa-check' : 'fas fa-xmark';
+          setTimeout(() => { if (icon && prevClass) icon.className = prevClass; }, 1400);
+        });
+
+        const cartBtn = row.querySelector('.pv-cart-btn');
+        if (cartBtn) cartBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!window.PPCart) return;
+          const inCart = window.PPCart.has(a.id);
+          if (inCart) {
+            window.PPCart.remove(a.id);
+            cartBtn.classList.remove('pv-cart-btn--in');
+            cartBtn.style.background = 'white';
+            cartBtn.style.color = '#374151';
+            cartBtn.title = 'Añadir al carrito de PrionPacks';
+            cartBtn.innerHTML = '🛒';
+          } else {
+            window.PPCart.add({
+              id: a.id, title: a.title || '', authors: a.authors || '',
+              year: a.year || null, journal: a.journal || '',
+              doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
+            });
+            cartBtn.classList.add('pv-cart-btn--in');
+            cartBtn.style.background = '#d1fae5';
+            cartBtn.style.color = '#065f46';
+            cartBtn.title = 'En el carrito';
+            cartBtn.innerHTML = '🛒 ✓';
+          }
+        });
+      }
+
+    };
+    // Wired eagerly: these may attach hover behaviour, not just clicks.
+    {
+      const noteCluster = row.querySelector('.pv-notes-cluster');
+      if (noteCluster) _wireNoteCluster(noteCluster, a);
       const manualUploadBtn = row.querySelector('.pv-oa-manual-btn');
       if (manualUploadBtn) _wireManualUploadBtn(manualUploadBtn, a);
-
       _wireCopyBtn(row.querySelector('.pv-copy-title-btn'));
-
-      const shareRowBtn = row.querySelector('.pv-share-row-btn');
-      if (shareRowBtn) shareRowBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const icon = shareRowBtn.querySelector('i');
-        const prevClass = icon ? icon.className : null;
-        const ok = await _copyShareBlock(a);
-        if (icon) icon.className = ok ? 'fas fa-check' : 'fas fa-xmark';
-        setTimeout(() => { if (icon && prevClass) icon.className = prevClass; }, 1400);
-      });
-
-      const cartBtn = row.querySelector('.pv-cart-btn');
-      if (cartBtn) cartBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!window.PPCart) return;
-        const inCart = window.PPCart.has(a.id);
-        if (inCart) {
-          window.PPCart.remove(a.id);
-          cartBtn.classList.remove('pv-cart-btn--in');
-          cartBtn.style.background = 'white';
-          cartBtn.style.color = '#374151';
-          cartBtn.title = 'Añadir al carrito de PrionPacks';
-          cartBtn.innerHTML = '🛒';
-        } else {
-          window.PPCart.add({
-            id: a.id, title: a.title || '', authors: a.authors || '',
-            year: a.year || null, journal: a.journal || '',
-            doi: a.doi || '', pubmed_id: a.pubmed_id || '', has_pdf: !!a.has_pdf,
-          });
-          cartBtn.classList.add('pv-cart-btn--in');
-          cartBtn.style.background = '#d1fae5';
-          cartBtn.style.color = '#065f46';
-          cartBtn.title = 'En el carrito';
-          cartBtn.innerHTML = '🛒 ✓';
-        }
-      });
     }
+    let _rowWired = false;
+    row.addEventListener('click', () => {
+      if (!_rowWired) { _rowWired = true; wireRow(); }
+    }, { capture: true });
 
     // Only the Article + Year cells open the detail modal — chips and
     // mark buttons in other cells used to swallow stray clicks via
