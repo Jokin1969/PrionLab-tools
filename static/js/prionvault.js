@@ -324,6 +324,39 @@
     obs.observe(modal, { attributes: true, attributeFilter: ['style'] });
   }
 
+  // ── Accessibility pass ───────────────────────────────────────────────
+  // Every modal is announced as a dialog labelled by its heading, close
+  // buttons get a name, and icon-only buttons (emoji / <i> icons with a
+  // tooltip) expose that tooltip as their accessible name — including the
+  // ones rendered later (listing rows, detail modal), via an observer.
+  function _labelIconButtons(root) {
+    root.querySelectorAll('button[title]:not([aria-label])').forEach(b => {
+      const txt = (b.textContent || '').replace(/[\s\u200d\ufe0f]/g, '');
+      // No real words → the visible content is just an icon/emoji.
+      if (!/[A-Za-zÀ-ÿ0-9]{2,}/.test(txt)) b.setAttribute('aria-label', b.title);
+    });
+  }
+  function _wireA11y() {
+    document.querySelectorAll('.pv-modal').forEach((m, i) => {
+      m.setAttribute('role', 'dialog');
+      m.setAttribute('aria-modal', 'true');
+      const h = m.querySelector('h2, h3');
+      if (h && !m.hasAttribute('aria-labelledby')) {
+        if (!h.id) h.id = `pv-modal-title-${i}`;
+        m.setAttribute('aria-labelledby', h.id);
+      }
+      m.querySelectorAll('.pv-modal-close:not([aria-label])')
+        .forEach(b => b.setAttribute('aria-label', 'Cerrar'));
+    });
+    _labelIconButtons(document);
+    let pending = false;
+    new MutationObserver(() => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => { pending = false; _labelIconButtons(document); });
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
   async function api(path, opts = {}) {
     let res;
     try {
@@ -12543,6 +12576,7 @@
 
     // Wire focus trapping for every modal in the page. Safe / idempotent.
     document.querySelectorAll('.pv-modal').forEach(m => wireModalFocusTrap(m));
+    _wireA11y();
 
     // Apply any incoming ?has_glossary= filter BEFORE the first
     // loadArticles() call below — buildListParams() only reads from

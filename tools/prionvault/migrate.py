@@ -503,8 +503,25 @@ def _heal_listed_migrations(db, out: dict) -> None:
 def run_pending_migrations(app=None) -> dict:
     """Synchronous, returns the summary dict. Use this from the admin
     endpoint or from tests. For app boot, use schedule_pending_migrations()
-    to avoid blocking gunicorn / healthchecks."""
-    return _run_migrations_inline()
+    to avoid blocking gunicorn / healthchecks.
+
+    There is ONE migration runner now — database.config.db.run_migrations
+    (tracked in _schema_migrations, every file in migrations/). This just
+    runs it and then the schema self-heal. The old PrionVault-only runner
+    below (_run_migrations_inline / applied_migrations) is kept for
+    reference but no longer called."""
+    from database.config import db
+    if not getattr(db, "engine", None):
+        return {"applied": [], "skipped": [], "errors": []}
+    summary = db.run_migrations() or {"applied": [], "skipped": [], "errors": []}
+    summary["self_heal"] = _self_heal_schema()
+    try:
+        from . import routes as _routes
+        _routes._pv_columns_cache = None
+        _routes._pv_columns_cache_time = 0.0
+    except Exception:
+        pass
+    return summary
 
 
 def schedule_pending_migrations(app=None) -> threading.Thread:
@@ -516,7 +533,7 @@ def schedule_pending_migrations(app=None) -> threading.Thread:
         # and respond to the first /health probe.
         time.sleep(2)
         try:
-            result = _run_migrations_inline()
+            result = run_pending_migrations()
             applied = [m["name"] for m in result.get("applied", [])]
             errors  = result.get("errors", [])
             if applied:

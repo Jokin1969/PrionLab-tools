@@ -323,6 +323,41 @@ def create_app() -> Flask:
         return response
 
     @app.before_request
+    def csrf_origin_check():
+        """CSRF defence for every state-changing request, with no token
+        plumbing in the JS: a browser always sends Origin (or at least
+        Referer) on a cross-site POST/PUT/PATCH/DELETE, so reject the
+        request when it names another host. Same-site fetches and forms
+        pass untouched; non-browser clients (no Origin/Referer) and the
+        Chrome extension (custom X-PrionVault-Key header, which a
+        cross-site form can't set) are unaffected."""
+        if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
+            return None
+        if request.headers.get("X-PrionVault-Key"):
+            return None
+        from urllib.parse import urlsplit
+        source = request.headers.get("Origin") or request.headers.get("Referer")
+        if not source:
+            return None
+        if source.startswith("chrome-extension://"):
+            return None
+        # Our own host as the browser sees it (proxy-safe): Host, the
+        # proxy's X-Forwarded-Host, and the configured public APP_URL.
+        own = {request.host.lower()}
+        for h in (request.headers.get("X-Forwarded-Host") or "").split(","):
+            if h.strip():
+                own.add(h.strip().lower())
+        if getattr(config, "APP_URL", ""):
+            own.add(urlsplit(config.APP_URL).netloc.lower())
+        if source == "null" or urlsplit(source).netloc.lower() not in own:
+            app.logger.warning("CSRF check: blocked %s %s from %s",
+                               request.method, request.path, source[:100])
+            from flask import jsonify
+            return jsonify({"error": "csrf_blocked",
+                            "detail": "Petición bloqueada: procede de otro sitio web."}), 403
+        return None
+
+    @app.before_request
     def force_password_change():
         """When a user logs in with the starter password and hasn't
         chosen their own yet (session['must_change_pw'] is True),

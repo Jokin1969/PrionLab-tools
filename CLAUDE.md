@@ -16,6 +16,9 @@ python app.py
 
 # Apply DB migrations (run missing ones in order)
 python -c "from database.config import db; db.run_migrations()"
+
+# Rebuild static/js/prionvault.js after editing its parts (CI checks it's in sync)
+python scripts/build_prionvault_js.py
 ```
 
 ## Architecture
@@ -27,7 +30,7 @@ python -c "from database.config import db; db.run_migrations()"
 - Decorators in `core/decorators.py`: `@login_required` redirects to `url_for("auth.login")`; `@admin_required` redirects authenticated non-admins to `url_for("home")`
 - Two roles: `admin` (full access) and `reader` (PrionVault read + own tags only)
 
-**Database** (`database/config.py`): SQLAlchemy with raw SQL via `db.Session()`. Not ORM — always call `s = db.Session(); s.execute(sql_text(...)); s.close()`. Migrations are numbered SQL files in `migrations/`.
+**Database** (`database/config.py`): SQLAlchemy with raw SQL via `db.Session()`. Not ORM — always call `s = db.Session(); s.execute(sql_text(...)); s.close()`. Migrations are numbered SQL files in `migrations/`; `db.run_migrations()` is the single runner (boot + PrionVault "Force migrations"), tracked in `_schema_migrations`, statement by statement, recorded only on full success. Every `*.sql` directly in `migrations/` runs — keep rollback scripts in `migrations/rollback/`. Write migrations idempotent (`IF NOT EXISTS`); `tools/prionvault/migrate.py` self-heal re-adds any missing `ADD COLUMN IF NOT EXISTS` column.
 
 **PrionVault** (`tools/prionvault/`): Largest tool. Blueprint defined in `__init__.py` as `prionvault_bp`. Routes split across modules:
 - `routes.py` — core routes (listing, search, tags, annotations, collections, metadata lookup, PDF ops)
@@ -41,9 +44,9 @@ python -c "from database.config import db; db.run_migrations()"
 Sub-module imports pattern (avoids circular imports): sub-modules import `prionvault_bp` from the parent package (`from tools.prionvault import prionvault_bp`), then `routes.py` imports sub-modules at the bottom as side-effects.
 
 **Frontend**:
-- `IS_ADMIN` constant injected via `<meta name="user-is-admin">` tag; JS reads it at page load
+- Role injected via `<meta name="pv-user-role">` / `pv-user-is-pv-admin` / `pv-user-id` (templates/base.html); JS reads `IS_ADMIN` etc. at page load
 - Reader UI: non-linked logo span, PrionVault nav link, direct logout button; admin-only UI hidden via `.pv-admin-only` CSS class
-- `static/js/prionvault.js` — main PrionVault frontend (large; tag pickers open to all roles)
+- `static/js/prionvault.js` — main PrionVault frontend, BUILT from the fragments in `static/js/prionvault/NN_*.js` (one IIFE split by area: listing, detail modal, journal club, chat, email/cart, admin panels…). Edit the parts, then run `python scripts/build_prionvault_js.py`; never edit the built file directly.
 
 **Article Listing Features**:
 - **Sticky Notes** (`prionvault_article_note` table): Per-user, up to 5 per article. Colour auto-assigned (0=amarilla/yellow, 1=azul/blue, 2=verde/green, 3=morada/purple, 4=naranja/orange). Notes cluster shown in listing rows and detail modal nav bar. Routes: `GET/POST /api/articles/<id>/notes`, `PATCH/DELETE /api/notes/<id>`.
@@ -57,6 +60,9 @@ Sub-module imports pattern (avoids circular imports): sub-modules import `prionv
 **Dropbox integration** (`core/dropbox_client.py`): timeout + size cap enforced in `services/email_digest.py` (`_PDF_ATTACH_MAX_BYTES=25MB`, `_PDF_ATTACH_TIMEOUT=30s`).
 
 ## Key conventions
+
+- CSRF: `app.py` `csrf_origin_check` rejects state-changing requests whose Origin/Referer is another host (session cookie is also SameSite=Lax). Same-site `fetch` needs nothing extra.
+- Scheduled senders (scheduled emails, JC convocations, reminders) claim rows with `services/send_claim.claim_due` — both gunicorn workers run the schedulers, never SELECT-then-send.
 
 - `_ensure_can_modify(table, owner_col, row_id)` — returns `(response, status)` tuple or `None` to proceed; admins always pass
 - Reader-only collections: readers can view and filter but cannot create/edit/delete collections or modify membership

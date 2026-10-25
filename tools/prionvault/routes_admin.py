@@ -1653,7 +1653,8 @@ def api_migrations_force_rerun():
     default_names = ["001_prionvault_tables.sql", "003_fix_step_column.sql"]
     body = request.get_json(silent=True) or {}
     if body.get("all"):
-        names = list(_PRIONVAULT_MIGRATIONS)
+        from pathlib import Path as _P
+        names = sorted(p.name for p in (_P(__file__).resolve().parents[2] / "migrations").glob("*.sql"))
     else:
         extra = body.get("names") or []
         if not isinstance(extra, list) or not all(isinstance(n, str) for n in extra):
@@ -1662,7 +1663,7 @@ def api_migrations_force_rerun():
     try:
         with db.engine.begin() as conn:
             conn.execute(_text(
-                "DELETE FROM applied_migrations WHERE name = ANY(:names)"
+                "DELETE FROM _schema_migrations WHERE filename = ANY(:names)"
             ), {"names": names})
     except Exception as exc:
         return jsonify({"error": f"could not clear migration log: {exc}"}), 500

@@ -101,11 +101,13 @@ class DatabaseConfig:
     # "prv_mig" packed as a bigint, distinct from email_ingest's leader lock.
     _MIGRATION_LOCK_KEY = 0x7072765F6D6967
 
-    def run_migrations(self) -> None:
-        """Execute all SQL migration files in order."""
+    def run_migrations(self) -> dict:
+        """Execute all pending SQL migration files in order — the ONE
+        migration runner (boot, and PrionVault's "Force migrations"
+        button). Returns {"applied", "skipped", "errors"}."""
         if not self.is_configured():
             logger.warning("Database not configured — skipping migrations")
-            return
+            return {"applied": [], "skipped": [], "errors": []}
 
         import os
         from pathlib import Path
@@ -113,13 +115,13 @@ class DatabaseConfig:
         migrations_dir = Path(__file__).parent.parent / "migrations"
         if not migrations_dir.exists():
             logger.warning("Migrations directory not found at %s", migrations_dir)
-            return
+            return {"applied": [], "skipped": [], "errors": []}
 
         # Get all .sql files, sorted by filename (which includes sequential numbers)
         migration_files = sorted([f for f in migrations_dir.glob("*.sql")])
         if not migration_files:
             logger.info("No migration files found")
-            return
+            return {"applied": [], "skipped": [], "errors": []}
 
         # Block here until any other worker's migration run finishes —
         # pg_advisory_lock (not the _try_ variant) waits rather than
@@ -134,7 +136,7 @@ class DatabaseConfig:
             logger.warning("Could not acquire migration advisory lock, proceeding unlocked: %s", e)
 
         try:
-            self._run_migrations_locked(migration_files)
+            return self._run_migrations_locked(migration_files)
         finally:
             try:
                 lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": self._MIGRATION_LOCK_KEY})
@@ -143,8 +145,15 @@ class DatabaseConfig:
                 pass
             lock_conn.close()
 
-    def _run_migrations_locked(self, migration_files) -> None:
-        # Ensure tracking table exists
+    # Statement failures that are environmental, not schema bugs (managed
+    # Postgres without superuser for CREATE EXTENSION, objects owned by
+    # another role): tolerated so the file still counts as applied.
+    _TOLERATED_ERRORS = ("permission denied", "must be owner", "must be superuser",
+                         "could not open extension control file", "is not available")
+
+    def _run_migrations_locked(self, migration_files) -> dict:
+        from tools.prionvault.migrate import _split_sql
+        summary = {"applied": [], "skipped": [], "errors": []}
         with self.engine.connect() as conn:
             try:
                 conn.execute(text("""
@@ -155,54 +164,66 @@ class DatabaseConfig:
                     )
                 """))
                 conn.commit()
+                done = {r[0] for r in conn.execute(text("SELECT filename FROM _schema_migrations"))}
             except Exception as e:
-                # Table might already exist, try to continue
-                try:
-                    conn.execute(text("SELECT 1 FROM _schema_migrations LIMIT 1"))
-                    conn.commit()
-                    logger.info("_schema_migrations table already exists")
-                except Exception as e2:
-                    logger.error("Failed to initialize _schema_migrations: %s", e2)
-                    return
+                logger.error("Failed to initialize _schema_migrations: %s", e)
+                summary["errors"].append({"phase": "bootstrap", "error": str(e)})
+                return summary
 
-        # Run each migration that hasn't been executed yet
         for migration_file in migration_files:
             filename = migration_file.name
-            with self.engine.connect() as conn:
+            if filename in done:
+                summary["skipped"].append({"name": filename})
+                continue
+            # Statement by statement, each autocommitted (CREATE INDEX
+            # CONCURRENTLY can't run in a transaction), executed raw so
+            # ':' / '%' in SQL are never mistaken for bind parameters.
+            statements = _split_sql(migration_file.read_text(encoding="utf-8"))
+            ok, tolerated, fails = 0, 0, []
+            for j, stmt in enumerate(statements, 1):
+                raw = None
                 try:
-                    # Check if this migration has already been run
-                    result = conn.execute(text(
-                        "SELECT 1 FROM _schema_migrations WHERE filename = :fn"
-                    ), {"fn": filename})
-                    if result.fetchone():
-                        logger.debug("Migration already executed: %s", filename)
-                        continue
-                except Exception:
-                    # Table might not be accessible, skip check
-                    pass
-
-                # Read and execute the migration
-                try:
-                    with open(migration_file, 'r') as f:
-                        sql_content = f.read()
-
-                    # Execute migration (might contain multiple statements)
-                    conn.execute(text(sql_content))
-
-                    # Record it
-                    try:
-                        conn.execute(text(
-                            "INSERT INTO _schema_migrations (filename) VALUES (:fn)"
-                        ), {"fn": filename})
-                    except Exception:
-                        # Already recorded, continue
-                        pass
-
-                    conn.commit()
-                    logger.info("Migration executed: %s", filename)
+                    raw = self.engine.raw_connection()
+                    # On the DRIVER connection (the pool proxy would just
+                    # store the attribute and the work would be rolled back).
+                    raw.driver_connection.autocommit = True
+                    cur = raw.driver_connection.cursor()
+                    cur.execute(stmt)  # no params → '%' / ':' are literal
+                    cur.close()
+                    ok += 1
                 except Exception as e:
-                    conn.rollback()
-                    logger.error("Migration failed for %s: %s", filename, e)
+                    msg = str(e).splitlines()[0][:300]
+                    if any(t in msg.lower() for t in self._TOLERATED_ERRORS):
+                        tolerated += 1
+                        logger.info("Migration %s stmt %d tolerated: %s", filename, j, msg)
+                    else:
+                        fails.append({"stmt_index": j, "error": msg,
+                                      "head": stmt.replace("\n", " ")[:120]})
+                finally:
+                    if raw is not None:
+                        try:
+                            raw.driver_connection.autocommit = False
+                        except Exception:
+                            pass
+                        raw.close()
+            entry = {"name": filename, "statements_ok": ok,
+                     "statements_tolerated": tolerated, "statements_failed": fails}
+            if fails:
+                # Not recorded: retried on the next boot / forced run.
+                logger.error("Migration failed for %s (%d statement(s)): %s",
+                             filename, len(fails), fails[0]["error"])
+                summary["errors"].append(entry)
+                continue
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(text(
+                        "INSERT INTO _schema_migrations (filename) VALUES (:fn) "
+                        "ON CONFLICT (filename) DO NOTHING"), {"fn": filename})
+            except Exception as e:
+                logger.error("Could not record migration %s: %s", filename, e)
+            logger.info("Migration executed: %s", filename)
+            summary["applied"].append(entry)
+        return summary
 
 
 # Global singleton — safe to import anywhere
