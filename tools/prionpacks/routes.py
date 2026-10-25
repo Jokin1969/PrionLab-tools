@@ -11,6 +11,21 @@ from . import members as members_module
 logger = logging.getLogger(__name__)
 
 
+def _admin_api(f):
+    """JSON 403 for non-admins on PrionPacks admin-only API routes
+    (backups, restore, lab members, deleting packages)."""
+    from functools import wraps
+    from flask import session
+
+    @wraps(f)
+    def wrapper(*a, **kw):
+        if session.get('role') != 'admin':
+            return jsonify({'error': 'forbidden',
+                            'detail': 'Solo un administrador puede hacer esto.'}), 403
+        return f(*a, **kw)
+    return wrapper
+
+
 def _post_save_sync(pkg):
     """Fire-and-forget: reconcile this pack with its two auto-managed
     PrionVault collections after every save. Failures are logged and
@@ -466,6 +481,7 @@ def api_update(pkg_id):
 
 @prionpacks_bp.route('/api/packages/<pkg_id>', methods=['DELETE'])
 @login_required
+@_admin_api
 def api_delete(pkg_id):
     models.delete_package(pkg_id)
     return jsonify({'ok': True})
@@ -681,6 +697,7 @@ def api_suggest_pubmed(pkg_id):
 
 @prionpacks_bp.route('/api/backup', methods=['POST'])
 @login_required
+@_admin_api
 def api_backup():
     from . import backup
     force = request.get_json(force=True, silent=True) or {}
@@ -697,6 +714,7 @@ def api_backup_list():
 
 @prionpacks_bp.route('/api/backup/restore', methods=['POST'])
 @login_required
+@_admin_api
 def api_backup_restore():
     from . import backup
     data = request.get_json(force=True, silent=True) or {}
@@ -719,6 +737,7 @@ def api_members_list():
 
 @prionpacks_bp.route('/api/members', methods=['POST'])
 @login_required
+@_admin_api
 def api_members_create():
     data = request.get_json(force=True, silent=True) or {}
     if not (data.get('name') or '').strip() or not (data.get('surname') or '').strip():
@@ -729,6 +748,7 @@ def api_members_create():
 
 @prionpacks_bp.route('/api/members/<member_id>', methods=['PUT'])
 @login_required
+@_admin_api
 def api_members_update(member_id):
     data = request.get_json(force=True, silent=True) or {}
     m = members_module.update_member(member_id, data)
@@ -739,6 +759,7 @@ def api_members_update(member_id):
 
 @prionpacks_bp.route('/api/members/<member_id>', methods=['DELETE'])
 @login_required
+@_admin_api
 def api_members_delete(member_id):
     members_module.delete_member(member_id)
     return jsonify({'ok': True})

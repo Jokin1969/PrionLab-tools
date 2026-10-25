@@ -2499,7 +2499,9 @@ def import_from_email():
     else:
         raw = request.args.get("pmids") or request.args.get("pmid") or ""
 
-    pmids = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
+    # PMIDs are purely numeric — anything else is dropped (also blocks
+    # HTML/JS injection through the query string).
+    pmids = [p.strip() for p in raw.replace(",", " ").split() if p.strip().isdigit()][:200]
     if not pmids:
         return redirect(url_for("prionvault.index"))
 
@@ -2544,10 +2546,11 @@ def import_from_email():
     cards = []
     for pmid in pmids:
         m = meta.get(pmid, {})
-        title = m.get("title") or f"PMID {pmid}"
-        year  = m.get("year") or ""
-        journal = m.get("journal") or ""
-        authors = m.get("authors") or ""
+        _e = __import__("html").escape
+        title = _e(m.get("title") or f"PMID {pmid}")
+        year  = _e(str(m.get("year") or ""))
+        journal = _e(m.get("journal") or "")
+        authors = _e(m.get("authors") or "")
         auth_short = ", ".join(authors.split(",")[:2]).strip() + (" et al." if len(authors.split(",")) > 2 else "") if authors else ""
         cards.append(
             f'<div class="art">'

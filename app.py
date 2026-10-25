@@ -193,9 +193,20 @@ def _start_prionpacks_backup_scheduler(app: Flask) -> None:
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = config.SECRET_KEY
+    # Session cookie hardening: not sent on cross-site POSTs (CSRF), only
+    # over HTTPS in production, HttpOnly (Flask default).
+    _on_railway = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
+    app.config.update(
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=_on_railway,
+        SESSION_COOKIE_HTTPONLY=True,
+    )
 
     _ensure_data_dirs()
     _setup_logging(app)
+    if not os.environ.get("APP_SECRET_KEY"):
+        app.logger.error("APP_SECRET_KEY no está definida: la clave de sesión se deriva de "
+                         "ADMIN_PASSWORD. Define APP_SECRET_KEY (secrets.token_hex(32)) en Railway.")
 
     # ── Rate limiting ────────────────────────────────────────────────────────
     # Uses Redis when REDIS_URL is set (production), falls back to in-memory

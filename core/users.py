@@ -212,7 +212,20 @@ def bootstrap_team_users() -> None:
     # Pre-hash the shared starter password ONCE, not per-row. bcrypt
     # at rounds=12 is ~250 ms each — 14 of them would add 3-4 s to
     # boot time for no benefit, since they share the same plaintext.
-    starter_hash = hash_password("12345678")
+    # No shared/known starter password any more: new seeds get an
+    # unusable random one and set theirs via "¿Olvidaste tu contraseña?".
+    import secrets as _secrets
+    from core.auth import verify_password
+    starter_hash = "locked:" + _secrets.token_hex(16)
+
+    # Lock seeded accounts that were never used and still carry the old
+    # public starter password (anyone knowing the email could take them).
+    for u in load_users():
+        h = u.get("password_hash") or ""
+        if ((u.get("must_change_pw") or "").lower() == "true" and not u.get("last_login")
+                and not h.startswith("locked:") and verify_password("12345678", h)):
+            update_user(u["username"], {"password_hash": "locked:" + _secrets.token_hex(16)}, sync=True)
+            logger.warning("Team bootstrap: locked unused starter-password account %s", u["username"])
 
     created = 0
     for full_name, email in TEAM:

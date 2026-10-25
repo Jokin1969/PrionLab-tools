@@ -1,3 +1,4 @@
+import secrets
 import logging
 from datetime import date, datetime
 
@@ -302,7 +303,8 @@ def _authenticate(username: str, password: str) -> dict | None:
             return matched
 
     # Emergency fallback: username=admin + raw ADMIN_PASSWORD always works
-    if username.lower() == "admin" and ADMIN_PASSWORD and password == ADMIN_PASSWORD:
+    if (username.lower() == "admin" and ADMIN_PASSWORD
+            and secrets.compare_digest(password.encode(), ADMIN_PASSWORD.encode())):
         base = dict(matched) if matched else {
             "username": "admin",
             "role": "admin",
@@ -328,6 +330,9 @@ def login():
 
         user = _authenticate(username, password)
         if user:
+            # Fresh session on login: no keys (impersonation snapshot,
+            # must_change_pw…) survive from a previous user of the browser.
+            session.clear()
             session["logged_in"] = True
             session["username"] = user.get("username", username)
             session["role"] = user.get("role", "reader")
@@ -363,7 +368,7 @@ def login():
                 session["must_change_pw"] = True
                 resp = make_response(redirect(url_for("auth.change_password")))
             else:
-                next_url = request.args.get("next") or url_for("home")
+                next_url = safe_next_url(request.args.get("next")) or url_for("home")
                 resp = make_response(redirect(next_url))
             resp.set_cookie("prionlab_lang", lang, max_age=365 * 24 * 3600, samesite="Lax")
             return resp
@@ -379,6 +384,36 @@ def logout():
     resp = make_response(redirect(url_for("auth.login")))
     resp.delete_cookie("prionlab_lang")
     return resp
+
+
+def safe_next_url(url: str | None) -> str | None:
+    """Only same-site relative paths ("/x"), never "//host", "/\\host"
+    or anything with a scheme — prevents open redirects."""
+    from urllib.parse import urlsplit
+    if not url or not url.startswith("/") or url.startswith("//") or "\\" in url:
+        return None
+    parts = urlsplit(url)
+    if parts.scheme or parts.netloc:
+        return None
+    return url
+
+
+def _notify_admins_new_registration(username, full_name, email, affiliation):
+    import html as _h
+    try:
+        from core.users import list_admin_emails
+        from core.smtp_client import send_email
+        to = list_admin_emails()
+        if not to:
+            return
+        body = (f"Nueva solicitud de cuenta en PrionLab Tools:\n\n"
+                f"Usuario: {username}\nNombre: {full_name}\nEmail: {email}\n"
+                f"Afiliación: {affiliation}\n\n"
+                f"La cuenta está desactivada. Actívala desde Admin → Usuarios si procede.")
+        send_email(to, "PrionLab Tools — nueva solicitud de cuenta", body,
+                   html="<pre style='font-family:inherit'>" + _h.escape(body) + "</pre>")
+    except Exception as exc:
+        logger.warning("register: admin notification failed: %s", exc)
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
@@ -415,7 +450,9 @@ def register():
                 "email": email,
                 "role": "reader",
                 "language": "es",
-                "active": "true",
+                # Self-registered accounts wait for an admin to activate
+                # them (Admin → Usuarios), so strangers can't get in.
+                "active": "false",
                 "created_at": date.today().isoformat(),
                 "last_login": "",
                 "affiliation": affiliation,
@@ -425,7 +462,9 @@ def register():
                 "bio": bio,
                 "lab_id": "",
             }, sync=False)
-            flash(_("Account created. You can now log in."), "success")
+            _notify_admins_new_registration(username, full_name, email, affiliation)
+            flash(_("Cuenta creada. Un administrador debe activarla antes de que puedas entrar; "
+                    "recibirás acceso en cuanto la apruebe."), "success")
             return redirect(url_for("auth.login"))
     return render_template("auth/register.html", error=error)
 

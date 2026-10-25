@@ -1,3 +1,4 @@
+import re
 import hashlib
 import logging
 import os
@@ -109,6 +110,11 @@ def list_backups() -> list:
 def restore_backup(remote_path: str) -> dict:
     """Download a backup from Dropbox and replace the local prionpacks.json."""
     import json
+
+    folder = config.DROPBOX_PRIONPACKS_BACKUP_FOLDER.rstrip("/")
+    name = remote_path[len(folder) + 1:] if remote_path.startswith(folder + "/") else ""
+    if not re.fullmatch(r"prionpacks_[\w\-]+\.json", name):
+        return {"status": "error", "message": "Ruta de backup no válida"}
 
     dbx = get_client()
     if dbx is None:
