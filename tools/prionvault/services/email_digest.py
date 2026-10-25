@@ -880,13 +880,21 @@ def run_pending_digests() -> None:
 
     try:
         eng = _get_engine()
-        with eng.connect() as conn:
+        # Atomic claim: push next_send_at an hour ahead before sending, so
+        # the other gunicorn worker can't pick the same digest, and a failed
+        # send is retried an hour later instead of every 15 min. A successful
+        # send sets the real next_send_at.
+        with eng.begin() as conn:
             rows = conn.execute(_t("""
-                SELECT id::text
-                  FROM prionvault_notification_subscriptions
-                 WHERE enabled = TRUE
-                   AND next_send_at IS NOT NULL
-                   AND next_send_at <= NOW()
+                UPDATE prionvault_notification_subscriptions s
+                   SET next_send_at = NOW() + INTERVAL '1 hour'
+                 WHERE s.id IN (
+                       SELECT id FROM prionvault_notification_subscriptions
+                        WHERE enabled = TRUE
+                          AND next_send_at IS NOT NULL
+                          AND next_send_at <= NOW()
+                        FOR UPDATE SKIP LOCKED)
+                RETURNING s.id::text
             """)).all()
         for (sub_id,) in rows:
             try:

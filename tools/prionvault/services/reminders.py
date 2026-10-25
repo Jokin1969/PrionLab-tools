@@ -330,12 +330,8 @@ def send_pending_reminders() -> dict:
     scheduled_at has passed and hasn't been sent yet."""
     from sqlalchemy import text as _t
     eng = _get_engine()
-    with eng.connect() as conn:
-        rows = conn.execute(_t("""
-            SELECT id FROM prionvault_reminder
-             WHERE scheduled_at <= NOW() AND sent_at IS NULL
-             ORDER BY scheduled_at ASC LIMIT 100
-        """)).all()
+    from .send_claim import claim_due
+    rows = [(r["id"],) for r in claim_due(eng, "prionvault_reminder", "t.id", limit=100)]
 
     results = {"sent": 0, "failed": 0, "errors": []}
     for (rid,) in rows:

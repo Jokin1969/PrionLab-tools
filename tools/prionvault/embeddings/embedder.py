@@ -75,7 +75,7 @@ def _get_client():
             pass
         raise NotConfigured("VOYAGE_API_KEY is not set")
     import voyageai
-    return voyageai.Client(api_key=api_key)
+    return voyageai.Client(api_key=api_key, timeout=60, max_retries=2)
 
 
 def embed_texts(texts: List[str], *,

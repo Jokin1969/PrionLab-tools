@@ -6031,9 +6031,9 @@
           ? `✓ Convocatoria programada.`
           : `✓ Convocatoria enviada a ${r.recipients} persona${r.recipients === 1 ? '' : 's'}.`, false);
         setTimeout(close, 1800);
+        setTimeout(() => { if (btn) btn.disabled = false; }, 2000);  // no double send before close
       } catch (e) {
         setStatus('Error: ' + (e.message || e), true);
-      } finally {
         if (btn) btn.disabled = false;
       }
     }
@@ -9035,9 +9035,9 @@
         });
         setStatus('✓ Enviado', false);
         setTimeout(close, 1400);
+        setTimeout(() => { btn.disabled = false; }, 1600);  // no double send before close
       } catch (e) {
         setStatus('Error: ' + (e.message || e), true);
-      } finally {
         btn.disabled = false;
       }
     }
@@ -10273,7 +10273,10 @@
       document.querySelector('#pv-email-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-email-send')?.addEventListener('click', send);
       $('pv-email-preview')?.addEventListener('click', preview);
-      $('pv-email-to')?.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+      $('pv-email-to')?.addEventListener('keydown', e => {
+        // Go through the button so its disabled state blocks double sends.
+        if (e.key === 'Enter') { e.preventDefault(); const b = $('pv-email-send'); if (b && !b.disabled) b.click(); }
+      });
       const ctog = $('pv-email-comment-toggle');
       ctog?.addEventListener('change', () => {
         const ta = $('pv-email-comment');
@@ -10409,6 +10412,7 @@
       const status = $('pv-email-status');
       if (!to) { status.style.color = '#b91c1c'; status.textContent = 'Indica una dirección de email.'; return; }
       const btn = $('pv-email-send');
+      if (btn.disabled) return;  // a send is already in flight
       btn.disabled = true;
       const opts = currentOptions();
 
@@ -10421,8 +10425,8 @@
         if (!dateVal) {
           status.style.color = '#b91c1c'; status.textContent = 'Indica una fecha.'; btn.disabled = false; return;
         }
-        // Combine date and time into ISO datetime (UTC)
-        scheduledAt = new Date(`${dateVal}T${timeVal}:00Z`).toISOString();
+        // Date/time are the user's LOCAL time (like the JC form) → ISO UTC.
+        scheduledAt = new Date(`${dateVal}T${timeVal}:00`).toISOString();
         status.style.color = '#9ca3af';
         status.textContent = 'Programando…';
       } else {
@@ -10464,10 +10468,10 @@
           }
         }
         setTimeout(close, 1800);
+        setTimeout(() => { btn.disabled = false; }, 2000);  // no double send before close
       } catch (e) {
         status.style.color = '#b91c1c';
         status.textContent = 'Error: ' + e.message;
-      } finally {
         btn.disabled = false;
       }
     }
@@ -10824,10 +10828,10 @@
         status.style.color = '#15803d';
         status.textContent = '✓ Enviado';
         setTimeout(closeBulkEmail, 1400);
+        setTimeout(() => { btn.disabled = false; }, 1600);  // no double send before close
       } catch (e) {
         status.style.color = '#b91c1c';
         status.textContent = 'Error: ' + e.message;
-      } finally {
         btn.disabled = false;
       }
     }

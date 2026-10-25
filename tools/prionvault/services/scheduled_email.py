@@ -83,16 +83,12 @@ def send_pending_scheduled_emails() -> dict:
 
     eng = _get_engine()
 
-    # Fetch all emails that are due (scheduled_at <= now and not yet sent)
-    with eng.connect() as conn:
-        rows = conn.execute(_t("""
-            SELECT id::text, article_id::text, to_email, sender_name,
-                   include_summary, comment, sender_user_id::text AS sender_user_id
-              FROM prionvault_scheduled_email
-             WHERE scheduled_at <= NOW() AND sent_at IS NULL
-             ORDER BY scheduled_at ASC
-             LIMIT 100
-        """)).mappings().all()
+    # Atomically claim due emails (only one worker gets each row).
+    from .send_claim import claim_due
+    rows = claim_due(eng, "prionvault_scheduled_email",
+                     "t.id::text AS id, t.article_id::text AS article_id, t.to_email, t.sender_name, "
+                     "t.include_summary, t.comment, t.sender_user_id::text AS sender_user_id",
+                     limit=100)
 
     results = {"sent": 0, "failed": 0, "errors": []}
 

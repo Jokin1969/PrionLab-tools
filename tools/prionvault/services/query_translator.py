@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def get_claude_client():
     """Import Claude client on demand to avoid initialization side-effects."""
     from anthropic import Anthropic
-    return Anthropic()
+    return Anthropic(timeout=30.0, max_retries=1)  # request path: stay well under gunicorn timeout
 
 
 def detect_and_translate(query: str) -> tuple[str, str]:

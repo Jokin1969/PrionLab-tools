@@ -36,9 +36,9 @@ def send_email(
 
     try:
         if SMTP_SECURE == "ssl":
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT)
+            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=60)
         else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=60)
             if SMTP_SECURE == "tls":
                 server.starttls()
 
@@ -105,9 +105,9 @@ def send_email_with_attachments(
 
     try:
         if SMTP_SECURE == "ssl":
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT)
+            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=60)
         else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=60)
             if SMTP_SECURE == "tls":
                 server.starttls()
 

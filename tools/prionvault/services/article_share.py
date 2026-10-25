@@ -778,15 +778,10 @@ def send_pending_jc_convocations() -> dict:
     from sqlalchemy import text as _t
 
     eng = _get_engine()
-    with eng.connect() as conn:
-        rows = conn.execute(_t("""
-            SELECT id::text, article_id::text, when_text, location_text,
-                   notes, requester_name, presenter_name
-              FROM prionvault_jc_convocation_schedule
-             WHERE scheduled_at <= NOW() AND sent_at IS NULL
-             ORDER BY scheduled_at ASC
-             LIMIT 50
-        """)).mappings().all()
+    from .send_claim import claim_due
+    rows = claim_due(eng, "prionvault_jc_convocation_schedule",
+                     "t.id::text AS id, t.article_id::text AS article_id, t.when_text, "
+                     "t.location_text, t.notes, t.requester_name, t.presenter_name")
 
     results = {"sent": 0, "failed": 0}
     for row in rows:

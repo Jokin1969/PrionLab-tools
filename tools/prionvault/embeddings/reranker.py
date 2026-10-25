@@ -68,7 +68,7 @@ def rerank(query: str, documents: List[str], *,
     if not api_key:
         raise NotConfigured("VOYAGE_API_KEY is not set")
     import voyageai
-    client = voyageai.Client(api_key=api_key)
+    client = voyageai.Client(api_key=api_key, timeout=60, max_retries=2)
 
     start = time.monotonic()
     attempt = 0

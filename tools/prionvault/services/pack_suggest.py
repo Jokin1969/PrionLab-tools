@@ -373,7 +373,7 @@ def _voyage_rerank(profile_text: str, candidates: list[dict]) -> dict:
     if not api_key:
         return {"skipped": "no_voyage_key"}
     import voyageai
-    client = voyageai.Client(api_key=api_key)
+    client = voyageai.Client(api_key=api_key, timeout=60, max_retries=2)
     docs = []
     for c in candidates:
         # Title + author + summary_ai (or abstract) is what describes a
