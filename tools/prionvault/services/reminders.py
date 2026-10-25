@@ -275,6 +275,17 @@ def send_reminder(reminder_id, force: bool = False) -> dict:
                 attachments.append((filename, pdf_bytes, "application/pdf"))
         except Exception as exc:
             logger.warning("reminder %s: JC PDF attach failed: %s", reminder_id, exc)
+        if not attachments:
+            # The reminder exists to deliver this presentation — don't send
+            # (and mark sent / clear the JC mark) without it; the scheduler
+            # retries with backoff.
+            msg = "No se pudo adjuntar la presentación (PDF); se reintentará."
+            eng = _get_engine()
+            with eng.begin() as conn:
+                conn.execute(_t(
+                    "UPDATE prionvault_reminder SET error_msg = :e WHERE id = CAST(:id AS uuid)"
+                ), {"e": msg, "id": reminder_id})
+            raise RuntimeError(msg)
 
     if not smtp_configured():
         raise RuntimeError("El servidor de correo no está configurado.")

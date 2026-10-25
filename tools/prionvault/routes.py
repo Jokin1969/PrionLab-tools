@@ -613,6 +613,8 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         if viewer_uid:
             conditions.append("articles.id IN (SELECT DISTINCT article_id FROM prionvault_article_note WHERE user_id = :has_summary_viewer_uid)")
             params["has_summary_viewer_uid"] = viewer_uid
+        else:
+            conditions.append("FALSE")   # no viewer → no notes of theirs
     elif has_summary == "none" and "summary_ai" in pv_cols:
         conditions.append("summary_ai IS NULL AND summary_human IS NULL")
     elif has_summary == "outdated" and "summary_ai" in pv_cols:
@@ -930,7 +932,9 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         "journal_asc":   "lower(journal) ASC NULLS LAST",
         "journal_desc":  "lower(journal) DESC NULLS LAST",
     }
-    order = sort_map.get(sort, "created_at DESC NULLS LAST")
+    # Unknown sort → the default (an unqualified created_at is ambiguous
+    # once prionvault_user_state is joined and made Postgres error out).
+    order = sort_map.get(sort, sort_map["added_desc"])
 
     # Build SELECT list: always include base columns; add pv cols if present.
     # NOTE: jc_count used to be a correlated subquery here. With 1 000+
@@ -1057,6 +1061,13 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         s.execute(sql_text("SET LOCAL enable_seqscan = off"))
     rows = s.execute(list_sql, params).all()
     total = int(rows[0]._mapping["_total_count"]) if rows else 0
+    if not rows and page > 1:
+        # Page past the end (e.g. a narrower filter while on page 5): the
+        # window count is empty, so count separately instead of reporting
+        # "0 results" for a filter that does match articles.
+        count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+        total = int(s.execute(sql_text(f"SELECT COUNT(*) {from_clause} {where}"),
+                              count_params).scalar() or 0)
     col_names = list(rows[0]._fields) if rows else []
 
     # ── PrionRead counts (separate session) ─────────────────────────────────

@@ -2375,6 +2375,12 @@
       document.getElementById('pv-result-page').textContent =
         'page ' + r.page + ' / ' + Math.max(1, Math.ceil(r.total / r.size));
 
+      if (r.items.length === 0 && r.total > 0 && state.page > 1) {
+        // Past the last page (filter narrowed while on a later page):
+        // jump to the last page that has results.
+        state.page = Math.max(1, Math.ceil(r.total / r.size));
+        return loadArticles();
+      }
       if (r.items.length === 0) {
         showEmpty('No articles match these filters.');
         renderPagination(r);
@@ -4333,7 +4339,11 @@
     if (next) next.disabled = idx < 0 || idx >= _listIds.length - 1;
   }
 
+  // Bumped on every openDetail(): a slower response for an article the
+  // user already navigated away from (fast prev/next) is dropped.
+  let _detailSeq = 0;
   async function openDetail(aid, options = {}) {
+    const mySeq = ++_detailSeq;
     const modal   = document.getElementById('pv-detail-modal');
     const content = document.getElementById('pv-detail-content');
     _pdfViewerOpen = !!options.openPdf;
@@ -4344,6 +4354,7 @@
     content.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;">Cargando…</div>';
     try {
       const a = await api('/articles/' + aid);
+      if (mySeq !== _detailSeq) return;
 
       // Fetch notes separately (not included in main article endpoint)
       try {
@@ -4355,6 +4366,7 @@
         // If notes endpoint fails, continue without notes
         a.notes = [];
       }
+      if (mySeq !== _detailSeq) return;
 
       // Wire cart button in detail modal nav bar
       const detailCartBtn = document.getElementById('pv-detail-cart-btn');

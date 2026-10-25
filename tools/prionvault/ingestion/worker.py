@@ -552,6 +552,21 @@ def _get_articles_columns(conn) -> set:
 
 
 def _upsert_article(**kw) -> str:
+    """Insert-or-enrich by DOI. If another worker inserted the same DOI
+    between our lookup and INSERT (unique index articles_doi_lower_uniq,
+    migration 101), retry once: the lookup then finds that row and only
+    fills its missing fields."""
+    from sqlalchemy.exc import IntegrityError
+    try:
+        return _upsert_article_once(**kw)
+    except IntegrityError as exc:
+        if "articles_doi_lower_uniq" not in str(exc):
+            raise
+        logger.info("upsert: concurrent insert of DOI %s — retrying as update", kw.get("doi"))
+        return _upsert_article_once(**kw)
+
+
+def _upsert_article_once(**kw) -> str:
     """Create or update the `articles` row, keyed by DOI when available.
 
     Returns the article id (UUID as str). Filters `kw` against the actual

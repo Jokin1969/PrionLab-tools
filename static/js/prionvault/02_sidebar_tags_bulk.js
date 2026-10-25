@@ -1064,6 +1064,12 @@
       document.getElementById('pv-result-page').textContent =
         'page ' + r.page + ' / ' + Math.max(1, Math.ceil(r.total / r.size));
 
+      if (r.items.length === 0 && r.total > 0 && state.page > 1) {
+        // Past the last page (filter narrowed while on a later page):
+        // jump to the last page that has results.
+        state.page = Math.max(1, Math.ceil(r.total / r.size));
+        return loadArticles();
+      }
       if (r.items.length === 0) {
         showEmpty('No articles match these filters.');
         renderPagination(r);

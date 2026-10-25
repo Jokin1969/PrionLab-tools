@@ -203,8 +203,14 @@ def check_can_upload_presentation(aid):
         r = s.execute(sql_text(
             "SELECT jc_claimed_by, jc_claimed_by_name, jc_announced_at "
             "FROM articles WHERE id = CAST(:aid AS uuid)"), {"aid": str(aid)}).first()
-    except Exception:
-        return None   # columns not migrated yet — keep the old behaviour
+    except Exception as exc:
+        if "does not exist" in str(exc):   # columns not migrated yet — old behaviour
+            return None
+        # Any other DB error: fail CLOSED (a reserved article must not
+        # accept someone else's upload because the check couldn't run).
+        logger.warning("check_can_upload_presentation failed for %s: %s", aid, exc)
+        return jsonify({"error": "check_failed",
+                        "detail": "No se pudo comprobar la reserva del artículo. Inténtalo de nuevo."}), 503
     finally:
         s.close()
     if not r or not r[0]:

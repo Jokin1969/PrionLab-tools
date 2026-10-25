@@ -14,6 +14,7 @@ from the admin "Backups" panel.
 import ast
 import csv
 import gzip
+import time
 import io
 import json
 import logging
@@ -140,14 +141,21 @@ class BackupManager:
         if not shutil.which("psql"):
             return {"success": False, "error": "psql not found in PATH"}
         try:
-            with gzip.open(path, "rb") as gz:
-                sql = gz.read()
-            proc = subprocess.run(
-                ["psql", db.database_url],
-                input=sql, capture_output=True, timeout=300,
-            )
-            if proc.returncode != 0:
-                return {"success": False, "error": proc.stderr.decode()[:500]}
+            # Streamed into psql's stdin (no full dump in RAM). stderr goes
+            # to a temp file so a chatty psql can't deadlock on a full pipe.
+            import tempfile
+            with gzip.open(path, "rb") as gz, tempfile.TemporaryFile() as errf, \
+                    subprocess.Popen(["psql", db.database_url], stdin=subprocess.PIPE,
+                                     stdout=subprocess.DEVNULL, stderr=errf) as proc:
+                try:
+                    shutil.copyfileobj(gz, proc.stdin, 1024 * 1024)
+                finally:
+                    proc.stdin.close()
+                rc = proc.wait(timeout=300)
+                errf.seek(0)
+                err = errf.read()
+            if rc != 0:
+                return {"success": False, "error": err.decode(errors="replace")[:500]}
             logger.info("Database restored from %s", path.name)
             return {"success": True, "backup": path.name}
         except Exception as e:
@@ -483,22 +491,39 @@ class BackupManager:
 
     def _pg_dump_backup(self, url: str, ts: str) -> dict:
         out_path = BACKUP_DIR / f"pgdump_{ts}.sql.gz"
+        tmp_path = BACKUP_DIR / f"pgdump_{ts}.sql.gz.partial"
+        # STREAMED: pg_dump's stdout is copied chunk by chunk into the gzip
+        # file (it used to be buffered whole in RAM by capture_output).
         try:
-            proc = subprocess.run(
-                ["pg_dump", "--no-password", "--clean", "--if-exists", url],
-                capture_output=True, timeout=300,
-            )
-            if proc.returncode != 0:
-                return {"success": False, "error": proc.stderr.decode()[:500]}
-            with gzip.open(out_path, "wb") as gz:
-                gz.write(proc.stdout)
+            import tempfile
+            with gzip.open(tmp_path, "wb") as gz, tempfile.TemporaryFile() as errf, \
+                    subprocess.Popen(["pg_dump", "--no-password", "--clean", "--if-exists", url],
+                                     stdout=subprocess.PIPE, stderr=errf) as proc:
+                deadline = time.monotonic() + 300
+                while True:
+                    chunk = proc.stdout.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    gz.write(chunk)
+                    if time.monotonic() > deadline:
+                        proc.kill()
+                        raise subprocess.TimeoutExpired("pg_dump", 300)
+                rc = proc.wait(timeout=30)
+                errf.seek(0)
+                err = errf.read()
+            if rc != 0:
+                tmp_path.unlink(missing_ok=True)
+                return {"success": False, "error": err.decode(errors="replace")[:500]}
+            tmp_path.replace(out_path)
             size_mb = round(out_path.stat().st_size / (1024 * 1024), 2)
             logger.info("pg_dump backup created: %s (%.1f MB)", out_path.name, size_mb)
             return {"success": True, "path": str(out_path),
                     "filename": out_path.name, "size_mb": size_mb, "type": "pg_dump"}
         except subprocess.TimeoutExpired:
+            tmp_path.unlink(missing_ok=True)
             return {"success": False, "error": "pg_dump timed out after 300s"}
         except Exception as e:
+            tmp_path.unlink(missing_ok=True)
             return {"success": False, "error": str(e)}
 
     def _csv_export_backup(self, db, ts: str) -> dict:
