@@ -1,4 +1,6 @@
 import csv
+import fcntl
+from contextlib import contextmanager
 import logging
 import os
 from datetime import date
@@ -47,28 +49,53 @@ _ROLE_FLAG_COLS = [
 COLUMNS = _CORE_COLS + _PROFILE_COLS + _LIFECYCLE_COLS + _ROLE_FLAG_COLS
 
 
-def load_users() -> list[dict]:
+def _read_users() -> list[dict]:
+    """Raises on read errors (used by read-modify-write paths, which must
+    never rewrite users.csv from an empty list after a failed read)."""
     if not os.path.exists(USERS_FILE):
         return []
+    with open(USERS_FILE, "r", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        for col in COLUMNS:
+            r.setdefault(col, "")
+    return rows
+
+
+def load_users() -> list[dict]:
     try:
-        with open(USERS_FILE, "r", newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-        for r in rows:
-            for col in COLUMNS:
-                r.setdefault(col, "")
-        return rows
+        return _read_users()
     except Exception as e:
         logger.error("Failed to load users.csv: %s", e)
         return []
 
 
+@contextmanager
+def _users_lock():
+    """Cross-process lock (both gunicorn workers) around read-modify-write
+    of users.csv, so concurrent edits don't lose each other."""
+    os.makedirs(CSV_DIR, exist_ok=True)
+    with open(USERS_FILE + ".lock", "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
+
+
 def save_users(users: list[dict], sync: bool = True) -> None:
     os.makedirs(CSV_DIR, exist_ok=True)
-    with open(USERS_FILE, "w", newline="", encoding="utf-8") as f:
+    # Write to a temp file and atomically swap it in: readers never see a
+    # half-written users.csv.
+    tmp = f"{USERS_FILE}.tmp.{os.getpid()}"
+    with open(tmp, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=COLUMNS,
                                 extrasaction="ignore", quoting=csv.QUOTE_ALL)
         writer.writeheader()
         writer.writerows(users)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, USERS_FILE)
     if sync:
         from core.sync import push_to_dropbox
         push_to_dropbox("users.csv")
@@ -150,29 +177,32 @@ def email_exists(email: str) -> bool:
 
 
 def create_user(data: dict, sync: bool = True) -> None:
-    users = load_users()
-    users.append({col: data.get(col, "") for col in COLUMNS})
-    save_users(users, sync=sync)
+    with _users_lock():
+        users = _read_users()
+        users.append({col: data.get(col, "") for col in COLUMNS})
+        save_users(users, sync=sync)
 
 
 def update_user(username: str, updates: dict, sync: bool = True) -> bool:
-    users = load_users()
-    for i, u in enumerate(users):
-        if u.get("username", "").lower() == username.lower():
-            for k, v in updates.items():
-                if k in COLUMNS:
-                    users[i][k] = v
-            save_users(users, sync=sync)
-            return True
+    with _users_lock():
+        users = _read_users()
+        for i, u in enumerate(users):
+            if u.get("username", "").lower() == username.lower():
+                for k, v in updates.items():
+                    if k in COLUMNS:
+                        users[i][k] = v
+                save_users(users, sync=sync)
+                return True
     return False
 
 
 def delete_user(username: str, sync: bool = True) -> bool:
-    users = load_users()
-    filtered = [u for u in users if u.get("username", "").lower() != username.lower()]
-    if len(filtered) == len(users):
-        return False
-    save_users(filtered, sync=sync)
+    with _users_lock():
+        users = _read_users()
+        filtered = [u for u in users if u.get("username", "").lower() != username.lower()]
+        if len(filtered) == len(users):
+            return False
+        save_users(filtered, sync=sync)
     return True
 
 

@@ -1,3 +1,4 @@
+import os
 import secrets
 import logging
 from datetime import date, datetime
@@ -27,9 +28,12 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def bootstrap_admin_user() -> None:
     """Creates the initial admin user locally (and pushes to Dropbox) if no users exist."""
-    from core.users import load_users, save_users
+    from core.users import USERS_FILE, load_users, save_users
 
-    if load_users():
+    # Only when users.csv doesn't exist at all — never because a read
+    # failed or raced with another worker's write (that used to replace
+    # the whole user list with a lone admin).
+    if os.path.exists(USERS_FILE) or load_users():
         return
 
     logger.info("Bootstrap: no users found, creating initial admin")

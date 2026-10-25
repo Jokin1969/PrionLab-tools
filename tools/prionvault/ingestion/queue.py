@@ -288,6 +288,21 @@ def claim_next() -> Optional[Job]:
     """
     eng = _get_engine()
     with eng.begin() as conn:
+        # Reap jobs orphaned in an active state by a redeploy/crash (their
+        # worker died mid-job): re-queue them, or fail after 3 attempts.
+        conn.execute(text(
+            """
+            UPDATE prionvault_ingest_job
+               SET status = CASE WHEN COALESCE(attempts, 0) >= 3 THEN 'failed' ELSE 'queued' END,
+                   step   = 'reaped-stale',
+                   error  = CASE WHEN COALESCE(attempts, 0) >= 3
+                                 THEN 'Interrumpido repetidamente (reinicio del servidor).' ELSE error END,
+                   attempts = COALESCE(attempts, 0) + 1,
+                   finished_at = CASE WHEN COALESCE(attempts, 0) >= 3 THEN NOW() ELSE NULL END
+             WHERE status IN ('uploading', 'extracting', 'resolving', 'indexing')
+               AND started_at < NOW() - INTERVAL '2 hours'
+            """
+        ))
         row = conn.execute(text(
             """
             SELECT id FROM prionvault_ingest_job
@@ -498,7 +513,9 @@ def retry(job_id: int) -> bool:
             UPDATE prionvault_ingest_job
                SET status = 'queued', step = 'retry-requested',
                    error = NULL, finished_at = NULL
-             WHERE id = :id AND status IN ('failed', 'duplicate')
+             WHERE id = :id AND (status IN ('failed', 'duplicate')
+                   OR (status IN ('uploading', 'extracting', 'resolving', 'indexing')
+                       AND started_at < NOW() - INTERVAL '30 minutes'))
             """
         ), {"id": job_id})
         return res.rowcount > 0

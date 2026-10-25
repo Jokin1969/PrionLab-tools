@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import logging
 import threading
+
+from . import job_lock as _job_lock
 import time
 from datetime import datetime
 from typing import Optional
@@ -128,7 +130,7 @@ def start_batch(*, viewer_user_id=None,
         })
 
     _thread = threading.Thread(
-        target=_run_batch,
+        target=_job_lock.guarded('batch_index', _run_batch, _state, _lock),
         kwargs={"viewer_user_id": viewer_user_id, "limit": limit},
         name="prionvault-batch-index",
         daemon=True,

@@ -27,6 +27,8 @@ import logging
 import os
 import tempfile
 import threading
+
+from . import job_lock as _job_lock
 import time
 from collections import deque
 from datetime import datetime
@@ -192,7 +194,7 @@ def start_batch(*, viewer_user_id=None,
         # "Limpiar log" action for clearing.
 
     _thread = threading.Thread(
-        target=_run_batch,
+        target=_job_lock.guarded('batch_searchable_pdf', _run_batch, _state, _lock),
         kwargs={"viewer_user_id": viewer_user_id, "limit": limit},
         name="prionvault-batch-searchable",
         daemon=True,

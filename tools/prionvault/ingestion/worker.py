@@ -181,6 +181,12 @@ def _process_job(job: ingest_queue.Job) -> None:
                     job.id, sim, extraction.title_hint, dup_id, existing_title,
                     reason, (doi if reason == "doi" else pmid),
                 )
+                # Drop the cited identifier too: resolving metadata with it
+                # (and upserting by it) would overwrite THAT article.
+                if reason == "doi":
+                    doi = None
+                else:
+                    pmid = None
                 dup_id, reason = None, None
 
     if dup_id is not None:
@@ -590,7 +596,10 @@ def _upsert_article(**kw) -> str:
             assignable = {k: v for k, v in fields.items()
                           if k in _UPDATABLE_FIELDS and k in db_cols}
             if assignable:
-                set_sql = ", ".join(f"{k} = :{k}" for k in assignable)
+                # Fill only what's missing: a metadata lookup that lands on
+                # an existing row (e.g. a cited DOI) must never overwrite
+                # its curated title/authors or attach a different PDF.
+                set_sql = ", ".join(f"{k} = COALESCE({k}, :{k})" for k in assignable)
                 extra = ""
                 if "extraction_status" in db_cols:
                     # Never downgrade an already-extracted article back

@@ -642,6 +642,10 @@ def _drain_once() -> dict:
     fetched = unavail = failed = 0
 
     eng = _get_engine()
+    # Articles that failed in THIS drain are skipped until the next one —
+    # otherwise a persistent upload/DB failure re-selects the same row
+    # forever (it stays pdf_oa_status NULL) and starves the rest.
+    tried_failed: list[str] = []
     while True:
         if _stop.is_set():
             break
@@ -656,9 +660,10 @@ def _drain_once() -> dict:
                      WHERE dropbox_path IS NULL
                        AND pdf_oa_status IS NULL
                        AND (doi IS NOT NULL OR pmc_id IS NOT NULL)
+                       AND NOT (id::text = ANY(:skip))
                      ORDER BY created_at DESC NULLS LAST
                      LIMIT 1
-                """)).mappings().first()
+                """), {"skip": tried_failed}).mappings().first()
         except Exception as exc:
             logger.warning("oa_pdf_fetcher: probe failed (%s)", exc)
             time.sleep(5.0)
@@ -679,6 +684,7 @@ def _drain_once() -> dict:
             unavail += 1
         else:
             failed += 1
+            tried_failed.append(str(row["id"]))
         time.sleep(_BETWEEN_PAPERS_SLEEP_S)
 
     return {

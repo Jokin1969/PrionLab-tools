@@ -32,6 +32,8 @@ from __future__ import annotations
 import logging
 import re
 import threading
+
+from . import job_lock as _job_lock
 import time
 from collections import deque
 from datetime import datetime
@@ -351,7 +353,7 @@ def start_batch(*, llm_provider: Optional[str] = "openai",
             "llm_calls":       0,
         })
     _thread = threading.Thread(
-        target=_run_loop,
+        target=_job_lock.guarded('pdf_metadata_verifier', _run_loop, _state, _lock),
         kwargs={"llm_provider": llm_provider, "limit": limit,
                 "recheck": recheck},
         name="prionvault-verify-metadata",

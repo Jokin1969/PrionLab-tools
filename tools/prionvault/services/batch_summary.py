@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 import threading
+
+from . import job_lock as _job_lock
 import time
 from datetime import datetime
 from typing import Optional
@@ -109,7 +111,9 @@ def start_batch(*, viewer_user_id=None,
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider: {provider!r}")
 
-    ids_clean = [str(x) for x in ids] if ids else None
+    # ids end up as SQL literals below — accept only real UUIDs.
+    import uuid as _uuid
+    ids_clean = [str(_uuid.UUID(str(x))) for x in ids] if ids else None
 
     global _thread
     with _lock:
@@ -135,7 +139,7 @@ def start_batch(*, viewer_user_id=None,
         })
 
     _thread = threading.Thread(
-        target=_run_batch,
+        target=_job_lock.guarded('batch_summary', _run_batch, _state, _lock),
         kwargs={"viewer_user_id": viewer_user_id,
                 "limit": limit, "provider": provider,
                 "ids": ids_clean},
