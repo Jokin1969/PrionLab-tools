@@ -62,6 +62,9 @@ Sub-module imports pattern (avoids circular imports): sub-modules import `prionv
 ## Key conventions
 
 - CSRF: `app.py` `csrf_origin_check` rejects state-changing requests whose Origin/Referer is another host (session cookie is also SameSite=Lax). Same-site `fetch` needs nothing extra.
+- Browser extension auth (`X-PrionVault-Key`): personal per-user keys (`core/api_tokens.py`, hash in users.csv `api_token_hash`, issued from Mi perfil or the admin onboarding email) act as that user; the legacy shared env keys still work.
+- Periodic jobs run once across gunicorn workers via `database/singleton.run_once`.
+- Dependencies are pinned exactly in requirements.txt — bump deliberately.
 - Scheduled senders (scheduled emails, JC convocations, reminders) claim rows with `services/send_claim.claim_due` — both gunicorn workers run the schedulers, never SELECT-then-send.
 
 - `_ensure_can_modify(table, owner_col, row_id)` — returns `(response, status)` tuple or `None` to proceed; admins always pass

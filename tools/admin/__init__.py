@@ -162,8 +162,8 @@ def send_extension_email():
     if not isinstance(usernames, list) or not usernames:
         return {"error": "usernames (non-empty list) is required"}, 400
 
-    reader_key = os.environ.get("PRIONVAULT_EXTENSION_READER_KEY", "").strip()
     all_users = {u["username"]: u for u in load_users()}
+    from core.api_tokens import issue_token
 
     from tools.prionvault.services.extension_onboarding import send_onboarding_email
     sent, failed = [], []
@@ -173,7 +173,9 @@ def send_extension_email():
         if not u or not email:
             failed.append(uname)
             continue
-        if send_onboarding_email(email, reader_key):
+        # A personal key per recipient (replaces the shared reader key):
+        # traceable, and revocable per user (new key / deactivate user).
+        if send_onboarding_email(email, issue_token(uname)):
             sent.append(uname)
         else:
             failed.append(uname)

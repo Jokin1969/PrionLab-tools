@@ -473,6 +473,27 @@ def register():
     return render_template("auth/register.html", error=error)
 
 
+@auth_bp.route("/profile/extension-key", methods=["POST"])
+@login_required
+def profile_extension_key():
+    """Generate (shown once) or revoke the user's personal key for the
+    PrionVault browser extension — see core/api_tokens.py."""
+    from core.api_tokens import issue_token, revoke_token
+    username = session.get("username", "")
+    if session.get("impersonation_admin"):
+        flash("No se puede gestionar la clave de la extensión en modo «Ver como».", "error")
+        return redirect(url_for("auth.profile"))
+    if request.form.get("action") == "revoke":
+        revoke_token(username)
+        flash("Clave de la extensión revocada.", "success")
+        return redirect(url_for("auth.profile"))
+    token = issue_token(username)
+    session["_new_ext_key"] = token   # shown once on the next profile render
+    flash("Nueva clave generada. Cópiala ahora en la extensión: no se volverá a mostrar. "
+          "La anterior deja de funcionar.", "success")
+    return redirect(url_for("auth.profile"))
+
+
 @auth_bp.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():

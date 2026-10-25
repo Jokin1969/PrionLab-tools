@@ -91,3 +91,26 @@ def test_self_heal_parser_picks_up_late_migrations():
     blob = (migrate._MIGRATIONS_DIR / "091_oa_author_requested.sql").read_text()
     stmts = [s for s in migrate._split_sql(blob) if re.match(r"\s*ALTER", s, re.I)]
     assert stmts and "oa_author_requested_at" in stmts[0]
+
+
+def test_personal_extension_keys(tmp_path, monkeypatch):
+    import core.users as u
+    from core import api_tokens
+    monkeypatch.setattr(u, "CSV_DIR", str(tmp_path))
+    monkeypatch.setattr(u, "USERS_FILE", str(tmp_path / "users.csv"))
+    import types
+    monkeypatch.setitem(sys.modules, "core.sync",
+                        types.SimpleNamespace(push_to_dropbox=lambda *a, **k: True))
+    u.create_user({"username": "ana", "role": "reader", "active": "true"}, sync=False)
+    t1 = api_tokens.issue_token("ana")
+    assert api_tokens.user_for_token(t1)["username"] == "ana"
+    assert t1 not in (tmp_path / "users.csv").read_text()      # only the hash is stored
+    t2 = api_tokens.issue_token("ana")                         # new key revokes the old one
+    assert api_tokens.user_for_token(t1) is None
+    assert api_tokens.user_for_token(t2)["username"] == "ana"
+    u.update_user("ana", {"active": "false"}, sync=False)      # deactivated user → no access
+    assert api_tokens.user_for_token(t2) is None
+    u.update_user("ana", {"active": "true"}, sync=False)
+    api_tokens.revoke_token("ana")
+    assert api_tokens.user_for_token(t2) is None
+    assert api_tokens.user_for_token("garbage") is None

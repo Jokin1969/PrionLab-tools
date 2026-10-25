@@ -30,6 +30,7 @@ _LIFECYCLE_COLS = [
     "must_change_pw",        # "true" | "false"
     "reset_token",           # opaque urlsafe token
     "reset_token_expires",   # ISO-8601 datetime, UTC
+    "api_token_hash",        # sha256 of the personal extension key (core/api_tokens.py)
 ]
 # Standing responsibilities, independent of admin/reader role — checked
 # in the admin user list, not tied to any single feature's own settings

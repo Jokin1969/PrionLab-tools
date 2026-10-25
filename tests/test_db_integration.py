@@ -23,7 +23,7 @@ def engine():
     sqlalchemy = pytest.importorskip("sqlalchemy")
     url = URL.replace("postgres://", "postgresql://", 1)
     if url.startswith("postgresql://"):
-        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+        pass  # same driver as production (SQLAlchemy default)
     eng = sqlalchemy.create_engine(url)
     yield eng
     eng.dispose()

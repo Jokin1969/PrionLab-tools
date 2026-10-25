@@ -49,6 +49,14 @@ def _check_extension_api_key() -> None:
     if reader_key and secrets.compare_digest(key, reader_key):
         g._ext_authed = True
         g._ext_authed_role = "reader"
+        return
+    # Personal key (core/api_tokens.py): acts as that user, with their role.
+    from core.api_tokens import user_for_token
+    u = user_for_token(key)
+    if u:
+        g._ext_authed = True
+        g._ext_authed_role = "admin" if u.get("role") == "admin" else "reader"
+        g._ext_username = u.get("username")
 
 
 from . import routes  # noqa: F401, E402  (registers route handlers)

@@ -105,7 +105,15 @@ def _viewer_role() -> Optional[str]:
 
 def _viewer_id() -> Optional[str]:
     if getattr(g, "_ext_authed", False):
-        return None  # extension requests are not tied to a user
+        # Shared keys aren't tied to a user; a personal key is.
+        uname = getattr(g, "_ext_username", None)
+        if not uname:
+            return None
+        try:
+            from core.auth import _lookup_db_user_id
+            return _lookup_db_user_id(uname)
+        except Exception:
+            return None
     uid = session.get("user_id")
     if uid:
         return uid

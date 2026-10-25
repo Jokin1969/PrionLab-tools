@@ -1,50 +1,52 @@
-Flask>=3.0
-Flask-Limiter>=3.5
-gunicorn>=21
-dropbox>=11.36
-python-dotenv>=1.0
-Flask-Babel>=4.0
-bcrypt>=4.0
-pandas>=2.0
-openpyxl>=3.1
-requests>=2.31
-python-docx>=1.1
-weasyprint>=61.0
-reportlab>=4.2
-python-pptx>=1.0.2
-apscheduler>=3.10
+# Exact pins = the versions production was already installing (every
+# deploy used to take the newest). Bump deliberately, one at a time.
+Flask==3.1.3
+Flask-Limiter==4.1.1
+gunicorn==26.2.0
+dropbox==12.2.4
+python-dotenv==1.2.4
+Flask-Babel==4.0.0
+bcrypt==5.0.0
+pandas==3.1.0
+openpyxl==3.1.5
+requests==2.34.2
+python-docx==1.2.0
+weasyprint==70.0
+reportlab==5.1.0
+python-pptx==1.0.2
+apscheduler==3.11.3
 
 # Database dependencies
 psycopg2-binary==2.9.9
 SQLAlchemy==2.0.23
-anthropic>=0.40.0
-openai>=1.40.0
-google-genai>=0.5.0
+anthropic==2.3.0
+openai==3.37.0
+google-genai==2.33.0
 
 # External API dependencies
-aiohttp>=3.8.0
-redis>=4.5.0
-lxml>=4.9.0
+aiohttp==3.14.5
+redis==8.1.0
+lxml==6.1.3
 
 # PrionVault — PDF text extraction for the bulk-ingest pipeline
-pdfplumber>=0.11.0
+pdfplumber==0.11.10
 
 # PrionVault — vector search (Phase 4)
-pgvector>=0.2.5
-voyageai>=0.2.0
-tiktoken>=0.7.0
+pgvector==0.5.1
+voyageai==0.5.0
+tiktoken==0.14.0
 
 # PrionVault — OCR fallback for scanned PDFs (Phase 6)
-pymupdf>=1.24.0
-pytesseract>=0.3.10
-Pillow>=10.0
+pymupdf==2.0
+pytesseract==0.3.13
+Pillow==13.0.0
 
 # PrionVault — embed an invisible text layer into scanned PDFs so
 # Ctrl+F and external tools (Spotlight, Zotero, screen readers) work.
 # Needs ghostscript + qpdf at the system level (see nixpacks.toml).
-ocrmypdf>=15.4.0
+ocrmypdf==17.13.0
 
 # Error tracking. The Flask integration is auto-detected by sentry-sdk
 # v2 when Flask is importable. No-op when SENTRY_DSN is unset, so local
 # dev stays untouched.
-sentry-sdk>=2.0
+sentry-sdk==2.73.0

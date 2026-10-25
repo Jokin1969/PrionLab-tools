@@ -116,5 +116,28 @@
     </div>
 
   </form>
+
+  <div class="profile-section" style="margin-top:2rem">
+    <h2>Extensión de PrionVault</h2>
+    <p style="color:#6b7280;font-size:.9rem">
+      Clave personal para la extensión del navegador. Actúa con tus permisos;
+      generar una nueva invalida la anterior.
+    </p>
+    {% set new_key = session.pop('_new_ext_key', None) %}
+    {% if new_key %}
+      <p><code style="user-select:all;word-break:break-all;background:#f3f4f6;padding:.4rem .6rem;border-radius:6px;display:inline-block">{{ new_key }}</code></p>
+    {% endif %}
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <form method="POST" action="{{ url_for('auth.profile_extension_key') }}">
+        <button type="submit" class="btn btn--primary">Generar nueva clave</button>
+      </form>
+      {% if user.get('api_token_hash') %}
+      <form method="POST" action="{{ url_for('auth.profile_extension_key') }}">
+        <input type="hidden" name="action" value="revoke">
+        <button type="submit" class="btn btn--secondary">Revocar clave</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}
