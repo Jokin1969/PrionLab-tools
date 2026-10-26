@@ -240,6 +240,11 @@ def create_app() -> Flask:
 
     # Pull CSVs from Dropbox, bootstrap admin user, ensure CSV schemas exist
     initial_sync()
+    # Users live in Postgres (prionlab_users); first boot imports the
+    # users.csv just pulled from Dropbox. Falls back to users.csv if the
+    # DB isn't available.
+    from core.users import ensure_db_store
+    ensure_db_store()
     bootstrap_admin_user()
     try:
         from tools.manuscriptforge.models import bootstrap_schema

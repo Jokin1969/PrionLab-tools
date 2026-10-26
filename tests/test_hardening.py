@@ -54,7 +54,7 @@ def test_users_csv_edit_aborts_on_unreadable_file(tmp_path, monkeypatch):
 
     def boom():
         raise OSError("disk hiccup")
-    monkeypatch.setattr(u, "_read_users", boom)
+    monkeypatch.setattr(u, "_csv_read", boom)
     with pytest.raises(OSError):
         u.create_user({"username": "b"}, sync=False)
     monkeypatch.undo()

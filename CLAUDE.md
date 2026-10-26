@@ -29,6 +29,7 @@ python scripts/build_prionvault_js.py
 - Session-based: `session["logged_in"]`, `session["role"]` (`"admin"` or `"reader"`), `session["user_id"]`
 - Decorators in `core/decorators.py`: `@login_required` redirects to `url_for("auth.login")`; `@admin_required` redirects authenticated non-admins to `url_for("home")`
 - Two roles: `admin` (full access) and `reader` (PrionVault read + own tags only)
+- User accounts live in Postgres table `prionlab_users` (migration 102; NOT PrionRead's `users` table), always accessed through `core/users.py` (`get_user`, `create_user`, `update_user`…; string-valued dicts). First boot imports users.csv; afterwards users.csv is only a backup snapshot (rewritten on every change, pushed to Dropbox when `sync=True`) and a read-only fallback if the DB is down. Without DATABASE_URL it falls back to users.csv entirely.
 
 **Database** (`database/config.py`): SQLAlchemy with raw SQL via `db.Session()`. Not ORM — always call `s = db.Session(); s.execute(sql_text(...)); s.close()`. Migrations are numbered SQL files in `migrations/`; `db.run_migrations()` is the single runner (boot + PrionVault "Force migrations"), tracked in `_schema_migrations`, statement by statement, recorded only on full success. Every `*.sql` directly in `migrations/` runs — keep rollback scripts in `migrations/rollback/`. Write migrations idempotent (`IF NOT EXISTS`); `tools/prionvault/migrate.py` self-heal re-adds any missing `ADD COLUMN IF NOT EXISTS` column.
 
