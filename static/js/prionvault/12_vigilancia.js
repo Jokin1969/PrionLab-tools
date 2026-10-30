@@ -24,7 +24,10 @@
       pending:   ['#9ca3af', '…', 'Pendiente'],
     };
 
-    function close() { $('pv-vc-modal').style.display = 'none'; stopPoll(); }
+    function close() {
+      $('pv-vc-modal').style.display = 'none'; stopPoll();
+      if (_genPoll) { clearInterval(_genPoll); _genPoll = null; }
+    }
 
     async function open() {
       $('pv-vc-modal').style.display = 'flex';
@@ -66,6 +69,7 @@
       if (!hasCurrent) html += item(CURRENT_YEAR, `VC ${CURRENT_YEAR}`, 'Nuevo informe', ' ✨');
       html += _reports.slice().reverse().map(r =>
         item(r.year, `VC ${r.year}`,
+             r.status === 'draft' ? 'Borrador (generador)' :
              r.refs ? `${r.resolved}/${r.refs} artículos` : 'sin referencias',
              r.ambiguous || r.missing ? ' <span style="color:#f59e0b;">●</span>' : '')).join('');
       html += `
@@ -97,7 +101,7 @@
       renderNav();
       const body = $('pv-vc-body');
       const meta = _reports.find(r => r.year === year);
-      if (!meta) { renderCurrentYear(year); return; }
+      if (!meta || meta.status === 'draft') { renderGenerator(year); return; }
       body.innerHTML = '<p style="color:#9ca3af;">Cargando…</p>';
       let rep;
       try { rep = await api(`/vc/reports/${year}`); }
@@ -153,6 +157,9 @@
             ${meta.collection_id ? `<button type="button" id="pv-vc-filter-year"
                 style="padding:6px 12px;border-radius:7px;border:none;background:#0F3460;color:#fff;
                        font-size:12.5px;cursor:pointer;">Ver los ${meta.resolved} artículos en el listado</button>` : ''}
+            <a href="${API}/vc/reports/${rep.year}/docx"
+               style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
+                      color:#374151;font-size:12.5px;text-decoration:none;">⬇ Word</a>
             ${IS_ADMIN && needsWork ? `<button type="button" id="pv-vc-resolve"
                 style="padding:6px 12px;border-radius:7px;border:1px solid #0F3460;background:#fff;
                        color:#0F3460;font-size:12.5px;cursor:pointer;">Resolver referencias pendientes</button>` : ''}
@@ -273,33 +280,209 @@
     }
     function stopPoll() { if (_poll) { clearInterval(_poll); _poll = null; } }
 
-    function renderCurrentYear(year) {
-      const needsSetup = !_reports.length;
-      $('pv-vc-body').innerHTML = `
+    // ── Generator (current year) ─────────────────────────────────────────
+    let _genPoll = null;
+    const btnCss = (primary) => `padding:7px 14px;border-radius:8px;font-size:12.5px;cursor:pointer;
+      ${primary ? 'border:none;background:#0F3460;color:#fff;' : 'border:1px solid #d1d5db;background:#fff;color:#374151;'}`;
+
+    async function renderGenerator(year) {
+      const body = $('pv-vc-body');
+      const needsSetup = !_reports.some(r => r.status !== 'draft');
+      body.innerHTML = '<p style="color:#9ca3af;">Cargando…</p>';
+      let d;
+      try { d = await api(`/vc/draft/${year}`); }
+      catch (e) { body.innerHTML = `<p style="color:#b91c1c;">Error: ${esc(e.message)}</p>`; return; }
+      if (_selected !== year) return;
+      const items = d.items || [];
+      const sel = items.filter(i => i.selected);
+      const themes = Array.isArray(d.themes) ? d.themes : [];
+      const job = d.job || {};
+      const busy = !!job.running;
+      const check = d.check;
+      const dis = busy || !IS_ADMIN ? 'disabled' : '';
+
+      body.innerHTML = `
         <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">
-          Vigilancia competitiva ${year}</div>
-        <h3 style="margin:2px 0 10px;font-size:18px;color:#0F3460;">Nuevo informe ${year}</h3>
+          Vigilancia competitiva ${year} · generador</div>
+        <h3 style="margin:2px 0 6px;font-size:18px;color:#0F3460;">Informe ${year}</h3>
         ${needsSetup ? `
-          <div style="padding:12px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;
-                      font-size:13px;color:#92400e;margin-bottom:14px;">
-            Todavía no se han cargado los informes de años anteriores.
-            ${IS_ADMIN ? `<div style="margin-top:8px;"><button type="button" id="pv-vc-setup"
-                style="padding:6px 12px;border-radius:7px;border:none;background:#0F3460;color:#fff;
-                       font-size:12.5px;cursor:pointer;">Cargar informes 2018–2025 y crear sus colecciones</button></div>
-              <div id="pv-vc-progress"></div>` : ''}
+          <div style="padding:10px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;
+                      font-size:13px;color:#92400e;margin-bottom:12px;">
+            Primero carga los informes anteriores: la IA los usa como memoria y modelo de estilo.
+            ${IS_ADMIN ? `<div style="margin-top:8px;"><button type="button" id="pv-vc-setup" style="${btnCss(true)}">
+              Cargar informes 2018–2025 y crear sus colecciones</button></div><div id="pv-vc-progress"></div>` : ''}
           </div>` : ''}
-        <p style="font-size:13.5px;color:#374151;line-height:1.6;">
-          Aquí se generará con IA el informe de ${year} a partir de los artículos de la biblioteca,
-          usando como referencia el estilo y los temas de los informes anteriores:
-        </p>
-        <ol style="font-size:13.5px;color:#374151;line-height:1.7;">
-          <li><strong>Selección</strong> de los artículos más relevantes publicados en ${year}.</li>
-          <li><strong>Clasificación</strong> en temas, teniendo en cuenta los de años anteriores.</li>
-          <li><strong>Redacción</strong> del informe con el formato requerido (máx. 3.500 caracteres,
-              ¼ contexto, ½ avances con PMID/DOI, ¼ perspectivas para ${year + 1}).</li>
-        </ol>
-        <p style="font-size:12.5px;color:#9ca3af;">Próximamente.</p>`;
+        <div id="pv-vc-genjob"></div>
+
+        <section style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin:12px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div><strong>1 · Selección</strong>
+              <span style="color:#6b7280;font-size:12.5px;"> — ${d.candidates_total || 0} candidatos de ${year}
+              (inventario PubMed + biblioteca) · <strong>${sel.length}</strong> seleccionados</span></div>
+            ${IS_ADMIN ? `<span style="display:flex;gap:6px;align-items:center;">
+              <input id="pv-vc-n" type="number" min="5" max="80" value="38"
+                     style="width:58px;padding:5px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
+              <button type="button" id="pv-vc-run-select" style="${btnCss(true)}" ${dis}>
+                ${items.length ? 'Volver a seleccionar' : 'Seleccionar artículos con IA'}</button></span>` : ''}
+          </div>
+          <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Cribado por título de todos los candidatos, y valoración
+            con el modelo más potente (abstract + cuartil SCImago) de los ~120 mejores. Puedes marcar o desmarcar
+            artículos y añadir otros por PMID antes de seguir.</p>
+          ${items.length ? `
+            <div style="max-height:340px;overflow-y:auto;margin-top:8px;border-top:1px solid #f3f4f6;">
+              ${items.map(itemRow).join('')}
+            </div>` : ''}
+          ${IS_ADMIN ? `<form id="pv-vc-add" style="display:flex;gap:6px;margin-top:8px;">
+              <input placeholder="Añadir por PMID" style="width:150px;padding:5px 8px;border:1px solid #d1d5db;
+                     border-radius:6px;font-size:12.5px;">
+              <button type="submit" style="${btnCss(false)}">Añadir</button></form>` : ''}
+        </section>
+
+        <section style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin:12px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div><strong>2 · Temas</strong>
+              <span style="color:#6b7280;font-size:12.5px;"> — agrupa los seleccionados recordando las VC anteriores</span></div>
+            ${IS_ADMIN ? `<button type="button" id="pv-vc-run-themes" style="${btnCss(true)}"
+                 ${dis || (!sel.length ? 'disabled' : '')}>${themes.length ? 'Rehacer temas' : 'Agrupar en temas'}</button>` : ''}
+          </div>
+          ${themes.map(t => `
+            <div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:#f9fafb;">
+              <div style="font-weight:600;color:#0F3460;font-size:13px;">${esc(t.name || '')}
+                <span style="color:#9ca3af;font-weight:400;">· ${(t.pmids || []).length} artículos</span></div>
+              <div style="font-size:12.5px;color:#374151;margin-top:2px;">${esc(t.summary || '')}</div>
+              ${t.continuity ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">↺ ${esc(t.continuity)}</div>` : ''}
+            </div>`).join('')}
+        </section>
+
+        <section style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin:12px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div><strong>3 · Redacción</strong>
+              <span style="color:#6b7280;font-size:12.5px;"> — formato del email, máx. 3.500 caracteres,
+              estilo de las VC anteriores</span></div>
+            ${IS_ADMIN ? `<button type="button" id="pv-vc-run-write" style="${btnCss(true)}"
+                 ${dis || (!sel.length ? 'disabled' : '')}>${d.paragraphs.length ? 'Volver a redactar' : 'Redactar informe'}</button>` : ''}
+          </div>
+          ${IS_ADMIN ? `<textarea id="pv-vc-instr" rows="2" placeholder="Indicaciones opcionales para la IA (p. ej. «da más peso al ensayo clínico», «menos CWD»)…"
+              style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #d1d5db;border-radius:8px;
+                     font-size:12.5px;box-sizing:border-box;"></textarea>` : ''}
+          ${d.paragraphs.length ? draftEditor(d, check) : ''}
+        </section>`;
+
       $('pv-vc-setup')?.addEventListener('click', startResolve);
+      $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
+      $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes'));
+      $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value }));
+      body.querySelectorAll('[data-vc-toggle]').forEach(cb => cb.addEventListener('change', async () => {
+        try { await api(`/vc/items/${cb.dataset.vcToggle}`, { method: 'POST', body: JSON.stringify({ selected: cb.checked }) }); }
+        catch (e) { alert('Error: ' + e.message); cb.checked = !cb.checked; }
+      }));
+      body.querySelectorAll('[data-open-article]').forEach(b => b.addEventListener('click', () => openDetail(b.dataset.openArticle)));
+      $('pv-vc-add')?.addEventListener('submit', async ev => {
+        ev.preventDefault();
+        const v = (ev.target.querySelector('input').value || '').trim();
+        if (!v) return;
+        try { await api(`/vc/draft/${year}/add`, { method: 'POST', body: JSON.stringify({ pmid: v }) }); renderGenerator(year); }
+        catch (e) { alert('Error: ' + e.message); }
+      });
+      wireDraftEditor(year);
+      if (busy) startGenPoll(year);
+    }
+
+    function itemRow(i) {
+      const link = i.article_id
+        ? `<button type="button" data-open-article="${i.article_id}" style="all:unset;cursor:pointer;color:#0F3460;font-weight:600;">${esc(i.title)}</button>`
+        : `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(i.pmid || '')}/" target="_blank" rel="noopener"
+              style="color:#0F3460;font-weight:600;text-decoration:none;">${esc(i.title)}</a>`;
+      const score = i.score != null ? Math.round(i.score) : (i.screen_score != null ? `t${i.screen_score}` : '–');
+      return `
+        <label style="display:flex;gap:8px;align-items:flex-start;padding:6px 2px;border-bottom:1px solid #f3f4f6;
+                      font-size:12.5px;${i.selected ? '' : 'opacity:.75;'}">
+          <input type="checkbox" data-vc-toggle="${i.id}" ${i.selected ? 'checked' : ''} ${IS_ADMIN ? '' : 'disabled'}
+                 style="margin-top:2px;">
+          <span style="width:34px;flex-shrink:0;text-align:right;color:#0F3460;font-weight:700;">${esc(String(score))}</span>
+          <span style="flex:1;min-width:0;">
+            ${link}
+            <span style="color:#9ca3af;"> · ${esc(i.journal || '')}${i.quartile ? ' · ' + esc(i.quartile) : ''}
+              ${i.pmid ? ' · PMID ' + esc(i.pmid) : ''}${i.in_library ? ' · 📚' : ''}${i.manual ? ' · ✋' : ''}</span>
+            ${i.reason ? `<div style="color:#6b7280;">${esc(i.reason)}</div>` : ''}
+            ${i.theme ? `<div style="color:#7c3aed;font-size:11.5px;">${esc(i.theme)}</div>` : ''}
+          </span>
+        </label>`;
+    }
+
+    function draftEditor(d, check) {
+      const ta = (id, val, rows) => `<textarea id="${id}" rows="${rows}" ${IS_ADMIN ? '' : 'readonly'}
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;
+                 font-family:'Times New Roman',serif;font-size:14.5px;line-height:1.5;">${esc(val || '')}</textarea>`;
+      const p = d.paragraphs.concat(['', '', '']).slice(0, 3);
+      return `
+        <div style="margin-top:12px;">
+          <label style="font-size:11.5px;color:#6b7280;">Título</label>${ta('pv-vc-t', d.title, 1)}
+          <label style="font-size:11.5px;color:#6b7280;">Autores</label>${ta('pv-vc-a', d.authors, 1)}
+          ${['Contexto (≈¼)', 'Avances del año (≈½)', 'Perspectivas (≈¼)'].map((lab, i) => `
+            <label style="font-size:11.5px;color:#6b7280;">${lab} · <span id="pv-vc-c${i}"></span></label>
+            ${ta('pv-vc-p' + i, p[i], i === 1 ? 12 : 6)}`).join('')}
+          <div id="pv-vc-count" style="font-size:12.5px;margin:6px 0;"></div>
+          ${check && check.problems && check.problems.length ? `
+            <div style="font-size:12px;color:#b45309;margin-bottom:6px;">Avisos de la validación:
+              <ul style="margin:4px 0 0 18px;">${check.problems.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${IS_ADMIN ? `<button type="button" id="pv-vc-save" style="${btnCss(true)}">Guardar cambios</button>` : ''}
+            <a href="${API}/vc/reports/${d.year}/docx" style="${btnCss(false)}text-decoration:none;">⬇ Descargar Word</a>
+          </div>
+        </div>`;
+    }
+
+    function wireDraftEditor(year) {
+      const paras = [0, 1, 2].map(i => $('pv-vc-p' + i)).filter(Boolean);
+      if (!paras.length) return;
+      const recount = () => {
+        const lens = paras.map(t => t.value.trim().length);
+        const total = lens.reduce((a, b) => a + b, 0) + 2;
+        lens.forEach((n, i) => { const el = $('pv-vc-c' + i); if (el) el.textContent = `${n} car. (${Math.round(100 * n / Math.max(1, total))}%)`; });
+        const pmids = new Set((paras.map(t => t.value).join(' ').match(/\d{7,9}/g) || []));
+        $('pv-vc-count').innerHTML = `<strong style="color:${total > 3500 ? '#b91c1c' : '#15803d'};">
+          ${total.toLocaleString('es-ES')} / 3.500 caracteres</strong> · ${pmids.size} PMIDs citados`;
+      };
+      paras.forEach(t => t.addEventListener('input', recount));
+      recount();
+      $('pv-vc-save')?.addEventListener('click', async () => {
+        try {
+          await api(`/vc/draft/${year}/text`, { method: 'PUT', body: JSON.stringify({
+            title: $('pv-vc-t').value, authors: $('pv-vc-a').value, paragraphs: paras.map(t => t.value) }) });
+          $('pv-vc-save').textContent = '✓ Guardado';
+          setTimeout(() => { const b = $('pv-vc-save'); if (b) b.textContent = 'Guardar cambios'; }, 1500);
+        } catch (e) { alert('Error: ' + e.message); }
+      });
+    }
+
+    async function run(year, step, extra = {}) {
+      try { await api(`/vc/draft/${year}/run`, { method: 'POST', body: JSON.stringify({ step, ...extra }) }); }
+      catch (e) { if (!/already_running/.test(e.message)) { alert('Error: ' + e.message); return; } }
+      renderGenerator(year);
+    }
+
+    function startGenPoll(year) {
+      if (_genPoll) return;
+      const tick = async () => {
+        let s;
+        try { s = await api('/vc/draft/status'); } catch (_) { return; }
+        const box = $('pv-vc-genjob');
+        if (box) box.innerHTML = s.running ? `
+          <div style="padding:8px 12px;border-radius:8px;background:#eff6ff;color:#1e40af;font-size:12.5px;">
+            ⏳ ${esc(s.phase || 'Trabajando…')} ${s.total ? `(${s.done}/${s.total})` : ''}
+            ${IS_ADMIN ? `<button type="button" id="pv-vc-stop" style="margin-left:8px;${btnCss(false)}padding:2px 8px;">Parar</button>` : ''}
+          </div>` : (s.last_error ? `<div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;
+            font-size:12.5px;">Error: ${esc(s.last_error)}</div>` : '');
+        $('pv-vc-stop')?.addEventListener('click', () => api('/vc/draft/stop', { method: 'POST' }));
+        if (!s.running) {
+          clearInterval(_genPoll); _genPoll = null;
+          await loadList();
+          if (_selected === year) renderGenerator(year);
+        }
+      };
+      tick();
+      _genPoll = setInterval(tick, 3000);
     }
 
     function wire() {
