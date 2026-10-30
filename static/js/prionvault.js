@@ -20048,7 +20048,11 @@
               <span style="color:#6b7280;font-size:12.5px;"> — ${d.candidates_total || 0} candidatos de ${year}
               (inventario PubMed + biblioteca) · <strong>${sel.length}</strong> seleccionados</span></div>
             ${IS_ADMIN ? `<span style="display:flex;gap:6px;align-items:center;">
+              <label for="pv-vc-n" style="font-size:12.5px;color:#374151;cursor:help;"
+                     title="Cuántos artículos dejará preseleccionados la IA (los mejor puntuados) para citar en el informe. Las VC 2024–2025 citaron unos 38 en 3.500 caracteres: más artículos = más citas pero menos espacio para cada una. Entre 5 y 80. Los que marques o desmarques a mano se respetan.">
+                Nº de artículos a citar <span style="color:#9ca3af;">ⓘ</span></label>
               <input id="pv-vc-n" type="number" min="5" max="80" value="38"
+                     title="Cuántos artículos dejará preseleccionados la IA para citar en el informe (5–80)."
                      style="width:58px;padding:5px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;">
               <button type="button" id="pv-vc-run-select" style="${btnCss(true)}" ${dis}>
                 ${items.length ? 'Volver a seleccionar' : 'Seleccionar artículos con IA'}</button></span>` : ''}
