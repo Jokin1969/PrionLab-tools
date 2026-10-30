@@ -22,6 +22,17 @@ CITATION_STYLES = {
 }
 
 
+
+def _may_edit(created_by, username) -> bool:
+    """Owner or admin only (rows with no recorded owner stay editable)."""
+    try:
+        from flask import session
+        if session.get("role") == "admin":
+            return True
+    except Exception:
+        pass
+    return not created_by or created_by == username
+
 def _db():
     try:
         from database.config import db
@@ -235,6 +246,8 @@ def delete_reference(reference_id: str, username: str = "") -> Dict:
                 ).first()
                 if not entry:
                     return {"success": False, "error": "Not found"}
+                if not _may_edit(entry.created_by, username):
+                    return {"success": False, "error": "forbidden"}
                 s.delete(entry)
             return {"success": True}
         except Exception as exc:
