@@ -5325,3 +5325,4 @@ from . import routes_ref_suggest  # noqa: F401, E402
 
 # Journal Club reservation flow (reserve / release / unlock).
 from . import routes_jc_claim  # noqa: F401, E402
+from . import routes_vc  # noqa: F401, E402

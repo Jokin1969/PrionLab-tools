@@ -545,6 +545,8 @@
           </ul>
           <p>Por seguridad, quien solo tiene el permiso de PrionVault <strong>no puede</strong> tocar cuentas de administradores generales, cambiar el rol general de nadie (los usuarios que crea son siempre lectores) ni desactivarse a sí mismo. Eliminar usuarios sigue siendo solo desde el panel de administración de PrionLab.</p>
 
+          <h4>🔭 Vigilancia competitiva</h4>
+          <p>En <strong>Miscelánea → 🔭 Vigilancia competitiva</strong> están los informes anuales de vigilancia competitiva (ISO 56001) desde 2018, con su texto completo y cada cita enlazada al artículo de PrionVault (clic para abrir su ficha). Los artículos de cada año forman la colección <strong>«VC año»</strong> dentro del grupo <strong>Vigilancia competitiva</strong> del sidebar: el botón <em>Ver en el listado</em> filtra por un año y <em>Ver todas las VC</em> por todos. Las referencias que no se pudieron identificar con seguridad aparecen marcadas con <strong>?</strong> y el administrador puede elegir el artículo correcto o asignar el PMID a mano. El informe del año en curso se generará con IA (próximamente).</p>
           <h4>👁 Ver como <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
           <p>Desde <strong>Miscelánea → 👁 Ver como</strong> (o desde el panel de administración de PrionLab) eliges un usuario no administrador y entras con su sesión completa para ver PrionVault exactamente como lo ve él. Una franja fija arriba indica que estás viéndolo como otra persona, con el botón <strong>Salir</strong> para volver a tu sesión, en la misma página donde estabas. Todo lo que hagas mientras tanto lo hace esa cuenta, y queda registrado quién lo usó y cuándo.</p>
 

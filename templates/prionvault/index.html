@@ -676,6 +676,10 @@
                   title="Ver PrionVault tal como lo ve otro usuario (sesión completa, con banner para volver).">
             <span>👁 Ver como</span>
           </button>
+          <button class="pv-nav-btn" id="btn-vigilancia"
+                  title="Informes anuales de Vigilancia competitiva (ISO 56001): los de años anteriores con sus artículos, y el generador del de este año.">
+            <span>🔭 Vigilancia competitiva</span>
+          </button>
           <button class="pv-nav-btn" id="btn-notifications"
                   title="Configura el digest semanal por email: temas, frecuencia, horario y más.">
             <span>Notificaciones</span>
@@ -5105,6 +5109,32 @@
       Panel de administración de PrionLab.
     </p>
     <div id="pv-user-admin-body"></div>
+  </div>
+</div>
+
+<!-- ── Vigilancia competitiva modal ─────────────────────────────────────────
+     Rendered by PVVigilancia (static/js/prionvault/12_vigilancia.js).
+     z-index below the other modals so an article opened from a report
+     (detail modal) shows on top of it. -->
+<div id="pv-vc-modal" class="pv-modal" style="display:none;z-index:45;">
+  <div class="pv-modal-backdrop" data-vc-close></div>
+  <div class="pv-modal-inner" style="max-width:1200px;width:96vw;max-height:88vh;overflow:hidden;
+                                     display:flex;flex-direction:column;padding:0;">
+    <button class="pv-modal-close" data-vc-close aria-label="Cerrar">×</button>
+    <div style="padding:18px 22px 10px;border-bottom:1px solid #e5e7eb;">
+      <h2 style="margin:0;font-size:17px;font-weight:700;color:#111827;">
+        🔭 Vigilancia competitiva
+      </h2>
+      <p style="margin:4px 0 0;color:#6b7280;font-size:12.5px;">
+        Informe anual ISO 56001 del grupo. Cada año tiene su colección
+        <em>«VC año»</em> (grupo <em>Vigilancia competitiva</em> del sidebar) con los artículos citados.
+      </p>
+    </div>
+    <div style="display:flex;flex:1;min-height:0;">
+      <nav id="pv-vc-years" style="width:190px;flex-shrink:0;border-right:1px solid #e5e7eb;
+                                   overflow-y:auto;padding:10px 8px;background:#f9fafb;"></nav>
+      <section id="pv-vc-body" style="flex:1;overflow-y:auto;padding:18px 24px;"></section>
+    </div>
   </div>
 </div>
 

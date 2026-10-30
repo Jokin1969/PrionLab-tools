@@ -7,6 +7,7 @@
       // Rows drawn before /me answered hid the JC curator controls — redraw.
       if (IS_JC_RESPONSIBLE && !IS_ADMIN) loadArticles();
     }).catch(() => {});
+    PVVigilancia.wire();   // Miscelánea → Vigilancia competitiva (all roles)
 
     const debounce = (fn, ms) => {
       let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
