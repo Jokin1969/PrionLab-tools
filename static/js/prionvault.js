@@ -19885,6 +19885,9 @@
             ${meta.collection_id ? `<button type="button" id="pv-vc-filter-year"
                 style="padding:6px 12px;border-radius:7px;border:none;background:#0F3460;color:#fff;
                        font-size:12.5px;cursor:pointer;">Ver los ${meta.resolved} artículos en el listado</button>` : ''}
+            ${IS_ADMIN && rep.status === 'final' ? `<button type="button" id="pv-vc-reopen"
+                style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#374151;
+                       font-size:12.5px;cursor:pointer;">✏️ Reabrir para editar</button>` : ''}
             <a href="${API}/vc/reports/${rep.year}/docx"
                style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
                       color:#374151;font-size:12.5px;text-decoration:none;">⬇ Word</a>
@@ -19916,6 +19919,10 @@
         openDetail(b.dataset.openArticle)));
       $('pv-vc-filter-year')?.addEventListener('click', () => filterListing({ collectionId: meta.collection_id }));
       $('pv-vc-resolve')?.addEventListener('click', startResolve);
+      $('pv-vc-reopen')?.addEventListener('click', async () => {
+        try { await api(`/vc/draft/${rep.year}/reopen`, { method: 'POST' }); await loadList(); select(rep.year); }
+        catch (e) { alert('Error: ' + e.message); }
+      });
       body.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () =>
         pick(Number(b.dataset.ref), b.dataset.pick)));
       body.querySelectorAll('[data-pick-input]').forEach(f => f.addEventListener('submit', ev => {
@@ -20098,11 +20105,18 @@
             ${IS_ADMIN ? `<button type="button" id="pv-vc-run-write" style="${btnCss(true)}"
                  ${dis || (!sel.length ? 'disabled' : '')}>${d.paragraphs.length ? 'Volver a redactar' : 'Redactar informe'}</button>` : ''}
           </div>
+          ${IS_ADMIN ? `<div style="font-size:12.5px;color:#374151;margin-top:8px;"
+                 title="2024 y 2025 citaron con PMID; 2021–2023 con DOI. El email admite ambos.">
+              Citas en el texto:
+              <label style="margin-left:6px;"><input type="radio" name="pv-vc-style" value="pmid" ${d.cite_style !== 'doi' ? 'checked' : ''}> (PMID: …)</label>
+              <label style="margin-left:8px;"><input type="radio" name="pv-vc-style" value="doi" ${d.cite_style === 'doi' ? 'checked' : ''}> (doi: …)</label>
+              <span style="color:#9ca3af;"> · se aplica al redactar o al pedir cambios</span></div>` : ''}
           ${IS_ADMIN ? `<textarea id="pv-vc-instr" rows="2" placeholder="Indicaciones opcionales para la IA (p. ej. «da más peso al ensayo clínico», «menos CWD»)…"
               style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #d1d5db;border-radius:8px;
                      font-size:12.5px;box-sizing:border-box;"></textarea>` : ''}
           ${d.paragraphs.length ? draftEditor(d, check) : ''}
-        </section>`;
+        </section>
+        ${d.paragraphs.length ? reviseSection(d, dis) : ''}`;
 
       $('pv-vc-setup')?.addEventListener('click', startResolve);
       $('pv-vc-howto')?.addEventListener('click', () => openHowto(year));
@@ -20121,8 +20135,81 @@
         try { await api(`/vc/draft/${year}/add`, { method: 'POST', body: JSON.stringify({ pmid: v }) }); renderGenerator(year); }
         catch (e) { alert('Error: ' + e.message); }
       });
+      body.querySelectorAll('input[name="pv-vc-style"]').forEach(r => r.addEventListener('change', async () => {
+        try { await api(`/vc/draft/${year}/cite-style`, { method: 'POST', body: JSON.stringify({ style: r.value }) }); }
+        catch (e) { alert('Error: ' + e.message); }
+      }));
+      $('pv-vc-revise')?.addEventListener('click', () => {
+        const req = ($('pv-vc-request').value || '').trim();
+        if (!req) { $('pv-vc-request').focus(); return; }
+        run(year, 'revise', { request: req });
+      });
+      body.querySelectorAll('[data-vc-restore]').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('¿Restaurar esta versión? La actual queda guardada en el historial.')) return;
+        try { await api(`/vc/draft/${year}/versions/${b.dataset.vcRestore}/restore`, { method: 'POST' }); renderGenerator(year); }
+        catch (e) { alert('Error: ' + e.message); }
+      }));
+      $('pv-vc-accept')?.addEventListener('click', async () => {
+        if (!confirm(`¿Aceptar esta versión como el informe final de ${year}?\n\nSe enlazarán sus artículos citados ` +
+                     `(importando los que falten) en la colección «VC ${year}». Podrás reabrirlo si hace falta.`)) return;
+        const b = $('pv-vc-accept'); b.disabled = true; b.textContent = 'Aceptando…';
+        try {
+          const r = await api(`/vc/draft/${year}/accept`, { method: 'POST' });
+          alert(`✓ Informe ${year} aceptado. ${r.linked}/${r.cited} artículos citados enlazados en «VC ${year}».`);
+          await loadList(); select(year);
+        } catch (e) { alert('Error: ' + e.message); b.disabled = false; b.textContent = '✅ Aceptar versión final'; }
+      });
       wireDraftEditor(year);
       if (busy) startGenPoll(year);
+    }
+
+    // Free-text revision loop + version history + final acceptance.
+    function reviseSection(d, dis) {
+      const KIND = { generated: '🤖 Redactado', revision: '💬 Cambios IA', manual: '✍️ Edición manual',
+                     restored: '↺ Restaurada', final: '✅ Final' };
+      const versions = d.versions || [];
+      return `
+        <section style="border:1px solid #c7d2fe;background:#f8faff;border-radius:12px;padding:12px 14px;margin:12px 0;">
+          <div><strong>4 · Pedir cambios a la IA</strong>
+            <span style="color:#6b7280;font-size:12.5px;"> — en lenguaje libre, hasta que estéis conformes</span></div>
+          ${IS_ADMIN ? `
+            <textarea id="pv-vc-request" rows="4" placeholder="Ejemplos:
+· Después de la frase sobre el ensayo con ASO, añade que los primeros datos de seguridad se esperan en 2027.
+· Quita la frase sobre los organoides.
+· Añade el artículo PMID 41234567 en la parte de diagnóstico; quita el de Smith sobre CWD.
+· Da más protagonismo a los biomarcadores y acorta la introducción."
+              style="width:100%;margin-top:8px;padding:8px 10px;border:1px solid #c7d2fe;border-radius:8px;
+                     font-size:13px;box-sizing:border-box;"></textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+              <button type="button" id="pv-vc-revise" style="${btnCss(true)}" ${dis}>💬 Aplicar cambios</button>
+              <span style="font-size:11.5px;color:#6b7280;align-self:center;">Cambia solo lo que pides; si añades o quitas
+                artículos actualiza la selección; vuelve a validar longitud y a revisar los hechos de lo modificado.</span>
+            </div>` : ''}
+          ${versions.length ? `
+            <details style="margin-top:10px;" ${versions.length > 1 ? 'open' : ''}>
+              <summary style="cursor:pointer;font-size:12.5px;color:#374151;">Historial de versiones (${versions.length})</summary>
+              <div style="margin-top:6px;max-height:260px;overflow-y:auto;">
+                ${versions.map((v, k) => `
+                  <div style="padding:6px 0;border-bottom:1px solid #e5e7eb;font-size:12px;">
+                    <div style="display:flex;justify-content:space-between;gap:8px;">
+                      <span><strong>#${v.id}</strong> ${KIND[v.kind] || esc(v.kind)}
+                        <span style="color:#9ca3af;"> · ${esc(new Date(v.created_at).toLocaleString('es-ES'))} · ${v.chars} car.</span>
+                        ${k === 0 ? '<span style="color:#15803d;"> · actual</span>' : ''}</span>
+                      ${IS_ADMIN && k > 0 ? `<button type="button" data-vc-restore="${v.id}"
+                         style="padding:1px 8px;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:11.5px;">Restaurar</button>` : ''}
+                    </div>
+                    ${v.request ? `<div style="color:#3730a3;margin-top:2px;">Pedido: ${esc(v.request)}</div>` : ''}
+                    ${v.summary ? `<div style="color:#6b7280;margin-top:2px;">${esc(v.summary)}</div>` : ''}
+                  </div>`).join('')}
+              </div>
+            </details>` : ''}
+          ${IS_ADMIN ? `
+            <div style="margin-top:12px;padding-top:10px;border-top:1px solid #c7d2fe;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button type="button" id="pv-vc-accept" style="${btnCss(true)}background:#15803d;" ${dis}>✅ Aceptar versión final</button>
+              <span style="font-size:11.5px;color:#6b7280;">Pasa a ser el informe oficial de ${d.year}: sus artículos citados se enlazan
+                en la colección «VC ${d.year}» y servirá de memoria para el año siguiente. Se puede reabrir.</span>
+            </div>` : ''}
+        </section>`;
     }
 
     // Explains the pipeline and, above all, what the lab can do BEFORE
@@ -20249,7 +20336,7 @@
         return `<div style="font-size:12px;color:#15803d;margin:6px 0;">✓ Revisión de hechos: todas las afirmaciones
           citadas están respaldadas por sus artículos.</div>`;
       }
-      const li = x => `<li><strong>PMID ${esc(x.pmid || '')}</strong>: «${esc(x.quote || '')}» — ${esc(x.problem || '')}</li>`;
+      const li = x => `<li><strong>${/^\d+$/.test(x.pmid || '') ? 'PMID ' : ''}${esc(x.pmid || '')}</strong>: «${esc(x.quote || '')}» — ${esc(x.problem || '')}</li>`;
       return `
         <details style="font-size:12px;margin:6px 0;" ${left.length ? 'open' : ''}>
           <summary style="cursor:pointer;color:${left.length ? '#b45309' : '#15803d'};">
@@ -20266,9 +20353,10 @@
         const lens = paras.map(t => t.value.trim().length);
         const total = lens.reduce((a, b) => a + b, 0) + 2;
         lens.forEach((n, i) => { const el = $('pv-vc-c' + i); if (el) el.textContent = `${n} car. (${Math.round(100 * n / Math.max(1, total))}%)`; });
-        const pmids = new Set((paras.map(t => t.value).join(' ').match(/\d{7,9}/g) || []));
+        const txt = paras.map(t => t.value).join(' ');
+        const ids = new Set([...(txt.match(/\b\d{7,9}\b/g) || []), ...(txt.match(/10\.\d{4,9}\/[^\s;,)\]]+/gi) || []).map(x => x.toLowerCase())]);
         $('pv-vc-count').innerHTML = `<strong style="color:${total > 3500 ? '#b91c1c' : '#15803d'};">
-          ${total.toLocaleString('es-ES')} / 3.500 caracteres</strong> · ${pmids.size} PMIDs citados`;
+          ${total.toLocaleString('es-ES')} / 3.500 caracteres</strong> · ${ids.size} artículos citados`;
       };
       paras.forEach(t => t.addEventListener('input', recount));
       recount();
@@ -23955,6 +24043,10 @@
             <li><strong>Selección:</strong> reúne todos los artículos del año (inventario de PubMed + biblioteca), hace un cribado por título y valora con el modelo más potente los ~120 mejores con su abstract y, si están en la biblioteca, el <strong>resumen IA del texto completo</strong> y <strong>tus notas</strong>, además del cuartil SCImago, las <strong>citas recibidas</strong> (OpenAlex) y las señales del laboratorio (presentado en Journal Club, valoraciones, hitos, publicación propia). Después elige de forma conjunta los 38 (configurable) para que el grupo sea equilibrado y sin redundancias, cada uno con una frase de por qué. Puedes marcar/desmarcar y añadir otros por PMID.</li>
             <li><strong>Temas:</strong> agrupa los seleccionados en 4–6 temas, enlazando con las VC anteriores y con lo que la VC del año pasado esperaba para este.</li>
             <li><strong>Redacción:</strong> escribe el informe con el formato pedido (título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máx. 3.500 caracteres) al estilo de los informes anteriores, sin copiarlos. Comprueba sola la longitud, las proporciones y que solo cite los PMID seleccionados, y se corrige hasta cumplir. Después hace una <strong>revisión de hechos</strong>: contrasta cada afirmación con la evidencia del artículo citado (exageraciones, atribuciones erróneas, animal vs humano…), la corrige y te enseña lo que corrigió y lo que queda por revisar. Admite indicaciones («más peso al ensayo clínico»…). El texto se puede editar a mano, con contador de caracteres, y descargar en Word (Times New Roman 11).</li>
+            <li><strong>Pedir cambios a la IA:</strong> con el borrador hecho, escribe en lenguaje libre lo que quieras («tras la frase del ensayo añade…», «quita la frase de organoides», «añade el artículo PMID … / doi:…», «quita el de Smith sobre CWD», «más peso a los biomarcadores»). La IA cambia solo eso y deja el resto igual; si añades o quitas artículos, actualiza la selección (busca los nuevos en PubMed con su evidencia); vuelve a validar la longitud y a revisar los hechos, y resume qué ha cambiado. Puedes repetirlo cuantas veces quieras.</li>
+            <li><strong>Historial de versiones:</strong> cada redacción, petición de cambios y edición manual queda guardada con lo que se pidió y lo que cambió; cualquiera se puede restaurar.</li>
+            <li><strong>Citas PMID o DOI:</strong> por defecto <code>(PMID: …)</code>, como en 2024–2025; se puede elegir <code>(doi: …)</code>, como en 2021–2023.</li>
+            <li><strong>✅ Aceptar versión final:</strong> el informe pasa a ser el oficial del año, como los anteriores: sus artículos citados se enlazan (importando los que falten) en la colección «VC año» y servirá de memoria para el informe del año siguiente. Se puede <em>reabrir para editar</em>.</li>
           </ol>
           <h4>👁 Ver como <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
           <p>Desde <strong>Miscelánea → 👁 Ver como</strong> (o desde el panel de administración de PrionLab) eliges un usuario no administrador y entras con su sesión completa para ver PrionVault exactamente como lo ve él. Una franja fija arriba indica que estás viéndolo como otra persona, con el botón <strong>Salir</strong> para volver a tu sesión, en la misma página donde estabas. Todo lo que hagas mientras tanto lo hace esa cuenta, y queda registrado quién lo usó y cuándo.</p>

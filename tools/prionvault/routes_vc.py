@@ -106,6 +106,12 @@ def api_vc_draft_run(year):
             kwargs["n_final"] = g.N_FINAL
     elif step == "write":
         kwargs["instructions"] = str(body.get("instructions") or "")[:2000]
+        kwargs["by_user"] = _viewer_id()
+    elif step == "revise":
+        kwargs["request"] = str(body.get("request") or "")[:4000]
+        kwargs["by_user"] = _viewer_id()
+        if not kwargs["request"].strip():
+            return jsonify({"error": "empty_request", "detail": "Escribe qué cambios quieres."}), 400
     elif step != "themes":
         return jsonify({"error": "bad_step"}), 400
     snap = g.start(step, year, **kwargs)
@@ -158,7 +164,8 @@ def api_vc_draft_text(year):
     paras = body.get("paragraphs")
     if not isinstance(paras, list) or not all(isinstance(p, str) for p in paras):
         return jsonify({"error": "bad_paragraphs"}), 400
-    g.save_text(year, str(body.get("title") or ""), str(body.get("authors") or ""), paras)
+    g.save_text(year, str(body.get("title") or ""), str(body.get("authors") or ""), paras,
+                by_user=_viewer_id())
     return jsonify({"ok": True})
 
 
@@ -174,3 +181,45 @@ def api_vc_docx(year):
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     headers={"Content-Disposition":
                              f'attachment; filename="Competitive_Surveillance_{year}.docx"'})
+
+
+@prionvault_bp.route("/api/vc/draft/<int:year>/versions/<int:vid>/restore", methods=["POST"])
+@admin_required
+def api_vc_restore(year, vid):
+    from .services import vc_generate as g
+    try:
+        g.restore_version(year, vid, by_user=_viewer_id())
+    except LookupError:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/vc/draft/<int:year>/cite-style", methods=["POST"])
+@admin_required
+def api_vc_cite_style(year):
+    from .services import vc_generate as g
+    try:
+        g.set_cite_style(year, str((request.get_json(silent=True) or {}).get("style") or ""))
+    except ValueError:
+        return jsonify({"error": "bad_style"}), 400
+    return jsonify({"ok": True})
+
+
+@prionvault_bp.route("/api/vc/draft/<int:year>/accept", methods=["POST"])
+@admin_required
+def api_vc_accept(year):
+    """Accept the current draft as the year's final report (links its cited
+    papers and fills the 'VC <year>' collection)."""
+    from .services import vc_generate as g
+    try:
+        return jsonify({"ok": True, **g.accept_final(year, by_user=_viewer_id())})
+    except ValueError as exc:
+        return jsonify({"error": "nothing_to_accept", "detail": str(exc)}), 400
+
+
+@prionvault_bp.route("/api/vc/draft/<int:year>/reopen", methods=["POST"])
+@admin_required
+def api_vc_reopen(year):
+    from .services import vc_generate as g
+    g.reopen(year)
+    return jsonify({"ok": True})

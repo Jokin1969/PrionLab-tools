@@ -554,31 +554,69 @@ def step_themes(year: int) -> dict:
 
 
 # ── Step 3: writing ──────────────────────────────────────────────────────────
+# Citations: "(PMID: …)" by default (2024–2025 style) or "(doi: …)" (2021–2023
+# style), per report (prionvault_vc_report.cite_style). Validation and the
+# fact-check accept both, so switching style never breaks a draft.
 
-_WRITE_SYSTEM = f"""You write the yearly "competitive surveillance" report of a prion research group \
+def _style(year: int) -> str:
+    with _get_engine().connect() as conn:
+        st = conn.execute(sql_text("SELECT cite_style FROM prionvault_vc_report WHERE year = :y"),
+                          {"y": year}).scalar()
+    return "doi" if st == "doi" else "pmid"
+
+
+def _cite_rule(style: str) -> str:
+    if style == "doi":
+        return ('DOI references in brackets directly within the text, e.g. "(doi: 10.1038/s41586-024-07000-1)" '
+                'or several "(doi: 10.1/a; doi: 10.2/b)". If a paper has no DOI, cite "(PMID: …)". No reference list.')
+    return ('PMID references in brackets directly within the text, e.g. "(PMID: 30289599)" or several '
+            '"(PMID: 39440977, 39396118)". No reference list.')
+
+
+def _write_system(style: str) -> str:
+    return f"""You write the yearly "competitive surveillance" report of a prion research group \
 (Joaquín Castilla's Prion Research Laboratory, CIC bioGUNE) for the institute's Scientific Annual Review.
 
-{_GUIDELINES}
+{_GUIDELINES.replace(_GUIDELINES.split(chr(10))[2], "- References: " + _cite_rule(style))}
 
 Style: match the previous reports provided (scientific but accessible English, flowing paragraphs that link the \
 papers coherently — each cited paper is woven into the narrative with what it showed and why it matters, grouped \
-by theme; no bullet points, no headings inside paragraphs). Cite ONLY the PMIDs you are given, each in brackets \
-right after the statement it supports. Prefer citing most of the selected papers; group several PMIDs in one \
-bracket when they support the same point.
+by theme; no bullet points, no headings inside paragraphs). Cite ONLY the identifiers you are given, each in \
+brackets right after the statement it supports. Prefer citing most of the selected papers; group several \
+identifiers in one bracket when they support the same point.
 Answer only JSON: {{"title": "...", "intro": "<paragraph 1>", "advances": "<paragraph 2>", "outlook": "<paragraph 3>"}}"""
 
 
-def _cited_pmids(text: str) -> list[str]:
+def _ident(it: dict, style: str) -> str:
+    if style == "doi" and it.get("doi"):
+        return f"doi: {it['doi']}"
+    return f"PMID: {it['pmid']}" if it.get("pmid") else f"doi: {it.get('doi')}"
+
+
+_DOI_RE = re.compile(r"10\.\d{4,9}/[^\s;,)\]]+", re.I)
+
+
+def _cited_ids(text: str) -> list[str]:
+    """Every identifier cited in the text: PMIDs (digits) and DOIs (lower-case)."""
     out = []
     for m in re.finditer(r"PMID:?\s*([\d,;\s]+)", text):
         out += re.findall(r"\d{7,9}", m.group(1))
+    out += [d.rstrip(".").lower() for d in _DOI_RE.findall(text)]
     return out
+
+
+_cited_pmids = _cited_ids   # backwards-compatible name
+
+
+def _allowed(items: list[dict]) -> set[str]:
+    return ({str(it["pmid"]) for it in items if it.get("pmid")}
+            | {it["doi"].lower() for it in items if it.get("doi")})
 
 
 def validate(intro: str, advances: str, outlook: str, allowed: set[str]) -> dict:
     total = len(intro) + len(advances) + len(outlook) + 2   # paragraph separators
     shares = [len(p) / max(1, total) for p in (intro, advances, outlook)]
-    cited = _cited_pmids(" ".join((intro, advances, outlook)))
+    cited = _cited_ids(" ".join((intro, advances, outlook)))
     unknown = sorted({p for p in cited if p not in allowed})
     problems = []
     if total > MAX_CHARS:
@@ -593,9 +631,10 @@ def validate(intro: str, advances: str, outlook: str, allowed: set[str]) -> dict
     if not 0.15 <= shares[2] <= 0.33:
         problems.append(f"Paragraph 3 is {shares[2]:.0%} of the text; it must be about 25%.")
     if unknown:
-        problems.append("These PMIDs are not in the provided list and must be removed: " + ", ".join(unknown))
+        problems.append("These identifiers are not among the selected papers and must be removed: "
+                        + ", ".join(unknown))
     if len(set(cited)) < 10:
-        problems.append("Cite more of the provided papers (at least 10 distinct PMIDs).")
+        problems.append("Cite more of the provided papers (at least 10 distinct papers).")
     return {"chars": total, "shares": [round(x, 3) for x in shares], "cited": len(set(cited)),
             "unknown_pmids": unknown, "problems": problems, "ok": not problems}
 
@@ -607,100 +646,354 @@ def _evidence(it: dict, limit: int) -> str:
     return ((ev + " ") if ev else "") [:limit] or (it.get("abstract") or "")[:limit]
 
 
-_FACTCHECK_SYSTEM = """You are a meticulous scientific fact-checker. You get a report draft that cites papers as "(PMID: …)" and, for each cited PMID, its evidence (abstract and, when available, an AI summary of the full text). Check every statement that carries a citation: is it supported by the evidence of THAT paper (not another one), without overstating results (e.g. "demonstrated" vs "suggested", animal vs human, preclinical vs clinical)? Report only real problems. Answer only JSON: {"issues": [{"pmid": "...", "quote": "<the problematic words>", "problem": "<what is wrong>", "fix": "<how to rephrase>"}]}"""
+_FACTCHECK_SYSTEM = """You are a meticulous scientific fact-checker. You get a report draft that cites papers as \
+"(PMID: …)" or "(doi: …)" and, for each cited paper, its evidence (abstract and, when available, an AI summary of \
+the full text). Check every statement that carries a citation: is it supported by the evidence of THAT paper (not \
+another one), without overstating results (e.g. "demonstrated" vs "suggested", animal vs human, preclinical vs \
+clinical)? Report only real problems. Answer only JSON: \
+{"issues": [{"pmid": "<the cited identifier>", "quote": "<the problematic words>", "problem": "<what is wrong>", \
+"fix": "<how to rephrase>"}]}"""
 
 
 def _factcheck(draft: dict, items: list[dict]) -> list[dict]:
     text = "\n\n".join(draft.get(k, "") for k in ("intro", "advances", "outlook"))
-    cited = set(_cited_pmids(text))
-    by = {str(it["pmid"]): it for it in items if it["pmid"]}
+    cited = set(_cited_ids(text))
+    by = {}
+    for it in items:
+        if it.get("pmid"):
+            by[str(it["pmid"])] = it
+        if it.get("doi"):
+            by[it["doi"].lower()] = it
     ev = "\n\n".join(
-        f"PMID {p}: {by[p]['title']}\nAbstract: {(by[p]['abstract'] or '')[:1200]}\n"
-        f"{(by[p]['evidence'] or '')[:1200]}" for p in sorted(cited) if p in by)
+        f"{c}: {by[c]['title']}\nAbstract: {(by[c]['abstract'] or '')[:1200]}\n"
+        f"{(by[c]['evidence'] or '')[:1200]}" for c in sorted(cited) if c in by)
     parsed = _call(_FACTCHECK_SYSTEM, f"DRAFT:\n{text}\n\nEVIDENCE:\n{ev}", strong=True, max_tokens=3000)
     return [i for i in (parsed.get("issues") or []) if isinstance(i, dict)][:20]
 
 
-def step_write(year: int, instructions: str = "") -> dict:
-    items = _selected_items(year)
-    if not items:
-        raise ValueError("No hay artículos seleccionados.")
-    with _get_engine().connect() as conn:
-        rep = conn.execute(sql_text("SELECT themes, authors FROM prionvault_vc_report WHERE year = :y"),
-                           {"y": year}).mappings().first()
-    themes = (rep or {}).get("themes") or []
-    past = _past_reports(year)
-    examples = "\n\n".join(f"=== VC {p['year']} (example of style; do NOT copy)\nTitle: {p['title']}\n{p['body']}"
-                           for p in past if p["year"] >= year - 3)
+def _paper_lines(items: list[dict], themes: list[dict], style: str) -> list[str]:
     by_id = {str(it["pmid"] or it["doi"]): it for it in items}
-    lines = []
+    lines, used = [], set()
     for t in themes or [{"name": "Advances", "pmids": list(by_id)}]:
         lines.append(f"## {t.get('name')}: {t.get('summary', '')} {t.get('continuity', '')}")
         for p in t.get("pmids") or []:
             it = by_id.get(str(p))
             if it:
-                lines.append(f"- PMID {it['pmid']}: {it['title']} ({it['journal']}). Why: {it['reason']}"
+                used.add(str(p))
+                lines.append(f"- [{_ident(it, style)}] {it['title']} ({it['journal']}). Why: {it['reason']}"
                              f" Key findings: {_evidence(it, 900)}")
-    allowed = {str(it["pmid"]) for it in items if it["pmid"]}
-    last_outlook = past[-1]["body"].split("\n\n")[-1] if past else ""
-    user = (f"{examples}\n\nLAST YEAR'S OUTLOOK (what was expected for {year}):\n{last_outlook}\n\n"
-            f"SELECTED PAPERS OF {year} BY THEME:\n" + "\n".join(lines) +
-            f"\n\nWrite the {year} report (paragraph 3 looks ahead to {year + 1})."
-            + (f"\n\nAdditional instructions from the authors: {instructions}" if instructions else ""))
-    _set(phase="Redactando", done=0, total=4)
-    draft = _call(_WRITE_SYSTEM, user, strong=True, max_tokens=4000)
+    rest = [it for k, it in by_id.items() if k not in used]
+    if rest:   # e.g. papers added after the themes were made
+        lines.append("## Other selected papers")
+        lines += [f"- [{_ident(it, style)}] {it['title']} ({it['journal']}). Why: {it['reason']}"
+                  f" Key findings: {_evidence(it, 900)}" for it in rest]
+    return lines
+
+
+def _comply(draft: dict, user: str, system: str, allowed: set[str], *, max_rounds: int = 3,
+            keep: str = "") -> tuple[dict, dict, int]:
+    """Re-ask until the draft passes validation (or rounds run out)."""
     check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed)
-    attempt = 1
-    while not check["ok"] and attempt < 4 and not _stopped():
-        _set(phase=f"Revisando ({'; '.join(check['problems'])[:120]})", done=attempt)
-        draft = _call(_WRITE_SYSTEM,
+    rounds = 0
+    while not check["ok"] and rounds < max_rounds and not _stopped():
+        rounds += 1
+        _set(phase=f"Ajustando formato ({'; '.join(check['problems'])[:110]})")
+        draft = _call(system,
                       user + "\n\nYOUR PREVIOUS DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
-                      "\n\nRevise it to fix ALL of these problems, keeping its content and style:\n- " +
+                      "\n\nRevise it to fix ALL of these problems, keeping its content and style" +
+                      (f" — and keeping these requested changes: {keep}" if keep else "") + ":\n- " +
                       "\n- ".join(check["problems"]),
                       strong=True, max_tokens=4000)
         check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed)
-        attempt += 1
-    # Fact-check every cited statement against its paper's evidence, then
-    # revise (keeping the format constraints) if anything is unsupported.
-    issues, fixed_issues = [], []
-    if not _stopped():
-        _set(phase="Revisión de hechos (cada afirmación contra su PMID)", done=attempt)
+    return draft, check, rounds
+
+
+def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: list[dict],
+                       allowed: set[str], keep: str = "") -> tuple[dict, dict, list, list]:
+    issues, fixed = [], []
+    if _stopped():
+        return draft, check, fixed, issues
+    _set(phase="Revisión de hechos (cada afirmación contra su artículo)")
+    try:
+        issues = _factcheck(draft, items)
+    except Exception as exc:
+        logger.warning("vc factcheck failed: %s", exc)
+    if issues and not _stopped():
+        fixed = issues
+        _set(phase=f"Corrigiendo {len(issues)} afirmaciones")
+        fix_text = "\n".join(f"- {i.get('pmid')}: \"{i.get('quote')}\" — {i.get('problem')} → {i.get('fix')}"
+                             for i in issues)
+        for _ in range(2):
+            revised = _call(system,
+                            user + "\n\nYOUR PREVIOUS DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
+                            "\n\nA fact-check found these problems; fix them (keep everything else, respect "
+                            "all format constraints" + (f", keep these requested changes: {keep}" if keep else "")
+                            + "):\n" + fix_text +
+                            ("\n\nAlso fix: " + "; ".join(check["problems"]) if check["problems"] else ""),
+                            strong=True, max_tokens=4000)
+            rcheck = validate(revised.get("intro", ""), revised.get("advances", ""),
+                              revised.get("outlook", ""), allowed)
+            if rcheck["ok"] or not check["ok"]:
+                draft, check = revised, rcheck
+                break
         try:
             issues = _factcheck(draft, items)
-        except Exception as exc:
-            logger.warning("vc factcheck failed: %s", exc)
-        if issues and not _stopped():
-            fixed_issues = issues
-            _set(phase=f"Corrigiendo {len(issues)} afirmaciones")
-            fix_text = "\n".join(f"- PMID {i.get('pmid')}: \"{i.get('quote')}\" — {i.get('problem')} "
-                                  f"→ {i.get('fix')}" for i in issues)
-            for _ in range(2):
-                revised = _call(_WRITE_SYSTEM,
-                                user + "\n\nYOUR PREVIOUS DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
-                                "\n\nA fact-check found these problems; fix them (keep everything else, "
-                                "respect all format constraints):\n" + fix_text +
-                                ("\n\nAlso fix: " + "; ".join(check["problems"]) if check["problems"] else ""),
-                                strong=True, max_tokens=4000)
-                rcheck = validate(revised.get("intro", ""), revised.get("advances", ""),
-                                  revised.get("outlook", ""), allowed)
-                if rcheck["ok"] or not check["ok"]:
-                    draft, check = revised, rcheck
-                    break
-            try:
-                issues = _factcheck(draft, items)
-            except Exception:
-                pass
+        except Exception:
+            pass
+    return draft, check, fixed, issues
+
+
+def _save_draft(year: int, draft: dict, *, kind: str, request: str = "", summary: str = "",
+                info: Optional[dict] = None, by_user=None) -> None:
     body = "\n\n".join(draft.get(k, "").strip() for k in ("intro", "advances", "outlook"))
     with _get_engine().begin() as conn:
+        authors = conn.execute(sql_text(
+            "SELECT coalesce(nullif(authors, ''), :a) FROM prionvault_vc_report WHERE year = :y"),
+            {"y": year, "a": AUTHORS}).scalar() or AUTHORS
         conn.execute(sql_text("""
-            UPDATE prionvault_vc_report SET title = :t, body = :b, authors = coalesce(nullif(authors, ''), :a),
-                   updated_at = NOW() WHERE year = :y"""),
-            {"t": (draft.get("title") or "").strip(), "b": body, "a": AUTHORS, "y": year})
-    _set(done=4)
-    info = {**check, "attempts": attempt, "instructions": instructions[:500],
-            "factcheck_fixed": fixed_issues, "factcheck_remaining": issues}
+            UPDATE prionvault_vc_report SET title = :t, body = :b, authors = :a, updated_at = NOW()
+             WHERE year = :y"""),
+            {"t": (draft.get("title") or "").strip(), "b": body, "a": authors, "y": year})
+        _add_version(conn, year, kind, (draft.get("title") or "").strip(), authors, body,
+                     request=request, summary=summary, info=info, by_user=by_user)
+
+
+def _add_version(conn, year, kind, title, authors, body, *, request="", summary="", info=None,
+                 by_user=None) -> None:
+    conn.execute(sql_text("""
+        INSERT INTO prionvault_vc_version (year, kind, request, summary, title, authors, body, info, created_by)
+        VALUES (:y, :k, :r, :s, :t, :a, :b, CAST(:i AS jsonb), CAST(:u AS uuid))"""),
+        {"y": year, "k": kind, "r": request[:4000], "s": summary[:4000], "t": title, "a": authors,
+         "b": body, "i": json.dumps(info or {}, ensure_ascii=False), "u": str(by_user) if by_user else None})
+
+
+def _context(year: int, items: list[dict], style: str) -> str:
+    with _get_engine().connect() as conn:
+        rep = conn.execute(sql_text("SELECT themes FROM prionvault_vc_report WHERE year = :y"),
+                           {"y": year}).mappings().first()
+    themes = (rep or {}).get("themes") or []
+    past = _past_reports(year)
+    examples = "\n\n".join(f"=== VC {p['year']} (example of style; do NOT copy)\nTitle: {p['title']}\n{p['body']}"
+                           for p in past if p["year"] >= year - 3)
+    last_outlook = past[-1]["body"].split("\n\n")[-1] if past else ""
+    return (f"{examples}\n\nLAST YEAR'S OUTLOOK (what was expected for {year}):\n{last_outlook}\n\n"
+            f"SELECTED PAPERS OF {year} BY THEME (cite them with the identifier in brackets):\n"
+            + "\n".join(_paper_lines(items, themes, style)))
+
+
+def step_write(year: int, instructions: str = "", by_user=None) -> dict:
+    items = _selected_items(year)
+    if not items:
+        raise ValueError("No hay artículos seleccionados.")
+    style = _style(year)
+    system = _write_system(style)
+    allowed = _allowed(items)
+    user = (_context(year, items, style) +
+            f"\n\nWrite the {year} report (paragraph 3 looks ahead to {year + 1})."
+            + (f"\n\nAdditional instructions from the authors: {instructions}" if instructions else ""))
+    _set(phase="Redactando", done=0, total=0)
+    draft = _call(system, user, strong=True, max_tokens=4000)
+    draft, check, rounds = _comply(draft, user, system, allowed)
+    draft, check, fixed, issues = _factcheck_and_fix(draft, check, user, system, items, allowed)
+    info = {**check, "attempts": rounds + 1, "instructions": instructions[:500],
+            "factcheck_fixed": fixed, "factcheck_remaining": issues}
+    _save_draft(year, draft, kind="generated", request=instructions, info=info, by_user=by_user,
+                summary="Informe redactado por la IA.")
     _log(year, "write", info)
     return info
+
+
+# ── Revisions in free text ("pedir cambios a la IA") ─────────────────────────
+
+_PLAN_SYSTEM = """You help the authors edit their yearly competitive-surveillance report. Read their request \
+(any language) and decide which PAPERS must be added to or removed from the report. Papers to add may be given \
+as PMID, DOI, or described ("the Nature paper on CWD structure by Smith") — in that last case pick it from the \
+CANDIDATES list if it is there. Papers to remove are identified among the SELECTED papers (by identifier, author \
+or description). Only list papers the request clearly asks to add/remove. Answer only JSON: \
+{"add_pmids": ["..."], "add_dois": ["..."], "remove": ["<pmid or doi of a selected paper>"]}"""
+
+_REVISE_SYSTEM_EXTRA = """
+
+You are now REVISING an existing draft at the authors' request. Apply exactly what they ask (add sentences where \
+they say, remove what they say, cite or stop citing the papers they mention, change tone or emphasis…) and leave \
+everything else as it is — same wording wherever no change was requested. Only if the requested changes push the \
+text over the length limit, tighten other sentences slightly. Also return "changes": a short list, in Spanish, \
+of what you changed. JSON: {"title": "...", "intro": "...", "advances": "...", "outlook": "...", \
+"changes": ["..."]}"""
+
+
+def _current_draft(year: int) -> dict:
+    with _get_engine().connect() as conn:
+        rep = conn.execute(sql_text("SELECT title, body FROM prionvault_vc_report WHERE year = :y"),
+                           {"y": year}).mappings().first()
+    paras = [p for p in ((rep or {}).get("body") or "").split("\n\n") if p.strip()] + ["", "", ""]
+    return {"title": (rep or {}).get("title") or "", "intro": paras[0], "advances": paras[1],
+            "outlook": paras[2]}
+
+
+def step_revise(year: int, request: str, by_user=None) -> dict:
+    request = (request or "").strip()
+    if not request:
+        raise ValueError("Escribe qué cambios quieres.")
+    draft = _current_draft(year)
+    if not (draft["intro"] or draft["advances"]):
+        raise ValueError("Todavía no hay borrador: redacta primero el informe.")
+    style = _style(year)
+
+    # 1) Papers to add/remove, decided from the free-text request.
+    _set(phase="Interpretando la petición", done=0, total=0)
+    items = _selected_items(year)
+    with _get_engine().connect() as conn:
+        cands = [dict(r) for r in conn.execute(sql_text("""
+            SELECT pmid, doi, title, journal FROM prionvault_vc_item
+             WHERE year = :y AND NOT selected AND pmid IS NOT NULL
+             ORDER BY score DESC NULLS LAST, screen_score DESC NULLS LAST LIMIT 150"""), {"y": year}).mappings()]
+    plan = _call(_PLAN_SYSTEM,
+                 f"REQUEST:\n{request}\n\nSELECTED PAPERS:\n" +
+                 "\n".join(f"- {_ident(it, 'pmid')} | doi {it.get('doi') or '-'} | {it['title']}" for it in items) +
+                 "\n\nCANDIDATES (not selected):\n" +
+                 "\n".join(f"- PMID {c['pmid']} | doi {c.get('doi') or '-'} | {c['title']} ({c['journal']})"
+                           for c in cands),
+                 strong=True, max_tokens=800, timeout=120)
+    added, removed, not_found = [], [], []
+    add_pmids = [str(p) for p in plan.get("add_pmids") or [] if str(p).isdigit()]
+    add_pmids += re.findall(r"PMID:?\s*(\d{7,9})", request)
+    for d in (plan.get("add_dois") or []) + _DOI_RE.findall(request):
+        from ..ingestion.metadata_resolver import pubmed_by_doi
+        meta = pubmed_by_doi(str(d).rstrip("."))
+        if meta and meta.pubmed_id:
+            add_pmids.append(str(meta.pubmed_id))
+        else:
+            not_found.append(str(d))
+    selected_ids = _allowed(items)
+    for p in dict.fromkeys(add_pmids):
+        if p in selected_ids:
+            continue
+        try:
+            add_pmid(year, p)
+            added.append(p)
+        except LookupError:
+            not_found.append(p)
+    rm = {str(x).lower() for x in plan.get("remove") or []}
+    if rm:
+        with _get_engine().begin() as conn:
+            for it in items:
+                if str(it.get("pmid") or "") in rm or (it.get("doi") or "").lower() in rm:
+                    conn.execute(sql_text(
+                        "UPDATE prionvault_vc_item SET selected = FALSE, manual = TRUE WHERE id = :id"),
+                        {"id": it["id"]})
+                    removed.append(it.get("pmid") or it.get("doi"))
+    if added:
+        _build_evidence(year, by_user)
+
+    # 2) Revise the text applying only the requested changes.
+    items = _selected_items(year)
+    allowed = _allowed(items)
+    system = _write_system(style) + _REVISE_SYSTEM_EXTRA
+    paper_note = ""
+    if added:
+        paper_note += "\nPapers ADDED to the selection (cite them where the request says): " + ", ".join(added)
+    if removed:
+        paper_note += "\nPapers REMOVED from the selection (must no longer be cited): " + ", ".join(map(str, removed))
+    user = (_context(year, items, style) +
+            "\n\nCURRENT DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
+            f"\n\nTHE AUTHORS ASK:\n{request}{paper_note}")
+    _set(phase="Aplicando los cambios")
+    revised = _call(system, user, strong=True, max_tokens=4500)
+    changes = [str(c) for c in revised.get("changes") or []][:20]
+    revised, check, rounds = _comply(revised, user, system, allowed, max_rounds=2, keep=request[:600])
+    revised, check, fixed, issues = _factcheck_and_fix(revised, check, user, system, items, allowed,
+                                                       keep=request[:600])
+    summary = "; ".join(changes) or "Cambios aplicados."
+    if added:
+        summary += f" · Artículos añadidos: {', '.join(added)}"
+    if removed:
+        summary += f" · Artículos quitados: {', '.join(map(str, removed))}"
+    if not_found:
+        summary += f" · No encontrados: {', '.join(not_found)}"
+    info = {**check, "factcheck_fixed": fixed, "factcheck_remaining": issues,
+            "added": added, "removed": removed, "not_found": not_found}
+    _save_draft(year, revised, kind="revision", request=request, summary=summary, info=info, by_user=by_user)
+    _log(year, "write", info)
+    return info
+
+
+# ── Versions, citation style, acceptance ─────────────────────────────────────
+
+def list_versions(year: int) -> list[dict]:
+    with _get_engine().connect() as conn:
+        rows = conn.execute(sql_text("""
+            SELECT id, kind, request, summary, title, length(body) AS chars, created_at
+              FROM prionvault_vc_version WHERE year = :y ORDER BY id DESC LIMIT 60"""),
+            {"y": year}).mappings().all()
+    return [{**dict(r), "created_at": r["created_at"].isoformat()} for r in rows]
+
+
+def restore_version(year: int, version_id: int, by_user=None) -> None:
+    with _get_engine().begin() as conn:
+        v = conn.execute(sql_text(
+            "SELECT title, authors, body FROM prionvault_vc_version WHERE id = :id AND year = :y"),
+            {"id": version_id, "y": year}).mappings().first()
+        if not v:
+            raise LookupError(version_id)
+        conn.execute(sql_text("""
+            UPDATE prionvault_vc_report SET title = :t, authors = :a, body = :b, updated_at = NOW()
+             WHERE year = :y"""), {"t": v["title"], "a": v["authors"], "b": v["body"], "y": year})
+        _add_version(conn, year, "restored", v["title"], v["authors"], v["body"],
+                     summary=f"Restaurada la versión #{version_id}.", by_user=by_user)
+
+
+def set_cite_style(year: int, style: str) -> None:
+    if style not in ("pmid", "doi"):
+        raise ValueError(style)
+    ensure_draft(year)
+    with _get_engine().begin() as conn:
+        conn.execute(sql_text("UPDATE prionvault_vc_report SET cite_style = :s WHERE year = :y"),
+                     {"s": style, "y": year})
+
+
+def accept_final(year: int, by_user=None) -> dict:
+    """Make the current draft the year's official report: status 'final'
+    (it then shows like the past years' and becomes memory for the next
+    one), its cited papers become references linked to PrionVault articles
+    (imported if missing) and join the collection "VC <year>"."""
+    from . import vc
+    with _get_engine().begin() as conn:
+        rep = conn.execute(sql_text(
+            "SELECT title, authors, body FROM prionvault_vc_report WHERE year = :y"),
+            {"y": year}).mappings().first()
+        if not rep or not (rep["body"] or "").strip():
+            raise ValueError("No hay informe que aceptar.")
+        conn.execute(sql_text(
+            "UPDATE prionvault_vc_report SET status = 'final', updated_at = NOW() WHERE year = :y"), {"y": year})
+        _add_version(conn, year, "final", rep["title"], rep["authors"], rep["body"],
+                     summary="Versión final aceptada.", by_user=by_user)
+        conn.execute(sql_text("DELETE FROM prionvault_vc_ref WHERE year = :y"), {"y": year})
+        cited = list(dict.fromkeys(_cited_ids(rep["body"])))
+        for c in cited:
+            is_pmid = c.isdigit()
+            conn.execute(sql_text("""
+                INSERT INTO prionvault_vc_ref (year, ref_key, cite, doi, pmid)
+                VALUES (:y, :k, '', :d, :p) ON CONFLICT (year, ref_key) DO NOTHING"""),
+                {"y": year, "k": ("pmid:" if is_pmid else "doi:") + c,
+                 "d": None if is_pmid else c, "p": c if is_pmid else None})
+        refs = [dict(r) for r in conn.execute(sql_text(
+            "SELECT id, year, cite, doi, pmid, context FROM prionvault_vc_ref WHERE year = :y"),
+            {"y": year}).mappings()]
+    done = 0
+    for ref in refs:
+        try:
+            vc.resolve_ref(ref, by_user=by_user)
+            done += 1
+        except Exception as exc:
+            logger.warning("vc accept: resolving %s failed: %s", ref, exc)
+    return {"cited": len(cited), "linked": done}
+
+
+def reopen(year: int) -> None:
+    with _get_engine().begin() as conn:
+        conn.execute(sql_text(
+            "UPDATE prionvault_vc_report SET status = 'draft', updated_at = NOW() WHERE year = :y"), {"y": year})
 
 
 # ── Background runner / status ───────────────────────────────────────────────
@@ -722,7 +1015,7 @@ def stop() -> dict:
     return get_status()
 
 
-_STEPS = {"select": step_select, "themes": step_themes, "write": step_write}
+_STEPS = {"select": step_select, "themes": step_themes, "write": step_write, "revise": step_revise}
 
 
 def start(step: str, year: int, **kwargs) -> Optional[dict]:
@@ -756,7 +1049,8 @@ def get_draft(year: int) -> dict:
     ensure_draft(year)
     with _get_engine().connect() as conn:
         rep = dict(conn.execute(sql_text(
-            "SELECT year, title, authors, body, status, themes, pipeline FROM prionvault_vc_report WHERE year = :y"),
+            "SELECT year, title, authors, body, status, themes, pipeline, cite_style "
+            "FROM prionvault_vc_report WHERE year = :y"),
             {"y": year}).mappings().first())
         items = [dict(r) for r in conn.execute(sql_text("""
             SELECT id, pmid, doi, article_id, title, journal, pub_year, quartile, in_library,
@@ -767,8 +1061,9 @@ def get_draft(year: int) -> dict:
         total = conn.execute(sql_text("SELECT COUNT(*) FROM prionvault_vc_item WHERE year = :y"),
                              {"y": year}).scalar()
     paras = [p for p in (rep.pop("body") or "").split("\n\n") if p.strip()]
-    allowed = {str(i["pmid"]) for i in items if i["selected"] and i["pmid"]}
+    allowed = _allowed([i for i in items if i["selected"]])
     rep["paragraphs"] = paras
+    rep["versions"] = list_versions(year)
     rep["check"] = validate(*(paras + ["", "", ""])[:3], allowed) if paras else None
     for i in items:
         i["article_id"] = str(i["article_id"]) if i["article_id"] else None
@@ -803,13 +1098,15 @@ def add_pmid(year: int, pmid: str) -> None:
              "lib": bool(aid), "abs": pubmed_efetch_abstract(pmid)})
 
 
-def save_text(year: int, title: str, authors: str, paragraphs: list[str]) -> None:
+def save_text(year: int, title: str, authors: str, paragraphs: list[str], by_user=None) -> None:
+    body = "\n\n".join(p.strip() for p in paragraphs if p.strip())
     with _get_engine().begin() as conn:
         conn.execute(sql_text("""
             UPDATE prionvault_vc_report SET title = :t, authors = :a, body = :b, updated_at = NOW()
              WHERE year = :y"""),
-            {"t": title.strip(), "a": authors.strip(),
-             "b": "\n\n".join(p.strip() for p in paragraphs if p.strip()), "y": year})
+            {"t": title.strip(), "a": authors.strip(), "b": body, "y": year})
+        _add_version(conn, year, "manual", title.strip(), authors.strip(), body,
+                     summary="Edición manual.", by_user=by_user)
 
 
 def export_docx(year: int) -> bytes:
