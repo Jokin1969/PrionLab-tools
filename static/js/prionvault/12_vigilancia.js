@@ -304,7 +304,10 @@
       body.innerHTML = `
         <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">
           Vigilancia competitiva ${year} · generador</div>
-        <h3 style="margin:2px 0 6px;font-size:18px;color:#0F3460;">Informe ${year}</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <h3 style="margin:2px 0 6px;font-size:18px;color:#0F3460;">Informe ${year}</h3>
+          <button type="button" id="pv-vc-howto" style="${btnCss(false)}">❓ ¿Cómo se hace el informe?</button>
+        </div>
         ${needsSetup ? `
           <div style="padding:10px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;
                       font-size:13px;color:#92400e;margin-bottom:12px;">
@@ -374,6 +377,7 @@
         </section>`;
 
       $('pv-vc-setup')?.addEventListener('click', startResolve);
+      $('pv-vc-howto')?.addEventListener('click', () => openHowto(year));
       $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
       $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes'));
       $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value }));
@@ -391,6 +395,59 @@
       });
       wireDraftEditor(year);
       if (busy) startGenPoll(year);
+    }
+
+    // Explains the pipeline and, above all, what the lab can do BEFORE
+    // generating so the AI has better material.
+    function openHowto(year) {
+      const sec = (t, body) => `<h4 style="margin:16px 0 6px;font-size:14px;color:#0F3460;">${t}</h4>${body}`;
+      const ul = items => `<ul style="margin:0 0 0 18px;padding:0;font-size:13px;line-height:1.6;color:#374151;">${items.map(x => `<li>${x}</li>`).join('')}</ul>`;
+      $('pv-vc-howto-body').innerHTML = `
+        <p style="color:#6b7280;font-size:12.5px;margin:0 0 6px;">
+          El informe ${year} se genera en tres pasos con IA, usando como memoria y modelo de estilo las VC de años anteriores.
+          La calidad depende mucho del material que encuentre en PrionVault: abajo tienes qué podéis preparar antes.</p>
+
+        ${sec('1 · Selección de artículos', ul([
+          `<strong>Candidatos:</strong> todo lo publicado en ${year} que hay en el inventario de PubMed de PrionVault y en la biblioteca.`,
+          '<strong>Cribado por título</strong> de todos ellos, por lotes, para quedarse con unos 120.',
+          '<strong>Valoración profunda</strong> de esos ~120 con el modelo más potente: abstract, cuartil SCImago y, si el artículo está en la biblioteca, su <em>ficha de evidencia</em> (ver abajo).',
+          '<strong>Citas recibidas</strong> (OpenAlex) como medida de impacto temprano.',
+          '<strong>Selección de conjunto:</strong> la IA elige los N artículos (38 por defecto) para que el grupo sea equilibrado entre áreas y sin redundancias, y explica cada elección.',
+        ]))}
+
+        ${sec('2 · Temas', ul([
+          'Agrupa los seleccionados en 4–6 temas, ordenados como debe fluir el texto.',
+          `Enlaza cada tema con las VC anteriores y con lo que la VC ${year - 1} esperaba para ${year}.`,
+        ]))}
+
+        ${sec('3 · Redacción y revisión', ul([
+          'Escribe el informe con el formato pedido: título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máximo 3.500 caracteres.',
+          'Comprueba la longitud, las proporciones y que solo cite los artículos seleccionados; si algo no cumple, se corrige sola.',
+          '<strong>Revisión de hechos:</strong> contrasta cada afirmación con la evidencia del artículo que cita (exageraciones, animal frente a humano, atribuciones erróneas) y corrige el texto. Te muestra lo corregido y lo que queda por revisar.',
+        ]))}
+
+        <div style="margin-top:18px;padding:12px 14px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0;">
+          <h4 style="margin:0 0 6px;font-size:14px;color:#15803d;">✅ Qué podéis hacer vosotros para que el informe salga mejor</h4>
+          <p style="font-size:12.5px;color:#374151;margin:0 0 6px;">Todo esto lo lee la IA y aparece como etiqueta junto a cada artículo:</p>
+          ${ul([
+            '<strong>Tener en la biblioteca los artículos importantes del año</strong> (📚). Los que solo están en el inventario de PubMed aportan título y abstract; los de la biblioteca aportan mucho más.',
+            '<strong>Subir sus PDFs y lanzar los resúmenes IA</strong> (🧠). El resumen IA sale del texto completo y es la mejor evidencia para elegir y para redactar con precisión.',
+            '<strong>Dejar notas adhesivas</strong> (📝) en los artículos clave: por qué importan, qué aportan. Se usan las notas de quien lanza la selección.',
+            '<strong>Presentarlos en el Journal Club</strong> (📖 JC). Es una señal fuerte de que el laboratorio lo consideró relevante.',
+            '<strong>Valorarlos con estrellas</strong> (★) y <strong>marcar como hito</strong> (⭐) los que sean un antes y un después.',
+            '<strong>Mantener al día el inventario de PubMed</strong> antes de generar, para que no falte nada publicado recientemente.',
+            'Las <strong>publicaciones propias del grupo</strong> (🏠) se detectan solas por los autores.',
+          ])}
+          <p style="font-size:12.5px;color:#374151;margin:8px 0 0;">Estas señales ayudan, pero no sustituyen al criterio científico:
+            un avance clave del año entra aunque nadie lo haya anotado, y algo valorado en el laboratorio no entra si es menor.</p>
+        </div>
+
+        ${sec('Vuestro control en cada paso', ul([
+          'Después de la selección: marcar o desmarcar artículos y añadir otros por PMID (✋). Lo que toquéis a mano se respeta si se vuelve a seleccionar.',
+          'Antes de redactar: escribir indicaciones para la IA («más peso al ensayo clínico», «menos CWD»…).',
+          'Después: editar el texto a mano, con contador de caracteres, revisar los avisos y descargarlo en Word.',
+        ]))}`;
+      $('pv-vc-howto-modal').style.display = 'flex';
     }
 
     function itemRow(i) {
@@ -533,6 +590,8 @@
       btn.addEventListener('click', open);
       document.querySelectorAll('#pv-vc-modal [data-vc-close]').forEach(el =>
         el.addEventListener('click', close));
+      document.querySelectorAll('#pv-vc-howto-modal [data-vc-howto-close]').forEach(el =>
+        el.addEventListener('click', () => { $('pv-vc-howto-modal').style.display = 'none'; }));
     }
 
     return { open, close, wire };

@@ -20032,7 +20032,10 @@
       body.innerHTML = `
         <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">
           Vigilancia competitiva ${year} · generador</div>
-        <h3 style="margin:2px 0 6px;font-size:18px;color:#0F3460;">Informe ${year}</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <h3 style="margin:2px 0 6px;font-size:18px;color:#0F3460;">Informe ${year}</h3>
+          <button type="button" id="pv-vc-howto" style="${btnCss(false)}">❓ ¿Cómo se hace el informe?</button>
+        </div>
         ${needsSetup ? `
           <div style="padding:10px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;
                       font-size:13px;color:#92400e;margin-bottom:12px;">
@@ -20102,6 +20105,7 @@
         </section>`;
 
       $('pv-vc-setup')?.addEventListener('click', startResolve);
+      $('pv-vc-howto')?.addEventListener('click', () => openHowto(year));
       $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
       $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes'));
       $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value }));
@@ -20119,6 +20123,59 @@
       });
       wireDraftEditor(year);
       if (busy) startGenPoll(year);
+    }
+
+    // Explains the pipeline and, above all, what the lab can do BEFORE
+    // generating so the AI has better material.
+    function openHowto(year) {
+      const sec = (t, body) => `<h4 style="margin:16px 0 6px;font-size:14px;color:#0F3460;">${t}</h4>${body}`;
+      const ul = items => `<ul style="margin:0 0 0 18px;padding:0;font-size:13px;line-height:1.6;color:#374151;">${items.map(x => `<li>${x}</li>`).join('')}</ul>`;
+      $('pv-vc-howto-body').innerHTML = `
+        <p style="color:#6b7280;font-size:12.5px;margin:0 0 6px;">
+          El informe ${year} se genera en tres pasos con IA, usando como memoria y modelo de estilo las VC de años anteriores.
+          La calidad depende mucho del material que encuentre en PrionVault: abajo tienes qué podéis preparar antes.</p>
+
+        ${sec('1 · Selección de artículos', ul([
+          `<strong>Candidatos:</strong> todo lo publicado en ${year} que hay en el inventario de PubMed de PrionVault y en la biblioteca.`,
+          '<strong>Cribado por título</strong> de todos ellos, por lotes, para quedarse con unos 120.',
+          '<strong>Valoración profunda</strong> de esos ~120 con el modelo más potente: abstract, cuartil SCImago y, si el artículo está en la biblioteca, su <em>ficha de evidencia</em> (ver abajo).',
+          '<strong>Citas recibidas</strong> (OpenAlex) como medida de impacto temprano.',
+          '<strong>Selección de conjunto:</strong> la IA elige los N artículos (38 por defecto) para que el grupo sea equilibrado entre áreas y sin redundancias, y explica cada elección.',
+        ]))}
+
+        ${sec('2 · Temas', ul([
+          'Agrupa los seleccionados en 4–6 temas, ordenados como debe fluir el texto.',
+          `Enlaza cada tema con las VC anteriores y con lo que la VC ${year - 1} esperaba para ${year}.`,
+        ]))}
+
+        ${sec('3 · Redacción y revisión', ul([
+          'Escribe el informe con el formato pedido: título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máximo 3.500 caracteres.',
+          'Comprueba la longitud, las proporciones y que solo cite los artículos seleccionados; si algo no cumple, se corrige sola.',
+          '<strong>Revisión de hechos:</strong> contrasta cada afirmación con la evidencia del artículo que cita (exageraciones, animal frente a humano, atribuciones erróneas) y corrige el texto. Te muestra lo corregido y lo que queda por revisar.',
+        ]))}
+
+        <div style="margin-top:18px;padding:12px 14px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0;">
+          <h4 style="margin:0 0 6px;font-size:14px;color:#15803d;">✅ Qué podéis hacer vosotros para que el informe salga mejor</h4>
+          <p style="font-size:12.5px;color:#374151;margin:0 0 6px;">Todo esto lo lee la IA y aparece como etiqueta junto a cada artículo:</p>
+          ${ul([
+            '<strong>Tener en la biblioteca los artículos importantes del año</strong> (📚). Los que solo están en el inventario de PubMed aportan título y abstract; los de la biblioteca aportan mucho más.',
+            '<strong>Subir sus PDFs y lanzar los resúmenes IA</strong> (🧠). El resumen IA sale del texto completo y es la mejor evidencia para elegir y para redactar con precisión.',
+            '<strong>Dejar notas adhesivas</strong> (📝) en los artículos clave: por qué importan, qué aportan. Se usan las notas de quien lanza la selección.',
+            '<strong>Presentarlos en el Journal Club</strong> (📖 JC). Es una señal fuerte de que el laboratorio lo consideró relevante.',
+            '<strong>Valorarlos con estrellas</strong> (★) y <strong>marcar como hito</strong> (⭐) los que sean un antes y un después.',
+            '<strong>Mantener al día el inventario de PubMed</strong> antes de generar, para que no falte nada publicado recientemente.',
+            'Las <strong>publicaciones propias del grupo</strong> (🏠) se detectan solas por los autores.',
+          ])}
+          <p style="font-size:12.5px;color:#374151;margin:8px 0 0;">Estas señales ayudan, pero no sustituyen al criterio científico:
+            un avance clave del año entra aunque nadie lo haya anotado, y algo valorado en el laboratorio no entra si es menor.</p>
+        </div>
+
+        ${sec('Vuestro control en cada paso', ul([
+          'Después de la selección: marcar o desmarcar artículos y añadir otros por PMID (✋). Lo que toquéis a mano se respeta si se vuelve a seleccionar.',
+          'Antes de redactar: escribir indicaciones para la IA («más peso al ensayo clínico», «menos CWD»…).',
+          'Después: editar el texto a mano, con contador de caracteres, revisar los avisos y descargarlo en Word.',
+        ]))}`;
+      $('pv-vc-howto-modal').style.display = 'flex';
     }
 
     function itemRow(i) {
@@ -20261,6 +20318,8 @@
       btn.addEventListener('click', open);
       document.querySelectorAll('#pv-vc-modal [data-vc-close]').forEach(el =>
         el.addEventListener('click', close));
+      document.querySelectorAll('#pv-vc-howto-modal [data-vc-howto-close]').forEach(el =>
+        el.addEventListener('click', () => { $('pv-vc-howto-modal').style.display = 'none'; }));
     }
 
     return { open, close, wire };
@@ -23676,6 +23735,7 @@
             <li><strong>📋 Copiar DOI y PMID:</strong> en el modal de detalle, junto al DOI y al PMID hay un pequeño botón en superíndice que copia el identificador al portapapeles.</li>
             <li><strong>🔓 Buscar PDF</strong> <span class="pv-help-chip pv-help-chip-admin">Solo admin</span>: en los artículos sin PDF (en la fila del listado y en la ficha), busca una versión legal de acceso abierto en <strong>Unpaywall</strong> y luego en <strong>OpenAlex</strong>; si la encuentra, la descarga y la asocia al artículo. Si no, prepara un email en inglés para pedírsela al autor de correspondencia (con su dirección si se puede localizar y tu firma), un enlace para buscarlo en ResearchGate, y un botón <em>"Indicar que se ha solicitado"</em>: el icono pasa a 🔓✓ para que nadie lo vuelva a pedir.</li>
             <li><strong>✉️ Enviar por email — "Marcar como leído":</strong> el modal "Enviar artículo por email" tiene esta casilla, activada por defecto: al enviarlo, el artículo queda con tu tic verde de leído. Si lo <em>programas</em>, se marca cuando el email sale de verdad.</li>
+            <li><strong>✉️ Envíos programados:</strong> la fecha y hora que eliges al programar un email es tu <em>hora local</em>. Si un envío falla (servidor de correo caído, dirección rechazada), se reintenta a los 10, 20, 30… minutos hasta 5 veces, y cada email sale una sola vez. El botón Enviar queda bloqueado hasta que se cierra el modal, para evitar envíos dobles.</li>
           </ul>
 
           <h4>Tags y colecciones inteligentes</h4>
@@ -23781,7 +23841,7 @@
           <p><strong>Fase 3 — Convocar la sesión (fecha, hora, lugar)</strong></p>
           <ul>
             <li>El botón <strong>"📢 Convocar"</strong> está en la sección Journal Club de la ficha, al lado del distintivo <em>"En Journal Club"</em> de la ficha y, como icono 📢, junto al libro de cada fila del listado. Aparece en los artículos candidatos o reservados que aún no tienen presentación, y solo lo ven el <strong>administrador</strong> y el <strong>responsable de Journal Club</strong>.</li>
-            <li>El formulario pide <strong>Cuándo</strong> (fecha y hora con calendario), <strong>Dónde</strong> (por defecto "Sala de seminarios") y <strong>Notas</strong>. Con <strong>"Programar envío"</strong> puedes dejarlo preparado para que salga en otro momento; si lo dejas vacío se envía al instante.</li>
+            <li>El formulario muestra arriba <strong>Presenta</strong>, rellenado automáticamente con quien reservó el artículo (se puede cambiar), así que ya no hace falta ponerlo en las notas. Además pide <strong>Cuándo</strong> (fecha y hora con calendario), <strong>Dónde</strong> (por defecto "Sala de seminarios") y <strong>Notas</strong>. Con <strong>"Programar envío"</strong> puedes dejarlo preparado para que salga en otro momento; si lo dejas vacío se envía al instante.</li>
             <li>El email llega a <strong>todos los usuarios activos</strong>, con el artículo, el PDF y quién presenta.</li>
             <li><strong>Enviar la convocatoria desbloquea la reserva:</strong> el botón JC sigue en rojo pero sin candado, y el presentador ya puede subir su presentación. Si se programó, se desbloquea cuando el email sale.</li>
           </ul>
@@ -23824,7 +23884,7 @@
           <ul>
             <li><strong>Gris:</strong> el artículo no es candidato ni tiene presentación. Al pulsarlo puedes pedir al responsable que lo valore o añadir una presentación.</li>
             <li><strong>Azul claro:</strong> candidato disponible (libro azul). Al pulsarlo empieza la reserva para presentarlo tú.</li>
-            <li><strong>Rojo con 🔒:</strong> reservado y bloqueado hasta que se convoque la sesión.</li>
+            <li><strong>Rojo con 🔒:</strong> reservado y bloqueado hasta que se convoque la sesión. El libro azul se mantiene mientras el artículo está reservado: significa «en el circuito de Journal Club».</li>
             <li><strong>Rojo sin candado:</strong> reservado y con la sesión ya anunciada; su presentador puede subir la presentación.</li>
             <li><strong>Verde oscuro con letra amarilla:</strong> ya tiene presentación. Al pulsarlo se abre "Gestión de Journal clubs" con ese artículo buscado.</li>
           </ul>
@@ -23839,7 +23899,7 @@
           <h4>Aviso de presentación ya existente</h4>
           <p>Al pulsar "Añadir presentación" para un artículo que ya tenía una entrada de JC (de otro responsable, o del mismo en otra fecha), aparece un aviso amarillo indicando quién la presentó. No bloquea nada: tú decides si continuar (se crea una presentación adicional) o cerrar el modal y usar el 📎 de la presentación existente para sumar el archivo ahí en su lugar.</p>
 
-          <h4>Importación masiva desde una carpeta de Dropbox</h4>
+          <h4>Importación masiva desde una carpeta de Dropbox <span class="pv-help-chip pv-help-chip-admin">Admin / responsable JC</span></h4>
           <p>Si ya tenías muchas presentaciones antiguas guardadas a mano en Dropbox, no hace falta subirlas una a una. Desde <em>"Gestión de Journal clubs"</em> → <em>"Añadir nuevo JC"</em> se abre el modal de búsqueda de artículo, que incluye la opción <strong>"Importar carpeta completa de un responsable"</strong>:</p>
           <ul>
             <li>Espera que los archivos estén organizados como <code>PrionLab tools/Journal clubs/&lt;Responsable&gt;/&lt;yyyymmdd&gt;/</code>, con el PDF del artículo nombrado <code>Article ....pdf</code> (usado solo para identificar de qué artículo se trata) junto al documento de la sesión (p. ej. <code>JC yyyymmdd.pptx</code>).</li>
@@ -23864,8 +23924,9 @@
           <h4>Añadir artículos</h4>
           <ul>
             <li><strong>📧 Email sin ser admin:</strong> el buzón <strong>prionvault_lab@joaquincastilla.com</strong> permite a cualquier usuario mandar un email con el PDF adjunto y que PrionVault lo procese igual que si se subiera desde la app — comprobación de duplicados, extracción de metadatos, resumen IA incluido. Solo funciona escribiendo desde <strong>el email con el que inicias sesión</strong> en la aplicación; cualquier otra dirección se ignora. Al terminar llega la respuesta con el resultado, con el administrador en copia oculta. Truco: si el <strong>Asunto</strong> incluye "JC" o "Journal Club", el artículo se marca automáticamente como candidato a Journal Club al terminar de procesarse.</li>
-            <li><strong>🧩 Extensión del navegador:</strong> disponible para cualquier usuario, admin o no. Al añadir un artículo con PDF desde la extensión, pasa por el mismo procesamiento completo (extracción, metadatos, resumen IA) que un email a prionvault@ o prionvault_lab@; si quien la usa no es admin, el administrador recibe un aviso por email cuando termina, sin identificar a quién lo añadió. El administrador puede ver ambas claves de la extensión (admin y usuarios), descargar el <code>.zip</code> de instalación y enviarle a cualquier usuario un email con las instrucciones, su clave y la extensión adjunta, todo desde <strong>Panel de administración → System</strong>.</li>
+            <li><strong>🧩 Extensión del navegador:</strong> disponible para cualquier usuario, admin o no. Al añadir un artículo con PDF desde la extensión, pasa por el mismo procesamiento completo (extracción, metadatos, resumen IA) que un email a prionvault@ o prionvault_lab@; si quien la usa no es admin, el administrador recibe un aviso por email cuando termina, sin identificar a quién lo añadió. El administrador puede ver ambas claves de la extensión (admin y usuarios), descargar el <code>.zip</code> de instalación y enviarle a cualquier usuario un email con las instrucciones, su clave y la extensión adjunta, todo desde <strong>Panel de administración → System</strong>. Ese email lleva ahora una <strong>clave personal</strong> para cada persona. Cada usuario puede generar una nueva o revocarla en <strong>Mi perfil → Extensión de PrionVault</strong>; actúa con sus propios permisos, deja de funcionar al generar otra o si se desactiva al usuario, y así una clave filtrada se puede anular sin afectar a nadie más. Las claves compartidas antiguas siguen funcionando mientras se hace el cambio.</li>
             <li><strong>📥 Importar BibTeX (.bib):</strong> en <em>Entrada de artículos</em>. Sube un archivo <code>.bib</code> (Zotero, EndNote, Google Scholar, o exportado del propio PrionVault) y cada entrada se compara con la biblioteca por DOI, luego PMID y por último título — las que ya están permiten añadir tag/colección en lote; las que no se encuentran abren el flujo habitual de "Add by DOI / PMID" con navegación Anterior/Siguiente.</li>
+            <li><strong>🔁 Trabajos de importación atascados:</strong> si un PDF se queda en «subiendo» o «extrayendo» porque el servidor se reinició a mitad, vuelve solo a la cola a las 2 horas (y se marca como fallido tras 3 intentos, avisando a quien lo envió por email). El botón <em>Reintentar</em> los acepta pasados 30 minutos. Un PDF ya no puede sobrescribir los datos de otro artículo: si coincide con uno existente, solo rellena lo que le falte.</li>
             <li><strong>🔗 Cribar lista de referencias:</strong> además de bibliografías clásicas ("1. Autor..."), reconoce listados exportados de un chatbot o de un panel de "Fuentes", con marcadores <code>[1] [3] [8] ...</code> al principio de línea seguidos del enlace, extrae el PMID directamente de un enlace <code>pubmed.ncbi.nlm.nih.gov/&lt;pmid&gt;/</code>, y corta correctamente el DOI cuando viene incrustado en la URL de una revista. Además del botón "Importar todos los que faltan", puedes marcar con casilla los artículos concretos que no están en PrionVault y pulsar <strong>"📋 Copiar DOIs seleccionados"</strong> para copiarlos uno por línea sin importarlos de golpe (los artículos sin DOI se omiten de la copia).</li>
           </ul>
 
@@ -23889,7 +23950,7 @@
 
           <h4>🔭 Vigilancia competitiva</h4>
           <p>En <strong>Miscelánea → 🔭 Vigilancia competitiva</strong> están los informes anuales de vigilancia competitiva (ISO 56001) desde 2018, con su texto completo y cada cita enlazada al artículo de PrionVault (clic para abrir su ficha). Los artículos de cada año forman la colección <strong>«VC año»</strong> dentro del grupo <strong>Vigilancia competitiva</strong> del sidebar: el botón <em>Ver en el listado</em> filtra por un año y <em>Ver todas las VC</em> por todos. Las referencias que no se pudieron identificar con seguridad aparecen marcadas con <strong>?</strong> y el administrador puede elegir el artículo correcto o asignar el PMID a mano. </p>
-          <p><strong>Informe del año en curso (generador con IA)</strong>, en tres pasos que lanza el administrador:</p>
+          <p><strong>Informe del año en curso (generador con IA)</strong>, en tres pasos que lanza el administrador. El botón <strong>❓ ¿Cómo se hace el informe?</strong> lo explica y, sobre todo, indica qué conviene preparar antes (artículos clave en la biblioteca con PDF y resumen IA, notas, presentarlos en Journal Club, valorarlos con estrellas, marcarlos como hito):</p>
           <ol>
             <li><strong>Selección:</strong> reúne todos los artículos del año (inventario de PubMed + biblioteca), hace un cribado por título y valora con el modelo más potente los ~120 mejores con su abstract y, si están en la biblioteca, el <strong>resumen IA del texto completo</strong> y <strong>tus notas</strong>, además del cuartil SCImago, las <strong>citas recibidas</strong> (OpenAlex) y las señales del laboratorio (presentado en Journal Club, valoraciones, hitos, publicación propia). Después elige de forma conjunta los 38 (configurable) para que el grupo sea equilibrado y sin redundancias, cada uno con una frase de por qué. Puedes marcar/desmarcar y añadir otros por PMID.</li>
             <li><strong>Temas:</strong> agrupa los seleccionados en 4–6 temas, enlazando con las VC anteriores y con lo que la VC del año pasado esperaba para este.</li>
@@ -23901,16 +23962,20 @@
           <h4>Copias de seguridad (Backups)</h4>
           <p>Panel de <strong>Backups</strong> accesible desde el menú lateral: crea copias de seguridad de la base de datos bajo demanda o consulta las programadas automáticamente, verifica su integridad, ajusta la frecuencia y restaura una copia si hace falta. La lista muestra las copias guardadas en <strong>Dropbox</strong>: si al crear una copia aparece un aviso ⚠ de que no se pudo subir a Dropbox (por ejemplo, por falta de espacio), la copia se ha hecho solo en el servidor y por eso no aparece en la lista.</p>
           <p><strong>Control de las copias:</strong> arriba del panel, un recuadro verde, ámbar o rojo indica si las copias se están haciendo bien: fecha de la última copia correcta, frecuencia, próxima copia programada, los problemas detectados y el historial de intentos (programadas, manuales y de recuperación, con su resultado y tamaño). El sistema lo vigila cada hora: si falta una copia (por ejemplo, porque la aplicación se estaba reiniciando a la hora programada) la hace sola, y si una copia falla, no llega a Dropbox o es mucho más pequeña que la anterior, se avisa por email a los administradores. Si hay un problema, aparece además un punto rojo o ámbar junto al botón <strong>Backups</strong> del menú lateral.</p>
+          <p><strong>Diagnosticar:</strong> el botón <em>🔎 Diagnosticar</em> del panel revisa paso a paso dónde puede fallar una copia (base de datos, memoria, disco, Dropbox —acceso, espacio, carpeta, escritura—, copias en curso, historial y programador) y muestra cada comprobación en verde o rojo con su explicación. Las copias se escriben por partes, sin cargar la base de datos entera en memoria, y el backup CSV toma una foto coherente de todas las tablas a la vez.</p>
 
           <h4>Exportar esta Ayuda</h4>
           <p>En la cabecera de este modal, los botones <strong>PDF</strong> y <strong>PPTX</strong> descargan toda esta guía — el PDF con el mismo texto e imágenes que ves aquí, y el PPTX como una presentación de diapositivas (portada, una diapositiva divisoria por pestaña y una por cada apartado, con tablas nativas). Ambos se generan a partir del contenido que ves en cada pestaña, así que siempre están al día.</p>
 
           <h4>Seguridad</h4>
           <ul>
-            <li>Límite de intentos de login (10/min, 50/hora) para proteger contra fuerza bruta.</li>
-            <li>Cabeceras HTTP de seguridad: <code>X-Frame-Options</code>, <code>X-Content-Type-Options</code>, CSP, Referrer-Policy.</li>
-            <li>Clave de sesión configurable vía <code>APP_SECRET_KEY</code> independiente de la contraseña de admin.</li>
-            <li>Rate limiting en endpoints de búsqueda DOI/PMID.</li>
+            <li><strong>Registro con aprobación:</strong> quien se registra por su cuenta queda desactivado y los administradores reciben un email; se activa desde Administración → Usuarios.</li>
+            <li><strong>Cuentas en la base de datos:</strong> los usuarios se guardan en PostgreSQL (con <code>users.csv</code> como copia de seguridad), así que los cambios ya no pueden pisarse ni perderse.</li>
+            <li><strong>Protección frente a webs maliciosas (CSRF):</strong> cualquier acción que modifica datos se rechaza si la petición viene de otra web, y la cookie de sesión solo viaja por HTTPS.</li>
+            <li><strong>Límites de uso:</strong> login (10/min, 50/hora); registro y «olvidé mi contraseña» (5/hora); envío de artículos, listas, carrito o informes por email (20/hora y 100/día por usuario); peticiones a Journal Club (10/hora).</li>
+            <li><strong>Enlaces:</strong> tras el login solo se redirige a páginas de la propia aplicación, y el enlace que se pasa al visor de Office caduca a las 6 horas.</li>
+            <li><strong>Permisos:</strong> en PrionPacks solo un administrador puede borrar packs, gestionar miembros o restaurar copias; manuscritos y referencias solo los edita su autor o un administrador.</li>
+            <li>Cabeceras HTTP de seguridad (<code>X-Frame-Options</code>, <code>X-Content-Type-Options</code>, CSP, Referrer-Policy) y clave de sesión independiente (<code>APP_SECRET_KEY</code>).</li>
           </ul>
         </div>
       `,
