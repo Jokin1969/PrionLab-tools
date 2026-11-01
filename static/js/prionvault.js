@@ -20057,9 +20057,10 @@
               <button type="button" id="pv-vc-run-select" style="${btnCss(true)}" ${dis}>
                 ${items.length ? 'Volver a seleccionar' : 'Seleccionar artículos con IA'}</button></span>` : ''}
           </div>
-          <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Cribado por título de todos los candidatos, y valoración
-            con el modelo más potente (abstract + cuartil SCImago) de los ~120 mejores. Puedes marcar o desmarcar
-            artículos y añadir otros por PMID antes de seguir.</p>
+          <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Cribado por título de todos los candidatos; el modelo
+            más potente valora los ~120 mejores con su abstract, el resumen IA del texto completo y tus notas (si están en la
+            biblioteca), cuartil SCImago, citas (OpenAlex) y señales del laboratorio (Journal Club, valoraciones, hitos), y
+            elige un conjunto equilibrado y sin redundancias. Puedes marcar/desmarcar y añadir por PMID antes de seguir.</p>
           ${items.length ? `
             <div style="max-height:340px;overflow-y:auto;margin-top:8px;border-top:1px solid #f3f4f6;">
               ${items.map(itemRow).join('')}
@@ -20136,10 +20137,27 @@
             ${link}
             <span style="color:#9ca3af;"> · ${esc(i.journal || '')}${i.quartile ? ' · ' + esc(i.quartile) : ''}
               ${i.pmid ? ' · PMID ' + esc(i.pmid) : ''}${i.in_library ? ' · 📚' : ''}${i.manual ? ' · ✋' : ''}</span>
+            ${signalChips(i)}
             ${i.reason ? `<div style="color:#6b7280;">${esc(i.reason)}</div>` : ''}
             ${i.theme ? `<div style="color:#7c3aed;font-size:11.5px;">${esc(i.theme)}</div>` : ''}
           </span>
         </label>`;
+    }
+
+    // Evidence the AI used beyond title/abstract, shown as small chips.
+    function signalChips(i) {
+      const sg = i.signals || {};
+      const chip = (txt, tip) => `<span title="${esc(tip)}" style="display:inline-block;margin:2px 4px 0 0;
+        padding:0 6px;border-radius:9px;background:#eef2ff;color:#3730a3;font-size:10.5px;">${txt}</span>`;
+      const out = [];
+      if (i.citations != null) out.push(chip(`${i.citations} citas`, 'Citas recibidas hasta hoy (OpenAlex)'));
+      if (sg.summary_ai) out.push(chip('🧠 resumen IA', 'La IA leyó el resumen IA del texto completo, no solo el abstract'));
+      if (sg.notes) out.push(chip('📝 notas', 'La IA tuvo en cuenta tus notas adhesivas'));
+      if (sg.jc) out.push(chip('📖 JC', 'Presentado en el Journal Club del laboratorio'));
+      if (sg.rating) out.push(chip(`★ ${sg.rating}`, 'Valoración media en PrionVault'));
+      if (sg.milestone) out.push(chip('⭐ hito', 'Marcado como hito'));
+      if (i.own_lab) out.push(chip('🏠 propio', 'Publicación del propio grupo'));
+      return out.length ? `<div>${out.join('')}</div>` : '';
     }
 
     function draftEditor(d, check) {
@@ -20155,6 +20173,7 @@
             <label style="font-size:11.5px;color:#6b7280;">${lab} · <span id="pv-vc-c${i}"></span></label>
             ${ta('pv-vc-p' + i, p[i], i === 1 ? 12 : 6)}`).join('')}
           <div id="pv-vc-count" style="font-size:12.5px;margin:6px 0;"></div>
+          ${factcheckPanel(d)}
           ${check && check.problems && check.problems.length ? `
             <div style="font-size:12px;color:#b45309;margin-bottom:6px;">Avisos de la validación:
               <ul style="margin:4px 0 0 18px;">${check.problems.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
@@ -20163,6 +20182,24 @@
             <a href="${API}/vc/reports/${d.year}/docx" style="${btnCss(false)}text-decoration:none;">⬇ Descargar Word</a>
           </div>
         </div>`;
+    }
+
+    function factcheckPanel(d) {
+      const w = (d.pipeline || {}).write;
+      if (!w) return '';
+      const fixed = w.factcheck_fixed || [], left = w.factcheck_remaining || [];
+      if (!fixed.length && !left.length) {
+        return `<div style="font-size:12px;color:#15803d;margin:6px 0;">✓ Revisión de hechos: todas las afirmaciones
+          citadas están respaldadas por sus artículos.</div>`;
+      }
+      const li = x => `<li><strong>PMID ${esc(x.pmid || '')}</strong>: «${esc(x.quote || '')}» — ${esc(x.problem || '')}</li>`;
+      return `
+        <details style="font-size:12px;margin:6px 0;" ${left.length ? 'open' : ''}>
+          <summary style="cursor:pointer;color:${left.length ? '#b45309' : '#15803d'};">
+            Revisión de hechos: ${fixed.length} corregidas automáticamente${left.length ? ` · ${left.length} por revisar` : ''}</summary>
+          ${left.length ? `<div style="margin-top:4px;color:#b45309;">Por revisar a mano:</div><ul style="margin:2px 0 0 18px;">${left.map(li).join('')}</ul>` : ''}
+          ${fixed.length ? `<div style="margin-top:4px;color:#6b7280;">Detectadas y corregidas:</div><ul style="margin:2px 0 0 18px;color:#6b7280;">${fixed.map(li).join('')}</ul>` : ''}
+        </details>`;
     }
 
     function wireDraftEditor(year) {
@@ -23854,9 +23891,9 @@
           <p>En <strong>Miscelánea → 🔭 Vigilancia competitiva</strong> están los informes anuales de vigilancia competitiva (ISO 56001) desde 2018, con su texto completo y cada cita enlazada al artículo de PrionVault (clic para abrir su ficha). Los artículos de cada año forman la colección <strong>«VC año»</strong> dentro del grupo <strong>Vigilancia competitiva</strong> del sidebar: el botón <em>Ver en el listado</em> filtra por un año y <em>Ver todas las VC</em> por todos. Las referencias que no se pudieron identificar con seguridad aparecen marcadas con <strong>?</strong> y el administrador puede elegir el artículo correcto o asignar el PMID a mano. </p>
           <p><strong>Informe del año en curso (generador con IA)</strong>, en tres pasos que lanza el administrador:</p>
           <ol>
-            <li><strong>Selección:</strong> reúne todos los artículos del año (inventario de PubMed + biblioteca), hace un cribado por título y valora con el modelo más potente los ~120 mejores leyendo su abstract y el cuartil SCImago. Deja preseleccionados 38 (configurable), cada uno con una frase de por qué. Puedes marcar/desmarcar y añadir otros por PMID.</li>
+            <li><strong>Selección:</strong> reúne todos los artículos del año (inventario de PubMed + biblioteca), hace un cribado por título y valora con el modelo más potente los ~120 mejores con su abstract y, si están en la biblioteca, el <strong>resumen IA del texto completo</strong> y <strong>tus notas</strong>, además del cuartil SCImago, las <strong>citas recibidas</strong> (OpenAlex) y las señales del laboratorio (presentado en Journal Club, valoraciones, hitos, publicación propia). Después elige de forma conjunta los 38 (configurable) para que el grupo sea equilibrado y sin redundancias, cada uno con una frase de por qué. Puedes marcar/desmarcar y añadir otros por PMID.</li>
             <li><strong>Temas:</strong> agrupa los seleccionados en 4–6 temas, enlazando con las VC anteriores y con lo que la VC del año pasado esperaba para este.</li>
-            <li><strong>Redacción:</strong> escribe el informe con el formato pedido (título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máx. 3.500 caracteres) al estilo de los informes anteriores, sin copiarlos. Comprueba sola la longitud, las proporciones y que solo cite los PMID seleccionados, y se corrige hasta cumplir. Admite indicaciones («más peso al ensayo clínico»…). El texto se puede editar a mano, con contador de caracteres, y descargar en Word (Times New Roman 11).</li>
+            <li><strong>Redacción:</strong> escribe el informe con el formato pedido (título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máx. 3.500 caracteres) al estilo de los informes anteriores, sin copiarlos. Comprueba sola la longitud, las proporciones y que solo cite los PMID seleccionados, y se corrige hasta cumplir. Después hace una <strong>revisión de hechos</strong>: contrasta cada afirmación con la evidencia del artículo citado (exageraciones, atribuciones erróneas, animal vs humano…), la corrige y te enseña lo que corrigió y lo que queda por revisar. Admite indicaciones («más peso al ensayo clínico»…). El texto se puede editar a mano, con contador de caracteres, y descargar en Word (Times New Roman 11).</li>
           </ol>
           <h4>👁 Ver como <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
           <p>Desde <strong>Miscelánea → 👁 Ver como</strong> (o desde el panel de administración de PrionLab) eliges un usuario no administrador y entras con su sesión completa para ver PrionVault exactamente como lo ve él. Una franja fija arriba indica que estás viéndolo como otra persona, con el botón <strong>Salir</strong> para volver a tu sesión, en la misma página donde estabas. Todo lo que hagas mientras tanto lo hace esa cuenta, y queda registrado quién lo usó y cuándo.</p>

@@ -329,9 +329,10 @@
               <button type="button" id="pv-vc-run-select" style="${btnCss(true)}" ${dis}>
                 ${items.length ? 'Volver a seleccionar' : 'Seleccionar artículos con IA'}</button></span>` : ''}
           </div>
-          <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Cribado por título de todos los candidatos, y valoración
-            con el modelo más potente (abstract + cuartil SCImago) de los ~120 mejores. Puedes marcar o desmarcar
-            artículos y añadir otros por PMID antes de seguir.</p>
+          <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Cribado por título de todos los candidatos; el modelo
+            más potente valora los ~120 mejores con su abstract, el resumen IA del texto completo y tus notas (si están en la
+            biblioteca), cuartil SCImago, citas (OpenAlex) y señales del laboratorio (Journal Club, valoraciones, hitos), y
+            elige un conjunto equilibrado y sin redundancias. Puedes marcar/desmarcar y añadir por PMID antes de seguir.</p>
           ${items.length ? `
             <div style="max-height:340px;overflow-y:auto;margin-top:8px;border-top:1px solid #f3f4f6;">
               ${items.map(itemRow).join('')}
@@ -408,10 +409,27 @@
             ${link}
             <span style="color:#9ca3af;"> · ${esc(i.journal || '')}${i.quartile ? ' · ' + esc(i.quartile) : ''}
               ${i.pmid ? ' · PMID ' + esc(i.pmid) : ''}${i.in_library ? ' · 📚' : ''}${i.manual ? ' · ✋' : ''}</span>
+            ${signalChips(i)}
             ${i.reason ? `<div style="color:#6b7280;">${esc(i.reason)}</div>` : ''}
             ${i.theme ? `<div style="color:#7c3aed;font-size:11.5px;">${esc(i.theme)}</div>` : ''}
           </span>
         </label>`;
+    }
+
+    // Evidence the AI used beyond title/abstract, shown as small chips.
+    function signalChips(i) {
+      const sg = i.signals || {};
+      const chip = (txt, tip) => `<span title="${esc(tip)}" style="display:inline-block;margin:2px 4px 0 0;
+        padding:0 6px;border-radius:9px;background:#eef2ff;color:#3730a3;font-size:10.5px;">${txt}</span>`;
+      const out = [];
+      if (i.citations != null) out.push(chip(`${i.citations} citas`, 'Citas recibidas hasta hoy (OpenAlex)'));
+      if (sg.summary_ai) out.push(chip('🧠 resumen IA', 'La IA leyó el resumen IA del texto completo, no solo el abstract'));
+      if (sg.notes) out.push(chip('📝 notas', 'La IA tuvo en cuenta tus notas adhesivas'));
+      if (sg.jc) out.push(chip('📖 JC', 'Presentado en el Journal Club del laboratorio'));
+      if (sg.rating) out.push(chip(`★ ${sg.rating}`, 'Valoración media en PrionVault'));
+      if (sg.milestone) out.push(chip('⭐ hito', 'Marcado como hito'));
+      if (i.own_lab) out.push(chip('🏠 propio', 'Publicación del propio grupo'));
+      return out.length ? `<div>${out.join('')}</div>` : '';
     }
 
     function draftEditor(d, check) {
@@ -427,6 +445,7 @@
             <label style="font-size:11.5px;color:#6b7280;">${lab} · <span id="pv-vc-c${i}"></span></label>
             ${ta('pv-vc-p' + i, p[i], i === 1 ? 12 : 6)}`).join('')}
           <div id="pv-vc-count" style="font-size:12.5px;margin:6px 0;"></div>
+          ${factcheckPanel(d)}
           ${check && check.problems && check.problems.length ? `
             <div style="font-size:12px;color:#b45309;margin-bottom:6px;">Avisos de la validación:
               <ul style="margin:4px 0 0 18px;">${check.problems.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
@@ -435,6 +454,24 @@
             <a href="${API}/vc/reports/${d.year}/docx" style="${btnCss(false)}text-decoration:none;">⬇ Descargar Word</a>
           </div>
         </div>`;
+    }
+
+    function factcheckPanel(d) {
+      const w = (d.pipeline || {}).write;
+      if (!w) return '';
+      const fixed = w.factcheck_fixed || [], left = w.factcheck_remaining || [];
+      if (!fixed.length && !left.length) {
+        return `<div style="font-size:12px;color:#15803d;margin:6px 0;">✓ Revisión de hechos: todas las afirmaciones
+          citadas están respaldadas por sus artículos.</div>`;
+      }
+      const li = x => `<li><strong>PMID ${esc(x.pmid || '')}</strong>: «${esc(x.quote || '')}» — ${esc(x.problem || '')}</li>`;
+      return `
+        <details style="font-size:12px;margin:6px 0;" ${left.length ? 'open' : ''}>
+          <summary style="cursor:pointer;color:${left.length ? '#b45309' : '#15803d'};">
+            Revisión de hechos: ${fixed.length} corregidas automáticamente${left.length ? ` · ${left.length} por revisar` : ''}</summary>
+          ${left.length ? `<div style="margin-top:4px;color:#b45309;">Por revisar a mano:</div><ul style="margin:2px 0 0 18px;">${left.map(li).join('')}</ul>` : ''}
+          ${fixed.length ? `<div style="margin-top:4px;color:#6b7280;">Detectadas y corregidas:</div><ul style="margin:2px 0 0 18px;color:#6b7280;">${fixed.map(li).join('')}</ul>` : ''}
+        </details>`;
     }
 
     function wireDraftEditor(year) {

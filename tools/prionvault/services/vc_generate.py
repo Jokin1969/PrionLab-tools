@@ -251,7 +251,9 @@ journal, SCImago quartile, abstract) give:
 - "s": 0–100 importance for the field this year (landmark structural/therapeutic/diagnostic/clinical advances, \
 first-in-human or clinical-trial results, large cohorts, new mechanisms, tools that change practice; also notable \
 progress in CWD/animal prions and prion-like mechanisms in other neurodegenerative diseases). Journal quality is a \
-signal, not the criterion. Reviews, case reports and incremental work score low.
+signal, not the criterion. Reviews, case reports and incremental work score low. When an AI summary of the full \
+text or lab notes/signals are given, use them: they are richer than the abstract and show what the lab found \
+important.
 - "why": ONE short sentence in Spanish explaining why it matters (or why not).
 Answer only JSON: {"scores": [{"i": <number>, "s": <0-100>, "why": "<...>"}]}."""
 
@@ -260,7 +262,7 @@ def _score_shortlist(year: int) -> None:
     eng = _get_engine()
     with eng.connect() as conn:
         rows = conn.execute(sql_text("""
-            SELECT id, pmid, title, journal, quartile, abstract,
+            SELECT id, pmid, title, journal, quartile, abstract, evidence, signals, citations, own_lab,
                    coalesce(screen_score, 0) + CASE WHEN in_library THEN 1 ELSE 0 END
                      + CASE WHEN quartile = 'Q1' THEN 0.5 ELSE 0 END AS pre
               FROM prionvault_vc_item WHERE year = :y
@@ -277,8 +279,8 @@ def _score_shortlist(year: int) -> None:
                     {"a": a, "y": year, "p": p})
         with eng.connect() as conn:
             rows = conn.execute(sql_text(
-                "SELECT id, pmid, title, journal, quartile, abstract FROM prionvault_vc_item "
-                "WHERE id = ANY(:ids)"), {"ids": [r["id"] for r in rows]}).mappings().all()
+                "SELECT id, pmid, title, journal, quartile, abstract, evidence, signals, citations, own_lab "
+                "FROM prionvault_vc_item WHERE id = ANY(:ids)"), {"ids": [r["id"] for r in rows]}).mappings().all()
     batch = 15
     _set(phase="Valoración con IA (abstracts)", done=0, total=len(rows))
     for k in range(0, len(rows), batch):
@@ -287,7 +289,10 @@ def _score_shortlist(year: int) -> None:
         chunk = rows[k:k + batch]
         user = "\n\n".join(
             f"{i + 1}. {r['title']}\nJournal: {r['journal']} ({r['quartile'] or 'quartile n/a'})\n"
-            f"Abstract: {(r['abstract'] or '(no abstract)')[:1500]}" for i, r in enumerate(chunk))
+            f"Abstract: {(r['abstract'] or '(no abstract)')[:1500]}"
+            + (f"\n{r['evidence'][:1500]}" if r['evidence'] else "")
+            + (f"\nLab signals: {_signals_text(dict(r))}" if _signals_text(dict(r)) else "")
+            for i, r in enumerate(chunk))
         try:
             parsed = _call(_SCORE_SYSTEM, user, strong=True, max_tokens=3000)
             res = {int(s["i"]): s for s in parsed.get("scores", []) if str(s.get("i", "")).isdigit()}
@@ -303,6 +308,156 @@ def _score_shortlist(year: int) -> None:
         _set(done=min(k + batch, len(rows)))
 
 
+_OWN_LAB = re.compile(r"\b(Castilla J|Era[ñn]a H)\b")
+
+
+def _build_evidence(year: int, viewer_id=None) -> None:
+    """For candidates already in the library, collect what PrionVault knows
+    beyond the abstract: AI summary (built from the full text), human
+    summary, the viewer's sticky notes, and lab signals (presented in a
+    Journal Club this year, star ratings, viewer's milestone/favourite).
+    Also flags the group's own papers."""
+    eng = _get_engine()
+    with eng.connect() as conn:
+        # article_ratings belongs to PrionRead; skip the signal if absent.
+        has_ratings = conn.execute(sql_text("SELECT to_regclass('article_ratings')")).scalar()
+        rating_sql = ("(SELECT round(avg(r.rating)::numeric, 1) FROM article_ratings r "
+                      "WHERE r.article_id = a.id)" if has_ratings else "NULL")
+        rows = conn.execute(sql_text(f"""
+            SELECT i.id, i.article_id, i.authors,
+                   a.summary_ai, a.summary_human,
+                   (SELECT string_agg(n.body, ' | ') FROM prionvault_article_note n
+                     WHERE n.article_id = a.id AND n.user_id = CAST(:v AS uuid)
+                       AND btrim(n.body) <> '')                                   AS notes,
+                   (SELECT COUNT(*) FROM prionvault_jc_presentation j
+                     WHERE j.article_id = a.id
+                       AND extract(year FROM j.presented_at) >= :y)               AS jc,
+                   {rating_sql}                                                   AS rating,
+                   (SELECT bool_or(s.is_milestone) FROM prionvault_user_state s
+                     WHERE s.article_id = a.id AND s.user_id = CAST(:v AS uuid))  AS milestone,
+                   (SELECT bool_or(s.is_favorite) FROM prionvault_user_state s
+                     WHERE s.article_id = a.id AND s.user_id = CAST(:v AS uuid))  AS favorite
+              FROM prionvault_vc_item i
+              LEFT JOIN articles a ON a.id = i.article_id
+             WHERE i.year = :y"""), {"y": year, "v": str(viewer_id) if viewer_id else None}).mappings().all()
+    with eng.begin() as conn:
+        for r in rows:
+            parts = []
+            if r["summary_ai"]:
+                parts.append("AI summary of the full text: " + r["summary_ai"][:1800])
+            if r["summary_human"]:
+                parts.append("Lab summary: " + r["summary_human"][:900])
+            if r["notes"]:
+                parts.append("Lab notes: " + r["notes"][:600])
+            signals = {k: v for k, v in {
+                "jc": int(r["jc"] or 0) or None,
+                "rating": float(r["rating"]) if r["rating"] is not None else None,
+                "milestone": bool(r["milestone"]) or None,
+                "favorite": bool(r["favorite"]) or None,
+                "notes": bool(r["notes"]) or None,
+                "summary_ai": bool(r["summary_ai"]) or None,
+            }.items() if v}
+            conn.execute(sql_text("""
+                UPDATE prionvault_vc_item SET evidence = :e, signals = CAST(:s AS jsonb), own_lab = :o
+                 WHERE id = :id"""),
+                {"e": "\n".join(parts) or None, "s": json.dumps(signals),
+                 "o": bool(_OWN_LAB.search(r["authors"] or "")), "id": r["id"]})
+
+
+def _signals_text(it: dict) -> str:
+    sg = it.get("signals") or {}
+    bits = []
+    if it.get("citations") is not None:
+        bits.append(f"{it['citations']} citations so far (OpenAlex)")
+    if sg.get("jc"):
+        bits.append("presented at the lab's Journal Club")
+    if sg.get("rating"):
+        bits.append(f"lab rating {sg['rating']}/5")
+    if sg.get("milestone"):
+        bits.append("marked as milestone by the lab")
+    if sg.get("favorite"):
+        bits.append("lab favourite")
+    if it.get("own_lab"):
+        bits.append("published by the lab itself")
+    return "; ".join(bits)
+
+
+def _fetch_citations(year: int) -> None:
+    """OpenAlex cited_by_count for the scored shortlist (early impact)."""
+    import os
+    import requests
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(sql_text("""
+            SELECT id, doi FROM prionvault_vc_item
+             WHERE year = :y AND score IS NOT NULL AND doi IS NOT NULL AND citations IS NULL"""),
+            {"y": year}).mappings().all()
+    _set(phase="Citas (OpenAlex)", done=0, total=len(rows))
+    mail = os.environ.get("UNPAYWALL_EMAIL", "")
+    for k, r in enumerate(rows, 1):
+        if _stopped():
+            return
+        try:
+            resp = requests.get(f"https://api.openalex.org/works/doi:{r['doi']}",
+                                params={"select": "cited_by_count", **({"mailto": mail} if mail else {})},
+                                timeout=10)
+            n = resp.json().get("cited_by_count") if resp.ok else None
+        except Exception:
+            n = None
+        if n is not None:
+            with eng.begin() as conn:
+                conn.execute(sql_text("UPDATE prionvault_vc_item SET citations = :n WHERE id = :id"),
+                             {"n": int(n), "id": r["id"]})
+        _set(done=k)
+
+
+_HOLISTIC_SYSTEM = """You are the senior author choosing the final set of papers to cite in your prion research group's yearly competitive-surveillance report (~3,500 characters, so every citation must earn its place). From the shortlist (each with an importance score, the reason, its evidence and lab signals), choose EXACTLY the requested number so that the set: (1) contains the true landmark advances of the year; (2) covers the field in a balanced way — therapy/clinical, diagnostics & biomarkers, prion biology/structure/strains/mechanisms, models, genetics/epidemiology, animal prions/CWD, prion-like mechanisms in other neurodegenerative diseases; (3) avoids redundancy — when several papers make the same point keep the strongest, unless they are meant to be cited together; (4) gives weight to lab signals (Journal Club, notes, ratings) and early citations as evidence of importance, without letting them override clear landmarks. Answer only JSON: {"pmids": ["..."], "why": {"<pmid>": "<one sentence in Spanish: why it is in the final set>"}}"""
+
+
+def _holistic_select(year: int, n: int) -> int:
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = [dict(r) for r in conn.execute(sql_text("""
+            SELECT id, pmid, title, journal, quartile, score, reason, citations, own_lab, signals,
+                   evidence, abstract
+              FROM prionvault_vc_item
+             WHERE year = :y AND NOT manual AND score IS NOT NULL AND score > 0 AND pmid IS NOT NULL
+             ORDER BY score DESC LIMIT :k"""), {"y": year, "k": max(n * 2, 60)}).mappings()]
+        manual_sel = conn.execute(sql_text(
+            "SELECT COUNT(*) FROM prionvault_vc_item WHERE year = :y AND manual AND selected"),
+            {"y": year}).scalar() or 0
+    want = max(0, n - manual_sel)
+    if not rows or want == 0:
+        return _preselect(year, n)
+    _set(phase="Selección final de conjunto (IA)", done=0, total=1)
+    user = "\n\n".join(
+        f"PMID {r['pmid']} — score {round(r['score'])} — {r['title']} ({r['journal']}, {r['quartile'] or 'n/a'})\n"
+        f"Why: {r['reason']}\nSignals: {_signals_text(r) or 'none'}\n"
+        f"Evidence: {(r['evidence'] or r['abstract'] or '')[:700]}" for r in rows)
+    try:
+        parsed = _call(_HOLISTIC_SYSTEM, f"Choose exactly {want} papers.\n\nSHORTLIST:\n{user}",
+                       strong=True, max_tokens=5000)
+        valid = {r["pmid"] for r in rows}
+        picked = [str(p) for p in parsed.get("pmids") or [] if str(p) in valid][:want]
+        why = parsed.get("why") or {}
+    except Exception as exc:
+        logger.warning("vc holistic selection failed, using top-N: %s", exc)
+        picked, why = [], {}
+    if len(picked) < want * 0.7:
+        return _preselect(year, n)
+    with eng.begin() as conn:
+        conn.execute(sql_text(
+            "UPDATE prionvault_vc_item SET selected = FALSE WHERE year = :y AND NOT manual"), {"y": year})
+        for p in picked:
+            conn.execute(sql_text("""
+                UPDATE prionvault_vc_item SET selected = TRUE,
+                       reason = CASE WHEN :w <> '' THEN :w ELSE reason END
+                 WHERE year = :y AND pmid = :p"""),
+                {"y": year, "p": p, "w": str(why.get(p) or "")[:400]})
+    _set(done=1)
+    return len(picked)
+
+
 def _preselect(year: int, n: int) -> int:
     with _get_engine().begin() as conn:
         conn.execute(sql_text(
@@ -315,18 +470,20 @@ def _preselect(year: int, n: int) -> int:
     return res.rowcount or 0
 
 
-def step_select(year: int, n_final: int = N_FINAL) -> dict:
+def step_select(year: int, n_final: int = N_FINAL, viewer_id=None) -> dict:
     ensure_draft(year)
     _set(phase="Reuniendo candidatos", done=0, total=0)
     n = _gather_candidates(year)
     _fill_quartiles(year)
+    _build_evidence(year, viewer_id)
     _screen(year)
     if _stopped():
         return {"stopped": True}
     _score_shortlist(year)
     if _stopped():
         return {"stopped": True}
-    picked = _preselect(year, n_final)
+    _fetch_citations(year)
+    picked = _holistic_select(year, n_final)
     info = {"candidates": n, "shortlist": N_SHORTLIST, "selected": picked}
     _log(year, "select", info)
     return info
@@ -344,7 +501,8 @@ def _past_reports(before_year: int) -> list[dict]:
 def _selected_items(year: int) -> list[dict]:
     with _get_engine().connect() as conn:
         return [dict(r) for r in conn.execute(sql_text("""
-            SELECT id, pmid, doi, title, journal, quartile, abstract, score, reason, theme
+            SELECT id, pmid, doi, title, journal, quartile, abstract, score, reason, theme,
+                   evidence, signals, citations, own_lab
               FROM prionvault_vc_item WHERE year = :y AND selected
              ORDER BY score DESC NULLS LAST"""), {"y": year}).mappings()]
 
@@ -442,6 +600,27 @@ def validate(intro: str, advances: str, outlook: str, allowed: set[str]) -> dict
             "unknown_pmids": unknown, "problems": problems, "ok": not problems}
 
 
+def _evidence(it: dict, limit: int) -> str:
+    """Best available description of what a paper showed: the AI summary of
+    its full text when the lab has it, else the abstract."""
+    ev = it.get("evidence") or ""
+    return ((ev + " ") if ev else "") [:limit] or (it.get("abstract") or "")[:limit]
+
+
+_FACTCHECK_SYSTEM = """You are a meticulous scientific fact-checker. You get a report draft that cites papers as "(PMID: …)" and, for each cited PMID, its evidence (abstract and, when available, an AI summary of the full text). Check every statement that carries a citation: is it supported by the evidence of THAT paper (not another one), without overstating results (e.g. "demonstrated" vs "suggested", animal vs human, preclinical vs clinical)? Report only real problems. Answer only JSON: {"issues": [{"pmid": "...", "quote": "<the problematic words>", "problem": "<what is wrong>", "fix": "<how to rephrase>"}]}"""
+
+
+def _factcheck(draft: dict, items: list[dict]) -> list[dict]:
+    text = "\n\n".join(draft.get(k, "") for k in ("intro", "advances", "outlook"))
+    cited = set(_cited_pmids(text))
+    by = {str(it["pmid"]): it for it in items if it["pmid"]}
+    ev = "\n\n".join(
+        f"PMID {p}: {by[p]['title']}\nAbstract: {(by[p]['abstract'] or '')[:1200]}\n"
+        f"{(by[p]['evidence'] or '')[:1200]}" for p in sorted(cited) if p in by)
+    parsed = _call(_FACTCHECK_SYSTEM, f"DRAFT:\n{text}\n\nEVIDENCE:\n{ev}", strong=True, max_tokens=3000)
+    return [i for i in (parsed.get("issues") or []) if isinstance(i, dict)][:20]
+
+
 def step_write(year: int, instructions: str = "") -> dict:
     items = _selected_items(year)
     if not items:
@@ -461,7 +640,7 @@ def step_write(year: int, instructions: str = "") -> dict:
             it = by_id.get(str(p))
             if it:
                 lines.append(f"- PMID {it['pmid']}: {it['title']} ({it['journal']}). Why: {it['reason']}"
-                             f" Key findings: {(it['abstract'] or '')[:450]}")
+                             f" Key findings: {_evidence(it, 900)}")
     allowed = {str(it["pmid"]) for it in items if it["pmid"]}
     last_outlook = past[-1]["body"].split("\n\n")[-1] if past else ""
     user = (f"{examples}\n\nLAST YEAR'S OUTLOOK (what was expected for {year}):\n{last_outlook}\n\n"
@@ -481,6 +660,36 @@ def step_write(year: int, instructions: str = "") -> dict:
                       strong=True, max_tokens=4000)
         check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed)
         attempt += 1
+    # Fact-check every cited statement against its paper's evidence, then
+    # revise (keeping the format constraints) if anything is unsupported.
+    issues, fixed_issues = [], []
+    if not _stopped():
+        _set(phase="Revisión de hechos (cada afirmación contra su PMID)", done=attempt)
+        try:
+            issues = _factcheck(draft, items)
+        except Exception as exc:
+            logger.warning("vc factcheck failed: %s", exc)
+        if issues and not _stopped():
+            fixed_issues = issues
+            _set(phase=f"Corrigiendo {len(issues)} afirmaciones")
+            fix_text = "\n".join(f"- PMID {i.get('pmid')}: \"{i.get('quote')}\" — {i.get('problem')} "
+                                  f"→ {i.get('fix')}" for i in issues)
+            for _ in range(2):
+                revised = _call(_WRITE_SYSTEM,
+                                user + "\n\nYOUR PREVIOUS DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
+                                "\n\nA fact-check found these problems; fix them (keep everything else, "
+                                "respect all format constraints):\n" + fix_text +
+                                ("\n\nAlso fix: " + "; ".join(check["problems"]) if check["problems"] else ""),
+                                strong=True, max_tokens=4000)
+                rcheck = validate(revised.get("intro", ""), revised.get("advances", ""),
+                                  revised.get("outlook", ""), allowed)
+                if rcheck["ok"] or not check["ok"]:
+                    draft, check = revised, rcheck
+                    break
+            try:
+                issues = _factcheck(draft, items)
+            except Exception:
+                pass
     body = "\n\n".join(draft.get(k, "").strip() for k in ("intro", "advances", "outlook"))
     with _get_engine().begin() as conn:
         conn.execute(sql_text("""
@@ -488,7 +697,8 @@ def step_write(year: int, instructions: str = "") -> dict:
                    updated_at = NOW() WHERE year = :y"""),
             {"t": (draft.get("title") or "").strip(), "b": body, "a": AUTHORS, "y": year})
     _set(done=4)
-    info = {**check, "attempts": attempt, "instructions": instructions[:500]}
+    info = {**check, "attempts": attempt, "instructions": instructions[:500],
+            "factcheck_fixed": fixed_issues, "factcheck_remaining": issues}
     _log(year, "write", info)
     return info
 
@@ -550,7 +760,7 @@ def get_draft(year: int) -> dict:
             {"y": year}).mappings().first())
         items = [dict(r) for r in conn.execute(sql_text("""
             SELECT id, pmid, doi, article_id, title, journal, pub_year, quartile, in_library,
-                   screen_score, score, reason, theme, selected, manual
+                   screen_score, score, reason, theme, selected, manual, citations, own_lab, signals
               FROM prionvault_vc_item WHERE year = :y
              ORDER BY selected DESC, score DESC NULLS LAST, screen_score DESC NULLS LAST
              LIMIT 300"""), {"y": year}).mappings()]

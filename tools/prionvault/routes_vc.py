@@ -99,6 +99,7 @@ def api_vc_draft_run(year):
     step = body.get("step")
     kwargs = {}
     if step == "select":
+        kwargs["viewer_id"] = _viewer_id()   # their notes/marks feed the evidence
         try:
             kwargs["n_final"] = max(5, min(80, int(body.get("n") or g.N_FINAL)))
         except (TypeError, ValueError):
