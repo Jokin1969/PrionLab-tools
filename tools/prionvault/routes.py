@@ -4047,6 +4047,20 @@ def api_batch_summary_start():
     return jsonify({"ok": True, "status": snap})
 
 
+@prionvault_bp.route("/api/admin/batch-summary/abstract-only", methods=["GET"])
+@admin_required
+def api_batch_summary_abstract_only():
+    """Articles with a PDF whose AI summary only used the abstract — the
+    batch modal offers to regenerate them (text is extracted first)."""
+    from .services import batch_summary
+    try:
+        ids = batch_summary.abstract_only_ids()
+    except Exception as exc:
+        logger.exception("abstract-only lookup failed")
+        return jsonify({"error": "internal", "detail": str(exc)[:200]}), 500
+    return jsonify({"count": len(ids), "ids": ids})
+
+
 @prionvault_bp.route("/api/admin/batch-summary/stop", methods=["POST"])
 @admin_required
 def api_batch_summary_stop():

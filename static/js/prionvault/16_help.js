@@ -530,6 +530,7 @@
           </ul>
 
           <h4>Resúmenes IA</h4>
+          <p><strong>Siempre a partir del PDF:</strong> si el artículo tiene PDF, el resumen IA se hace con su texto completo. Al subir un PDF a mano o encontrarlo con 🔓 se extrae su texto en el momento (con OCR si es un escaneo), y si algún artículo tiene PDF pero aún no su texto, se extrae justo antes de resumir. Si el modal de Resumen IA detecta resúmenes antiguos hechos solo con el abstract aunque el artículo tenía PDF, muestra un aviso con el botón <em>Rehacerlos con el texto completo</em>.</p>
           <p>Al pulsar un número preestablecido (p. ej. "100") en el modal de <strong>Resumen IA</strong> sin seleccionar artículos concretos, se procesan los <strong>últimos artículos añadidos a la biblioteca</strong> que aún no tienen resumen, empezando por los más recientes en darse de alta.</p>
 
           <h4>Exportar referencias</h4>

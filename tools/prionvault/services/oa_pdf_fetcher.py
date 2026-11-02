@@ -471,6 +471,10 @@ def try_now(article_id: str) -> dict:
             "status": f"fetched_{via}",
         })
 
+    # Extract the text right away (try_now used to store the file only, so
+    # the AI summary fell back to the abstract).
+    from .pdf_text import store_text_from_bytes
+    store_text_from_bytes(article_id, body)
     _log_event(article_id, row.get("title") or "", "fetched", via=via)
     with _lock:
         _state["fetched"] += 1

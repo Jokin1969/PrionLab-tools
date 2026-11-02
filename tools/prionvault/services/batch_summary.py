@@ -200,13 +200,15 @@ def _run_batch_inner(*, viewer_user_id=None,
         # ids is a list of UUID strings. Build an IN clause with explicit
         # string literals so there is no driver type-casting ambiguity.
         id_literals = ", ".join(f"'{str(i)}'" for i in ids)
-        base_where  = (f"WHERE extracted_text IS NOT NULL "
-                       f"  AND length(extracted_text) > 100 "
+        base_where  = (f"WHERE ((extracted_text IS NOT NULL AND length(extracted_text) > 100) "
+                       f"       OR dropbox_path IS NOT NULL) "
                        f"  AND id IN ({id_literals})")
         base_params: dict = {}
     else:
-        base_where  = ("WHERE extracted_text IS NOT NULL "
-                       "  AND length(extracted_text) > 100 "
+        # Articles with a PDF whose text was never extracted are eligible
+        # too: their text is extracted right before summarising.
+        base_where  = ("WHERE ((extracted_text IS NOT NULL AND length(extracted_text) > 100) "
+                       "       OR dropbox_path IS NOT NULL) "
                        "  AND summary_ai IS NULL")
         base_params = {}
 
@@ -277,12 +279,22 @@ def _run_batch_inner(*, viewer_user_id=None,
             _state["last_error"] = None  # clear previous so UI shows "esperando IA" cleanly
 
         logger.info("batch_summary: calling %s for article %s", provider, article_id)
+        full_text = row[8]
+        if not full_text or len(full_text) < 200:
+            # PDF attached but text never extracted: do it now, so the
+            # summary reads the paper instead of the abstract.
+            with _lock:
+                _state["phase"] = "extracting_text"
+            from .pdf_text import ensure_text
+            full_text = ensure_text(article_id) or full_text
+            with _lock:
+                _state["phase"] = "calling_ai"
         try:
             result = generate_summary(
                 title=title,
                 authors=row[2], year=row[3], journal=row[4],
                 abstract=row[5], doi=row[6], pubmed_id=row[7],
-                extracted_text=row[8],
+                extracted_text=full_text,
                 provider=provider,
             )
         except NotConfigured:
@@ -414,3 +426,32 @@ def _run_batch_inner(*, viewer_user_id=None,
 def _json_dumps(obj) -> str:
     import json
     return json.dumps(obj, default=str)
+
+
+def abstract_only_ids() -> list[str]:
+    """Articles that HAVE a PDF but whose AI summary was made without the
+    full text (only abstract + metadata): either their text was never
+    extracted, or the last summary generation was logged with
+    used_full_text = false (made before the text existed)."""
+    eng = _get_engine()
+    ids: set[str] = set()
+    with eng.connect() as conn:
+        ids |= {str(r[0]) for r in conn.execute(sql_text("""
+            SELECT id FROM articles
+             WHERE summary_ai IS NOT NULL AND dropbox_path IS NOT NULL
+               AND (extracted_text IS NULL OR length(extracted_text) < 200)"""))}
+        try:
+            ids |= {str(r[0]) for r in conn.execute(sql_text("""
+                SELECT a.id FROM articles a
+                  JOIN (SELECT DISTINCT ON (metadata->>'article_id')
+                               metadata->>'article_id' AS aid,
+                               metadata->>'used_full_text' AS full
+                          FROM prionvault_usage
+                         WHERE action = 'summary_generate' AND metadata ? 'used_full_text'
+                         ORDER BY metadata->>'article_id', created_at DESC) u
+                    ON u.aid = a.id::text
+                 WHERE u.full = 'false' AND a.summary_ai IS NOT NULL
+                   AND a.dropbox_path IS NOT NULL"""))}
+        except Exception as exc:
+            logger.info("abstract_only_ids: usage log unavailable (%s)", exc)
+    return sorted(ids)

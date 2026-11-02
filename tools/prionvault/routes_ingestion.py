@@ -734,12 +734,17 @@ def api_article_upload_pdf(aid):
     finally:
         s.close()
     _invalidate_thumb_cache(aid)
+    # Extract the text now: without it the AI summary/chat would only see
+    # the abstract (this upload path used to store the file only).
+    from .services.pdf_text import store_text_from_bytes
+    has_text = store_text_from_bytes(aid, content)
     return jsonify({
         "ok":           True,
         "dropbox_path": dropbox_path,
         "pdf_md5":      md5,
         "size_bytes":   len(content),
         "pdf_pages":    pdf_pages,
+        "text_extracted": has_text,
     })
 
 
@@ -1921,6 +1926,12 @@ def api_generate_summary(aid):
         if not a:
             return jsonify({"error": "not found"}), 404
 
+        # Safety net: an article with a PDF but no extracted text gets it
+        # extracted now, so the summary reads the paper, not the abstract.
+        full_text = a.extracted_text
+        if a.dropbox_path and (not full_text or len(full_text) < 200):
+            from .services.pdf_text import ensure_text
+            full_text = ensure_text(aid) or full_text
         try:
             result = generate_summary(
                 title=a.title,
@@ -1930,7 +1941,7 @@ def api_generate_summary(aid):
                 abstract=a.abstract,
                 doi=a.doi,
                 pubmed_id=a.pubmed_id,
-                extracted_text=a.extracted_text,
+                extracted_text=full_text,
                 provider=provider,
                 title_hint=title_hint,
             )

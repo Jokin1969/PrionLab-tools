@@ -15369,10 +15369,36 @@
       }
     }
 
+    // Summaries made from the abstract although the article has a PDF
+    // (its text had not been extracted): offer to redo them.
+    async function refreshAbstractOnly() {
+      const box = document.getElementById('pv-bs-abstract-only');
+      if (!box) return;
+      let r;
+      try { r = await api('/admin/batch-summary/abstract-only'); } catch (_) { box.style.display = 'none'; return; }
+      if (!r.count) { box.style.display = 'none'; return; }
+      box.style.display = 'block';
+      box.innerHTML = `⚠️ <strong>${r.count}</strong> resumen${r.count === 1 ? '' : 'es'} IA se hicieron solo con el
+        abstract aunque el artículo tiene PDF (su texto no se había extraído).
+        <button type="button" id="pv-bs-redo-abstract"
+                style="margin-left:6px;padding:3px 10px;border-radius:6px;border:none;background:#92400e;
+                       color:#fff;font-size:12px;cursor:pointer;">Rehacerlos con el texto completo</button>`;
+      document.getElementById('pv-bs-redo-abstract').addEventListener('click', async () => {
+        if (!confirm(`Se extraerá el texto de los PDFs y se regenerarán ${r.count} resúmenes con ${selectedProvider}. ¿Continuar?`)) return;
+        try {
+          await api('/admin/batch-summary/start', { method: 'POST',
+            body: JSON.stringify({ provider: selectedProvider, ids: r.ids }) });
+          box.style.display = 'none';
+          refresh(); startPolling();
+        } catch (e) { alert('Error: ' + e.message); }
+      });
+    }
+
     function open() {
       modal.style.display = 'flex';
       refreshProviders();
       refresh();
+      refreshAbstractOnly();
       startPolling();
     }
     function close() {
@@ -24019,6 +24045,7 @@
           </ul>
 
           <h4>Resúmenes IA</h4>
+          <p><strong>Siempre a partir del PDF:</strong> si el artículo tiene PDF, el resumen IA se hace con su texto completo. Al subir un PDF a mano o encontrarlo con 🔓 se extrae su texto en el momento (con OCR si es un escaneo), y si algún artículo tiene PDF pero aún no su texto, se extrae justo antes de resumir. Si el modal de Resumen IA detecta resúmenes antiguos hechos solo con el abstract aunque el artículo tenía PDF, muestra un aviso con el botón <em>Rehacerlos con el texto completo</em>.</p>
           <p>Al pulsar un número preestablecido (p. ej. "100") en el modal de <strong>Resumen IA</strong> sin seleccionar artículos concretos, se procesan los <strong>últimos artículos añadidos a la biblioteca</strong> que aún no tienen resumen, empezando por los más recientes en darse de alta.</p>
 
           <h4>Exportar referencias</h4>
