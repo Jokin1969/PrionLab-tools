@@ -19970,7 +19970,19 @@
             ${esc(r.article_title || '(sin título)')}</button>
           <span style="color:#6b7280;"> · ${esc(r.article_journal || '')} ${r.article_year || ''}</span>` : '';
       let fix = '';
-      if (IS_VC_EDITOR && (r.status === 'ambiguous' || r.status === 'not_found' || r.status === 'error')) {
+      if (IS_VC_EDITOR && (r.status === 'linked' || r.status === 'created')) {
+        // Already linked, but maybe to the wrong paper: allow re-assigning.
+        fix = `
+          <details style="margin:4px 0 0 22px;font-size:11.5px;">
+            <summary style="cursor:pointer;color:#9ca3af;">¿No es este artículo? Cambiarlo</summary>
+            <form data-pick-input="${r.id}" style="display:flex;gap:6px;margin-top:4px;">
+              <input placeholder="PMID correcto" style="width:140px;padding:3px 7px;border:1px solid #d1d5db;
+                     border-radius:6px;font-size:12px;">
+              <button type="submit" style="padding:3px 10px;border-radius:6px;border:none;background:#0F3460;
+                      color:#fff;font-size:12px;cursor:pointer;">Asignar</button>
+            </form>
+          </details>`;
+      } else if (IS_VC_EDITOR && (r.status === 'ambiguous' || r.status === 'not_found' || r.status === 'error')) {
         const cands = Array.isArray(r.candidates) ? r.candidates : [];
         fix = `
           <div style="margin:6px 0 0 22px;">

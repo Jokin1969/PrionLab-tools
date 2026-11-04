@@ -219,11 +219,19 @@ def _set_ref(ref_id, **f) -> None:
 def link_ref(ref_id: int, article_id: str, status: str = "linked", note: str = "") -> None:
     """Point a reference at an article and put that article in its year's collection."""
     with _get_engine().connect() as conn:
-        year = conn.execute(sql_text("SELECT year FROM prionvault_vc_ref WHERE id = :id"),
-                            {"id": ref_id}).scalar()
+        year, old = conn.execute(sql_text(
+            "SELECT year, article_id FROM prionvault_vc_ref WHERE id = :id"), {"id": ref_id}).one()
+        # Re-assigning a reference: drop the previous article from the year's
+        # collection unless another reference of that year still cites it.
+        drop_old = bool(old) and str(old) != str(article_id) and not conn.execute(sql_text(
+            "SELECT 1 FROM prionvault_vc_ref WHERE year = :y AND article_id = :a AND id <> :id"),
+            {"y": year, "a": old, "id": ref_id}).first()
     _set_ref(ref_id, article_id=article_id, status=status, note=note)
     from . import collections as _coll
-    _coll.add_articles(ensure_collection(int(year)), [article_id])
+    cid = ensure_collection(int(year))
+    if drop_old:
+        _coll.remove_articles(cid, [str(old)])
+    _coll.add_articles(cid, [article_id])
 
 
 def resolve_ref(ref: dict, by_user=None) -> str:
