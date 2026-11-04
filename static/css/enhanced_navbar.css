@@ -248,3 +248,14 @@
 @media (prefers-reduced-motion: reduce) {
   .nb-link, .nb-menu, .nb-chevron, .nb-item { transition: none; }
 }
+
+/* Readers have no hamburger menu: keep their two links (PrionVault,
+   PrionRead) visible on phones, compact. */
+@media (max-width: 768px) {
+  .nb-nav.nb-nav--reader { display: flex; gap: 2px; }
+  .nb-nav--reader .nb-link { padding-left: 6px; padding-right: 6px; font-size: 13px; }
+}
+@media (max-width: 420px) {
+  .nb-nav--reader .nb-label { display: none; }
+}
+
