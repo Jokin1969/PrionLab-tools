@@ -47,9 +47,13 @@
                     style="border:none;background:#f3f4f6;color:#374151;border-radius:5px;
                            padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">${u.active ? '⏸' : '▶'}</button>
             <button type="button" class="pv-ua-reset-btn" data-username="${esc(u.username)}"
-                    title="Restablecer contraseña: genera una contraseña nueva aleatoria (12 caracteres) y te la muestra UNA sola vez. La anterior deja de funcionar al instante. No se envía nada al usuario: cópiala y pásasela tú por un canal seguro (en persona, mensaje directo). Tú no tienes que inventar ninguna. El usuario entra con su usuario o email y esa contraseña, y en ese primer acceso se le pide elegir una propia. Alternativa sin intervención tuya: que use «¿Olvidaste tu contraseña?» en la pantalla de login y recibirá un enlace por email." ${editable ? '' : 'disabled'}
+                    title="Restablecer contraseña: genera una contraseña nueva aleatoria (12 caracteres) y te la muestra UNA sola vez. La anterior deja de funcionar al instante. No se envía nada al usuario: cópiala y pásasela tú por un canal seguro (en persona, mensaje directo). Tú no tienes que inventar ninguna. El usuario entra con su usuario o email y esa contraseña, y en ese primer acceso se le pide elegir una propia. Si prefieres no manejar contraseñas, usa el botón 📧 (enlace por email)." ${editable ? '' : 'disabled'}
                     style="border:none;background:#fef3c7;color:#92400e;border-radius:5px;
                            padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">🔑</button>
+            ${u.email ? `<button type="button" class="pv-ua-link-btn" data-username="${esc(u.username)}" data-email="${esc(u.email)}"
+                    title="Enviar enlace por email: el usuario recibe un enlace (válido 72 h, de un solo uso) para elegir él mismo su contraseña, el mismo de «¿Olvidaste tu contraseña?». Tú no ves ni pasas ninguna contraseña, y la actual sigue funcionando hasta que lo use." ${editable ? '' : 'disabled'}
+                    style="border:none;background:#e0e7ff;color:#3730a3;border-radius:5px;
+                           padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">📧</button>` : ''}
           </td>
         </tr>`;
     }
@@ -206,19 +210,85 @@
           }
         });
       });
-      document.querySelectorAll('.pv-ua-reset-btn').forEach(btn => {
+      document.querySelectorAll('.pv-ua-link-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!confirm(`¿Restablecer la contraseña de ${btn.dataset.username}?\n\nSe generará una contraseña temporal que verás una sola vez y tendrás que pasarle tú. La actual dejará de funcionar y, al entrar, se le pedirá elegir una propia.`)) return;
+          if (!armed(btn, `📧 ¿Enviar a ${btn.dataset.email}? Pulsa otra vez`)) return;
           btn.disabled = true;
           try {
-            const r = await api(`/admin/pv-users/${encodeURIComponent(btn.dataset.username)}/reset-password`, { method: 'POST' });
-            alert(`Contraseña temporal para ${btn.dataset.username}:\n\n${r.password}\n\nCópiala ahora: no se volverá a mostrar. Pásasela por un canal seguro; al entrar con ella se le pedirá elegir una propia.`);
+            const r = await api(`/admin/pv-users/${encodeURIComponent(btn.dataset.username)}/send-reset-link`, { method: 'POST' });
+            setStatus('✓ ' + (r.detail || 'Enlace enviado.'), '#15803d');
           } catch (e) {
             setStatus('Error: ' + e.message, '#b91c1c');
           } finally {
             btn.disabled = false;
           }
         });
+      });
+      document.querySelectorAll('.pv-ua-reset-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!armed(btn, '🔑 ¿Restablecer? Pulsa otra vez')) return;
+          btn.disabled = true;
+          try {
+            const r = await api(`/admin/pv-users/${encodeURIComponent(btn.dataset.username)}/reset-password`, { method: 'POST' });
+            showTempPassword(btn.dataset.username, r.password);
+          } catch (e) {
+            setStatus('Error: ' + e.message, '#b91c1c');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    // Temporary password shown in-page (browser alert() can be silently
+    // blocked), with a copy button; stays until closed.
+    // In-page two-click confirmation (native confirm() can be silently
+    // blocked by the browser, which then cancels the action unseen).
+    function armed(btn, label) {
+      if (btn.dataset.armed === '1') {
+        btn.dataset.armed = '';
+        btn.innerHTML = btn.dataset.orig;
+        return true;
+      }
+      btn.dataset.armed = '1';
+      btn.dataset.orig = btn.innerHTML;
+      btn.textContent = label;
+      setTimeout(() => {
+        if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.innerHTML = btn.dataset.orig; }
+      }, 5000);
+      return false;
+    }
+
+    function showTempPassword(username, pwd) {
+      const box = document.getElementById('pv-ua-pwbox');
+      if (!box) return;
+      box.style.display = 'block';
+      box.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+          <div style="min-width:0;">
+            <div style="font-size:12px;color:#92400e;font-weight:600;">Contraseña temporal de ${esc(username)}</div>
+            <code id="pv-ua-pwval" style="display:inline-block;margin-top:4px;font-size:16px;font-weight:700;
+                  letter-spacing:.04em;background:#fff;border:1px solid #fcd34d;border-radius:6px;padding:4px 10px;
+                  user-select:all;word-break:break-all;">${esc(pwd)}</code>
+            <button type="button" id="pv-ua-pwcopy" style="margin-left:6px;padding:4px 10px;border-radius:6px;border:none;
+                    background:#92400e;color:#fff;font-size:12px;cursor:pointer;">Copiar</button>
+            <div style="font-size:12px;color:#78350f;margin-top:6px;">Cópiala ahora: no se volverá a mostrar.
+              Pásasela por un canal seguro; al entrar con ella se le pedirá elegir una propia.</div>
+          </div>
+          <button type="button" id="pv-ua-pwclose" aria-label="Cerrar"
+                  style="border:none;background:none;font-size:18px;color:#92400e;cursor:pointer;">×</button>
+        </div>`;
+      box.scrollIntoView({ block: 'nearest' });
+      document.getElementById('pv-ua-pwcopy').addEventListener('click', async ev => {
+        try { await navigator.clipboard.writeText(pwd); ev.target.textContent = '✓ Copiada'; }
+        catch (_) {
+          const r = document.createRange(); r.selectNodeContents(document.getElementById('pv-ua-pwval'));
+          const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+          ev.target.textContent = 'Seleccionada: Ctrl+C';
+        }
+      });
+      document.getElementById('pv-ua-pwclose').addEventListener('click', () => {
+        box.style.display = 'none'; box.innerHTML = '';
       });
     }
 
@@ -234,6 +304,8 @@
         <div id="pv-ua-new-form" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;
                     border-radius:8px;padding:12px 14px;margin-bottom:14px;"></div>
         <div id="pv-ua-status" style="font-size:12.5px;margin-bottom:8px;min-height:16px;"></div>
+        <div id="pv-ua-pwbox" style="display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;
+                    padding:10px 12px;margin-bottom:10px;"></div>
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
             <thead>

@@ -173,6 +173,23 @@ def api_pv_users_toggle(username):
     return jsonify({"ok": True, "active": new_state == "true"})
 
 
+@prionvault_bp.route("/api/admin/pv-users/<username>/send-reset-link", methods=["POST"])
+@prionvault_user_admin_required
+def api_pv_users_send_reset_link(username):
+    """Email the user a link to choose their own password (72 h)."""
+    from core.auth import send_admin_reset_link
+    target = get_user(username)
+    if not target:
+        return jsonify({"error": "not_found"}), 404
+    if target.get("role") == "admin" and not _is_global_admin():
+        return jsonify({"error": "forbidden",
+                        "detail": "Solo un administrador global puede gestionar la contraseña de otro administrador."}), 403
+    ok, msg = send_admin_reset_link(target)
+    if not ok:
+        return jsonify({"error": "not_sent", "detail": msg}), 400
+    return jsonify({"ok": True, "detail": msg})
+
+
 @prionvault_bp.route("/api/admin/pv-users/<username>/reset-password", methods=["POST"])
 @prionvault_user_admin_required
 def api_pv_users_reset_password(username):

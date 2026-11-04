@@ -10,13 +10,48 @@
 {# ── Password reset — shown prominently, once ────────────────────────────── #}
 {% with pw_msgs = get_flashed_messages(category_filter=['password_reset']) %}
   {% if pw_msgs %}
-    <div class="alert-password-reset">
-      <p class="alert-password-reset__label">{{ _('New password:') }}</p>
-      <code class="alert-password-reset__value">{{ pw_msgs[0] }}</code>
-      <p class="alert-password-reset__warn">{{ _('Copy this password now — it will not be shown again.') }}</p>
+    <div class="alert-password-reset" id="pw-reset-box">
+      <p class="alert-password-reset__label">Contraseña temporal:</p>
+      <code class="alert-password-reset__value" id="pw-reset-value">{{ pw_msgs[0] }}</code>
+      <button type="button" class="btn btn--sm btn--secondary" id="pw-reset-copy" style="margin-left:8px;">Copiar</button>
+      <p class="alert-password-reset__warn">Cópiala ahora: no se volverá a mostrar. Pásasela al usuario por un canal seguro;
+        al entrar con ella se le pedirá elegir una propia.</p>
     </div>
+    <script>
+      (function () {
+        var box = document.getElementById('pw-reset-box');
+        if (box) box.scrollIntoView({ block: 'center' });
+        var b = document.getElementById('pw-reset-copy');
+        if (b) b.addEventListener('click', function () {
+          var v = document.getElementById('pw-reset-value').textContent.trim();
+          (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject())
+            .then(function () { b.textContent = '✓ Copiada'; })
+            .catch(function () {
+              var r = document.createRange(); r.selectNodeContents(document.getElementById('pw-reset-value'));
+              var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+              b.textContent = 'Seleccionada: Ctrl+C';
+            });
+        });
+      })();
+    </script>
   {% endif %}
 {% endwith %}
+
+<script>
+  // Two-click confirmation for the password forms (native confirm() can be
+  // silently blocked by the browser, which then cancels the action unseen).
+  document.addEventListener('submit', function (ev) {
+    var f = ev.target;
+    if (!f.dataset || !f.dataset.confirm) return;
+    var b = f.querySelector('button[type="submit"]');
+    if (f.dataset.armed === '1') return;          // second click: submit
+    ev.preventDefault();
+    f.dataset.armed = '1';
+    var orig = b.innerHTML;
+    b.textContent = f.dataset.confirm;
+    setTimeout(function () { f.dataset.armed = ''; b.innerHTML = orig; }, 5000);
+  }, true);
+</script>
 
 {# ── Section A: Users ────────────────────────────────────────────────────── #}
 <section class="admin-section">
@@ -82,9 +117,19 @@
             <form method="POST"
                   action="{{ url_for('admin.reset_password', username=user.username) }}"
                   style="display:inline"
-                  onsubmit="return confirm('¿Restablecer la contraseña de {{ user.username }}?\n\nSe generará una contraseña temporal que verás una sola vez y tendrás que pasarle tú. La actual dejará de funcionar y, al entrar, se le pedirá elegir una propia.')">
-              <button type="submit" class="btn btn--sm btn--warning btn--icon" title="Restablecer contraseña: genera una contraseña nueva aleatoria (12 caracteres) y te la muestra UNA sola vez. La anterior deja de funcionar al instante. No se envía nada al usuario: cópiala y pásasela tú por un canal seguro (en persona, mensaje directo). Tú no tienes que inventar ninguna. El usuario entra con su usuario o email y esa contraseña, y en ese primer acceso se le pide elegir una propia. Alternativa sin intervención tuya: que use «¿Olvidaste tu contraseña?» en la pantalla de login y recibirá un enlace por email.">🔑</button>
+                  data-confirm="🔑 ¿Restablecer? Pulsa otra vez">
+              <button type="submit" class="btn btn--sm btn--warning btn--icon" title="Restablecer contraseña: genera una contraseña nueva aleatoria (12 caracteres) y te la muestra UNA sola vez. La anterior deja de funcionar al instante. No se envía nada al usuario: cópiala y pásasela tú por un canal seguro (en persona, mensaje directo). Tú no tienes que inventar ninguna. El usuario entra con su usuario o email y esa contraseña, y en ese primer acceso se le pide elegir una propia. Si prefieres no manejar contraseñas, usa el botón 📧 (enlace por email).">🔑</button>
             </form>
+
+            {% if user.email %}
+            <form method="POST"
+                  action="{{ url_for('admin.send_reset_link', username=user.username) }}"
+                  style="display:inline"
+                  data-confirm="📧 ¿Enviar a {{ user.email }}? Pulsa otra vez">
+              <button type="submit" class="btn btn--sm btn--secondary btn--icon"
+                      title="Enviar enlace por email: el usuario recibe un enlace (válido 72 h, de un solo uso) para elegir él mismo su contraseña, el mismo de «¿Olvidaste tu contraseña?». Tú no ves ni pasas ninguna contraseña, y la actual sigue funcionando hasta que lo use. Útil si ha olvidado la contraseña o si su cuenta es nueva.">📧</button>
+            </form>
+            {% endif %}
 
             <form method="POST"
                   action="{{ url_for('admin.toggle_user', username=user.username) }}"

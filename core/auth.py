@@ -630,6 +630,46 @@ def forgot_password():
     return render_template("auth/forgot_password.html")
 
 
+ADMIN_RESET_TTL_HOURS = 72
+
+
+def send_admin_reset_link(user: dict) -> tuple[bool, str]:
+    """An admin sends the user a link to choose their own password (same
+    page as «¿Olvidaste tu contraseña?», valid 72 h). The current password
+    keeps working until the link is used. Returns (ok, message)."""
+    from datetime import timedelta
+    from core.smtp_client import send_email
+    from core.users import update_user
+    email = (user.get("email") or "").strip()
+    if not email:
+        return False, "Este usuario no tiene email: usa «Restablecer contraseña» y pásale la temporal."
+    if (user.get("active") or "true").lower() != "true":
+        return False, "El usuario está desactivado: actívalo antes de enviarle el enlace."
+    token = secrets.token_urlsafe(32)
+    expires = datetime.utcnow() + timedelta(hours=ADMIN_RESET_TTL_HOURS)
+    update_user(user["username"], {"reset_token": token,
+                                   "reset_token_expires": expires.isoformat()}, sync=False)
+    import html as _h
+    name = user.get("full_name") or user.get("username")
+    url = url_for("auth.reset_password", token=token, _external=True)
+    body = (f"Hola {name},\n\n"
+            f"Un administrador de PrionLab Tools te envía este enlace para que elijas tu contraseña.\n"
+            f"Es válido durante {ADMIN_RESET_TTL_HOURS} horas y solo se puede usar una vez:\n\n    {url}\n\n"
+            f"Tu usuario es: {user.get('username')} (también puedes entrar con este email).\n"
+            f"Hasta que lo uses, tu contraseña actual sigue funcionando.\n\n— PrionLab Tools")
+    html_body = (f"<p>Hola <strong>{_h.escape(name)}</strong>,</p>"
+                 f"<p>Un administrador de PrionLab Tools te envía este enlace para que elijas tu contraseña. "
+                 f"Es válido durante {ADMIN_RESET_TTL_HOURS} horas y solo se puede usar una vez:</p>"
+                 f"<p><a href=\"{url}\">Elegir mi contraseña</a></p>"
+                 f"<p>Tu usuario es <strong>{_h.escape(user.get('username') or '')}</strong> "
+                 f"(también puedes entrar con este email). Hasta que lo uses, tu contraseña actual sigue funcionando.</p>"
+                 f"<p>— PrionLab Tools</p>")
+    ok = send_email(email, "Elige tu contraseña — PrionLab Tools", body, html=html_body)
+    if not ok:
+        return False, "No se pudo enviar el email (revisa el servidor de correo)."
+    return True, f"Enlace enviado a {email} (válido {ADMIN_RESET_TTL_HOURS} h)."
+
+
 def _send_reset_email(user: dict, token: str) -> None:
     """Best-effort: log+swallow on failure. Caller already wraps in
     try/except for the user-facing flow."""

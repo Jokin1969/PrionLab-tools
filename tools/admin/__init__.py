@@ -446,6 +446,19 @@ def reset_password(username):
     return redirect(url_for("admin.index"))
 
 
+@admin_bp.route("/users/<username>/send-reset-link", methods=["POST"])
+@admin_required
+def send_reset_link(username):
+    from core.auth import send_admin_reset_link
+    user = get_user(username)
+    if not user:
+        flash(_("User not found."), "error")
+        return redirect(url_for("admin.index"))
+    ok, msg = send_admin_reset_link(user)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("admin.index"))
+
+
 # ── System actions ───────────────────────────────────────────────────────────
 
 @admin_bp.route("/sync", methods=["POST"])
