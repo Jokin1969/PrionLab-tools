@@ -6,9 +6,11 @@
     { key: 'busqueda',       label: '🔍 Búsqueda' },
     { key: 'carrito',        label: '🛒 Carrito' },
     { key: 'ia',             label: '🤖 IA: chats y notas' },
+    { key: 'referencias',    label: '📝 Sugerir referencias' },
     { key: 'notificaciones', label: '🔔 Notificaciones' },
     { key: 'salud',          label: '❤️ Salud biblioteca' },
     { key: 'jc',             label: '📖 Journal Club' },
+    { key: 'vc',             label: '🔭 Vigilancia competitiva' },
     { key: 'administracion', label: '⚙️ Administración' },
   ];
 
@@ -102,6 +104,78 @@
     const PART= '<span class="pv-help-partial">parcial</span>';
 
     const html = {
+
+      // ── Vigilancia competitiva ─────────────────────────────────────────
+      vc: `
+        <div class="pv-help-section">
+          <h3>🔭 Vigilancia competitiva</h3>
+          <p>Informe anual de vigilancia competitiva que pide el instituto (ISO 56001): título, autores y tres párrafos (¼ contexto del área, ½ avances del año con referencias, ¼ perspectivas para el año siguiente), máximo 3.500 caracteres, Times New Roman 11. Todo está en <strong>Miscelánea → 🔭 Vigilancia competitiva</strong>. A la izquierda hay una entrada por año: los informes desde 2018 y el del año en curso, que es el generador.</p>
+
+          <h4>Quién puede hacer qué</h4>
+          <ul>
+            <li><strong>Cualquier usuario:</strong> leer los informes con sus citas enlazadas, ver las colecciones <em>VC año</em>, consultar el generador y descargar cualquier informe en Word.</li>
+            <li><strong>Administradores y editores de VC</strong> (casilla <em>Editor de Vigilancia competitiva</em> en <em>Panel de administración → Users → Editar</em> o en <em>Miscelánea → Administración</em>): todo lo demás — cargar y corregir referencias, generar, editar, pedir cambios a la IA y aceptar la versión final.</li>
+            <li>Si un editor no ve los botones, debe recargar PrionVault.</li>
+            <li>Mientras hay un proceso en marcha nadie puede lanzar otro, y si dos personas editan el texto a la vez se queda el último que guarda: conviene avisarse.</li>
+          </ul>
+
+          <h4>Los informes anteriores y sus colecciones</h4>
+          <p>Los informes de 2018 a 2025 están cargados con su texto completo, y cada cita (DOI, PMID o «Autor et al. año») enlazada a su artículo de PrionVault: un clic abre su ficha. Los artículos de cada año forman la colección <strong>VC año</strong> en el grupo <strong>Vigilancia competitiva</strong> del sidebar; los botones <em>Ver en el listado</em> y <em>Ver todas las VC</em> filtran por un año o por todos.</p>
+
+          <h4>Cerrar las VC antiguas (2018–2025)</h4>
+          <p>El objetivo es que cada cita apunte al artículo correcto y esté en su colección: así sirven de memoria fiable para el generador.</p>
+          <ol>
+            <li><strong>Primera vez:</strong> en el año en curso, botón <em>Cargar informes 2018–2025 y crear sus colecciones</em>. Se hace una vez y tarda unos minutos: busca cada referencia en la biblioteca e importa desde PubMed/CrossRef las que faltan (sin PDF). Las de 2019 y 2020, que solo citaban «Autor et al. año», las busca en PubMed y la IA elige el candidato según la frase que las cita.</li>
+            <li><strong>Ver qué falta:</strong> bajo cada año aparece «enlazados/total artículos»; un <span style="color:#b45309;">●</span> ámbar indica referencias por revisar.</li>
+            <li><strong>Revisar cada referencia</strong> en la lista <em>Referencias</em> del año:
+              <ul>
+                <li><strong>✓</strong> enlazada (ya estaba) y <strong>＋</strong> importada ahora: correctas, salvo que al abrir su ficha no sea el artículo citado. En ese caso, <em>¿No es este artículo? Cambiarlo</em> → PMID correcto → <em>Asignar</em> (el equivocado sale de la colección).</li>
+                <li><strong>?</strong> ambigua: <em>Es este</em> en el candidato correcto, o escribir el PMID y <em>Asignar</em>.</li>
+                <li><strong>✗</strong> no encontrada: buscarla en PubMed (la frase del informe ayuda) y asignar su PMID.</li>
+                <li><strong>!</strong> error: <em>Resolver referencias pendientes</em>; si persiste, PMID a mano.</li>
+              </ul></li>
+            <li><strong>Por dónde empezar:</strong> 2019 y 2020 (donde eligió la IA; revisar también sus ✓), la referencia «in press» de 2018 y, como prioridad, 2024 y 2025, que son el modelo de estilo y lo que se esperaba para el año siguiente.</li>
+            <li><strong>Un año está cerrado</strong> cuando todas sus referencias están enlazadas («43/43») sin ● ámbar y se han comprobado las elegidas por la IA. Los artículos importados no necesitan PDF para esto.</li>
+          </ol>
+
+          <h4>El informe del año en curso, paso a paso</h4>
+          <p>El botón <strong>❓ ¿Cómo se hace el informe?</strong> del generador lo resume. Cada paso lo lanza un administrador o editor de VC, tarda unos minutos con barra de progreso y se puede parar.</p>
+          <p><strong>0 · Preparar el material (lo que más mejora el resultado).</strong> La IA usa, además del título y el abstract, todo lo que PrionVault sabe de cada artículo, y lo muestra como etiquetas:</p>
+          <ul>
+            <li><strong>📚 Artículos clave del año en la biblioteca</strong> (por email a prionvault_lab@ con el PDF, o con la extensión). Los que solo están en el inventario de PubMed aportan poco.</li>
+            <li><strong>🧠 PDF y resumen IA:</strong> el resumen IA sale del texto completo y es la mejor evidencia. Si en <em>Resumen IA en lote</em> aparece el aviso ámbar, <em>Rehacerlos con el texto completo</em>.</li>
+            <li><strong>📝 Notas</strong> en los artículos importantes. Son personales: el generador usa las de quien lo lanza y las que cualquiera marque con <strong>🔭 Compartir con la VC</strong> en el pie del editor de la nota (siguen siendo privadas en PrionVault).</li>
+            <li><strong>📖 Journal Club, ★ estrellas y ⭐ hitos</strong>: señales de que el laboratorio consideró el artículo relevante. <strong>🏠</strong> marca las publicaciones propias (se detectan solas). También cuentan las <strong>citas recibidas</strong> (OpenAlex).</li>
+            <li><strong>📌 Artículos que deben citarse sí o sí:</strong> meterlos en la colección <em>VC año</em> (se crea al abrir el generador). Entran seleccionados, sean del año que sean. Un editor sin permiso sobre colecciones usa <em>Añadir por PMID</em> en el paso 1.</li>
+            <li><strong>Inventario de PubMed al día</strong> justo antes de empezar.</li>
+          </ul>
+          <p style="color:#6b7280;border-left:3px solid #e5e7eb;padding-left:10px;">Las señales ayudan, pero no sustituyen al criterio científico: un avance clave entra aunque nadie lo haya anotado.</p>
+          <p><strong>1 · Selección.</strong> Elegir el <em>Nº de artículos a citar</em> (38 por defecto, lo que citaron 2024–2025) y <em>Seleccionar artículos con IA</em>: criba por título todo lo del año, valora a fondo ~120 con el modelo más potente y elige un conjunto equilibrado y sin redundancias, con una frase de por qué. Revisar los seleccionados y los siguientes sin marcar; marcar, desmarcar o añadir por PMID (lo tocado a mano, ✋, se respeta). Es el paso más caro: para retocar, usar las casillas en vez de repetirlo.</p>
+          <p><strong>2 · Temas.</strong> <em>Agrupar en temas</em>: 4–6 temas en el orden del texto, enlazados con las VC anteriores y con lo que la del año pasado esperaba. Si no convencen, cambiar la selección y <em>Rehacer temas</em>.</p>
+          <p><strong>3 · Redacción.</strong> Elegir primero las citas: <code>(PMID: …)</code> como en 2024–2025 o <code>(doi: …)</code> como en 2021–2023. Opcionalmente, indicaciones generales («más peso al ensayo clínico»). <em>Redactar informe</em>: escribe con el formato pedido y al estilo de los anteriores sin copiarlos, comprueba longitud y proporciones, y contrasta cada afirmación con el artículo citado. Leer los avisos, sobre todo lo que la revisión de hechos deja <em>por revisar a mano</em>.</p>
+          <p><strong>4 · Pedir cambios a la IA</strong>, las veces que haga falta, en lenguaje normal:</p>
+          <ul>
+            <li>«En el segundo párrafo, tras la frase sobre el ensayo con ASO, añade que los primeros datos de seguridad se esperan en el año siguiente.»</li>
+            <li>«Quita la frase sobre los organoides.» · «Añade el artículo PMID … en diagnóstico y quita el de Smith sobre CWD.»</li>
+            <li>Aplica solo lo pedido, actualiza la selección si se añaden o quitan artículos, vuelve a comprobar longitud y hechos y resume qué cambió. Cada versión queda en el <em>historial</em> y se puede <em>Restaurar</em>.</li>
+            <li><strong>Consejos:</strong> decir dónde (párrafo y frase de referencia); usar PMID/DOI para artículos; pocas peticiones claras mejor que una larga; si sale peor, restaurar y reformular. Para retoques mínimos, editar a mano y <em>Guardar cambios</em> (contador de caracteres en vivo).</li>
+          </ul>
+          <p><strong>5 · Revisión final y entrega.</strong></p>
+          <ul>
+            <li>Contador en verde (≤ 3.500), sin avisos de hechos por revisar, título del año y autores correctos.</li>
+            <li>Leer el Word entero de corrido (<em>⬇ Descargar Word</em>), como lo leerá el comité, y comprobar al azar algunas citas en su ficha.</li>
+            <li><strong>✅ Aceptar versión final:</strong> pasa a ser el informe oficial del año; sus artículos citados entran en la colección <em>VC año</em> (que conserva también los propuestos) y servirá de memoria para el año siguiente. Se puede <em>Reabrir para editar</em>. El Word descargado es el que se entrega.</li>
+          </ul>
+
+          <h4>Recomendaciones</h4>
+          <ul>
+            <li><strong>Empezar por la preparación, no por el generador:</strong> una o dos semanas importando PDFs, haciendo resúmenes IA y dejando notas compartidas mejoran el resultado más que cualquier ajuste posterior.</li>
+            <li><strong>La selección es la decisión que más pesa:</strong> revisarla con calma; un buen texto no salva una mala selección.</li>
+            <li><strong>Cerrar antes las VC 2024 y 2025.</strong></li>
+            <li><strong>La última lectura es nuestra:</strong> la revisión de hechos de la IA es buena, pero no infalible.</li>
+          </ul>
+        </div>
+      `,
 
       // ── Carrito ───────────────────────────────────────────────────────
       carrito: `
@@ -549,20 +623,7 @@
           <p>Por seguridad, quien solo tiene el permiso de PrionVault <strong>no puede</strong> tocar cuentas de administradores generales, cambiar el rol general de nadie (los usuarios que crea son siempre lectores) ni desactivarse a sí mismo. Eliminar usuarios sigue siendo solo desde el panel de administración de PrionLab.</p>
 
           <h4>🔭 Vigilancia competitiva</h4>
-          <p>En <strong>Miscelánea → 🔭 Vigilancia competitiva</strong> están los informes anuales de vigilancia competitiva (ISO 56001) desde 2018, con su texto completo y cada cita enlazada al artículo de PrionVault (clic para abrir su ficha). Los artículos de cada año forman la colección <strong>«VC año»</strong> dentro del grupo <strong>Vigilancia competitiva</strong> del sidebar: el botón <em>Ver en el listado</em> filtra por un año y <em>Ver todas las VC</em> por todos. Las referencias que no se pudieron identificar con seguridad aparecen marcadas con <strong>?</strong> y el administrador puede elegir el artículo correcto o asignar el PMID a mano. </p>
-          <p><strong>Quién puede hacer qué:</strong> cualquier usuario puede leer los informes, ver sus colecciones, consultar el generador y descargar el Word. Generar, editar, pedir cambios a la IA y aceptar la versión final lo pueden hacer los administradores y los usuarios marcados como <strong>Editor de Vigilancia competitiva</strong> (casilla en <em>Panel de administración → Users → Editar</em> o en <em>Miscelánea → Administración</em>).</p>
-          <p><strong>Informe del año en curso (generador con IA)</strong>, en tres pasos que lanzan el administrador o un editor de VC. El botón <strong>❓ ¿Cómo se hace el informe?</strong> lo explica y, sobre todo, indica qué conviene preparar antes (artículos clave en la biblioteca con PDF y resumen IA, notas, presentarlos en Journal Club, valorarlos con estrellas, marcarlos como hito):</p>
-          <ol>
-            <li><strong>Selección:</strong> reúne todos los artículos del año (inventario de PubMed + biblioteca), hace un cribado por título y valora con el modelo más potente los ~120 mejores con su abstract y, si están en la biblioteca, el <strong>resumen IA del texto completo</strong> y <strong>tus notas</strong>, además del cuartil SCImago, las <strong>citas recibidas</strong> (OpenAlex) y las señales del laboratorio (presentado en Journal Club, valoraciones, hitos, publicación propia). Después elige de forma conjunta los 38 (configurable) para que el grupo sea equilibrado y sin redundancias, cada uno con una frase de por qué. Puedes marcar/desmarcar y añadir otros por PMID.</li>
-            <li><strong>Notas compartidas con la VC:</strong> las notas adhesivas son personales, pero cada una tiene el interruptor <em>🔭 Compartir con la VC</em>. Las notas marcadas las usa el generador lo lance quien lo lance (por ejemplo, las notas de Joaquín cuando genera Hasier). En PrionVault siguen siendo visibles solo para su autor.</li>
-            <li><strong>Proponer artículos:</strong> cualquier artículo que se meta en la colección <em>VC año</em> (por ejemplo <em>VC 2026</em>, en el grupo <em>Vigilancia competitiva</em> del sidebar) entra en el generador seleccionado y marcado 📌, aunque no sea de ese año o la IA no lo hubiera elegido. Si luego se desmarca en el generador, se respeta. Al aceptar la versión final, la colección conserva estos artículos y añade los citados.</li>
-            <li><strong>Temas:</strong> agrupa los seleccionados en 4–6 temas, enlazando con las VC anteriores y con lo que la VC del año pasado esperaba para este.</li>
-            <li><strong>Redacción:</strong> escribe el informe con el formato pedido (título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máx. 3.500 caracteres) al estilo de los informes anteriores, sin copiarlos. Comprueba sola la longitud, las proporciones y que solo cite los PMID seleccionados, y se corrige hasta cumplir. Después hace una <strong>revisión de hechos</strong>: contrasta cada afirmación con la evidencia del artículo citado (exageraciones, atribuciones erróneas, animal vs humano…), la corrige y te enseña lo que corrigió y lo que queda por revisar. Admite indicaciones («más peso al ensayo clínico»…). El texto se puede editar a mano, con contador de caracteres, y descargar en Word (Times New Roman 11).</li>
-            <li><strong>Pedir cambios a la IA:</strong> con el borrador hecho, escribe en lenguaje libre lo que quieras («tras la frase del ensayo añade…», «quita la frase de organoides», «añade el artículo PMID … / doi:…», «quita el de Smith sobre CWD», «más peso a los biomarcadores»). La IA cambia solo eso y deja el resto igual; si añades o quitas artículos, actualiza la selección (busca los nuevos en PubMed con su evidencia); vuelve a validar la longitud y a revisar los hechos, y resume qué ha cambiado. Puedes repetirlo cuantas veces quieras.</li>
-            <li><strong>Historial de versiones:</strong> cada redacción, petición de cambios y edición manual queda guardada con lo que se pidió y lo que cambió; cualquiera se puede restaurar.</li>
-            <li><strong>Citas PMID o DOI:</strong> por defecto <code>(PMID: …)</code>, como en 2024–2025; se puede elegir <code>(doi: …)</code>, como en 2021–2023.</li>
-            <li><strong>✅ Aceptar versión final:</strong> el informe pasa a ser el oficial del año, como los anteriores: sus artículos citados se enlazan (importando los que falten) en la colección «VC año» y servirá de memoria para el informe del año siguiente. Se puede <em>reabrir para editar</em>.</li>
-          </ol>
+          <p>Todo lo relativo al informe anual de Vigilancia competitiva (informes anteriores, cómo cerrarlos y cómo generar el del año) está en su propia pestaña: <strong>🔭 Vigilancia competitiva</strong>.</p>
           <h4>👁 Ver como <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
           <p>Desde <strong>Miscelánea → 👁 Ver como</strong> (o desde el panel de administración de PrionLab) eliges un usuario no administrador y entras con su sesión completa para ver PrionVault exactamente como lo ve él. Una franja fija arriba indica que estás viéndolo como otra persona, con el botón <strong>Salir</strong> para volver a tu sesión, en la misma página donde estabas. Todo lo que hagas mientras tanto lo hace esa cuenta, y queda registrado quién lo usó y cuándo.</p>
 
