@@ -60,6 +60,7 @@ def _public_user(u: dict) -> dict:
         "active":              u.get("active") == "true",
         "is_prionvault_admin": u.get("is_prionvault_admin") == "true",
         "is_jc_responsible":   u.get("is_jc_responsible") == "true",
+        "is_vc_editor":        u.get("is_vc_editor") == "true",
     }
 
 
@@ -80,6 +81,7 @@ def api_pv_users_create():
     language = (data.get("language") or "es").strip()
     is_pv_admin = bool(data.get("is_prionvault_admin"))
     is_jc = bool(data.get("is_jc_responsible"))
+    is_vc = bool(data.get("is_vc_editor"))
 
     if not username or not password:
         return jsonify({"error": "username_and_password_required"}), 400
@@ -106,6 +108,7 @@ def api_pv_users_create():
         "active":              "true",
         "is_prionvault_admin": "true" if is_pv_admin else "false",
         "is_jc_responsible":   "true" if is_jc else "false",
+        "is_vc_editor":        "true" if is_vc else "false",
         "created_at":          date.today().isoformat(),
         "last_login":          "",
     })
@@ -130,6 +133,8 @@ def api_pv_users_update(username):
 
     if "is_jc_responsible" in data:
         updates["is_jc_responsible"] = "true" if data["is_jc_responsible"] else "false"
+    if "is_vc_editor" in data:
+        updates["is_vc_editor"] = "true" if data["is_vc_editor"] else "false"
 
     if "role" in data:
         if not _is_global_admin():

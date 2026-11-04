@@ -2198,9 +2198,10 @@ def api_me():
     """Name + email of the logged-in user (for the share-email modal),
     plus is_jc_responsible (for showing the "Convocar Journal Club"
     button to the right people)."""
-    from ._helpers import _viewer_is_jc_responsible
+    from ._helpers import _viewer_is_jc_responsible, _viewer_is_vc_editor
     out = _current_user_contact()
     out["is_jc_responsible"] = _viewer_is_jc_responsible()
+    out["is_vc_editor"] = _viewer_is_vc_editor()
     return jsonify(out)
 
 

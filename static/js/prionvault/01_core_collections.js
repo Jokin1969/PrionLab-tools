@@ -30,6 +30,8 @@
   // open detail modal's JC section once known, so the "Convocar" button
   // shows up without needing a reload.
   let IS_JC_RESPONSIBLE = false;
+  // Admins + users flagged 'Editor de Vigilancia competitiva' (from /me).
+  let IS_VC_EDITOR = IS_ADMIN;
 
   const state = {
     q: '',

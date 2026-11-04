@@ -46,6 +46,9 @@ _ROLE_FLAG_COLS = [
     # Checked by core.decorators.prionvault_user_admin_required, never
     # by the regular @admin_required used everywhere else.
     "is_prionvault_admin",   # "true" | "false"
+    # May generate/edit the Vigilancia competitiva report (PrionVault
+    # Miscelánea → 🔭) like an admin, without any other admin power.
+    "is_vc_editor",          # "true" | "false"
 ]
 COLUMNS = _CORE_COLS + _PROFILE_COLS + _LIFECYCLE_COLS + _ROLE_FLAG_COLS
 
@@ -93,6 +96,15 @@ def ensure_db_store() -> bool:
                 return False
             # One importer at a time (transaction-scoped advisory lock).
             conn.execute(text("SELECT pg_advisory_xact_lock(7072657069)"))
+            # Every account field must exist before queries name it (e.g. a
+            # flag added later whose migration hasn't run yet): add any missing.
+            have = {r[0] for r in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
+                {"t": _TABLE})}
+            for col in COLUMNS:
+                if col not in have:
+                    conn.execute(text(
+                        f"ALTER TABLE {_TABLE} ADD COLUMN IF NOT EXISTS {col} TEXT NOT NULL DEFAULT ''"))
             count = conn.execute(text(f"SELECT COUNT(*) FROM {_TABLE}")).scalar()
             if count == 0:
                 rows = _csv_read()

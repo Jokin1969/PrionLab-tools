@@ -7,10 +7,26 @@ import logging
 
 from flask import jsonify, request
 
-from core.decorators import admin_required, login_required
+from core.decorators import login_required
 from tools.prionvault import prionvault_bp
 
-from ._helpers import _viewer_id
+from ._helpers import _viewer_id, _viewer_is_vc_editor
+
+
+def vc_editor_required(f):
+    """Admins and users flagged 'Editor de Vigilancia competitiva'."""
+    from functools import wraps
+
+    @wraps(f)
+    def wrapper(*a, **kw):
+        from flask import session
+        if not session.get("logged_in"):
+            return jsonify({"error": "not_authenticated"}), 401
+        if not _viewer_is_vc_editor():
+            return jsonify({"error": "forbidden",
+                            "detail": "Solo administradores o editores de Vigilancia competitiva."}), 403
+        return f(*a, **kw)
+    return wrapper
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +55,7 @@ def api_vc_report(year):
 
 
 @prionvault_bp.route("/api/vc/resolve", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_resolve():
     """Load the historical reports (idempotent) and resolve every pending
     reference into PrionVault articles + the "VC <year>" collections."""
@@ -60,14 +76,14 @@ def api_vc_resolve_status():
 
 
 @prionvault_bp.route("/api/vc/resolve/stop", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_resolve_stop():
     from .services import vc
     return jsonify(vc.stop())
 
 
 @prionvault_bp.route("/api/vc/refs/<int:ref_id>/pick", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_ref_pick(ref_id):
     """Fix a reference by hand: {"pmid": "..."} (imported if missing)."""
     from .services import vc
@@ -91,7 +107,7 @@ def api_vc_draft(year):
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/run", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_draft_run(year):
     """Start a step: {"step": "select"|"themes"|"write", "n": 38, "instructions": "..."}."""
     from .services import vc_generate as g
@@ -128,14 +144,14 @@ def api_vc_draft_status():
 
 
 @prionvault_bp.route("/api/vc/draft/stop", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_draft_stop():
     from .services import vc_generate as g
     return jsonify(g.stop())
 
 
 @prionvault_bp.route("/api/vc/items/<int:item_id>", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_item_toggle(item_id):
     from .services import vc_generate as g
     g.set_selected(item_id, bool((request.get_json(silent=True) or {}).get("selected")))
@@ -143,7 +159,7 @@ def api_vc_item_toggle(item_id):
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/add", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_draft_add(year):
     from .services import vc_generate as g
     pmid = str((request.get_json(silent=True) or {}).get("pmid") or "").strip()
@@ -157,7 +173,7 @@ def api_vc_draft_add(year):
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/text", methods=["PUT"])
-@admin_required
+@vc_editor_required
 def api_vc_draft_text(year):
     from .services import vc_generate as g
     body = request.get_json(silent=True) or {}
@@ -184,7 +200,7 @@ def api_vc_docx(year):
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/versions/<int:vid>/restore", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_restore(year, vid):
     from .services import vc_generate as g
     try:
@@ -195,7 +211,7 @@ def api_vc_restore(year, vid):
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/cite-style", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_cite_style(year):
     from .services import vc_generate as g
     try:
@@ -206,7 +222,7 @@ def api_vc_cite_style(year):
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/accept", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_accept(year):
     """Accept the current draft as the year's final report (links its cited
     papers and fills the 'VC <year>' collection)."""
@@ -218,7 +234,7 @@ def api_vc_accept(year):
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/reopen", methods=["POST"])
-@admin_required
+@vc_editor_required
 def api_vc_reopen(year):
     from .services import vc_generate as g
     g.reopen(year)

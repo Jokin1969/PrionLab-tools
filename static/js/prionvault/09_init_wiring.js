@@ -4,6 +4,7 @@
     // session (only in users.csv), so fetched once up front.
     api('/me').then(r => {
       IS_JC_RESPONSIBLE = !!r.is_jc_responsible;
+      IS_VC_EDITOR = IS_ADMIN || !!r.is_vc_editor;
       // Rows drawn before /me answered hid the JC curator controls — redraw.
       if (IS_JC_RESPONSIBLE && !IS_ADMIN) loadArticles();
     }).catch(() => {});

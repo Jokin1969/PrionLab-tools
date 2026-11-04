@@ -198,6 +198,7 @@ def add_user():
         language = request.form.get("language", "es")
         active = "true" if request.form.get("active") else "false"
         is_jc_responsible = "true" if request.form.get("is_jc_responsible") else "false"
+        is_vc_editor = "true" if request.form.get("is_vc_editor") else "false"
         is_prionvault_admin = "true" if request.form.get("is_prionvault_admin") else "false"
 
         if not password:
@@ -220,6 +221,7 @@ def add_user():
             "language": language,
             "active": active,
             "is_jc_responsible": is_jc_responsible,
+            "is_vc_editor": is_vc_editor,
             "is_prionvault_admin": is_prionvault_admin,
             "created_at": date.today().isoformat(),
             "last_login": "",
@@ -247,6 +249,7 @@ def edit_user(username):
         language = request.form.get("language", user["language"])
         active = "true" if request.form.get("active") else "false"
         is_jc_responsible = "true" if request.form.get("is_jc_responsible") else "false"
+        is_vc_editor = "true" if request.form.get("is_vc_editor") else "false"
         is_prionvault_admin = "true" if request.form.get("is_prionvault_admin") else "false"
 
         updates = {
@@ -256,6 +259,7 @@ def edit_user(username):
             "language": language,
             "active": active,
             "is_jc_responsible": is_jc_responsible,
+            "is_vc_editor": is_vc_editor,
             "is_prionvault_admin": is_prionvault_admin,
         }
 

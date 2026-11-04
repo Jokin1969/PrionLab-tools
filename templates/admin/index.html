@@ -41,6 +41,7 @@
           <th>{{ _('Language') }}</th>
           <th>{{ _('Active') }}</th>
           <th title="{{ _('Journal Club responsible') }}">JC</th>
+          <th title="Editor de Vigilancia competitiva">VC</th>
           <th>{{ _('Last login') }}</th>
           <th>{{ _('Actions') }}</th>
         </tr>
@@ -58,6 +59,9 @@
           </td>
           <td class="text-center">
             {{ '✓' if user.is_jc_responsible == 'true' else '' }}
+          </td>
+          <td class="text-center">
+            {{ '✓' if user.is_vc_editor == 'true' else '' }}
           </td>
           <td>{{ user.last_login or '—' }}</td>
           <td class="actions-cell">

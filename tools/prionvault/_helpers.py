@@ -153,6 +153,25 @@ def _viewer_is_jc_responsible() -> bool:
         return False
 
 
+def _viewer_is_vc_editor() -> bool:
+    """Admins, plus users flagged is_vc_editor: may generate and edit the
+    Vigilancia competitiva report."""
+    if getattr(g, "_ext_authed", False):
+        return False
+    if session.get("role") == "admin":
+        return True
+    uname = session.get("username")
+    if not uname:
+        return False
+    try:
+        from core.users import get_user
+        u = get_user(uname)
+        return bool(u and (u.get("is_vc_editor") or "").lower() == "true")
+    except Exception:
+        logger.debug("_viewer_is_vc_editor: lookup failed for %s", uname, exc_info=True)
+        return False
+
+
 def _session() -> SASession:
     return db.Session()
 

@@ -157,13 +157,13 @@
             ${meta.collection_id ? `<button type="button" id="pv-vc-filter-year"
                 style="padding:6px 12px;border-radius:7px;border:none;background:#0F3460;color:#fff;
                        font-size:12.5px;cursor:pointer;">Ver los ${meta.resolved} artículos en el listado</button>` : ''}
-            ${IS_ADMIN && rep.status === 'final' ? `<button type="button" id="pv-vc-reopen"
+            ${IS_VC_EDITOR && rep.status === 'final' ? `<button type="button" id="pv-vc-reopen"
                 style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#374151;
                        font-size:12.5px;cursor:pointer;">✏️ Reabrir para editar</button>` : ''}
             <a href="${API}/vc/reports/${rep.year}/docx"
                style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;
                       color:#374151;font-size:12.5px;text-decoration:none;">⬇ Word</a>
-            ${IS_ADMIN && needsWork ? `<button type="button" id="pv-vc-resolve"
+            ${IS_VC_EDITOR && needsWork ? `<button type="button" id="pv-vc-resolve"
                 style="padding:6px 12px;border-radius:7px;border:1px solid #0F3460;background:#fff;
                        color:#0F3460;font-size:12.5px;cursor:pointer;">Resolver referencias pendientes</button>` : ''}
           </div>
@@ -213,7 +213,7 @@
             ${esc(r.article_title || '(sin título)')}</button>
           <span style="color:#6b7280;"> · ${esc(r.article_journal || '')} ${r.article_year || ''}</span>` : '';
       let fix = '';
-      if (IS_ADMIN && (r.status === 'ambiguous' || r.status === 'not_found' || r.status === 'error')) {
+      if (IS_VC_EDITOR && (r.status === 'ambiguous' || r.status === 'not_found' || r.status === 'error')) {
         const cands = Array.isArray(r.candidates) ? r.candidates : [];
         fix = `
           <div style="margin:6px 0 0 22px;">
@@ -306,7 +306,7 @@
       const job = d.job || {};
       const busy = !!job.running;
       const check = d.check;
-      const dis = busy || !IS_ADMIN ? 'disabled' : '';
+      const dis = busy || !IS_VC_EDITOR ? 'disabled' : '';
 
       body.innerHTML = `
         <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">
@@ -319,7 +319,7 @@
           <div style="padding:10px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;
                       font-size:13px;color:#92400e;margin-bottom:12px;">
             Primero carga los informes anteriores: la IA los usa como memoria y modelo de estilo.
-            ${IS_ADMIN ? `<div style="margin-top:8px;"><button type="button" id="pv-vc-setup" style="${btnCss(true)}">
+            ${IS_VC_EDITOR ? `<div style="margin-top:8px;"><button type="button" id="pv-vc-setup" style="${btnCss(true)}">
               Cargar informes 2018–2025 y crear sus colecciones</button></div><div id="pv-vc-progress"></div>` : ''}
           </div>` : ''}
         <div id="pv-vc-genjob"></div>
@@ -329,7 +329,7 @@
             <div><strong>1 · Selección</strong>
               <span style="color:#6b7280;font-size:12.5px;"> — ${d.candidates_total || 0} candidatos de ${year}
               (inventario PubMed + biblioteca) · <strong>${sel.length}</strong> seleccionados</span></div>
-            ${IS_ADMIN ? `<span style="display:flex;gap:6px;align-items:center;">
+            ${IS_VC_EDITOR ? `<span style="display:flex;gap:6px;align-items:center;">
               <label for="pv-vc-n" style="font-size:12.5px;color:#374151;cursor:help;"
                      title="Cuántos artículos dejará preseleccionados la IA (los mejor puntuados) para citar en el informe. Las VC 2024–2025 citaron unos 38 en 3.500 caracteres: más artículos = más citas pero menos espacio para cada una. Entre 5 y 80. Los que marques o desmarques a mano se respetan.">
                 Nº de artículos a citar <span style="color:#9ca3af;">ⓘ</span></label>
@@ -347,7 +347,7 @@
             <div style="max-height:340px;overflow-y:auto;margin-top:8px;border-top:1px solid #f3f4f6;">
               ${items.map(itemRow).join('')}
             </div>` : ''}
-          ${IS_ADMIN ? `<form id="pv-vc-add" style="display:flex;gap:6px;margin-top:8px;">
+          ${IS_VC_EDITOR ? `<form id="pv-vc-add" style="display:flex;gap:6px;margin-top:8px;">
               <input placeholder="Añadir por PMID" style="width:150px;padding:5px 8px;border:1px solid #d1d5db;
                      border-radius:6px;font-size:12.5px;">
               <button type="submit" style="${btnCss(false)}">Añadir</button></form>` : ''}
@@ -357,7 +357,7 @@
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
             <div><strong>2 · Temas</strong>
               <span style="color:#6b7280;font-size:12.5px;"> — agrupa los seleccionados recordando las VC anteriores</span></div>
-            ${IS_ADMIN ? `<button type="button" id="pv-vc-run-themes" style="${btnCss(true)}"
+            ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-run-themes" style="${btnCss(true)}"
                  ${dis || (!sel.length ? 'disabled' : '')}>${themes.length ? 'Rehacer temas' : 'Agrupar en temas'}</button>` : ''}
           </div>
           ${themes.map(t => `
@@ -374,16 +374,16 @@
             <div><strong>3 · Redacción</strong>
               <span style="color:#6b7280;font-size:12.5px;"> — formato del email, máx. 3.500 caracteres,
               estilo de las VC anteriores</span></div>
-            ${IS_ADMIN ? `<button type="button" id="pv-vc-run-write" style="${btnCss(true)}"
+            ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-run-write" style="${btnCss(true)}"
                  ${dis || (!sel.length ? 'disabled' : '')}>${d.paragraphs.length ? 'Volver a redactar' : 'Redactar informe'}</button>` : ''}
           </div>
-          ${IS_ADMIN ? `<div style="font-size:12.5px;color:#374151;margin-top:8px;"
+          ${IS_VC_EDITOR ? `<div style="font-size:12.5px;color:#374151;margin-top:8px;"
                  title="2024 y 2025 citaron con PMID; 2021–2023 con DOI. El email admite ambos.">
               Citas en el texto:
               <label style="margin-left:6px;"><input type="radio" name="pv-vc-style" value="pmid" ${d.cite_style !== 'doi' ? 'checked' : ''}> (PMID: …)</label>
               <label style="margin-left:8px;"><input type="radio" name="pv-vc-style" value="doi" ${d.cite_style === 'doi' ? 'checked' : ''}> (doi: …)</label>
               <span style="color:#9ca3af;"> · se aplica al redactar o al pedir cambios</span></div>` : ''}
-          ${IS_ADMIN ? `<textarea id="pv-vc-instr" rows="2" placeholder="Indicaciones opcionales para la IA (p. ej. «da más peso al ensayo clínico», «menos CWD»)…"
+          ${IS_VC_EDITOR ? `<textarea id="pv-vc-instr" rows="2" placeholder="Indicaciones opcionales para la IA (p. ej. «da más peso al ensayo clínico», «menos CWD»)…"
               style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #d1d5db;border-radius:8px;
                      font-size:12.5px;box-sizing:border-box;"></textarea>` : ''}
           ${d.paragraphs.length ? draftEditor(d, check) : ''}
@@ -444,7 +444,7 @@
         <section style="border:1px solid #c7d2fe;background:#f8faff;border-radius:12px;padding:12px 14px;margin:12px 0;">
           <div><strong>4 · Pedir cambios a la IA</strong>
             <span style="color:#6b7280;font-size:12.5px;"> — en lenguaje libre, hasta que estéis conformes</span></div>
-          ${IS_ADMIN ? `
+          ${IS_VC_EDITOR ? `
             <textarea id="pv-vc-request" rows="4" placeholder="Ejemplos:
 · Después de la frase sobre el ensayo con ASO, añade que los primeros datos de seguridad se esperan en 2027.
 · Quita la frase sobre los organoides.
@@ -467,7 +467,7 @@
                       <span><strong>#${v.id}</strong> ${KIND[v.kind] || esc(v.kind)}
                         <span style="color:#9ca3af;"> · ${esc(new Date(v.created_at).toLocaleString('es-ES'))} · ${v.chars} car.</span>
                         ${k === 0 ? '<span style="color:#15803d;"> · actual</span>' : ''}</span>
-                      ${IS_ADMIN && k > 0 ? `<button type="button" data-vc-restore="${v.id}"
+                      ${IS_VC_EDITOR && k > 0 ? `<button type="button" data-vc-restore="${v.id}"
                          style="padding:1px 8px;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:11.5px;">Restaurar</button>` : ''}
                     </div>
                     ${v.request ? `<div style="color:#3730a3;margin-top:2px;">Pedido: ${esc(v.request)}</div>` : ''}
@@ -475,7 +475,7 @@
                   </div>`).join('')}
               </div>
             </details>` : ''}
-          ${IS_ADMIN ? `
+          ${IS_VC_EDITOR ? `
             <div style="margin-top:12px;padding-top:10px;border-top:1px solid #c7d2fe;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <button type="button" id="pv-vc-accept" style="${btnCss(true)}background:#15803d;" ${dis}>✅ Aceptar versión final</button>
               <span style="font-size:11.5px;color:#6b7280;">Pasa a ser el informe oficial de ${d.year}: sus artículos citados se enlazan
@@ -546,7 +546,7 @@
       return `
         <label style="display:flex;gap:8px;align-items:flex-start;padding:6px 2px;border-bottom:1px solid #f3f4f6;
                       font-size:12.5px;${i.selected ? '' : 'opacity:.75;'}">
-          <input type="checkbox" data-vc-toggle="${i.id}" ${i.selected ? 'checked' : ''} ${IS_ADMIN ? '' : 'disabled'}
+          <input type="checkbox" data-vc-toggle="${i.id}" ${i.selected ? 'checked' : ''} ${IS_VC_EDITOR ? '' : 'disabled'}
                  style="margin-top:2px;">
           <span style="width:34px;flex-shrink:0;text-align:right;color:#0F3460;font-weight:700;">${esc(String(score))}</span>
           <span style="flex:1;min-width:0;">
@@ -577,7 +577,7 @@
     }
 
     function draftEditor(d, check) {
-      const ta = (id, val, rows) => `<textarea id="${id}" rows="${rows}" ${IS_ADMIN ? '' : 'readonly'}
+      const ta = (id, val, rows) => `<textarea id="${id}" rows="${rows}" ${IS_VC_EDITOR ? '' : 'readonly'}
           style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;
                  font-family:'Times New Roman',serif;font-size:14.5px;line-height:1.5;">${esc(val || '')}</textarea>`;
       const p = d.paragraphs.concat(['', '', '']).slice(0, 3);
@@ -594,7 +594,7 @@
             <div style="font-size:12px;color:#b45309;margin-bottom:6px;">Avisos de la validación:
               <ul style="margin:4px 0 0 18px;">${check.problems.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            ${IS_ADMIN ? `<button type="button" id="pv-vc-save" style="${btnCss(true)}">Guardar cambios</button>` : ''}
+            ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-save" style="${btnCss(true)}">Guardar cambios</button>` : ''}
             <a href="${API}/vc/reports/${d.year}/docx" style="${btnCss(false)}text-decoration:none;">⬇ Descargar Word</a>
           </div>
         </div>`;
@@ -657,7 +657,7 @@
         if (box) box.innerHTML = s.running ? `
           <div style="padding:8px 12px;border-radius:8px;background:#eff6ff;color:#1e40af;font-size:12.5px;">
             ⏳ ${esc(s.phase || 'Trabajando…')} ${s.total ? `(${s.done}/${s.total})` : ''}
-            ${IS_ADMIN ? `<button type="button" id="pv-vc-stop" style="margin-left:8px;${btnCss(false)}padding:2px 8px;">Parar</button>` : ''}
+            ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-stop" style="margin-left:8px;${btnCss(false)}padding:2px 8px;">Parar</button>` : ''}
           </div>` : (s.last_error ? `<div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;
             font-size:12.5px;">Error: ${esc(s.last_error)}</div>` : '');
         $('pv-vc-stop')?.addEventListener('click', () => api('/vc/draft/stop', { method: 'POST' }));
