@@ -436,10 +436,13 @@ def reset_password(username):
         flash(_("User not found."), "error")
         return redirect(url_for("admin.index"))
     new_pwd = _gen_password()
-    update_user(username, {"password_hash": hash_password(new_pwd)})
+    # The temporary password is only a way back in: the user must pick their
+    # own on the next login (same flow as new accounts).
+    update_user(username, {"password_hash": hash_password(new_pwd), "must_change_pw": "true"})
     # Flash the plaintext password with a special category — shown once, prominently
     flash(new_pwd, "password_reset")
-    flash(_("Password reset. Copy the password shown above — it will not be displayed again."), "warning")
+    flash("Contraseña restablecida. Copia la contraseña temporal de arriba: no se volverá a mostrar. "
+          "Pásasela al usuario por un canal seguro; al entrar con ella se le pedirá elegir una propia.", "warning")
     return redirect(url_for("admin.index"))
 
 

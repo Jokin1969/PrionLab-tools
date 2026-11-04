@@ -20568,7 +20568,7 @@
                     style="border:none;background:#f3f4f6;color:#374151;border-radius:5px;
                            padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">${u.active ? '⏸' : '▶'}</button>
             <button type="button" class="pv-ua-reset-btn" data-username="${esc(u.username)}"
-                    title="Resetear contraseña" ${editable ? '' : 'disabled'}
+                    title="Restablecer contraseña: genera una contraseña nueva aleatoria (12 caracteres) y te la muestra UNA sola vez. La anterior deja de funcionar al instante. No se envía nada al usuario: cópiala y pásasela tú por un canal seguro (en persona, mensaje directo). Tú no tienes que inventar ninguna. El usuario entra con su usuario o email y esa contraseña, y en ese primer acceso se le pide elegir una propia. Alternativa sin intervención tuya: que use «¿Olvidaste tu contraseña?» en la pantalla de login y recibirá un enlace por email." ${editable ? '' : 'disabled'}
                     style="border:none;background:#fef3c7;color:#92400e;border-radius:5px;
                            padding:3px 7px;cursor:pointer;font-size:11px;${editable ? '' : 'opacity:0.4;cursor:not-allowed;'}">🔑</button>
           </td>
@@ -20729,11 +20729,11 @@
       });
       document.querySelectorAll('.pv-ua-reset-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!confirm(`¿Resetear la contraseña de ${btn.dataset.username}?`)) return;
+          if (!confirm(`¿Restablecer la contraseña de ${btn.dataset.username}?\n\nSe generará una contraseña temporal que verás una sola vez y tendrás que pasarle tú. La actual dejará de funcionar y, al entrar, se le pedirá elegir una propia.`)) return;
           btn.disabled = true;
           try {
             const r = await api(`/admin/pv-users/${encodeURIComponent(btn.dataset.username)}/reset-password`, { method: 'POST' });
-            alert(`Nueva contraseña para ${btn.dataset.username}:\n\n${r.password}\n\nCópiala ahora — no se volverá a mostrar.`);
+            alert(`Contraseña temporal para ${btn.dataset.username}:\n\n${r.password}\n\nCópiala ahora: no se volverá a mostrar. Pásasela por un canal seguro; al entrar con ella se le pedirá elegir una propia.`);
           } catch (e) {
             setStatus('Error: ' + e.message, '#b91c1c');
           } finally {

@@ -184,5 +184,6 @@ def api_pv_users_reset_password(username):
                         "detail": "Solo un administrador global puede resetear la contraseña de otro administrador."}), 403
 
     new_pwd = _gen_password()
-    update_user(username, {"password_hash": hash_password(new_pwd)})
+    # Temporary password: the user must pick their own on the next login.
+    update_user(username, {"password_hash": hash_password(new_pwd), "must_change_pw": "true"})
     return jsonify({"ok": True, "password": new_pwd})

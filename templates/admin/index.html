@@ -82,8 +82,8 @@
             <form method="POST"
                   action="{{ url_for('admin.reset_password', username=user.username) }}"
                   style="display:inline"
-                  onsubmit="return confirm('{{ _('Reset password for') }} {{ user.username }}?')">
-              <button type="submit" class="btn btn--sm btn--warning btn--icon" title="{{ _('Reset password') }}">🔑</button>
+                  onsubmit="return confirm('¿Restablecer la contraseña de {{ user.username }}?\n\nSe generará una contraseña temporal que verás una sola vez y tendrás que pasarle tú. La actual dejará de funcionar y, al entrar, se le pedirá elegir una propia.')">
+              <button type="submit" class="btn btn--sm btn--warning btn--icon" title="Restablecer contraseña: genera una contraseña nueva aleatoria (12 caracteres) y te la muestra UNA sola vez. La anterior deja de funcionar al instante. No se envía nada al usuario: cópiala y pásasela tú por un canal seguro (en persona, mensaje directo). Tú no tienes que inventar ninguna. El usuario entra con su usuario o email y esa contraseña, y en ese primer acceso se le pide elegir una propia. Alternativa sin intervención tuya: que use «¿Olvidaste tu contraseña?» en la pantalla de login y recibirá un enlace por email.">🔑</button>
             </form>
 
             <form method="POST"
