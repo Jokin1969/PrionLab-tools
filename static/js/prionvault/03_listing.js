@@ -2,6 +2,12 @@
   // When filterSelectedOnly is active with >50 IDs the caller must use POST
   // (IDs go in the request body to avoid Railway URI length limits).
   // For ≤50 IDs the ids=... query param is short enough for a GET.
+  function _parseYearQuery(q) {
+    const ys = (String(q || '').match(/\b(19|20)\d{2}\b/g) || []).map(Number);
+    if (!ys.length || String(q).replace(/\b(19|20)\d{2}\b|[\s,;\-–—]|a|to|hasta/gi, '').length) return null;
+    return [Math.min(...ys), Math.max(...ys)];
+  }
+
   function buildListParams() {
     const params = new URLSearchParams();
     if (state.isolatedArticleId) {
@@ -9,10 +15,19 @@
     } else if (state.filterSelectedOnly && state.selectedIds.size <= 50) {
       params.set('ids', Array.from(state.selectedIds).join(','));
     }
-    if (state.q)                   params.set('q', state.q);
-    if (state.q && state.qMode === 'or') params.set('q_mode', 'or');
-    if (state.yearMin)             params.set('year_min', state.yearMin);
-    if (state.yearMax)             params.set('year_max', state.yearMax);
+    // 📅 year mode: the search box holds a year ("2026") or a range
+    // ("2020-2026", "2020 2026") and filters by publication year instead of
+    // searching the text. Anything else falls back to a normal text search.
+    const yq = state.searchYear ? _parseYearQuery(state.q) : null;
+    if (yq) {
+      params.set('year_min', yq[0]);
+      params.set('year_max', yq[1]);
+    } else {
+      if (state.q)                   params.set('q', state.q);
+      if (state.q && state.qMode === 'or') params.set('q_mode', 'or');
+      if (state.yearMin)             params.set('year_min', state.yearMin);
+      if (state.yearMax)             params.set('year_max', state.yearMax);
+    }
     if (state.journal)             params.set('journal', state.journal);
     if (state.authors)             params.set('authors', state.authors);
     if (state.tagId)               params.set('tag', state.tagId);

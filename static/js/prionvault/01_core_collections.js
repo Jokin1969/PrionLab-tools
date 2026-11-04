@@ -64,6 +64,7 @@
     hasGlossary: null,   // null = all, true = reviewed (has a glossary version recorded), false = not reviewed
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     indexedStatus:  '',  // '' | 'yes' | 'no'
+    searchYear:     false,  // 📅: the search box filters by year (2026, 2020-2026)
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
     qMode:          'and',  // 'and' | 'or' — how multiple bare words in `q` combine
     page: 1,

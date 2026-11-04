@@ -64,6 +64,7 @@
     hasGlossary: null,   // null = all, true = reviewed (has a glossary version recorded), false = not reviewed
     abstractStatus: '',  // '' | 'has' | 'pending' | 'unavailable'
     indexedStatus:  '',  // '' | 'yes' | 'no'
+    searchYear:     false,  // 📅: the search box filters by year (2026, 2020-2026)
     searchFields:   [],  // [] = all fields; else subset of ['title','authors','abstract']
     qMode:          'and',  // 'and' | 'or' — how multiple bare words in `q` combine
     page: 1,
@@ -3007,6 +3008,12 @@
   // When filterSelectedOnly is active with >50 IDs the caller must use POST
   // (IDs go in the request body to avoid Railway URI length limits).
   // For ≤50 IDs the ids=... query param is short enough for a GET.
+  function _parseYearQuery(q) {
+    const ys = (String(q || '').match(/\b(19|20)\d{2}\b/g) || []).map(Number);
+    if (!ys.length || String(q).replace(/\b(19|20)\d{2}\b|[\s,;\-–—]|a|to|hasta/gi, '').length) return null;
+    return [Math.min(...ys), Math.max(...ys)];
+  }
+
   function buildListParams() {
     const params = new URLSearchParams();
     if (state.isolatedArticleId) {
@@ -3014,10 +3021,19 @@
     } else if (state.filterSelectedOnly && state.selectedIds.size <= 50) {
       params.set('ids', Array.from(state.selectedIds).join(','));
     }
-    if (state.q)                   params.set('q', state.q);
-    if (state.q && state.qMode === 'or') params.set('q_mode', 'or');
-    if (state.yearMin)             params.set('year_min', state.yearMin);
-    if (state.yearMax)             params.set('year_max', state.yearMax);
+    // 📅 year mode: the search box holds a year ("2026") or a range
+    // ("2020-2026", "2020 2026") and filters by publication year instead of
+    // searching the text. Anything else falls back to a normal text search.
+    const yq = state.searchYear ? _parseYearQuery(state.q) : null;
+    if (yq) {
+      params.set('year_min', yq[0]);
+      params.set('year_max', yq[1]);
+    } else {
+      if (state.q)                   params.set('q', state.q);
+      if (state.q && state.qMode === 'or') params.set('q_mode', 'or');
+      if (state.yearMin)             params.set('year_min', state.yearMin);
+      if (state.yearMax)             params.set('year_max', state.yearMax);
+    }
     if (state.journal)             params.set('journal', state.journal);
     if (state.authors)             params.set('authors', state.authors);
     if (state.tagId)               params.set('tag', state.tagId);
@@ -12071,6 +12087,27 @@
         if (idx === -1) state.searchFields.push(field);
         else state.searchFields.splice(idx, 1);
         paintFieldButtons(field);
+        state.page = 1;
+        loadArticles();
+      });
+    });
+
+    // 📅 year toggle (both copies of the button stay in sync).
+    function paintYearButtons() {
+      document.querySelectorAll('.pv-year-btn').forEach(btn => {
+        btn.style.background  = state.searchYear ? '#0F3460' : '#f3f4f6';
+        btn.style.color       = state.searchYear ? '#fff' : '#9ca3af';
+        btn.style.borderColor = state.searchYear ? '#0F3460' : '#d1d5db';
+      });
+      searchInput.placeholder = state.searchYear
+        ? 'Año o rango de años (p. ej. 2026 o 2020-2026)…'
+        : (searchInput.dataset.placeholder || searchInput.placeholder);
+    }
+    searchInput.dataset.placeholder = searchInput.placeholder;
+    document.querySelectorAll('.pv-year-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.searchYear = !state.searchYear;
+        paintYearButtons();
         state.page = 1;
         loadArticles();
       });
@@ -23962,6 +23999,9 @@
             <li><strong>🤖 Búsqueda con IA</strong> (icono de robot, a la derecha de la barra): abre un modal aparte con un campo de texto grande para escribir la pregunta en lenguaje natural y elegir el modelo — Claude Sonnet 4.6, GPT-4.1 o Gemini 2.5 Pro, por nombre — antes de lanzarla. Busca por significado sobre el contenido vectorizado de la biblioteca y responde citando las referencias usadas.</li>
             <li><strong>🔍 Búsqueda bibliográfica:</strong> consulta PubMed y Scopus en tiempo real. Los resultados se pueden importar directamente a la biblioteca.</li>
           </ul>
+          <h4>📅 Buscar por año</h4>
+          <p>A la derecha de los botones T · Au · A · R del buscador está el botón del <strong>calendario</strong>. Actívalo y escribe un año (<code>2026</code>) o un rango (<code>2020-2026</code>, <code>2020 2026</code>): el listado muestra solo los artículos publicados en esos años, en vez de buscar ese número en el texto. Si lo que escribes no es un año, se hace la búsqueda normal.</p>
+
           <h4>Filtros del panel lateral</h4>
           <p>Filtra por año, autores, revista, colección, tag, estado PDF, estado resumen IA, bandera, hito, favorito, leído, color, prioridad, Journal Club, PrionPack y asignación PrionRead. Los filtros se combinan (AND). El contador "📝 Con notas" del menú lateral cuenta tus propias notas Post-it (no resúmenes IA) y filtra el listado a los artículos que las tienen.</p>
           <p><strong>Tags compartidas al consultar:</strong> el número de artículos de cada tag y el listado que aparece al pulsarla incluyen los artículos que <strong>cualquier usuario</strong> haya etiquetado, no solo los tuyos. Poner o quitar una tag a un artículo sigue siendo personal: solo puedes quitar las que pusiste tú.</p>

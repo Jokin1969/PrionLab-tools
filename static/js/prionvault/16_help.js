@@ -394,6 +394,9 @@
             <li><strong>🤖 Búsqueda con IA</strong> (icono de robot, a la derecha de la barra): abre un modal aparte con un campo de texto grande para escribir la pregunta en lenguaje natural y elegir el modelo — Claude Sonnet 4.6, GPT-4.1 o Gemini 2.5 Pro, por nombre — antes de lanzarla. Busca por significado sobre el contenido vectorizado de la biblioteca y responde citando las referencias usadas.</li>
             <li><strong>🔍 Búsqueda bibliográfica:</strong> consulta PubMed y Scopus en tiempo real. Los resultados se pueden importar directamente a la biblioteca.</li>
           </ul>
+          <h4>📅 Buscar por año</h4>
+          <p>A la derecha de los botones T · Au · A · R del buscador está el botón del <strong>calendario</strong>. Actívalo y escribe un año (<code>2026</code>) o un rango (<code>2020-2026</code>, <code>2020 2026</code>): el listado muestra solo los artículos publicados en esos años, en vez de buscar ese número en el texto. Si lo que escribes no es un año, se hace la búsqueda normal.</p>
+
           <h4>Filtros del panel lateral</h4>
           <p>Filtra por año, autores, revista, colección, tag, estado PDF, estado resumen IA, bandera, hito, favorito, leído, color, prioridad, Journal Club, PrionPack y asignación PrionRead. Los filtros se combinan (AND). El contador "📝 Con notas" del menú lateral cuenta tus propias notas Post-it (no resúmenes IA) y filtra el listado a los artículos que las tienen.</p>
           <p><strong>Tags compartidas al consultar:</strong> el número de artículos de cada tag y el listado que aparece al pulsarla incluyen los artículos que <strong>cualquier usuario</strong> haya etiquetado, no solo los tuyos. Poner o quitar una tag a un artículo sigue siendo personal: solo puedes quitar las que pusiste tú.</p>

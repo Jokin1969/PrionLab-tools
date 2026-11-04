@@ -74,6 +74,27 @@
       });
     });
 
+    // 📅 year toggle (both copies of the button stay in sync).
+    function paintYearButtons() {
+      document.querySelectorAll('.pv-year-btn').forEach(btn => {
+        btn.style.background  = state.searchYear ? '#0F3460' : '#f3f4f6';
+        btn.style.color       = state.searchYear ? '#fff' : '#9ca3af';
+        btn.style.borderColor = state.searchYear ? '#0F3460' : '#d1d5db';
+      });
+      searchInput.placeholder = state.searchYear
+        ? 'Año o rango de años (p. ej. 2026 o 2020-2026)…'
+        : (searchInput.dataset.placeholder || searchInput.placeholder);
+    }
+    searchInput.dataset.placeholder = searchInput.placeholder;
+    document.querySelectorAll('.pv-year-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.searchYear = !state.searchYear;
+        paintYearButtons();
+        state.page = 1;
+        loadArticles();
+      });
+    });
+
     searchInput.addEventListener('input', e => {
       syncClearBtn();
       state.q = e.target.value.trim();
