@@ -20112,6 +20112,9 @@
             más potente valora los ~120 mejores con su abstract, el resumen IA del texto completo y tus notas (si están en la
             biblioteca), cuartil SCImago, citas (OpenAlex) y señales del laboratorio (Journal Club, valoraciones, hitos), y
             elige un conjunto equilibrado y sin redundancias. Puedes marcar/desmarcar y añadir por PMID antes de seguir.</p>
+          <p style="font-size:12px;color:#3730a3;margin:6px 0 0;">📌 <strong>Proponer artículos:</strong> todo lo que metáis
+            en la colección <em>VC ${year}</em> (grupo <em>Vigilancia competitiva</em> del sidebar) entra aquí seleccionado,
+            sea del año que sea. Si después lo desmarcas aquí, se respeta.</p>
           ${items.length ? `
             <div style="max-height:340px;overflow-y:auto;margin-top:8px;border-top:1px solid #f3f4f6;">
               ${items.map(itemRow).join('')}
@@ -20342,6 +20345,7 @@
       if (sg.rating) out.push(chip(`★ ${sg.rating}`, 'Valoración media en PrionVault'));
       if (sg.milestone) out.push(chip('⭐ hito', 'Marcado como hito'));
       if (i.own_lab) out.push(chip('🏠 propio', 'Publicación del propio grupo'));
+      if ((i.reason || '').startsWith('📌')) out.push(chip('📌 propuesto', 'Lo propusisteis metiéndolo en la colección VC del año'));
       return out.length ? `<div>${out.join('')}</div>` : '';
     }
 
@@ -24093,6 +24097,7 @@
           <p><strong>Informe del año en curso (generador con IA)</strong>, en tres pasos que lanzan el administrador o un editor de VC. El botón <strong>❓ ¿Cómo se hace el informe?</strong> lo explica y, sobre todo, indica qué conviene preparar antes (artículos clave en la biblioteca con PDF y resumen IA, notas, presentarlos en Journal Club, valorarlos con estrellas, marcarlos como hito):</p>
           <ol>
             <li><strong>Selección:</strong> reúne todos los artículos del año (inventario de PubMed + biblioteca), hace un cribado por título y valora con el modelo más potente los ~120 mejores con su abstract y, si están en la biblioteca, el <strong>resumen IA del texto completo</strong> y <strong>tus notas</strong>, además del cuartil SCImago, las <strong>citas recibidas</strong> (OpenAlex) y las señales del laboratorio (presentado en Journal Club, valoraciones, hitos, publicación propia). Después elige de forma conjunta los 38 (configurable) para que el grupo sea equilibrado y sin redundancias, cada uno con una frase de por qué. Puedes marcar/desmarcar y añadir otros por PMID.</li>
+            <li><strong>Proponer artículos:</strong> cualquier artículo que se meta en la colección <em>VC año</em> (por ejemplo <em>VC 2026</em>, en el grupo <em>Vigilancia competitiva</em> del sidebar) entra en el generador seleccionado y marcado 📌, aunque no sea de ese año o la IA no lo hubiera elegido. Si luego se desmarca en el generador, se respeta. Al aceptar la versión final, la colección conserva estos artículos y añade los citados.</li>
             <li><strong>Temas:</strong> agrupa los seleccionados en 4–6 temas, enlazando con las VC anteriores y con lo que la VC del año pasado esperaba para este.</li>
             <li><strong>Redacción:</strong> escribe el informe con el formato pedido (título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máx. 3.500 caracteres) al estilo de los informes anteriores, sin copiarlos. Comprueba sola la longitud, las proporciones y que solo cite los PMID seleccionados, y se corrige hasta cumplir. Después hace una <strong>revisión de hechos</strong>: contrasta cada afirmación con la evidencia del artículo citado (exageraciones, atribuciones erróneas, animal vs humano…), la corrige y te enseña lo que corrigió y lo que queda por revisar. Admite indicaciones («más peso al ensayo clínico»…). El texto se puede editar a mano, con contador de caracteres, y descargar en Word (Times New Roman 11).</li>
             <li><strong>Pedir cambios a la IA:</strong> con el borrador hecho, escribe en lenguaje libre lo que quieras («tras la frase del ensayo añade…», «quita la frase de organoides», «añade el artículo PMID … / doi:…», «quita el de Smith sobre CWD», «más peso a los biomarcadores»). La IA cambia solo eso y deja el resto igual; si añades o quitas artículos, actualiza la selección (busca los nuevos en PubMed con su evidencia); vuelve a validar la longitud y a revisar los hechos, y resume qué ha cambiado. Puedes repetirlo cuantas veces quieras.</li>

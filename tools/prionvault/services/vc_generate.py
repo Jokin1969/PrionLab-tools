@@ -470,10 +470,61 @@ def _preselect(year: int, n: int) -> int:
     return res.rowcount or 0
 
 
+PROPOSED_NOTE = "📌 Propuesto por el laboratorio (colección VC {year})."
+
+
+def sync_collection(year: int) -> int:
+    """Articles the lab puts in the collection "VC <year>" are proposals that
+    must be in the report: they enter the generator as hand-selected items
+    (any publication year). A proposal the user later unticks in the
+    generator stays unticked (manual items are never re-selected here).
+    Returns how many were added/selected."""
+    from . import vc
+    cid = vc.ensure_collection(year)
+    eng = _get_engine()
+    with eng.connect() as conn:
+        arts = [dict(r) for r in conn.execute(sql_text("""
+            SELECT a.id, a.pubmed_id, a.doi, a.title, a.authors, a.journal, a.year, a.abstract
+              FROM prionvault_collection_article ca JOIN articles a ON a.id = ca.article_id
+             WHERE ca.collection_id = CAST(:c AS uuid)"""), {"c": cid}).mappings()]
+    if not arts:
+        return 0
+    note = PROPOSED_NOTE.format(year=year)
+    changed = 0
+    with eng.begin() as conn:
+        for a in arts:
+            row = conn.execute(sql_text("""
+                SELECT id, manual FROM prionvault_vc_item
+                 WHERE year = :y AND (article_id = :aid OR (:p <> '' AND pmid = :p)
+                                      OR (:d <> '' AND lower(doi) = :d))
+                 LIMIT 1"""),
+                {"y": year, "aid": a["id"], "p": a["pubmed_id"] or "",
+                 "d": (a["doi"] or "").lower()}).mappings().first()
+            if row:
+                if not row["manual"]:
+                    conn.execute(sql_text("""
+                        UPDATE prionvault_vc_item SET selected = TRUE, manual = TRUE, article_id = :aid,
+                               in_library = TRUE, reason = :r WHERE id = :id"""),
+                        {"aid": a["id"], "r": note, "id": row["id"]})
+                    changed += 1
+                continue
+            conn.execute(sql_text("""
+                INSERT INTO prionvault_vc_item (year, pmid, doi, article_id, title, authors, journal, pub_year,
+                                                in_library, abstract, selected, manual, reason)
+                VALUES (:y, :p, :d, :aid, :t, :au, :j, :py, TRUE, :abs, TRUE, TRUE, :r)
+                ON CONFLICT (year, pmid) WHERE pmid IS NOT NULL DO NOTHING"""),
+                {"y": year, "p": a["pubmed_id"], "d": (a["doi"] or "").lower() or None, "aid": a["id"],
+                 "t": a["title"] or "", "au": (a["authors"] or "")[:2000], "j": a["journal"] or "",
+                 "py": a["year"], "abs": a["abstract"], "r": note})
+            changed += 1
+    return changed
+
+
 def step_select(year: int, n_final: int = N_FINAL, viewer_id=None) -> dict:
     ensure_draft(year)
     _set(phase="Reuniendo candidatos", done=0, total=0)
     n = _gather_candidates(year)
+    sync_collection(year)
     _fill_quartiles(year)
     _build_evidence(year, viewer_id)
     _screen(year)
@@ -517,6 +568,8 @@ Every paper must belong to exactly one theme. Answer only JSON:
 
 
 def step_themes(year: int) -> dict:
+    if sync_collection(year):
+        _build_evidence(year)
     items = _selected_items(year)
     if not items:
         raise ValueError("No hay artículos seleccionados.")
@@ -782,6 +835,8 @@ def _context(year: int, items: list[dict], style: str) -> str:
 
 
 def step_write(year: int, instructions: str = "", by_user=None) -> dict:
+    if sync_collection(year):
+        _build_evidence(year, by_user)
     items = _selected_items(year)
     if not items:
         raise ValueError("No hay artículos seleccionados.")
@@ -1047,6 +1102,12 @@ def start(step: str, year: int, **kwargs) -> Optional[dict]:
 
 def get_draft(year: int) -> dict:
     ensure_draft(year)
+    try:
+        # Creates "VC <year>" in the sidebar group and pulls in what the lab
+        # has proposed there since the last visit.
+        sync_collection(year)
+    except Exception as exc:
+        logger.warning("vc: collection sync failed: %s", exc)
     with _get_engine().connect() as conn:
         rep = dict(conn.execute(sql_text(
             "SELECT year, title, authors, body, status, themes, pipeline, cite_style "

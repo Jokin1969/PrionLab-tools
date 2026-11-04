@@ -355,6 +355,9 @@
             más potente valora los ~120 mejores con su abstract, el resumen IA del texto completo y tus notas (si están en la
             biblioteca), cuartil SCImago, citas (OpenAlex) y señales del laboratorio (Journal Club, valoraciones, hitos), y
             elige un conjunto equilibrado y sin redundancias. Puedes marcar/desmarcar y añadir por PMID antes de seguir.</p>
+          <p style="font-size:12px;color:#3730a3;margin:6px 0 0;">📌 <strong>Proponer artículos:</strong> todo lo que metáis
+            en la colección <em>VC ${year}</em> (grupo <em>Vigilancia competitiva</em> del sidebar) entra aquí seleccionado,
+            sea del año que sea. Si después lo desmarcas aquí, se respeta.</p>
           ${items.length ? `
             <div style="max-height:340px;overflow-y:auto;margin-top:8px;border-top:1px solid #f3f4f6;">
               ${items.map(itemRow).join('')}
@@ -585,6 +588,7 @@
       if (sg.rating) out.push(chip(`★ ${sg.rating}`, 'Valoración media en PrionVault'));
       if (sg.milestone) out.push(chip('⭐ hito', 'Marcado como hito'));
       if (i.own_lab) out.push(chip('🏠 propio', 'Publicación del propio grupo'));
+      if ((i.reason || '').startsWith('📌')) out.push(chip('📌 propuesto', 'Lo propusisteis metiéndolo en la colección VC del año'));
       return out.length ? `<div>${out.join('')}</div>` : '';
     }
 
