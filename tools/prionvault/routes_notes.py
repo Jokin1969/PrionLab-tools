@@ -113,11 +113,19 @@ def api_note_update(note_id):
     uid, err = _require_user()
     if err:
         return err
-    body = (request.get_json(silent=True) or {}).get("body", "")
+    data = request.get_json(silent=True) or {}
     from .services import article_notes
-    note = article_notes.update_note(str(note_id), uid, body)
-    if not note:
-        return jsonify({"error": "not_found"}), 404
+    note = None
+    if "body" in data:
+        note = article_notes.update_note(str(note_id), uid, data.get("body", ""))
+        if not note:
+            return jsonify({"error": "not_found"}), 404
+    if "share_vc" in data:   # 🔭 toggle: visible to the VC generator
+        note = article_notes.set_share_vc(str(note_id), uid, bool(data["share_vc"]))
+        if not note:
+            return jsonify({"error": "not_found"}), 404
+    if note is None:
+        return jsonify({"error": "nothing_to_update"}), 400
     return jsonify({"ok": True, "note": note})
 
 

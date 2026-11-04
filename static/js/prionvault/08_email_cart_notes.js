@@ -1002,11 +1002,31 @@
       if (delBtn) delBtn.style.display = _activeId != null ? 'inline-flex' : 'none';
       const toSummaryBtn = $('pv-note-to-summary');
       if (toSummaryBtn) toSummaryBtn.style.display = _activeId != null ? 'inline-flex' : 'none';
+      const shareEl = $('pv-note-share-vc');
+      if (shareEl) shareEl.checked = !!(note && note.share_vc);
       const dateEl = $('pv-note-date');
       if (dateEl) dateEl.textContent = (note && note.updated_at)
         ? new Date(note.updated_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '';
       setTimeout(() => ed.focus(), 60);
+    }
+
+    // 🔭 toggle on an existing note saves at once (no need to press Guardar).
+    async function toggleShareVc(ev) {
+      if (_activeId == null) return;   // new note: applied when it is saved
+      const status = $('pv-note-status');
+      try {
+        const r = await api(`/notes/${_activeId}`, { method: 'PATCH',
+          body: JSON.stringify({ share_vc: ev.target.checked }) });
+        const i = _notes.findIndex(n => n.id === _activeId);
+        if (i >= 0) _notes[i] = { ..._notes[i], share_vc: r.note.share_vc };
+        if (status) { status.style.color = '#15803d';
+          status.textContent = r.note.share_vc ? '✓ Compartida con la VC' : '✓ Ya no se comparte con la VC'; }
+        setTimeout(() => { if (status) status.textContent = ''; }, 2000);
+      } catch (e) {
+        ev.target.checked = !ev.target.checked;
+        if (status) { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e.message; }
+      }
     }
 
     function selectNote(noteId) {
@@ -1044,7 +1064,11 @@
           const i = _notes.findIndex(n => n.id === _activeId);
           if (i >= 0) _notes[i] = r.note;
         } else {
-          const r = await api(`/articles/${_article.id}/notes`, { method: 'POST', body: JSON.stringify({ body: html }) });
+          let r = await api(`/articles/${_article.id}/notes`, { method: 'POST', body: JSON.stringify({ body: html }) });
+          // A new note ticked "🔭 Compartir con la VC" before its first save.
+          if ($('pv-note-share-vc')?.checked) {
+            r = await api(`/notes/${r.note.id}`, { method: 'PATCH', body: JSON.stringify({ share_vc: true }) });
+          }
           _notes.push(r.note);
           _activeId = r.note.id;
           _composeIndex = null;
@@ -1180,6 +1204,7 @@
       document.querySelector('#pv-note-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-note-save')?.addEventListener('click', save);
       $('pv-note-delete')?.addEventListener('click', del);
+      $('pv-note-share-vc')?.addEventListener('change', toggleShareVc);
       $('pv-note-ai-btn')?.addEventListener('click', openAiNoteModal);
       $('pv-note-ai-close')?.addEventListener('click', closeAiNoteModal);
       document.querySelector('#pv-note-ai-modal .pv-modal-backdrop')?.addEventListener('click', closeAiNoteModal);

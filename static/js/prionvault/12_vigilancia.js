@@ -534,7 +534,7 @@
           ${ul([
             '<strong>Tener en la biblioteca los artículos importantes del año</strong> (📚). Los que solo están en el inventario de PubMed aportan título y abstract; los de la biblioteca aportan mucho más.',
             '<strong>Subir sus PDFs y lanzar los resúmenes IA</strong> (🧠). El resumen IA sale del texto completo y es la mejor evidencia para elegir y para redactar con precisión.',
-            '<strong>Dejar notas adhesivas</strong> (📝) en los artículos clave: por qué importan, qué aportan. Se usan las notas de quien lanza la selección.',
+            '<strong>Dejar notas adhesivas</strong> (📝) en los artículos clave: por qué importan, qué aportan. Se usan las de quien lanza la selección y las que cualquiera marque con <strong>🔭 Compartir con la VC</strong> en el editor de la nota.',
             '<strong>Presentarlos en el Journal Club</strong> (📖 JC). Es una señal fuerte de que el laboratorio lo consideró relevante.',
             '<strong>Valorarlos con estrellas</strong> (★) y <strong>marcar como hito</strong> (⭐) los que sean un antes y un después.',
             '<strong>Mantener al día el inventario de PubMed</strong> antes de generar, para que no falte nada publicado recientemente.',
@@ -583,7 +583,7 @@
       const out = [];
       if (i.citations != null) out.push(chip(`${i.citations} citas`, 'Citas recibidas hasta hoy (OpenAlex)'));
       if (sg.summary_ai) out.push(chip('🧠 resumen IA', 'La IA leyó el resumen IA del texto completo, no solo el abstract'));
-      if (sg.notes) out.push(chip('📝 notas', 'La IA tuvo en cuenta tus notas adhesivas'));
+      if (sg.notes) out.push(chip('📝 notas', 'La IA tuvo en cuenta notas adhesivas: las de quien lanzó la selección y las marcadas 🔭 «Compartir con la VC» por cualquiera'));
       if (sg.jc) out.push(chip('📖 JC', 'Presentado en el Journal Club del laboratorio'));
       if (sg.rating) out.push(chip(`★ ${sg.rating}`, 'Valoración media en PrionVault'));
       if (sg.milestone) out.push(chip('⭐ hito', 'Marcado como hito'));

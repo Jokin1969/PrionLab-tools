@@ -11323,11 +11323,31 @@
       if (delBtn) delBtn.style.display = _activeId != null ? 'inline-flex' : 'none';
       const toSummaryBtn = $('pv-note-to-summary');
       if (toSummaryBtn) toSummaryBtn.style.display = _activeId != null ? 'inline-flex' : 'none';
+      const shareEl = $('pv-note-share-vc');
+      if (shareEl) shareEl.checked = !!(note && note.share_vc);
       const dateEl = $('pv-note-date');
       if (dateEl) dateEl.textContent = (note && note.updated_at)
         ? new Date(note.updated_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '';
       setTimeout(() => ed.focus(), 60);
+    }
+
+    // 🔭 toggle on an existing note saves at once (no need to press Guardar).
+    async function toggleShareVc(ev) {
+      if (_activeId == null) return;   // new note: applied when it is saved
+      const status = $('pv-note-status');
+      try {
+        const r = await api(`/notes/${_activeId}`, { method: 'PATCH',
+          body: JSON.stringify({ share_vc: ev.target.checked }) });
+        const i = _notes.findIndex(n => n.id === _activeId);
+        if (i >= 0) _notes[i] = { ..._notes[i], share_vc: r.note.share_vc };
+        if (status) { status.style.color = '#15803d';
+          status.textContent = r.note.share_vc ? '✓ Compartida con la VC' : '✓ Ya no se comparte con la VC'; }
+        setTimeout(() => { if (status) status.textContent = ''; }, 2000);
+      } catch (e) {
+        ev.target.checked = !ev.target.checked;
+        if (status) { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e.message; }
+      }
     }
 
     function selectNote(noteId) {
@@ -11365,7 +11385,11 @@
           const i = _notes.findIndex(n => n.id === _activeId);
           if (i >= 0) _notes[i] = r.note;
         } else {
-          const r = await api(`/articles/${_article.id}/notes`, { method: 'POST', body: JSON.stringify({ body: html }) });
+          let r = await api(`/articles/${_article.id}/notes`, { method: 'POST', body: JSON.stringify({ body: html }) });
+          // A new note ticked "🔭 Compartir con la VC" before its first save.
+          if ($('pv-note-share-vc')?.checked) {
+            r = await api(`/notes/${r.note.id}`, { method: 'PATCH', body: JSON.stringify({ share_vc: true }) });
+          }
           _notes.push(r.note);
           _activeId = r.note.id;
           _composeIndex = null;
@@ -11501,6 +11525,7 @@
       document.querySelector('#pv-note-modal .pv-modal-backdrop')?.addEventListener('click', close);
       $('pv-note-save')?.addEventListener('click', save);
       $('pv-note-delete')?.addEventListener('click', del);
+      $('pv-note-share-vc')?.addEventListener('change', toggleShareVc);
       $('pv-note-ai-btn')?.addEventListener('click', openAiNoteModal);
       $('pv-note-ai-close')?.addEventListener('click', closeAiNoteModal);
       document.querySelector('#pv-note-ai-modal .pv-modal-backdrop')?.addEventListener('click', closeAiNoteModal);
@@ -20291,7 +20316,7 @@
           ${ul([
             '<strong>Tener en la biblioteca los artículos importantes del año</strong> (📚). Los que solo están en el inventario de PubMed aportan título y abstract; los de la biblioteca aportan mucho más.',
             '<strong>Subir sus PDFs y lanzar los resúmenes IA</strong> (🧠). El resumen IA sale del texto completo y es la mejor evidencia para elegir y para redactar con precisión.',
-            '<strong>Dejar notas adhesivas</strong> (📝) en los artículos clave: por qué importan, qué aportan. Se usan las notas de quien lanza la selección.',
+            '<strong>Dejar notas adhesivas</strong> (📝) en los artículos clave: por qué importan, qué aportan. Se usan las de quien lanza la selección y las que cualquiera marque con <strong>🔭 Compartir con la VC</strong> en el editor de la nota.',
             '<strong>Presentarlos en el Journal Club</strong> (📖 JC). Es una señal fuerte de que el laboratorio lo consideró relevante.',
             '<strong>Valorarlos con estrellas</strong> (★) y <strong>marcar como hito</strong> (⭐) los que sean un antes y un después.',
             '<strong>Mantener al día el inventario de PubMed</strong> antes de generar, para que no falte nada publicado recientemente.',
@@ -20340,7 +20365,7 @@
       const out = [];
       if (i.citations != null) out.push(chip(`${i.citations} citas`, 'Citas recibidas hasta hoy (OpenAlex)'));
       if (sg.summary_ai) out.push(chip('🧠 resumen IA', 'La IA leyó el resumen IA del texto completo, no solo el abstract'));
-      if (sg.notes) out.push(chip('📝 notas', 'La IA tuvo en cuenta tus notas adhesivas'));
+      if (sg.notes) out.push(chip('📝 notas', 'La IA tuvo en cuenta notas adhesivas: las de quien lanzó la selección y las marcadas 🔭 «Compartir con la VC» por cualquiera'));
       if (sg.jc) out.push(chip('📖 JC', 'Presentado en el Journal Club del laboratorio'));
       if (sg.rating) out.push(chip(`★ ${sg.rating}`, 'Valoración media en PrionVault'));
       if (sg.milestone) out.push(chip('⭐ hito', 'Marcado como hito'));
@@ -24097,6 +24122,7 @@
           <p><strong>Informe del año en curso (generador con IA)</strong>, en tres pasos que lanzan el administrador o un editor de VC. El botón <strong>❓ ¿Cómo se hace el informe?</strong> lo explica y, sobre todo, indica qué conviene preparar antes (artículos clave en la biblioteca con PDF y resumen IA, notas, presentarlos en Journal Club, valorarlos con estrellas, marcarlos como hito):</p>
           <ol>
             <li><strong>Selección:</strong> reúne todos los artículos del año (inventario de PubMed + biblioteca), hace un cribado por título y valora con el modelo más potente los ~120 mejores con su abstract y, si están en la biblioteca, el <strong>resumen IA del texto completo</strong> y <strong>tus notas</strong>, además del cuartil SCImago, las <strong>citas recibidas</strong> (OpenAlex) y las señales del laboratorio (presentado en Journal Club, valoraciones, hitos, publicación propia). Después elige de forma conjunta los 38 (configurable) para que el grupo sea equilibrado y sin redundancias, cada uno con una frase de por qué. Puedes marcar/desmarcar y añadir otros por PMID.</li>
+            <li><strong>Notas compartidas con la VC:</strong> las notas adhesivas son personales, pero cada una tiene el interruptor <em>🔭 Compartir con la VC</em>. Las notas marcadas las usa el generador lo lance quien lo lance (por ejemplo, las notas de Joaquín cuando genera Hasier). En PrionVault siguen siendo visibles solo para su autor.</li>
             <li><strong>Proponer artículos:</strong> cualquier artículo que se meta en la colección <em>VC año</em> (por ejemplo <em>VC 2026</em>, en el grupo <em>Vigilancia competitiva</em> del sidebar) entra en el generador seleccionado y marcado 📌, aunque no sea de ese año o la IA no lo hubiera elegido. Si luego se desmarca en el generador, se respeta. Al aceptar la versión final, la colección conserva estos artículos y añade los citados.</li>
             <li><strong>Temas:</strong> agrupa los seleccionados en 4–6 temas, enlazando con las VC anteriores y con lo que la VC del año pasado esperaba para este.</li>
             <li><strong>Redacción:</strong> escribe el informe con el formato pedido (título, autores, ¼ contexto, ½ avances con (PMID: …), ¼ perspectivas; máx. 3.500 caracteres) al estilo de los informes anteriores, sin copiarlos. Comprueba sola la longitud, las proporciones y que solo cite los PMID seleccionados, y se corrige hasta cumplir. Después hace una <strong>revisión de hechos</strong>: contrasta cada afirmación con la evidencia del artículo citado (exageraciones, atribuciones erróneas, animal vs humano…), la corrige y te enseña lo que corrigió y lo que queda por revisar. Admite indicaciones («más peso al ensayo clínico»…). El texto se puede editar a mano, con contador de caracteres, y descargar en Word (Times New Roman 11).</li>

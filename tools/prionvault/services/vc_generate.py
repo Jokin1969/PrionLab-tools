@@ -326,9 +326,10 @@ def _build_evidence(year: int, viewer_id=None) -> None:
         rows = conn.execute(sql_text(f"""
             SELECT i.id, i.article_id, i.authors,
                    a.summary_ai, a.summary_human,
-                   (SELECT string_agg(n.body, ' | ') FROM prionvault_article_note n
-                     WHERE n.article_id = a.id AND n.user_id = CAST(:v AS uuid)
-                       AND btrim(n.body) <> '')                                   AS notes,
+                   (SELECT string_agg(regexp_replace(n.body, '<[^>]+>', ' ', 'g'), ' | ')
+                      FROM prionvault_article_note n
+                     WHERE n.article_id = a.id AND btrim(n.body) <> ''
+                       AND (n.user_id = CAST(:v AS uuid) OR n.share_vc))           AS notes,
                    (SELECT COUNT(*) FROM prionvault_jc_presentation j
                      WHERE j.article_id = a.id
                        AND extract(year FROM j.presented_at) >= :y)               AS jc,

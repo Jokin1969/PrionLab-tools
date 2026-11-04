@@ -77,7 +77,7 @@ def list_notes(article_id: str, user_id: str) -> list[dict]:
     eng = _get_engine()
     with eng.connect() as conn:
         rows = conn.execute(_sql("""
-            SELECT id, color_index, body, created_at, updated_at
+            SELECT id, color_index, body, share_vc, created_at, updated_at
               FROM prionvault_article_note
              WHERE article_id = CAST(:aid AS uuid)
                AND user_id    = CAST(:uid AS uuid)
@@ -138,7 +138,7 @@ def update_note(note_id: str, user_id: str, body: str) -> Optional[dict]:
                SET body = :body, updated_at = NOW()
              WHERE id = CAST(:nid AS uuid)
                AND user_id = CAST(:uid AS uuid)
-            RETURNING id, article_id, color_index, body, created_at, updated_at
+            RETURNING id, article_id, color_index, body, share_vc, created_at, updated_at
         """), {"nid": note_id, "uid": user_id, "body": body or ""}).mappings().first()
     if not row:
         return None
@@ -146,6 +146,19 @@ def update_note(note_id: str, user_id: str, body: str) -> Optional[dict]:
     article_id = str(d.pop("article_id"))
     _reindex_notes_async(article_id, user_id)
     return _note_to_dict(d)
+
+
+def set_share_vc(note_id: str, user_id: str, share: bool) -> Optional[dict]:
+    """Share (or stop sharing) one of the user's notes with the Vigilancia
+    competitiva generator. Returns the note, or None if not found/owned."""
+    eng = _get_engine()
+    with eng.begin() as conn:
+        row = conn.execute(_sql("""
+            UPDATE prionvault_article_note SET share_vc = :s
+             WHERE id = CAST(:nid AS uuid) AND user_id = CAST(:uid AS uuid)
+            RETURNING id, color_index, body, share_vc, created_at, updated_at
+        """), {"nid": note_id, "uid": user_id, "s": bool(share)}).mappings().first()
+    return _note_to_dict(row) if row else None
 
 
 def delete_note(note_id: str, user_id: str) -> bool:
