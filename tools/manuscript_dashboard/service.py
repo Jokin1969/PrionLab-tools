@@ -14,6 +14,17 @@ _STATUS_PROGRESS = {
 }
 
 
+
+def _may_edit(created_by, username) -> bool:
+    """Owner or admin only (rows with no recorded owner stay editable)."""
+    try:
+        from flask import session
+        if session.get("role") == "admin":
+            return True
+    except Exception:
+        pass
+    return not created_by or created_by == username
+
 def _db():
     try:
         from database.config import db
@@ -280,6 +291,8 @@ def update_manuscript_status(manuscript_id: str, new_status: str, username: str 
                 m = s.query(Manuscript).filter(Manuscript.id == _uuid.UUID(manuscript_id)).first()
                 if not m:
                     return {"success": False, "error": "Manuscript not found"}
+                if not _may_edit(m.created_by, username):
+                    return {"success": False, "error": "forbidden"}
                 old = m.status
                 m.status = new_status
                 m.last_modified_by = username
@@ -325,6 +338,8 @@ def update_manuscript_abstract(
                 m = s.query(Manuscript).filter(Manuscript.id == _uuid.UUID(manuscript_id)).first()
                 if not m:
                     return {"success": False, "error": "Manuscript not found"}
+                if not _may_edit(m.created_by, username):
+                    return {"success": False, "error": "forbidden"}
                 m.abstract = abstract_en
                 if hasattr(m, "abstract_es"):
                     m.abstract_es = abstract_es

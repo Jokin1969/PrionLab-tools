@@ -1,4 +1,5 @@
 import logging
+import threading
 from flask import jsonify, render_template, request
 
 from core.decorators import login_required, admin_required
@@ -88,12 +89,17 @@ def api_optimize():
 def api_sync_push():
     data = request.get_json(silent=True) or {}
     filenames = data.get('filenames')  # None = all CSVs
-    try:
-        from database.data_management import sync_csv_to_dropbox
-        return jsonify(sync_csv_to_dropbox(filenames))
-    except Exception as e:
-        logger.error("Sync push error: %s", e)
-        return jsonify({'error': str(e)}), 500
+
+    def _run():
+        try:
+            from database.data_management import sync_csv_to_dropbox
+            result = sync_csv_to_dropbox(filenames)
+            logger.info("Sync push completed: %s", result)
+        except Exception as e:
+            logger.error("Sync push error (background): %s", e)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'status': 'started', 'message': 'Sync push running in background — check server logs for results.'}), 202
 
 
 @data_mgmt_bp.route('/api/sync/pull', methods=['POST'])

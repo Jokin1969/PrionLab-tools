@@ -26,15 +26,25 @@ _ACTIVITY_COLS = [
 def _read(path: str, cols: list) -> list[dict]:
     if not os.path.exists(path):
         return []
+    # See tools/research/models._read for the rationale: empty files
+    # hit a stdlib NoneType error that paged Sentry even though we
+    # were already swallowing it. Skip-by-size + warning keeps the
+    # auto-recovery without the noise.
+    try:
+        if os.path.getsize(path) == 0:
+            return []
+    except OSError:
+        return []
+    cols = cols or []
     try:
         with open(path, newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
+            rows = [r for r in csv.DictReader(f) if isinstance(r, dict)]
         for r in rows:
             for c in cols:
                 r.setdefault(c, "")
         return rows
     except Exception as e:
-        logger.error("CSV read error %s: %s", path, e)
+        logger.warning("CSV read error %s: %s", path, e)
         return []
 
 

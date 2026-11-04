@@ -1,0 +1,112 @@
+name: Deploy notification
+
+# After every push to main, poll the production /health endpoint and
+# leave a comment on the commit telling us when (or whether) Railway
+# managed to swap the running binary to that SHA. Replaces the
+# "open the dashboard or curl /health manually" loop we hit in
+# https://github.com/Jokin1969/PrionLab-tools/commit/cbf56a0
+#
+# /health exposes `commit_sha` from RAILWAY_GIT_COMMIT_SHA — see
+# app.py.  The action keeps polling for up to ~10 min (Railway
+# usually takes 2-4 min to build + restart a Python image) and
+# bails out the moment the SHA matches.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# One run at a time per branch so a fast follow-up push doesn't
+# cancel the previous deploy watcher mid-poll.
+concurrency:
+  group: deploy-watch-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # needed for POST /repos/.../commits/:sha/comments
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    # Generous overall cap so a slow Railway build doesn't drag the
+    # action longer than needed. The inner script enforces its own
+    # 10 min poll window and exits cleanly on either match or
+    # timeout, so this is really a safety net.
+    timeout-minutes: 15
+
+    steps:
+      - name: Poll /health and comment on the commit
+        env:
+          # Public URL — visible to anyone with the production link;
+          # not a secret. Hard-coded so the action is self-contained;
+          # edit this if Railway swaps the hostname.
+          HEALTH_URL: https://web-production-5517e.up.railway.app/health
+          COMMIT_SHA: ${{ github.sha }}
+          GH_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:    ${{ github.repository }}
+        run: |
+          set -u
+
+          # Railway typically reports the build kicking off ~30 s after
+          # the push notification. Wait that long before the first
+          # poll to keep the noise down.
+          echo "Waiting 30 s for Railway to pick up the push…"
+          sleep 30
+
+          short() { printf '%s' "${1:0:7}"; }
+
+          # Total budget: 12 min of polling (24 attempts × 30 s).
+          MAX_ATTEMPTS=24
+          SLEEP_SEC=30
+          MATCHED=""
+          LAST_REPORTED_SHA=""
+          LAST_HTTP_STATUS=""
+
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            response="$(curl -fsS --max-time 10 \
+                       -w '\nHTTP_STATUS:%{http_code}' \
+                       "$HEALTH_URL" 2>/dev/null || true)"
+            LAST_HTTP_STATUS="$(printf '%s' "$response" | sed -n 's/.*HTTP_STATUS://p')"
+            body="$(printf '%s' "$response" | sed '/^HTTP_STATUS:/d')"
+
+            running_sha="$(printf '%s' "$body" \
+                          | jq -r '.commit_sha // empty' 2>/dev/null || true)"
+            LAST_REPORTED_SHA="$running_sha"
+
+            echo "Attempt $attempt/$MAX_ATTEMPTS — HTTP ${LAST_HTTP_STATUS:-?} commit_sha=${running_sha:-<unset>}"
+
+            if [ -n "$running_sha" ] && [ "$running_sha" = "$COMMIT_SHA" ]; then
+              MATCHED="yes"
+              break
+            fi
+
+            sleep "$SLEEP_SEC"
+          done
+
+          short_full="$(short "$COMMIT_SHA")"
+
+          # Build the comment body with printf so every line stays
+          # indented inside the YAML `run: |` block. Heredocs would
+          # need the body at column 0, which YAML then re-parses and
+          # chokes on markdown chars like `**`.
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [ "$MATCHED" = "yes" ]; then
+            elapsed=$(( 30 + attempt * SLEEP_SEC ))
+            body="$(printf '%s\n\n%s\n' \
+              ":rocket: **Deploy live** — \`/health\` reports \`commit_sha = $short_full\` after ~$((elapsed / 60)) min $((elapsed % 60)) s of polling." \
+              "Verified via $HEALTH_URL at $now.")"
+          else
+            short_running="<none>"
+            [ -n "$LAST_REPORTED_SHA" ] && short_running="$(short "$LAST_REPORTED_SHA")"
+            body="$(printf '%s\n\n%s\n' \
+              ":warning: **Deploy not visible after 12 min.** \`/health\` last responded with HTTP \`${LAST_HTTP_STATUS:-no response}\` and \`commit_sha = $short_running\` (expected \`$short_full\`)." \
+              "Production may still be building, or the Railway deploy failed — check the Railway dashboard.")"
+          fi
+
+          echo "Posting commit comment…"
+          # Build the JSON request body with jq so newlines / quotes
+          # in $body are escaped correctly, then feed it to `gh api`
+          # via stdin (--input -).
+          jq -n --arg body "$body" '{body: $body}' \
+            | gh api "repos/$GH_REPO/commits/$COMMIT_SHA/comments" \
+                --method POST --input - --jq '.html_url'

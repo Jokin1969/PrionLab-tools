@@ -27,7 +27,10 @@ def list_remote_csvs() -> list[dict]:
         entries = []
         while True:
             for entry in result.entries:
-                if isinstance(entry, FileMetadata) and entry.name.endswith(".csv"):
+                # ".bak.<ts>.csv" are push_to_dropbox's safety copies, not
+                # data files — never pull them into CSV_DIR.
+                if (isinstance(entry, FileMetadata) and entry.name.endswith(".csv")
+                        and ".bak." not in entry.name):
                     entries.append({
                         "name": entry.name,
                         "size": entry.size,
@@ -92,6 +95,28 @@ def pull_from_dropbox() -> list[str]:
     return updated
 
 
+_BAK_KEEP = 20
+
+
+def _prune_backups(client, stem: str) -> None:
+    """Keep only the newest _BAK_KEEP safety copies of one CSV (every user
+    edit made one, and nothing ever deleted them)."""
+    try:
+        result = client.files_list_folder(DROPBOX_REMOTE_FOLDER)
+        names = []
+        while True:
+            names += [e.name for e in result.entries
+                      if isinstance(e, FileMetadata) and e.name.startswith(f"{stem}.bak.")]
+            if not result.has_more:
+                break
+            result = client.files_list_folder_continue(result.cursor)
+        # Timestamps are YYYYmmdd-HHMMSS, so name order is age order.
+        for name in sorted(names)[:-_BAK_KEEP]:
+            client.files_delete_v2(_remote_path(name))
+    except Exception as e:
+        logger.warning("Pruning %s backups failed: %s", stem, e)
+
+
 def push_to_dropbox(filename: str) -> bool:
     client = get_client()
     if client is None:
@@ -111,6 +136,7 @@ def push_to_dropbox(filename: str) -> bool:
         stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         client.files_copy_v2(remote, _remote_path(f"{stem}.bak.{timestamp}.csv"))
         logger.info("Backed up %s in Dropbox", filename)
+        _prune_backups(client, stem)
     except ApiError:
         pass
 

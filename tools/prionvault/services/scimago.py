@@ -1,0 +1,698 @@
+"""SCImago (SJR) journal rankings — download, parse, percentiles, lookup.
+
+Powers the automatic quality indicators in the Gobierno Vasco export.
+
+Flow (no manual work needed):
+  * download_year(year) fetches the yearly SCImago CSV straight from
+    scimagojr.com, parses it, computes per-category percentiles/deciles,
+    stores everything in Postgres, and archives the raw CSV to Dropbox.
+  * lookup(journal, year) returns the best quartile + decile + percentile
+    for a journal plus its ISSN and country (Publication place).
+
+The SCImago CSV is ';'-separated (decimal comma) with columns including
+Title, Issn, SJR, SJR Best Quartile, Categories, Country. `Categories`
+looks like "Neurology (Q1); Pathology (Q2)". Matching is by normalized
+journal title because PrionVault stores no ISSN.
+"""
+from __future__ import annotations
+
+import csv
+import io
+import logging
+import re
+import threading
+import unicodedata
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# SCImago exposes the yearly ranking as a (semicolon) CSV at this URL
+# despite the out=xls name.
+_SCIMAGO_URL = "https://www.scimagojr.com/journalrank.php?out=xls&year={year}"
+# Where the raw CSV backup lands in Dropbox.
+_DROPBOX_DIR = "/PrionLab tools/SCImago"
+
+
+def _get_engine():
+    from ..ingestion.queue import _get_engine as _e
+    return _e()
+
+
+def norm_title(s: str) -> str:
+    """Lowercase, strip accents/punctuation, collapse spaces, drop a
+    leading article, so journal names line up despite formatting."""
+    if not s:
+        return ""
+    s = unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('ascii')
+    s = s.lower()
+    # Canonicalize "&" to "and" so "Research & Therapy" matches SCImago's
+    # "Research and Therapy" (SCImago spells the ampersand out).
+    s = s.replace('&', ' and ')
+    s = re.sub(r'[^a-z0-9]+', ' ', s).strip()
+    s = re.sub(r'^(the|la|el|los|las|le|les)\s+', '', s)
+    return re.sub(r'\s+', ' ', s).strip()
+
+
+_CAT_RE = re.compile(r'^(.*?)\s*\(Q([1-4])\)\s*$')
+
+
+def _parse_categories(cat_field: str) -> list[dict]:
+    """Parse 'Neurology (Q1); Pathology (Q2)' → [{category, quartile}]."""
+    out = []
+    for part in (cat_field or "").split(';'):
+        part = part.strip()
+        if not part:
+            continue
+        m = _CAT_RE.match(part)
+        if m:
+            out.append({"category": m.group(1).strip(),
+                        "quartile": f"Q{m.group(2)}"})
+    return out
+
+
+def _parse_sjr(raw: str) -> float:
+    """SCImago prints SJR with a decimal comma ('2,500'). Return a float."""
+    s = (raw or "").strip().replace('.', '').replace(',', '.')
+    try:
+        return float(s) if s else 0.0
+    except ValueError:
+        return 0.0
+
+
+def _format_issn(issns: list[str]) -> Optional[str]:
+    """Return the first ISSN as XXXX-XXXX (SCImago stores them dash-less)."""
+    for raw in issns:
+        digits = re.sub(r'[^0-9Xx]', '', raw).upper()
+        if len(digits) == 8:
+            return f"{digits[:4]}-{digits[4:]}"
+    return None
+
+
+def _split_issns(raw: str) -> list[str]:
+    return [re.sub(r'[^0-9Xx]', '', p).upper()
+            for p in (raw or "").split(',') if re.sub(r'[^0-9Xx]', '', p)]
+
+
+# ── State (shared by upload + auto-download background jobs) ───────────────────
+
+_import_state = {"running": False, "year": None, "rows": 0,
+                 "quartiled": 0, "error": None, "phase": None,
+                 "processed": 0, "total": 0}
+_state_lock = threading.Lock()
+
+
+def import_state() -> dict:
+    with _state_lock:
+        return dict(_import_state)
+
+
+def begin_import(year=None) -> bool:
+    """Atomically claim the single import slot. Returns False (without
+    changing anything) when an import is already running, so overlapping
+    requests are rejected cleanly instead of clobbering each other."""
+    with _state_lock:
+        if _import_state["running"]:
+            return False
+        _import_state.update(running=True, year=year, error=None, rows=0,
+                             quartiled=0, phase="starting",
+                             processed=0, total=0)
+        return True
+
+
+def _finish_import(**kw) -> None:
+    with _state_lock:
+        _import_state.update(kw)
+        _import_state["running"] = False
+        _import_state["phase"] = None
+
+
+def _set_phase(**kw) -> None:
+    with _state_lock:
+        _import_state.update(kw)
+
+
+# ── Download from SCImago ──────────────────────────────────────────────────────
+
+# A realistic browser UA + a warm-up request are needed: SCImago's
+# download endpoint 403s bare/bot-looking requests.
+_BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/122.0.0.0 Safari/537.36"),
+    "Accept": ("text/csv,application/vnd.ms-excel,text/html,"
+               "application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+    "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+    "Referer": "https://www.scimagojr.com/journalrank.php",
+}
+
+
+def _do_download_year(year: int) -> dict:
+    """Fetch + import + Dropbox-backup one year. Raises on failure."""
+    import requests
+    session = requests.Session()
+    session.headers.update(_BROWSER_HEADERS)
+    # Warm-up: visit the ranking page first so SCImago sets its cookies;
+    # the CSV endpoint 403s otherwise. Best-effort — ignore its failures.
+    try:
+        session.get("https://www.scimagojr.com/journalrank.php",
+                    timeout=60)
+    except Exception:
+        pass
+
+    url = _SCIMAGO_URL.format(year=year)
+    resp = session.get(url, timeout=120)
+    if resp.status_code == 403:
+        raise RuntimeError(
+            f"SCImago rechazó la descarga de {year} (403). Puede que ese año "
+            f"aún no esté publicado o que el sitio esté bloqueando la petición. "
+            f"Prueba otro año o usa la subida manual del CSV.")
+    resp.raise_for_status()
+    content = resp.content.decode("utf-8-sig", errors="replace")
+    if "Title" not in content[:2000] and "Rank" not in content[:2000]:
+        raise RuntimeError("La respuesta de SCImago no parece un CSV válido "
+                           "(¿aún no hay datos para ese año?).")
+    res = import_csv(content, year)
+    _backup_to_dropbox(resp.content, year)
+    logger.info("scimago: downloaded+imported %s rows for %s", res["rows"], year)
+    return res
+
+
+def download_year(year: int) -> None:
+    """Background worker: fetch one year from SCImago. Caller must have
+    claimed the slot via begin_import()."""
+    _set_phase(phase="downloading")
+    try:
+        res = _do_download_year(year)
+        _finish_import(rows=res["rows"], quartiled=res["quartiled"])
+    except Exception as exc:
+        logger.exception("scimago download failed for %s", year)
+        _finish_import(error=str(exc)[:300])
+
+
+def run_download_years(years: list) -> None:
+    """Background worker: fetch several years sequentially. Caller must
+    have claimed the slot via begin_import()."""
+    years = [int(y) for y in years]
+    _set_phase(phase="downloading")
+    errors = []
+    total = 0
+    for y in years:
+        _set_phase(year=y, phase="downloading")
+        try:
+            res = _do_download_year(y)
+            total += res["rows"]
+        except Exception as exc:
+            logger.warning("scimago: year %s failed: %s", y, exc)
+            errors.append(f"{y}: {str(exc)[:120]}")
+    _finish_import(rows=total, year=None,
+                   error="; ".join(errors) if errors else None)
+
+
+def run_import(content: str, year: int, raw: Optional[bytes] = None) -> None:
+    """Background worker for a MANUAL CSV upload. The caller must have
+    already claimed the slot via begin_import(). `raw` (the original CSV
+    bytes) is archived to Dropbox just like the auto-download path."""
+    _set_phase(phase="parsing")
+    try:
+        res = import_csv(content, year)
+        if raw:
+            _set_phase(phase="backing_up")
+            _backup_to_dropbox(raw, year)
+        _finish_import(rows=res["rows"], quartiled=res["quartiled"])
+    except Exception as exc:
+        logger.exception("scimago import failed")
+        _finish_import(error=str(exc)[:300])
+
+
+def _backup_to_dropbox(raw: bytes, year: int) -> None:
+    try:
+        from core.dropbox_client import get_client
+        import dropbox
+        dbx = get_client()
+        if not dbx:
+            return
+        path = f"{_DROPBOX_DIR}/scimago_{year}.csv"
+        dbx.files_upload(raw, path, mode=dropbox.files.WriteMode.overwrite)
+    except Exception as exc:
+        logger.warning("scimago: Dropbox backup failed for %s: %s", year, exc)
+
+
+# ── Import + percentile computation ────────────────────────────────────────────
+
+def import_csv(content: str, year: int) -> dict:
+    """Parse a SCImago yearly CSV, compute per-category percentiles/deciles,
+    and upsert. Returns {rows, quartiled, year}."""
+    sample = content[:4000]
+    delim = ';' if sample.count(';') >= sample.count(',') else ','
+    reader = csv.DictReader(io.StringIO(content), delimiter=delim)
+
+    def _col(row, *names):
+        for n in names:
+            for k in row:
+                if k and k.strip().lower() == n.lower():
+                    return row[k]
+        return ""
+
+    # Pass 1 — parse every journal.
+    journals: list[dict] = []
+    seen: set = set()
+    for row in reader:
+        title = (_col(row, "Title") or "").strip()
+        if not title:
+            continue
+        tn = norm_title(title)
+        if not tn or tn in seen:
+            continue
+        seen.add(tn)
+        journals.append({
+            "title_norm": tn,
+            "title":      title,
+            "issns":      _split_issns(_col(row, "Issn")),
+            "country":    (_col(row, "Country") or "").strip() or None,
+            "sjr":        _parse_sjr(_col(row, "SJR")),
+            "sjr_raw":    (_col(row, "SJR") or "").strip() or None,
+            "categories": _parse_categories(_col(row, "Categories")),
+            "best_q_hint": (_col(row, "SJR Best Quartile") or "").strip(),
+        })
+
+    # Pass 2 — per-category ranking → percentile + decile.
+    # Group journal indices by category, sort by SJR desc, assign.
+    by_cat: dict[str, list[int]] = {}
+    for i, j in enumerate(journals):
+        for c in j["categories"]:
+            by_cat.setdefault(c["category"], []).append(i)
+    for cat, idxs in by_cat.items():
+        idxs.sort(key=lambda i: journals[i]["sjr"], reverse=True)
+        n = len(idxs)
+        for rank, i in enumerate(idxs):           # rank 0 = top journal
+            pct = round((n - rank) / n * 100, 1)   # 100 = top, →0 = bottom
+            dec = min(10, int(rank / n * 10) + 1)  # D1 = top decile
+            for c in journals[i]["categories"]:
+                if c["category"] == cat:
+                    c["percentile"] = pct
+                    c["decile"] = f"D{dec}"
+
+    # Pass 3 — pick each journal's best category (best quartile, then
+    # highest percentile) and build the DB rows.
+    batch: list[dict] = []
+    quartiled = 0
+    for j in journals:
+        cats = j["categories"]
+        best = None
+        for c in cats:
+            if "quartile" not in c:
+                continue
+            key = (c["quartile"], -(c.get("percentile") or 0))
+            if best is None or key < best[0]:
+                best = (key, c)
+        bq = bc = bp = bd = None
+        if best:
+            bq = best[1]["quartile"]
+            bc = best[1]["category"]
+            bp = best[1].get("percentile")
+            bd = best[1].get("decile")
+            quartiled += 1
+        elif re.match(r'^Q[1-4]$', j["best_q_hint"].upper()):
+            bq = j["best_q_hint"].upper()
+        batch.append({
+            "title_norm":  j["title_norm"],
+            "title":       j["title"],
+            "issns":       j["issns"],
+            "primary_issn": _format_issn(j["issns"]),
+            "country":     j["country"],
+            "year":        year,
+            "best_quartile": bq,
+            "best_category": bc,
+            "best_percentile": bp,
+            "best_decile": bd,
+            "categories":  cats,
+            "sjr":         j["sjr_raw"],
+        })
+
+    _set_phase(phase="saving", processed=0, total=len(batch))
+    _upsert(batch, progress=lambda done, total: _set_phase(processed=done, total=total))
+    return {"rows": len(batch), "quartiled": quartiled, "year": year}
+
+
+def _upsert(batch: list[dict], progress=None) -> None:
+    if not batch:
+        return
+    import json as _json
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    sql = _sql("""
+        INSERT INTO journal_ranking
+            (title_norm, title, issns, primary_issn, country, year,
+             best_quartile, best_category, best_percentile,
+             best_decile, categories, sjr, source, updated_at)
+        VALUES (:tn, :ti, CAST(:iss AS jsonb), :pi, :co, :yr,
+                :bq, :bc, :bp, :bd, CAST(:cats AS jsonb), :sjr,
+                'scimago', NOW())
+        ON CONFLICT (title_norm, year, source) DO UPDATE SET
+            title           = EXCLUDED.title,
+            issns           = EXCLUDED.issns,
+            primary_issn    = EXCLUDED.primary_issn,
+            country         = EXCLUDED.country,
+            best_quartile   = EXCLUDED.best_quartile,
+            best_category   = EXCLUDED.best_category,
+            best_percentile = EXCLUDED.best_percentile,
+            best_decile     = EXCLUDED.best_decile,
+            categories      = EXCLUDED.categories,
+            sjr             = EXCLUDED.sjr,
+            updated_at      = NOW()
+    """)
+    CHUNK = 1000
+    total = len(batch)
+    with eng.begin() as conn:
+        for i in range(0, total, CHUNK):
+            chunk = batch[i:i + CHUNK]
+            # One executemany per chunk (SQLAlchemy pipelines the params)
+            # — far faster than a per-row execute over ~30k rows.
+            conn.execute(sql, [{
+                "tn": r["title_norm"], "ti": r["title"],
+                "iss": _json.dumps(r["issns"]), "pi": r["primary_issn"],
+                "co": r["country"], "yr": r["year"],
+                "bq": r["best_quartile"], "bc": r["best_category"],
+                "bp": r["best_percentile"], "bd": r["best_decile"],
+                "cats": _json.dumps(r["categories"]), "sjr": r["sjr"],
+            } for r in chunk])
+            if progress:
+                progress(min(i + CHUNK, total), total)
+
+
+# ── Lookup ────────────────────────────────────────────────────────────────────
+
+# Some journals are stored in SCImago under a longer official name than the
+# one PrionVault (or a manual entry) uses. These aliases let a lookup by
+# either form find rows saved under the other, so a year without a manual
+# entry still resolves via the SCImago row. Keys/values are normalized
+# titles (see norm_title). Declared bidirectionally.
+_TITLE_ALIASES: dict[str, tuple[str, ...]] = {
+    "proceedings of the national academy of sciences": (
+        "proceedings of the national academy of sciences of the united states of america",
+    ),
+    "proceedings of the national academy of sciences of the united states of america": (
+        "proceedings of the national academy of sciences",
+    ),
+}
+
+
+def _alias_norms(tn: str) -> list[str]:
+    """Return `tn` plus any aliased normalized titles it should also match."""
+    norms = [tn]
+    for extra in _TITLE_ALIASES.get(tn, ()):
+        if extra not in norms:
+            norms.append(extra)
+    return norms
+
+
+_LOOKUP_SQL = """
+    SELECT title_norm, year, best_quartile, best_category, best_percentile,
+           best_decile, primary_issn, country, source
+      FROM journal_ranking
+     WHERE title_norm = ANY(:tns)
+     ORDER BY year
+"""
+
+
+def _select_best(rows: list, year: Optional[int]) -> Optional[dict]:
+    """Apply the manual-priority + closest-year rules to a journal's candidate
+    rows (must be ascending by year) and return the result dict, or None."""
+    if not rows:
+        return None
+
+    sci_rows    = [r for r in rows if r["source"] != "manual"]
+    manual_rows = [r for r in rows if r["source"] == "manual"]
+
+    # Best SCImago row by year rule. `sci_rows` is ascending by year.
+    sci = None
+    if sci_rows:
+        if year:
+            exact = [r for r in sci_rows if r["year"] == year]
+            older = [r for r in sci_rows if r["year"] <= year]
+            if exact:
+                sci = exact[0]
+            elif older:
+                sci = older[-1]          # closest year not after `year`
+            else:
+                sci = sci_rows[0]        # article older than earliest data
+                                         # (e.g. pre-1999) → use the earliest
+        else:
+            sci = sci_rows[-1]           # no article year → latest available
+
+    # Best MANUAL row: an entry for this exact year wins, else an
+    # atemporal (year=0) entry.
+    manual = None
+    if manual_rows:
+        if year:
+            manual = next((r for r in manual_rows if r["year"] == year), None)
+        if manual is None:
+            manual = next((r for r in manual_rows if r["year"] == 0), None)
+
+    if sci is None and manual is None:
+        return None
+
+    # Manual takes priority; SCImago fills any gaps it leaves.
+    primary   = manual if manual is not None else sci
+    secondary = sci if manual is not None else None
+
+    def _pick(field):
+        if primary is not None and primary[field] is not None:
+            return primary[field]
+        return secondary[field] if secondary is not None else None
+
+    pct = _pick("best_percentile")
+    return {
+        "quartile":   _pick("best_quartile"),
+        "category":   _pick("best_category"),
+        "percentile": float(pct) if pct is not None else None,
+        "decile":     _pick("best_decile"),
+        "issn":       _pick("primary_issn"),
+        "country":    _pick("country"),
+        "year":       primary["year"] if primary is not None else None,
+        "database":   "SCImago (SJR)",
+    }
+
+
+def lookup(journal: str, year: Optional[int] = None) -> Optional[dict]:
+    """Return quality data for a journal (best quartile + decile +
+    percentile + ISSN + country). Prefers the SCImago ranking year closest
+    to (not after) `year`; fills any gaps from a manual (atemporal) entry;
+    falls back entirely to the manual entry when SCImago has nothing.
+    None when neither source knows the journal."""
+    tn = norm_title(journal or "")
+    if not tn:
+        return None
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    try:
+        with eng.connect() as conn:
+            rows = conn.execute(_sql(_LOOKUP_SQL),
+                                {"tns": _alias_norms(tn)}).mappings().all()
+    except Exception as exc:
+        logger.warning("scimago lookup failed for %r: %s", journal, exc)
+        return None
+    return _select_best(list(rows), year)
+
+
+def build_lookup_index(journals) -> dict:
+    """Prefetch ranking rows for many journals in ONE query and return a
+    {title_norm: [rows sorted by year]} index. Use with `lookup_indexed` to
+    resolve a whole batch without a per-journal round-trip (avoids worker
+    timeouts on large exports)."""
+    norms: set = set()
+    for j in journals:
+        tn = norm_title(j or "")
+        if tn:
+            norms.update(_alias_norms(tn))
+    if not norms:
+        return {}
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    index: dict = {}
+    try:
+        with eng.connect() as conn:
+            rows = conn.execute(_sql(_LOOKUP_SQL),
+                                {"tns": sorted(norms)}).mappings().all()
+    except Exception as exc:
+        logger.warning("scimago build_lookup_index failed: %s", exc)
+        return {}
+    for r in rows:                       # already ORDER BY year
+        index.setdefault(r["title_norm"], []).append(r)
+    return index
+
+
+def lookup_indexed(index: dict, journal: str,
+                   year: Optional[int] = None) -> Optional[dict]:
+    """Like `lookup`, but resolves against a prefetched `build_lookup_index`
+    result instead of hitting the DB."""
+    tn = norm_title(journal or "")
+    if not tn:
+        return None
+    rows: list = []
+    for n in _alias_norms(tn):
+        rows.extend(index.get(n, []))
+    rows.sort(key=lambda r: r["year"])
+    return _select_best(rows, year)
+
+
+# ── Manual journals (atemporal: for journals SCImago doesn't cover) ────────────
+
+def add_manual_journal(*, journal: str, issn: str = "", country: str = "",
+                       quartile: str = "", decile: str = "",
+                       percentile=None, category: str = "", year=None) -> dict:
+    """Insert/update a manual journal entry. `year` empty/None → atemporal
+    (year=0, applies to all years); a specific year stores year-specific
+    data. Empty fields are stored as NULL. Raises ValueError without a
+    journal name."""
+    title = (journal or "").strip()
+    tn = norm_title(title)
+    if not tn:
+        raise ValueError("El nombre de la revista es obligatorio.")
+
+    def _norm_q(v, prefix):
+        v = (v or "").strip().upper()
+        return v if re.match(rf'^{prefix}\d+$', v) else None
+    quartile = _norm_q(quartile, 'Q')
+    decile   = _norm_q(decile, 'D')
+    try:
+        pct = float(str(percentile).replace(',', '.')) if percentile not in (None, "") else None
+    except (TypeError, ValueError):
+        pct = None
+    try:
+        yr = int(year) if year not in (None, "") else 0
+    except (TypeError, ValueError):
+        yr = 0
+    if not (yr == 0 or 1900 <= yr <= 2100):
+        yr = 0
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    with eng.begin() as conn:
+        conn.execute(_sql("""
+            INSERT INTO journal_ranking
+                (title_norm, title, issns, primary_issn, country, year,
+                 best_quartile, best_category, best_percentile, best_decile,
+                 categories, sjr, source, updated_at)
+            VALUES (:tn, :ti, '[]'::jsonb, :issn, :co, :yr,
+                    :bq, :bc, :bp, :bd, '[]'::jsonb, NULL, 'manual', NOW())
+            ON CONFLICT (title_norm, year, source) DO UPDATE SET
+                title           = EXCLUDED.title,
+                primary_issn    = EXCLUDED.primary_issn,
+                country         = EXCLUDED.country,
+                best_quartile   = EXCLUDED.best_quartile,
+                best_category   = EXCLUDED.best_category,
+                best_percentile = EXCLUDED.best_percentile,
+                best_decile     = EXCLUDED.best_decile,
+                source          = 'manual',
+                updated_at      = NOW()
+        """), {"tn": tn, "ti": title, "yr": yr,
+                "issn": (issn or "").strip() or None,
+                "co": (country or "").strip() or None,
+                "bq": quartile, "bc": (category or "").strip() or None,
+                "bp": pct, "bd": decile})
+    return {"title_norm": tn, "title": title, "year": yr}
+
+
+def list_manual_journals() -> list[dict]:
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(_sql("""
+            SELECT title, year, primary_issn, country, best_quartile,
+                   best_decile, best_percentile, best_category
+              FROM journal_ranking
+             WHERE source = 'manual'
+             ORDER BY LOWER(title), year
+        """)).mappings().all()
+    out = []
+    for r in rows:
+        d = dict(r)
+        if d.get("best_percentile") is not None:
+            d["best_percentile"] = float(d["best_percentile"])
+        out.append(d)
+    return out
+
+
+def delete_manual_journal(journal: str, year=None) -> bool:
+    """Delete a manual entry. With `year` (0 = atemporal) deletes just that
+    year's entry; without it, deletes every manual entry for the journal."""
+    tn = norm_title(journal or "")
+    if not tn:
+        return False
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    params = {"tn": tn}
+    sql = "DELETE FROM journal_ranking WHERE title_norm = :tn AND source = 'manual'"
+    if year not in (None, ""):
+        try:
+            params["yr"] = int(year)
+            sql += " AND year = :yr"
+        except (TypeError, ValueError):
+            pass
+    with eng.begin() as conn:
+        res = conn.execute(_sql(sql), params)
+    return (res.rowcount or 0) > 0
+
+
+def find_missing_journals() -> list[str]:
+    """Distinct journals in the library with NO ranking data (neither
+    SCImago nor manual). Returns original journal names, sorted."""
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    try:
+        with eng.connect() as conn:
+            journals = [r[0] for r in conn.execute(_sql(
+                "SELECT DISTINCT journal FROM articles "
+                "WHERE journal IS NOT NULL AND journal <> ''"
+            )).all()]
+            known = {r[0] for r in conn.execute(_sql(
+                "SELECT DISTINCT title_norm FROM journal_ranking "
+                "WHERE best_quartile IS NOT NULL OR primary_issn IS NOT NULL "
+                "   OR country IS NOT NULL"
+            )).all()}
+    except Exception as exc:
+        logger.warning("scimago find_missing failed: %s", exc)
+        return []
+    missing = {}
+    for j in journals:
+        tn = norm_title(j)
+        if tn and tn not in known and tn not in missing:
+            missing[tn] = j.strip()
+    return sorted(missing.values(), key=lambda s: s.lower())
+
+
+# Backwards-compatible alias for older callers.
+def lookup_quartile(journal: str, year: Optional[int] = None) -> Optional[dict]:
+    return lookup(journal, year)
+
+
+def stats() -> dict:
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    try:
+        with eng.connect() as conn:
+            rows = conn.execute(_sql("""
+                SELECT year, COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE best_quartile IS NOT NULL) AS quartiled
+                  FROM journal_ranking
+                 WHERE source <> 'manual'
+                 GROUP BY year ORDER BY year DESC
+            """)).mappings().all()
+            manual = conn.execute(_sql(
+                "SELECT COUNT(*) FROM journal_ranking WHERE source = 'manual'"
+            )).scalar() or 0
+        return {"years": [dict(r) for r in rows],
+                "total": sum(r["total"] for r in rows),
+                "manual": int(manual)}
+    except Exception as exc:
+        logger.warning("scimago stats failed: %s", exc)
+        return {"years": [], "total": 0}
+
+
+def clear_year(year: int) -> int:
+    from sqlalchemy import text as _sql
+    eng = _get_engine()
+    with eng.begin() as conn:
+        res = conn.execute(_sql(
+            "DELETE FROM journal_ranking WHERE year = :y"), {"y": year})
+    return res.rowcount or 0

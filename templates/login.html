@@ -16,7 +16,7 @@
       {% endif %}
 
       <div class="form-group">
-        <label for="username" class="form-label">{{ _('Username') }}</label>
+        <label for="username" class="form-label">{{ _('Username or email') }}</label>
         <input type="text" id="username" name="username"
                class="form-input" autocomplete="username" autofocus required />
       </div>
@@ -28,6 +28,13 @@
       </div>
 
       <button type="submit" class="btn btn--primary btn--full">{{ _('Sign in') }}</button>
+
+      <p style="text-align:center;margin-top:14px;font-size:13px;">
+        <a href="{{ url_for('auth.forgot_password') }}"
+           style="color:#0F3460;text-decoration:none;">
+          {{ _('Forgot your password?') }}
+        </a>
+      </p>
     </form>
   </div>
 </div>

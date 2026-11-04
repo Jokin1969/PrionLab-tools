@@ -1,0 +1,1312 @@
+[
+ {
+  "year": 2018,
+  "title": "Prion Research Laboratory/Transmissible spongiform encephalopathies",
+  "authors": "Joaquín Castilla ",
+  "paragraphs": [
+   "Transmissible spongiform encephalopathies (TSE) are lethal neurodegenerative disorders caused by prions, aberrantly misfolded isoform (PrPSc) of the prion protein (PrPC), which upon misfolding becomes amyloidogenic, able to induce its conformation on PrPC, neurotoxic and transmissible to other individuals. Despite the advances regarding the pathobiology of prion diseases there are still several open questions. The physiological roles of PrPC are not fully identified and neither the misfolding itself at molecular level nor the neurotoxicity pathway are known and cannot be fully understood until the 3D structure of PrPSc is solved, which is the main challenge of the field. Besides, two intriguing features of prions are also under intensive research, the interspecies transmission barrier and the determinants of prion strains. Also the development of new early diagnostic methods and the search of a therapy need to be highlighted as the main challenges in clinical practice. The description in Europe of the first cases of prion disease in cervids (CWD) has become a great public safety issue due to its rapid spread in the US and Canada. And finally, the controversial classification as prions of other misfolding-prone proteins such as α-synuclein or Aβ peptide marked the past year in the field of TSEs.",
+   "During 2018 new approaches have been developed to increase our knowledge on the physiology of PrPC as the identification of regulatory miRNAs in humans1. Regarding the 3D structure of prions, the end of 2017 brought the first structure at high resolution using ssNMR and a synthetic prion as model2. However its biological significance is unclear and the few advances done on prion structure in 2018 were scarce and made with low resolution techniques3,4. Prion transmissibility through environmental materials has been further characterized5 and an important molecular key to the high transmission barrier to prions presented by canines has been deciphered6. Similarly, prion strain phenomenon has been reproduced in vitro using recombinant prions in different propagation systems, providing important clues on the possible mechanisms of strain variability in vivo7-9. Few new diagnostic methods have been also explored, some that used novel and more accessible tissues for detection of minute amounts of prions10,11, another one improving previous methods12 and the last one representing a completely new amyloid fibril detection system through plasmon resonance13. Despite the lack of effective therapies, several high throughput screening (HTS) methods have been developed, many based on in vitro prion propagation assays14. Regarding the arrival of CWD to Europe, few new cases have been described in Norway and classified as different from the US and Canadian isolates15. Finally, the debate about other misfolded proteins being prions reached the International Prion Conference, with half of the experts in favor of considering all prions and the other half arguing for new terminology and classifications16.",
+   "2019 is expected to be an important year in the field mainly regarding the 3D structure of prions. New recombinant prions generated in vitro, more similar to brain-derived prions, new propagation systems with much higher yields and the increased control of in vitro generated prion strain heterogeneity together with high resolution biophysical techniques such as ssNMR or cryoEM could finally allow the deciphering of a bona fide prion structure at atomic resolution. News on therapeutic strategies are also expected as the first experimental treatment will be administered to a single patient in UK. Nonetheless, novel therapeutic approaches will be also sought using new HTS methods. Further efforts will be also done to study the interspecies transmission properties and the zoonotic risk of the new European CWD strains. Therefore, 2019 will bring new opportunities mainly regarding 3D structure, distinct therapeutic approaches and assessment of public safety risk due to CWD spreading in Europe."
+  ],
+  "refs": [
+   {
+    "key": "1",
+    "doi": "10.1111/bpa.12679",
+    "pmid": "30451334",
+    "cite": "Genome-Wide Identification of microRNAs regulating the Human Prion Protein. Pease D, Scheckel C, Schaper E, Eckhardt V, Emmenegger M, Xenarios I, Aguzzi A.; Brain Pathol. 2018 Nov 19. doi: 10.1111/bpa.12679. PMID: 30451334"
+   },
+   {
+    "key": "2",
+    "doi": "10.1038/s41467-017-00794-z",
+    "pmid": "28963458",
+    "cite": "Species-dependent structural polymorphism of Y145Stop prion protein amyloid revealed by solid-state NMR spectroscopy. Theint T, Nadaud PS, Aucoin D, Helmus JJ, Pondaven SP, Surewicz K, Surewicz WK, Jaroniec CP. Nat Commun. 2017 Sep 29;8(1):753. doi: 10.1038/s41467-017-00794-z. PMID:28963458."
+   },
+   {
+    "key": "3",
+    "doi": "10.1074/jbc.RA118.005622",
+    "pmid": "30275016",
+    "cite": "Structural attributes of mammalian prion infectivity: Insights from studies with synthetic prions. Li Q, Wang F, Xiao X, Kim C, Bohon J, Kiselar J, Safar JG, Ma J, Surewicz WK. J Biol Chem. 2018 Nov 30;293(48):18494-18503. doi: 10.1074/jbc.RA118.005622. PMID: 30275016."
+   },
+   {
+    "key": "4",
+    "doi": "10.1371/journal.ppat.1006797",
+    "pmid": "29385212",
+    "cite": "Recombinant PrPSc shares structural features with brain-derived PrPSc: Insights from limited proteolysis. Sevillano AM, Fernández-Borges N, Younas N, Wang F, R Elezgarai S, Bravo S, Vázquez-Fernández E, Rosa I, Eraña H, Gil D, Veiga S, Vidal E, Erickson-Beltran ML, Guitián E, Silva CJ, Nonno R, Ma J, Castilla J, R Requena J. PLoS Pathog. 2018 Jan 31;14(1):e1006797. doi: 10.1371/journal.ppat.1006797. PMID: 29385212."
+   },
+   {
+    "key": "5",
+    "doi": "10.1074/jbc.M117.810747",
+    "pmid": "29330304",
+    "cite": "Efficient prion disease transmission through common environmental materials. Pritzkow S, Morales R, Lyon A, Concha-Marambio L, Urayama A, Soto C. J Biol Chem. 2018 Mar 2;293(9):3363-3373. doi: 10.1074/jbc.M117.810747. PMID: 29330304."
+   },
+   {
+    "key": "6",
+    "doi": "10.1007/s12035-017-0832-8",
+    "pmid": "29264770",
+    "cite": "An Amino Acid Substitution Found in Animals with Low Susceptibility to Prion Diseases Confers a Protective Dominant-Negative Effect in Prion-Infected Transgenic Mice. Otero A, Bolea R, Hedman C, Fernández-Borges N, Marín B, López-Pérez Ó, Barrio T, Eraña H, Sánchez-Martín MA, Monzón M, Badiola JJ, Castilla J. Mol Neurobiol. 2018 Jul;55(7):6182-6192. doi: 10.1007/s12035-017-0832-8. PMID: 29264770."
+   },
+   {
+    "key": "7",
+    "doi": "10.1186/s40478-018-0597-y",
+    "pmid": "30208966",
+    "cite": "Preserving prion strain identity upon replication of prions in vitro using recombinant prion protein. Makarava N, Savtchenko R, Lasch P, Beekes M, Baskakov IV. Acta Neuropathol Commun. 2018 Sep 12;6(1):92. doi: 10.1186/s40478-018-0597-y. PMID: 30208966."
+   },
+   {
+    "key": "8",
+    "doi": "10.1038/s41467-018-04584-z",
+    "pmid": "29867164",
+    "cite": "Artificial strain of human prions created in vitro. Kim C, Xiao X, Chen S, Haldiman T, Smirnovas V, Kofskey D, Warren M, Surewicz K, Maurer NR, Kong Q, Surewicz W, Safar JG. Nat Commun. 2018 Jun 4;9(1):2166. doi: 10.1038/s41467-018-04584-z. PMID: 29867164."
+   },
+   {
+    "key": "9",
+    "doi": "10.1007/s00401-017-1782-y",
+    "pmid": "29094186",
+    "cite": "Cofactors influence the biological properties of infectious recombinant prions. Fernández-Borges N, Di Bari MA, Eraña H, Sánchez-Martín M, Pirisinu L, Parra B, Elezgarai SR, Vanni I, López-Moreno R, Vaccari G, Venegas V, Charco JM, Gil D, Harrathi C, D'Agostino C, Agrimi U, Mayoral T, Requena JR, Nonno R, Castilla J. Acta Neuropathol. 2018 Feb;135(2):179-199. doi: 10.1007/s00401-017-1782-y. Epub 2017 Nov 1. PMID: 29094186."
+   },
+   {
+    "key": "10",
+    "doi": "10.1128/mBio.02095-18",
+    "pmid": null,
+    "cite": "Prion Seeds Distribute throughout the Eyes of Sporadic Creutzfeldt-Jakob Disease Patients. Orrù CD, Soldau K, Cordano C, Llibre-Guerra J, Green AJ, Sanchez H, Groveman BR, Edland SD, Safar JG, Lin JH, Caughey B, Geschwind MD, Sigurdson CJ. MBio. 2018 Nov 20;9(6). pii: e02095-18. doi: 10.1128/mBio.02095-18."
+   },
+   {
+    "key": "11",
+    "doi": "10.1126/scitranslmed.aam7785",
+    "pmid": "29167394",
+    "cite": "Prion seeding activity and infectivity in skin samples from patients with sporadic Creutzfeldt-Jakob disease. Orrú CD, Yuan J, Appleby BS, Li B, Li Y, Winner D, Wang Z, Zhan YA, Rodgers M, Rarick J, Wyza RE, Joshi T, Wang GX, Cohen ML, Zhang S, Groveman BR, Petersen RB, Ironside JW, Quiñones-Mateu ME, Safar JG, Kong Q, Caughey B, Zou WQ. Sci Transl Med. 2017 Nov 22;9(417). pii: eaam7785. doi: 10.1126/scitranslmed.aam7785. PMID: 29167394."
+   },
+   {
+    "key": "12",
+    "doi": "10.3201/eid2407.172105",
+    "pmid": "29912702",
+    "cite": "Diagnosis of Methionine/Valine Variant Creutzfeldt-Jakob Disease by Protein Misfolding Cyclic Amplification. Bougard D, Bélondrade M, Mayran C, Bruyère-Ostells L, Lehmann S, Fournier-Wirth C, Knight RS, Will RG, Green AJE. Emerg Infect Dis. 2018 Jul;24(7):1364-1366. doi: 10.3201/eid2407.172105. PMID: 29912702."
+   },
+   {
+    "key": "13",
+    "doi": "10.1073/pnas.1721690115",
+    "pmid": "29531058",
+    "cite": "Detection of amyloid fibrils in Parkinson's disease using plasmonic chirality. Kumar J, Eraña H, López-Martínez E, Claes N, Martín VF, Solís DM, Bals S, Cortajarena AL, Castilla J, Liz-Marzán LM. Proc Natl Acad Sci U S A. 2018 Mar 27;115(13):3225-3230. doi: 10.1073/pnas.1721690115. Epub 2018 Mar 12. PMID: 29531058"
+   },
+   {
+    "key": "14",
+    "doi": "10.1016/j.coph.2018.10.001",
+    "pmid": "30412823",
+    "cite": "Cell-free prion protein conversion assays in screening for anti-prion drug candidates. Ferreira NDC, Caughey B. Curr Opin Pharmacol. 2018 Nov 6;44:1-7. doi: 10.1016/j.coph.2018.10.001. Review. PMID: 30412823"
+   },
+   {
+    "key": "15",
+    "doi": "10.3201/eid2412.180702",
+    "pmid": "30457526",
+    "cite": "Novel Type of Chronic Wasting Disease Detected in Moose (Alces alces), Norway. Pirisinu L, Tran L, Chiappini B, Vanni I, Di Bari MA, Vaccari G, Vikøren T, Madslien KI, Våge J, Spraker T, Mitchell G, Balachandran A, Baron T, Casalone C, Rolandsen CM, Røed KH, Agrimi U, Nonno R, Benestad SL. Emerg Infect Dis. 2018 Dec;24(12):2210-2218. doi: 10.3201/eid2412.180702. PMID: 30457526."
+   },
+   {
+    "key": "16",
+    "doi": null,
+    "pmid": null,
+    "cite": "Aβ, tau, α-synuclein… are they prions, prion-like proteins, or what? Eraña H. Prion, in press."
+   }
+  ]
+ },
+ {
+  "year": 2019,
+  "title": "Prion Research Laboratory/Transmissible spongiform encephalopathies",
+  "authors": "Joaquín Castilla ",
+  "paragraphs": [
+   "Transmissible spongiform encephalopathies (TSE) are lethal neurodegenerative disorders caused by prions, aberrantly misfolded isoform (PrPSc) of the prion protein (PrPC). The physiological roles of PrPC are not fully identified and neither the misfolding itself at molecular level nor the neurotoxicity pathway are known and cannot be fully understood until the 3D structure of PrPSc is solved, which is the main challenge of the field. Also the development of new early diagnostic methods and the search of a therapy need to be highlighted as the main challenges in clinical practice. The description in Europe of the first cases of prion disease in cervids (CWD) has become a great public safety issue. Finally, the awareness that other protein misfolding-related neurodegenerative disorders are caused by misfolding-prone proteins such as α-synuclein or Aβ peptide, that share molecular mechanisms with prions, have prompted the application of several techniques originally developed for TSE-causing prions to much more prevalent disorders such as Alzheimer’s or Parkinson’s diseases.",
+   "In 2019, several studies have been published trying to further characterize the pathology and understand the factors governing the dissimilar incubation periods between individuals (Mitrová E. et al. 2019; Peckeu L. et al. 2019) or the influence of mechanisms governing protein homeostasis in the pathology of prion disorders (Mays CE. Et al. 2019). During this year, the use of in vitro prion propagation systems has further extended for mechanistic studies helping to understand how cofactors modulate prion aggregation, define specific infectivity and strain properties or the structural determinants of fibril diversity (Kovachev PS. Et al. 2019; Burke CM. et al. 2019; Torrent J. et al. 2019). Moreover, in vitro prion amplification assays have been widely implemented in prion detection in animals (Favole A. et al. 2019; Wang Z. et al. 2019) and humans, searching to distinguish different disease subtypes (Piconi G. et al. 2019), increasing sensitivity and specificity (Metrick MA 2nd et al. 2019) or using new body fluids for diagnosis (Cali I. et al. 2019). These methods and know how have been applied to other neurodegenerative diseases and based on prion disease biomarkers, similar ones have been sought in Parkinson’s disease (Parnetti L. et al. 2019). Finally, prion detection systems in vitro have been dedicated also to risk assessment, using them to screen for prion contamination in human cell lines used to produce biological therapeutics (Lyon A. et al. 2019). ther advances in the field during 2019 include the development of new models of prion infection, such as the human cerebral organoids (Groveman BR. et al. 2019) and the identification of new anti-prion compounds that act through the reduction of PrPC levels (Biggi S. et al. 2019; Raymond GJ. et al. 2019). Finally, the 3D structure of prions continues being unknown but advances have been done with other amyloids with prion behavior and that share also the interspecies transmissibility, fibril structures form systemic AA-amyloidosis have been unraveled by cyro-EM (Liberta F. et al. 2019), indicating the suitability of this technique for prion structure resolution.",
+   "2020 is expected to bring further advances on 3 topics mainly regarding TSEs and prions and other prion-like diseases. First, initial results from the first antibody therapy administered to six patients in UK will be published, indicating the expected efficiency of this strategy. Advances are also expected in the antisense therapies published this year aiming to reduce PrPC levels. Second, diagnosis based on the detection of minute amounts of misfolded proteins in easily accessible tissues and body fluids will be finally developed for its implementation in the clinical practice and this development will likely influence the early diagnosis of diseases like Parkinson’s and Alzheimer’s based on misfolded species of α-synuclein and tau respectively. Finally, new recombinant prions generated in vitro, more similar to brain-derived prions, propagation systems with much higher yields and the increased control of in vitro generated prion strains together with high resolution biophysical techniques such as ssNMR or cryoEM could finally allow the deciphering of a bona fide prion structure at atomic resolution."
+  ],
+  "refs": [
+   {
+    "cite": "Mitrová E. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "In 2019, several studies have been published trying to further characterize the pathology and understand the factors governing the dissimilar incubation periods between individuals (Mitrová E. et al. 2019; Peckeu L. et al. 2019) or the influence of mechanisms governing protein homeostasis in the pathology of prion disorders (Mays CE."
+   },
+   {
+    "cite": "Peckeu L. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "In 2019, several studies have been published trying to further characterize the pathology and understand the factors governing the dissimilar incubation periods between individuals (Mitrová E. et al. 2019; Peckeu L. et al. 2019) or the influence of mechanisms governing protein homeostasis in the pathology of prion disorders (Mays CE."
+   },
+   {
+    "cite": "Mays CE. Et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "In 2019, several studies have been published trying to further characterize the pathology and understand the factors governing the dissimilar incubation periods between individuals (Mitrová E. et al. 2019; Peckeu L. et al. 2019) or the influence of mechanisms governing protein homeostasis in the pathology of prion disorders (Mays CE."
+   },
+   {
+    "cite": "Kovachev PS. Et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "During this year, the use of in vitro prion propagation systems has further extended for mechanistic studies helping to understand how cofactors modulate prion aggregation, define specific infectivity and strain properties or the structural determinants of fibril diversity (Kovachev PS."
+   },
+   {
+    "cite": "Burke CM. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Et al. 2019; Burke CM. et al. 2019; Torrent J. et al. 2019)."
+   },
+   {
+    "cite": "Torrent J. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Et al. 2019; Burke CM. et al. 2019; Torrent J. et al. 2019)."
+   },
+   {
+    "cite": "Favole A. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Moreover, in vitro prion amplification assays have been widely implemented in prion detection in animals (Favole A. et al. 2019; Wang Z. et al. 2019) and humans, searching to distinguish different disease subtypes (Piconi G. et al. 2019), increasing sensitivity and specificity (Metrick MA 2nd et al. 2019) or using new body fluids for diagnosis (Cali I. et al. 2019)."
+   },
+   {
+    "cite": "Wang Z. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Moreover, in vitro prion amplification assays have been widely implemented in prion detection in animals (Favole A. et al. 2019; Wang Z. et al. 2019) and humans, searching to distinguish different disease subtypes (Piconi G. et al. 2019), increasing sensitivity and specificity (Metrick MA 2nd et al. 2019) or using new body fluids for diagnosis (Cali I. et al. 2019)."
+   },
+   {
+    "cite": "Piconi G. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Moreover, in vitro prion amplification assays have been widely implemented in prion detection in animals (Favole A. et al. 2019; Wang Z. et al. 2019) and humans, searching to distinguish different disease subtypes (Piconi G. et al. 2019), increasing sensitivity and specificity (Metrick MA 2nd et al. 2019) or using new body fluids for diagnosis (Cali I. et al. 2019)."
+   },
+   {
+    "cite": "Metrick MA 2nd et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Moreover, in vitro prion amplification assays have been widely implemented in prion detection in animals (Favole A. et al. 2019; Wang Z. et al. 2019) and humans, searching to distinguish different disease subtypes (Piconi G. et al. 2019), increasing sensitivity and specificity (Metrick MA 2nd et al. 2019) or using new body fluids for diagnosis (Cali I. et al. 2019)."
+   },
+   {
+    "cite": "Cali I. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Moreover, in vitro prion amplification assays have been widely implemented in prion detection in animals (Favole A. et al. 2019; Wang Z. et al. 2019) and humans, searching to distinguish different disease subtypes (Piconi G. et al. 2019), increasing sensitivity and specificity (Metrick MA 2nd et al. 2019) or using new body fluids for diagnosis (Cali I. et al. 2019)."
+   },
+   {
+    "cite": "Parnetti L. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "These methods and know how have been applied to other neurodegenerative diseases and based on prion disease biomarkers, similar ones have been sought in Parkinson’s disease (Parnetti L. et al. 2019)."
+   },
+   {
+    "cite": "Lyon A. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Finally, prion detection systems in vitro have been dedicated also to risk assessment, using them to screen for prion contamination in human cell lines used to produce biological therapeutics (Lyon A. et al. 2019). ther advances in the field during 2019 include the development of new models of prion infection, such as the human cerebral organoids (Groveman BR. et al. 2019) and the identification of new anti-prion compounds that act through the reduction of PrPC levels (Biggi S. et al. 2019; Raymond GJ. et al. 2019)."
+   },
+   {
+    "cite": "Groveman BR. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Finally, prion detection systems in vitro have been dedicated also to risk assessment, using them to screen for prion contamination in human cell lines used to produce biological therapeutics (Lyon A. et al. 2019). ther advances in the field during 2019 include the development of new models of prion infection, such as the human cerebral organoids (Groveman BR. et al. 2019) and the identification of new anti-prion compounds that act through the reduction of PrPC levels (Biggi S. et al. 2019; Raymond GJ. et al. 2019)."
+   },
+   {
+    "cite": "Biggi S. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Finally, prion detection systems in vitro have been dedicated also to risk assessment, using them to screen for prion contamination in human cell lines used to produce biological therapeutics (Lyon A. et al. 2019). ther advances in the field during 2019 include the development of new models of prion infection, such as the human cerebral organoids (Groveman BR. et al. 2019) and the identification of new anti-prion compounds that act through the reduction of PrPC levels (Biggi S. et al. 2019; Raymond GJ. et al. 2019)."
+   },
+   {
+    "cite": "Raymond GJ. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Finally, prion detection systems in vitro have been dedicated also to risk assessment, using them to screen for prion contamination in human cell lines used to produce biological therapeutics (Lyon A. et al. 2019). ther advances in the field during 2019 include the development of new models of prion infection, such as the human cerebral organoids (Groveman BR. et al. 2019) and the identification of new anti-prion compounds that act through the reduction of PrPC levels (Biggi S. et al. 2019; Raymond GJ. et al. 2019)."
+   },
+   {
+    "cite": "Liberta F. et al. 2019",
+    "author_year": true,
+    "year": 2019,
+    "context": "Finally, the 3D structure of prions continues being unknown but advances have been done with other amyloids with prion behavior and that share also the interspecies transmissibility, fibril structures form systemic AA-amyloidosis have been unraveled by cyro-EM (Liberta F. et al. 2019), indicating the suitability of this technique for prion structure resolution.\n2020 is expected to bring further advances on 3 topics mainly regarding TSEs and prions and other prion-like diseases."
+   }
+  ]
+ },
+ {
+  "year": 2020,
+  "title": "Understanding how prions work to improve diagnostic and develop treatments for Transmissible Spongiform Encephalopathies",
+  "authors": "Joaquín Castilla, Prion Research Lab",
+  "paragraphs": [
+   "The group of fatal neurodegenerative disorders known as Transmissible Spongiform Encephalopathies (TSE) are caused by prions and affect several mammals including humans. The central event leading to pathogenesis is the misfolding of the cellular prion protein (PrPC), expressed abundantly in the nervous system, into a pathogenic isoform (PrPSc) that presents the ability to induce its conformation to the cellular counterpart and triggers an unknown neurotoxicity pathway leading to neuronal death. The scarce knowledge on molecular mechanisms underlying prion pathogenesis, limit the advances on complex phenomena such as the existence of prion strains, the role of cofactors defining their unique characteristics or understanding interspecies transmission. Moreover, this lack of knowledge also hinders early diagnosis and the development of new therapies.",
+   "During 2020 some progress on deciphering the three-dimensional structure of prions was made, an essential milestone for understanding prions, with new models derived from cryo-EM studies with synthetic fibrils (Wang LQ et al. 2020; Glynn C et al. 2020) and molecular dynamics simulations with the most credible models (Artikis E et al. 2020; Spagnolli G et al. 2020). In this regard, the highly infectious recombinant  prions we are able to obtain now in unprecedented amounts, are being also applied for structural studies using both ssNMR and cryo-EM. In terms of understanding prion propagation and neurotoxicity mechanisms, uncoupling of infectivity and toxicity of purified prion fibrils has been suggested (Benilova I et al 2020) and infectivity of small molecular weight protein fragments, characteristic of atypical prion diseases, has been shown (Vanni I et al. 2020). Along this line, new insight on the role of polyanionic cofactors and posttranslational modifications on determining strain features in vivo (Makarava N et al. 2020; Callender JA et al. 2020; Sevillano et al. 2020; Aguilar-Calvo et al. 2020) has been published, pointing towards the relevance of variations in PrPC glycosylation for the interaction with cofactors and therefore, determination of strain features. Although an in vitro study suggests that the 3D structure of each prion strain determines glycosylation and cofactor preferences (Burke CM et al. 2020), a view shared by our group and that we are trying to demonstrate through our synthetic prion preparations done in the presence of distinct cofactors. Closely related to strain phenomenon, relevant findings on interspecies prion transmission, have also been published, revealing strain adaptation during transmission (Marín-Moreno et al. 2020) and the risk of acquiring the disease through finger incision (Mikol J et al. 2020). Studies on species resistant to prion transmission, which are of utmost interest for the development therapies, have drawn considerable attention in 2020, mainly studying dog (Kim DJ et al. 2020; Zhang J. 2020; Vidal E et al. 2020) and porcine (Espinosa JC et al. 2020) PrP. Many other promising therapeutic strategies have been also made public (Zaccagnini L et al. 2020; Hyeon W et al. 2020; Schmitz M et al. 2020), being specially interesting those dealing with the search of anti-prion auto-antibodies (Senatore A et al. 2020; Frontzek C et al. 2020) and PrPC expression lowering strategies (Minikel EV et al. 2020). The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020). Finally, three areas that were especially relevant during this year are worth mentioning. The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020). Decontamination of prion-infected surfaces and instruments has received special attention also with the development of new decontaminants (Sakudo A et al. 2020) and new methods to assess their efficacy (Eraña H et al. 2020; Belondrade M et al. 2020). The search of appropriate models to study such complex disorders was also relevant during 2020, since two new cellular models were presented (Avar M et al. 2020; Tahir W et al. 2020), which will add much to the few cell models available for these diseases.",
+   "In 2021, advances are expected mainly in the three more rapidly evolving areas: early diagnosis through a combination of novel biomarkers in blood and CSF and in vitro prion propagation techniques, that allow detection of minute amounts in tissues or body fluids. The latter, which are being applied also to other more prevalent neurodegenerative diseases with promising results, will likely advance further next year facilitating considerably the differential diagnosis. Regarding therapy, positive preliminary results from PrPC expression lowering strategies are presumed via publication of efficacy experiments in animal models. Last, concerning resolution of the 3D structure of prions, based on the slow but steady advances, new information is expected that will further support or discard some of the models that have been proposed. Undoubtedly, strain phenomenon and interspecies transmission will be again under the spotlight as the most complex phenomena in prion diseases that require understanding, although advances in these areas, which are highly dependent on the 3D structure of prions, are supposed to be slower."
+  ],
+  "refs": [
+   {
+    "cite": "Wang LQ et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "During 2020 some progress on deciphering the three-dimensional structure of prions was made, an essential milestone for understanding prions, with new models derived from cryo-EM studies with synthetic fibrils (Wang LQ et al. 2020; Glynn C et al. 2020) and molecular dynamics simulations with the most credible models (Artikis E et al. 2020; Spagnolli G et al. 2020)."
+   },
+   {
+    "cite": "Glynn C et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "During 2020 some progress on deciphering the three-dimensional structure of prions was made, an essential milestone for understanding prions, with new models derived from cryo-EM studies with synthetic fibrils (Wang LQ et al. 2020; Glynn C et al. 2020) and molecular dynamics simulations with the most credible models (Artikis E et al. 2020; Spagnolli G et al. 2020)."
+   },
+   {
+    "cite": "Artikis E et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "During 2020 some progress on deciphering the three-dimensional structure of prions was made, an essential milestone for understanding prions, with new models derived from cryo-EM studies with synthetic fibrils (Wang LQ et al. 2020; Glynn C et al. 2020) and molecular dynamics simulations with the most credible models (Artikis E et al. 2020; Spagnolli G et al. 2020)."
+   },
+   {
+    "cite": "Spagnolli G et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "During 2020 some progress on deciphering the three-dimensional structure of prions was made, an essential milestone for understanding prions, with new models derived from cryo-EM studies with synthetic fibrils (Wang LQ et al. 2020; Glynn C et al. 2020) and molecular dynamics simulations with the most credible models (Artikis E et al. 2020; Spagnolli G et al. 2020)."
+   },
+   {
+    "cite": "Benilova I et al 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "In terms of understanding prion propagation and neurotoxicity mechanisms, uncoupling of infectivity and toxicity of purified prion fibrils has been suggested (Benilova I et al 2020) and infectivity of small molecular weight protein fragments, characteristic of atypical prion diseases, has been shown (Vanni I et al. 2020)."
+   },
+   {
+    "cite": "Vanni I et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "In terms of understanding prion propagation and neurotoxicity mechanisms, uncoupling of infectivity and toxicity of purified prion fibrils has been suggested (Benilova I et al 2020) and infectivity of small molecular weight protein fragments, characteristic of atypical prion diseases, has been shown (Vanni I et al. 2020)."
+   },
+   {
+    "cite": "Makarava N et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Along this line, new insight on the role of polyanionic cofactors and posttranslational modifications on determining strain features in vivo (Makarava N et al. 2020; Callender JA et al. 2020; Sevillano et al. 2020; Aguilar-Calvo et al. 2020) has been published, pointing towards the relevance of variations in PrPC glycosylation for the interaction with cofactors and therefore, determination of strain features."
+   },
+   {
+    "cite": "Callender JA et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Along this line, new insight on the role of polyanionic cofactors and posttranslational modifications on determining strain features in vivo (Makarava N et al. 2020; Callender JA et al. 2020; Sevillano et al. 2020; Aguilar-Calvo et al. 2020) has been published, pointing towards the relevance of variations in PrPC glycosylation for the interaction with cofactors and therefore, determination of strain features."
+   },
+   {
+    "cite": "Sevillano et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Along this line, new insight on the role of polyanionic cofactors and posttranslational modifications on determining strain features in vivo (Makarava N et al. 2020; Callender JA et al. 2020; Sevillano et al. 2020; Aguilar-Calvo et al. 2020) has been published, pointing towards the relevance of variations in PrPC glycosylation for the interaction with cofactors and therefore, determination of strain features."
+   },
+   {
+    "cite": "Aguilar-Calvo et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Along this line, new insight on the role of polyanionic cofactors and posttranslational modifications on determining strain features in vivo (Makarava N et al. 2020; Callender JA et al. 2020; Sevillano et al. 2020; Aguilar-Calvo et al. 2020) has been published, pointing towards the relevance of variations in PrPC glycosylation for the interaction with cofactors and therefore, determination of strain features."
+   },
+   {
+    "cite": "Burke CM et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Although an in vitro study suggests that the 3D structure of each prion strain determines glycosylation and cofactor preferences (Burke CM et al. 2020), a view shared by our group and that we are trying to demonstrate through our synthetic prion preparations done in the presence of distinct cofactors."
+   },
+   {
+    "cite": "Marín-Moreno et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Closely related to strain phenomenon, relevant findings on interspecies prion transmission, have also been published, revealing strain adaptation during transmission (Marín-Moreno et al. 2020) and the risk of acquiring the disease through finger incision (Mikol J et al. 2020)."
+   },
+   {
+    "cite": "Mikol J et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Closely related to strain phenomenon, relevant findings on interspecies prion transmission, have also been published, revealing strain adaptation during transmission (Marín-Moreno et al. 2020) and the risk of acquiring the disease through finger incision (Mikol J et al. 2020)."
+   },
+   {
+    "cite": "Kim DJ et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Studies on species resistant to prion transmission, which are of utmost interest for the development therapies, have drawn considerable attention in 2020, mainly studying dog (Kim DJ et al. 2020; Zhang J. 2020; Vidal E et al. 2020) and porcine (Espinosa JC et al. 2020) PrP."
+   },
+   {
+    "cite": "Zhang J. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Studies on species resistant to prion transmission, which are of utmost interest for the development therapies, have drawn considerable attention in 2020, mainly studying dog (Kim DJ et al. 2020; Zhang J. 2020; Vidal E et al. 2020) and porcine (Espinosa JC et al. 2020) PrP."
+   },
+   {
+    "cite": "Vidal E et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Studies on species resistant to prion transmission, which are of utmost interest for the development therapies, have drawn considerable attention in 2020, mainly studying dog (Kim DJ et al. 2020; Zhang J. 2020; Vidal E et al. 2020) and porcine (Espinosa JC et al. 2020) PrP."
+   },
+   {
+    "cite": "Espinosa JC et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Studies on species resistant to prion transmission, which are of utmost interest for the development therapies, have drawn considerable attention in 2020, mainly studying dog (Kim DJ et al. 2020; Zhang J. 2020; Vidal E et al. 2020) and porcine (Espinosa JC et al. 2020) PrP."
+   },
+   {
+    "cite": "Zaccagnini L et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Many other promising therapeutic strategies have been also made public (Zaccagnini L et al. 2020; Hyeon W et al. 2020; Schmitz M et al. 2020), being specially interesting those dealing with the search of anti-prion auto-antibodies (Senatore A et al. 2020; Frontzek C et al. 2020) and PrPC expression lowering strategies (Minikel EV et al. 2020)."
+   },
+   {
+    "cite": "Hyeon W et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Many other promising therapeutic strategies have been also made public (Zaccagnini L et al. 2020; Hyeon W et al. 2020; Schmitz M et al. 2020), being specially interesting those dealing with the search of anti-prion auto-antibodies (Senatore A et al. 2020; Frontzek C et al. 2020) and PrPC expression lowering strategies (Minikel EV et al. 2020)."
+   },
+   {
+    "cite": "Schmitz M et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Many other promising therapeutic strategies have been also made public (Zaccagnini L et al. 2020; Hyeon W et al. 2020; Schmitz M et al. 2020), being specially interesting those dealing with the search of anti-prion auto-antibodies (Senatore A et al. 2020; Frontzek C et al. 2020) and PrPC expression lowering strategies (Minikel EV et al. 2020)."
+   },
+   {
+    "cite": "Senatore A et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Many other promising therapeutic strategies have been also made public (Zaccagnini L et al. 2020; Hyeon W et al. 2020; Schmitz M et al. 2020), being specially interesting those dealing with the search of anti-prion auto-antibodies (Senatore A et al. 2020; Frontzek C et al. 2020) and PrPC expression lowering strategies (Minikel EV et al. 2020)."
+   },
+   {
+    "cite": "Frontzek C et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Many other promising therapeutic strategies have been also made public (Zaccagnini L et al. 2020; Hyeon W et al. 2020; Schmitz M et al. 2020), being specially interesting those dealing with the search of anti-prion auto-antibodies (Senatore A et al. 2020; Frontzek C et al. 2020) and PrPC expression lowering strategies (Minikel EV et al. 2020)."
+   },
+   {
+    "cite": "Minikel EV et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Many other promising therapeutic strategies have been also made public (Zaccagnini L et al. 2020; Hyeon W et al. 2020; Schmitz M et al. 2020), being specially interesting those dealing with the search of anti-prion auto-antibodies (Senatore A et al. 2020; Frontzek C et al. 2020) and PrPC expression lowering strategies (Minikel EV et al. 2020)."
+   },
+   {
+    "cite": "Jones E et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Chen C et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Vallabh SM et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Villar-Pique A et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Llorens F et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Llorens F et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "occurrence": 2,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Norsworthy PJ et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Source S et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The area of TSE diagnosis is also rapidly evolving thanks to genome-wide association studies looking for new risk factors (Jones E et al. 2020) and the search of novel biomarkers in CSF and blood (Chen C et al. 2020; Vallabh SM et al. 2020; Villar-Pique A et al. 2020; Llorens F et al. 2020; Llorens F et al. 2020), including miRNA (Norsworthy PJ et al. 2020) and transcriptomic signatures (Source S et al. 2020)."
+   },
+   {
+    "cite": "Nonno et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020)."
+   },
+   {
+    "cite": "Perrin-Stowe et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020)."
+   },
+   {
+    "cite": "Ishida Y et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020)."
+   },
+   {
+    "cite": "Arifin MI et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020)."
+   },
+   {
+    "cite": "Güere ME et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020)."
+   },
+   {
+    "cite": "Kramm C et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020)."
+   },
+   {
+    "cite": "Haley et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The worrisome spread of Chronic Wasting Disease in cervids across north America and Europe promotes multiple studies on PrP polymorphisms that could influence transmission and strain properties (Nonno et al. 2020; Perrin-Stowe et al. 2020; Ishida Y et al. 2020; Arifin MI et al. 2020; Güere ME et al. 2020), as well as on rapid detection methods (Kramm C et al. 2020; Haley et al. 2020)."
+   },
+   {
+    "cite": "Sakudo A et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Decontamination of prion-infected surfaces and instruments has received special attention also with the development of new decontaminants (Sakudo A et al. 2020) and new methods to assess their efficacy (Eraña H et al. 2020; Belondrade M et al. 2020)."
+   },
+   {
+    "cite": "Eraña H et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Decontamination of prion-infected surfaces and instruments has received special attention also with the development of new decontaminants (Sakudo A et al. 2020) and new methods to assess their efficacy (Eraña H et al. 2020; Belondrade M et al. 2020)."
+   },
+   {
+    "cite": "Belondrade M et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "Decontamination of prion-infected surfaces and instruments has received special attention also with the development of new decontaminants (Sakudo A et al. 2020) and new methods to assess their efficacy (Eraña H et al. 2020; Belondrade M et al. 2020)."
+   },
+   {
+    "cite": "Avar M et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The search of appropriate models to study such complex disorders was also relevant during 2020, since two new cellular models were presented (Avar M et al. 2020; Tahir W et al. 2020), which will add much to the few cell models available for these diseases."
+   },
+   {
+    "cite": "Tahir W et al. 2020",
+    "author_year": true,
+    "year": 2020,
+    "context": "The search of appropriate models to study such complex disorders was also relevant during 2020, since two new cellular models were presented (Avar M et al. 2020; Tahir W et al. 2020), which will add much to the few cell models available for these diseases."
+   }
+  ]
+ },
+ {
+  "year": 2021,
+  "title": "Advances in Transmissible spongiform encephalopathies translated to other neurodegenerative diseases caused by proteins showing prion-like features",
+  "authors": "Joaquín Castilla, Prion Research Lab",
+  "paragraphs": [
+   "Prions are the causal agents of a group of rare and invariably fatal neurodegenerative disorders known as Transmissible Spongiform Encephalopathies (TSE), affecting several mammals including humans. The main event underlying disease development is the misfolding of the cellular prion protein (PrPC) into an alternative pathogenic conformation called PrPSc. This aberrantly folded form or prion presents the capacity to induce its conformation on the cellular counterpart, forming fibrillary aggregates that accumulate in the brain and causes neuronal death in the process. A similar behavior has been described in other proteins associated to highly prevalent neurodegenerative diseases such as Parkinson’s disease or Alzheimer’s disease. This new point of view is changing the way in which protein-misfolding related neurodegenerative diseases are tackled, with knowledge and methodologies derived from TSE research being increasingly applied to these other diseases.",
+   "The most relevant breakthrough in the field of TSE happened during 2021 is undoubtedly the resolution at an atomic level of the three dimensional structure of two different prion strains purified from brains of affected animals (Kraus A et al.; doi:10.1016/j.molcel.2021.08.011). However, this kind of work proceeds, with the study of other prion strains (Kamali-Jamil R et al.) as needed to solve the prion code (Coca JR et al.; doi:10.1016/j.biosystems.2021.104542, Li Q et al.; doi:10.1101/2021.08.10.455830). To know in detail the structure of this protein is the first step to address the largely unknown molecular mechanisms underlying prion pathogenesis, such as the existence of different strains causing distinct disease subtypes, the role of cofactors on this, or the elements governing interspecies transmission, which would also permit rational design of new diagnostic and therapeutic approaches. With the first detailed prion strain structures in hand, unveiling the molecular basis of prion strain diversity and how it is influenced by environmental and host factors is within reach (Bartz JC; doi:10.1007/s00401-021-02310-6, Carta M et al.; doi:10.1016/j.conb.2021.07.010). Several investigations on the role of sequence elements, environmental factors, and cofactors on strain diversification have contributed to this (Nakić N et al.; doi: 10.1371/journal.ppat.1009232, Ziaunys M et al.; doi:10.3390/ijms22105075, Wang LJ et al.; doi:10.1371/journal.pone.0247248, Aguilar-Calvo P et al.; doi: 10.1371/journal.ppat.1009123), as well as studies in vitro and using synthetic prions (Agarwal A et al.;doi:10.1073/pnas.2100968118, Zhang X et al.; doi:10.1016/j.jbc.2021.101344, Fridmanis J et al.; doi:10.3390/ijms22179635, Bélondrade M et al.; doi:10.1038/s41598-021-83630-1, Wang LQ et al.; doi:10.1126/sciadv.abg9676, Sanz-Hernández et al.; doi:10.1073/pnas.2019631118). Similarly, existence of strains has been confirmed in other neurodegenerative disorders and their corresponding atomic structures are also being solved (Burger D et al.; doi:10.1101/276436, Holec S et al.; doi:10.1007/s00401-020-02163-5, Shi Y et al.; doi:10.1038/s41586-021-03911-7, Hallinan GI et al.; doi:10.1007/s00401-021-02336-w) as well as their relation with the same cofactors as prions (Mah D et al.; doi:10.3389/fmolb.2021.671458, Snow D et al.; doi:10.3389/fnagi.2021.710683, Roy A et al.; doi:10.1007/978-1-0716-1398-6_60). Interestingly, reported interactions between proteins causing other neurodegenerative disease and PrP are also increasing (König AS et al.; doi: 10.1016/j.jbc.2021.100499, Li R et al.; doi:10.1002/brb3.2365, Martinez-Valbuena I et al.; doi:10.1186/s40478-021-01171-0, Thom T et al.; doi:10.1002/mds.28774), opening new possibilities to determine neurotoxicity mechanisms, which could be mediated by PrP. Thus, apart from translating research and diagnostic methods, which is already occurring (Russo MJ et al.; doi:%2010.1186/s40478-021-01282-8, Thomzig A et al.; doi:10.1007/s00401-021-02312-4, Mammana A et al.; doi:%2010.1002/mds.28651, Iranzo A et al.; doi:10.1016/S1474-4422(20)30449-X), we could soon expect translation of therapeutic approaches. In terms of therapies in development, new potential anti-prion molecules have been described (Uchiyama K et al.; doi:10.3390/ijms222111742, Arshad H et al.; doi:10.1016/j.jbc.2021.101073, Ali T et al.; doi:10.1186/s40478-021-01162-1, Betancor M et al.; doi:10.1007/s12035-021-02489-5) and new therapeutic targets have been discovered (Heinzer D et al.; doi:10.1371/journal.ppat.1010013, Bourgognon JM et al.; doi:10.1073/pnas.2009579118, Spagnolli G et al.; doi:10.1038/s42003-020-01585-x, Otero A et al.; doi:10.3390/ijms22010465). However, the most promising advances are related to co-expression of misfolding-resistance variants (Espinosa JC et al.; doi:10.1128/mBio.03508-20, Marín-Moreno A et al.; doi:10.1038/s41598-021-93594-x) and lowering PrPC amounts, a strategy that has been already translated to Parkinson’s disease (Menon S et al.; doi:10.1093/braincomms/fcab247, Del Rey NL et al.; doi:10.3389/fnagi.2021.698979). It is also noteworthy the importance of the epidemiological surveillance of TSE, as proven by the various reports (Goire N et al.; doi:10.1159/000520736, Langlands G et al.; doi:10.1016/j.jns.2021.117416), including that of Spain (De Pedro-Cuesta et al.; doi:10.1080/19336896.2021.1933873), published this year. These reports could unravel epidemiological outbreaks of prion infections, responding for example to iatrogenic transmission (Watson N et al.; doi:10.1038/s41582-021-00488-7, Douet JY et al.; doi:10.1007/s00401-021-02270-x, Mikol J et al.; doi:10.1007/s00401-020-02231-w), what may be also relevant in the future for other diseases as their transmissibility is being reported (Jaunmuktane Z et al.; doi:10.1007/s00401-021-02326-y, Lam S et al.; doi:10.1186/s40478-021-01266-8). Along this line, report of cases with unusual features is also of relevance in TSE since they could help understand disease mechanisms, detect new hereditary forms (Appleby BS et al.; doi:10.1212/WNL.0000000000012737, Hassan A et al.; doi:10.1186/s12883-021-02274-w, Kortazar-Zubizarreta I et al.; doi:10.1111/ene.14946, Ximelis T et al.; doi:%2010.1186/s13195-021-00912-6) or co-occurrence of the apparently intimately related neurodegenerative disorders (Gonzalez-Martinez A et al.; doi:10.1111/ene.14624).",
+   "Thus, in upcoming years, more interrelations and interactions between prions and other proteins associated to neurodegenerative disorders are expected. These will contribute to further blurring the line between prions other amyloidogenic proteins and to the implementation of more techniques originally developed for TSE, for other diseases. In addition, we expect that the strain phenomenon will start to be understood as high-resolution structures of different strains are solved. Being related to interspecies transmission of prions, unveiling strain feature determinants could also shed light on the factors governing it, making easier the rational design of new therapies, likely based on prion propagation interference through introduction of misfolding-resistant prion proteins."
+  ],
+  "refs": [
+   {
+    "doi": "10.1016/j.molcel.2021.08.011",
+    "cite": "Kraus A et al"
+   },
+   {
+    "doi": "10.1016/j.biosystems.2021.104542",
+    "cite": "Coca JR et al"
+   },
+   {
+    "doi": "10.1101/2021.08.10.455830",
+    "cite": "Li Q et al"
+   },
+   {
+    "doi": "10.1007/s00401-021-02310-6",
+    "cite": "Bartz JC"
+   },
+   {
+    "doi": "10.1016/j.conb.2021.07.010",
+    "cite": "Carta M et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1009232",
+    "cite": "Nakić N et al"
+   },
+   {
+    "doi": "10.3390/ijms22105075",
+    "cite": "Ziaunys M et al"
+   },
+   {
+    "doi": "10.1371/journal.pone.0247248",
+    "cite": "Wang LJ et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1009123",
+    "cite": "Aguilar-Calvo P et al"
+   },
+   {
+    "doi": "10.1073/pnas.2100968118",
+    "cite": "Agarwal A et al"
+   },
+   {
+    "doi": "10.1016/j.jbc.2021.101344",
+    "cite": "Zhang X et al"
+   },
+   {
+    "doi": "10.3390/ijms22179635",
+    "cite": "Fridmanis J et al"
+   },
+   {
+    "doi": "10.1038/s41598-021-83630-1",
+    "cite": "Bélondrade M et al"
+   },
+   {
+    "doi": "10.1126/sciadv.abg9676",
+    "cite": "Wang LQ et al"
+   },
+   {
+    "doi": "10.1073/pnas.2019631118",
+    "cite": "Sanz-Hernández et al"
+   },
+   {
+    "doi": "10.1101/276436",
+    "cite": "Burger D et al"
+   },
+   {
+    "doi": "10.1007/s00401-020-02163-5",
+    "cite": "Holec S et al"
+   },
+   {
+    "doi": "10.1038/s41586-021-03911-7",
+    "cite": "Shi Y et al"
+   },
+   {
+    "doi": "10.1007/s00401-021-02336-w",
+    "cite": "Hallinan GI et al"
+   },
+   {
+    "doi": "10.3389/fmolb.2021.671458",
+    "cite": "Mah D et al"
+   },
+   {
+    "doi": "10.3389/fnagi.2021.710683",
+    "cite": "Snow D et al"
+   },
+   {
+    "doi": "10.1007/978-1-0716-1398-6_60",
+    "cite": "Roy A et al"
+   },
+   {
+    "doi": "10.1016/j.jbc.2021.100499",
+    "cite": "König AS et al"
+   },
+   {
+    "doi": "10.1002/brb3.2365",
+    "cite": "Li R et al"
+   },
+   {
+    "doi": "10.1186/s40478-021-01171-0",
+    "cite": "Martinez-Valbuena I et al"
+   },
+   {
+    "doi": "10.1002/mds.28774",
+    "cite": "Thom T et al"
+   },
+   {
+    "doi": "10.1186/s40478-021-01282-8",
+    "cite": "Russo MJ et al"
+   },
+   {
+    "doi": "10.1007/s00401-021-02312-4",
+    "cite": "Thomzig A et al"
+   },
+   {
+    "doi": "10.1002/mds.28651",
+    "cite": "Mammana A et al"
+   },
+   {
+    "doi": "10.1016/S1474-4422(20)30449-X",
+    "cite": "Iranzo A et al"
+   },
+   {
+    "doi": "10.3390/ijms222111742",
+    "cite": "Uchiyama K et al"
+   },
+   {
+    "doi": "10.1016/j.jbc.2021.101073",
+    "cite": "Arshad H et al"
+   },
+   {
+    "doi": "10.1186/s40478-021-01162-1",
+    "cite": "Ali T et al"
+   },
+   {
+    "doi": "10.1007/s12035-021-02489-5",
+    "cite": "Betancor M et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1010013",
+    "cite": "Heinzer D et al"
+   },
+   {
+    "doi": "10.1073/pnas.2009579118",
+    "cite": "Bourgognon JM et al"
+   },
+   {
+    "doi": "10.1038/s42003-020-01585-x",
+    "cite": "Spagnolli G et al"
+   },
+   {
+    "doi": "10.3390/ijms22010465",
+    "cite": "Otero A et al"
+   },
+   {
+    "doi": "10.1128/mBio.03508-20",
+    "cite": "Espinosa JC et al"
+   },
+   {
+    "doi": "10.1038/s41598-021-93594-x",
+    "cite": "Marín-Moreno A et al"
+   },
+   {
+    "doi": "10.1093/braincomms/fcab247",
+    "cite": "Menon S et al"
+   },
+   {
+    "doi": "10.3389/fnagi.2021.698979",
+    "cite": "Del Rey NL et al"
+   },
+   {
+    "doi": "10.1159/000520736",
+    "cite": "Goire N et al"
+   },
+   {
+    "doi": "10.1016/j.jns.2021.117416",
+    "cite": "Langlands G et al"
+   },
+   {
+    "doi": "10.1080/19336896.2021.1933873",
+    "cite": "De Pedro-Cuesta et al"
+   },
+   {
+    "doi": "10.1038/s41582-021-00488-7",
+    "cite": "Watson N et al"
+   },
+   {
+    "doi": "10.1007/s00401-021-02270-x",
+    "cite": "Douet JY et al"
+   },
+   {
+    "doi": "10.1007/s00401-020-02231-w",
+    "cite": "Mikol J et al"
+   },
+   {
+    "doi": "10.1007/s00401-021-02326-y",
+    "cite": "Jaunmuktane Z et al"
+   },
+   {
+    "doi": "10.1186/s40478-021-01266-8",
+    "cite": "Lam S et al"
+   },
+   {
+    "doi": "10.1212/WNL.0000000000012737",
+    "cite": "Appleby BS et al"
+   },
+   {
+    "doi": "10.1186/s12883-021-02274-w",
+    "cite": "Hassan A et al"
+   },
+   {
+    "doi": "10.1111/ene.14946",
+    "cite": "Kortazar-Zubizarreta I et al"
+   },
+   {
+    "doi": "10.1186/s13195-021-00912-6",
+    "cite": "Ximelis T et al"
+   },
+   {
+    "doi": "10.1111/ene.14624",
+    "cite": "Gonzalez-Martinez A et al"
+   },
+   {
+    "cite": "Kamali-Jamil R et al.",
+    "author_year": true,
+    "year": 2021,
+    "context": "However, this kind of work proceeds, with the study of other prion strains (Kamali-Jamil R et al.) as needed to solve the prion code (Coca JR et al.; doi:10.1016/j.biosystems.2021.104542, Li Q et al.; doi:10.1101/2021.08.10.455830)."
+   }
+  ]
+ },
+ {
+  "year": 2022,
+  "title": "Major advances regarding prion strain phenomena coincide with first-in-human treatment",
+  "authors": "Joaquín Castilla and Hasier Eraña",
+  "paragraphs": [
+   "2022 has brought some key advances in the field of transmissible spongiform encephalopathies (TSE) or prion diseases. This group of rare and invariably fatal neurodegenerative disorders includes Creutzfeldt-Jakob disease (CJD), Fatal Familial insomnia (FFI) and Gerstmann-Sträussler-Scheinker syndrome (GSS) in humans and scrapie in sheep and goats, bovine spongiform encephalopathy (BSE) in cattle and Chronic Wasting Disease (CWD) in deer. The main event underlying disease development is the misfolding of the cellular prion protein (PrPC) into an alternative pathogenic conformation called PrPSc. This aberrantly folded form, also known as prion, presents the capacity to induce its conformation on the cellular counterpart, forming fibrillary aggregates that accumulate in the brain and causes neuronal death in the process.",
+   "After achieving the resolution at an atomic level of the three-dimensional structure of the first brain-derived prion strain in 2021, a milestone in prion research, this 2022 has brought the resolution of other prion strains from different species, confirming their distinct biological properties respond to slightly different structural features (Manka et al. doi: 10.1007/s00441-022-03676-z; Caughey et al doi: 10.1371/journal.ppat.1010594; Hoyt et al. doi: 10.1371/journal.ppat.1010947). Notably, two independent groups solved the structure of distinct murine prion strains, including also two versions of the same strain in a wild type model (Manka et al. doi: 10.1038/s41467-022-30457-7) and a GPI-less mouse model (Hoyt et al. doi: 10.1038/s41467-022-30458-6), lacking posttranslational modifications (PTM), and therefore showing that the three-dimensional structure is conserved regardless of these. In addition, the first human brain-derived prion structure was also solved this year, that of a form of GSS (Hallinan et al. doi: 10.1007/s00401-022-02461-0), as well as that from a recombinant human prion (Li et al. doi: 10.1038/s41594-022-00833-4). Likely, in the following years, the collection of prion strain structures will keep growing, getting as closer to the final goal of establishing an structure-activity relationship for these kind of amyloidogenic pathogens. Together with the structural evidences, another study was published clarifying the non-relevant role of prion protein PTM in prion strain characteristics (Otero et al. doi: 10.1371/journal.ppat.1010900), arguing for the usefulness of recombinant prions, lacking PTMs, to faithfully model prion diseases (Jack et al. doi: 10.3390/biom12111694; Ma et al. doi: 10.3390/v14091940). Nonetheless, other prion disease models have been also of relevance during the past year, such as organotypic cultured brain slices (Reimann et al. doi: 10.1111/bpa.13130, Forntzek et al. doi: 10.1038/s41594-022-00814-7; Liu et al. doi: 10.1038/s42003-022-03496-5), cerebral organoids (Smith et al. doi: 10.1371/journal.pone.0277051), which were key to discover new aspects of prion mediated neurotoxicity or screen for environmental prion-misfolding inducing factors among others. Finally, animal models of disease, still necessary to explore disease mechanisms need to be mentioned, which have been employed to understand glial involvement in prion diseases (Bradford et al. doi: 10.1002/glia.24244; Lakkaraju et al. doi: 10.1111/bpa.13056), to find new early disease events (Ojeda-Juárez et al. doi: 10.1016/j.nbd.2022.105834), shed light on the role of mitochondrial dysfunction in neurodegeneration (Ward et al. doi: 10.1371/journal.pone.0267720), explore the consequences of prion protein deficiency (Matamoros-Angles et al. doi: 10.1186/s12915-021-01203-0) or model specific atypical forms of disease for which animal models were lacking (Vidal et al. doi: 10.1186/s40478-022-01477-7). Along with the advances in disease models that are contributing to the understanding of the molecular mechanisms of disease, in 2022, genome-wide studies or the use of –omics technologies have been of importance (Hernaiz et al. doi: 10.3389/fvets.2022.824677; Guntoro et al. doi: 10.1007/s00401-022-02481-w; Avar et al. doi: 10.15252/embj.2022112338), as well as cutting edge technologies such as single-cell RNA sequencing (Sloat et al. doi: 10.1186/s40478-022-01450-4). As our knowledge on disease mechanisms increases, improvements in diagnostic are made and new therapeutic strategies designed. In terms of therapeutic approaches, the main highlight from 2022 is the publication of the first-in-human trial of an immunotherapy (Mead et al. doi: 10.1016/S1474-4422(22)00082-5) which caused a modest inhibition of the neurotoxicity of prions (Reilly et al. doi: 10.1038/s41598-022-13455-z). Therapies based on the use of small inhibitory molecules have also kept arising (Takatsuki et al. doi: 10.1038/s41598-022-12049-z; Costa et al. doi: 10.3390/molecules27227935; Staderini et al. doi: 10.1016/j.ejmech.2022.114923), with a special focus on chaperones and disagregases (Larsson et al. doi: 10.3389/fnins.2022.902600; Thackray et al. doi: 10.1093/brain/awac144). In terms of advances in therapies for TSE, as prion protein silencing strategies and other prophylactic approaches are getting close to human trials, it is noteworthy that the target population is being set in the genetic forms of TSE as the optimal to evaluate efficacy, as shown by the observational assay being carried with FFI mutation carriers and doxycycline (Forloni et al. doi: 10.1080/19336896.2022.2083435), several tools are being developed in anticipation, such as the analysis of non-human primate models for preclinical studies (Mortberg et al. doi: 10.1371/journal.ppat.1010728) and the determination of regional prion protein concentration variability (Mortberg et al. doi: 10.1172/jci.insight.156532). Finally, other related approaches, such as the introduction of dominant negative forms of the protein by CRISPR/Cas9 are being explored (Castle et al. doi: 10.1371/journal.pone.0269342), which will likely grow in importance in the near future. When it comes to diagnostics, the discovery of early biomarkers in plasma and CSF has been relevant during 2022, confirming the utility of some found previously, such as NfL or β-synuclein (Yakovleva et al. doi: 10.1099/jgv.0.001764; Betancor et al. doi: 10.3390/ijms23137182; Schmitz et al. doi: 10.1007/s12035-022-02891-7; Hermann et al. doi: 10.1111/ene.15302; Halbgebauer et al. doi: 10.1212/WNL.0000000000200002) or presenting new ones such as SNAP-25 (Halbgebauer et al. doi: 10.1136/jnnp-2021-328646) and microRNA-146a (Pogue et al. doi: 10.5114/fn.2022.113561). These improvements in diagnostic have definitively prompted the report of cases with unusual features (Tam et al. doi: 10.1007/s00415-022-11467-3; Castelli et al. doi: 10.1016/j.clinph.2022.08.025; Zanusso et al. doi: 10.3390/ijms231810210; Gelpi et al. doi: 10.1186/s40478-022-01415-7) or from the least frequent disease forms (Eraña et al. doi: 10.1007/s00415-022-11051-9; Baiardi et al. doi: 10.3390/v14020367; Lin et al. doi: 10.3389/fneur.2022.888309), since as rare diseases reporting the clinical characteristics of such cases is particularly relevant both, for diagnosis and treatment. In addition, given the future treatments will likely be evaluated in genetic forms of disease, controlling all potential carriers has gained relevance, as shown by recent publications on genetic counseling (Goldman et al. doi: 10.1016/j.gim.2022.06.003; Sobregrau et al. doi: 10.3233/ADR-210067), based on cohorts of mutation carriers (Sequeira et al. doi: 10.1002/mds.29152; Kortazar-Zubizarreta et al. doi: 10.1093/jnen/nlac113) or studies trying to estimate carrier numbers (Corbie et al. doi: 10.1038/s41431-022-01132-8). Finally, regarding animal prion diseases, CWD from cervids is currently the main concern due to its spread in America and the description of new strains in Europe, being their transmissibility and zoonotic potential the most studied issues in 2022 (Hannaoui et al. doi: 10.1007/s00401-022-02482-9; Cassmann et al. doi: 10.3390/v14071578; Harpaz et al. doi: 10.1186/s13028-022-00632-3; Herbst et al. doi: 10.3390/biology11050667; Pritzkow et al. doi: 10.1093/infdis/jiab385; Wadsworth et al. doi: 10.1093/infdis/jiab033). ",
+   "Altogether, the research field of prion diseases is facing a very exciting future, mainly due to the increasing collection of high resolution prion fiber structures, which could soon provide the key to establish structure-activity relationship for these misfolded proteic pathogens, and the development of new and more sophisticated models, shedding light on molecular mechanisms completely unknown until now, such as the neurotoxicity mechanisms that will provide new therapeutic targets. In addition, improvements in diagnostic and the proximity of some treatments to human trials warrant an optimistic near future, in which gene therapy-based strategies may rapidly gain importance, as well as novel strategies that cannot be envisaged yet, but will definitely arise when the molecular mechanisms underlying these disorders are better understood."
+  ],
+  "refs": [
+   {
+    "doi": "10.1007/s00441-022-03676-z",
+    "cite": "Manka et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1010594",
+    "cite": "Caughey et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1010947",
+    "cite": "Hoyt et al"
+   },
+   {
+    "doi": "10.1038/s41467-022-30457-7",
+    "cite": "Manka et al"
+   },
+   {
+    "doi": "10.1038/s41467-022-30458-6",
+    "cite": "Hoyt et al"
+   },
+   {
+    "doi": "10.1007/s00401-022-02461-0",
+    "cite": "Hallinan et al"
+   },
+   {
+    "doi": "10.1038/s41594-022-00833-4",
+    "cite": "Li et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1010900",
+    "cite": "Otero et al"
+   },
+   {
+    "doi": "10.3390/biom12111694",
+    "cite": "Jack et al"
+   },
+   {
+    "doi": "10.3390/v14091940",
+    "cite": "Ma et al"
+   },
+   {
+    "doi": "10.1111/bpa.13130",
+    "cite": "Reimann et al"
+   },
+   {
+    "doi": "10.1038/s41594-022-00814-7",
+    "cite": "Forntzek et al"
+   },
+   {
+    "doi": "10.1038/s42003-022-03496-5",
+    "cite": "Liu et al"
+   },
+   {
+    "doi": "10.1371/journal.pone.0277051",
+    "cite": "Smith et al"
+   },
+   {
+    "doi": "10.1002/glia.24244",
+    "cite": "Bradford et al"
+   },
+   {
+    "doi": "10.1111/bpa.13056",
+    "cite": "Lakkaraju et al"
+   },
+   {
+    "doi": "10.1016/j.nbd.2022.105834",
+    "cite": "Ojeda-Juárez et al"
+   },
+   {
+    "doi": "10.1371/journal.pone.0267720",
+    "cite": "Ward et al"
+   },
+   {
+    "doi": "10.1186/s12915-021-01203-0",
+    "cite": "Matamoros-Angles et al"
+   },
+   {
+    "doi": "10.1186/s40478-022-01477-7",
+    "cite": "Vidal et al"
+   },
+   {
+    "doi": "10.3389/fvets.2022.824677",
+    "cite": "Hernaiz et al"
+   },
+   {
+    "doi": "10.1007/s00401-022-02481-w",
+    "cite": "Guntoro et al"
+   },
+   {
+    "doi": "10.15252/embj.2022112338",
+    "cite": "Avar et al"
+   },
+   {
+    "doi": "10.1186/s40478-022-01450-4",
+    "cite": "Sloat et al"
+   },
+   {
+    "doi": "10.1016/S1474-4422(22)00082-5",
+    "cite": "Mead et al"
+   },
+   {
+    "doi": "10.1038/s41598-022-13455-z",
+    "cite": "Reilly et al"
+   },
+   {
+    "doi": "10.1038/s41598-022-12049-z",
+    "cite": "Takatsuki et al"
+   },
+   {
+    "doi": "10.3390/molecules27227935",
+    "cite": "Costa et al"
+   },
+   {
+    "doi": "10.1016/j.ejmech.2022.114923",
+    "cite": "Staderini et al"
+   },
+   {
+    "doi": "10.3389/fnins.2022.902600",
+    "cite": "Larsson et al"
+   },
+   {
+    "doi": "10.1093/brain/awac144",
+    "cite": "Thackray et al"
+   },
+   {
+    "doi": "10.1080/19336896.2022.2083435",
+    "cite": "Forloni et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1010728",
+    "cite": "Mortberg et al"
+   },
+   {
+    "doi": "10.1172/jci.insight.156532",
+    "cite": "Mortberg et al"
+   },
+   {
+    "doi": "10.1371/journal.pone.0269342",
+    "cite": "Castle et al"
+   },
+   {
+    "doi": "10.1099/jgv.0.001764",
+    "cite": "Yakovleva et al"
+   },
+   {
+    "doi": "10.3390/ijms23137182",
+    "cite": "Betancor et al"
+   },
+   {
+    "doi": "10.1007/s12035-022-02891-7",
+    "cite": "Schmitz et al"
+   },
+   {
+    "doi": "10.1111/ene.15302",
+    "cite": "Hermann et al"
+   },
+   {
+    "doi": "10.1212/WNL.0000000000200002",
+    "cite": "Halbgebauer et al"
+   },
+   {
+    "doi": "10.1136/jnnp-2021-328646",
+    "cite": "Halbgebauer et al"
+   },
+   {
+    "doi": "10.5114/fn.2022.113561",
+    "cite": "Pogue et al"
+   },
+   {
+    "doi": "10.1007/s00415-022-11467-3",
+    "cite": "Tam et al"
+   },
+   {
+    "doi": "10.1016/j.clinph.2022.08.025",
+    "cite": "Castelli et al"
+   },
+   {
+    "doi": "10.3390/ijms231810210",
+    "cite": "Zanusso et al"
+   },
+   {
+    "doi": "10.1186/s40478-022-01415-7",
+    "cite": "Gelpi et al"
+   },
+   {
+    "doi": "10.1007/s00415-022-11051-9",
+    "cite": "Eraña et al"
+   },
+   {
+    "doi": "10.3390/v14020367",
+    "cite": "Baiardi et al"
+   },
+   {
+    "doi": "10.3389/fneur.2022.888309",
+    "cite": "Lin et al"
+   },
+   {
+    "doi": "10.1016/j.gim.2022.06.003",
+    "cite": "Goldman et al"
+   },
+   {
+    "doi": "10.3233/ADR-210067",
+    "cite": "Sobregrau et al"
+   },
+   {
+    "doi": "10.1002/mds.29152",
+    "cite": "Sequeira et al"
+   },
+   {
+    "doi": "10.1093/jnen/nlac113",
+    "cite": "Kortazar-Zubizarreta et al"
+   },
+   {
+    "doi": "10.1038/s41431-022-01132-8",
+    "cite": "Corbie et al"
+   },
+   {
+    "doi": "10.1007/s00401-022-02482-9",
+    "cite": "Hannaoui et al"
+   },
+   {
+    "doi": "10.3390/v14071578",
+    "cite": "Cassmann et al"
+   },
+   {
+    "doi": "10.1186/s13028-022-00632-3",
+    "cite": "Harpaz et al"
+   },
+   {
+    "doi": "10.3390/biology11050667",
+    "cite": "Herbst et al"
+   },
+   {
+    "doi": "10.1093/infdis/jiab385",
+    "cite": "Pritzkow et al"
+   },
+   {
+    "doi": "10.1093/infdis/jiab033",
+    "cite": "Wadsworth et al"
+   }
+  ]
+ },
+ {
+  "year": 2023,
+  "title": "Year of great hope and expectation due to the imminent start of a promising clinical trial for prion diseases.",
+  "authors": "Joaquín Castilla and Hasier Eraña",
+  "paragraphs": [
+   "During 2023, research on prion diseases or transmissible spongiform encephalopathies (TSE), a group of rare and invariably fatal neurodegenerative diseases, has been marked by important advances in therapy, diagnostics, and a more profound understanding of some of the molecular mechanisms underlying these disorders. Prion diseases affect humans and other mammals and are caused by an unconventional pathogen solely constituted by an aberrantly folded protein, called prion or PrPSc (Prion Protein Scrapie isoform). This misfolded protein originates from a poorly known structural change of an endogenous protein especially abundant in neurons, named PrPC (Prion Protein Cellular isoform). ",
+   "One of the most important advances in 2023 was the announcement of a new clinical trial led by Ionis for an anti-sense oligonucleotide (ASO)-based therapy, aimed to reduce PrPC levels in brains of patients at early stages of disease (Mortberg et al. doi: 10.1093/nar/gkad371). Nonetheless, despite the imminent clinical trial, other therapeutic strategies have also been investigated during 2023 (Masone et al. doi: 10.1016/j.isci.2023.107480; Hay et al. doi: 10.3389/fnins.2023.1158408; Williams et al. doi: 10.1186/s13287-023-03591-2; Arshad et al. doi: 10.1111/jnc.15739; Albert-Garco et al. doi: 10.1093/brain/awad313). However, given the difficult diagnosis of these disorders, and the benefits that early treatment would suppose for the therapeutic efficacy of any drug, developing highly specific and sensitive diagnostic methods is instrumental. For this reason, research on prion disease diagnostics is another highly active field, focused in 2023 on finding biomarkers in easily accessible biological fluids and tissues (Thomas et al. doi: 10.1371/journal.pone.0293845; Pritzkow et al. doi: 10.1002/acn3.51919; Schmitz et al. doi: 10.1056/NEJMc2214647). Along this line, the search of new prodromal biomarkers that may allow predicting disease onset in at-risk individuals has also seen some advances this year (Mok et al. doi: 10.1093/brain/awad101). Finally, in terms of diagnostics, retrospective evaluation of tests currently in use in the clinical practice has been quite active this year (Manara et al. doi: 10.1007/s00415-023-11962-1; Hermann et al. doi: 10.1007/s00415-022-11549-2; Kortazar-Zubizarreta et al. doi: 10.1093/jnen/nlac113). Our understanding of the molecular mechanisms underlying these disorders has also advanced, mainly due to the definitive demonstration that structural differences define prion strains and determine their inter-species transmission (Manka et al. doi: 10.1038/s41589-022-01229-7), and the new evidences defending the existence of multiple PrPSc conformers within a single prion strain (Gunnels et al. doi: 10.1371/journal.ppat.1011632). ",
+   "Overall, it has been a very exciting year in prion research, mainly due to the imminent and highly promising clinical trial and because of the advances in diagnostic methods, which in a near future will definitively allow the early diagnosis from easily accessible body fluids. For the following years, the results of the clinical trial will be in the spotlight while novel therapeutic approaches will keep developing given the likely necessity of combination therapies aiming to multiple targets to cure definitively these devastating diseases. With regards of the molecular basis of prion diseases, for the near future we expect new high-resolution structures of distinct prion strains that will contribute to understand the different structural motifs that determine the differential biological features of prion strains. Therefore, it seems that all the efforts done to comprehend these diseases for the past 50 years are finally crystalizing into highly promising therapies and diagnostic methods. This transformative development brings about radically new and positive prospects for all those affected by these hitherto incurable diseases and very exciting times for researchers in the field."
+  ],
+  "refs": [
+   {
+    "doi": "10.1093/nar/gkad371",
+    "cite": "Mortberg et al"
+   },
+   {
+    "doi": "10.1016/j.isci.2023.107480",
+    "cite": "Masone et al"
+   },
+   {
+    "doi": "10.3389/fnins.2023.1158408",
+    "cite": "Hay et al"
+   },
+   {
+    "doi": "10.1186/s13287-023-03591-2",
+    "cite": "Williams et al"
+   },
+   {
+    "doi": "10.1111/jnc.15739",
+    "cite": "Arshad et al"
+   },
+   {
+    "doi": "10.1093/brain/awad313",
+    "cite": "Albert-Garco et al"
+   },
+   {
+    "doi": "10.1371/journal.pone.0293845",
+    "cite": "Thomas et al"
+   },
+   {
+    "doi": "10.1002/acn3.51919",
+    "cite": "Pritzkow et al"
+   },
+   {
+    "doi": "10.1056/NEJMc2214647",
+    "cite": "Schmitz et al"
+   },
+   {
+    "doi": "10.1093/brain/awad101",
+    "cite": "Mok et al"
+   },
+   {
+    "doi": "10.1007/s00415-023-11962-1",
+    "cite": "Manara et al"
+   },
+   {
+    "doi": "10.1007/s00415-022-11549-2",
+    "cite": "Hermann et al"
+   },
+   {
+    "doi": "10.1093/jnen/nlac113",
+    "cite": "Kortazar-Zubizarreta et al"
+   },
+   {
+    "doi": "10.1038/s41589-022-01229-7",
+    "cite": "Manka et al"
+   },
+   {
+    "doi": "10.1371/journal.ppat.1011632",
+    "cite": "Gunnels et al"
+   }
+  ]
+ },
+ {
+  "year": 2024,
+  "title": "Towards a Cure for Prion Diseases: Emerging Therapies, Diagnostic Tools, and Molecular Insights",
+  "authors": "Joaquín Castilla and Hasier Eraña, Prion Research Laboratory",
+  "paragraphs": [
+   "Transmissible spongiform encephalopathies (TSE) are rare, rapidly progressing, and fatal neurodegenerative disorders caused by prions. These prions arise from PrPC, a protein expressed on neuronal surfaces in all mammals. Through unknown mechanisms, PrPC misfolds into PrPSc, a pathogenic form capable of inducing misfolding in other PrPC molecules, triggering a cascade of protein aggregation in the brain and neuronal death.",
+   "This year brought hopeful news for patients with prion diseases, including Creutzfeldt-Jakob disease, Fatal Familial Insomnia, and Gerstmann-Sträussler-Scheinker syndrome, with the launch of a clinical trial for antisense oligonucleotides (ASOs) designed to reduce PrPC levels, delaying onset and progression (PMID: 38513035). Given potential limitations, other therapeutic strategies are also in development, including epigenetic approaches to silence PrPC expression (PMID: 38935715, 39054397, 39134643). Combination therapies targeting multiple mechanisms are likely needed, prompting the exploration of additional treatment platforms (PMID: 39200190, 39002681) and advanced compound screening methods (PMID: 39072789, 38996988). For the design of new therapeutic approaches, gaining insight on the largely unknown mechanisms of these diseases is necessary and thus, significant resources have been made available this year such as studies on PrPC misfolding across mammalian species (PMID: 38459071) and CRISPR-based screening libraries (PMID: 39633028), advancing understanding of disease mechanisms. Research has also focused on the properties of prion strains (PMID: 39440977, 39396118, 38362022) and elucidating their structures, including the strain causing Chronic Wasting Disease (CWD) in deer (PMID: 39448454), as well as genetic and cellular factors influencing disease onset and progression (PMID: 39079175, 39048735, 37996040). These studies are deepening insights into neurotoxicity and prion propagation mechanisms (PMID: 39332406, 39361421, 39611853). Many of these findings are being translated to more prevalent neurodegenerative diseases that exhibit prion-like mechanisms (PMID: 39158847, 39298592). Notable discoveries this year include evidence of Alzheimer’s disease iatrogenic transmission (PMID: 38287169, 38287166), prion-based vaccines for Parkinson’s disease (PMID: 39036077), and seeding assays for synucleinopathy diagnostics (PMID: 39302978, 38640117). Conversely, further developments in seeding assays, such as using skin punctures for prion detection (PMID: 39401015, 38231266) and identification of new biomarkers for early genetic case detection (PMID: 38896810, 38896818), highlight the potential for early diagnosis considering emerging treatments. Finally, research on CWD in cervids, a growing epidemic in North America and now detected in Europe, is worth mentioning, since it has provided insights into its zoonotic potential (PMID: 39592566, 38781931), strain variability influenced by infection routes (PMID: 39083420, 38976748), and the transmissibility and origins of the disease (PMID: 39075607, 38865602, 38750594).",
+   "In summary, the past year has been transformative for prion research, marked by a promising clinical trial and advancements in diagnostic methods, potentially enabling early detection through minimally invasive means soon, which will likely continue being adapted to other neurodegenerative disorders caused by misfolded proteins. In the coming years, attention will focus on the trial's results while new therapeutic strategies continue to emerge, likely requiring combination therapies targeting multiple aspects of these diseases. On the molecular front, we anticipate new high-resolution structures of diverse prion strains, shedding light on the structural features that drive their unique biological behaviors."
+  ],
+  "refs": [
+   {
+    "pmid": "38513035"
+   },
+   {
+    "pmid": "38935715"
+   },
+   {
+    "pmid": "39054397"
+   },
+   {
+    "pmid": "39134643"
+   },
+   {
+    "pmid": "39200190"
+   },
+   {
+    "pmid": "39002681"
+   },
+   {
+    "pmid": "39072789"
+   },
+   {
+    "pmid": "38996988"
+   },
+   {
+    "pmid": "38459071"
+   },
+   {
+    "pmid": "39633028"
+   },
+   {
+    "pmid": "39440977"
+   },
+   {
+    "pmid": "39396118"
+   },
+   {
+    "pmid": "38362022"
+   },
+   {
+    "pmid": "39448454"
+   },
+   {
+    "pmid": "39079175"
+   },
+   {
+    "pmid": "39048735"
+   },
+   {
+    "pmid": "37996040"
+   },
+   {
+    "pmid": "39332406"
+   },
+   {
+    "pmid": "39361421"
+   },
+   {
+    "pmid": "39611853"
+   },
+   {
+    "pmid": "39158847"
+   },
+   {
+    "pmid": "39298592"
+   },
+   {
+    "pmid": "38287169"
+   },
+   {
+    "pmid": "38287166"
+   },
+   {
+    "pmid": "39036077"
+   },
+   {
+    "pmid": "39302978"
+   },
+   {
+    "pmid": "38640117"
+   },
+   {
+    "pmid": "39401015"
+   },
+   {
+    "pmid": "38231266"
+   },
+   {
+    "pmid": "38896810"
+   },
+   {
+    "pmid": "38896818"
+   },
+   {
+    "pmid": "39592566"
+   },
+   {
+    "pmid": "38781931"
+   },
+   {
+    "pmid": "39083420"
+   },
+   {
+    "pmid": "38976748"
+   },
+   {
+    "pmid": "39075607"
+   },
+   {
+    "pmid": "38865602"
+   },
+   {
+    "pmid": "38750594"
+   }
+  ]
+ },
+ {
+  "year": 2025,
+  "title": "Prion Diseases Enter the Therapeutic Era: Recent Progress and Future Perspectives in Prion Disease Research",
+  "authors": "Joaquín Castilla and Hasier Eraña, Prion Research Laboratory",
+  "paragraphs": [
+   "Prion diseases or Transmissible Spongiform Encephalopathies (TSE) are rare, rapidly progressing, and invariably fatal neurodegenerative disorders that became the paradigm of protein-misfolding diseases. They were the first in which the causal agent was shown to be an endogenous protein existing in two conformations: a physiological globular form (PrPC) and a misfolded amyloid form capable of converting the normal protein in a self-propagating cycle, ultimately causing neuronal death. Since the early 2000s, it has been recognized that other, more prevalent neurodegenerative diseases with protein aggregates share key mechanisms with TSEs, including misfolding, templated propagation, and the existence of distinct amyloid conformers underlying different phenotypes.",
+   "In 2025, these parallels have been further reinforced, with new evidence for distinct strains in synucleinopathies and tauopathies (PMID: 40826134; 40780308; 39841851), the seeding capacity of Aβ oligomers (PMID: 40410917), and the continued adaptation of amyloid seeding assays (ASAs) to other diseases and tissues (PMID: 40561143; 40413531; 40287755; 39976789). ASAs for prion diseases are also being optimized through alternative substrates (PMID: 40637424) and adapted for use in fixed tissues (PMID: 40901718; 40631394). New biomarkers have emerged, including miRNA signatures (PMID: 40597437) and β-synuclein for differential diagnosis (PMID: 39920821). As the field enters its therapeutic era—with one clinical trial ongoing and others expected soon—prognostic, diagnostic, and monitoring markers are gaining importance, such as functional rating scales (PMID: 41025622; 40327161), ASAs for tracking disease progression (PMID: 39932589), and prodromal indicators (PMID: 39786417). Therapeutic research has accelerated, with efforts to reduce PrPC levels, including ASO distribution studies in primates (PMID: 40857674) and gene-editing strategies (PMID: 39810005), alongside alternative approaches such as protein binders (PMID: 40739343). Advances in prion biology also marked 2025, with new insights into fibril assembly and disassembly (PMID: 40543582; 40550330), cofactor roles in prion formation (PMID: 39841704), glycosylation-dependent strain properties (PMID: 40220915), and neurotoxicity mechanisms (PMID: 40887594; 40768577; 40549026; 40532025; 40185484). Large cohort studies explored genetic (PMID: 39865733; 40749074), clinical, and environmental determinants of disease occurrence and survival (PMID: 39974763). In animal prion diseases, Chronic Wasting Disease (CWD) remains central, with progress in diagnostics (PMID: 40824008; 40089641; 40068808), interspecies transmission (PMID: 40823831; 40632755), and genetic susceptibility (PMID: 40517962; 40872835).",
+   "Looking ahead, the first results of the ongoing clinical trial will likely shape 2026, and complementary therapeutic strategies may gain relevance. Diagnostic and prognostic research will continue expanding to support clinical readiness and natural-history studies. CWD will remain a major focus in animal prion research, while thanks to the refinement of in silico, in vitro, in cellula, and in vivo models we expect an improvement of our understanding of spontaneous prion formation, internalization, propagation, and neurotoxicity. Thus, although therapeutic and diagnostic progress in human prion diseases is likely to dominate 2026, fundamental discoveries in prion biology will also contribute to a highly dynamic year for the field."
+  ],
+  "refs": [
+   {
+    "pmid": "40826134"
+   },
+   {
+    "pmid": "40780308"
+   },
+   {
+    "pmid": "39841851"
+   },
+   {
+    "pmid": "40410917"
+   },
+   {
+    "pmid": "40561143"
+   },
+   {
+    "pmid": "40413531"
+   },
+   {
+    "pmid": "40287755"
+   },
+   {
+    "pmid": "39976789"
+   },
+   {
+    "pmid": "40637424"
+   },
+   {
+    "pmid": "40901718"
+   },
+   {
+    "pmid": "40631394"
+   },
+   {
+    "pmid": "40597437"
+   },
+   {
+    "pmid": "39920821"
+   },
+   {
+    "pmid": "41025622"
+   },
+   {
+    "pmid": "40327161"
+   },
+   {
+    "pmid": "39932589"
+   },
+   {
+    "pmid": "39786417"
+   },
+   {
+    "pmid": "40857674"
+   },
+   {
+    "pmid": "39810005"
+   },
+   {
+    "pmid": "40739343"
+   },
+   {
+    "pmid": "40543582"
+   },
+   {
+    "pmid": "40550330"
+   },
+   {
+    "pmid": "39841704"
+   },
+   {
+    "pmid": "40220915"
+   },
+   {
+    "pmid": "40887594"
+   },
+   {
+    "pmid": "40768577"
+   },
+   {
+    "pmid": "40549026"
+   },
+   {
+    "pmid": "40532025"
+   },
+   {
+    "pmid": "40185484"
+   },
+   {
+    "pmid": "39865733"
+   },
+   {
+    "pmid": "40749074"
+   },
+   {
+    "pmid": "39974763"
+   },
+   {
+    "pmid": "40824008"
+   },
+   {
+    "pmid": "40089641"
+   },
+   {
+    "pmid": "40068808"
+   },
+   {
+    "pmid": "40823831"
+   },
+   {
+    "pmid": "40632755"
+   },
+   {
+    "pmid": "40517962"
+   },
+   {
+    "pmid": "40872835"
+   }
+  ]
+ }
+]

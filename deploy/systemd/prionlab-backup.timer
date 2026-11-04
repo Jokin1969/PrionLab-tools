@@ -1,0 +1,14 @@
+# Run the Postgres backup daily at 03:00 server time.
+# `Persistent=true` makes systemd catch up if the machine was off at 03:00.
+
+[Unit]
+Description=PrionLab Tools — daily Postgres backup timer
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=10min
+Persistent=true
+Unit=prionlab-backup.service
+
+[Install]
+WantedBy=timers.target
