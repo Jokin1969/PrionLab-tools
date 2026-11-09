@@ -20194,6 +20194,12 @@
             ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-run-themes" style="${btnCss(true)}"
                  ${dis || (!sel.length ? 'disabled' : '')}>${themes.length ? 'Rehacer temas' : 'Agrupar en temas'}</button>` : ''}
           </div>
+          ${IS_VC_EDITOR ? `<textarea id="pv-vc-hints" rows="3"
+              title="La IA los usará si algún artículo seleccionado encaja; si no encaja ninguno, los omite. Además puede crear otros temas para los artículos que no encajen en ninguno. Se guardan para este año."
+              placeholder="Temas sugeridos (opcional, uno por línea), p. ej.:\nTerapias antisentido (ASO)\nDiagnóstico precoz con RT-QuIC\nCWD en Europa"
+              style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #d1d5db;border-radius:8px;
+                     font-size:12.5px;box-sizing:border-box;">${esc(d.theme_hints || '')}</textarea>`
+            : (d.theme_hints ? `<div style="font-size:12px;color:#6b7280;margin-top:6px;">Temas sugeridos: ${esc(d.theme_hints).replace(/\n/g, ' · ')}</div>` : '')}
           ${themes.map(t => `
             <div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:#f9fafb;">
               <div style="font-weight:600;color:#0F3460;font-size:13px;">${esc(t.name || '')}
@@ -20227,7 +20233,7 @@
       $('pv-vc-setup')?.addEventListener('click', startResolve);
       $('pv-vc-howto')?.addEventListener('click', () => openHowto(year));
       $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
-      $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes'));
+      $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes', { hints: $('pv-vc-hints')?.value || '' }));
       $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value }));
       body.querySelectorAll('[data-vc-toggle]').forEach(cb => cb.addEventListener('change', async () => {
         try { await api(`/vc/items/${cb.dataset.vcToggle}`, { method: 'POST', body: JSON.stringify({ selected: cb.checked }) }); }
@@ -23828,7 +23834,7 @@
           </ul>
           <p style="color:#6b7280;border-left:3px solid #e5e7eb;padding-left:10px;">Las señales ayudan, pero no sustituyen al criterio científico: un avance clave entra aunque nadie lo haya anotado.</p>
           <p><strong>1 · Selección.</strong> Elegir el <em>Nº de artículos a citar</em> (38 por defecto, lo que citaron 2024–2025) y <em>Seleccionar artículos con IA</em>: criba por título todo lo del año, valora a fondo ~120 con el modelo más potente y elige un conjunto equilibrado y sin redundancias, con una frase de por qué. Revisar los seleccionados y los siguientes sin marcar; marcar, desmarcar o añadir por PMID (lo tocado a mano, ✋, se respeta). Es el paso más caro: para retocar, usar las casillas en vez de repetirlo.</p>
-          <p><strong>2 · Temas.</strong> <em>Agrupar en temas</em>: 4–6 temas en el orden del texto, enlazados con las VC anteriores y con lo que la del año pasado esperaba. Si no convencen, cambiar la selección y <em>Rehacer temas</em>.</p>
+          <p><strong>2 · Temas.</strong> <em>Agrupar en temas</em>: 4–6 temas en el orden del texto, enlazados con las VC anteriores y con lo que la del año pasado esperaba. Antes podéis escribir <em>temas sugeridos</em> (uno por línea): la IA los usa si algún artículo encaja y crea otros para los que no encajen; se guardan para ese año. Si no convencen, cambiar la selección o las sugerencias y <em>Rehacer temas</em>.</p>
           <p><strong>3 · Redacción.</strong> Elegir primero las citas: <code>(PMID: …)</code> como en 2024–2025 o <code>(doi: …)</code> como en 2021–2023. Opcionalmente, indicaciones generales («más peso al ensayo clínico»). <em>Redactar informe</em>: escribe con el formato pedido y al estilo de los anteriores sin copiarlos, comprueba longitud y proporciones, y contrasta cada afirmación con el artículo citado. Leer los avisos, sobre todo lo que la revisión de hechos deja <em>por revisar a mano</em>.</p>
           <p><strong>4 · Pedir cambios a la IA</strong>, las veces que haga falta, en lenguaje normal:</p>
           <ul>

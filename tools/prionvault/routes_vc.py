@@ -128,7 +128,10 @@ def api_vc_draft_run(year):
         kwargs["by_user"] = _viewer_id()
         if not kwargs["request"].strip():
             return jsonify({"error": "empty_request", "detail": "Escribe qué cambios quieres."}), 400
-    elif step != "themes":
+    elif step == "themes":
+        if "hints" in body:
+            kwargs["hints"] = str(body.get("hints") or "")[:3000]
+    else:
         return jsonify({"error": "bad_step"}), 400
     snap = g.start(step, year, **kwargs)
     if snap is None:

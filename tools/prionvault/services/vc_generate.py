@@ -563,12 +563,27 @@ _THEMES_SYSTEM = """You are the senior author of a prion research group's yearly
 Group the selected papers of the year into 4–6 coherent themes for the "advances" paragraph, ordered as the \
 narrative should flow (most important first). Use the previous reports as memory: keep continuity with recurring \
 themes and explicitly connect to what LAST year's report expected for this year (confirmed, partly, or not yet). \
-Every paper must belong to exactly one theme. Answer only JSON:
+Every paper must belong to exactly one theme. If the lab suggests themes, use them whenever at least one \
+selected paper fits (keep their wording, translated to a short English name), drop a suggestion only when no paper \
+fits it, and still create other themes for papers that fit none. Answer only JSON:
 {"themes": [{"name": "<short English name>", "summary": "<2-3 sentences in Spanish: what happened this year>", \
 "continuity": "<1 sentence in Spanish linking to previous reports/expectations, or empty>", "pmids": ["..."]}]}"""
 
 
-def step_themes(year: int) -> dict:
+def set_theme_hints(year: int, hints: str) -> None:
+    ensure_draft(year)
+    with _get_engine().begin() as conn:
+        conn.execute(sql_text(
+            "UPDATE prionvault_vc_report SET theme_hints = :h, updated_at = NOW() WHERE year = :y"),
+            {"h": (hints or "").strip()[:3000], "y": year})
+
+
+def step_themes(year: int, hints: Optional[str] = None) -> dict:
+    if hints is not None:
+        set_theme_hints(year, hints)
+    with _get_engine().connect() as conn:
+        hints = conn.execute(sql_text(
+            "SELECT theme_hints FROM prionvault_vc_report WHERE year = :y"), {"y": year}).scalar() or ""
     if sync_collection(year):
         _build_evidence(year)
     items = _selected_items(year)
@@ -585,7 +600,8 @@ def step_themes(year: int) -> dict:
     _set(phase="Clasificando en temas", done=0, total=1)
     parsed = _call(_THEMES_SYSTEM,
                    f"PREVIOUS REPORTS (most recent in full, older ones only their outlook):\n{memory}\n\n"
-                   f"SELECTED PAPERS OF {year}:\n{papers}",
+                   f"SELECTED PAPERS OF {year}:\n{papers}"
+                   + (f"\n\nTHEMES SUGGESTED BY THE LAB (one per line):\n{hints}" if hints.strip() else ""),
                    strong=True, max_tokens=4000)
     themes = parsed.get("themes") or []
     valid = {str(it["pmid"] or it["doi"]) for it in items}
@@ -1111,7 +1127,7 @@ def get_draft(year: int) -> dict:
         logger.warning("vc: collection sync failed: %s", exc)
     with _get_engine().connect() as conn:
         rep = dict(conn.execute(sql_text(
-            "SELECT year, title, authors, body, status, themes, pipeline, cite_style "
+            "SELECT year, title, authors, body, status, themes, theme_hints, pipeline, cite_style "
             "FROM prionvault_vc_report WHERE year = :y"),
             {"y": year}).mappings().first())
         items = [dict(r) for r in conn.execute(sql_text("""

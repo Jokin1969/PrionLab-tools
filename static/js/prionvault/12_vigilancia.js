@@ -375,6 +375,12 @@
             ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-run-themes" style="${btnCss(true)}"
                  ${dis || (!sel.length ? 'disabled' : '')}>${themes.length ? 'Rehacer temas' : 'Agrupar en temas'}</button>` : ''}
           </div>
+          ${IS_VC_EDITOR ? `<textarea id="pv-vc-hints" rows="3"
+              title="La IA los usará si algún artículo seleccionado encaja; si no encaja ninguno, los omite. Además puede crear otros temas para los artículos que no encajen en ninguno. Se guardan para este año."
+              placeholder="Temas sugeridos (opcional, uno por línea), p. ej.:\nTerapias antisentido (ASO)\nDiagnóstico precoz con RT-QuIC\nCWD en Europa"
+              style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #d1d5db;border-radius:8px;
+                     font-size:12.5px;box-sizing:border-box;">${esc(d.theme_hints || '')}</textarea>`
+            : (d.theme_hints ? `<div style="font-size:12px;color:#6b7280;margin-top:6px;">Temas sugeridos: ${esc(d.theme_hints).replace(/\n/g, ' · ')}</div>` : '')}
           ${themes.map(t => `
             <div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:#f9fafb;">
               <div style="font-weight:600;color:#0F3460;font-size:13px;">${esc(t.name || '')}
@@ -408,7 +414,7 @@
       $('pv-vc-setup')?.addEventListener('click', startResolve);
       $('pv-vc-howto')?.addEventListener('click', () => openHowto(year));
       $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
-      $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes'));
+      $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes', { hints: $('pv-vc-hints')?.value || '' }));
       $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value }));
       body.querySelectorAll('[data-vc-toggle]').forEach(cb => cb.addEventListener('change', async () => {
         try { await api(`/vc/items/${cb.dataset.vcToggle}`, { method: 'POST', body: JSON.stringify({ selected: cb.checked }) }); }
