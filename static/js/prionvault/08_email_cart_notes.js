@@ -660,7 +660,7 @@
         });
         list.querySelectorAll('.pv-repo-cart-delete').forEach(btn => {
           btn.addEventListener('click', async () => {
-            if (!confirm('¿Eliminar este carrito del repositorio? No se puede deshacer.')) return;
+            if (!await pvConfirm('¿Eliminar este carrito del repositorio? No se puede deshacer.')) return;
             try {
               await api(`/carts/${btn.dataset.cid}`, { method: 'DELETE' });
               loadRepoCarts();
@@ -682,7 +682,7 @@
 
     async function restoreCart(cartId) {
       const current = window.PPCart?.getAll() || [];
-      if (current.length && !confirm(
+      if (current.length && !await pvConfirm(
         `El carrito actual tiene ${current.length} artículo${current.length === 1 ? '' : 's'}. ` +
         `Al recuperar este carrito guardado se sustituirán por completo los artículos actuales. ¿Continuar?`
       )) return;
@@ -786,18 +786,18 @@
         _setIsolatedArticleId(items.map(a => a.id));
         loadArticles();
       });
-      $('pv-cart-remove-unselected')?.addEventListener('click', () => {
+      $('pv-cart-remove-unselected')?.addEventListener('click', async () => {
         const items = window.PPCart?.getAll() || [];
         const unselected = items.filter(a => !_selected.has(a.id));
         if (!unselected.length) { alert('No hay artículos sin seleccionar que quitar.'); return; }
-        if (!confirm(`¿Quitar del carrito los ${unselected.length} artículo${unselected.length === 1 ? '' : 's'} no seleccionado${unselected.length === 1 ? '' : 's'}?`)) return;
+        if (!await pvConfirm(`¿Quitar del carrito los ${unselected.length} artículo${unselected.length === 1 ? '' : 's'} no seleccionado${unselected.length === 1 ? '' : 's'}?`)) return;
         unselected.forEach(a => window.PPCart?.remove(a.id));
         render();
       });
-      $('pv-cart-clear-all')?.addEventListener('click', () => {
+      $('pv-cart-clear-all')?.addEventListener('click', async () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) return;
-        if (!confirm(`¿Vaciar el carrito? Se quitarán los ${items.length} artículo${items.length === 1 ? '' : 's'}.`)) return;
+        if (!await pvConfirm(`¿Vaciar el carrito? Se quitarán los ${items.length} artículo${items.length === 1 ? '' : 's'}.`)) return;
         window.PPCart?.clear();
         _selected.clear();
         // An emptied cart has no way to dismiss itself otherwise (no
@@ -1092,7 +1092,7 @@
 
     async function del() {
       if (_activeId == null) return;
-      if (!confirm('¿Eliminar esta nota? No se puede deshacer.')) return;
+      if (!await pvConfirm('¿Eliminar esta nota? No se puede deshacer.')) return;
       try {
         await api(`/notes/${_activeId}`, { method: 'DELETE' });
         _notes = _notes.filter(n => n.id !== _activeId);
@@ -1159,7 +1159,7 @@
         if (e.status === 409) {
           const noteText = (e.body && e.body.note_text) || '';
           closeAiNoteModal();
-          if (noteText && confirm(
+          if (noteText && await pvConfirm(
             `Ya tienes las 5 notas máximas en este artículo, así que no se pudo guardar.\n\n` +
             `Nota generada:\n"${noteText}"\n\n¿Copiarla al portapapeles?`
           )) {
@@ -1561,7 +1561,7 @@
     });
 
     if (clearBtn) clearBtn.addEventListener('click', async () => {
-      if (!confirm('¿Borrar el resumen IA de este artículo? Se podrá regenerar.')) return;
+      if (!await pvConfirm('¿Borrar el resumen IA de este artículo? Se podrá regenerar.')) return;
       clearBtn.disabled = true;
       try {
         await api(`/articles/${a.id}/summary`, { method: 'DELETE' });

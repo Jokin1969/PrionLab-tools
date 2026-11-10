@@ -406,7 +406,7 @@
   // which uploads a new one straight away.
   async function _editDeletePdf() {
     if (!_editTarget) return;
-    if (!confirm(
+    if (!await pvConfirm(
       'Vas a eliminar el PDF adjunto a este artículo (se borra también de Dropbox).\n\n' +
       'El artículo se queda sin PDF hasta que subas otro. ¿Continuar?'
     )) return;
@@ -673,7 +673,7 @@
       : ('Desmarcar "sin PMID"?\n\n' +
          '• El artículo vuelve a la cola de búsqueda de PMID.\n' +
          '¿Continuar?');
-    if (!confirm(confirmMsg)) return;
+    if (!await pvConfirm(confirmMsg)) return;
 
     const btn = document.getElementById('pv-edit-no-pmid');
     const orig = btn ? btn.textContent : null;
@@ -932,7 +932,7 @@
       // Capture now — modal close can null _editTarget while await is pending.
       const target = _editTarget;
       const stub = (target.title || '').slice(0, 80);
-      const ok = confirm(
+      const ok = await pvConfirm(
         'Vas a eliminar este artículo de la biblioteca:\n\n' +
         `"${stub}${(target.title || '').length > 80 ? '…' : ''}"\n\n` +
         '• La fila se borra de la base de datos.\n' +
@@ -1094,7 +1094,7 @@
         '• El PDF se borra de Dropbox (queda en el historial de versiones ~30 días).\n' +
         '• Desaparece de PrionRead, PrionPacks, asignaciones y ratings.\n\n' +
         'Esta acción no se puede deshacer desde la app. ¿Continuar?';
-      if (!confirm(confirmMsg)) return;
+      if (!await pvConfirm(confirmMsg)) return;
       btn.disabled = true;
       const orig = btn.innerHTML;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando…';

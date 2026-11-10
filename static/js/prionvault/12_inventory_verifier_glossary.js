@@ -317,31 +317,31 @@
       bulkCnt.textContent = `${n} seleccionado${n === 1 ? '' : 's'}`;
     }
 
-    bulkImp.addEventListener('click', () => {
+    bulkImp.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Importar ${selected.size} PMIDs a PrionVault?\n\n` +
+      if (!await pvConfirm(`Importar ${selected.size} PMIDs a PrionVault?\n\n` +
                    '• Crea una fila por cada uno (los duplicados se marcan sin recrear).\n' +
                    '• Los abstracts se rellenan después con el batch "Reintentar abstracts".'))
         return;
       doImport(Array.from(selected), bulkImp);
     });
-    bulkDis.addEventListener('click', () => {
+    bulkDis.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Descartar ${selected.size} PMIDs? (reversible — quedan ocultos pero no se borran).`)) return;
+      if (!await pvConfirm(`Descartar ${selected.size} PMIDs? (reversible — quedan ocultos pero no se borran).`)) return;
       doDismiss(Array.from(selected), bulkDis);
     });
-    bulkRec.addEventListener('click', () => {
+    bulkRec.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Devolver a pendientes ${selected.size} PMIDs?`)) return;
+      if (!await pvConfirm(`Devolver a pendientes ${selected.size} PMIDs?`)) return;
       doRecover(Array.from(selected), bulkRec);
     });
     bulkKeep.addEventListener('click', () => {
       if (!selected.size) return;
       doKeep(Array.from(selected), bulkKeep);
     });
-    bulkUnkp.addEventListener('click', () => {
+    bulkUnkp.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Quitar la marca "Esta sí" de ${selected.size} PMIDs?\n\n` +
+      if (!await pvConfirm(`Quitar la marca "Esta sí" de ${selected.size} PMIDs?\n\n` +
                    'Volverán a aparecer como pendientes sin marca.')) return;
       doUnkeep(Array.from(selected), bulkUnkp);
     });
@@ -596,7 +596,7 @@
     const purgePendingBtn = document.getElementById('pv-pinv-purge-pending');
     if (purgePendingBtn) {
       purgePendingBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           '¿Borrar todos los pendientes?\n\n' +
           'Se eliminarán del inventario como si nunca se hubieran buscado.\n' +
           'Los artículos marcados con ★ y los descartados no se tocan.\n\n' +
@@ -1100,14 +1100,14 @@
     tabOk.addEventListener('click',    () => setTab('ok'));
     tabNoPdf.addEventListener('click', () => setTab('no_pdf_text'));
 
-    bulkOk.addEventListener('click', () => {
+    bulkOk.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Marcar ${selected.size} como OK manual? (queda registrado que tú los revisaste)`)) return;
+      if (!await pvConfirm(`Marcar ${selected.size} como OK manual? (queda registrado que tú los revisaste)`)) return;
       doMark(Array.from(selected), 'manual_ok', bulkOk);
     });
-    bulkRec.addEventListener('click', () => {
+    bulkRec.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Reverificar ${selected.size}? Se borra el veredicto y entran en la cola.`)) return;
+      if (!await pvConfirm(`Reverificar ${selected.size}? Se borra el veredicto y entran en la cola.`)) return;
       doRecheck(Array.from(selected), bulkRec);
     });
     bulkClr.addEventListener('click', () => {
@@ -1448,7 +1448,7 @@
         !it.in_vault && (it.pmid || it.doi || it.pmcid) && it.title
       );
       if (!candidates.length) return;
-      if (!confirm(
+      if (!await pvConfirm(
         `Importar ${candidates.length} artículos a PrionVault?\n\n` +
         '• Crea una fila por cada uno con los metadatos encontrados.\n' +
         '• Los que tengan PMC ID arrancan la descarga de PDF OA en segundo plano.\n' +
@@ -1846,7 +1846,7 @@
     }
 
     async function deleteTerm(term_en) {
-      if (!confirm(`¿Eliminar "${term_en}"?`)) return;
+      if (!await pvConfirm(`¿Eliminar "${term_en}"?`)) return;
       try {
         await api('/glossary/term?term_en=' + encodeURIComponent(term_en), { method: 'DELETE' });
         await loadGlossary();
@@ -2089,7 +2089,7 @@
             </div>`).join('')
         : '<div style="color:#9ca3af;font-size:12.5px;padding:4px;">Aún no has descargado ningún año.</div>';
       yearsEl.querySelectorAll('.pv-scimago-del').forEach(b => b.addEventListener('click', async () => {
-        if (!confirm(`¿Eliminar los rankings de ${b.dataset.year}?`)) return;
+        if (!await pvConfirm(`¿Eliminar los rankings de ${b.dataset.year}?`)) return;
         try { await api('/admin/scimago/clear', { method: 'POST', body: JSON.stringify({ year: Number(b.dataset.year) }) }); refresh(); }
         catch (e) { alert('No se pudo eliminar: ' + e.message); }
       }));
@@ -2221,7 +2221,7 @@
         mjList.querySelectorAll('.pv-mj-del').forEach(b => b.addEventListener('click', async () => {
           const yr = b.dataset.year || '';
           const yrTxt = (yr && yr !== '0') ? ` (${yr})` : ' (todos los años)';
-          if (!confirm(`¿Eliminar «${b.dataset.j}»${yrTxt}?`)) return;
+          if (!await pvConfirm(`¿Eliminar «${b.dataset.j}»${yrTxt}?`)) return;
           try { await api('/admin/scimago/manual/delete', { method: 'POST', body: JSON.stringify({ journal: b.dataset.j, year: yr }) }); refreshManual(); }
           catch (e) { alert('No se pudo eliminar: ' + e.message); }
         }));

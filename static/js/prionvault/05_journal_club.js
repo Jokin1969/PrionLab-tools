@@ -185,7 +185,7 @@
     list.querySelectorAll('.pv-jc-file-delete').forEach(b =>
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (!confirm(`¿Eliminar «${b.dataset.filename}»? También se borra de Dropbox si ningún otro Journal Club lo usa.`)) return;
+        if (!await pvConfirm(`¿Eliminar «${b.dataset.filename}»? También se borra de Dropbox si ningún otro Journal Club lo usa.`)) return;
         try {
           await api(`/jc/files/${b.dataset.fid}`, { method: 'DELETE' });
           renderJcSection(a);
@@ -194,7 +194,7 @@
 
     list.querySelectorAll('.pv-jc-delete').forEach(b =>
       b.addEventListener('click', async () => {
-        if (!confirm('¿Eliminar esta presentación y sus ficheros? Esta acción no se puede deshacer desde la app.')) return;
+        if (!await pvConfirm('¿Eliminar esta presentación y sus ficheros? Esta acción no se puede deshacer desde la app.')) return;
         try {
           await api(`/jc/${b.dataset.pid}`, { method: 'DELETE' });
           renderJcSection(a);
@@ -204,10 +204,10 @@
 
     list.querySelectorAll('.pv-jc-edit').forEach(b =>
       b.addEventListener('click', async () => {
-        const newDate = prompt('Nueva fecha de presentación (YYYY-MM-DD):',
+        const newDate = await pvPrompt('Nueva fecha de presentación (YYYY-MM-DD):',
                                b.dataset.date);
         if (newDate === null) return;
-        const newPresenter = prompt('Nombre del presentador:',
+        const newPresenter = await pvPrompt('Nombre del presentador:',
                                     b.dataset.presenter);
         if (newPresenter === null) return;
         try {
@@ -866,8 +866,8 @@
           </div>`);
         $('pv-jcc-upload').onclick = () => { close(); PVJcUpload.open(st, _onDone); };
         if ($('pv-jcc-unlock')) $('pv-jcc-unlock').onclick = () => act('jc-unlock', 'Desbloqueado.');
-        $('pv-jcc-release').onclick = () => {
-          if (!confirm(`¿Liberar este artículo? ${who} dejará de tenerlo reservado y volverá a aparecer como disponible para Journal Club.`)) return;
+        $('pv-jcc-release').onclick = async () => {
+          if (!await pvConfirm(`¿Liberar este artículo? ${who} dejará de tenerlo reservado y volverá a aparecer como disponible para Journal Club.`)) return;
           act('jc-release', 'Liberado.');
         };
       } else if (st.viewer.is_claimant) {
@@ -1011,7 +1011,7 @@
         alert('Escribe primero el nombre del responsable (tal cual la carpeta en Dropbox).');
         return;
       }
-      if (!confirm(
+      if (!await pvConfirm(
         `Se va a recorrer la carpeta de Dropbox de "${presenterName}" (Journal clubs/${presenterName}/…) ` +
         'y crear una presentación por cada carpeta de fecha cuyo "Article ....pdf" se pueda ' +
         'identificar en PrionVault. Puede tardar varios minutos. ¿Continuar?'

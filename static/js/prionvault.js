@@ -18,6 +18,85 @@
 (() => {
   const API = '/prionvault/api';
 
+  // ── In-page dialogs ─────────────────────────────────────────────────────
+  // Replace the browser's confirm()/prompt()/alert(): browsers let users
+  // silence those ("don't allow this page to create more dialogs"), after
+  // which confirm() silently answers "no" and every delete/rename button
+  // looks dead. These cannot be blocked. pvConfirm → Promise<boolean>,
+  // pvPrompt → Promise<string|null>; alert() below is shadowed for the
+  // whole file and does not block.
+  function _pvDialog(kind, message, defaultValue) {
+    return new Promise((resolve) => {
+      const prevFocus = document.activeElement;
+      const ov = document.createElement('div');
+      ov.setAttribute('role', kind === 'alert' ? 'alertdialog' : 'dialog');
+      ov.setAttribute('aria-modal', 'true');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,.45);' +
+                         'display:flex;align-items:center;justify-content:center;padding:16px;';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:85vh;' +
+                          'overflow:auto;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.3);' +
+                          'font-family:inherit;';
+      const msg = document.createElement('div');
+      msg.style.cssText = 'white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5;color:#111827;';
+      msg.textContent = String(message ?? '');
+      box.appendChild(msg);
+      let input = null;
+      if (kind === 'prompt') {
+        input = document.createElement('input');
+        input.type = 'text';
+        input.value = defaultValue == null ? '' : String(defaultValue);
+        input.style.cssText = 'width:100%;box-sizing:border-box;margin-top:12px;padding:8px 10px;' +
+                              'border:1px solid #d1d5db;border-radius:8px;font-size:14px;';
+        box.appendChild(input);
+      }
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px;';
+      const mk = (label, primary) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.style.cssText = 'padding:7px 16px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;' +
+          (primary ? 'background:#0F3460;color:#fff;border:1px solid #0F3460;'
+                   : 'background:#fff;color:#374151;border:1px solid #d1d5db;');
+        return b;
+      };
+      const cancel = kind === 'alert' ? null : mk('Cancelar', false);
+      const ok = mk('Aceptar', true);
+      if (cancel) row.appendChild(cancel);
+      row.appendChild(ok);
+      box.appendChild(row);
+      ov.appendChild(box);
+      const done = (value) => {
+        ov.remove();
+        try { if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus(); } catch (_) {}
+        resolve(value);
+      };
+      const accept = () => done(kind === 'prompt' ? input.value : true);
+      const reject = () => done(kind === 'prompt' ? null : (kind === 'alert' ? true : false));
+      ok.addEventListener('click', accept);
+      if (cancel) cancel.addEventListener('click', reject);
+      ov.addEventListener('mousedown', (e) => { if (e.target === ov && kind === 'alert') reject(); });
+      ov.addEventListener('keydown', (e) => {
+        e.stopPropagation();            // don't let Escape/Tab reach the modal underneath
+        if (e.key === 'Escape') { e.preventDefault(); reject(); }
+        else if (e.key === 'Enter' && e.target !== cancel) { e.preventDefault(); accept(); }
+        else if (e.key === 'Tab') {
+          const f = [input, cancel, ok].filter(Boolean);
+          const i = f.indexOf(document.activeElement);
+          e.preventDefault();
+          f[(i + (e.shiftKey ? f.length - 1 : 1) + f.length) % f.length].focus();
+        }
+      });
+      document.body.appendChild(ov);
+      if (input) { input.focus(); input.select(); } else ok.focus();
+    });
+  }
+  const pvConfirm = (message) => _pvDialog('confirm', message);
+  const pvPrompt  = (message, defaultValue) => _pvDialog('prompt', message, defaultValue);
+  // eslint-disable-next-line no-unused-vars
+  function alert(message) { _pvDialog('alert', message); }
+
   const ROLE     = (document.querySelector('meta[name="pv-user-role"]')?.content || '').trim();
   const USER_ID  = (document.querySelector('meta[name="pv-user-id"]')?.content || '').trim();
   const IS_ADMIN = ROLE === 'admin';
@@ -838,7 +917,7 @@
       '• Los artículos NO se borran — solo se desvincula la pertenencia.\n' +
       '• Las anotaciones / tags de cada artículo siguen igual.\n\n' +
       'Esta acción no se puede deshacer desde la app. ¿Continuar?';
-    if (!confirm(msg)) return;
+    if (!await pvConfirm(msg)) return;
     const params = new URLSearchParams({ group });
     if (subgroup) params.set('subgroup', subgroup);
     try {
@@ -869,7 +948,7 @@
     if (!group) return;
     const current = subgroup || group;
     const label = subgroup ? 'el subgrupo' : 'el grupo';
-    const name = prompt(`Nuevo nombre para ${label} «${current}»:`, current);
+    const name = await pvPrompt(`Nuevo nombre para ${label} «${current}»:`, current);
     if (name === null) return;
     const trimmed = name.trim();
     if (!trimmed || trimmed === current) return;
@@ -1047,8 +1126,8 @@
       refreshFilterIndicators();
       loadArticles();
     });
-    function deleteThisCollection() {
-      if (!confirm(`Borrar la colección "${c.name}"? (los artículos NO se borran)`)) return;
+    async function deleteThisCollection() {
+      if (!await pvConfirm(`Borrar la colección "${c.name}"? (los artículos NO se borran)`)) return;
       api(`/collections/${c.id}`, { method: 'DELETE' })
         .then(() => { if (state.collectionId === c.id) state.collectionId = null;
                       refreshCollections(); loadArticles(); })
@@ -1420,7 +1499,7 @@
   async function _chunksReindex() {
     const btn = document.getElementById('pv-chunks-reindex');
     if (!btn || !_chunksCurrentArticleId) return;
-    if (!confirm('Reindexar este artículo:\n\n' +
+    if (!await pvConfirm('Reindexar este artículo:\n\n' +
                  '• Borra los chunks actuales y los recrea desde el texto extraído.\n' +
                  '• Vuelve a llamar a Voyage para cada chunk (≈ 0,0001-0,001 USD).\n\n' +
                  '¿Continuar?')) return;
@@ -2088,7 +2167,7 @@
     const btn = document.getElementById('btn-new-tag');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-      const name = prompt('Nombre del tag:');
+      const name = await pvPrompt('Nombre del tag:');
       if (!name || !name.trim()) return;
       // Quick colour palette — typing the colour name is allowed too.
       const palette = {
@@ -2096,7 +2175,7 @@
         verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
         rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
       };
-      const colorInput = prompt(
+      const colorInput = await pvPrompt(
         'Color (hex #rrggbb o nombre: rojo / naranja / amarillo / ' +
         'verde / azul / morado / rosa / gris / cian). Vacío = sin color.'
       );
@@ -2185,21 +2264,21 @@
         });
         const editEl = btn.querySelector('.pv-tag-edit');
         if (editEl) {
-          editEl.addEventListener('click', (ev) => {
+          editEl.addEventListener('click', async (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
             if (isSmart) { openTagModal(t); return; }
-            const newName = (prompt('Nuevo nombre para el tag:', t.name) || '').trim();
+            const newName = (await pvPrompt('Nuevo nombre para el tag:', t.name) || '').trim();
             if (!newName || newName === t.name) return;
             api(`/tags/${t.id}`, { method: 'PUT', body: JSON.stringify({ name: newName, color: t.color }) })
               .then(() => refreshTags())
               .catch(e => alert('Error al renombrar: ' + (e.message || e)));
           });
         }
-        btn.addEventListener('contextmenu', ev => {
+        btn.addEventListener('contextmenu', async ev => {
           if (!IS_ADMIN) return;
           ev.preventDefault();
-          if (!confirm(`¿Borrar el tag "${t.name}"? Los artículos que lo lleven dejan de tenerlo asignado (no se borran).`)) return;
+          if (!await pvConfirm(`¿Borrar el tag "${t.name}"? Los artículos que lo lleven dejan de tenerlo asignado (no se borran).`)) return;
           api(`/tags/${t.id}`, { method: 'DELETE' })
             .then(() => { if (state.tagId === t.id) state.tagId = null;
                           refreshTags(); loadArticles(); refreshFilterIndicators(); })
@@ -2839,7 +2918,7 @@
         const count = state.selectedIds.size;
         if (!count) return;
         const phrase = String(count);
-        const typed = prompt(
+        const typed = await pvPrompt(
           `Vas a eliminar ${count} artículo${count === 1 ? '' : 's'} y ` +
           `su${count === 1 ? '' : 's'} PDF${count === 1 ? '' : 's'} de Dropbox.\n\n` +
           `Esta acción NO se puede deshacer desde la app (Dropbox guarda 30 días ` +
@@ -2875,7 +2954,7 @@
   async function doBulkUserState(payload, descr) {
     const ids = Array.from(state.selectedIds);
     if (!ids.length) return;
-    if (ids.length > 5 && !confirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
+    if (ids.length > 5 && !await pvConfirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
     try {
       await api('/articles/bulk-user-state', {
         method: 'POST',
@@ -2891,7 +2970,7 @@
   async function doBulkJc(value, descr) {
     const ids = Array.from(state.selectedIds);
     if (!ids.length) return;
-    if (ids.length > 5 && !confirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
+    if (ids.length > 5 && !await pvConfirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
     try {
       await api('/articles/bulk-jc', {
         method: 'POST',
@@ -3013,7 +3092,7 @@
   async function doBulk(updates, descr) {
     const count = state.selectedIds.size;
     if (!count) return;
-    if (count > 5 && !confirm(`Aplicar "${descr}" a ${count} artículos. ¿Continuar?`)) return;
+    if (count > 5 && !await pvConfirm(`Aplicar "${descr}" a ${count} artículos. ¿Continuar?`)) return;
     try {
       const r = await bulkPatch(updates);
       // Reload the list so the visual state matches the DB.
@@ -4921,7 +5000,7 @@
     const delBtn = sec.querySelector('#pv-rate-delete');
     if (delBtn) {
       delBtn.addEventListener('click', async () => {
-        if (!confirm('¿Borrar tu valoración para este artículo?')) return;
+        if (!await pvConfirm('¿Borrar tu valoración para este artículo?')) return;
         delBtn.disabled = true;
         try {
           const r = await api(`/articles/${a.id}/ratings`, { method: 'DELETE' });
@@ -5237,9 +5316,9 @@
           verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
           rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
         };
-        const name = prompt('Nombre del nuevo tag:');
+        const name = await pvPrompt('Nombre del nuevo tag:');
         if (!name || !name.trim()) return;
-        const colorInput = prompt(
+        const colorInput = await pvPrompt(
           'Color (hex #rrggbb o nombre: rojo/naranja/amarillo/verde/azul/morado/rosa/gris/cian).\nVacío = sin color.'
         );
         let color = null;
@@ -5412,11 +5491,11 @@
 
     if (admin) {
       list.querySelectorAll('[data-action="edit"], .pv-supp-caption').forEach(el =>
-        el.addEventListener('click', ev => {
+        el.addEventListener('click', async ev => {
           const sid = ev.currentTarget.dataset.sid;
           const item = items.find(x => x.id === sid);
           if (!item) return;
-          const next = prompt('Descripción del archivo:', item.caption || '');
+          const next = await pvPrompt('Descripción del archivo:', item.caption || '');
           if (next === null) return;
           patchSupplementaryCaption(a, sid, next.trim(), items);
         }));
@@ -5425,7 +5504,7 @@
           const sid  = ev.currentTarget.dataset.sid;
           const item = items.find(x => x.id === sid);
           if (!item) return;
-          if (!confirm(`¿Eliminar "${item.filename}"?`)) return;
+          if (!await pvConfirm(`¿Eliminar "${item.filename}"?`)) return;
           try {
             await api(`/articles/${a.id}/supplementary/${sid}`, { method: 'DELETE' });
             renderSupplementarySection(a);
@@ -5460,7 +5539,7 @@
       input.addEventListener('change', async () => {
         const f = input.files && input.files[0];
         if (!f) return;
-        const caption = prompt(
+        const caption = await pvPrompt(
           `Descripción para "${f.name}" (opcional):`, '');
         if (caption === null) return;            // cancelled
         const fd = new FormData();
@@ -5688,7 +5767,7 @@
     list.querySelectorAll('.pv-jc-file-delete').forEach(b =>
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (!confirm(`¿Eliminar «${b.dataset.filename}»? También se borra de Dropbox si ningún otro Journal Club lo usa.`)) return;
+        if (!await pvConfirm(`¿Eliminar «${b.dataset.filename}»? También se borra de Dropbox si ningún otro Journal Club lo usa.`)) return;
         try {
           await api(`/jc/files/${b.dataset.fid}`, { method: 'DELETE' });
           renderJcSection(a);
@@ -5697,7 +5776,7 @@
 
     list.querySelectorAll('.pv-jc-delete').forEach(b =>
       b.addEventListener('click', async () => {
-        if (!confirm('¿Eliminar esta presentación y sus ficheros? Esta acción no se puede deshacer desde la app.')) return;
+        if (!await pvConfirm('¿Eliminar esta presentación y sus ficheros? Esta acción no se puede deshacer desde la app.')) return;
         try {
           await api(`/jc/${b.dataset.pid}`, { method: 'DELETE' });
           renderJcSection(a);
@@ -5707,10 +5786,10 @@
 
     list.querySelectorAll('.pv-jc-edit').forEach(b =>
       b.addEventListener('click', async () => {
-        const newDate = prompt('Nueva fecha de presentación (YYYY-MM-DD):',
+        const newDate = await pvPrompt('Nueva fecha de presentación (YYYY-MM-DD):',
                                b.dataset.date);
         if (newDate === null) return;
-        const newPresenter = prompt('Nombre del presentador:',
+        const newPresenter = await pvPrompt('Nombre del presentador:',
                                     b.dataset.presenter);
         if (newPresenter === null) return;
         try {
@@ -6369,8 +6448,8 @@
           </div>`);
         $('pv-jcc-upload').onclick = () => { close(); PVJcUpload.open(st, _onDone); };
         if ($('pv-jcc-unlock')) $('pv-jcc-unlock').onclick = () => act('jc-unlock', 'Desbloqueado.');
-        $('pv-jcc-release').onclick = () => {
-          if (!confirm(`¿Liberar este artículo? ${who} dejará de tenerlo reservado y volverá a aparecer como disponible para Journal Club.`)) return;
+        $('pv-jcc-release').onclick = async () => {
+          if (!await pvConfirm(`¿Liberar este artículo? ${who} dejará de tenerlo reservado y volverá a aparecer como disponible para Journal Club.`)) return;
           act('jc-release', 'Liberado.');
         };
       } else if (st.viewer.is_claimant) {
@@ -6514,7 +6593,7 @@
         alert('Escribe primero el nombre del responsable (tal cual la carpeta en Dropbox).');
         return;
       }
-      if (!confirm(
+      if (!await pvConfirm(
         `Se va a recorrer la carpeta de Dropbox de "${presenterName}" (Journal clubs/${presenterName}/…) ` +
         'y crear una presentación por cada carpeta de fecha cuyo "Article ....pdf" se pueda ' +
         'identificar en PrionVault. Puede tardar varios minutos. ¿Continuar?'
@@ -7692,7 +7771,7 @@
   // which uploads a new one straight away.
   async function _editDeletePdf() {
     if (!_editTarget) return;
-    if (!confirm(
+    if (!await pvConfirm(
       'Vas a eliminar el PDF adjunto a este artículo (se borra también de Dropbox).\n\n' +
       'El artículo se queda sin PDF hasta que subas otro. ¿Continuar?'
     )) return;
@@ -7959,7 +8038,7 @@
       : ('Desmarcar "sin PMID"?\n\n' +
          '• El artículo vuelve a la cola de búsqueda de PMID.\n' +
          '¿Continuar?');
-    if (!confirm(confirmMsg)) return;
+    if (!await pvConfirm(confirmMsg)) return;
 
     const btn = document.getElementById('pv-edit-no-pmid');
     const orig = btn ? btn.textContent : null;
@@ -8218,7 +8297,7 @@
       // Capture now — modal close can null _editTarget while await is pending.
       const target = _editTarget;
       const stub = (target.title || '').slice(0, 80);
-      const ok = confirm(
+      const ok = await pvConfirm(
         'Vas a eliminar este artículo de la biblioteca:\n\n' +
         `"${stub}${(target.title || '').length > 80 ? '…' : ''}"\n\n` +
         '• La fila se borra de la base de datos.\n' +
@@ -8380,7 +8459,7 @@
         '• El PDF se borra de Dropbox (queda en el historial de versiones ~30 días).\n' +
         '• Desaparece de PrionRead, PrionPacks, asignaciones y ratings.\n\n' +
         'Esta acción no se puede deshacer desde la app. ¿Continuar?';
-      if (!confirm(confirmMsg)) return;
+      if (!await pvConfirm(confirmMsg)) return;
       btn.disabled = true;
       const orig = btn.innerHTML;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando…';
@@ -8840,7 +8919,7 @@
       } catch (e) {
         if (e.status === 409) {
           const noteText = (e.body && e.body.note_text) || '';
-          if (noteText && confirm(
+          if (noteText && await pvConfirm(
             `Ya tienes las 5 notas máximas en este artículo, así que no se pudo guardar.\n\n` +
             `Nota generada:\n"${noteText}"\n\n¿Copiarla al portapapeles?`
           )) {
@@ -8983,7 +9062,7 @@
         list.querySelectorAll('.pv-chat-hist-del').forEach(btn => {
           btn.addEventListener('click', async ev => {
             ev.stopPropagation();
-            if (!confirm('¿Eliminar esta conversación? No se puede deshacer.')) return;
+            if (!await pvConfirm('¿Eliminar esta conversación? No se puede deshacer.')) return;
             try {
               await api(`/chats/${btn.dataset.cid}`, { method: 'DELETE' });
               if (_chatId === btn.dataset.cid) newConversation();
@@ -9672,7 +9751,7 @@
           e.stopPropagation();
           const id = btn.dataset.id;
           const chat = _chats.find(c => c.id === id);
-          if (!confirm(`¿Borrar la conversación "${chat ? (chat.title || 'Nueva conversación') : ''}" entera? No se puede deshacer.`)) return;
+          if (!await pvConfirm(`¿Borrar la conversación "${chat ? (chat.title || 'Nueva conversación') : ''}" entera? No se puede deshacer.`)) return;
           try {
             await api(`/library-chats/${id}`, { method: 'DELETE' });
             _chats = _chats.filter(c => c.id !== id);
@@ -9775,7 +9854,7 @@
 
     // ── Delete a Q&A pair ──────────────────────────────────────────────────
     async function deletePair(userMsgId) {
-      if (!confirm('¿Borrar esta pregunta y su respuesta? No se puede deshacer.')) return;
+      if (!await pvConfirm('¿Borrar esta pregunta y su respuesta? No se puede deshacer.')) return;
       try {
         await api(`/library-chats/${_currentChatId}/messages/${userMsgId}`, { method: 'DELETE' });
         await openChat(_currentChatId);
@@ -11060,7 +11139,7 @@
         });
         list.querySelectorAll('.pv-repo-cart-delete').forEach(btn => {
           btn.addEventListener('click', async () => {
-            if (!confirm('¿Eliminar este carrito del repositorio? No se puede deshacer.')) return;
+            if (!await pvConfirm('¿Eliminar este carrito del repositorio? No se puede deshacer.')) return;
             try {
               await api(`/carts/${btn.dataset.cid}`, { method: 'DELETE' });
               loadRepoCarts();
@@ -11082,7 +11161,7 @@
 
     async function restoreCart(cartId) {
       const current = window.PPCart?.getAll() || [];
-      if (current.length && !confirm(
+      if (current.length && !await pvConfirm(
         `El carrito actual tiene ${current.length} artículo${current.length === 1 ? '' : 's'}. ` +
         `Al recuperar este carrito guardado se sustituirán por completo los artículos actuales. ¿Continuar?`
       )) return;
@@ -11186,18 +11265,18 @@
         _setIsolatedArticleId(items.map(a => a.id));
         loadArticles();
       });
-      $('pv-cart-remove-unselected')?.addEventListener('click', () => {
+      $('pv-cart-remove-unselected')?.addEventListener('click', async () => {
         const items = window.PPCart?.getAll() || [];
         const unselected = items.filter(a => !_selected.has(a.id));
         if (!unselected.length) { alert('No hay artículos sin seleccionar que quitar.'); return; }
-        if (!confirm(`¿Quitar del carrito los ${unselected.length} artículo${unselected.length === 1 ? '' : 's'} no seleccionado${unselected.length === 1 ? '' : 's'}?`)) return;
+        if (!await pvConfirm(`¿Quitar del carrito los ${unselected.length} artículo${unselected.length === 1 ? '' : 's'} no seleccionado${unselected.length === 1 ? '' : 's'}?`)) return;
         unselected.forEach(a => window.PPCart?.remove(a.id));
         render();
       });
-      $('pv-cart-clear-all')?.addEventListener('click', () => {
+      $('pv-cart-clear-all')?.addEventListener('click', async () => {
         const items = window.PPCart?.getAll() || [];
         if (!items.length) return;
-        if (!confirm(`¿Vaciar el carrito? Se quitarán los ${items.length} artículo${items.length === 1 ? '' : 's'}.`)) return;
+        if (!await pvConfirm(`¿Vaciar el carrito? Se quitarán los ${items.length} artículo${items.length === 1 ? '' : 's'}.`)) return;
         window.PPCart?.clear();
         _selected.clear();
         // An emptied cart has no way to dismiss itself otherwise (no
@@ -11492,7 +11571,7 @@
 
     async function del() {
       if (_activeId == null) return;
-      if (!confirm('¿Eliminar esta nota? No se puede deshacer.')) return;
+      if (!await pvConfirm('¿Eliminar esta nota? No se puede deshacer.')) return;
       try {
         await api(`/notes/${_activeId}`, { method: 'DELETE' });
         _notes = _notes.filter(n => n.id !== _activeId);
@@ -11559,7 +11638,7 @@
         if (e.status === 409) {
           const noteText = (e.body && e.body.note_text) || '';
           closeAiNoteModal();
-          if (noteText && confirm(
+          if (noteText && await pvConfirm(
             `Ya tienes las 5 notas máximas en este artículo, así que no se pudo guardar.\n\n` +
             `Nota generada:\n"${noteText}"\n\n¿Copiarla al portapapeles?`
           )) {
@@ -11961,7 +12040,7 @@
     });
 
     if (clearBtn) clearBtn.addEventListener('click', async () => {
-      if (!confirm('¿Borrar el resumen IA de este artículo? Se podrá regenerar.')) return;
+      if (!await pvConfirm('¿Borrar el resumen IA de este artículo? Se podrá regenerar.')) return;
       clearBtn.disabled = true;
       try {
         await api(`/articles/${a.id}/summary`, { method: 'DELETE' });
@@ -13330,7 +13409,7 @@
     const clearBtn = document.getElementById('pv-queue-clear-failed');
     if (clearBtn) {
       clearBtn.addEventListener('click', async () => {
-        if (!confirm('¿Borrar todas las filas terminadas (failed, duplicate y done)? Las que estén en curso (queued / processing) se mantienen. La acción no se puede deshacer.')) return;
+        if (!await pvConfirm('¿Borrar todas las filas terminadas (failed, duplicate y done)? Las que estén en curso (queued / processing) se mantienen. La acción no se puede deshacer.')) return;
         clearBtn.disabled = true;
         try {
           const r = await fetch('/prionvault/api/ingest/clear-failed', {
@@ -13415,7 +13494,7 @@
     }
     tr.querySelector('.pv-btn-del').addEventListener('click', async () => {
       const label = `${j.pdf_filename || '(sin nombre)'} (#${j.id}, ${j.status})`;
-      if (!confirm(`Borrar la fila ${label} de la cola?\n\nSi el PDF estaba a medio procesar también se elimina el archivo staged. La acción no se puede deshacer.`)) return;
+      if (!await pvConfirm(`Borrar la fila ${label} de la cola?\n\nSi el PDF estaba a medio procesar también se elimina el archivo staged. La acción no se puede deshacer.`)) return;
       try {
         const r = await fetch('/prionvault/api/ingest/jobs/' + j.id, {
           method: 'DELETE', credentials: 'same-origin',
@@ -14008,7 +14087,7 @@
     const btn = document.getElementById('btn-scan-folder');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-      const folder = prompt(
+      const folder = await pvPrompt(
         'Carpeta de Dropbox a escanear (los PDFs que se importen bien o ya estén ' +
         'en la biblioteca se borrarán de ahí; los que fallen permanecen):',
         '/PrionLab tools/PDFs'
@@ -14101,7 +14180,7 @@
     const btn = document.getElementById('btn-clean-metadata');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-      if (!confirm('Va a recorrer todos los artículos limpiando entidades HTML y ' +
+      if (!await pvConfirm('Va a recorrer todos los artículos limpiando entidades HTML y ' +
                    'transformando sup/sub a Unicode. La acción es idempotente y ' +
                    'reversible (solo actualiza filas con cambios). ¿Continuar?')) {
         return;
@@ -14355,9 +14434,9 @@
 
     document.getElementById('pv-pmid-log-errors-only')?.addEventListener('change', _syncPmidLogVisibility);
 
-    document.getElementById('pv-pmid-log-clear')?.addEventListener('click', () => {
+    document.getElementById('pv-pmid-log-clear')?.addEventListener('click', async () => {
       if (!logEl.querySelector('.pv-pmid-log-row')) return;
-      if (!confirm('Vaciar el log de esta sesión?\n\nNo afecta a la base de datos ni a los contadores — solo limpia lo que ves en este panel.')) return;
+      if (!await pvConfirm('Vaciar el log de esta sesión?\n\nNo afecta a la base de datos ni a los contadores — solo limpia lo que ves en este panel.')) return;
       logEl.innerHTML =
         '<div style="color:#9ca3af;text-align:center;padding:24px 12px;">El log de búsquedas aparecerá aquí.</div>';
       _syncPmidLogCount();
@@ -14558,7 +14637,7 @@
       if (!row) return;
       const status = row.querySelector('.pv-pmid-manual-status');
       const btn    = row.querySelector('.pv-pmid-manual-delete');
-      if (!confirm(
+      if (!await pvConfirm(
         'Borrar este artículo de PrionVault?\n\n' +
         '• La fila se borra de la base de datos.\n' +
         '• El PDF de Dropbox también (queda en el historial ~30 días).\n' +
@@ -14657,7 +14736,7 @@
       if (!row) return;
       const btn    = row.querySelector('.pv-pmid-manual-nopmid');
       const status = row.querySelector('.pv-pmid-manual-status');
-      if (!confirm('Marcar este artículo como confirmado-sin-PMID?\n\n' +
+      if (!await pvConfirm('Marcar este artículo como confirmado-sin-PMID?\n\n' +
                    '• La búsqueda automática lo saltará en futuros lotes.\n' +
                    '• Desaparece de esta lista de pendientes.\n' +
                    '• Se puede deshacer luego desde Editar → vaciar campo y guardar.\n\n' +
@@ -15017,7 +15096,7 @@
         });
         list.querySelectorAll('.pv-dup-delete').forEach(b => {
           b.addEventListener('click', async () => {
-            if (!confirm('¿Borrar este artículo definitivamente? Se elimina también el PDF de Dropbox.')) return;
+            if (!await pvConfirm('¿Borrar este artículo definitivamente? Se elimina también el PDF de Dropbox.')) return;
             b.disabled = true;
             b.textContent = '…';
             try {
@@ -15037,7 +15116,7 @@
           b.addEventListener('click', async () => {
             const card = b.closest('.pv-dup-pair');
             if (!card) return;
-            const reason = prompt(
+            const reason = await pvPrompt(
               'Confirmar que NO son duplicados.\n\n' +
               'La pareja no volverá a aparecer en futuros escaneos. ' +
               'Si quieres, escribe una nota corta para tu propio registro ' +
@@ -15526,7 +15605,7 @@
                 style="margin-left:6px;padding:3px 10px;border-radius:6px;border:none;background:#92400e;
                        color:#fff;font-size:12px;cursor:pointer;">Rehacerlos con el texto completo</button>`;
       document.getElementById('pv-bs-redo-abstract').addEventListener('click', async () => {
-        if (!confirm(`Se extraerá el texto de los PDFs y se regenerarán ${r.count} resúmenes con ${selectedProvider}. ¿Continuar?`)) return;
+        if (!await pvConfirm(`Se extraerá el texto de los PDFs y se regenerarán ${r.count} resúmenes con ${selectedProvider}. ¿Continuar?`)) return;
         try {
           await api('/admin/batch-summary/start', { method: 'POST',
             body: JSON.stringify({ provider: selectedProvider, ids: r.ids }) });
@@ -16179,11 +16258,11 @@
 
     const btn = banner.querySelector('.pv-rag-more-btn');
     if (!btn) return;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       // Suggested next batch = either everything remaining (if it
       // fits in one more page) or another 50. The user can override.
       const suggested = Math.min(remaining, 50);
-      const raw = prompt(
+      const raw = await pvPrompt(
         `¿Cuántos artículos más quieres ver?\n\n` +
         `• Quedan ${remaining} más en la biblioteca.\n` +
         `• Máximo por consulta: ${hardCap} en total.\n` +
@@ -16582,7 +16661,7 @@
         } finally {
           addSummariesBtn.textContent = orig;
         }
-        if (!confirm(
+        if (!await pvConfirm(
           `Estadísticas de resúmenes IA:\n` +
           `• Total con resumen: ${stats.total_with_summary}\n` +
           `• Ya indexados: ${stats.already_indexed}\n` +
@@ -16612,7 +16691,7 @@
     const addAbstractsBtn = document.getElementById('pv-bi-add-abstracts');
     if (addAbstractsBtn) {
       addAbstractsBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           'Añadir vectorización del abstract a todos los artículos que ya tienen\n' +
           'chunks pero no tienen chunk de tipo "abstract".\n\n' +
           '• Omite artículos marcados como "abstract no disponible".\n' +
@@ -16641,7 +16720,7 @@
     const addPdfBtn = document.getElementById('pv-bi-add-pdf');
     if (addPdfBtn) {
       addPdfBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           'Añadir vectorización del PDF completo a los artículos que ya tienen\n' +
           'chunks (abstract/resumen) pero les falta el texto del PDF.\n\n' +
           '• No toca los chunks existentes (abstract, summary_ai).\n' +
@@ -16669,7 +16748,7 @@
     const addNotesBtn = document.getElementById('pv-bi-add-notes');
     if (addNotesBtn) {
       addNotesBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           'Vectorizar las notas flotantes existentes para que la búsqueda IA\n' +
           'las tenga en cuenta.\n\n' +
           '• Cada nota solo aparece en los resultados de su propio autor —\n' +
@@ -16701,7 +16780,7 @@
     // a 4-hour-old embedding investment.
     if (resetBtn) {
       resetBtn.addEventListener('click', async () => {
-        const confirm1 = confirm(
+        const confirm1 = await pvConfirm(
           'BORRAR todos los embeddings existentes y regenerarlos ' +
           'desde cero con el modelo actual (voyage-4-large)?\n\n' +
           '• Vacía la tabla article_chunk completa (PDF, abstract, resumen IA Y notas).\n' +
@@ -16714,7 +16793,7 @@
             '$3-6 (Voyage).'
         );
         if (!confirm1) return;
-        const confirm2 = prompt(
+        const confirm2 = await pvPrompt(
           'Para confirmar, escribe exactamente: RESET'
         );
         if (confirm2 !== 'RESET') {
@@ -17177,7 +17256,7 @@
     // Per-paper log controls
     const clearLogBtn = document.getElementById('pv-bsp-log-clear');
     if (clearLogBtn) clearLogBtn.addEventListener('click', async () => {
-      if (!confirm('Vaciar el log de esta sesión? (los contadores procesados/fallidos no se tocan)')) return;
+      if (!await pvConfirm('Vaciar el log de esta sesión? (los contadores procesados/fallidos no se tocan)')) return;
       try {
         await api('/admin/batch-searchable/clear-events', { method: 'POST' });
         refresh();
@@ -17193,7 +17272,7 @@
     // running it keeps running, just starts counting from zero again.
     const resetSessionBtn = document.getElementById('pv-bsp-log-reset');
     if (resetSessionBtn) resetSessionBtn.addEventListener('click', async () => {
-      if (!confirm(
+      if (!await pvConfirm(
         'Limpiar a fondo? Se borran:\n\n' +
         '  • El log de eventos\n' +
         '  • El banner de "Último error"\n' +
@@ -17351,7 +17430,7 @@
       const row = document.querySelector(`[data-prob-aid="${CSS.escape(aid)}"]`);
       if (!row) return;
       const btn = row.querySelector('.pv-bsp-prob-skip');
-      if (!confirm(
+      if (!await pvConfirm(
         'Marcar este PDF como "no insistas más"?\n\n' +
         '• El batch Make-searchable lo dejará en paz.\n' +
         '• Puedes revertirlo desde la sección "Excluidos permanentemente".\n'
@@ -17392,7 +17471,7 @@
       const row = document.querySelector(`[data-prob-aid="${CSS.escape(aid)}"]`);
       if (!row) return;
       const btn = row.querySelector('.pv-bsp-prob-del');
-      if (!confirm(
+      if (!await pvConfirm(
         'Borrar este artículo de PrionVault?\n\n' +
         '• La fila se borra de la base de datos.\n' +
         '• El PDF de Dropbox también (queda en el historial ~30 días).\n' +
@@ -17922,31 +18001,31 @@
       bulkCnt.textContent = `${n} seleccionado${n === 1 ? '' : 's'}`;
     }
 
-    bulkImp.addEventListener('click', () => {
+    bulkImp.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Importar ${selected.size} PMIDs a PrionVault?\n\n` +
+      if (!await pvConfirm(`Importar ${selected.size} PMIDs a PrionVault?\n\n` +
                    '• Crea una fila por cada uno (los duplicados se marcan sin recrear).\n' +
                    '• Los abstracts se rellenan después con el batch "Reintentar abstracts".'))
         return;
       doImport(Array.from(selected), bulkImp);
     });
-    bulkDis.addEventListener('click', () => {
+    bulkDis.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Descartar ${selected.size} PMIDs? (reversible — quedan ocultos pero no se borran).`)) return;
+      if (!await pvConfirm(`Descartar ${selected.size} PMIDs? (reversible — quedan ocultos pero no se borran).`)) return;
       doDismiss(Array.from(selected), bulkDis);
     });
-    bulkRec.addEventListener('click', () => {
+    bulkRec.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Devolver a pendientes ${selected.size} PMIDs?`)) return;
+      if (!await pvConfirm(`Devolver a pendientes ${selected.size} PMIDs?`)) return;
       doRecover(Array.from(selected), bulkRec);
     });
     bulkKeep.addEventListener('click', () => {
       if (!selected.size) return;
       doKeep(Array.from(selected), bulkKeep);
     });
-    bulkUnkp.addEventListener('click', () => {
+    bulkUnkp.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Quitar la marca "Esta sí" de ${selected.size} PMIDs?\n\n` +
+      if (!await pvConfirm(`Quitar la marca "Esta sí" de ${selected.size} PMIDs?\n\n` +
                    'Volverán a aparecer como pendientes sin marca.')) return;
       doUnkeep(Array.from(selected), bulkUnkp);
     });
@@ -18201,7 +18280,7 @@
     const purgePendingBtn = document.getElementById('pv-pinv-purge-pending');
     if (purgePendingBtn) {
       purgePendingBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           '¿Borrar todos los pendientes?\n\n' +
           'Se eliminarán del inventario como si nunca se hubieran buscado.\n' +
           'Los artículos marcados con ★ y los descartados no se tocan.\n\n' +
@@ -18705,14 +18784,14 @@
     tabOk.addEventListener('click',    () => setTab('ok'));
     tabNoPdf.addEventListener('click', () => setTab('no_pdf_text'));
 
-    bulkOk.addEventListener('click', () => {
+    bulkOk.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Marcar ${selected.size} como OK manual? (queda registrado que tú los revisaste)`)) return;
+      if (!await pvConfirm(`Marcar ${selected.size} como OK manual? (queda registrado que tú los revisaste)`)) return;
       doMark(Array.from(selected), 'manual_ok', bulkOk);
     });
-    bulkRec.addEventListener('click', () => {
+    bulkRec.addEventListener('click', async () => {
       if (!selected.size) return;
-      if (!confirm(`Reverificar ${selected.size}? Se borra el veredicto y entran en la cola.`)) return;
+      if (!await pvConfirm(`Reverificar ${selected.size}? Se borra el veredicto y entran en la cola.`)) return;
       doRecheck(Array.from(selected), bulkRec);
     });
     bulkClr.addEventListener('click', () => {
@@ -19053,7 +19132,7 @@
         !it.in_vault && (it.pmid || it.doi || it.pmcid) && it.title
       );
       if (!candidates.length) return;
-      if (!confirm(
+      if (!await pvConfirm(
         `Importar ${candidates.length} artículos a PrionVault?\n\n` +
         '• Crea una fila por cada uno con los metadatos encontrados.\n' +
         '• Los que tengan PMC ID arrancan la descarga de PDF OA en segundo plano.\n' +
@@ -19451,7 +19530,7 @@
     }
 
     async function deleteTerm(term_en) {
-      if (!confirm(`¿Eliminar "${term_en}"?`)) return;
+      if (!await pvConfirm(`¿Eliminar "${term_en}"?`)) return;
       try {
         await api('/glossary/term?term_en=' + encodeURIComponent(term_en), { method: 'DELETE' });
         await loadGlossary();
@@ -19694,7 +19773,7 @@
             </div>`).join('')
         : '<div style="color:#9ca3af;font-size:12.5px;padding:4px;">Aún no has descargado ningún año.</div>';
       yearsEl.querySelectorAll('.pv-scimago-del').forEach(b => b.addEventListener('click', async () => {
-        if (!confirm(`¿Eliminar los rankings de ${b.dataset.year}?`)) return;
+        if (!await pvConfirm(`¿Eliminar los rankings de ${b.dataset.year}?`)) return;
         try { await api('/admin/scimago/clear', { method: 'POST', body: JSON.stringify({ year: Number(b.dataset.year) }) }); refresh(); }
         catch (e) { alert('No se pudo eliminar: ' + e.message); }
       }));
@@ -19826,7 +19905,7 @@
         mjList.querySelectorAll('.pv-mj-del').forEach(b => b.addEventListener('click', async () => {
           const yr = b.dataset.year || '';
           const yrTxt = (yr && yr !== '0') ? ` (${yr})` : ' (todos los años)';
-          if (!confirm(`¿Eliminar «${b.dataset.j}»${yrTxt}?`)) return;
+          if (!await pvConfirm(`¿Eliminar «${b.dataset.j}»${yrTxt}?`)) return;
           try { await api('/admin/scimago/manual/delete', { method: 'POST', body: JSON.stringify({ journal: b.dataset.j, year: yr }) }); refreshManual(); }
           catch (e) { alert('No se pudo eliminar: ' + e.message); }
         }));
@@ -20336,12 +20415,12 @@
         run(year, 'revise', { request: req });
       });
       body.querySelectorAll('[data-vc-restore]').forEach(b => b.addEventListener('click', async () => {
-        if (!confirm('¿Restaurar esta versión? La actual queda guardada en el historial.')) return;
+        if (!await pvConfirm('¿Restaurar esta versión? La actual queda guardada en el historial.')) return;
         try { await api(`/vc/draft/${year}/versions/${b.dataset.vcRestore}/restore`, { method: 'POST' }); renderGenerator(year); }
         catch (e) { alert('Error: ' + e.message); }
       }));
       $('pv-vc-accept')?.addEventListener('click', async () => {
-        if (!confirm(`¿Aceptar esta versión como el informe final de ${year}?\n\nSe enlazarán sus artículos citados ` +
+        if (!await pvConfirm(`¿Aceptar esta versión como el informe final de ${year}?\n\nSe enlazarán sus artículos citados ` +
                      `(importando los que falten) en la colección «VC ${year}». Podrás reabrirlo si hace falta.`)) return;
         const b = $('pv-vc-accept'); b.disabled = true; b.textContent = 'Aceptando…';
         try {
@@ -21157,7 +21236,7 @@
     }
 
     async function deleteBackup(filename) {
-      if (!confirm(`¿Borrar el backup "${filename}"? Esta acción no se puede deshacer.`)) return;
+      if (!await pvConfirm(`¿Borrar el backup "${filename}"? Esta acción no se puede deshacer.`)) return;
       try {
         await adminApi(`/api/db/backups/${encodeURIComponent(filename)}/delete`, { method: 'POST' });
         loadList();
@@ -21709,12 +21788,12 @@
       });
     }
 
-    function openRowMenu(row) {
+    async function openRowMenu(row) {
       const term = row.dataset.term;
       const kind = row.dataset.kind;
       const it = items.find(i => i.term === term && i.kind === kind);
       if (!it) return;
-      const action = prompt(
+      const action = await pvPrompt(
         `Entrada: ${term}  (${kind})\n` +
         `Expansiones actuales:\n  ${it.expansions}\n\n` +
         `• Escribe NUEVAS expansiones (coma) para reemplazar.\n` +
@@ -21743,7 +21822,7 @@
     }
 
     async function doDelete(term, kind) {
-      if (!confirm(`Borrar "${term}" (${kind})?`)) return;
+      if (!await pvConfirm(`Borrar "${term}" (${kind})?`)) return;
       try {
         await api('/admin/query-expansion', {
           method: 'DELETE',
@@ -21884,7 +21963,7 @@
     banner.addEventListener('click', openModal);
     refreshBtn.addEventListener('click', refresh);
     resetBtn.addEventListener('click', async () => {
-      if (!confirm('Borrar el historial de éxitos/errores de todos los proveedores?')) return;
+      if (!await pvConfirm('Borrar el historial de éxitos/errores de todos los proveedores?')) return;
       try {
         await api('/admin/ai-providers-status/reset', {
           method: 'POST', body: JSON.stringify({}),
@@ -22422,9 +22501,9 @@
       el.addEventListener('click', () => _loadPreset(el.closest('[data-name]').dataset.name));
     });
     bar.querySelectorAll('.pv-er-preset-del').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
-        if (confirm(`¿Borrar el ajuste "${btn.dataset.name}"?`)) _deletePreset(btn.dataset.name);
+        if (await pvConfirm(`¿Borrar el ajuste "${btn.dataset.name}"?`)) _deletePreset(btn.dataset.name);
       });
     });
   }
@@ -22804,7 +22883,7 @@
     const ids = _visibleIds();
     if (!ids.length) { alert('No hay referencias visibles.'); return; }
 
-    if (!confirm(`Vas a exportar ${ids.length.toLocaleString()} artículo${ids.length === 1 ? '' : 's'} ` +
+    if (!await pvConfirm(`Vas a exportar ${ids.length.toLocaleString()} artículo${ids.length === 1 ? '' : 's'} ` +
                  `en formato BibTeX (.bib), para importar en el asistente de Publicaciones del CVN ` +
                  `Editor de FECYT.\n\n¿Continuar?`)) {
       return;
@@ -22883,7 +22962,7 @@
 
     // Guard against an accidental massive export (e.g. no filter → thousands).
     if (ids.length > _GOVASCO_BIG &&
-        !confirm(`Vas a generar el documento del Gobierno Vasco para ` +
+        !await pvConfirm(`Vas a generar el documento del Gobierno Vasco para ` +
                  `${ids.length.toLocaleString()} artículos.\n\n` +
                  `Puede tardar bastante (cada artículo consulta los indicadores ` +
                  `de SCImago) y no siempre es lo que quieres. ¿Continuar?\n\n` +
@@ -22948,8 +23027,8 @@
 
   // ── Save preset flow ──────────────────────────────────────────────────
 
-  function _promptSavePreset() {
-    const name = prompt('Nombre para este ajuste:', '');
+  async function _promptSavePreset() {
+    const name = await pvPrompt('Nombre para este ajuste:', '');
     if (name === null || !name.trim()) return;
     _config.marked_author = _markedInput.value.trim();
     _config.show_labels   = _showLabels.checked;
@@ -23379,7 +23458,7 @@
     }
 
     async function _deleteSub(subId) {
-      if (!confirm('¿Eliminar esta suscripción?')) return;
+      if (!await pvConfirm('¿Eliminar esta suscripción?')) return;
       try {
         await _notifApi(`/notifications/subscriptions/${subId}`, { method: 'DELETE' });
         _showStatus('ok', '✓ Eliminada.');
@@ -23680,7 +23759,7 @@
       });
       remListEl.querySelectorAll('.pv-rem-send').forEach(b => {
         b.addEventListener('click', async () => {
-          if (!confirm('¿Enviar este recordatorio ahora?')) return;
+          if (!await pvConfirm('¿Enviar este recordatorio ahora?')) return;
           b.disabled = true;
           try {
             await _notifApi(`/reminders/${b.dataset.id}/send-now`, { method: 'POST' });
@@ -23693,7 +23772,7 @@
       });
       remListEl.querySelectorAll('.pv-rem-delete').forEach(b => {
         b.addEventListener('click', async () => {
-          if (!confirm('¿Borrar este recordatorio?')) return;
+          if (!await pvConfirm('¿Borrar este recordatorio?')) return;
           try {
             await _notifApi(`/reminders/${b.dataset.id}`, { method: 'DELETE' });
             await _loadReminders();

@@ -130,9 +130,9 @@
       el.addEventListener('click', () => _loadPreset(el.closest('[data-name]').dataset.name));
     });
     bar.querySelectorAll('.pv-er-preset-del').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
-        if (confirm(`¿Borrar el ajuste "${btn.dataset.name}"?`)) _deletePreset(btn.dataset.name);
+        if (await pvConfirm(`¿Borrar el ajuste "${btn.dataset.name}"?`)) _deletePreset(btn.dataset.name);
       });
     });
   }
@@ -512,7 +512,7 @@
     const ids = _visibleIds();
     if (!ids.length) { alert('No hay referencias visibles.'); return; }
 
-    if (!confirm(`Vas a exportar ${ids.length.toLocaleString()} artículo${ids.length === 1 ? '' : 's'} ` +
+    if (!await pvConfirm(`Vas a exportar ${ids.length.toLocaleString()} artículo${ids.length === 1 ? '' : 's'} ` +
                  `en formato BibTeX (.bib), para importar en el asistente de Publicaciones del CVN ` +
                  `Editor de FECYT.\n\n¿Continuar?`)) {
       return;
@@ -591,7 +591,7 @@
 
     // Guard against an accidental massive export (e.g. no filter → thousands).
     if (ids.length > _GOVASCO_BIG &&
-        !confirm(`Vas a generar el documento del Gobierno Vasco para ` +
+        !await pvConfirm(`Vas a generar el documento del Gobierno Vasco para ` +
                  `${ids.length.toLocaleString()} artículos.\n\n` +
                  `Puede tardar bastante (cada artículo consulta los indicadores ` +
                  `de SCImago) y no siempre es lo que quieres. ¿Continuar?\n\n` +
@@ -656,8 +656,8 @@
 
   // ── Save preset flow ──────────────────────────────────────────────────
 
-  function _promptSavePreset() {
-    const name = prompt('Nombre para este ajuste:', '');
+  async function _promptSavePreset() {
+    const name = await pvPrompt('Nombre para este ajuste:', '');
     if (name === null || !name.trim()) return;
     _config.marked_author = _markedInput.value.trim();
     _config.show_labels   = _showLabels.checked;

@@ -429,7 +429,7 @@
                 style="margin-left:6px;padding:3px 10px;border-radius:6px;border:none;background:#92400e;
                        color:#fff;font-size:12px;cursor:pointer;">Rehacerlos con el texto completo</button>`;
       document.getElementById('pv-bs-redo-abstract').addEventListener('click', async () => {
-        if (!confirm(`Se extraerá el texto de los PDFs y se regenerarán ${r.count} resúmenes con ${selectedProvider}. ¿Continuar?`)) return;
+        if (!await pvConfirm(`Se extraerá el texto de los PDFs y se regenerarán ${r.count} resúmenes con ${selectedProvider}. ¿Continuar?`)) return;
         try {
           await api('/admin/batch-summary/start', { method: 'POST',
             body: JSON.stringify({ provider: selectedProvider, ids: r.ids }) });
@@ -1082,11 +1082,11 @@
 
     const btn = banner.querySelector('.pv-rag-more-btn');
     if (!btn) return;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       // Suggested next batch = either everything remaining (if it
       // fits in one more page) or another 50. The user can override.
       const suggested = Math.min(remaining, 50);
-      const raw = prompt(
+      const raw = await pvPrompt(
         `¿Cuántos artículos más quieres ver?\n\n` +
         `• Quedan ${remaining} más en la biblioteca.\n` +
         `• Máximo por consulta: ${hardCap} en total.\n` +
@@ -1485,7 +1485,7 @@
         } finally {
           addSummariesBtn.textContent = orig;
         }
-        if (!confirm(
+        if (!await pvConfirm(
           `Estadísticas de resúmenes IA:\n` +
           `• Total con resumen: ${stats.total_with_summary}\n` +
           `• Ya indexados: ${stats.already_indexed}\n` +
@@ -1515,7 +1515,7 @@
     const addAbstractsBtn = document.getElementById('pv-bi-add-abstracts');
     if (addAbstractsBtn) {
       addAbstractsBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           'Añadir vectorización del abstract a todos los artículos que ya tienen\n' +
           'chunks pero no tienen chunk de tipo "abstract".\n\n' +
           '• Omite artículos marcados como "abstract no disponible".\n' +
@@ -1544,7 +1544,7 @@
     const addPdfBtn = document.getElementById('pv-bi-add-pdf');
     if (addPdfBtn) {
       addPdfBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           'Añadir vectorización del PDF completo a los artículos que ya tienen\n' +
           'chunks (abstract/resumen) pero les falta el texto del PDF.\n\n' +
           '• No toca los chunks existentes (abstract, summary_ai).\n' +
@@ -1572,7 +1572,7 @@
     const addNotesBtn = document.getElementById('pv-bi-add-notes');
     if (addNotesBtn) {
       addNotesBtn.addEventListener('click', async () => {
-        if (!confirm(
+        if (!await pvConfirm(
           'Vectorizar las notas flotantes existentes para que la búsqueda IA\n' +
           'las tenga en cuenta.\n\n' +
           '• Cada nota solo aparece en los resultados de su propio autor —\n' +
@@ -1604,7 +1604,7 @@
     // a 4-hour-old embedding investment.
     if (resetBtn) {
       resetBtn.addEventListener('click', async () => {
-        const confirm1 = confirm(
+        const confirm1 = await pvConfirm(
           'BORRAR todos los embeddings existentes y regenerarlos ' +
           'desde cero con el modelo actual (voyage-4-large)?\n\n' +
           '• Vacía la tabla article_chunk completa (PDF, abstract, resumen IA Y notas).\n' +
@@ -1617,7 +1617,7 @@
             '$3-6 (Voyage).'
         );
         if (!confirm1) return;
-        const confirm2 = prompt(
+        const confirm2 = await pvPrompt(
           'Para confirmar, escribe exactamente: RESET'
         );
         if (confirm2 !== 'RESET') {
@@ -2080,7 +2080,7 @@
     // Per-paper log controls
     const clearLogBtn = document.getElementById('pv-bsp-log-clear');
     if (clearLogBtn) clearLogBtn.addEventListener('click', async () => {
-      if (!confirm('Vaciar el log de esta sesión? (los contadores procesados/fallidos no se tocan)')) return;
+      if (!await pvConfirm('Vaciar el log de esta sesión? (los contadores procesados/fallidos no se tocan)')) return;
       try {
         await api('/admin/batch-searchable/clear-events', { method: 'POST' });
         refresh();
@@ -2096,7 +2096,7 @@
     // running it keeps running, just starts counting from zero again.
     const resetSessionBtn = document.getElementById('pv-bsp-log-reset');
     if (resetSessionBtn) resetSessionBtn.addEventListener('click', async () => {
-      if (!confirm(
+      if (!await pvConfirm(
         'Limpiar a fondo? Se borran:\n\n' +
         '  • El log de eventos\n' +
         '  • El banner de "Último error"\n' +
@@ -2254,7 +2254,7 @@
       const row = document.querySelector(`[data-prob-aid="${CSS.escape(aid)}"]`);
       if (!row) return;
       const btn = row.querySelector('.pv-bsp-prob-skip');
-      if (!confirm(
+      if (!await pvConfirm(
         'Marcar este PDF como "no insistas más"?\n\n' +
         '• El batch Make-searchable lo dejará en paz.\n' +
         '• Puedes revertirlo desde la sección "Excluidos permanentemente".\n'
@@ -2295,7 +2295,7 @@
       const row = document.querySelector(`[data-prob-aid="${CSS.escape(aid)}"]`);
       if (!row) return;
       const btn = row.querySelector('.pv-bsp-prob-del');
-      if (!confirm(
+      if (!await pvConfirm(
         'Borrar este artículo de PrionVault?\n\n' +
         '• La fila se borra de la base de datos.\n' +
         '• El PDF de Dropbox también (queda en el historial ~30 días).\n' +

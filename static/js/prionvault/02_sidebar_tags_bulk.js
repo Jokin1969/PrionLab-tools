@@ -94,7 +94,7 @@
   async function _chunksReindex() {
     const btn = document.getElementById('pv-chunks-reindex');
     if (!btn || !_chunksCurrentArticleId) return;
-    if (!confirm('Reindexar este artículo:\n\n' +
+    if (!await pvConfirm('Reindexar este artículo:\n\n' +
                  '• Borra los chunks actuales y los recrea desde el texto extraído.\n' +
                  '• Vuelve a llamar a Voyage para cada chunk (≈ 0,0001-0,001 USD).\n\n' +
                  '¿Continuar?')) return;
@@ -762,7 +762,7 @@
     const btn = document.getElementById('btn-new-tag');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-      const name = prompt('Nombre del tag:');
+      const name = await pvPrompt('Nombre del tag:');
       if (!name || !name.trim()) return;
       // Quick colour palette — typing the colour name is allowed too.
       const palette = {
@@ -770,7 +770,7 @@
         verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
         rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
       };
-      const colorInput = prompt(
+      const colorInput = await pvPrompt(
         'Color (hex #rrggbb o nombre: rojo / naranja / amarillo / ' +
         'verde / azul / morado / rosa / gris / cian). Vacío = sin color.'
       );
@@ -859,21 +859,21 @@
         });
         const editEl = btn.querySelector('.pv-tag-edit');
         if (editEl) {
-          editEl.addEventListener('click', (ev) => {
+          editEl.addEventListener('click', async (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
             if (isSmart) { openTagModal(t); return; }
-            const newName = (prompt('Nuevo nombre para el tag:', t.name) || '').trim();
+            const newName = (await pvPrompt('Nuevo nombre para el tag:', t.name) || '').trim();
             if (!newName || newName === t.name) return;
             api(`/tags/${t.id}`, { method: 'PUT', body: JSON.stringify({ name: newName, color: t.color }) })
               .then(() => refreshTags())
               .catch(e => alert('Error al renombrar: ' + (e.message || e)));
           });
         }
-        btn.addEventListener('contextmenu', ev => {
+        btn.addEventListener('contextmenu', async ev => {
           if (!IS_ADMIN) return;
           ev.preventDefault();
-          if (!confirm(`¿Borrar el tag "${t.name}"? Los artículos que lo lleven dejan de tenerlo asignado (no se borran).`)) return;
+          if (!await pvConfirm(`¿Borrar el tag "${t.name}"? Los artículos que lo lleven dejan de tenerlo asignado (no se borran).`)) return;
           api(`/tags/${t.id}`, { method: 'DELETE' })
             .then(() => { if (state.tagId === t.id) state.tagId = null;
                           refreshTags(); loadArticles(); refreshFilterIndicators(); })
@@ -1513,7 +1513,7 @@
         const count = state.selectedIds.size;
         if (!count) return;
         const phrase = String(count);
-        const typed = prompt(
+        const typed = await pvPrompt(
           `Vas a eliminar ${count} artículo${count === 1 ? '' : 's'} y ` +
           `su${count === 1 ? '' : 's'} PDF${count === 1 ? '' : 's'} de Dropbox.\n\n` +
           `Esta acción NO se puede deshacer desde la app (Dropbox guarda 30 días ` +
@@ -1549,7 +1549,7 @@
   async function doBulkUserState(payload, descr) {
     const ids = Array.from(state.selectedIds);
     if (!ids.length) return;
-    if (ids.length > 5 && !confirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
+    if (ids.length > 5 && !await pvConfirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
     try {
       await api('/articles/bulk-user-state', {
         method: 'POST',
@@ -1565,7 +1565,7 @@
   async function doBulkJc(value, descr) {
     const ids = Array.from(state.selectedIds);
     if (!ids.length) return;
-    if (ids.length > 5 && !confirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
+    if (ids.length > 5 && !await pvConfirm(`Marcar como "${descr}" ${ids.length} artículos. ¿Continuar?`)) return;
     try {
       await api('/articles/bulk-jc', {
         method: 'POST',
@@ -1687,7 +1687,7 @@
   async function doBulk(updates, descr) {
     const count = state.selectedIds.size;
     if (!count) return;
-    if (count > 5 && !confirm(`Aplicar "${descr}" a ${count} artículos. ¿Continuar?`)) return;
+    if (count > 5 && !await pvConfirm(`Aplicar "${descr}" a ${count} artículos. ¿Continuar?`)) return;
     try {
       const r = await bulkPatch(updates);
       // Reload the list so the visual state matches the DB.

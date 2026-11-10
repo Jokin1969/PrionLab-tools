@@ -551,7 +551,7 @@
     }
 
     async function deleteBackup(filename) {
-      if (!confirm(`¿Borrar el backup "${filename}"? Esta acción no se puede deshacer.`)) return;
+      if (!await pvConfirm(`¿Borrar el backup "${filename}"? Esta acción no se puede deshacer.`)) return;
       try {
         await adminApi(`/api/db/backups/${encodeURIComponent(filename)}/delete`, { method: 'POST' });
         loadList();
@@ -1103,12 +1103,12 @@
       });
     }
 
-    function openRowMenu(row) {
+    async function openRowMenu(row) {
       const term = row.dataset.term;
       const kind = row.dataset.kind;
       const it = items.find(i => i.term === term && i.kind === kind);
       if (!it) return;
-      const action = prompt(
+      const action = await pvPrompt(
         `Entrada: ${term}  (${kind})\n` +
         `Expansiones actuales:\n  ${it.expansions}\n\n` +
         `• Escribe NUEVAS expansiones (coma) para reemplazar.\n` +
@@ -1137,7 +1137,7 @@
     }
 
     async function doDelete(term, kind) {
-      if (!confirm(`Borrar "${term}" (${kind})?`)) return;
+      if (!await pvConfirm(`Borrar "${term}" (${kind})?`)) return;
       try {
         await api('/admin/query-expansion', {
           method: 'DELETE',
@@ -1278,7 +1278,7 @@
     banner.addEventListener('click', openModal);
     refreshBtn.addEventListener('click', refresh);
     resetBtn.addEventListener('click', async () => {
-      if (!confirm('Borrar el historial de éxitos/errores de todos los proveedores?')) return;
+      if (!await pvConfirm('Borrar el historial de éxitos/errores de todos los proveedores?')) return;
       try {
         await api('/admin/ai-providers-status/reset', {
           method: 'POST', body: JSON.stringify({}),

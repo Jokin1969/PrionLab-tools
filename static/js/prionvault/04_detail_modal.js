@@ -500,7 +500,7 @@
     const delBtn = sec.querySelector('#pv-rate-delete');
     if (delBtn) {
       delBtn.addEventListener('click', async () => {
-        if (!confirm('¿Borrar tu valoración para este artículo?')) return;
+        if (!await pvConfirm('¿Borrar tu valoración para este artículo?')) return;
         delBtn.disabled = true;
         try {
           const r = await api(`/articles/${a.id}/ratings`, { method: 'DELETE' });
@@ -816,9 +816,9 @@
           verde: '#22c55e', azul: '#3b82f6', morado: '#a855f7',
           rosa: '#ec4899', gris: '#6b7280', cian: '#06b6d4',
         };
-        const name = prompt('Nombre del nuevo tag:');
+        const name = await pvPrompt('Nombre del nuevo tag:');
         if (!name || !name.trim()) return;
-        const colorInput = prompt(
+        const colorInput = await pvPrompt(
           'Color (hex #rrggbb o nombre: rojo/naranja/amarillo/verde/azul/morado/rosa/gris/cian).\nVacío = sin color.'
         );
         let color = null;
@@ -991,11 +991,11 @@
 
     if (admin) {
       list.querySelectorAll('[data-action="edit"], .pv-supp-caption').forEach(el =>
-        el.addEventListener('click', ev => {
+        el.addEventListener('click', async ev => {
           const sid = ev.currentTarget.dataset.sid;
           const item = items.find(x => x.id === sid);
           if (!item) return;
-          const next = prompt('Descripción del archivo:', item.caption || '');
+          const next = await pvPrompt('Descripción del archivo:', item.caption || '');
           if (next === null) return;
           patchSupplementaryCaption(a, sid, next.trim(), items);
         }));
@@ -1004,7 +1004,7 @@
           const sid  = ev.currentTarget.dataset.sid;
           const item = items.find(x => x.id === sid);
           if (!item) return;
-          if (!confirm(`¿Eliminar "${item.filename}"?`)) return;
+          if (!await pvConfirm(`¿Eliminar "${item.filename}"?`)) return;
           try {
             await api(`/articles/${a.id}/supplementary/${sid}`, { method: 'DELETE' });
             renderSupplementarySection(a);
@@ -1039,7 +1039,7 @@
       input.addEventListener('change', async () => {
         const f = input.files && input.files[0];
         if (!f) return;
-        const caption = prompt(
+        const caption = await pvPrompt(
           `Descripción para "${f.name}" (opcional):`, '');
         if (caption === null) return;            // cancelled
         const fd = new FormData();

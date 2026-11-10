@@ -142,7 +142,7 @@
       } catch (e) {
         if (e.status === 409) {
           const noteText = (e.body && e.body.note_text) || '';
-          if (noteText && confirm(
+          if (noteText && await pvConfirm(
             `Ya tienes las 5 notas máximas en este artículo, así que no se pudo guardar.\n\n` +
             `Nota generada:\n"${noteText}"\n\n¿Copiarla al portapapeles?`
           )) {
@@ -285,7 +285,7 @@
         list.querySelectorAll('.pv-chat-hist-del').forEach(btn => {
           btn.addEventListener('click', async ev => {
             ev.stopPropagation();
-            if (!confirm('¿Eliminar esta conversación? No se puede deshacer.')) return;
+            if (!await pvConfirm('¿Eliminar esta conversación? No se puede deshacer.')) return;
             try {
               await api(`/chats/${btn.dataset.cid}`, { method: 'DELETE' });
               if (_chatId === btn.dataset.cid) newConversation();
@@ -974,7 +974,7 @@
           e.stopPropagation();
           const id = btn.dataset.id;
           const chat = _chats.find(c => c.id === id);
-          if (!confirm(`¿Borrar la conversación "${chat ? (chat.title || 'Nueva conversación') : ''}" entera? No se puede deshacer.`)) return;
+          if (!await pvConfirm(`¿Borrar la conversación "${chat ? (chat.title || 'Nueva conversación') : ''}" entera? No se puede deshacer.`)) return;
           try {
             await api(`/library-chats/${id}`, { method: 'DELETE' });
             _chats = _chats.filter(c => c.id !== id);
@@ -1077,7 +1077,7 @@
 
     // ── Delete a Q&A pair ──────────────────────────────────────────────────
     async function deletePair(userMsgId) {
-      if (!confirm('¿Borrar esta pregunta y su respuesta? No se puede deshacer.')) return;
+      if (!await pvConfirm('¿Borrar esta pregunta y su respuesta? No se puede deshacer.')) return;
       try {
         await api(`/library-chats/${_currentChatId}/messages/${userMsgId}`, { method: 'DELETE' });
         await openChat(_currentChatId);

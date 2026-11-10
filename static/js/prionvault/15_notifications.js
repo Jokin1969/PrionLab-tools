@@ -377,7 +377,7 @@
     }
 
     async function _deleteSub(subId) {
-      if (!confirm('¿Eliminar esta suscripción?')) return;
+      if (!await pvConfirm('¿Eliminar esta suscripción?')) return;
       try {
         await _notifApi(`/notifications/subscriptions/${subId}`, { method: 'DELETE' });
         _showStatus('ok', '✓ Eliminada.');
@@ -678,7 +678,7 @@
       });
       remListEl.querySelectorAll('.pv-rem-send').forEach(b => {
         b.addEventListener('click', async () => {
-          if (!confirm('¿Enviar este recordatorio ahora?')) return;
+          if (!await pvConfirm('¿Enviar este recordatorio ahora?')) return;
           b.disabled = true;
           try {
             await _notifApi(`/reminders/${b.dataset.id}/send-now`, { method: 'POST' });
@@ -691,7 +691,7 @@
       });
       remListEl.querySelectorAll('.pv-rem-delete').forEach(b => {
         b.addEventListener('click', async () => {
-          if (!confirm('¿Borrar este recordatorio?')) return;
+          if (!await pvConfirm('¿Borrar este recordatorio?')) return;
           try {
             await _notifApi(`/reminders/${b.dataset.id}`, { method: 'DELETE' });
             await _loadReminders();

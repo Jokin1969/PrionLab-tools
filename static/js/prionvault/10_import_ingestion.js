@@ -545,7 +545,7 @@
     const clearBtn = document.getElementById('pv-queue-clear-failed');
     if (clearBtn) {
       clearBtn.addEventListener('click', async () => {
-        if (!confirm('¿Borrar todas las filas terminadas (failed, duplicate y done)? Las que estén en curso (queued / processing) se mantienen. La acción no se puede deshacer.')) return;
+        if (!await pvConfirm('¿Borrar todas las filas terminadas (failed, duplicate y done)? Las que estén en curso (queued / processing) se mantienen. La acción no se puede deshacer.')) return;
         clearBtn.disabled = true;
         try {
           const r = await fetch('/prionvault/api/ingest/clear-failed', {
@@ -630,7 +630,7 @@
     }
     tr.querySelector('.pv-btn-del').addEventListener('click', async () => {
       const label = `${j.pdf_filename || '(sin nombre)'} (#${j.id}, ${j.status})`;
-      if (!confirm(`Borrar la fila ${label} de la cola?\n\nSi el PDF estaba a medio procesar también se elimina el archivo staged. La acción no se puede deshacer.`)) return;
+      if (!await pvConfirm(`Borrar la fila ${label} de la cola?\n\nSi el PDF estaba a medio procesar también se elimina el archivo staged. La acción no se puede deshacer.`)) return;
       try {
         const r = await fetch('/prionvault/api/ingest/jobs/' + j.id, {
           method: 'DELETE', credentials: 'same-origin',
@@ -1223,7 +1223,7 @@
     const btn = document.getElementById('btn-scan-folder');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-      const folder = prompt(
+      const folder = await pvPrompt(
         'Carpeta de Dropbox a escanear (los PDFs que se importen bien o ya estén ' +
         'en la biblioteca se borrarán de ahí; los que fallen permanecen):',
         '/PrionLab tools/PDFs'
@@ -1316,7 +1316,7 @@
     const btn = document.getElementById('btn-clean-metadata');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-      if (!confirm('Va a recorrer todos los artículos limpiando entidades HTML y ' +
+      if (!await pvConfirm('Va a recorrer todos los artículos limpiando entidades HTML y ' +
                    'transformando sup/sub a Unicode. La acción es idempotente y ' +
                    'reversible (solo actualiza filas con cambios). ¿Continuar?')) {
         return;
@@ -1570,9 +1570,9 @@
 
     document.getElementById('pv-pmid-log-errors-only')?.addEventListener('change', _syncPmidLogVisibility);
 
-    document.getElementById('pv-pmid-log-clear')?.addEventListener('click', () => {
+    document.getElementById('pv-pmid-log-clear')?.addEventListener('click', async () => {
       if (!logEl.querySelector('.pv-pmid-log-row')) return;
-      if (!confirm('Vaciar el log de esta sesión?\n\nNo afecta a la base de datos ni a los contadores — solo limpia lo que ves en este panel.')) return;
+      if (!await pvConfirm('Vaciar el log de esta sesión?\n\nNo afecta a la base de datos ni a los contadores — solo limpia lo que ves en este panel.')) return;
       logEl.innerHTML =
         '<div style="color:#9ca3af;text-align:center;padding:24px 12px;">El log de búsquedas aparecerá aquí.</div>';
       _syncPmidLogCount();
@@ -1773,7 +1773,7 @@
       if (!row) return;
       const status = row.querySelector('.pv-pmid-manual-status');
       const btn    = row.querySelector('.pv-pmid-manual-delete');
-      if (!confirm(
+      if (!await pvConfirm(
         'Borrar este artículo de PrionVault?\n\n' +
         '• La fila se borra de la base de datos.\n' +
         '• El PDF de Dropbox también (queda en el historial ~30 días).\n' +
@@ -1872,7 +1872,7 @@
       if (!row) return;
       const btn    = row.querySelector('.pv-pmid-manual-nopmid');
       const status = row.querySelector('.pv-pmid-manual-status');
-      if (!confirm('Marcar este artículo como confirmado-sin-PMID?\n\n' +
+      if (!await pvConfirm('Marcar este artículo como confirmado-sin-PMID?\n\n' +
                    '• La búsqueda automática lo saltará en futuros lotes.\n' +
                    '• Desaparece de esta lista de pendientes.\n' +
                    '• Se puede deshacer luego desde Editar → vaciar campo y guardar.\n\n' +
@@ -2232,7 +2232,7 @@
         });
         list.querySelectorAll('.pv-dup-delete').forEach(b => {
           b.addEventListener('click', async () => {
-            if (!confirm('¿Borrar este artículo definitivamente? Se elimina también el PDF de Dropbox.')) return;
+            if (!await pvConfirm('¿Borrar este artículo definitivamente? Se elimina también el PDF de Dropbox.')) return;
             b.disabled = true;
             b.textContent = '…';
             try {
@@ -2252,7 +2252,7 @@
           b.addEventListener('click', async () => {
             const card = b.closest('.pv-dup-pair');
             if (!card) return;
-            const reason = prompt(
+            const reason = await pvPrompt(
               'Confirmar que NO son duplicados.\n\n' +
               'La pareja no volverá a aparecer en futuros escaneos. ' +
               'Si quieres, escribe una nota corta para tu propio registro ' +

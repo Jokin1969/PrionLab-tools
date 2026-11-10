@@ -438,12 +438,12 @@
         run(year, 'revise', { request: req });
       });
       body.querySelectorAll('[data-vc-restore]').forEach(b => b.addEventListener('click', async () => {
-        if (!confirm('¿Restaurar esta versión? La actual queda guardada en el historial.')) return;
+        if (!await pvConfirm('¿Restaurar esta versión? La actual queda guardada en el historial.')) return;
         try { await api(`/vc/draft/${year}/versions/${b.dataset.vcRestore}/restore`, { method: 'POST' }); renderGenerator(year); }
         catch (e) { alert('Error: ' + e.message); }
       }));
       $('pv-vc-accept')?.addEventListener('click', async () => {
-        if (!confirm(`¿Aceptar esta versión como el informe final de ${year}?\n\nSe enlazarán sus artículos citados ` +
+        if (!await pvConfirm(`¿Aceptar esta versión como el informe final de ${year}?\n\nSe enlazarán sus artículos citados ` +
                      `(importando los que falten) en la colección «VC ${year}». Podrás reabrirlo si hace falta.`)) return;
         const b = $('pv-vc-accept'); b.disabled = true; b.textContent = 'Aceptando…';
         try {
