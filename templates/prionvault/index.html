@@ -188,158 +188,8 @@
      global floating help button to avoid confusion. */
   #hs-toggle { display: none !important; }
 
-  @media (max-width: 800px) {
-    /* The page navbar is sticky and z-index 900; floating widgets that
-       want to coexist with the search bar / modals would only get in
-       the way at this size. */
-
-    /* We keep the desktop flex layout (main scrolls, page doesn't).
-       The aside is yanked out of the flow with position: fixed below,
-       so main automatically takes the full width — no display override
-       needed and the search bar's sticky behaviour stays intact. */
-
-    /* Sidebar = slide-in drawer. Default off-screen, slides in when
-       body.pv-mobile-drawer-open is set by the hamburger handler. */
-    #pv-sidebar {
-      position: fixed !important;
-      top: 60px;                 /* below the global navbar */
-      left: 0; bottom: 0;
-      width: 280px !important;
-      z-index: 200;
-      transform: translateX(-100%);
-      transition: transform 0.25s ease;
-      box-shadow: 0 0 24px rgba(0,0,0,0.3);
-    }
-    body.pv-mobile-drawer-open #pv-sidebar { transform: translateX(0); }
-    /* Dark backdrop while the drawer is open. */
-    body.pv-mobile-drawer-open::before {
-      content: '';
-      position: fixed; inset: 60px 0 0 0; z-index: 150;
-      background: rgba(0,0,0,0.45);
-    }
-    /* The desktop-only drag-to-resize strip has no purpose on touch. */
-    #pv-sidebar-resize { display: none !important; }
-
-    /* Hamburger button: hidden on desktop, shown here. */
-    #pv-mobile-menu-btn { display: inline-flex !important; }
-
-    /* Search bar: tighter padding so the input doesn't get crushed. */
-    #pv-search-wrap { padding: 10px 14px !important; flex: 1 !important; }
-    /* 16 px font on the input prevents iOS Safari's auto-zoom on focus. */
-    #pv-search-input { font-size: 16px !important; }
-
-    /* Filter strip: horizontal scroll instead of wrapping into a mess.
-       The id was added to the markup so we can refine which filters
-       are visible on phones without touching desktop. */
-    #pv-filter-strip { overflow-x: auto !important; flex-wrap: nowrap !important; }
-
-    /* Listing table → card layout per row. Tables don't fit at 380 px. */
-    #pv-results-grid {
-      border: none !important;
-      background: transparent !important;
-      border-radius: 0 !important;
-    }
-    #pv-results-table { display: block !important; }
-    #pv-results-table thead { display: none !important; }
-    #pv-results-table tbody { display: block !important; padding: 8px !important; }
-    #pv-results-table tr.pv-article-row {
-      display: grid !important;
-      grid-template-columns: 1fr auto;
-      grid-template-areas:
-        "article checkbox"
-        "article marks"
-        "article asignado"
-        "links   links";
-      gap: 6px 8px;
-      background: white !important;
-      border: 1px solid #e5e7eb !important;
-      border-radius: 10px !important;
-      margin-bottom: 10px !important;
-      padding: 12px !important;
-    }
-    #pv-results-table tr.pv-article-row td {
-      display: block !important;
-      padding: 0 !important;
-      border: none !important;
-    }
-    /* Cell order in the desktop table:
-         1 checkbox, 2 Marks, 3 Article, 4 Year, 5 Pages, 6 Prio,
-         7 Links, 8 Asignado.
-       On mobile we keep checkbox + Marks + Article + Links + Asignado;
-       hide Year (already inside the Article cell's metadata line),
-       Pages and Prio (admin niceties not worth the space). The Links
-       row at the bottom gives the operator a thumb-sized PDF / DOI /
-       PMID with the PDF wired to open in a new tab (see the JS). */
-    #pv-results-table tr.pv-article-row td:nth-child(1) { grid-area: checkbox; text-align: right; }
-    #pv-results-table tr.pv-article-row td:nth-child(2) { grid-area: marks;    text-align: right; }
-    #pv-results-table tr.pv-article-row td:nth-child(3) { grid-area: article; min-width: 0; }
-    #pv-results-table tr.pv-article-row td:nth-child(4),
-    #pv-results-table tr.pv-article-row td:nth-child(5),
-    #pv-results-table tr.pv-article-row td:nth-child(6) { display: none !important; }
-    #pv-results-table tr.pv-article-row td:nth-child(7) {
-      grid-area: links;
-      padding-top: 8px !important;
-      border-top: 1px solid #f3f4f6 !important;
-      margin-top: 4px;
-    }
-    #pv-results-table tr.pv-article-row td:nth-child(7) > div {
-      gap: 8px !important;
-    }
-    /* Touch-sized pills (PDF / DOI / PMID). */
-    #pv-results-table tr.pv-article-row td:nth-child(7) a,
-    #pv-results-table tr.pv-article-row td:nth-child(7) button {
-      font-size: 13px !important;
-      padding: 8px 14px !important;
-      min-height: 36px !important;
-    }
-    /* The "PDF" pill gets a bolder treatment on mobile so it pops as
-       the primary action of the card. */
-    #pv-results-table tr.pv-article-row td:nth-child(7) button.pv-pdf-pill {
-      background: #b91c1c !important;
-      color: white !important;
-      font-weight: 700 !important;
-    }
-    #pv-results-table tr.pv-article-row td:nth-child(8) { grid-area: asignado; text-align: right; font-size: 11px; }
-
-    /* Universal "hide on mobile" hook — used on filters / IA buttons /
-       bulk-lookup input. Add the class to any element and it disappears
-       below 800 px without affecting desktop. */
-    .pv-mobile-hide { display: none !important; }
-
-    /* Modals: full width AND start below the 60-px sticky navbar so
-       the close X is always within reach (the navbar has z-index 900
-       which sits above the modal's z-index 50; without this padding
-       the X at top:14 of modal-inner ends up hidden under it). */
-    .pv-modal {
-      padding: 72px 0 3vh !important;
-      align-items: flex-start !important;
-    }
-    .pv-modal-inner {
-      width: calc(100% - 16px) !important;
-      max-width: none !important;
-      padding: 36px 16px 20px !important;
-      max-height: calc(100vh - 100px) !important;
-      border-radius: 12px !important;
-    }
-
-    /* Bulk-bar: pin to a usable spot at the bottom on mobile. */
-    #pv-bulk-bar {
-      left: 12px !important;
-      right: 12px !important;
-      transform: none !important;
-      bottom: 12px !important;
-      flex-wrap: wrap !important;
-      gap: 8px !important;
-      font-size: 12px !important;
-      padding: 10px !important;
-    }
-
-    /* Touch-friendly hit-targets. */
-    .pv-nav-btn { min-height: 40px; padding: 10px 12px !important; font-size: 14px !important; }
-
-    /* Pagination links sit too close on phones — give them air. */
-    #pv-pagination button { min-height: 36px; min-width: 36px; }
-  }
+  /* The phone/tablet layout (≤800 px) lives in static/css/prionvault_mobile.css,
+     loaded below with a media attribute so desktop never applies it. */
 
   /* RAG citation extract: the <details> element gets a native
      disclosure triangle that Safari/Chrome/Firefox each render
@@ -402,6 +252,8 @@
     .pvgl-edit-grid { grid-template-columns: 1fr 1fr; }
   }
 </style>
+<link rel="stylesheet" media="(max-width: 800px)" href="{{ asset_url('css/prionvault_mobile.css') }}">
+<link rel="stylesheet" media="(min-width: 801px) and (max-width: 1279px)" href="{{ asset_url('css/prionvault_tablet.css') }}">
 {% endblock %}
 
 {% block main_body %}
@@ -740,9 +592,9 @@
     </div>
 
     <!-- Search bar -->
-    <div style="position:sticky;top:0;z-index:10;background:white;border-bottom:1px solid #e5e7eb;
+    <div id="pv-topbar" style="position:sticky;top:0;z-index:10;background:white;border-bottom:1px solid #e5e7eb;
                 padding:14px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <div id="pv-toolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <button id="pv-mobile-menu-btn" type="button"
                 aria-label="Abrir menú lateral"
                 title="Abrir menú lateral"
@@ -999,7 +851,7 @@
                 flex-wrap:wrap;align-items:center;gap:14px;font-size:13px;"></div>
 
     <!-- Article list + pagination -->
-    <div style="padding:0 24px 24px;flex:1;">
+    <div id="pv-list-wrap" style="padding:0 24px 24px;flex:1;">
       <div id="pv-results-grid"
            style="background:white;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden;">
         <table id="pv-results-table" style="width:100%;border-collapse:separate;border-spacing:0;font-size:13px;table-layout:fixed;">

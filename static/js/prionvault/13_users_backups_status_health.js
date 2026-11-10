@@ -1335,6 +1335,22 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && document.body.classList.contains(KLS)) close();
     });
+
+    // Phones only: fold the second line of the top bar while scrolling down
+    // the list, so the results get the screen; bring it back on scroll-up.
+    const topbar = document.getElementById('pv-topbar');
+    const scroller = topbar && topbar.parentElement;
+    const phone = window.matchMedia('(max-width: 800px)');
+    if (scroller) {
+      let last = 0;
+      scroller.addEventListener('scroll', () => {
+        if (!phone.matches) { topbar.classList.remove('pv-compact'); return; }
+        const y = scroller.scrollTop;
+        if (y < 60 || y < last - 12) topbar.classList.remove('pv-compact');
+        else if (y > last + 4 && y > 140) topbar.classList.add('pv-compact');
+        last = y;
+      }, { passive: true });
+    }
   }
 
   // ── Library Health ──────────────────────────────────────────────────────

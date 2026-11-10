@@ -1,0 +1,350 @@
+/* PrionVault — phone / narrow-tablet layout (≤ 800 px).
+ *
+ * This file is linked with media="(max-width: 800px)", so a desktop browser
+ * never applies a single rule of it: nothing here can change the desktop UI.
+ * Most rules need !important because the desktop layout is written as inline
+ * styles in the template and in the row/modal builders.
+ *
+ * Goals on a phone: search, read, open the PDF, mark, take notes, chat.
+ * Admin batch tools stay reachable from the drawer but are not redesigned.
+ */
+
+/* ── Page frame ─────────────────────────────────────────────────────────── */
+
+html { -webkit-text-size-adjust: 100%; }
+
+/* The app fills the screen and only the article list scrolls, so the search
+   bar stays on top and the selection bar stays at the bottom (on a phone the
+   whole page used to scroll, taking both out of reach). */
+html, body { height: 100dvh !important; min-height: 0 !important; overflow: hidden !important; }
+.site-header { padding-top: 0 !important; padding-bottom: 0 !important; flex-shrink: 0; }
+.site-header .nb-container { height: 52px !important; }
+.site-main { flex: 1 1 0 !important; min-height: 0 !important; }
+.site-footer { display: none !important; }
+#prionvault-app { overscroll-behavior: contain; }
+#prionvault-app > main { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+/* Sidebar = slide-in drawer (opened by the ☰ button; JS toggles the class). */
+#pv-sidebar {
+  position: fixed !important;
+  top: 0; left: 0; bottom: 0;              /* full height, over the site navbar */
+  width: min(86vw, 320px) !important;
+  z-index: 1000;
+  transform: translateX(-100%);
+  transition: transform 0.22s ease;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.3);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+body.pv-mobile-drawer-open #pv-sidebar { transform: translateX(0); }
+body.pv-mobile-drawer-open::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 990;
+  background: rgba(0, 0, 0, 0.45);
+}
+#pv-sidebar-resize { display: none !important; }
+#pv-sidebar .pv-nav-btn { min-height: 44px; padding: 10px 14px !important; font-size: 15px !important; }
+
+.pv-mobile-hide { display: none !important; }
+
+/* ── Top bar: ☰ + search on the first line, actions on the second ───────── */
+
+#pv-topbar { padding: 8px 10px !important; }
+#pv-toolbar {
+  align-items: flex-start !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-bottom: 0 !important;
+}
+#pv-mobile-menu-btn {
+  display: inline-flex !important;
+  width: 44px !important; height: 44px !important;
+  font-size: 18px !important;
+}
+#pv-search-wrap {
+  flex: 1 1 calc(100% - 56px) !important;
+  min-width: 0 !important;
+  flex-wrap: wrap !important;
+  padding: 0 10px !important;
+  min-height: 44px;
+  gap: 6px 8px !important;
+  background: #f3f4f6 !important;
+  border-color: #e5e7eb !important;
+}
+#pv-search-wrap > i { order: 1; font-size: 15px !important; }
+#pv-search-input {
+  order: 2;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  height: 44px;
+  font-size: 16px !important;          /* < 16 px makes iOS zoom the page on focus */
+}
+#pv-search-clear {
+  order: 3;
+  width: 28px !important; height: 28px !important;
+  font-size: 17px !important;
+}
+/* AND/OR and the field toggles (T · Au · A · R · 📅) drop to their own line
+   and only show while searching, so the bar stays one line tall otherwise. */
+#pv-search-mode-btns, #pv-search-field-btns { display: none !important; order: 5; }
+#pv-search-wrap:focus-within #pv-search-mode-btns,
+#pv-search-wrap:focus-within #pv-search-field-btns,
+#pv-search-input:not(:placeholder-shown) ~ #pv-search-mode-btns,
+#pv-search-input:not(:placeholder-shown) ~ #pv-search-field-btns {
+  display: flex !important;
+  padding-bottom: 8px;
+  gap: 4px !important;
+}
+#pv-search-mode-btns { flex-basis: auto; margin-right: 6px; }
+/* a full-width break before the toggle line */
+#pv-search-wrap:focus-within::after,
+#pv-search-wrap:has(#pv-search-input:not(:placeholder-shown))::after {
+  content: ''; order: 4; flex-basis: 100%; height: 0;
+}
+#pv-search-mode-btns button, #pv-search-field-btns button {
+  min-width: 32px; min-height: 30px;
+  padding: 4px 7px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+}
+
+/* Second line: icon buttons, 44 px targets, the sort selector takes the slack. */
+#pv-toolbar > button {
+  width: 44px !important; height: 44px !important;
+  font-size: 18px !important;
+  flex-shrink: 0;
+}
+#pv-toolbar > #btn-advanced-search {      /* icon only: the label does not fit */
+  padding: 0 !important;
+  font-size: 0 !important;
+  gap: 0 !important;
+}
+#pv-toolbar > #btn-advanced-search i { font-size: 17px !important; margin: 0 !important; }
+#pv-toolbar > #btn-select-no-pdf { display: none !important; }
+#pv-toolbar > div[style*="flex:1"] { display: none !important; }
+#pv-toolbar > label.pv-mobile-hide {          /* "Ordenar": show only the selector */
+  display: flex !important;
+  flex: 1 1 110px; min-width: 0;
+  font-size: 0 !important; gap: 0 !important;
+}
+#pv-toolbar #filter-sort {
+  width: 100%; min-width: 0;
+  height: 44px !important;
+  font-size: 14px !important;
+}
+
+/* Scrolling down the list folds the second line away (JS toggles the class);
+   scrolling up, or reaching the top, brings it back. */
+#pv-topbar.pv-compact #pv-toolbar > :not(#pv-mobile-menu-btn):not(#pv-search-wrap) { display: none !important; }
+
+/* ── Result count / page size ───────────────────────────────────────────── */
+
+#pv-results-meta { padding: 8px 12px 6px !important; flex-wrap: wrap; row-gap: 6px; font-size: 12.5px !important; }
+#pv-results-meta select { height: 36px; font-size: 14px !important; }
+#pv-rag-panel { padding: 10px 10px 2px !important; }
+#pv-rag-panel > div { padding: 12px !important; }
+
+/* ── Listing: every row becomes a card ──────────────────────────────────── */
+
+#pv-list-wrap { padding: 0 10px 16px !important; }
+#pv-results-grid {
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+#pv-results-table { display: block !important; table-layout: auto !important; }
+#pv-results-table thead { display: none !important; }
+#pv-results-table tbody { display: block !important; }
+
+#pv-results-table tr.pv-article-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "article select"
+    "foot    foot";
+  align-items: start;
+  gap: 10px 8px;
+  background: #fff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  margin-bottom: 10px !important;
+  padding: 12px 12px 10px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+#pv-results-table tr.pv-article-row > td {
+  display: block !important;
+  padding: 0 !important;
+  border: none !important;
+  width: auto !important;
+  min-width: 0;
+}
+#pv-results-table tr.pv-article-row > td.pv-c-thumb,
+#pv-results-table tr.pv-article-row > td.pv-c-year,
+#pv-results-table tr.pv-article-row > td.pv-c-pages,
+#pv-results-table tr.pv-article-row > td.pv-c-prio,
+#pv-results-table tr.pv-article-row > td.pv-c-asig { display: none !important; }
+
+/* Title: readable, wraps up to four lines instead of being cut at one. */
+#pv-results-table td.pv-c-article { grid-area: article; overflow: visible !important; }
+#pv-results-table td.pv-c-article > div:first-child {
+  white-space: normal !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden !important;
+  font-size: 15.5px !important;
+  line-height: 1.32 !important;
+}
+#pv-results-table td.pv-c-article .pv-copy-title-btn,
+#pv-results-table td.pv-c-article .pv-share-row-btn { display: none !important; }
+#pv-results-table td.pv-c-article > div:nth-child(2) {
+  margin-top: 5px !important;
+  font-size: 13px !important;
+  white-space: normal !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden !important;
+}
+#pv-results-table .pv-snippet {
+  white-space: normal !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 12.5px !important;
+  margin-top: 6px !important;
+}
+#pv-results-table .pv-row-badges-wrap { gap: 6px !important; margin-top: 8px !important; }
+#pv-results-table .pv-row-badges-wrap > * { min-height: 28px; }
+
+/* Selection checkbox: a comfortable target in the top-right corner. */
+#pv-results-table td.pv-c-select { grid-area: select; text-align: right; }
+#pv-results-table td.pv-c-select input[type="checkbox"] { width: 22px; height: 22px; margin: 0; }
+
+/* Footer: PDF · DOI · PMID on the left, personal marks on the right. */
+/* Both cells sit on the same grid line: links hug the left, marks the right. */
+#pv-results-table td.pv-c-links {
+  grid-area: foot;
+  justify-self: start;
+  align-self: center;
+  padding-top: 10px !important;
+}
+#pv-results-table tr.pv-article-row::after {     /* hairline above the footer */
+  content: ''; grid-area: foot; align-self: start;
+  border-top: 1px solid #f1f5f9; pointer-events: none;
+}
+#pv-results-table td.pv-c-links > div { gap: 6px !important; flex-wrap: nowrap !important; }
+#pv-results-table td.pv-c-links a,
+#pv-results-table td.pv-c-links button,
+#pv-results-table td.pv-c-links span {
+  font-size: 12.5px !important;
+  padding: 7px 9px !important;
+  min-height: 34px !important;
+  border-radius: 8px !important;
+  box-sizing: border-box;
+}
+#pv-results-table td.pv-c-links button.pv-pdf-pill {
+  background: #b91c1c !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+#pv-results-table td.pv-c-marks {
+  grid-area: foot;
+  justify-self: end;
+  align-self: center;
+  padding-top: 10px !important;
+  text-align: right !important;
+}
+#pv-results-table td.pv-c-marks > div { justify-content: flex-end !important; gap: 4px !important; }
+#pv-results-table td.pv-c-marks button {
+  min-width: 26px; min-height: 34px;
+  display: inline-flex !important; align-items: center; justify-content: center;
+}
+#pv-results-table td.pv-c-marks .pv-color-dot { margin: 0 4px; }
+
+#pv-results-empty > div { padding: 40px 16px !important; }
+
+/* ── Pagination and bulk bars ───────────────────────────────────────────── */
+
+#pv-pagination { gap: 6px !important; flex-wrap: wrap; justify-content: center; padding: 6px 0 !important; }
+#pv-pagination button { min-height: 40px; min-width: 40px; font-size: 14px !important; }
+
+#pv-bulk-bar {                       /* sticky at the bottom of the list */
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  gap: 8px !important;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom)) !important;
+  font-size: 12.5px !important;
+}
+#pv-bulk-bar > * { flex-shrink: 0; }
+#pv-bulk-bar button, #pv-bulk-bar select { min-height: 38px; white-space: nowrap; }
+#pv-bulk-bar-top { display: none !important; }   /* the bottom bar is always in reach */
+
+/* ── Modals: full-screen sheets ─────────────────────────────────────────── */
+
+.pv-modal {
+  padding: 0 !important;
+  align-items: stretch !important;
+  z-index: 950 !important;                 /* above the site navbar (900) */
+}
+.pv-modal-inner {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  padding: 52px 14px calc(20px + env(safe-area-inset-bottom)) !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+.pv-modal-close {
+  position: fixed !important;
+  top: calc(6px + env(safe-area-inset-top)) !important;
+  right: 8px !important;
+  width: 40px !important; height: 40px !important;
+  font-size: 24px !important;
+  display: flex !important; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+}
+.pv-modal-inner input[type="text"],
+.pv-modal-inner input[type="email"],
+.pv-modal-inner input[type="search"],
+.pv-modal-inner input[type="number"],
+.pv-modal-inner select,
+.pv-modal-inner textarea { font-size: 16px !important; }   /* no iOS zoom on focus */
+.pv-modal-inner h2 { font-size: 18px !important; padding-right: 40px; }
+
+/* ── Library chat ("Chat con la IA"): conversations on top, thread below ── */
+
+#pv-libchat-modal .pv-modal-inner > p { display: none !important; }
+#pv-libchat-modal div:has(> div > #pv-libchat-new) { flex-direction: column !important; gap: 8px !important; }
+#pv-libchat-modal div:has(> #pv-libchat-new) { width: 100% !important; flex: 0 0 auto !important; }
+#pv-libchat-list { flex: none !important; max-height: 20dvh; }
+#pv-libchat-list:empty { display: none; }
+#pv-libchat-thread { padding: 10px !important; }
+#pv-libchat-providers button { min-height: 34px; }
+#pv-libchat-send { min-width: 48px; min-height: 44px; }
+
+/* ── Article sheet ──────────────────────────────────────────────────────── */
+
+/* Its own action row (🛒 ✉ ‹ › 📍 ✕) is the header: no blank strip above it. */
+#pv-detail-modal .pv-modal-inner { padding-top: calc(8px + env(safe-area-inset-top)) !important; }
+#pv-detail-modal .pv-modal-inner button { min-height: 36px; }
+#pv-detail-prev, #pv-detail-next { min-width: 40px; }
+#pv-detail-modal h2 { font-size: 19px !important; line-height: 1.3 !important; padding-right: 0; }
+
+/* ── Sticky-note editor ─────────────────────────────────────────────────── */
+
+#pv-note-modal .pv-modal-inner { padding: 0 !important; display: flex !important; flex-direction: column; }
+#pv-note-modal-head { padding-top: calc(12px + env(safe-area-inset-top)) !important; }
+#pv-note-editor { flex: 1 1 auto; min-height: 30dvh; font-size: 16px !important; }
+#pv-note-close { min-width: 40px; min-height: 40px; }
+
+/* ── Selection bar text ─────────────────────────────────────────────────── */
+#pv-bulk-bar { min-height: 54px; align-items: center !important; }

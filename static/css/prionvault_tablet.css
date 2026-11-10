@@ -1,0 +1,9 @@
+/* PrionVault — tablets in landscape and very narrow windows (801–1279 px).
+ * Linked with a media attribute, so wider desktops never apply it.
+ *
+ * One thing only: at this width the top bar's buttons squeezed the search box
+ * down to its magnifier. Let the bar wrap so the search gets its own line.
+ */
+#pv-toolbar { flex-wrap: wrap !important; row-gap: 8px !important; }
+#pv-search-wrap { flex: 1 1 100% !important; }
+#pv-search-input { font-size: 16px !important; }      /* no zoom on focus on iPad */

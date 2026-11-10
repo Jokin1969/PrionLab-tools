@@ -4098,6 +4098,10 @@
 
     row.innerHTML = selectCell + marksCell + thumbCell + articleCell + yearCell + pagesCell +
                     priorityCell + linksCell + prionreadCell;
+    // Stable per-cell classes: the phone layout (prionvault_mobile.css) turns
+    // each row into a card and must not depend on the column order.
+    ['select', 'marks', 'thumb', 'article', 'year', 'pages', 'prio', 'links', 'asig']
+      .forEach((name, i) => { if (row.children[i]) row.children[i].classList.add('pv-c-' + name); });
 
     // Per-row button wiring (~25 listeners) is deferred until the row is
     // first clicked: a capture-phase listener on the row runs it just
@@ -12779,6 +12783,10 @@
     });
 
     wireJcManageButton();
+    // For everyone: on a phone the sidebar is a drawer opened by the ☰
+    // button (it used to be wired for admins only, so readers could not
+    // reach the sidebar at all from a phone).
+    wireMobileDrawer();
     if (IS_ADMIN) {
       wireImport();
       wireQueue();
@@ -12811,7 +12819,6 @@
       wirePvViewAs();
       wirePvUserAdmin();
       wireSidebarResize();
-      wireMobileDrawer();
       wireBulkBar();
       wireBulkLookup();
       wireBulkTagModal();
@@ -22115,6 +22122,22 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && document.body.classList.contains(KLS)) close();
     });
+
+    // Phones only: fold the second line of the top bar while scrolling down
+    // the list, so the results get the screen; bring it back on scroll-up.
+    const topbar = document.getElementById('pv-topbar');
+    const scroller = topbar && topbar.parentElement;
+    const phone = window.matchMedia('(max-width: 800px)');
+    if (scroller) {
+      let last = 0;
+      scroller.addEventListener('scroll', () => {
+        if (!phone.matches) { topbar.classList.remove('pv-compact'); return; }
+        const y = scroller.scrollTop;
+        if (y < 60 || y < last - 12) topbar.classList.remove('pv-compact');
+        else if (y > last + 4 && y > 140) topbar.classList.add('pv-compact');
+        last = y;
+      }, { passive: true });
+    }
   }
 
   // ── Library Health ──────────────────────────────────────────────────────
@@ -24341,6 +24364,14 @@
             <li><strong>Dónde coincide:</strong> bajo cada resultado aparece el fragmento del abstract, del resumen IA o del <strong>texto del PDF</strong> donde está el término, resaltado en amarillo.</li>
             <li><strong>¿Quisiste decir…?</strong> si no hay resultados y parece una errata (<code>amiloid</code>), se propone la palabra correcta; un clic repite la búsqueda.</li>
             <li><strong>Filtros dentro de la caja:</strong> <code>autor:castilla</code>, <code>año:2021</code> o <code>año:2020-2024</code>, <code>revista:nature</code>, <code>titulo:PrPSc</code>. Se combinan entre sí y con palabras sueltas: <code>strain autor:requena año:2018-2022</code>. Con espacios, entre comillas: <code>revista:"acta neuropathol"</code>. También en inglés (<code>author:</code>, <code>year:</code>, <code>journal:</code>, <code>title:</code>).</li>
+          </ul>
+          <h4>📱 En el móvil</h4>
+          <ul>
+            <li>La <strong>búsqueda</strong> queda siempre arriba; al escribir aparecen debajo los botones AND/OR, T · Au · A · R y el calendario.</li>
+            <li>El botón <strong>☰</strong> abre el menú lateral (colecciones, tags, herramientas, Ayuda).</li>
+            <li>Cada artículo es una <strong>tarjeta</strong>: toca el título para abrir la ficha; abajo están <strong>PDF · DOI · PMID</strong> y tus marcas (bandera, favorito, leído).</li>
+            <li>Al bajar por la lista, la segunda fila de botones se pliega para dejar sitio; vuelve al subir un poco.</li>
+            <li>Si marcas casillas, la barra de acciones aparece fija abajo y se desliza de lado.</li>
           </ul>
           <h4>📅 Buscar por año</h4>
           <p>A la derecha de los botones T · Au · A · R del buscador está el botón del <strong>calendario</strong>. Actívalo y escribe un año (<code>2026</code>) o un rango (<code>2020-2026</code>, <code>2020 2026</code>): el listado muestra solo los artículos publicados en esos años, en vez de buscar ese número en el texto. Si lo que escribes no es un año, se hace la búsqueda normal.</p>

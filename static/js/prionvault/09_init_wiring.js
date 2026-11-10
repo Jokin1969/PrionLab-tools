@@ -522,6 +522,10 @@
     });
 
     wireJcManageButton();
+    // For everyone: on a phone the sidebar is a drawer opened by the ☰
+    // button (it used to be wired for admins only, so readers could not
+    // reach the sidebar at all from a phone).
+    wireMobileDrawer();
     if (IS_ADMIN) {
       wireImport();
       wireQueue();
@@ -554,7 +558,6 @@
       wirePvViewAs();
       wirePvUserAdmin();
       wireSidebarResize();
-      wireMobileDrawer();
       wireBulkBar();
       wireBulkLookup();
       wireBulkTagModal();

@@ -945,6 +945,10 @@
 
     row.innerHTML = selectCell + marksCell + thumbCell + articleCell + yearCell + pagesCell +
                     priorityCell + linksCell + prionreadCell;
+    // Stable per-cell classes: the phone layout (prionvault_mobile.css) turns
+    // each row into a card and must not depend on the column order.
+    ['select', 'marks', 'thumb', 'article', 'year', 'pages', 'prio', 'links', 'asig']
+      .forEach((name, i) => { if (row.children[i]) row.children[i].classList.add('pv-c-' + name); });
 
     // Per-row button wiring (~25 listeners) is deferred until the row is
     // first clicked: a capture-phase listener on the row runs it just

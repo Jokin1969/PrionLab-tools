@@ -405,6 +405,14 @@
             <li><strong>¿Quisiste decir…?</strong> si no hay resultados y parece una errata (<code>amiloid</code>), se propone la palabra correcta; un clic repite la búsqueda.</li>
             <li><strong>Filtros dentro de la caja:</strong> <code>autor:castilla</code>, <code>año:2021</code> o <code>año:2020-2024</code>, <code>revista:nature</code>, <code>titulo:PrPSc</code>. Se combinan entre sí y con palabras sueltas: <code>strain autor:requena año:2018-2022</code>. Con espacios, entre comillas: <code>revista:"acta neuropathol"</code>. También en inglés (<code>author:</code>, <code>year:</code>, <code>journal:</code>, <code>title:</code>).</li>
           </ul>
+          <h4>📱 En el móvil</h4>
+          <ul>
+            <li>La <strong>búsqueda</strong> queda siempre arriba; al escribir aparecen debajo los botones AND/OR, T · Au · A · R y el calendario.</li>
+            <li>El botón <strong>☰</strong> abre el menú lateral (colecciones, tags, herramientas, Ayuda).</li>
+            <li>Cada artículo es una <strong>tarjeta</strong>: toca el título para abrir la ficha; abajo están <strong>PDF · DOI · PMID</strong> y tus marcas (bandera, favorito, leído).</li>
+            <li>Al bajar por la lista, la segunda fila de botones se pliega para dejar sitio; vuelve al subir un poco.</li>
+            <li>Si marcas casillas, la barra de acciones aparece fija abajo y se desliza de lado.</li>
+          </ul>
           <h4>📅 Buscar por año</h4>
           <p>A la derecha de los botones T · Au · A · R del buscador está el botón del <strong>calendario</strong>. Actívalo y escribe un año (<code>2026</code>) o un rango (<code>2020-2026</code>, <code>2020 2026</code>): el listado muestra solo los artículos publicados en esos años, en vez de buscar ese número en el texto. Si lo que escribes no es un año, se hace la búsqueda normal.</p>
 
