@@ -149,7 +149,15 @@ class BackupManager:
                                       db.database_url], stdin=subprocess.PIPE,
                                      stdout=subprocess.DEVNULL, stderr=errf) as proc:
                 try:
-                    shutil.copyfileobj(gz, proc.stdin, 1024 * 1024)
+                    # A dump made by a newer pg_dump than the server starts
+                    # with session settings the server doesn't know (e.g.
+                    # "SET transaction_timeout" from v17 against v16). They
+                    # are harmless to skip, and must not abort the restore
+                    # now that it stops on the first real error.
+                    for line in gz:
+                        if line.startswith(b"SET transaction_timeout"):
+                            continue
+                        proc.stdin.write(line)
                 finally:
                     proc.stdin.close()
                 rc = proc.wait(timeout=300)
