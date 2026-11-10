@@ -231,7 +231,17 @@ class DatabaseConfig:
                 logger.error("Migration failed for %s (%d statement(s)): %s",
                              filename, len(fails), fails[0]["error"])
                 summary["errors"].append(entry)
-                continue
+                # Stop here: later files may depend on this one, and running
+                # them out of order leaves the schema half-migrated. They run
+                # on the next boot / forced run, once this file succeeds.
+                remaining = [f.name for f in migration_files
+                             if f.name > filename and f.name not in done]
+                if remaining:
+                    logger.error("Migrations stopped at %s; not run yet: %s",
+                                 filename, ", ".join(remaining[:20]))
+                    summary["stopped_at"] = filename
+                    summary["not_run"] = remaining
+                break
             try:
                 with self.engine.begin() as conn:
                     conn.execute(text(
