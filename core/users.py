@@ -373,6 +373,10 @@ def create_user(data: dict, sync: bool = True) -> None:
 def update_user(username: str, updates: dict, sync: bool = True) -> bool:
     fields = {k: ("" if v is None else v) for k, v in updates.items()
               if k in COLUMNS and k != "username"}
+    # Any password change kills an outstanding reset link.
+    if "password_hash" in fields and "reset_token" not in fields:
+        fields["reset_token"] = ""
+        fields["reset_token_expires"] = ""
     if _db_ready():
         from sqlalchemy import text
         if not fields:

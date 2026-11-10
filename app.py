@@ -399,6 +399,45 @@ def create_app() -> Flask:
                             "redirect": url_for("auth.change_password")}), 403
         return redirect(url_for("auth.change_password"))
 
+    @app.before_request
+    def session_revalidate():
+        """The session cookie carries role and login state for weeks; check
+        them against the user's row (at most once a minute per session) so a
+        deactivated or demoted account, or one whose password was changed or
+        reset, stops working right away instead of when the cookie expires."""
+        if not session.get("logged_in") or session.get("emergency"):
+            return None
+        if request.endpoint == "static":
+            return None
+        import time as _time
+        now = _time.time()
+        if now - float(session.get("_chk") or 0) < 60:
+            return None
+        try:
+            from core.users import get_user
+            from core.auth import pw_fingerprint
+            user = get_user(session.get("username") or "")
+        except Exception:
+            return None                     # store unreachable: don't lock people out
+        valid = bool(user) and (user.get("active") or "true").lower() == "true"
+        if valid:
+            fp = pw_fingerprint(user.get("password_hash", ""))
+            if session.get("pwv") and session.get("pwv_u") == user.get("username") \
+               and session["pwv"] != fp:
+                valid = False               # password changed elsewhere
+        if not valid:
+            session.clear()
+            if "/api/" in request.path:
+                from flask import jsonify
+                return jsonify({"error": "session_expired",
+                                "detail": "Tu sesión ha caducado. Vuelve a entrar."}), 401
+            return redirect(url_for("auth.login"))
+        session["pwv"], session["pwv_u"] = fp, user.get("username")
+        session["role"] = user.get("role") or "reader"
+        session["is_prionvault_admin"] = user.get("is_prionvault_admin", "false")
+        session["_chk"] = now
+        return None
+
     # Non-admin accounts ("reader") only use PrionVault, PrionRead, the home
     # page with its notes, the help and their own profile. The navbar already
     # hides everything else; this enforces it for hand-typed URLs too, since

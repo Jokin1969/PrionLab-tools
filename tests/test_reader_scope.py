@@ -22,6 +22,8 @@ def _login(client, role):
         s["logged_in"] = True
         s["role"] = role
         s["username"] = "t_" + role
+        import time
+        s["_chk"] = time.time()      # these fake users have no row to revalidate
 
 
 def test_reader_blocked_outside_allowed_tools(app):
@@ -62,3 +64,31 @@ def test_sender_address_ignores_display_name():
     assert _extract_address("Ana <Ana@Lab.es>") == "ana@lab.es"
     assert not _is_allowed_sender("evilana@lab.es", ["ana@lab.es"])
     assert _is_allowed_sender("x@lab.es", ["@lab.es"])
+
+
+def test_session_revalidation(app, monkeypatch):
+    import core.users as cu
+    from core.auth import pw_fingerprint
+    row = {"username": "ana", "role": "reader", "active": "true", "password_hash": "h1",
+           "is_prionvault_admin": "false"}
+    monkeypatch.setattr(cu, "get_user", lambda u: dict(row) if u == "ana" else None)
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(logged_in=True, role="admin", username="ana",
+                 pwv=pw_fingerprint("h1"), pwv_u="ana")
+    assert c.get("/").status_code == 200
+    with c.session_transaction() as s:
+        assert s["role"] == "reader"          # demotion applied
+        s["_chk"] = 0
+    row["password_hash"] = "h2"               # password changed elsewhere
+    r = c.get("/")
+    assert r.status_code == 302 and "login" in r.headers["Location"]
+    with c.session_transaction() as s:
+        s.update(logged_in=True, role="reader", username="ana"); s.pop("_chk", None)
+    row["active"] = "false"
+    assert c.get("/prionvault/api/me").status_code == 401
+
+
+def test_reset_token_is_stored_hashed():
+    from core.auth import _token_hash
+    assert _token_hash("abc").startswith("sha256:") and "abc" not in _token_hash("abc")

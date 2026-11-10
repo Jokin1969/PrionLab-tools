@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import secrets
 import string
 import threading
@@ -204,6 +205,15 @@ def add_user():
         if not password:
             flash(_("Password is required for new users."), "error")
             return render_template("admin/user_form.html", mode="add", form=request.form)
+        from core.auth import password_quality_error
+        if password_quality_error(password):
+            flash(password_quality_error(password), "error")
+            return render_template("admin/user_form.html", mode="add", form=request.form)
+        if not re.fullmatch(r"[A-Za-z0-9._-]{3,40}", username or ""):
+            flash(_("Username may only contain letters, digits, dots, hyphens and underscores."), "error")
+            return render_template("admin/user_form.html", mode="add", form=request.form)
+        if role not in ("admin", "editor", "reader"):
+            role = "reader"
         if password != confirm:
             flash(_("Passwords do not match."), "error")
             return render_template("admin/user_form.html", mode="add", form=request.form)
@@ -271,10 +281,19 @@ def edit_user(username):
         if email_taken_by_other(email, username):
             flash(_("That email address is already used by another account."), "error")
             return render_template("admin/user_form.html", mode="edit", user=user, form=request.form)
+        if updates["role"] not in ("admin", "editor", "reader"):
+            updates["role"] = user["role"]
+        if username.lower() == (session.get("username") or "").lower():
+            # Don't let an admin lock themselves out by accident.
+            updates["role"], updates["active"] = user["role"], "true"
 
         if password:
             if password != confirm:
                 flash(_("Passwords do not match."), "error")
+                return render_template("admin/user_form.html", mode="edit", user=user, form=request.form)
+            from core.auth import password_quality_error
+            if password_quality_error(password):
+                flash(password_quality_error(password), "error")
                 return render_template("admin/user_form.html", mode="edit", user=user, form=request.form)
             updates["password_hash"] = hash_password(password)
 
@@ -306,6 +325,9 @@ def toggle_user(username):
         flash(_("User not found."), "error")
         return redirect(url_for("admin.index"))
     new_state = "false" if user.get("active", "true") == "true" else "true"
+    if new_state == "false" and username.lower() == (session.get("username") or "").lower():
+        flash(_("You cannot deactivate your own account."), "error")
+        return redirect(url_for("admin.index"))
     update_user(username, {"active": new_state})
     if new_state == "true":
         flash(_("User activated."), "success")

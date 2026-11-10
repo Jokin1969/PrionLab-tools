@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import logging
 from datetime import date, datetime
@@ -343,6 +344,11 @@ def login():
             session["full_name"] = user.get("full_name", username)
             session["language"] = user.get("language", "es")
             session["is_prionvault_admin"] = user.get("is_prionvault_admin", "false")
+            if user.get("_emergency"):
+                session["emergency"] = True
+            else:
+                session["pwv"] = pw_fingerprint(user.get("password_hash", ""))
+                session["pwv_u"] = session["username"]
             # Resolve the DB-side UUID so tools that key off users.id
             # (PrionVault, PrionPacks, …) can authenticate the viewer.
             uid = _lookup_db_user_id(session["username"])
@@ -440,8 +446,10 @@ def register():
             error = _("Username, full name and password are required.")
         elif len(username) < 3:
             error = _("Username must be at least 3 characters.")
-        elif len(password) < 6:
-            error = _("Password must be at least 6 characters.")
+        elif not re.fullmatch(r"[A-Za-z0-9._-]{3,40}", username):
+            error = _("Username may only contain letters, digits, dots, hyphens and underscores.")
+        elif _password_quality_error(password):
+            error = _password_quality_error(password)
         elif user_exists(username):
             error = _("Username already taken.")
         elif email and email_exists(email):
@@ -516,8 +524,8 @@ def profile():
             error = _("That email address is already used by another account.")
         new_password = request.form.get("new_password", "")
         if new_password and not error:
-            if len(new_password) < 6:
-                error = _("New password must be at least 6 characters.")
+            if _password_quality_error(new_password):
+                error = _password_quality_error(new_password)
             else:
                 current_pwd = request.form.get("current_password", "")
                 if not verify_password(current_pwd, user.get("password_hash", "")):
@@ -526,6 +534,7 @@ def profile():
                     updates["password_hash"] = hash_password(new_password)
         if not error:
             update_user(username, updates, sync=False)
+            session.pop("pwv", None)      # keep THIS session after a password change
             session["full_name"] = updates["full_name"]
             flash(_("Profile updated successfully."), "success")
             return redirect(url_for("auth.profile"))
@@ -539,6 +548,33 @@ def profile():
 # can't just re-confirm the seeded credential.
 _MIN_PW_LEN     = 8
 _FORBIDDEN_PWS  = {"12345678", "00000000", "password", "qwertyui"}
+
+
+def pw_fingerprint(password_hash: str) -> str:
+    """Short digest of the stored hash, kept in the session: when the
+    password changes, sessions opened with the old one stop being valid."""
+    import hashlib
+    return hashlib.sha256((password_hash or "").encode()).hexdigest()[:16]
+
+
+def _token_hash(token: str) -> str:
+    """Reset tokens are stored hashed: a leaked users table/backup must not
+    contain usable links."""
+    import hashlib
+    return "sha256:" + hashlib.sha256((token or "").encode()).hexdigest()
+
+
+def _public_url(endpoint: str, **values) -> str:
+    """Absolute URL for emails, built from the configured APP_URL rather
+    than the request's Host header (which a forged request could set)."""
+    from config import APP_URL
+    if APP_URL:
+        return APP_URL + url_for(endpoint, **values)
+    return url_for(endpoint, _external=True, **values)
+
+
+def password_quality_error(new_password: str) -> str | None:
+    return _password_quality_error(new_password)
 
 
 def _password_quality_error(new_password: str) -> str | None:
@@ -582,6 +618,7 @@ def change_password():
                 "must_change_pw": "false",
             }, sync=False)
             session.pop("must_change_pw", None)
+            session.pop("pwv", None)      # keep THIS session; others are closed
             flash(_("Password updated. Welcome aboard."), "success")
             return redirect(url_for("home"))
     return render_template("auth/change_password.html",
@@ -617,7 +654,7 @@ def forgot_password():
                            + timedelta(hours=_RESET_TOKEN_TTL_HOURS))
                 try:
                     update_user(user["username"], {
-                        "reset_token":         token,
+                        "reset_token":         _token_hash(token),
                         "reset_token_expires": expires.isoformat(),
                     }, sync=False)
                     _send_reset_email(user, token)
@@ -650,11 +687,11 @@ def send_admin_reset_link(user: dict) -> tuple[bool, str]:
         return False, "El usuario está desactivado: actívalo antes de enviarle el enlace."
     token = secrets.token_urlsafe(32)
     expires = datetime.utcnow() + timedelta(hours=ADMIN_RESET_TTL_HOURS)
-    update_user(user["username"], {"reset_token": token,
+    update_user(user["username"], {"reset_token": _token_hash(token),
                                    "reset_token_expires": expires.isoformat()}, sync=False)
     import html as _h
     name = user.get("full_name") or user.get("username")
-    url = url_for("auth.reset_password", token=token, _external=True)
+    url = _public_url("auth.reset_password", token=token)
     body = (f"Hola {name},\n\n"
             f"Un administrador de PrionLab Tools te envía este enlace para que elijas tu contraseña.\n"
             f"Es válido durante {ADMIN_RESET_TTL_HOURS} horas y solo se puede usar una vez:\n\n    {url}\n\n"
@@ -678,7 +715,7 @@ def _send_reset_email(user: dict, token: str) -> None:
     try/except for the user-facing flow."""
     from core.smtp_client import send_email
     name = user.get("full_name") or user.get("username")
-    reset_url = url_for("auth.reset_password", token=token, _external=True)
+    reset_url = _public_url("auth.reset_password", token=token)
     body = (
         f"Hola {name},\n\n"
         f"Has solicitado restablecer tu contraseña en PrionLab Tools.\n"
@@ -714,7 +751,11 @@ def reset_password(token):
     # per password reset attempt.
     matched = None
     for u in load_users():
-        if u.get("reset_token") == token:
+        stored = u.get("reset_token") or ""
+        # Hashed since Nov 2026; links sent before that were stored as-is
+        # and expire on their own within 72 h.
+        if stored and (secrets.compare_digest(stored, _token_hash(token))
+                       or secrets.compare_digest(stored, token)):
             matched = u
             break
     error = None

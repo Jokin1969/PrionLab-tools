@@ -87,6 +87,13 @@ def api_pv_users_create():
         return jsonify({"error": "username_and_password_required"}), 400
     if user_exists(username):
         return jsonify({"error": "username_exists"}), 409
+    import re as _re
+    from core.auth import password_quality_error
+    if not _re.fullmatch(r"[a-z0-9._-]{3,40}", username):
+        return jsonify({"error": "bad_username",
+                        "detail": "El usuario solo admite letras, números, punto, guion y guion bajo (3–40)."}), 400
+    if password_quality_error(password):
+        return jsonify({"error": "weak_password", "detail": str(password_quality_error(password))}), 400
     from core.users import email_taken_by_other
     if email_taken_by_other(email, username):
         return jsonify({"error": "email_taken", "detail": "Ese email ya lo usa otra cuenta."}), 409
@@ -124,7 +131,7 @@ def api_pv_users_update(username):
     target = get_user(username)
     if not target:
         return jsonify({"error": "not_found"}), 404
-    if target.get("role") == "admin" and not _is_global_admin():
+    if target.get("role") in ("admin", "editor") and not _is_global_admin():
         return jsonify({"error": "forbidden",
                         "detail": "Solo un administrador global puede editar a otro administrador."}), 403
 
@@ -169,7 +176,7 @@ def api_pv_users_toggle(username):
     target = get_user(username)
     if not target:
         return jsonify({"error": "not_found"}), 404
-    if target.get("role") == "admin" and not _is_global_admin():
+    if target.get("role") in ("admin", "editor") and not _is_global_admin():
         return jsonify({"error": "forbidden",
                         "detail": "Solo un administrador global puede (des)activar a otro administrador."}), 403
     if username == session.get("username"):
@@ -188,7 +195,7 @@ def api_pv_users_send_reset_link(username):
     target = get_user(username)
     if not target:
         return jsonify({"error": "not_found"}), 404
-    if target.get("role") == "admin" and not _is_global_admin():
+    if target.get("role") in ("admin", "editor") and not _is_global_admin():
         return jsonify({"error": "forbidden",
                         "detail": "Solo un administrador global puede gestionar la contraseña de otro administrador."}), 403
     ok, msg = send_admin_reset_link(target)
@@ -203,7 +210,7 @@ def api_pv_users_reset_password(username):
     target = get_user(username)
     if not target:
         return jsonify({"error": "not_found"}), 404
-    if target.get("role") == "admin" and not _is_global_admin():
+    if target.get("role") in ("admin", "editor") and not _is_global_admin():
         return jsonify({"error": "forbidden",
                         "detail": "Solo un administrador global puede resetear la contraseña de otro administrador."}), 403
 
