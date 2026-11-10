@@ -548,8 +548,6 @@ def create_app() -> Flask:
     from tools.data_management import data_mgmt_bp
     app.register_blueprint(data_mgmt_bp)
 
-    from tools.spanish_academic import spanish_academic_bp
-    app.register_blueprint(spanish_academic_bp)
 
     from tools.prionpacks import prionpacks_bp
     app.register_blueprint(prionpacks_bp)

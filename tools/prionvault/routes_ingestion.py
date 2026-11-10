@@ -32,7 +32,7 @@ from sqlalchemy.exc import IntegrityError
 from core.decorators import admin_required, login_required
 from database.config import db
 from . import models, prionvault_bp
-from ._helpers import _ensure_can_modify, _get_pv_columns, _session, _viewer_id  # noqa: F401
+from ._helpers import _ensure_can_modify, _get_pv_columns, _session, _viewer_id, _viewer_role  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -2519,6 +2519,19 @@ def import_from_email():
 
     count   = len(pmids)
     plural  = "s" if count != 1 else ""
+
+    # Adding articles to the shared library is an admin action everywhere
+    # else; the digest link must not be a way around that.
+    if _viewer_role() != "admin":
+        back_btn = f'<div class="actions"><a href="{url_for("prionvault.index")}" class="btn btn-primary">Ir a PrionVault →</a></div>'
+        return (_IMPORT_PAGE
+                .replace("{{count}}", str(count))
+                .replace("{{plural}}", plural)
+                .replace("{{result_html}}",
+                         '<div class="err">Solo un administrador puede importar artículos a la biblioteca. '
+                         'Pídeselo a un administrador del laboratorio.</div>')
+                .replace("{{articles_html}}", "")
+                .replace("{{form_html}}", back_btn)), 403
 
     if request.method == "POST":
         # Perform the import

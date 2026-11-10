@@ -1734,7 +1734,7 @@ def api_article(slug):
 @login_required
 def api_tutorials():
     lang = session.get('language', 'es')
-    user_id = session.get('user_id', 0)
+    user_id = str(session.get('user_id') or session.get('username') or '')
 
     result = []
     for t in _TUTORIALS:
@@ -1787,7 +1787,7 @@ def api_tutorial_progress():
     tutorial_id = data.get('tutorial_id', '')
     step = int(data.get('step', 0))
     total = int(data.get('total', 1))
-    user_id = session.get('user_id', 0)
+    user_id = str(session.get('user_id') or session.get('username') or '')
 
     try:
         from database.config import db
@@ -1824,7 +1824,7 @@ def api_feedback():
     rating = int(data.get('rating', 0))
     is_helpful = data.get('is_helpful')
     text = data.get('text', '')
-    user_id = session.get('user_id', 0)
+    user_id = str(session.get('user_id') or session.get('username') or '')
 
     try:
         from database.config import db

@@ -38,8 +38,29 @@ async function apiRequest(path, options = {}) {
 
 // ── Message router ────────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handleMessage(message)
+// The panel is an iframe inside pages we don't control, and window messages
+// to it could be forged by that page. The content script therefore creates a
+// random nonce per tab and hands it to the panel THROUGH THIS WORKER (a
+// channel web pages cannot reach); the panel ignores any message without it.
+async function handleNonce(message, sender) {
+  const tabId = sender && sender.tab && sender.tab.id;
+  if (tabId == null) throw new Error('sin pestaña');
+  const key = 'pvn_' + tabId;
+  const fromExtensionPage = (sender.url || '').startsWith(chrome.runtime.getURL(''));
+  if (message.type === 'SET_NONCE') {
+    if (fromExtensionPage) throw new Error('no permitido');
+    await chrome.storage.session.set({ [key]: String(message.nonce || '') });
+    return { ok: true };
+  }
+  if (!fromExtensionPage) throw new Error('no permitido');   // GET_NONCE: panel only
+  const got = await chrome.storage.session.get(key);
+  return { nonce: got[key] || null };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const work = (message && (message.type === 'SET_NONCE' || message.type === 'GET_NONCE'))
+    ? handleNonce(message, sender) : handleMessage(message);
+  work
     .then(sendResponse)
     .catch(err => sendResponse({ error: err.message || String(err) }));
   return true; // keep port open for async response

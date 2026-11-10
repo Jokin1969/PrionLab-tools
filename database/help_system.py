@@ -61,7 +61,7 @@ class HelpTag(Base):
 class HelpUserProgress(Base):
     __tablename__ = 'help_user_progress'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String(64), nullable=False)
     tutorial_id = Column(String(100), nullable=False)
     step_completed = Column(Integer, default=0)
     total_steps = Column(Integer, nullable=False)
@@ -74,7 +74,7 @@ class HelpFeedback(Base):
     __tablename__ = 'help_feedback'
     id = Column(Integer, primary_key=True)
     article_id = Column(Integer, ForeignKey('help_articles.id'), nullable=True)
-    user_id = Column(Integer, nullable=True)
+    user_id = Column(String(64), nullable=True)
     rating = Column(Integer, nullable=False)
     feedback_text = Column(Text)
     is_helpful = Column(Boolean)

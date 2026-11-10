@@ -43,6 +43,14 @@ function send(msg) {
   });
 }
 
+// Nonce the content script registered for this tab (see background.js).
+// Window messages without it come from the page, not from the extension.
+let PANEL_NONCE = null;
+const nonceReady = send({ type: 'GET_NONCE' })
+  .then(r => { PANEL_NONCE = (r && r.nonce) || null; })
+  .catch(() => { PANEL_NONCE = null; });
+const trusted = (e) => !!PANEL_NONCE && e.data && e.data.nonce === PANEL_NONCE;
+
 function postToParent(msg) {
   window.parent.postMessage({ source: 'prionvault-panel', ...msg }, '*');
 }
@@ -329,8 +337,7 @@ function fetchPdfViaPage(url) {
 
     function onMsg(e) {
       if (!e.data || e.data.source !== 'prionvault-content') return;
-  if (e.source !== window.parent) return;
-      if (e.source !== window.parent) return;
+      if (e.source !== window.parent || !trusted(e)) return;
       if (e.data.type === 'PDF_BYTES') {
         clearTimeout(timeout);
         window.removeEventListener('message', onMsg);
@@ -367,7 +374,10 @@ function formatAuthors(authors) {
 
 window.addEventListener('message', async (e) => {
   if (!e.data || e.data.source !== 'prionvault-content') return;
+  if (e.source !== window.parent) return;
   if (e.data.type !== 'INIT') return;
+  await nonceReady;
+  if (!trusted(e)) return;
 
   state.doi       = e.data.doi   || null;
   state.pmid      = e.data.pmid  || null;

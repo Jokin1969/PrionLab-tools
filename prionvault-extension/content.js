@@ -138,8 +138,21 @@
 
   // ── Sidebar panel (iframe) ────────────────────────────────────────────────
 
-  function openPanel(data) {
-    if (panel) return;
+  let panelNonce = null;      // proves to the panel that a message is ours
+  let opening = false;
+
+  async function openPanel(data) {
+    if (panel || opening) return;
+    opening = true;
+    try {
+      panelNonce = (crypto.randomUUID ? crypto.randomUUID()
+                    : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16)).join(''));
+      await chrome.runtime.sendMessage({ type: 'SET_NONCE', nonce: panelNonce });
+    } catch (_) {
+      opening = false;
+      return;
+    }
+    opening = false;
 
     document.documentElement.style.transition = 'margin-right 0.25s ease';
     document.documentElement.style.marginRight = '380px';
@@ -162,6 +175,7 @@
     panel.addEventListener('load', () => {
       panel.contentWindow.postMessage({
         source:   'prionvault-content',
+        nonce:    panelNonce,
         type:     'INIT',
         doi:      data.doi,
         pmid:     data.pmid,
@@ -207,6 +221,7 @@
         const bytes = Array.from(new Uint8Array(buf));
         panel && panel.contentWindow.postMessage({
           source: 'prionvault-content',
+          nonce:  panelNonce,
           type:   'PDF_BYTES',
           bytes,
           filename: e.data.url.split('/').pop().split('?')[0] || 'article.pdf',
@@ -214,6 +229,7 @@
       } catch (err) {
         panel && panel.contentWindow.postMessage({
           source: 'prionvault-content',
+          nonce:  panelNonce,
           type:   'PDF_ERROR',
           error:  err.message,
         }, '*');

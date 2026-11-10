@@ -75,6 +75,15 @@ class MaintenanceScheduler:
                           IntervalTrigger(hours=1), id="backup_watchdog",
                           next_run_time=datetime.utcnow() + timedelta(minutes=10),
                           replace_existing=True)
+            # The admin panel reschedules the backup only in the worker that
+            # served the request; the other worker picks the change up here.
+            self._backup_cron = _backup_cron_kwargs(backup_settings)
+            def _resync():                       # in EVERY worker, so no run_once
+                with app.app_context():
+                    self.reschedule_backup_job()
+            sched.add_job(_resync,
+                          IntervalTrigger(minutes=10), id="backup_resync",
+                          replace_existing=True)
             sched.add_job(lambda: _run(self.vacuum_analyze),
                           CronTrigger(day_of_week="sun", hour=4), id="vacuum",
                           replace_existing=True)
@@ -116,10 +125,14 @@ class MaintenanceScheduler:
             from apscheduler.triggers.cron import CronTrigger
             from database.backup import get_backup_settings
             settings = get_backup_settings()
+            kwargs = _backup_cron_kwargs(settings)
+            if kwargs == getattr(self, "_backup_cron", None):
+                return True                      # already on this schedule
             self._scheduler.reschedule_job(
                 "weekly_backup",
-                trigger=CronTrigger(**_backup_cron_kwargs(settings)),
+                trigger=CronTrigger(**kwargs),
             )
+            self._backup_cron = kwargs
             logger.info("Backup job rescheduled: %s", settings)
             return True
         except Exception as e:
