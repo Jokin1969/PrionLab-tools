@@ -92,3 +92,23 @@ def test_session_revalidation(app, monkeypatch):
 def test_reset_token_is_stored_hashed():
     from core.auth import _token_hash
     assert _token_hash("abc").startswith("sha256:") and "abc" not in _token_hash("abc")
+
+
+def test_admin_pages_render_without_server_error(app):
+    """Every argument-less page must at least render for an admin (catches
+    template errors such as an undefined variable or a bad format string)."""
+    import time
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(logged_in=True, role="admin", username="admin", emergency=True, _chk=time.time())
+    bad = []
+    for rule in app.url_map.iter_rules():
+        if rule.arguments or "GET" not in rule.methods or rule.endpoint == "static":
+            continue
+        if "/api/" in rule.rule or rule.rule.startswith("/prionread") \
+           or any(w in rule.rule for w in ("logout", "download", "export")):
+            continue
+        r = c.get(rule.rule)
+        if r.status_code >= 500:
+            bad.append((rule.rule, r.status_code))
+    assert not bad, bad

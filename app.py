@@ -197,6 +197,8 @@ def create_app() -> Flask:
     app.secret_key = config.SECRET_KEY
     # Hard cap on request bodies (largest legitimate upload: a 200 MB JC or
     # supplementary file) so a huge upload can't exhaust the worker's memory.
+    # Templates read `config.MAX_PDF_SIZE_MB` (Jinja's `config` is app.config).
+    app.config["MAX_PDF_SIZE_MB"] = config.MAX_PDF_SIZE_MB
     app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "512")) * 1024 * 1024
     # Behind Railway's proxy: take the real client IP (rate limits are per
     # IP — without this the whole lab would share one bucket) and scheme.
