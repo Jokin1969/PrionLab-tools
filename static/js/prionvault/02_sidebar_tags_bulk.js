@@ -1266,6 +1266,8 @@
     const s = suffix || '';
     return `
       <span id="pv-bulk-count${s}" style="font-weight:600;white-space:nowrap;">0 seleccionados</span>
+      <button id="pv-bulk-more${s}" type="button" class="pv-bulk-more" aria-expanded="false"
+              style="display:none;">Acciones ▴</button>
       <button id="pv-bulk-select-filtered${s}" type="button"
               style="display:none;padding:4px 10px;border-radius:6px;
                      background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);
@@ -1445,6 +1447,18 @@
     }
 
     // Clear-selection button
+    // Phones: the bar shows just the count; this button unfolds the actions
+    // as a sheet (the button itself is display:none on desktop — only
+    // prionvault_mobile.css shows it).
+    const moreBtn = $id('pv-bulk-more');
+    const bulkBar = document.getElementById('pv-bulk-bar');
+    if (moreBtn && bulkBar) {
+      moreBtn.addEventListener('click', () => {
+        const open = bulkBar.classList.toggle('pv-bulk-open');
+        moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        moreBtn.textContent = open ? 'Cerrar ▾' : 'Acciones ▴';
+      });
+    }
     const clearBtn = $id('pv-bulk-clear');
     if (clearBtn) {
       clearBtn.addEventListener('click', () => {

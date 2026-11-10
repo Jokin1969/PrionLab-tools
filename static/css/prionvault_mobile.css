@@ -269,16 +269,72 @@ body.pv-mobile-drawer-open::before {
 #pv-pagination { gap: 6px !important; flex-wrap: wrap; justify-content: center; padding: 6px 0 !important; }
 #pv-pagination button { min-height: 40px; min-width: 40px; font-size: 14px !important; }
 
-#pv-bulk-bar {                       /* sticky at the bottom of the list */
-  flex-wrap: nowrap !important;
-  overflow-x: auto !important;
-  -webkit-overflow-scrolling: touch;
+/* The selection bar: one compact line (count · Acciones · Limpiar) that
+   unfolds into a sheet with every action in large, wrapped buttons. */
+#pv-bulk-bar {
+  flex-shrink: 0 !important;             /* it is a flex item of the scrolling <main> */
+  flex-wrap: wrap !important;
+  align-items: center !important;
   gap: 8px !important;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom)) !important;
-  font-size: 12.5px !important;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) !important;
+  font-size: 14px !important;
+  max-height: 72dvh;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.28) !important;
 }
-#pv-bulk-bar > * { flex-shrink: 0; }
-#pv-bulk-bar button, #pv-bulk-bar select { min-height: 38px; white-space: nowrap; }
+#pv-bulk-bar button {
+  min-height: 42px;
+  font-size: 13.5px !important;
+  border-radius: 9px !important;
+  white-space: nowrap;
+}
+
+/* Folded: only the three essentials. */
+#pv-bulk-bar:not(.pv-bulk-open) > * { display: none !important; }
+#pv-bulk-bar:not(.pv-bulk-open) > #pv-bulk-count,
+#pv-bulk-bar:not(.pv-bulk-open) > #pv-bulk-more,
+#pv-bulk-bar:not(.pv-bulk-open) > #pv-bulk-clear { display: inline-flex !important; align-items: center; }
+
+#pv-bulk-count { order: 1; flex: 1 1 auto; font-size: 15px; }
+#pv-bulk-more {
+  order: 2;
+  display: inline-flex !important; align-items: center; justify-content: center;
+  padding: 0 16px !important;
+  background: #fff !important; color: #0F3460 !important;
+  border: none !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+#pv-bulk-clear { order: 3; padding: 0 14px !important; }
+
+/* Unfolded: everything else below, in full-width groups. */
+#pv-bulk-bar.pv-bulk-open > * { order: 10; }
+#pv-bulk-bar.pv-bulk-open > #pv-bulk-count { order: 1; }
+#pv-bulk-bar.pv-bulk-open > #pv-bulk-more  { order: 2; }
+#pv-bulk-bar.pv-bulk-open > #pv-bulk-clear { order: 3; }
+#pv-bulk-bar.pv-bulk-open > span[style*="flex:1"] { display: none !important; }
+#pv-bulk-bar.pv-bulk-open > button:not(#pv-bulk-more):not(#pv-bulk-clear) {
+  flex: 1 1 calc(50% - 4px);
+  justify-content: center;
+  padding: 0 10px !important;
+  white-space: normal !important;
+  line-height: 1.2;
+}
+#pv-bulk-bar.pv-bulk-open > #pv-bulk-only-selected,
+#pv-bulk-bar.pv-bulk-open > #pv-bulk-select-filtered { flex-basis: 100%; }
+#pv-bulk-bar.pv-bulk-open > div {
+  flex: 1 1 100%;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+#pv-bulk-bar.pv-bulk-open > div > span { flex: 0 0 100%; font-size: 11px !important; }
+#pv-bulk-bar.pv-bulk-open > div > button { flex: 1 1 calc(25% - 6px); min-width: 64px; padding: 0 6px !important; }
+#pv-bulk-priority, #pv-bulk-color { gap: 8px !important; flex-wrap: wrap; }
+#pv-bulk-priority > *, #pv-bulk-color > * { min-width: 40px; min-height: 40px; }
 #pv-bulk-bar-top { display: none !important; }   /* the bottom bar is always in reach */
 
 /* ── Modals: full-screen sheets ─────────────────────────────────────────── */
@@ -346,5 +402,3 @@ body.pv-mobile-drawer-open::before {
 #pv-note-editor { flex: 1 1 auto; min-height: 30dvh; font-size: 16px !important; }
 #pv-note-close { min-width: 40px; min-height: 40px; }
 
-/* ── Selection bar text ─────────────────────────────────────────────────── */
-#pv-bulk-bar { min-height: 54px; align-items: center !important; }
