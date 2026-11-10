@@ -2447,6 +2447,7 @@
   let _loadSeq = 0;
   async function loadArticles() {
     const mySeq = ++_loadSeq;
+    _syncSearchSort();
     const params = buildListParams();
     _updateHealthExtraIndicator();
 
@@ -2494,6 +2495,21 @@
         _listIds = [];
         state.lastTotal = 0;
         showEmpty('No articles match these filters.');
+        if (r.did_you_mean) {
+          // "¿Quisiste decir…?" — one click re-runs the search corrected.
+          const empty = document.getElementById('pv-results-empty');
+          const p = document.createElement('div');
+          p.style.cssText = 'margin-top:-36px;padding-bottom:40px;font-size:14px;text-align:center;color:#374151;';
+          p.innerHTML = `¿Quisiste decir <a href="#" style="color:#0F3460;font-weight:600;">${esc(r.did_you_mean)}</a>?`;
+          p.querySelector('a').addEventListener('click', (e) => {
+            e.preventDefault();
+            state.q = r.did_you_mean; state.page = 1;
+            const si = document.getElementById('pv-search-input');
+            if (si) si.value = state.q;
+            loadArticles();
+          });
+          if (empty) empty.appendChild(p);
+        }
         renderPagination(r);
         updateBulkBar();
         return;
@@ -2529,6 +2545,7 @@
       renderPagination(r);
       updateBulkBar();
       syncSelectAllHeader();
+      _loadSnippets(mySeq, r.items);
     } catch (e) {
       if (mySeq !== _loadSeq) return;
       showEmpty('Error: ' + e.message);  // showEmpty escapes
@@ -3271,6 +3288,51 @@
     state.isolatedArticleId = null;
     state.page = 1;
     _updateIsolationIndicator();
+  }
+
+  // While a text search is active the results are ordered by relevance
+  // (title hits first) unless the user picks another order; clearing the
+  // search goes back to "recently added".
+  function _syncSearchSort() {
+    const hasQ = !!state.q && !(state.searchYear && _parseYearQuery(state.q));
+    if (hasQ && !state._qSortApplied && state.sort === 'added_desc') state.sort = 'relevance';
+    if (hasQ) state._qSortApplied = true;
+    if (!hasQ) {
+      state._qSortApplied = false;
+      if (state.sort === 'relevance') state.sort = 'added_desc';
+    }
+    const sel = document.getElementById('filter-sort');
+    if (sel && sel.value !== state.sort) sel.value = state.sort;
+  }
+
+  // Under each result: the fragment where the search matched (abstract, AI
+  // summary or PDF text) with the hit highlighted. Asked for after the list
+  // is on screen so it never delays the results.
+  async function _loadSnippets(seq, items) {
+    const q = state.q;
+    if (!q || (state.searchYear && _parseYearQuery(q)) || !items.length) return;
+    let data;
+    try {
+      data = await api('/articles/snippets', {
+        method: 'POST', body: JSON.stringify({ q, ids: items.slice(0, 60).map(a => a.id) }) });
+    } catch (_) { return; }
+    if (seq !== _loadSeq) return;                    // a newer search replaced this one
+    const LABEL = { abstract: 'Abstract', summary: 'Resumen IA', pdf: 'Texto del PDF' };
+    for (const [aid, sn] of Object.entries(data.snippets || {})) {
+      const row = document.querySelector(`#pv-results-tbody tr[data-aid="${CSS.escape(aid)}"]`);
+      const cell = row && row.querySelector('td.pv-row-open');
+      if (!cell || cell.querySelector('.pv-snippet')) continue;
+      const div = document.createElement('div');
+      div.className = 'pv-snippet';
+      div.style.cssText = 'margin-top:3px;font-size:11.5px;color:#6b7280;line-height:1.4;' +
+                          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const html = esc(sn.text).replace(/\[\[\[/g, '<mark style="background:#fef08a;color:#111827;padding:0 1px;border-radius:2px;">')
+                               .replace(/\]\]\]/g, '</mark>');
+      div.innerHTML = `<span style="color:#9ca3af;">${esc(LABEL[sn.where] || '')}:</span> …${html}…`;
+      div.title = sn.text.replace(/\[\[\[|\]\]\]/g, '');
+      const badges = cell.querySelector('.pv-row-badges-wrap');
+      if (badges) cell.insertBefore(div, badges); else cell.appendChild(div);
+    }
   }
 
   // Filters the "jump to this set" shortcuts (Health cards, batch stats,
@@ -24268,6 +24330,15 @@
             <li><strong>⚡ Título exacto entre comillas:</strong> si sabes el título de un artículo, pégalo <strong>entre comillas</strong> (<code>"Prions activate a p38 MAPK synaptotoxic signaling pathway"</code>) y PrionVault lo busca directamente en los títulos con un índice propio: responde al instante tanto si está como si no. Da igual que haya diferencias de mayúsculas, espacios, guiones o signos de puntuación, y también sirve con solo una parte del título. Mientras la comilla está abierta (la estás escribiendo) no se lanza la búsqueda; empieza al cerrarla. Las búsquedas largas <em>sin</em> comillas también son ahora más rápidas.</li>
             <li><strong>🤖 Búsqueda con IA</strong> (icono de robot, a la derecha de la barra): abre un modal aparte con un campo de texto grande para escribir la pregunta en lenguaje natural y elegir el modelo — Claude Sonnet 4.6, GPT-4.1 o Gemini 2.5 Pro, por nombre — antes de lanzarla. Busca por significado sobre el contenido vectorizado de la biblioteca y responde citando las referencias usadas.</li>
             <li><strong>🔍 Búsqueda bibliográfica:</strong> consulta PubMed y Scopus en tiempo real. Los resultados se pueden importar directamente a la biblioteca.</li>
+          </ul>
+          <h4>✨ Búsqueda inteligente</h4>
+          <ul>
+            <li><strong>Orden por relevancia:</strong> al buscar, salen primero los artículos con el término en el <strong>título</strong>, luego en autores y abstract, y al final los que solo lo mencionan dentro del PDF. Puedes cambiar el orden en <em>Ordenar</em>; al borrar la búsqueda vuelve a «más recientes».</li>
+            <li><strong>Variantes de la palabra:</strong> <code>prion</code> encuentra también <em>prions</em>; <code>misfolding</code> encuentra <em>misfolded</em>.</li>
+            <li><strong>Acentos y eñes:</strong> <code>erana</code> encuentra <em>Eraña</em>; <code>muller</code> encuentra <em>Müller</em>.</li>
+            <li><strong>Dónde coincide:</strong> bajo cada resultado aparece el fragmento del abstract, del resumen IA o del <strong>texto del PDF</strong> donde está el término, resaltado en amarillo.</li>
+            <li><strong>¿Quisiste decir…?</strong> si no hay resultados y parece una errata (<code>amiloid</code>), se propone la palabra correcta; un clic repite la búsqueda.</li>
+            <li><strong>Filtros dentro de la caja:</strong> <code>autor:castilla</code>, <code>año:2021</code> o <code>año:2020-2024</code>, <code>revista:nature</code>, <code>titulo:PrPSc</code>. Se combinan entre sí y con palabras sueltas: <code>strain autor:requena año:2018-2022</code>. Con espacios, entre comillas: <code>revista:"acta neuropathol"</code>. También en inglés (<code>author:</code>, <code>year:</code>, <code>journal:</code>, <code>title:</code>).</li>
           </ul>
           <h4>📅 Buscar por año</h4>
           <p>A la derecha de los botones T · Au · A · R del buscador está el botón del <strong>calendario</strong>. Actívalo y escribe un año (<code>2026</code>) o un rango (<code>2020-2026</code>, <code>2020 2026</code>): el listado muestra solo los artículos publicados en esos años, en vez de buscar ese número en el texto. Si lo que escribes no es un año, se hace la búsqueda normal.</p>

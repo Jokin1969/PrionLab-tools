@@ -1031,6 +1031,7 @@
   let _loadSeq = 0;
   async function loadArticles() {
     const mySeq = ++_loadSeq;
+    _syncSearchSort();
     const params = buildListParams();
     _updateHealthExtraIndicator();
 
@@ -1078,6 +1079,21 @@
         _listIds = [];
         state.lastTotal = 0;
         showEmpty('No articles match these filters.');
+        if (r.did_you_mean) {
+          // "¿Quisiste decir…?" — one click re-runs the search corrected.
+          const empty = document.getElementById('pv-results-empty');
+          const p = document.createElement('div');
+          p.style.cssText = 'margin-top:-36px;padding-bottom:40px;font-size:14px;text-align:center;color:#374151;';
+          p.innerHTML = `¿Quisiste decir <a href="#" style="color:#0F3460;font-weight:600;">${esc(r.did_you_mean)}</a>?`;
+          p.querySelector('a').addEventListener('click', (e) => {
+            e.preventDefault();
+            state.q = r.did_you_mean; state.page = 1;
+            const si = document.getElementById('pv-search-input');
+            if (si) si.value = state.q;
+            loadArticles();
+          });
+          if (empty) empty.appendChild(p);
+        }
         renderPagination(r);
         updateBulkBar();
         return;
@@ -1113,6 +1129,7 @@
       renderPagination(r);
       updateBulkBar();
       syncSelectAllHeader();
+      _loadSnippets(mySeq, r.items);
     } catch (e) {
       if (mySeq !== _loadSeq) return;
       showEmpty('Error: ' + e.message);  // showEmpty escapes

@@ -137,6 +137,51 @@
     _updateIsolationIndicator();
   }
 
+  // While a text search is active the results are ordered by relevance
+  // (title hits first) unless the user picks another order; clearing the
+  // search goes back to "recently added".
+  function _syncSearchSort() {
+    const hasQ = !!state.q && !(state.searchYear && _parseYearQuery(state.q));
+    if (hasQ && !state._qSortApplied && state.sort === 'added_desc') state.sort = 'relevance';
+    if (hasQ) state._qSortApplied = true;
+    if (!hasQ) {
+      state._qSortApplied = false;
+      if (state.sort === 'relevance') state.sort = 'added_desc';
+    }
+    const sel = document.getElementById('filter-sort');
+    if (sel && sel.value !== state.sort) sel.value = state.sort;
+  }
+
+  // Under each result: the fragment where the search matched (abstract, AI
+  // summary or PDF text) with the hit highlighted. Asked for after the list
+  // is on screen so it never delays the results.
+  async function _loadSnippets(seq, items) {
+    const q = state.q;
+    if (!q || (state.searchYear && _parseYearQuery(q)) || !items.length) return;
+    let data;
+    try {
+      data = await api('/articles/snippets', {
+        method: 'POST', body: JSON.stringify({ q, ids: items.slice(0, 60).map(a => a.id) }) });
+    } catch (_) { return; }
+    if (seq !== _loadSeq) return;                    // a newer search replaced this one
+    const LABEL = { abstract: 'Abstract', summary: 'Resumen IA', pdf: 'Texto del PDF' };
+    for (const [aid, sn] of Object.entries(data.snippets || {})) {
+      const row = document.querySelector(`#pv-results-tbody tr[data-aid="${CSS.escape(aid)}"]`);
+      const cell = row && row.querySelector('td.pv-row-open');
+      if (!cell || cell.querySelector('.pv-snippet')) continue;
+      const div = document.createElement('div');
+      div.className = 'pv-snippet';
+      div.style.cssText = 'margin-top:3px;font-size:11.5px;color:#6b7280;line-height:1.4;' +
+                          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const html = esc(sn.text).replace(/\[\[\[/g, '<mark style="background:#fef08a;color:#111827;padding:0 1px;border-radius:2px;">')
+                               .replace(/\]\]\]/g, '</mark>');
+      div.innerHTML = `<span style="color:#9ca3af;">${esc(LABEL[sn.where] || '')}:</span> …${html}…`;
+      div.title = sn.text.replace(/\[\[\[|\]\]\]/g, '');
+      const badges = cell.querySelector('.pv-row-badges-wrap');
+      if (badges) cell.insertBefore(div, badges); else cell.appendChild(div);
+    }
+  }
+
   // Filters the "jump to this set" shortcuts (Health cards, batch stats,
   // id lists) must also clear, on top of the ones they reset themselves.
   function _resetHiddenFilters() {

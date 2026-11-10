@@ -649,6 +649,15 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('OA-PDF fetcher daemon failed to start: %s', e)
 
+        # Search v2 (migration 112): index the articles that existed
+        # before it, in the background and in small batches.
+        try:
+            if os.environ.get("DATABASE_URL"):
+                from tools.prionvault.services.search_v2 import start_backfill
+                start_backfill()
+        except Exception as e:
+            app.logger.warning('Search v2 backfill failed to start: %s', e)
+
         # Email-to-PrionVault ingest: polls a dedicated IMAP mailbox
         # every PRIONVAULT_EMAIL_INGEST_POLL_SECONDS (default 180 s)
         # and feeds attached PDFs into the ingest queue. No-op until

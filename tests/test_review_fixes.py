@@ -107,3 +107,21 @@ def test_digest_card_escapes_titles():
                          "https://h/import")
     assert "<script>" not in html and "&lt;script&gt;" in html
     assert "<i>X</i>" not in html and 'a"b' not in html
+
+
+# ── Search box field filters ─────────────────────────────────────────────────
+
+def test_search_field_filters_are_parsed():
+    pytest.importorskip("sqlalchemy")
+    try:
+        from tools.prionvault.services.search_v2 import parse_query
+    except Exception as exc:
+        pytest.skip(f"search_v2 not importable: {exc}")
+    rest, f = parse_query('strain autor:castilla año:2024-2020 revista:"acta neuropathol" titulo:PrPSc')
+    assert rest == "strain"
+    assert f == {"authors": ["castilla"], "year_min": 2020, "year_max": 2024,
+                 "journal": ["acta neuropathol"], "title": ["PrPSc"]}
+    # unknown prefixes (a DOI, a protein name) stay in the free text
+    assert parse_query("doi:10.1000/x PrP:mutant") == ("doi:10.1000/x PrP:mutant", {})
+    assert parse_query("año:veinte prion") == ("año:veinte prion", {})
+    assert parse_query("plain words") == ("plain words", {})

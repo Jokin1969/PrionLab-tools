@@ -56,7 +56,12 @@ def api_list_articles():
             return v
         return _body.get(key, default)
 
+    import time as _time
+    _t0 = _time.perf_counter()
     q           = (_p("q") or "").strip()
+    # Field filters typed in the box: autor:castilla año:2020-2024 revista:x
+    from .services import search_v2 as _sv2
+    q, _qf = _sv2.parse_query(q)
     q_mode      = "or" if (_p("q_mode") or "").strip().lower() == "or" else "and"
     # Optional "filter by article id list" — used by the bulk-bar's
     # "Ver sólo seleccionados" button so the operator can keep their
@@ -252,7 +257,7 @@ def api_list_articles():
 
     s = _session()
     try:
-        return _list_articles_with_recovery(
+        resp = _list_articles_with_recovery(
             s, q, year_min, year_max, journal,
             authors_q,
             is_flagged, is_milestone, color_label,
@@ -282,13 +287,64 @@ def api_list_articles():
             has_summary_notes=has_summary_notes,
             pdf_verify_status=pdf_verify_status,
             summary_ai_provider=summary_ai_provider,
+            qf=_qf,
         )
+        # How long searches take, so slow ones can be found in the logs.
+        _ms = int((_time.perf_counter() - _t0) * 1000)
+        if q or _qf or _ms > 1500:
+            logger.info("pv_search q=%r fields=%s sort=%s size=%s ms=%d",
+                        q[:120], sorted(_qf) if _qf else [], sort, page_size, _ms)
+        try:
+            resp.headers["Server-Timing"] = f"list;dur={_ms}"
+        except Exception:
+            pass
+        return resp
     except Exception as exc:
         logger.exception("PrionVault api_list_articles failed")
         s.rollback()
         return jsonify({"error": "internal error", "detail": str(exc)}), 500
     finally:
         db.Session.remove()
+
+
+@prionvault_bp.route("/api/articles/snippets", methods=["POST"])
+@login_required
+def api_article_snippets():
+    """Where each result of the current search matched (abstract, AI summary
+    or PDF text), with the hit marked. Asked for after the listing is on
+    screen, so it never delays the results themselves."""
+    data = request.get_json(silent=True) or {}
+    ids = [str(i) for i in (data.get("ids") or []) if isinstance(i, str)][:60]
+    from .services import search_v2
+    q, _fields = search_v2.parse_query(str(data.get("q") or "").strip())
+    if not ids or not q:
+        return jsonify({"snippets": {}})
+    import uuid as _uuid_mod
+    try:
+        ids = [str(_uuid_mod.UUID(i)) for i in ids]
+    except ValueError:
+        return jsonify({"error": "bad_ids"}), 400
+    s = _session()
+    try:
+        return jsonify({"snippets": search_v2.snippets(s, ids, q)})
+    except Exception as exc:
+        logger.warning("snippets failed: %s", exc)
+        s.rollback()
+        return jsonify({"snippets": {}})
+    finally:
+        db.Session.remove()
+
+
+@prionvault_bp.route("/api/admin/search-index", methods=["GET"])
+@admin_required
+def api_search_index_status():
+    from .services import search_v2
+    return jsonify(search_v2.status())
+
+
+def _sv2_has_unaccent(s) -> bool:
+    from .services.search_v2 import has_unaccent
+    return has_unaccent(s)
 
 
 def _list_articles_with_recovery(s, *args, **kwargs):
@@ -446,7 +502,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
                         priority_eq, extraction,
                         is_favorite, is_read,
                         sort, page, page_size,
-                        *, search_fields=None, q_mode="and",
+                        *, search_fields=None, q_mode="and", qf=None,
                         is_jc=None,
                         tag_id=None, has_summary=None, in_prionread=None,
                         collection_id=None,
@@ -590,12 +646,36 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         ilike_sql = joiner.join(word_clauses) if word_clauses else "FALSE"
 
         if not _sf and "search_vector" in pv_cols:
-            conditions.append(f"(search_vector @@ websearch_to_tsquery('simple', :q) OR ({ilike_sql}))")
+            # v2 (migration 112): stemmed + accent-folded vector, so "prion"
+            # finds "prions" and "Erana" finds "Eraña". ORed with the
+            # original conditions, so nothing that matched before is lost
+            # (also while the v2 vectors are still being backfilled).
+            v2 = ("search_vector2 @@ websearch_to_tsquery('pv_search', :q) OR "
+                  if "search_vector2" in pv_cols else "")
+            conditions.append(f"({v2}search_vector @@ websearch_to_tsquery('simple', :q) OR ({ilike_sql}))")
             params["q"] = ts_input
         else:
             conditions.append(f"({ilike_sql})")
             force_index_scan = True
         params.update(like_params)
+
+    if qf:
+        # Accent-insensitive when the unaccent extension is available.
+        _ua = _sv2_has_unaccent(s)
+        def _col(c):
+            return f"unaccent({c})" if _ua else c
+        def _val(k):
+            return f"unaccent(:{k})" if _ua else f":{k}"
+        for _field, _column in (("authors", "coalesce(authors,'')"),
+                                ("journal", "coalesce(journal,'')"),
+                                ("title", "coalesce(title,'')")):
+            for _i, _v in enumerate(qf.get(_field) or []):
+                _k = f"qf_{_field}_{_i}"
+                conditions.append(f"{_col(_column)} ILIKE {_val(_k)}")
+                params[_k] = f"%{_v}%"
+        if qf.get("year_min") is not None:
+            conditions.append("year >= :qf_ymin AND year <= :qf_ymax")
+            params["qf_ymin"], params["qf_ymax"] = qf["year_min"], qf["year_max"]
 
     if year_min is not None:
         conditions.append("year >= :year_min")
@@ -942,6 +1022,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # Unknown sort → the default (an unqualified created_at is ambiguous
     # once prionvault_user_state is joined and made Postgres error out).
     order = sort_map.get(sort, sort_map["added_desc"])
+    if sort == "relevance" and q and "rank_vector" in pv_cols:
+        # Title hits first, then authors/abstract; results that only match
+        # inside the PDF text rank 0 and follow, newest first. rank_vector is
+        # small (no PDF text), so ranking every match stays cheap.
+        order = ("(COALESCE(ts_rank_cd(rank_vector, websearch_to_tsquery('pv_search', :q_rank), 32), 0)"
+                 " + CASE WHEN title ILIKE :q_phrase THEN 0.5 ELSE 0 END) DESC, "
+                 "articles.created_at DESC NULLS LAST")
+        params["q_rank"] = q if q_mode == "and" else " OR ".join(q.split())
+        params["q_phrase"] = f"%{q}%"
 
     # Build SELECT list: always include base columns; add pv cols if present.
     # NOTE: jc_count used to be a correlated subquery here. With 1 000+
@@ -1260,12 +1349,23 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         return out
 
     import uuid as _uuid
-    return jsonify({
+    payload = {
         "items": [_row_to_dict(r) for r in rows],
         "total": total,
         "page":  page,
         "size":  page_size,
-    })
+    }
+    if total == 0 and q and page == 1:
+        # Nothing found: maybe a typo ("Creutzfeld" → "Creutzfeldt").
+        try:
+            from .services.search_v2 import did_you_mean
+            with s.begin_nested():
+                suggestion = did_you_mean(s, q)
+            if suggestion:
+                payload["did_you_mean"] = suggestion
+        except Exception:
+            logger.debug("did_you_mean failed", exc_info=True)
+    return jsonify(payload)
 
 
 

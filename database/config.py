@@ -234,6 +234,10 @@ class DatabaseConfig:
                 # Stop here: later files may depend on this one, and running
                 # them out of order leaves the schema half-migrated. They run
                 # on the next boot / forced run, once this file succeeds.
+                # (MIGRATIONS_CONTINUE_ON_ERROR=1 restores the old lenient
+                # behaviour, for dev databases without pgvector.)
+                if os.environ.get("MIGRATIONS_CONTINUE_ON_ERROR", "").strip() in ("1", "true"):
+                    continue
                 remaining = [f.name for f in migration_files
                              if f.name > filename and f.name not in done]
                 if remaining:
