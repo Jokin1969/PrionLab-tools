@@ -2346,6 +2346,7 @@
   async function loadArticles() {
     const mySeq = ++_loadSeq;
     const params = buildListParams();
+    _updateHealthExtraIndicator();
 
     const tbody = document.getElementById('pv-results-tbody');
     const table = document.getElementById('pv-results-table');
@@ -3063,10 +3064,10 @@
     if (state.indexedStatus)       params.set('indexed_status', state.indexedStatus);
     if (state.searchFields && state.searchFields.length)
                                    params.set('search_fields', state.searchFields.join(','));
-    // Health-dashboard extra filters (transient, consumed once)
+    // Health-dashboard extra filters. They stay active (pagination, sorting,
+    // "select all filtered"…) until cleared from the badge next to the count.
     if (state._healthExtra) {
       for (const [k, v] of Object.entries(state._healthExtra)) params.set(k, v);
-      state._healthExtra = null;
     }
     if (state.sort)                params.set('sort', state.sort);
     params.set('page', state.page);
@@ -3137,6 +3138,28 @@
     state.isolatedArticleId = null;
     state.page = 1;
     _updateIsolationIndicator();
+  }
+
+  // Badge shown while a Library Health filter is active, with its own clear.
+  function _updateHealthExtraIndicator() {
+    let el = document.getElementById('pv-health-extra-indicator');
+    if (!state._healthExtra) { if (el) el.style.display = 'none'; return; }
+    if (!el) {
+      const anchor = document.getElementById('pv-isolation-indicator');
+      if (!anchor) return;
+      el = document.createElement('span');
+      el.id = 'pv-health-extra-indicator';
+      el.style.cssText = 'margin-left:8px;padding:3px 8px;border-radius:4px;background:#dbeafe;' +
+                         'color:#1e40af;font-size:11px;font-weight:600;';
+      el.innerHTML = '🩺 Filtro de Salud activo <button type="button" style="margin-left:6px;' +
+        'background:none;border:none;color:#1e40af;cursor:pointer;text-decoration:underline;' +
+        'font-size:11px;padding:0;">Limpiar</button>';
+      el.querySelector('button').addEventListener('click', () => {
+        state._healthExtra = null; state.page = 1; loadArticles();
+      });
+      anchor.insertAdjacentElement('afterend', el);
+    }
+    el.style.display = 'inline-block';
   }
 
   // Update the isolation indicator visibility + count text

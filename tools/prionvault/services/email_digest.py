@@ -153,8 +153,10 @@ def _fetch_flagged_articles(user_id: str, n: int) -> list[dict]:
             """), {"uid": user_id, "n": n}).mappings().all()
         return [dict(r) for r in rows]
     except Exception as exc:
+        # Propagate: an empty list here would send a "nothing to show" email
+        # and advance the schedule. The scheduler retries in an hour.
         logger.error("email_digest: fetch_flagged failed: %s", exc)
-        return []
+        raise
 
 
 def _unflag_articles(eng, user_id: str, article_ids: list[str]) -> None:
@@ -249,8 +251,10 @@ def _fetch_new_articles(topics: list[str], since: datetime,
             rows = conn.execute(_t(sql), params).mappings().all()
         return [dict(r) for r in rows]
     except Exception as exc:
+        # Propagate (see _fetch_flagged_articles): never report "no news"
+        # because the query failed.
         logger.error("email_digest: fetch failed: %s", exc)
-        return []
+        raise
 
 
 # ── HTML email builder ────────────────────────────────────────────────────────

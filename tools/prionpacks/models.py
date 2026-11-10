@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import config
 
+from tools.prionpacks import _store
 logger = logging.getLogger(__name__)
 
 PACKAGES_FILE = os.path.join(config.DATA_DIR, 'prionpacks.json')
@@ -103,23 +104,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def _load() -> list:
-    try:
-        if os.path.exists(PACKAGES_FILE):
-            with open(PACKAGES_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    except Exception as e:
-        logger.error('PrionPacks load error: %s', e)
-        return []
+def _load():
+    return _store.load_json(PACKAGES_FILE)
 
 
-def _save(packages: list) -> None:
-    os.makedirs(os.path.dirname(PACKAGES_FILE), exist_ok=True)
-    tmp = PACKAGES_FILE + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(packages, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, PACKAGES_FILE)
+def _save(items) -> None:
+    _store.save_json(PACKAGES_FILE, items)
 
 
 def _gen_id(packages: list) -> str:
@@ -203,8 +193,10 @@ def _normalise_methods(value):
     return []
 
 
+@_store.locked(lambda: PACKAGES_FILE)
 def bootstrap_demo_data() -> None:
-    if not _load():
+    # Only on a brand-new install: an existing file is never overwritten.
+    if not os.path.exists(PACKAGES_FILE):
         _save(DEMO_PACKAGES)
         logger.info('PrionPacks: seeded %d demo packages', len(DEMO_PACKAGES))
 
@@ -217,6 +209,7 @@ def get_package(pkg_id: str) -> dict | None:
     return next((p for p in _load() if p['id'] == pkg_id), None)
 
 
+@_store.locked(lambda: PACKAGES_FILE)
 def create_package(data: dict) -> dict:
     packages = _load()
     now = _now()
@@ -254,6 +247,7 @@ def create_package(data: dict) -> dict:
     return pkg
 
 
+@_store.locked(lambda: PACKAGES_FILE)
 def update_package(pkg_id: str, data: dict) -> dict | None:
     packages = _load()
     idx = next((i for i, p in enumerate(packages) if p['id'] == pkg_id), None)
@@ -272,10 +266,12 @@ def update_package(pkg_id: str, data: dict) -> dict | None:
     return updated
 
 
+@_store.locked(lambda: PACKAGES_FILE)
 def delete_package(pkg_id: str) -> None:
     _save([p for p in _load() if p['id'] != pkg_id])
 
 
+@_store.locked(lambda: PACKAGES_FILE)
 def increment_docx_version(pkg_id: str) -> int:
     packages = _load()
     pkg = next((p for p in packages if p['id'] == pkg_id), None)
@@ -315,6 +311,7 @@ def _lookup_article_by_doi_pmid(doi: str | None, pmid: str | None) -> str | None
     return None
 
 
+@_store.locked(lambda: PACKAGES_FILE)
 def migrate_free_refs_to_linked(pkg_id: str | None = None) -> dict:
     """Scan free-text references in all packs (or just pkg_id) and convert
     any that can be matched to a PrionVault article by DOI or PMID into

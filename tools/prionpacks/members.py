@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash
 
 import config
 
+from tools.prionpacks import _store
 logger = logging.getLogger(__name__)
 
 MEMBERS_FILE = os.path.join(config.DATA_DIR, 'prionpacks_members.json')
@@ -65,22 +66,11 @@ def _now():
 
 
 def _load():
-    try:
-        if os.path.exists(MEMBERS_FILE):
-            with open(MEMBERS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    except Exception as e:
-        logger.error('PrionPacks members load error: %s', e)
-        return []
+    return _store.load_json(MEMBERS_FILE)
 
 
-def _save(members):
-    os.makedirs(os.path.dirname(MEMBERS_FILE), exist_ok=True)
-    tmp = MEMBERS_FILE + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(members, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, MEMBERS_FILE)
+def _save(items) -> None:
+    _store.save_json(MEMBERS_FILE, items)
 
 
 def _slug(name, surname, existing_ids):
@@ -97,8 +87,10 @@ def _safe(m):
     return {k: v for k, v in m.items() if k != 'password'}
 
 
+@_store.locked(lambda: MEMBERS_FILE)
 def bootstrap_demo_data():
-    if not _load():
+    # Only on a brand-new install: an existing file is never overwritten.
+    if not os.path.exists(MEMBERS_FILE):
         _save(DEMO_MEMBERS)
         logger.info('PrionPacks members: seeded %d demo members', len(DEMO_MEMBERS))
 
@@ -111,6 +103,7 @@ def get_member(member_id):
     return next((m for m in _load() if m['id'] == member_id), None)
 
 
+@_store.locked(lambda: MEMBERS_FILE)
 def create_member(data):
     members = _load()
     existing_ids = {m['id'] for m in members}
@@ -134,6 +127,7 @@ def create_member(data):
     return _safe(member)
 
 
+@_store.locked(lambda: MEMBERS_FILE)
 def update_member(member_id, data):
     members = _load()
     idx = next((i for i, m in enumerate(members) if m['id'] == member_id), None)
@@ -156,5 +150,6 @@ def update_member(member_id, data):
     return _safe(m)
 
 
+@_store.locked(lambda: MEMBERS_FILE)
 def delete_member(member_id):
     _save([m for m in _load() if m['id'] != member_id])

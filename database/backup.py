@@ -145,7 +145,8 @@ class BackupManager:
             # to a temp file so a chatty psql can't deadlock on a full pipe.
             import tempfile
             with gzip.open(path, "rb") as gz, tempfile.TemporaryFile() as errf, \
-                    subprocess.Popen(["psql", db.database_url], stdin=subprocess.PIPE,
+                    subprocess.Popen(["psql", "-v", "ON_ERROR_STOP=1", "--single-transaction",
+                                      db.database_url], stdin=subprocess.PIPE,
                                      stdout=subprocess.DEVNULL, stderr=errf) as proc:
                 try:
                     shutil.copyfileobj(gz, proc.stdin, 1024 * 1024)
@@ -267,8 +268,15 @@ class BackupManager:
                     # into an earlier table — all truncation happens
                     # before any insertion starts.
                     quoted = ", ".join(f'"{t}"' for t in order)
+                    # One restore at a time, and everything below — the
+                    # TRUNCATE and every COPY — is ONE transaction: if any
+                    # table fails to load, the database is left exactly as
+                    # it was instead of with emptied tables.
+                    cursor.execute("SELECT pg_try_advisory_xact_lock(hashtext('prionlab_csv_restore'))")
+                    if not cursor.fetchone()[0]:
+                        psycopg2_conn.rollback()
+                        return {"success": False, "error": "Another restore is already running"}
                     cursor.execute(f"TRUNCATE TABLE {quoted} CASCADE")
-                psycopg2_conn.commit()
 
                 for table_name in order:
                     header, data_rows = parsed[table_name]
@@ -303,7 +311,7 @@ class BackupManager:
 
                             # Use COPY with escape format to properly handle NULLs
                             # In escape format: \N represents NULL, \\ represents backslash
-                            cols = ",".join(header)
+                            cols = ",".join('"' + c.replace('"', '""') + '"' for c in header)
                             copy_sql = f'COPY "{table_name}" ({cols}) FROM STDIN WITH (FORMAT text, NULL \'\\N\')'
 
                             # Convert CSV rows to escape format with \N for empty strings (NULLs)
@@ -360,13 +368,14 @@ class BackupManager:
                                         (seq,)
                                     )
 
-                        psycopg2_conn.commit()
                         rows_restored += len(data_rows)
                         tables_restored += 1
                     except Exception as e:
                         psycopg2_conn.rollback()
-                        logger.error("Failed to restore table %s: %s", table_name, e)
+                        logger.error("Failed to restore table %s: %s — nothing was changed",
+                                     table_name, e)
                         raise
+                psycopg2_conn.commit()
             finally:
                 psycopg2_conn.close()
 

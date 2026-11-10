@@ -386,13 +386,15 @@ def _ensure_processed_folder(conn: imaplib.IMAP4_SSL,
         if typ != "OK":
             return None
         # Already exists?
+        # select() answers NO (without raising) when the folder is missing.
         try:
-            conn.select(folder, readonly=True)
-            return folder
+            typ, _d = conn.select(folder, readonly=True)
+            if typ == "OK":
+                return folder
         except Exception:
             pass
-        conn.create(folder)
-        return folder
+        typ, _d = conn.create(folder)
+        return folder if typ == "OK" else None
     except Exception:
         return None
 
@@ -605,7 +607,12 @@ def _mark_handled(conn: imaplib.IMAP4_SSL, msg_id: bytes,
     """Move to Processed folder when available, else just mark SEEN."""
     try:
         if proc_folder:
-            conn.uid("COPY", msg_id, proc_folder)
+            typ, _d = conn.uid("COPY", msg_id, proc_folder)
+            if typ != "OK":
+                # Never delete an email that was not archived first.
+                logger.warning("email_ingest: copy to %s failed — keeping the email", proc_folder)
+                conn.uid("STORE", msg_id, "+FLAGS", r"(\Seen)")
+                return
             conn.uid("STORE", msg_id, "+FLAGS", r"(\Deleted)")
             conn.expunge()
         else:

@@ -189,6 +189,19 @@ citing (0 = irrelevant/minor, 10 = landmark). Reviews, case reports and minor in
 exceptional. Answer only JSON: {"scores": [{"i": <number>, "s": <0-10>}]} with one entry per paper."""
 
 
+def _parse_scores(parsed) -> dict[int, dict]:
+    """{position: {"s": float, "why": str}} from an LLM answer, skipping any
+    malformed entry instead of failing the whole batch."""
+    out: dict[int, dict] = {}
+    entries = parsed.get("scores") if isinstance(parsed, dict) else None
+    for e in entries if isinstance(entries, list) else []:
+        try:
+            out[int(e["i"])] = {"s": float(e["s"]), "why": str(e.get("why") or "")[:400]}
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
 def _screen(year: int) -> None:
     eng = _get_engine()
     with eng.connect() as conn:
@@ -204,16 +217,19 @@ def _screen(year: int) -> None:
         user = "\n".join(f"{i + 1}. {r['title']} — {r['journal']}" for i, r in enumerate(chunk))
         try:
             parsed = _call(_SCREEN_SYSTEM, user, strong=False, max_tokens=2500, timeout=120)
-            scores = {int(s["i"]): float(s["s"]) for s in parsed.get("scores", [])
-                      if str(s.get("i", "")).isdigit()}
+            scores = _parse_scores(parsed)
         except Exception as exc:
             logger.warning("vc screen batch failed: %s", exc)
             scores = {}
+        # Only papers the AI really scored are written. The rest stay
+        # unscored (NULL) and are screened again on the next run, instead
+        # of being buried with a 0 because of one failed call.
         with eng.begin() as conn:
             for i, r in enumerate(chunk, 1):
-                conn.execute(sql_text(
-                    "UPDATE prionvault_vc_item SET screen_score = :s WHERE id = :id"),
-                    {"s": scores.get(i, 0.0), "id": r["id"]})
+                if i in scores:
+                    conn.execute(sql_text(
+                        "UPDATE prionvault_vc_item SET screen_score = :s WHERE id = :id"),
+                        {"s": scores[i]["s"], "id": r["id"]})
         _set(done=min(k + batch, len(rows)))
 
 
@@ -295,16 +311,17 @@ def _score_shortlist(year: int) -> None:
             for i, r in enumerate(chunk))
         try:
             parsed = _call(_SCORE_SYSTEM, user, strong=True, max_tokens=3000)
-            res = {int(s["i"]): s for s in parsed.get("scores", []) if str(s.get("i", "")).isdigit()}
+            res = _parse_scores(parsed)
         except Exception as exc:
             logger.warning("vc score batch failed: %s", exc)
             res = {}
+        # Keep the previous score/reason of any paper this call did not score.
         with eng.begin() as conn:
             for i, r in enumerate(chunk, 1):
-                s = res.get(i) or {}
-                conn.execute(sql_text(
-                    "UPDATE prionvault_vc_item SET score = :s, reason = :w WHERE id = :id"),
-                    {"s": float(s.get("s") or 0), "w": str(s.get("why") or "")[:400], "id": r["id"]})
+                if i in res:
+                    conn.execute(sql_text(
+                        "UPDATE prionvault_vc_item SET score = :s, reason = :w WHERE id = :id"),
+                        {"s": res[i]["s"], "w": res[i]["why"], "id": r["id"]})
         _set(done=min(k + batch, len(rows)))
 
 

@@ -1032,6 +1032,7 @@
   async function loadArticles() {
     const mySeq = ++_loadSeq;
     const params = buildListParams();
+    _updateHealthExtraIndicator();
 
     const tbody = document.getElementById('pv-results-tbody');
     const table = document.getElementById('pv-results-table');

@@ -214,7 +214,11 @@ def api_notifications_test():
             return jsonify({"error": str(exc)[:300]}), 500
 
     from .services.email_digest import send_digest_for_sub
-    ok = send_digest_for_sub(str(sub_id), force=True)
+    try:
+        ok = send_digest_for_sub(str(sub_id), force=True)
+    except Exception:
+        logger.exception("notifications: test send failed")
+        ok = False
     if ok:
         return jsonify({"ok": True, "detail": "Email de prueba enviado."})
     return jsonify({"error": "send_failed",
@@ -383,7 +387,11 @@ def api_notifications_sub_test(sub_id):
     if not actual_id:
         return jsonify({"error": "not_found"}), 404
     from .services.email_digest import send_digest_for_sub
-    ok = send_digest_for_sub(actual_id, force=True)
+    try:
+        ok = send_digest_for_sub(actual_id, force=True)
+    except Exception:
+        logger.exception("notifications: test send failed")
+        ok = False
     if ok:
         return jsonify({"ok": True, "detail": "Email de prueba enviado."})
     return jsonify({"error": "send_failed",
@@ -417,7 +425,10 @@ def api_notifications_sub_preview(sub_id):
     if source == "flagged":
         from .services.email_digest import _fetch_flagged_articles
         n        = max(1, int(sub.get("articles_per_email") or 5))
-        articles = _fetch_flagged_articles(str(sub["user_id"]), n)
+        try:
+            articles = _fetch_flagged_articles(str(sub["user_id"]), n)
+        except Exception:
+            return jsonify({"error": "db_error"}), 500
         return jsonify({
             "source":   "flagged",
             "count":    len(articles),

@@ -140,6 +140,10 @@ def _try_unpaywall(doi: str) -> tuple[Optional[bytes], Optional[str], Optional[s
     except Exception as exc:
         logger.debug("oa_pdf_fetcher: unpaywall lookup failed for %s (%s)", doi, exc)
         return None, None, "unpaywall_lookup_failed"
+    err = getattr(info, "error", None)
+    if err and err != "not_in_unpaywall":
+        # network error / rate limit / bad JSON: we don't know yet
+        return None, None, "unpaywall_lookup_failed"
     if not info.is_oa:
         return None, None, "unpaywall_no_oa"
     if not info.pdf_url:
@@ -481,6 +485,18 @@ def try_now(article_id: str) -> dict:
     return {"ok": True, "via": via, "tried": tried, "dropbox_path": dropbox_path}
 
 
+_MAX_TRANSIENT_ATTEMPTS = 5
+
+
+def _is_transient(reason: Optional[str]) -> bool:
+    if not reason:
+        return False
+    if reason in ("unpaywall_not_configured", "unpaywall_lookup_failed",
+                  "unpaywall_download_failed", "pmc_timeout", "pmc_fetch_failed"):
+        return True
+    return reason.startswith("pmc_http_") and not reason.endswith(("_404", "_403", "_410"))
+
+
 def _process_one(row: dict) -> str:
     """Attempt OA fetch for one article. Returns the new pdf_oa_status."""
     aid     = row["id"]
@@ -519,6 +535,24 @@ def _process_one(row: dict) -> str:
             reason = f"{unpaywall_reason} · {pmc_reason}"
         else:
             reason = pmc_reason or unpaywall_reason or "unknown"
+        # A transient failure (Unpaywall/PMC down, rate limit, timeout,
+        # publisher hiccup) must not bury the article for good: count the
+        # attempt and leave it pending, giving up only after several.
+        if any(_is_transient(r) for r in (unpaywall_reason, pmc_reason)):
+            attempts = _MAX_TRANSIENT_ATTEMPTS
+            try:
+                with _get_engine().begin() as conn:
+                    attempts = conn.execute(sql_text("""
+                        UPDATE articles SET pdf_oa_attempts = COALESCE(pdf_oa_attempts, 0) + 1
+                         WHERE id = :aid RETURNING pdf_oa_attempts"""), {"aid": str(aid)}).scalar() or 1
+            except Exception as exc:
+                logger.warning("oa_pdf_fetcher: attempt count failed for %s (%s)", aid, exc)
+            if attempts < _MAX_TRANSIENT_ATTEMPTS:
+                with _lock:
+                    _state["failed"] += 1
+                    _state["last_error"] = f"reintento pendiente: {reason}"[:240]
+                _log_event(aid, title, "failed", via="retry", reason=reason)
+                return "failed"
         # Negative cache — don't try this article again on the next
         # daemon tick. The operator can still force a retry from the
         # "Forzar descarga OA" admin button.
@@ -751,7 +785,9 @@ def _run_loop() -> None:
             })
 
         try:
-            _drain_once()
+            # One worker drains at a time (both run this daemon).
+            from database.singleton import run_once
+            run_once("oa_pdf_drain", _drain_once)
         except Exception as exc:
             logger.exception("oa_pdf_fetcher: drain crashed")
             with _lock:
