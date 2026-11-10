@@ -511,8 +511,11 @@ def profile():
             "orcid": request.form.get("orcid", "").strip(),
             "bio": request.form.get("bio", "").strip(),
         }
+        from core.users import email_taken_by_other
+        if email_taken_by_other(updates["email"], username):
+            error = _("That email address is already used by another account.")
         new_password = request.form.get("new_password", "")
-        if new_password:
+        if new_password and not error:
             if len(new_password) < 6:
                 error = _("New password must be at least 6 characters.")
             else:

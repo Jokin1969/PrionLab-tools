@@ -337,6 +337,18 @@ def user_exists(username: str) -> bool:
     return get_user(username) is not None
 
 
+def email_taken_by_other(email: str, username: str) -> bool:
+    """True when another account already uses this email. The email is how a
+    login is tied to its PrionVault identity, so it must stay unique."""
+    e = (email or "").lower().strip()
+    if not e:
+        return False
+    me = (username or "").lower().strip()
+    return any((u.get("email") or "").lower().strip() == e
+               and (u.get("username") or "").lower().strip() != me
+               for u in load_users())
+
+
 def email_exists(email: str) -> bool:
     email_lower = email.lower().strip()
     return any(u.get("email", "").lower() == email_lower for u in load_users())

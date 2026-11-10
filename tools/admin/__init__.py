@@ -210,6 +210,10 @@ def add_user():
         if user_exists(username):
             flash(_("Username already exists."), "error")
             return render_template("admin/user_form.html", mode="add", form=request.form)
+        from core.users import email_taken_by_other
+        if email_taken_by_other(email, username):
+            flash(_("That email address is already used by another account."), "error")
+            return render_template("admin/user_form.html", mode="add", form=request.form)
 
         from datetime import date
         create_user({
@@ -262,6 +266,11 @@ def edit_user(username):
             "is_vc_editor": is_vc_editor,
             "is_prionvault_admin": is_prionvault_admin,
         }
+
+        from core.users import email_taken_by_other
+        if email_taken_by_other(email, username):
+            flash(_("That email address is already used by another account."), "error")
+            return render_template("admin/user_form.html", mode="edit", user=user, form=request.form)
 
         if password:
             if password != confirm:

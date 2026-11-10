@@ -11,6 +11,15 @@
 <section class="tools-section">
   <div class="tools-grid">
 
+    {% if session.get('role') not in ('admin', 'editor') %}
+    <a href="/prionvault/" class="tool-card">
+      <div class="tool-card__icon">&#128218;</div>
+      <div class="tool-card__body">
+        <h2 class="tool-card__title">PrionVault</h2>
+        <p class="tool-card__desc">{{ _('The lab library of prion literature.') }}</p>
+      </div>
+    </a>
+    {% else %}
     <a href="{{ url_for('manuscriptforge.home') }}" class="tool-card">
       <div class="tool-card__icon">&#9998;</div>
       <div class="tool-card__body">
@@ -18,6 +27,8 @@
         <p class="tool-card__desc">{{ _('Automate boilerplate sections of research manuscripts.') }}</p>
       </div>
     </a>
+
+    {% endif %}
 
     {# Future tool cards go here #}
 

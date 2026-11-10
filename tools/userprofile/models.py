@@ -115,7 +115,7 @@ def create_lab(data: dict, pi_username: str) -> dict:
     # Assign PI to lab
     try:
         from core.users import update_user
-        update_user(pi_username, {"lab_id": lab_id, "role": "admin"}, sync=False)
+        update_user(pi_username, {"lab_id": lab_id}, sync=False)
     except Exception as e:
         logger.warning("Failed to assign PI to lab: %s", e)
     log_activity(pi_username, "create_lab", "lab", lab_id, f"Lab created: {record['lab_name']}")

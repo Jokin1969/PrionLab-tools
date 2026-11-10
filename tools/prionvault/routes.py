@@ -4767,11 +4767,19 @@ def api_jc_file_raw(fid):
     if not result:
         return jsonify({"error": "unavailable"}), 502
     filename, kind, content = result
-    mime = (mimetypes.guess_type(filename)[0]
-            or ("application/pdf" if kind == "pdf" else "application/octet-stream"))
-    safe_name = filename.replace('"', "")
+    # Only formats that cannot carry script are shown in the browser; anything
+    # else (html, svg, unknown…) is forced to download as opaque bytes.
+    mime = mimetypes.guess_type(filename)[0] or ""
+    if kind == "pdf":
+        mime = "application/pdf"
+    inline = mime in ("application/pdf", "image/png", "image/jpeg", "image/gif",
+                      "image/webp", "image/bmp", "image/tiff", "image/heic")
+    if not inline:
+        mime = "application/octet-stream"
+    safe_name = re.sub(r'[\r\n"\\]', "", filename)
     return Response(content, mimetype=mime, headers={
-        "Content-Disposition": f'inline; filename="{safe_name}"',
+        "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{safe_name}"',
+        "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, max-age=600",
         "X-Frame-Options": "SAMEORIGIN",
     })

@@ -239,8 +239,13 @@ def _extract_address(header_value: str) -> str:
     """Pull just the email out of a `Name <addr@host>` style header."""
     if not header_value:
         return ""
-    m = re.search(r"[\w\.\-+]+@[\w\.\-]+", header_value)
-    return (m.group(0) if m else header_value).strip().lower()
+    # parseaddr reads the real address; a regex over the whole header would
+    # pick an address typed into the display name ("boss@lab" <evil@x>).
+    from email.utils import getaddresses
+    addrs = [a for _n, a in getaddresses([header_value]) if a]
+    if len(addrs) != 1 or not re.fullmatch(r"[\w\.\-+]+@[\w\.\-]+", addrs[0]):
+        return ""          # no sender, several senders or malformed: reject
+    return addrs[0].strip().lower()
 
 
 def _is_allowed_sender(from_addr: str, allow: Iterable[str]) -> bool:
@@ -255,7 +260,7 @@ def _is_allowed_sender(from_addr: str, allow: Iterable[str]) -> bool:
         if a.startswith("@"):
             if f.endswith(a):
                 return True
-        elif f == a or f.endswith(a):
+        elif f == a:
             return True
     return False
 

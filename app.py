@@ -195,6 +195,11 @@ def _start_prionpacks_backup_scheduler(app: Flask) -> None:
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = config.SECRET_KEY
+    # Behind Railway's proxy: take the real client IP (rate limits are per
+    # IP — without this the whole lab would share one bucket) and scheme.
+    if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("TRUST_PROXY"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     # Session cookie hardening: not sent on cross-site POSTs (CSRF), only
     # over HTTPS in production, HttpOnly (Flask default).
     _on_railway = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
@@ -394,6 +399,27 @@ def create_app() -> Flask:
                             "redirect": url_for("auth.change_password")}), 403
         return redirect(url_for("auth.change_password"))
 
+    # Non-admin accounts ("reader") only use PrionVault, PrionRead, the home
+    # page with its notes, the help and their own profile. The navbar already
+    # hides everything else; this enforces it for hand-typed URLs too, since
+    # most other tools only check @login_required.
+    _READER_BLUEPRINTS = {"auth", "prionvault", "prionread", "home_notes", "help"}
+    _READER_ENDPOINTS = {"home", "health", "static"}
+
+    @app.before_request
+    def reader_scope():
+        if not session.get("logged_in") or session.get("role") in ("admin", "editor"):
+            return None
+        endpoint = request.endpoint or ""
+        if not endpoint or endpoint in _READER_ENDPOINTS \
+           or request.blueprint in _READER_BLUEPRINTS:
+            return None
+        if "/api/" in request.path or request.method != "GET":
+            from flask import jsonify
+            return jsonify({"error": "forbidden",
+                            "detail": "Tu cuenta no tiene acceso a esta herramienta."}), 403
+        return redirect(url_for("home"))
+
     @app.before_request
     def handle_lang_param():
         lang = request.args.get("lang")
@@ -426,11 +452,14 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     # Limit login attempts: 10 per minute + 50 per hour per IP.
     # Slows credential-stuffing without blocking legitimate typos.
-    from core.auth import login as _login_view
-    limiter.limit("10 per minute; 50 per hour")(_login_view)
-    from core.auth import register as _register_view, forgot_password as _forgot_view
-    limiter.limit("5 per hour", methods=["POST"])(_register_view)
-    limiter.limit("5 per hour", methods=["POST"])(_forgot_view)
+    def _limit(endpoint, rule, **kw):
+        """Apply a rate limit to an already-registered view. limiter.limit()
+        returns a wrapper; it only takes effect if it replaces the view."""
+        app.view_functions[endpoint] = limiter.limit(rule, **kw)(app.view_functions[endpoint])
+
+    _limit("auth.login", "10 per minute; 50 per hour", methods=["POST"])
+    _limit("auth.register", "5 per hour", methods=["POST"])
+    _limit("auth.forgot_password", "5 per hour", methods=["POST"])
 
     from tools.admin import admin_bp
     app.register_blueprint(admin_bp)
@@ -505,9 +534,8 @@ def create_app() -> Flask:
             app.register_blueprint(prionvault_bp)
             # Limit external-lookup endpoints: they hit PubMed/CrossRef APIs
             # and are expensive. 60/min per IP is generous for normal use.
-            from tools.prionvault.routes import api_article_lookup, api_articles_lookup_bulk
-            limiter.limit("60 per minute")(api_article_lookup)
-            limiter.limit("30 per minute")(api_articles_lookup_bulk)
+            _limit("prionvault.api_article_lookup", "60 per minute")
+            _limit("prionvault.api_articles_lookup_bulk", "30 per minute")
             # Outgoing email endpoints: per-user caps (the lab shares one
             # public IP) so a compromised/abused account can't turn the
             # lab's SMTP into a spam relay.
@@ -515,14 +543,10 @@ def create_app() -> Flask:
 
             def _user_key():
                 return "u:" + (_sess.get("username") or get_remote_address())
-            from tools.prionvault.routes_ingestion import (
-                api_article_email, api_article_jc_request,
-                api_articles_email_list, api_articles_email_cart)
-            from tools.prionvault.routes_chat import api_chat_report_email
-            for _v in (api_article_email, api_articles_email_list,
-                       api_articles_email_cart, api_chat_report_email):
-                limiter.limit("20 per hour; 100 per day", key_func=_user_key)(_v)
-            limiter.limit("10 per hour", key_func=_user_key)(api_article_jc_request)
+            for _v in ("api_article_email", "api_articles_email_list",
+                       "api_articles_email_cart", "api_chat_report_email"):
+                _limit("prionvault." + _v, "20 per hour; 100 per day", key_func=_user_key)
+            _limit("prionvault.api_article_jc_request", "10 per hour", key_func=_user_key)
         except Exception as e:
             app.logger.error('PrionVault blueprint registration failed: %s', e, exc_info=True)
 

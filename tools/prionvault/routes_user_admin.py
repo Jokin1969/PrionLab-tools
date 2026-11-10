@@ -87,6 +87,9 @@ def api_pv_users_create():
         return jsonify({"error": "username_and_password_required"}), 400
     if user_exists(username):
         return jsonify({"error": "username_exists"}), 409
+    from core.users import email_taken_by_other
+    if email_taken_by_other(email, username):
+        return jsonify({"error": "email_taken", "detail": "Ese email ya lo usa otra cuenta."}), 409
 
     # A flag-only (non-global-admin) user-admin can never grant a global
     # role above "reader" — that's the whole point of this being a
@@ -126,7 +129,11 @@ def api_pv_users_update(username):
                         "detail": "Solo un administrador global puede editar a otro administrador."}), 403
 
     data = request.get_json(silent=True) or {}
-    updates = {k: (data[k] or "").strip() for k in _EDITABLE_FIELDS if k in data}
+    updates = {k: str(data[k] or "").strip() for k in _EDITABLE_FIELDS if k in data}
+    from core.users import email_taken_by_other
+    if email_taken_by_other(updates.get("email", ""), username):
+        return jsonify({"error": "email_taken",
+                        "detail": "Ese email ya lo usa otra cuenta."}), 409
 
     if "is_prionvault_admin" in data:
         updates["is_prionvault_admin"] = "true" if data["is_prionvault_admin"] else "false"
