@@ -433,11 +433,22 @@
         .forEach(b => b.setAttribute('aria-label', 'Cerrar'));
     });
     _labelIconButtons(document);
-    let pending = false;
-    new MutationObserver(() => {
-      if (pending) return;
-      pending = true;
-      requestAnimationFrame(() => { pending = false; _labelIconButtons(document); });
+    // Label only what was just added — rescanning the whole document on
+    // every change is very slow with thousands of rows on screen.
+    let added = [], scheduled = false;
+    new MutationObserver((muts) => {
+      for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) added.push(n);
+      if (added.length > 400) added = [document.body];      // big re-render: one pass
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        const batch = added; added = []; scheduled = false;
+        batch.forEach(n => {
+          if (!n.isConnected) return;
+          if (n.matches && n.matches('button[title]:not([aria-label])')) _labelIconButtons(n.parentNode || n);
+          else _labelIconButtons(n);
+        });
+      });
     }).observe(document.body, { childList: true, subtree: true });
   }
 

@@ -164,8 +164,15 @@ def api_list_articles():
     _sf_raw     = (request.args.get("search_fields") or "").strip()
     search_fields = [f.strip() for f in _sf_raw.split(",") if f.strip() in ("title", "authors", "abstract", "journal")] if _sf_raw else []
     sort        = request.args.get("sort", "added_desc")
-    page        = max(1, request.args.get("page", 1, type=int))
-    page_size   = min(50000, max(1, request.args.get("size", 100, type=int)))
+    def _pi(key, default):
+        try:
+            return int(_p(key, default))
+        except (TypeError, ValueError):
+            return default
+    # Via _p so a POSTed body (large "only selected" lists) keeps its
+    # page and size instead of silently falling back to page 1 / 100 rows.
+    page        = max(1, _pi("page", 1))
+    page_size   = min(50000, max(1, _pi("size", 100)))
 
     # selected_only=1 with an empty server-side list means the user has nothing
     # selected (or the PUT hasn't landed yet). Return zero articles instead of
@@ -1051,6 +1058,15 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     offset = (page - 1) * page_size
     params["limit"] = page_size
     params["offset"] = offset
+    # ids_only=1 — "select all filtered" and similar only need the ids:
+    # skip every wide column, the ordering and the per-row extras below.
+    _body = request.get_json(silent=True) if request.method == "POST" else None
+    if str(request.args.get("ids_only") or (_body or {}).get("ids_only") or "") in ("1", "true", "True"):
+        id_rows = s.execute(sql_text(
+            f"SELECT articles.id {from_clause} {where} LIMIT :limit OFFSET :offset"), params).all()
+        return jsonify({"items": [{"id": str(r[0])} for r in id_rows],
+                        "total": len(id_rows), "page": page, "size": page_size})
+
     list_sql = sql_text(
         f"SELECT {select_cols}, COUNT(*) OVER() AS _total_count "
         f"{from_clause} {where} ORDER BY {order} LIMIT :limit OFFSET :offset"
@@ -4181,6 +4197,29 @@ def api_article_used_in(aid):
 
 
 # ── Similar articles (vector neighbours of an article) ─────────────────────
+
+
+def _packs_citing(aid_str: str, doi, packages: list) -> list:
+    """Active PrionPacks whose reference lists include this article (linked
+    by article id, or by DOI inside a free-text reference)."""
+    doi = (doi or "").strip().lower()
+
+    def _ref_matches(ref) -> bool:
+        if isinstance(ref, dict):
+            return bool(ref.get("article_id")) and str(ref["article_id"]) == aid_str
+        return bool(doi and doi in (ref or "").lower())
+
+    out = []
+    for pkg in packages:
+        lists = []
+        if any(_ref_matches(r) for r in (pkg.get("introReferences") or [])):
+            lists.append("intro")
+        if any(_ref_matches(r) for r in (pkg.get("references") or [])):
+            lists.append("general")
+        if lists:
+            out.append({"id": pkg.get("id"), "title": pkg.get("title"), "type": pkg.get("type"),
+                        "responsible": pkg.get("responsible"), "lists": lists})
+    return out
 @prionvault_bp.route("/api/articles/<uuid:aid>/similar", methods=["GET"])
 @login_required
 def api_article_similar(aid):
@@ -4194,6 +4233,17 @@ def api_article_similar(aid):
         limit = 10
     try:
         items = find_similar_articles(aid, limit=limit)
+        # Which PrionPacks cite each neighbour, in the same answer: the
+        # modal used to ask /used-in once per neighbour (8 extra requests,
+        # each re-reading the packs file).
+        try:
+            from tools.prionpacks import models as pp_models
+            packages = [p for p in pp_models.list_packages() if p.get("active", True)]
+        except Exception as exc:
+            logger.warning("similar: prionpacks scan failed: %s", exc)
+            packages = []
+        for it in items:
+            it["packs"] = _packs_citing(str(it.get("id")), it.get("doi"), packages)
         return jsonify({"items": items})
     except Exception as exc:
         logger.exception("similar lookup failed for %s", aid)

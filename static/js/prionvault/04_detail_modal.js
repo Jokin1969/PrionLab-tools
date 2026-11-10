@@ -633,6 +633,7 @@
     // Fetch used-in pack data for all similar articles in parallel
     const usedInMap = {};
     await Promise.all(items.map(async it => {
+      if (Array.isArray(it.packs)) { usedInMap[it.id] = it.packs; return; }  // sent with /similar
       try {
         const d = await api(`/articles/${it.id}/used-in`);
         usedInMap[it.id] = d.packs || [];

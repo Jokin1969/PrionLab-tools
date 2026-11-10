@@ -1086,11 +1086,28 @@
       // Build every row in a detached fragment and insert it in ONE DOM
       // operation, so the browser reflows once instead of per-row (a big
       // win on large pages of hundreds/thousands of rows).
+      // Very large pages ("Todos") are painted in slices: the first rows
+      // appear at once and the rest are appended between frames, so the
+      // page stays responsive instead of freezing for several seconds.
+      const FIRST = 300, SLICE = 400;
       const _frag = document.createDocumentFragment();
-      r.items.forEach(a => _frag.appendChild(renderRow(a)));
+      r.items.slice(0, FIRST).forEach(a => _frag.appendChild(renderRow(a)));
       tbody.innerHTML = '';
       tbody.appendChild(_frag);
       showTable();
+      if (r.items.length > FIRST) {
+        let pos = FIRST;
+        const more = () => {
+          if (mySeq !== _loadSeq) return;            // a newer load replaced this one
+          const f = document.createDocumentFragment();
+          r.items.slice(pos, pos + SLICE).forEach(a => f.appendChild(renderRow(a)));
+          tbody.appendChild(f);
+          pos += SLICE;
+          if (pos < r.items.length) setTimeout(more, 0);
+          else syncSelectAllHeader();
+        };
+        setTimeout(more, 0);
+      }
       state.lastTotal = r.total || 0;
       refreshSortHeaders();
       renderPagination(r);
@@ -1184,14 +1201,18 @@
     const params = buildListParams();
     params.set('size', String(Math.min(50_000, state.lastTotal || 50_000)));
     params.set('page', '1');
+    params.set('ids_only', '1');     // ids only: no need to ship every row's data
+    const run = async () => {
+      if (state.filterSelectedOnly && state.selectedIds.size > 50) {
+        const body = Object.fromEntries(params.entries());
+        body.ids = Array.from(state.selectedIds);
+        return api('/articles', { method: 'POST', body: JSON.stringify(body) });
+      }
+      return api('/articles?' + params.toString());
+    };
     let r;
-    if (state.filterSelectedOnly && state.selectedIds.size > 50) {
-      const body = Object.fromEntries(params.entries());
-      body.ids = Array.from(state.selectedIds);
-      r = await api('/articles', { method: 'POST', body: JSON.stringify(body) });
-    } else {
-      r = await api('/articles?' + params.toString());
-    }
+    try { r = await run(); }
+    catch (_) { params.delete('ids_only'); r = await run(); }   // fall back to the full listing
     return (r.items || []).map(a => a.id);
   }
 
@@ -1201,7 +1222,7 @@
     const first = await api('/articles?has_pdf=false&size=1&page=1');
     const total = Math.min(50_000, first.total || 0);
     if (!total) return [];
-    const r = await api('/articles?has_pdf=false&size=' + total + '&page=1');
+    const r = await api('/articles?has_pdf=false&ids_only=1&size=' + total + '&page=1');
     return (r.items || []).map(a => a.id);
   }
 
