@@ -61,6 +61,7 @@ def api_list_articles():
     q           = (_p("q") or "").strip()
     # Field filters typed in the box: autor:castilla año:2020-2024 revista:x
     from .services import search_v2 as _sv2
+    _q_typed = q
     q, _qf = _sv2.parse_query(q)
     q_mode      = "or" if (_p("q_mode") or "").strip().lower() == "or" else "and"
     # Optional "filter by article id list" — used by the bulk-bar's
@@ -291,9 +292,9 @@ def api_list_articles():
         )
         # How long searches take, so slow ones can be found in the logs.
         _ms = int((_time.perf_counter() - _t0) * 1000)
-        if q or _qf or _ms > 1500:
-            logger.info("pv_search q=%r fields=%s sort=%s size=%s ms=%d",
-                        q[:120], sorted(_qf) if _qf else [], sort, page_size, _ms)
+        if _q_typed or _ms > 1500:
+            logger.info("pv_search q=%r sort=%s size=%s ms=%d",
+                        _q_typed[:160], sort, page_size, _ms)
         try:
             resp.headers["Server-Timing"] = f"list;dur={_ms}"
         except Exception:
@@ -340,11 +341,6 @@ def api_article_snippets():
 def api_search_index_status():
     from .services import search_v2
     return jsonify(search_v2.status())
-
-
-def _sv2_has_unaccent(s) -> bool:
-    from .services.search_v2 import has_unaccent
-    return has_unaccent(s)
 
 
 def _list_articles_with_recovery(s, *args, **kwargs):
@@ -563,11 +559,32 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         # index, so both sides agree on which characters count as
         # alphanumeric (e.g. Greek letters) whatever the DB locale is.
         # It folds to a constant at plan time, so the trigram index applies.
-        conditions.append(
-            "lower(regexp_replace(title, '[^[:alnum:]]+', '', 'g')) LIKE "
-            "('%' || lower(regexp_replace(:title_phrase, '[^[:alnum:]]+', '', 'g')) || '%')")
-        params["title_phrase"] = _qs[1:-1]
-        force_index_scan = True
+        _NORM = "lower(regexp_replace(title, '[^[:alnum:]]+', '', 'g'))"
+        # 1) The whole title, exactly: answered by the b-tree index on the
+        #    normalized title in well under a millisecond.
+        _exact_ids = []
+        try:
+            with s.begin_nested():
+                _exact_ids = [str(r[0]) for r in s.execute(sql_text(
+                    f"SELECT id FROM articles WHERE {_NORM} = "
+                    "lower(regexp_replace(:p, '[^[:alnum:]]+', '', 'g')) LIMIT 200"),
+                    {"p": _qs[1:-1]})]
+        except Exception:
+            logger.debug("exact-title lookup failed", exc_info=True)
+        if _exact_ids:
+            conditions.append("articles.id = ANY(CAST(:title_ids AS uuid[]))")
+            params["title_ids"] = _exact_ids
+        else:
+            # 2) Part of a title: trigram index. Only a 40-character slice
+            #    goes to the index (a whole pasted title means ~100 trigram
+            #    lookups, most of them very common ones); the full phrase is
+            #    then checked on the few rows that survive.
+            conditions.append(
+                f"{_NORM} LIKE ('%' || left(lower(regexp_replace(:title_phrase, "
+                "'[^[:alnum:]]+', '', 'g')), 40) || '%') AND "
+                f"strpos({_NORM}, lower(regexp_replace(:title_phrase, '[^[:alnum:]]+', '', 'g'))) > 0")
+            params["title_phrase"] = _qs[1:-1]
+            force_index_scan = True
         q = ""
 
     if q:
@@ -650,8 +667,10 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             # finds "prions" and "Erana" finds "Eraña". ORed with the
             # original conditions, so nothing that matched before is lost
             # (also while the v2 vectors are still being backfilled).
-            v2 = ("search_vector2 @@ websearch_to_tsquery('pv_search', :q) OR "
-                  if "search_vector2" in pv_cols else "")
+            # pv_fold() (migration 113) strips accents on both sides without
+            # needing any extension.
+            v2 = ("search_vector2 @@ websearch_to_tsquery('pv_search', pv_fold(:q)) OR "
+                  if "search_ver" in pv_cols else "")
             conditions.append(f"({v2}search_vector @@ websearch_to_tsquery('simple', :q) OR ({ilike_sql}))")
             params["q"] = ts_input
         else:
@@ -660,12 +679,12 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         params.update(like_params)
 
     if qf:
-        # Accent-insensitive when the unaccent extension is available.
-        _ua = _sv2_has_unaccent(s)
+        # Accent-insensitive through pv_fold() once migration 113 is in.
+        _ua = "search_ver" in pv_cols
         def _col(c):
-            return f"unaccent({c})" if _ua else c
+            return f"pv_fold({c})" if _ua else c
         def _val(k):
-            return f"unaccent(:{k})" if _ua else f":{k}"
+            return f"pv_fold(:{k})" if _ua else f":{k}"
         for _field, _column in (("authors", "coalesce(authors,'')"),
                                 ("journal", "coalesce(journal,'')"),
                                 ("title", "coalesce(title,'')")):
@@ -1022,11 +1041,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     # Unknown sort → the default (an unqualified created_at is ambiguous
     # once prionvault_user_state is joined and made Postgres error out).
     order = sort_map.get(sort, sort_map["added_desc"])
-    if sort == "relevance" and q and "rank_vector" in pv_cols:
+    if sort == "relevance" and q and "search_ver" in pv_cols:
         # Title hits first, then authors/abstract; results that only match
         # inside the PDF text rank 0 and follow, newest first. rank_vector is
         # small (no PDF text), so ranking every match stays cheap.
-        order = ("(COALESCE(ts_rank_cd(rank_vector, websearch_to_tsquery('pv_search', :q_rank), 32), 0)"
+        order = ("(COALESCE(ts_rank_cd(rank_vector, websearch_to_tsquery('pv_search', pv_fold(:q_rank)), 32), 0)"
                  " + CASE WHEN title ILIKE :q_phrase THEN 0.5 ELSE 0 END) DESC, "
                  "articles.created_at DESC NULLS LAST")
         params["q_rank"] = q if q_mode == "and" else " OR ".join(q.split())

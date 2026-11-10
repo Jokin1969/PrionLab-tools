@@ -23,6 +23,7 @@ from sqlalchemy import text as sql_text
 logger = logging.getLogger(__name__)
 
 TS_CONFIG = "pv_search"
+VECTOR_VERSION = 2          # 2 = built with pv_fold() (migration 113)
 
 # ── Field filters in the search box ──────────────────────────────────────────
 
@@ -132,15 +133,13 @@ def snippets(conn, ids: list[str], q: str) -> dict:
         return {}
     out: dict = {}
     rows = conn.execute(sql_text(f"""
-        WITH qq AS (SELECT websearch_to_tsquery('{TS_CONFIG}', :q) AS tq)
+        WITH qq AS (SELECT websearch_to_tsquery('{TS_CONFIG}', pv_fold(:q)) AS tq)
         SELECT a.id::text,
-               to_tsvector('{TS_CONFIG}', coalesce(a.title, '')) @@ qq.tq    AS in_title,
-               to_tsvector('{TS_CONFIG}', coalesce(a.abstract, '')) @@ qq.tq AS in_abstract,
-               to_tsvector('{TS_CONFIG}', coalesce(a.summary_ai, '')) @@ qq.tq AS in_summary,
-               CASE WHEN to_tsvector('{TS_CONFIG}', coalesce(a.abstract, '')) @@ qq.tq
+               to_tsvector('{TS_CONFIG}', pv_fold(a.title)) @@ qq.tq    AS in_title,
+               CASE WHEN to_tsvector('{TS_CONFIG}', pv_fold(a.abstract)) @@ qq.tq
                     THEN ts_headline('{TS_CONFIG}', a.abstract, qq.tq, '{_HL}') END AS h_abs,
-               CASE WHEN NOT (to_tsvector('{TS_CONFIG}', coalesce(a.abstract, '')) @@ qq.tq)
-                     AND to_tsvector('{TS_CONFIG}', coalesce(a.summary_ai, '')) @@ qq.tq
+               CASE WHEN NOT (to_tsvector('{TS_CONFIG}', pv_fold(a.abstract)) @@ qq.tq)
+                     AND to_tsvector('{TS_CONFIG}', pv_fold(a.summary_ai)) @@ qq.tq
                     THEN ts_headline('{TS_CONFIG}', a.summary_ai, qq.tq, '{_HL}') END AS h_sum
           FROM articles a, qq
          WHERE a.id = ANY(CAST(:ids AS uuid[]))"""), {"q": q, "ids": ids}).mappings().all()
@@ -156,7 +155,7 @@ def snippets(conn, ids: list[str], q: str) -> dict:
         # Only for results that matched nowhere visible: look in the PDF text
         # (bounded: ts_headline has to parse the text it is given).
         prow = conn.execute(sql_text(f"""
-            WITH qq AS (SELECT websearch_to_tsquery('{TS_CONFIG}', :q) AS tq)
+            WITH qq AS (SELECT websearch_to_tsquery('{TS_CONFIG}', pv_fold(:q)) AS tq)
             SELECT a.id::text,
                    ts_headline('{TS_CONFIG}', left(a.extracted_text, 300000), qq.tq, '{_HL}') AS h
               FROM articles a, qq
@@ -185,8 +184,11 @@ _UPDATE_SQL = """
     UPDATE articles a
        SET search_vector2 = pv_build_search_vector2(a.title, a.abstract, a.summary_ai,
                                 a.summary_human, a.authors, a.journal, a.extracted_text),
-           rank_vector    = pv_build_rank_vector(a.title, a.authors, a.abstract, a.journal)
+           rank_vector    = pv_build_rank_vector(a.title, a.authors, a.abstract, a.journal),
+           search_ver     = :ver
      WHERE a.id = ANY(CAST(:ids AS uuid[]))"""
+
+_PENDING = "(search_vector2 IS NULL OR search_ver IS DISTINCT FROM :ver)"
 
 
 def backfill_once() -> Optional[int]:
@@ -196,19 +198,20 @@ def backfill_once() -> Optional[int]:
     with eng.connect() as conn:
         has = conn.execute(sql_text(
             "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'articles' AND column_name = 'search_vector2'")).first()
+            "WHERE table_name = 'articles' AND column_name = 'search_ver'")).first()
     if not has:
-        return None                # migration 112 not applied yet: try again later
+        return None                # migrations 112/113 not applied yet: try again later
     total = 0
     while True:
         with eng.connect() as conn:
             ids = [str(r[0]) for r in conn.execute(sql_text(
-                "SELECT id FROM articles WHERE search_vector2 IS NULL LIMIT :n"), {"n": _BATCH})]
+                f"SELECT id FROM articles WHERE {_PENDING} LIMIT :n"),
+                {"n": _BATCH, "ver": VECTOR_VERSION})]
         if not ids:
             break
         try:
             with eng.begin() as conn:
-                conn.execute(sql_text(_UPDATE_SQL), {"ids": ids})
+                conn.execute(sql_text(_UPDATE_SQL), {"ids": ids, "ver": VECTOR_VERSION})
         except Exception as exc:
             # One bad document must not stall the rest: go one by one and
             # mark the offender as done with an empty vector.
@@ -216,14 +219,14 @@ def backfill_once() -> Optional[int]:
             for aid in ids:
                 try:
                     with eng.begin() as conn:
-                        conn.execute(sql_text(_UPDATE_SQL), {"ids": [aid]})
+                        conn.execute(sql_text(_UPDATE_SQL), {"ids": [aid], "ver": VECTOR_VERSION})
                 except Exception as exc2:
                     _state["last_error"] = str(exc2)[:200]
                     with eng.begin() as conn:
                         conn.execute(sql_text(
-                            "UPDATE articles SET search_vector2 = ''::tsvector, "
+                            "UPDATE articles SET search_vector2 = ''::tsvector, search_ver = :ver, "
                             "rank_vector = pv_build_rank_vector(title, authors, abstract, journal) "
-                            "WHERE id = CAST(:id AS uuid)"), {"id": aid})
+                            "WHERE id = CAST(:id AS uuid)"), {"id": aid, "ver": VECTOR_VERSION})
         total += len(ids)
         _state["done"] += len(ids)
         time.sleep(0.3)          # leave room for normal traffic
@@ -235,7 +238,7 @@ def status() -> dict:
     try:
         with _engine().connect() as conn:
             snap["pending"] = conn.execute(sql_text(
-                "SELECT COUNT(*) FROM articles WHERE search_vector2 IS NULL")).scalar()
+                f"SELECT COUNT(*) FROM articles WHERE {_PENDING}"), {"ver": VECTOR_VERSION}).scalar()
     except Exception:
         snap["pending"] = None
     return snap
@@ -263,18 +266,3 @@ def start_backfill(delay_s: float = 90.0) -> None:
             time.sleep(300)
     threading.Thread(target=run, name="prionvault-search-v2-backfill", daemon=True).start()
 
-
-_unaccent_ok: Optional[bool] = None
-
-
-def has_unaccent(conn) -> bool:
-    """Whether the unaccent() function can be used (cached once true)."""
-    global _unaccent_ok
-    if _unaccent_ok:
-        return True
-    try:
-        _unaccent_ok = bool(conn.execute(sql_text(
-            "SELECT 1 FROM pg_extension WHERE extname = 'unaccent'")).first())
-    except Exception:
-        _unaccent_ok = False
-    return bool(_unaccent_ok)
