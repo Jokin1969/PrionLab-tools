@@ -191,6 +191,35 @@ _UPDATE_SQL = """
 _PENDING = "(search_vector2 IS NULL OR search_ver IS DISTINCT FROM :ver)"
 
 
+def ensure_trigger_current() -> None:
+    """The article trigger must be the version that maintains the v2 vectors.
+    Older migrations (001/007) define the same function with the original
+    body; if one of them is ever re-run (forced re-run, or a database where
+    it keeps failing and retrying) it silently puts the old body back. Put
+    ours back from migration 113 when that happens."""
+    from pathlib import Path
+    from ..migrate import _split_sql
+    eng = _engine()
+    with eng.connect() as conn:
+        ok = conn.execute(sql_text(
+            "SELECT bool_or(prosrc LIKE '%search_ver := 2%') FROM pg_proc "
+            "WHERE proname = 'articles_search_vector_update'")).scalar()
+    if ok:
+        return
+    path = Path(__file__).resolve().parents[3] / "migrations" / "113_search_accent_folding.sql"
+    for stmt in _split_sql(path.read_text(encoding="utf-8")):
+        if "FUNCTION articles_search_vector_update" in stmt:
+            raw = eng.raw_connection()
+            try:
+                with raw.cursor() as cur:
+                    cur.execute(stmt)          # raw: the body contains ':' and '%'
+                raw.commit()
+            finally:
+                raw.close()
+            logger.warning("search_v2: restored the article search trigger (v2)")
+            return
+
+
 def backfill_once() -> Optional[int]:
     """Fill the v2 vectors of every article that lacks them. Returns how
     many rows were processed (0 when up to date or not migrated yet)."""
@@ -201,6 +230,10 @@ def backfill_once() -> Optional[int]:
             "WHERE table_name = 'articles' AND column_name = 'search_ver'")).first()
     if not has:
         return None                # migrations 112/113 not applied yet: try again later
+    try:
+        ensure_trigger_current()
+    except Exception as exc:
+        logger.warning("search_v2: could not verify the search trigger: %s", exc)
     total = 0
     while True:
         with eng.connect() as conn:
@@ -244,25 +277,24 @@ def status() -> dict:
     return snap
 
 
-def start_backfill(delay_s: float = 90.0) -> None:
-    """Background thread: waits for the boot migrations, then backfills.
-    Runs in one gunicorn worker at a time (advisory lock)."""
+def start_backfill(delay_s: float = 90.0, every_s: float = 1800.0) -> None:
+    """Background thread: waits for the boot migrations, indexes what is
+    pending, then checks again every half hour (cheap when nothing is
+    pending) so an article whose vectors could not be built on save is picked
+    up. One gunicorn worker at a time (advisory lock)."""
     def run():
         time.sleep(delay_s)
-        for _attempt in range(12):
+        while True:
             try:
                 from database.singleton import run_once
                 _state["running"] = True
                 n = run_once("pv_search_v2_backfill", backfill_once)
                 if n:
                     logger.info("search_v2 backfill: %s article(s) indexed", n)
-                _state["running"] = False
-                if n is not None:
-                    return
             except Exception as exc:
-                _state["running"] = False
                 _state["last_error"] = str(exc)[:200]
                 logger.warning("search_v2 backfill failed: %s", exc)
-            time.sleep(300)
+            finally:
+                _state["running"] = False
+            time.sleep(every_s)
     threading.Thread(target=run, name="prionvault-search-v2-backfill", daemon=True).start()
-

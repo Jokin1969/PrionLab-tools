@@ -61,3 +61,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Accent-insensitive "autor:" / "revista:" filters without a table scan.
+CREATE INDEX IF NOT EXISTS articles_authors_fold_trgm_idx ON articles USING GIN (pv_fold(authors) gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS articles_journal_fold_trgm_idx ON articles USING GIN (pv_fold(journal) gin_trgm_ops);

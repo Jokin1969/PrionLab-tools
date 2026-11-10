@@ -638,21 +638,42 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
         ts_input = q if q_mode == "and" else " OR ".join(words)
         joiner = " AND " if q_mode == "and" else " OR "
 
+        # Prefix query ("prp" → PrPSc, PrPC; "amyloi" → amyloid, amyloidosis)
+        # for plain words only — any search operator (quotes, -word, OR)
+        # keeps the exact websearch semantics. It replaces the substring
+        # ILIKE over the whole ABSTRACT, which could not be answered from an
+        # index for everyday words (their trigrams are in most abstracts)
+        # and re-read tens of thousands of rows per search.
+        _prefix_q = None
+        if (not _sf and "search_ver" in pv_cols
+                and not re.search(r'["“”]|(^|\s)-\S|\b(OR|AND|NOT)\b', q)):
+            _groups = []
+            for _w in raw_words:
+                _parts = [t for t in re.findall(r"[^\W_]+", _w) if len(t) >= 2]
+                if _parts:
+                    _groups.append("(" + " & ".join(f"{t}:*" for t in _parts) + ")")
+            if _groups:
+                _prefix_q = (" & " if q_mode == "and" else " | ").join(_groups)
+
         if not _sf:
-            ilike_cols = ["title", "coalesce(authors,'')", "coalesce(abstract,'')"]
+            # Bare columns, NOT coalesce(col,''): the pg_trgm indexes are on
+            # the columns themselves, and wrapping them made the planner
+            # give up on every index of this OR and scan the whole table.
+            # (NULL ILIKE … is simply "no match" inside an OR.)
+            ilike_cols = ["title", "authors"] if _prefix_q else ["title", "authors", "abstract"]
             # A long query (typically a pasted title) made one ILIKE per
             # word against the full abstract text — by far the most
             # expensive column — for every word. FTS (search_vector)
             # already covers abstracts by word, so for long queries the
             # substring side only needs title + authors.
             if len(words) >= 6:
-                ilike_cols = ["title", "coalesce(authors,'')"]
+                ilike_cols = ["title", "authors"]
         else:
             ilike_cols = []
             if "title"    in _sf: ilike_cols.append("title")
-            if "authors"  in _sf: ilike_cols.append("coalesce(authors,'')")
-            if "abstract" in _sf: ilike_cols.append("coalesce(abstract,'')")
-            if "journal"  in _sf: ilike_cols.append("coalesce(journal,'')")
+            if "authors"  in _sf: ilike_cols.append("authors")
+            if "abstract" in _sf: ilike_cols.append("abstract")
+            if "journal"  in _sf: ilike_cols.append("journal")
 
         like_params: dict = {}
         word_clauses = []
@@ -671,6 +692,10 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             # needing any extension.
             v2 = ("search_vector2 @@ websearch_to_tsquery('pv_search', pv_fold(:q)) OR "
                   if "search_ver" in pv_cols else "")
+            if _prefix_q:
+                v2 += ("search_vector2 @@ to_tsquery('pv_search', pv_fold(:q_prefix)) OR "
+                       "search_vector @@ to_tsquery('simple', :q_prefix) OR ")
+                params["q_prefix"] = _prefix_q
             conditions.append(f"({v2}search_vector @@ websearch_to_tsquery('simple', :q) OR ({ilike_sql}))")
             params["q"] = ts_input
         else:
@@ -685,9 +710,11 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
             return f"pv_fold({c})" if _ua else c
         def _val(k):
             return f"pv_fold(:{k})" if _ua else f":{k}"
-        for _field, _column in (("authors", "coalesce(authors,'')"),
-                                ("journal", "coalesce(journal,'')"),
-                                ("title", "coalesce(title,'')")):
+        # Bare columns: pv_fold(col) is what the trigram indexes of
+        # migration 113 are built on.
+        for _field, _column in (("authors", "authors"),
+                                ("journal", "journal"),
+                                ("title", "title")):
             for _i, _v in enumerate(qf.get(_field) or []):
                 _k = f"qf_{_field}_{_i}"
                 conditions.append(f"{_col(_column)} ILIKE {_val(_k)}")
@@ -708,7 +735,7 @@ def _list_articles_impl(s, q, year_min, year_max, journal,
     if authors_q:
         # Search only the authors column so "Castilla" never matches
         # "Castilla-La Mancha" in the body / summary.
-        conditions.append("coalesce(authors,'') ILIKE :authors_q")
+        conditions.append("authors ILIKE :authors_q")
         params["authors_q"] = f"%{authors_q}%"
 
     if has_summary == "ai" and "summary_ai" in pv_cols:
