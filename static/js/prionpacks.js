@@ -1720,7 +1720,7 @@ ${refsText}`;
 
   function _openPrionVaultPicker(target) {
     if (!state.currentId) {
-      alert('Selecciona o crea un PrionPack antes de importar referencias.');
+      pvNotice('Selecciona o crea un PrionPack antes de importar referencias.');
       return;
     }
     const modal = document.getElementById('pp-pv-picker-modal');
@@ -4098,7 +4098,7 @@ ${refsText}`;
   /* ── Delete ────────────────────────────────────────────────────────────── */
   async function deletePackage() {
     if (!state.currentId) return;
-    if (!confirm('Delete this package? This cannot be undone.')) return;
+    if (!await pvConfirm('Delete this package? This cannot be undone.')) return;
     try {
       await PPStorage.remove(state.currentId);
       _packages = _packages.filter(p => p.id !== state.currentId);
@@ -4189,7 +4189,7 @@ ${refsText}`;
   }
 
   async function _confirmRestore(path, dateLabel) {
-    const ok = confirm(
+    const ok = await pvConfirm(
       `¿Restaurar el backup del ${dateLabel}?\n\n` +
       `Se sustituirán TODOS los datos actuales. Se guardará una copia local antes de sobreescribir.\n\n` +
       `Esta acción no se puede deshacer desde la interfaz.`
@@ -4994,7 +4994,7 @@ ${refsText}`;
 
   async function _deleteMember(memberId) {
     const m = _members.find(x => x.id === memberId);
-    if (!m || !confirm(`¿Eliminar a ${m.name} ${m.surname}? Esta acción no se puede deshacer.`)) return;
+    if (!m || !await pvConfirm(`¿Eliminar a ${m.name} ${m.surname}? Esta acción no se puede deshacer.`)) return;
     try {
       const res = await fetch(`/prionpacks/api/members/${memberId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((await res.json()).error || res.statusText);
@@ -5600,7 +5600,7 @@ ${refsText}`;
               || document.getElementById('editor-id-badge')?.textContent
               || '';
     if (!pid || pid === 'PRP-NEW') {
-      alert('Guarda primero el pack — necesita un id para buscar.');
+      pvNotice('Guarda primero el pack — necesita un id para buscar.');
       return;
     }
     const provider = document.getElementById('pp-sg-provider').value;
@@ -5704,7 +5704,7 @@ ${refsText}`;
     results.querySelectorAll('.pp-sg-add-pubmed').forEach(b => {
       b.addEventListener('click', () => {
         const it = byPmid.get(b.dataset.pmid);
-        if (!it) { alert('No se encontró el registro.'); return; }
+        if (!it) { pvNotice('No se encontró el registro.'); return; }
         _sgAddPubmed(it, packId, b);
       });
     });
@@ -5824,7 +5824,7 @@ ${refsText}`;
   // suggestion lands in `introReferences` and a "Discusión" one in
   // `references`.
   async function _sgAddInternal(articleId, doi, title, packId, btn) {
-    if (!articleId) { alert('No hay id de artículo.'); return; }
+    if (!articleId) { pvNotice('No hay id de artículo.'); return; }
     const target = _sgScope === 'intro' ? 'intro' : 'general';
     btn.disabled = true;
     const orig = btn.textContent;
@@ -5845,12 +5845,12 @@ ${refsText}`;
       } else {
         btn.disabled = false;
         btn.textContent = orig;
-        alert('No se pudo añadir: ' + (d.reason || d.error || r.status));
+        pvNotice('No se pudo añadir: ' + (d.reason || d.error || r.status));
       }
     } catch (e) {
       btn.disabled = false;
       btn.textContent = orig;
-      alert('Error: ' + e.message);
+      pvNotice('Error: ' + e.message);
     }
   }
 
@@ -5889,13 +5889,13 @@ ${refsText}`;
       } else {
         btn.disabled = false;
         btn.textContent = orig;
-        alert('No se pudo crear en PrionVault: ' + (d.error || r.status));
+        pvNotice('No se pudo crear en PrionVault: ' + (d.error || r.status));
         return;
       }
     } catch (e) {
       btn.disabled = false;
       btn.textContent = orig;
-      alert('Error creando: ' + e.message);
+      pvNotice('Error creando: ' + e.message);
       return;
     }
 
@@ -5914,12 +5914,12 @@ ${refsText}`;
       } else {
         btn.disabled = false;
         btn.textContent = orig;
-        alert('Se creó en PrionVault pero no se pudo añadir al pack: ' + (d.reason || d.error || r.status));
+        pvNotice('Se creó en PrionVault pero no se pudo añadir al pack: ' + (d.reason || d.error || r.status));
       }
     } catch (e) {
       btn.disabled = false;
       btn.textContent = orig;
-      alert('Error añadiendo al pack: ' + e.message);
+      pvNotice('Error añadiendo al pack: ' + e.message);
     }
   }
 

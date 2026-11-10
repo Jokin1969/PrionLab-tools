@@ -216,7 +216,7 @@
       const delBtn = el('button', { class: 'hn-mini-btn danger', title: 'Borrar nota', html: '<i class="fas fa-trash"></i>' });
       delBtn.addEventListener('click', async (ev) => {
         ev.stopPropagation();
-        if (!confirm('¿Borrar esta nota? No se puede deshacer.')) return;
+        if (!await pvConfirm('¿Borrar esta nota? No se puede deshacer.')) return;
         try {
           await api('/home-notas/' + nota.id_nota, { method: 'DELETE' });
           card.remove();
@@ -470,7 +470,7 @@
     }
 
     async function _createTablon() {
-      const nombre = (prompt('Nombre del nuevo tablón:') || '').trim();
+      const nombre = (await pvPrompt('Nombre del nuevo tablón:') || '').trim();
       if (!nombre) return;
       try {
         const r = await api('/home-tablones', { method: 'POST', body: JSON.stringify({ nombre }) });
@@ -481,7 +481,7 @@
     }
 
     async function _renameTablon(t) {
-      const nombre = (prompt('Nuevo nombre para «' + t.nombre + '»:', t.nombre) || '').trim();
+      const nombre = (await pvPrompt('Nuevo nombre para «' + t.nombre + '»:', t.nombre) || '').trim();
       if (!nombre || nombre === t.nombre) return;
       try {
         await api('/home-tablones/' + t.id_tablon, { method: 'PUT', body: JSON.stringify({ nombre }) });
@@ -491,7 +491,7 @@
     }
 
     async function _deleteTablon(t) {
-      if (!confirm('¿Borrar el tablón «' + t.nombre + '»? Se borrarán sus ' + t.n + ' nota(s). No se puede deshacer.')) return;
+      if (!await pvConfirm('¿Borrar el tablón «' + t.nombre + '»? Se borrarán sus ' + t.n + ' nota(s). No se puede deshacer.')) return;
       try {
         await api('/home-tablones/' + t.id_tablon, { method: 'DELETE' });
         await _loadTablones();

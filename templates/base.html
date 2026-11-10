@@ -442,6 +442,7 @@
   {% if session.get('logged_in') %}
   <script src="{{ url_for('static', filename='js/research-citations.js') }}"></script>
   {% endif %}
+  <script src="{{ asset_url('js/pv_dialogs.js') }}"></script>
   <script src="{{ url_for('static', filename='js/enhanced_navbar.js') }}"></script>
   <script src="{{ url_for('static', filename='js/help_system.js') }}"></script>
 

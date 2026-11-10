@@ -1275,12 +1275,14 @@ def api_migrations_status():
             ORDER BY applied_at DESC
             """
         )).all()
+        from database.config import db as _db
         return jsonify({
             "applied": [
                 {"name": r.name, "sha": r.sha256, "applied_at": r.applied_at.isoformat(),
                  "runtime_ms": r.runtime_ms}
                 for r in rows
             ],
+            "pending": _db.pending_migrations(),
         })
     except Exception as e:
         return jsonify({"applied": [], "error": str(e)}), 200

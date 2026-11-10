@@ -156,6 +156,19 @@ class DatabaseConfig:
     _TOLERATED_ERRORS = ("permission denied", "must be owner", "must be superuser",
                          "could not open extension control file", "is not available")
 
+    def pending_migrations(self) -> list:
+        """Migration files on disk that are not recorded as applied — i.e.
+        ones that keep failing (or have not run yet). Empty list when all is
+        up to date; None when it can't be determined."""
+        try:
+            from pathlib import Path
+            files = sorted(p.name for p in (Path(__file__).resolve().parents[1] / "migrations").glob("*.sql"))
+            with self.engine.connect() as conn:
+                done = {r[0] for r in conn.execute(text("SELECT filename FROM _schema_migrations"))}
+            return [f for f in files if f not in done]
+        except Exception:
+            return None
+
     def _run_migrations_locked(self, migration_files) -> dict:
         from tools.prionvault.migrate import _split_sql
         summary = {"applied": [], "skipped": [], "errors": []}

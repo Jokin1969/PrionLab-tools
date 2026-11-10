@@ -875,7 +875,17 @@ def create_app() -> Flask:
         # commit on main without opening the Railway dashboard. Handy
         # for "did my fix ship?" questions during incident response.
         sha = os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("GIT_COMMIT_SHA")
+        # Names of migrations that are not applied (normally none): makes a
+        # migration that keeps failing visible without reading the logs.
+        pending = None
+        try:
+            from database.config import db as _db
+            if _db.is_configured():
+                pending = _db.pending_migrations()
+        except Exception:
+            pending = None
         return jsonify({
+            "migrations_pending": pending,
             "status":     "ok",
             "dropbox":    config.dropbox_configured(),
             "smtp":       config.smtp_configured(),

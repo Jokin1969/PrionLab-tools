@@ -159,7 +159,7 @@ class NeuroCSVImporter:
                         if _update_in_csv(row):
                             updated += 1
                         else:
-                            errors.append(f"Row {idx}: update failed")
+                            errors.append(f"Row {idx}: ya existe en la biblioteca (actualizar desde CSV no está soportado)")
                     else:
                         skipped += 1
                 else:
@@ -228,36 +228,46 @@ def _find_existing(row: Dict) -> Optional[str]:
     return None
 
 
+def _parse_authors(text: str) -> list:
+    """"Castilla J; Eraña H" / "Castilla J, Eraña H" → author dicts."""
+    out = []
+    for part in [a.strip() for a in (text or "").replace(";", ",").split(",") if a.strip()]:
+        bits = part.split()
+        last, initials = (bits[0], " ".join(bits[1:])) if len(bits) > 1 else (part, "")
+        out.append({"last_name": last, "first_name": "", "initials": initials})
+    return out
+
+
 def _save_new(row: Dict, username: str = "") -> bool:
-    """Save to DB if configured, else append to lab_imports.csv."""
+    """Save into the Research Library store (the same one the library page
+    and the duplicate check read). It used to write to a separate DB table
+    nobody read, so imports "succeeded" but never appeared and every
+    re-import added the same rows again."""
     try:
-        from database.config import db
-        if db.is_configured():
-            from database.models import Publication
-            with db.get_session() as s:
-                p = Publication(
-                    title=row["title"],
-                    authors=row["authors"],
-                    journal=row["journal"],
-                    year=int(row["year"]),
-                    doi=row.get("doi", ""),
-                    abstract=row.get("abstract", ""),
-                    pub_type=_map_pub_type(row.get("publication_type", "research_article")),
-                    impact_factor=_safe_float(row.get("impact_factor")),
-                    citation_count=_safe_int(row.get("citation_count")),
-                )
-                if hasattr(p, "update_search_vector"):
-                    p.update_search_vector()
-                s.add(p)
+        from tools.research.models import PublicationManager
+        res = PublicationManager.add_publication_manual({
+            "title": row.get("title", ""),
+            "abstract": row.get("abstract", ""),
+            "journal": row.get("journal", ""),
+            "year": row.get("year", ""),
+            "doi": row.get("doi", ""),
+            "pub_type": _map_pub_type(row.get("publication_type", "research_article")),
+            "notes": row.get("notes", ""),
+            "authors": _parse_authors(row.get("authors", "")),
+        }, username or "csv_import")
+        if res.get("success"):
             return True
+        logger.warning("CSV import: could not save %r: %s", row.get("title"), res.get("error"))
+        return False
     except Exception as exc:
-        logger.debug("DB save failed: %s", exc)
+        logger.warning("CSV import: library save failed (%s) — keeping the row in lab_csv_imports.csv", exc)
     return _append_csv(row)
 
 
 def _update_in_csv(row: Dict) -> bool:
-    """No-op update for CSV fallback (no row-level update without DB)."""
-    return True  # treat as success; full update requires DB
+    """Updating an existing publication from a CSV is not supported: report
+    it as not done instead of claiming success."""
+    return False
 
 
 def _append_csv(row: Dict) -> bool:
