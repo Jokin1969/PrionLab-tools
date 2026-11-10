@@ -468,6 +468,7 @@
     }
     window._pvBatchSummaryFilter = function(hasSummaryVal) {
       modal.style.display = 'none';
+      stopPolling();
       Object.assign(state, {
         q: '', yearMin: null, yearMax: null, journal: '', authors: '',
         tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
@@ -477,6 +478,7 @@
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null, page: 1,
         _healthExtra: { has_summary_ai: hasSummaryVal },
       });
+      _resetHiddenFilters();
       syncMarkFilterButtons();
       loadArticles();
     };

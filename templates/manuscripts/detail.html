@@ -41,22 +41,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('detailRefsBtn').href = `/manuscripts/${manuscriptId}/references`;
     document.getElementById('detailIntelBtn').href = `/manuscripts/${manuscriptId}/references/intelligence`;
     document.getElementById('detailNetBtn').href = `/manuscripts/${manuscriptId}/references/network-dashboard`;
+    const _e = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     document.getElementById('detailMeta').innerHTML = `
-      <span class="ms-badge" style="background:${STATUS_COLOR[m.status]||'#888'}">${m.status}</span>
-      &nbsp;${m.research_area||''} · ${m.manuscript_type||''}`;
+      <span class="ms-badge" style="background:${STATUS_COLOR[m.status]||'#888'}">${_e(m.status)}</span>
+      &nbsp;${_e(m.research_area||'')} · ${_e(m.manuscript_type||'')}`;
     document.getElementById('detailInfo').innerHTML = `
       <h3>{{ _('Details') }}</h3>
       <dl class="ms-dl">
-        <dt>{{ _('Target Journal') }}</dt><dd>${m.target_journal||'—'}</dd>
-        <dt>{{ _('Corresponding Author') }}</dt><dd>${m.corresponding_author||'—'}</dd>
+        <dt>{{ _('Target Journal') }}</dt><dd>${_e(m.target_journal||'—')}</dd>
+        <dt>{{ _('Corresponding Author') }}</dt><dd>${_e(m.corresponding_author||'—')}</dd>
         <dt>{{ _('Deadline') }}</dt><dd>${fmt(m.target_deadline)}</dd>
-        <dt>{{ _('Keywords') }}</dt><dd>${m.keywords||'—'}</dd>
-        <dt>{{ _('Tags') }}</dt><dd>${m.tags||'—'}</dd>
-        <dt>{{ _('Created by') }}</dt><dd>${m.created_by||'—'}</dd>
+        <dt>{{ _('Keywords') }}</dt><dd>${_e(m.keywords||'—')}</dd>
+        <dt>{{ _('Tags') }}</dt><dd>${_e(m.tags||'—')}</dd>
+        <dt>{{ _('Created by') }}</dt><dd>${_e(m.created_by||'—')}</dd>
         <dt>{{ _('Last updated') }}</dt><dd>${fmt(m.updated_at)}</dd>
       </dl>
-      ${m.notes ? `<h4>{{ _('Notes') }}</h4><p>${m.notes}</p>` : ''}
-      ${m.abstract ? `<h4>{{ _('Abstract') }}</h4><p>${m.abstract}</p>` : ''}`;
+      ${m.notes ? `<h4>{{ _('Notes') }}</h4><p>${_e(m.notes)}</p>` : ''}
+      ${m.abstract ? `<h4>{{ _('Abstract') }}</h4><p>${_e(m.abstract)}</p>` : ''}`;
     document.getElementById('detailStatus').innerHTML = `
       <h4>{{ _('Progress') }}</h4>
       <div class="ms-pbar"><div class="ms-pbar__fill" style="width:${m.progress_percentage||0}%"></div></div>

@@ -126,6 +126,7 @@ async function handleMessage(msg) {
 
     // ── Fetch PDF bytes from a URL (background can bypass CORS for OA PDFs) ─
     case 'FETCH_PDF': {
+      if (!/^https?:\/\//i.test(String(msg.url || ''))) throw new Error('URL de PDF no válida');
       const resp = await fetch(msg.url);
       if (!resp.ok) throw new Error(`No se pudo descargar el PDF (HTTP ${resp.status})`);
       const contentType = resp.headers.get('content-type') || '';

@@ -329,6 +329,8 @@ function fetchPdfViaPage(url) {
 
     function onMsg(e) {
       if (!e.data || e.data.source !== 'prionvault-content') return;
+  if (e.source !== window.parent) return;
+      if (e.source !== window.parent) return;
       if (e.data.type === 'PDF_BYTES') {
         clearTimeout(timeout);
         window.removeEventListener('message', onMsg);

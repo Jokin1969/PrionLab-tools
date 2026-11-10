@@ -1,3 +1,4 @@
+const _rcEsc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 /* Research Citations Manager — standalone JS module */
 class CitationManager {
   constructor() {
@@ -109,7 +110,7 @@ class CitationManager {
       });
       const d = await r.json();
       if (d.success) this._renderResults(d.publications || []);
-      else el.innerHTML = `<p class="alert alert--danger">${d.error || 'Search failed.'}</p>`;
+      else el.innerHTML = `<p class="alert alert--danger">${_rcEsc(d.error || 'Search failed.')}</p>`;
     } catch(e) {
       el.innerHTML = '<p class="alert alert--danger">Network error.</p>';
     }
@@ -119,17 +120,17 @@ class CitationManager {
     const el = document.getElementById('citationSearchResults');
     if (!pubs.length) { el.innerHTML = '<p class="no-results">No publications found.</p>'; return; }
     el.innerHTML = pubs.map(p => `
-      <div class="pub-card" style="cursor:default;margin-bottom:.5rem" data-pub='${JSON.stringify({
+      <div class="pub-card" style="cursor:default;margin-bottom:.5rem" data-pub='${_rcEsc(JSON.stringify({
         publication_id: p.publication_id, title: p.title, authors: p.authors,
         journal: p.journal, year: p.year
-      }).replace(/'/g,"&#39;")}'>
+      }))}'>
         <div style="display:flex;align-items:flex-start;gap:.75rem">
-          <input type="checkbox" class="cite-check" data-id="${p.publication_id}"
+          <input type="checkbox" class="cite-check" data-id="${_rcEsc(p.publication_id)}"
                  ${this.selectedPublications.has(p.publication_id) ? 'checked' : ''}
                  style="margin-top:.25rem">
           <div>
-            <strong style="font-size:.9rem">${p.title}</strong>
-            <div style="font-size:.8rem;color:#555">${p.authors} — <em>${p.journal}</em> (${p.year})</div>
+            <strong style="font-size:.9rem">${_rcEsc(p.title)}</strong>
+            <div style="font-size:.8rem;color:#555">${_rcEsc(p.authors)} — <em>${_rcEsc(p.journal)}</em> (${_rcEsc(p.year)})</div>
             ${p.is_lab_publication ? '<span class="badge badge--published" style="font-size:.7rem">Lab</span>' : ''}
           </div>
         </div>
@@ -166,10 +167,10 @@ class CitationManager {
     el.innerHTML = [...this.selectedPublications.values()].map(p => `
       <div class="selected-publication-item">
         <div class="selected-content">
-          <span class="selected-title">${p.title}</span>
-          <span class="selected-meta">${p.journal} (${p.year})</span>
+          <span class="selected-title">${_rcEsc(p.title)}</span>
+          <span class="selected-meta">${_rcEsc(p.journal)} (${_rcEsc(p.year)})</span>
         </div>
-        <button class="remove-selected-btn" data-id="${p.publication_id}">×</button>
+        <button class="remove-selected-btn" data-id="${_rcEsc(p.publication_id)}">×</button>
       </div>`).join('');
     el.querySelectorAll('.remove-selected-btn').forEach(btn => {
       btn.addEventListener('click', e => this._removePub(e.target.dataset.id));

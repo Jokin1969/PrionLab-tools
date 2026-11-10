@@ -111,6 +111,10 @@
   // non-blocking fixed drawer (not a .pv-modal), so it's untouched.
   function _pvCloseOtherModals() {
     document.querySelectorAll('.pv-modal').forEach(m => {
+      if (m.style.display === 'none') return;
+      // Go through the modal's own close button so it stops its polling.
+      const closeBtn = m.querySelector('.pv-modal-close, [data-close]');
+      if (closeBtn) closeBtn.click();
       if (m.style.display !== 'none') m.style.display = 'none';
     });
   }
@@ -130,6 +134,19 @@
   function _clearArticleIsolation() {
     state.isolatedArticleId = null;
     state.page = 1;
+    _updateIsolationIndicator();
+  }
+
+  // Filters the "jump to this set" shortcuts (Health cards, batch stats,
+  // id lists) must also clear, on top of the ones they reset themselves.
+  function _resetHiddenFilters() {
+    state.hasGlossary = null;
+    state.isolatedArticleId = null;
+    state.filterSelectedOnly = false;
+    const si = document.getElementById('pv-search-input');
+    if (si) si.value = '';
+    const cb = document.getElementById('pv-search-clear');
+    if (cb) cb.style.display = 'none';
     _updateIsolationIndicator();
   }
 

@@ -743,9 +743,12 @@
                                           font-size:12px;color:#9ca3af;">Cargando…</div>`;
 
     let allTags = [];
+    const tagSeq = _detailSeq;      // ignore the answer if another article was opened meanwhile
     try {
       allTags = await api('/tags');
+      if (tagSeq !== _detailSeq) return;
     } catch (e) {
+      if (tagSeq !== _detailSeq) return;
       const listErr = document.getElementById('pv-tag-picker-list');
       if (listErr) listErr.innerHTML =
         `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
@@ -904,7 +907,9 @@
 
     let data;
     try {
+      const suppSeq = _detailSeq;
       data = await api(`/articles/${a.id}/supplementary`);
+      if (suppSeq !== _detailSeq) return;
     } catch (e) {
       document.getElementById('pv-supp-list').innerHTML =
         `<div style="color:#b91c1c;">Error: ${esc(e.message)}</div>`;

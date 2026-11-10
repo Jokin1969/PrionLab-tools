@@ -572,8 +572,10 @@
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null,
         _healthExtra: null, page: 1,
+        hasGlossary: null, isolatedArticleId: null,
         filterSelectedOnly: true,
       });
+      _updateIsolationIndicator();
       if (state.selectedIds && typeof state.selectedIds.clearSilently === 'function') {
         state.selectedIds.clearSilently();
         ids.forEach(id => state.selectedIds.addSilently(id));
@@ -652,6 +654,15 @@
 
     // Wire focus trapping for every modal in the page. Safe / idempotent.
     document.querySelectorAll('.pv-modal').forEach(m => wireModalFocusTrap(m));
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.target && e.target.closest && e.target.closest('.pv-modal')) return;  // its own handler
+      const open = Array.from(document.querySelectorAll('.pv-modal'))
+        .filter(m => m.style.display && m.style.display !== 'none');
+      const top = open[open.length - 1];
+      const closeBtn = top && top.querySelector('.pv-modal-close, [data-close]');
+      if (closeBtn) closeBtn.click();
+    });
     _wireA11y();
 
     // Apply any incoming ?has_glossary= filter BEFORE the first

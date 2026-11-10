@@ -532,6 +532,7 @@
     btn.addEventListener('click', () => {
       modal.style.display = 'flex';
       refreshQueue();
+      if (_queuePolling) clearInterval(_queuePolling);
       _queuePolling = setInterval(refreshQueue, 4000);
     });
     const close = () => {

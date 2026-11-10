@@ -185,6 +185,8 @@
   // Messages FROM the panel iframe (postMessage, since iframe may be cross-origin)
   window.addEventListener('message', async (e) => {
     if (!e.data || e.data.source !== 'prionvault-panel') return;
+    // Only our own panel iframe may talk to us — not scripts of the page.
+    if (!panel || e.source !== panel.contentWindow) return;
 
     if (e.data.type === 'CLOSE') {
       closePanel();

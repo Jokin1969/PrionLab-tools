@@ -1,3 +1,4 @@
+const _nvEsc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 /**
  * CitationNetworkVisualization — D3.js v7 force-directed network.
  *
@@ -368,9 +369,9 @@ class CitationNetworkVisualization {
 
         const authLine = (d.authors || []).slice(0, 3).join(', ') + (d.authors?.length > 3 ? ' et al.' : '');
         this._showTip(ev,
-            `<strong style="font-size:13px">${(d.title || '—').slice(0, 80)}</strong><br>` +
-            `${authLine}<br>` +
-            `<em>${d.journal || '—'}</em> ${d.year || ''}<br>` +
+            `<strong style="font-size:13px">${_nvEsc((d.title || '—').slice(0, 80))}</strong><br>` +
+            `${_nvEsc(authLine)}<br>` +
+            `<em>${_nvEsc(d.journal || '—')}</em> ${_nvEsc(d.year || '')}<br>` +
             `Cluster ${d.cluster_id ?? '—'} · degree ${d.degree || 0}`
         );
     }

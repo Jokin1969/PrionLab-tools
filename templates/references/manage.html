@@ -262,25 +262,26 @@ function renderRefs(refs) {
   if (!refs.length) { el.innerHTML=''; empty.style.display=''; return; }
   empty.style.display='none';
 
+  const _e = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   const AREA_CLS = {neuroscience:'ref-area--neuro', biochemistry:'ref-area--bio',
     pathology:'ref-area--path', therapeutics:'ref-area--ther', general:'ref-area--gen'};
 
   el.innerHTML = refs.map(r => {
     const authors = Array.isArray(r.authors) ? r.authors.join(', ') : (r.authors||'');
     const areaCls = AREA_CLS[r.research_area] || 'ref-area--gen';
-    return `<div class="ref-item" data-id="${r.id}">
+    return `<div class="ref-item" data-id="${_e(r.id)}">
       <input type="checkbox" class="ref-chk" ${_selected.has(r.id)?'checked':''}
-             onchange="toggleSel('${r.id}')">
+             onchange="toggleSel('${_e(r.id)}')">
       <div class="ref-item__body">
-        <div class="ref-item__title">${r.title||'Untitled'}</div>
-        <div class="ref-item__authors">${authors}</div>
+        <div class="ref-item__title">${_e(r.title||'Untitled')}</div>
+        <div class="ref-item__authors">${_e(authors)}</div>
         <div class="ref-item__journal">
-          <em>${r.journal||''}</em>${r.year?` (${r.year})`:''}${r.volume?` · Vol.${r.volume}`:''}${r.pages?` · ${r.pages}`:''}
+          <em>${_e(r.journal||'')}</em>${r.year?` (${_e(r.year)})`:''}${r.volume?` · Vol.${_e(r.volume)}`:''}${r.pages?` · ${_e(r.pages)}`:''}
         </div>
         <div class="ref-item__meta">
-          <span class="ref-area ${areaCls}">${r.research_area||'general'}</span>
-          ${r.doi?`<span>DOI: ${r.doi}</span>`:''}
-          ${r.pmid?`<span>PMID: ${r.pmid}</span>`:''}
+          <span class="ref-area ${areaCls}">${_e(r.research_area||'general')}</span>
+          ${r.doi?`<span>DOI: ${_e(r.doi)}</span>`:''}
+          ${r.pmid?`<span>PMID: ${_e(r.pmid)}</span>`:''}
         </div>
       </div>
       <button class="btn btn--xs btn--danger" onclick="doDelete('${r.id}')">&#128465;</button>

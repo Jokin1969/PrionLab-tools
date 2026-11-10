@@ -114,7 +114,8 @@
 
   // ── helpers ────────────────────────────────────────────────────────────
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+                                  .replace(/'/g, '&#39;');
   const supHtml = s => esc(s).replace(/\^(\S[^\^\n]*?)\^/g, '<sup>$1</sup>');
 
   // Wire a "copy this text to clipboard" button: reads `data-title` (or
@@ -271,7 +272,8 @@
 
   function escapeHtml(s) {
     return String(s ?? '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   // ── Modal focus trap ─────────────────────────────────────────────────
@@ -389,6 +391,16 @@
       e.status = res.status;
       e.detail = err.detail;
       e.body   = err;
+      throw e;
+    }
+    // A page instead of JSON means we were redirected (login page or home):
+    // say so instead of "Unexpected token '<'".
+    const ctype = res.headers.get('content-type') || '';
+    if (res.redirected || !ctype.includes('json')) {
+      const e = new Error(/\/login/.test(res.url)
+        ? 'Tu sesión ha caducado. Recarga la página y vuelve a entrar.'
+        : 'No tienes permiso para esta acción.');
+      e.status = /\/login/.test(res.url) ? 401 : 403;
       throw e;
     }
     return res.json();

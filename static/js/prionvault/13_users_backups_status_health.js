@@ -1655,6 +1655,7 @@
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null, page: 1,
       });
+      _resetHiddenFilters();
 
       // Apply known filter params that map to state fields
       if (params.has_summary)       state.hasSummary    = params.has_summary;

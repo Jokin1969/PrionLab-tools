@@ -898,9 +898,11 @@
           if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); return; }
           const tag = child.tagName.toLowerCase();
           if (!ALLOWED.has(tag)) {
-            const frag = document.createDocumentFragment();
-            Array.from(child.childNodes).forEach(c => frag.appendChild(c.cloneNode(true)));
-            child.replaceWith(frag);
+            // Unwrap the tag but sanitize what was inside it first.
+            const holder = doc.createElement('div');
+            Array.from(child.childNodes).forEach(c => holder.appendChild(c));
+            walk(holder);
+            child.replaceWith(...Array.from(holder.childNodes));
             return;
           }
           if (tag === 'img') {

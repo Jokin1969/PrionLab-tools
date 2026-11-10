@@ -114,7 +114,8 @@
 
   // ── helpers ────────────────────────────────────────────────────────────
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+                                  .replace(/'/g, '&#39;');
   const supHtml = s => esc(s).replace(/\^(\S[^\^\n]*?)\^/g, '<sup>$1</sup>');
 
   // Wire a "copy this text to clipboard" button: reads `data-title` (or
@@ -271,7 +272,8 @@
 
   function escapeHtml(s) {
     return String(s ?? '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   // ── Modal focus trap ─────────────────────────────────────────────────
@@ -389,6 +391,16 @@
       e.status = res.status;
       e.detail = err.detail;
       e.body   = err;
+      throw e;
+    }
+    // A page instead of JSON means we were redirected (login page or home):
+    // say so instead of "Unexpected token '<'".
+    const ctype = res.headers.get('content-type') || '';
+    if (res.redirected || !ctype.includes('json')) {
+      const e = new Error(/\/login/.test(res.url)
+        ? 'Tu sesión ha caducado. Recarga la página y vuelve a entrar.'
+        : 'No tienes permiso para esta acción.');
+      e.status = /\/login/.test(res.url) ? 401 : 403;
       throw e;
     }
     return res.json();
@@ -2386,8 +2398,14 @@
         return loadArticles();
       }
       if (r.items.length === 0) {
+        // Drop the previous page's rows too, or prev/next and "select all"
+        // would still act on them.
+        if (tbody) tbody.innerHTML = '';
+        _listIds = [];
+        state.lastTotal = 0;
         showEmpty('No articles match these filters.');
         renderPagination(r);
+        updateBulkBar();
         return;
       }
       _listIds = r.items.map(a => a.id);
@@ -3118,6 +3136,10 @@
   // non-blocking fixed drawer (not a .pv-modal), so it's untouched.
   function _pvCloseOtherModals() {
     document.querySelectorAll('.pv-modal').forEach(m => {
+      if (m.style.display === 'none') return;
+      // Go through the modal's own close button so it stops its polling.
+      const closeBtn = m.querySelector('.pv-modal-close, [data-close]');
+      if (closeBtn) closeBtn.click();
       if (m.style.display !== 'none') m.style.display = 'none';
     });
   }
@@ -3137,6 +3159,19 @@
   function _clearArticleIsolation() {
     state.isolatedArticleId = null;
     state.page = 1;
+    _updateIsolationIndicator();
+  }
+
+  // Filters the "jump to this set" shortcuts (Health cards, batch stats,
+  // id lists) must also clear, on top of the ones they reset themselves.
+  function _resetHiddenFilters() {
+    state.hasGlossary = null;
+    state.isolatedArticleId = null;
+    state.filterSelectedOnly = false;
+    const si = document.getElementById('pv-search-input');
+    if (si) si.value = '';
+    const cb = document.getElementById('pv-search-clear');
+    if (cb) cb.style.display = 'none';
     _updateIsolationIndicator();
   }
 
@@ -5129,9 +5164,12 @@
                                           font-size:12px;color:#9ca3af;">Cargando…</div>`;
 
     let allTags = [];
+    const tagSeq = _detailSeq;      // ignore the answer if another article was opened meanwhile
     try {
       allTags = await api('/tags');
+      if (tagSeq !== _detailSeq) return;
     } catch (e) {
+      if (tagSeq !== _detailSeq) return;
       const listErr = document.getElementById('pv-tag-picker-list');
       if (listErr) listErr.innerHTML =
         `<span style="color:#b91c1c;">Error: ${esc(e.message)}</span>`;
@@ -5290,7 +5328,9 @@
 
     let data;
     try {
+      const suppSeq = _detailSeq;
       data = await api(`/articles/${a.id}/supplementary`);
+      if (suppSeq !== _detailSeq) return;
     } catch (e) {
       document.getElementById('pv-supp-list').innerHTML =
         `<div style="color:#b91c1c;">Error: ${esc(e.message)}</div>`;
@@ -11258,9 +11298,11 @@
           if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); return; }
           const tag = child.tagName.toLowerCase();
           if (!ALLOWED.has(tag)) {
-            const frag = document.createDocumentFragment();
-            Array.from(child.childNodes).forEach(c => frag.appendChild(c.cloneNode(true)));
-            child.replaceWith(frag);
+            // Unwrap the tag but sanitize what was inside it first.
+            const holder = doc.createElement('div');
+            Array.from(child.childNodes).forEach(c => holder.appendChild(c));
+            walk(holder);
+            child.replaceWith(...Array.from(holder.childNodes));
             return;
           }
           if (tag === 'img') {
@@ -12613,8 +12655,10 @@
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null,
         _healthExtra: null, page: 1,
+        hasGlossary: null, isolatedArticleId: null,
         filterSelectedOnly: true,
       });
+      _updateIsolationIndicator();
       if (state.selectedIds && typeof state.selectedIds.clearSilently === 'function') {
         state.selectedIds.clearSilently();
         ids.forEach(id => state.selectedIds.addSilently(id));
@@ -12693,6 +12737,15 @@
 
     // Wire focus trapping for every modal in the page. Safe / idempotent.
     document.querySelectorAll('.pv-modal').forEach(m => wireModalFocusTrap(m));
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.target && e.target.closest && e.target.closest('.pv-modal')) return;  // its own handler
+      const open = Array.from(document.querySelectorAll('.pv-modal'))
+        .filter(m => m.style.display && m.style.display !== 'none');
+      const top = open[open.length - 1];
+      const closeBtn = top && top.querySelector('.pv-modal-close, [data-close]');
+      if (closeBtn) closeBtn.click();
+    });
     _wireA11y();
 
     // Apply any incoming ?has_glossary= filter BEFORE the first
@@ -13264,6 +13317,7 @@
     btn.addEventListener('click', () => {
       modal.style.display = 'flex';
       refreshQueue();
+      if (_queuePolling) clearInterval(_queuePolling);
       _queuePolling = setInterval(refreshQueue, 4000);
     });
     const close = () => {
@@ -15511,6 +15565,7 @@
     }
     window._pvBatchSummaryFilter = function(hasSummaryVal) {
       modal.style.display = 'none';
+      stopPolling();
       Object.assign(state, {
         q: '', yearMin: null, yearMax: null, journal: '', authors: '',
         tagId: null, hasSummary: null, inPrionread: null, isFlagged: null,
@@ -15520,6 +15575,7 @@
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null, page: 1,
         _healthExtra: { has_summary_ai: hasSummaryVal },
       });
+      _resetHiddenFilters();
       syncMarkFilterButtons();
       loadArticles();
     };
@@ -22205,6 +22261,7 @@
         collectionSubgroup: null, hasJc: null, jcPresenter: '', jcYear: null,
         hasPp: null, ppId: '', abstractStatus: '', indexedStatus: '', hasPdf: null, hasDoi: null, page: 1,
       });
+      _resetHiddenFilters();
 
       // Apply known filter params that map to state fields
       if (params.has_summary)       state.hasSummary    = params.has_summary;

@@ -1072,8 +1072,14 @@
         return loadArticles();
       }
       if (r.items.length === 0) {
+        // Drop the previous page's rows too, or prev/next and "select all"
+        // would still act on them.
+        if (tbody) tbody.innerHTML = '';
+        _listIds = [];
+        state.lastTotal = 0;
         showEmpty('No articles match these filters.');
         renderPagination(r);
+        updateBulkBar();
         return;
       }
       _listIds = r.items.map(a => a.id);
