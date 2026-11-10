@@ -278,11 +278,21 @@ def _format_authors_short(authors: str) -> str:
     return ", ".join(auth_list)
 
 
+def _esc(value) -> str:
+    """Titles, authors and journals come from PubMed and users: they often
+    contain <i>, <sup>, "p<0.05" or & and must not be read as HTML."""
+    import html as _html_mod
+    return _html_mod.escape(str(value or ""))
+
+
+from urllib.parse import quote as _quote  # noqa: E402
+
+
 def _article_card(a: dict, import_base_url: str) -> str:
     """Card for PubMed digest — articles NOT yet in the library."""
-    title   = a.get("title") or "Sin título"
-    authors = _format_authors_short(a.get("authors") or "")
-    journal = a.get("journal") or ""
+    title   = _esc(a.get("title") or "Sin título")
+    authors = _esc(_format_authors_short(a.get("authors") or ""))
+    journal = _esc(a.get("journal") or "")
     year    = a.get("year") or ""
     pmid    = a.get("pmid") or ""
     doi     = a.get("doi") or ""
@@ -291,7 +301,7 @@ def _article_card(a: dict, import_base_url: str) -> str:
     if isinstance(presets_raw, str):
         presets_raw = [presets_raw]
 
-    doi_url  = f"https://doi.org/{doi}" if doi else ""
+    doi_url  = f"https://doi.org/{_quote(str(doi), safe='/:;()._-')}" if doi else ""
     pmid_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
     import_url = f"{import_base_url}?pmid={pmid}" if pmid else ""
 
@@ -370,9 +380,9 @@ def _summary_to_html(text: str) -> str:
 def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool,
                         include_summary: bool = False) -> str:
     """Card for PrionVault Picks — articles already IN the library."""
-    title      = a.get("title") or "Sin título"
-    authors    = _format_authors_short(a.get("authors") or "")
-    journal    = a.get("journal") or ""
+    title      = _esc(a.get("title") or "Sin título")
+    authors    = _esc(_format_authors_short(a.get("authors") or ""))
+    journal    = _esc(a.get("journal") or "")
     year       = a.get("year") or ""
     pmid       = a.get("pmid") or ""
     doi        = a.get("doi") or ""
@@ -381,7 +391,7 @@ def _picks_article_card(a: dict, server_base_url: str, has_pdf: bool,
     # or an md5 — older rows may have only one of the two.
     has_pdf_in_db = bool(a.get("pdf_md5") or a.get("dropbox_path"))
 
-    doi_url  = f"https://doi.org/{doi}" if doi else ""
+    doi_url  = f"https://doi.org/{_quote(str(doi), safe='/:;()._-')}" if doi else ""
     pmid_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
     view_url = (f"{server_base_url}/prionvault/?open={article_id}"
                 if server_base_url and article_id else "")
@@ -605,7 +615,7 @@ def build_digest_html(articles: list[dict], sub: dict,
 def _build_picks_html(cards_html: str, sub: dict, import_base_url: str,
                       count: int) -> str:
     """Minimal HTML wrapper for PrionVault Picks emails."""
-    name = sub.get("name") or "PrionVault Picks"
+    name = _esc(sub.get("name") or "PrionVault Picks")
     base = import_base_url.replace("/import", "") if import_base_url != "#" else ""
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8">

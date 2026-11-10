@@ -2567,35 +2567,37 @@ def api_article_update(aid):
                     "matched_on":   col,
                 }), 409
 
-        # Use raw SQL to bypass any ORM mapper column-declaration gaps.
-        if updates:
-            _set_clauses = ", ".join(f"{k} = :{k}" for k in updates)
-            s.execute(sql_text(
-                f"UPDATE articles SET {_set_clauses}, updated_at = NOW() WHERE id = CAST(:_aid AS uuid)"
-            ), {**updates, "_aid": str(aid)})
-
-        # Upsert per-user marks for the current viewer. We do this
-        # inside the same session so a downstream commit error rolls
-        # both pieces back together (the user shouldn't see a
-        # partial save).
-        if _per_user_marks:
-            _uid = _viewer_id()
-            if _uid:
-                _cols = list(_per_user_marks.keys())
-                _set  = ", ".join(f"{c} = EXCLUDED.{c}" for c in _cols)
-                _vals = ", ".join(f":{c}" for c in _cols)
-                _params = {"u": str(_uid), "a": str(aid), **_per_user_marks}
-                s.execute(sql_text(
-                    f"""
-                    INSERT INTO prionvault_user_state
-                      (user_id, article_id, {', '.join(_cols)})
-                    VALUES (CAST(:u AS uuid), CAST(:a AS uuid), {_vals})
-                    ON CONFLICT (user_id, article_id) DO UPDATE
-                       SET {_set}
-                    """
-                ), _params)
-
+        # The writes run inside the try: a too-long value or a duplicate
+        # DOI/PMID fails at execute(), not only at commit().
         try:
+            # Use raw SQL to bypass any ORM mapper column-declaration gaps.
+            if updates:
+                _set_clauses = ", ".join(f"{k} = :{k}" for k in updates)
+                s.execute(sql_text(
+                    f"UPDATE articles SET {_set_clauses}, updated_at = NOW() WHERE id = CAST(:_aid AS uuid)"
+                ), {**updates, "_aid": str(aid)})
+
+            # Upsert per-user marks for the current viewer. We do this
+            # inside the same session so a downstream commit error rolls
+            # both pieces back together (the user shouldn't see a
+            # partial save).
+            if _per_user_marks:
+                _uid = _viewer_id()
+                if _uid:
+                    _cols = list(_per_user_marks.keys())
+                    _set  = ", ".join(f"{c} = EXCLUDED.{c}" for c in _cols)
+                    _vals = ", ".join(f":{c}" for c in _cols)
+                    _params = {"u": str(_uid), "a": str(aid), **_per_user_marks}
+                    s.execute(sql_text(
+                        f"""
+                        INSERT INTO prionvault_user_state
+                          (user_id, article_id, {', '.join(_cols)})
+                        VALUES (CAST(:u AS uuid), CAST(:a AS uuid), {_vals})
+                        ON CONFLICT (user_id, article_id) DO UPDATE
+                           SET {_set}
+                        """
+                    ), _params)
+
             s.commit()
         except IntegrityError as exc:
             # Race against a concurrent INSERT that flipped a DOI/PMID
@@ -2640,7 +2642,7 @@ def api_article_update(aid):
                 logger.warning("api_article_update %s: prionpack sync_doi failed: %s",
                                aid, exc)
 
-        return jsonify(a.to_dict(include_text=True, viewer_role="admin"))
+        return jsonify(a.to_dict(include_text=True, viewer_role=_viewer_role()))
     finally:
         s.close()
 
@@ -3219,6 +3221,9 @@ def api_article_delete(aid):
         dropbox_path = getattr(a, "dropbox_path", None)
         dropbox_deleted = False
         dropbox_error = None
+        # Row first: if the commit fails the PDF must still be there.
+        s.delete(a)
+        s.commit()
         if dropbox_path:
             try:
                 from core.dropbox_client import get_client
@@ -3238,8 +3243,6 @@ def api_article_delete(aid):
                     "Dropbox delete failed for %s: %s", dropbox_path, exc
                 )
 
-        s.delete(a)
-        s.commit()
         return jsonify({
             "ok": True,
             "dropbox_path": dropbox_path,
@@ -3434,6 +3437,8 @@ def api_article_create_with_pdf():
     content = f.read()
     if not content:
         return jsonify({"error": "empty pdf"}), 400
+    if not content.lstrip()[:5].startswith(b"%PDF-"):
+        return jsonify({"error": "not_a_pdf", "detail": "El fichero no es un PDF."}), 400
     pdf_md5  = _hashlib.md5(content).hexdigest()
     pdf_size = len(content)
 
@@ -4161,7 +4166,7 @@ def api_article_used_in(aid):
                 students.append({
                     "user_id":    str(r.user_id) if r.user_id else None,
                     "name":       r.name or "—",
-                    "email":      r.email,
+                    "email":      r.email if _viewer_role() == "admin" else None,
                     "photo_url":  r.photo_url,
                     "status":     r.status,
                     "created_at": r.created_at.isoformat() if r.created_at else None,

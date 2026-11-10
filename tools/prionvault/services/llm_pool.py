@@ -99,7 +99,7 @@ def call_llm(*, provider: str, system: str, user: str,
                                       model=model, timeout=timeout)
             elif p == "gemini":
                 result = _call_gemini(key, system, user, max_tokens, temperature, want_json,
-                                      model=model)
+                                      model=model, timeout=timeout)
             else:
                 raise ValueError(f"unsupported provider: {p}")
             # Stamp success so the "Estado IA" panel and the sticky
@@ -144,7 +144,12 @@ def call_llm_json(*, provider: str, system: str, user: str,
             text = text[4:]
         text = text.rstrip("` \n")
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        if not isinstance(parsed, dict):
+            # Every caller expects an object; treat anything else as a bad
+            # answer so the fallback chain moves on to the next provider.
+            raise RuntimeError(f"{r.provider} returned JSON that is not an object")
+        return parsed
     except json.JSONDecodeError as exc:
         raise RuntimeError(
             f"{r.provider} returned non-JSON: {exc} — got: {r.text[:200]}"
@@ -270,10 +275,12 @@ def _call_openai(api_key: str, system: str, user: str,
 
 def _call_gemini(api_key: str, system: str, user: str,
                  max_tokens: int, temperature: float,
-                 want_json: bool, model: Optional[str] = None) -> LLMResult:
+                 want_json: bool, model: Optional[str] = None,
+                 timeout: float = 60.0) -> LLMResult:
     from google import genai
     from google.genai import types
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key,
+                          http_options=types.HttpOptions(timeout=int(timeout * 1000)))
     model = model or _MODELS["gemini"]
     config = types.GenerateContentConfig(
         system_instruction=system,

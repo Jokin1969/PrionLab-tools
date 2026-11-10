@@ -431,7 +431,7 @@ def _chat(*, provider: str, system: str, user: str) -> tuple[str, Optional[int],
     # gemini — needs special handling for "thinking" budget on 2.5 Pro
     from google import genai
     from google.genai import types
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=120_000))
 
     # Gemini 2.5 Pro reasons internally before producing visible text,
     # and those reasoning tokens count against max_output_tokens. With

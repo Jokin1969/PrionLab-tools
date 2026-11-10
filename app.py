@@ -195,6 +195,9 @@ def _start_prionpacks_backup_scheduler(app: Flask) -> None:
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = config.SECRET_KEY
+    # Hard cap on request bodies (largest legitimate upload: a 200 MB JC or
+    # supplementary file) so a huge upload can't exhaust the worker's memory.
+    app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "512")) * 1024 * 1024
     # Behind Railway's proxy: take the real client IP (rate limits are per
     # IP — without this the whole lab would share one bucket) and scheme.
     if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("TRUST_PROXY"):

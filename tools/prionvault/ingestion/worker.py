@@ -309,7 +309,7 @@ def _process_job(job: ingest_queue.Job) -> None:
     # If the email subject contains "Read", flag the article for admin users
     if (job.notify_subject or "").lower().strip():
         subject_lower = (job.notify_subject or "").lower()
-        if "read" in subject_lower:
+        if re.search(r"\bread\b", subject_lower):
             try:
                 _flag_article_for_admins(article_id)
             except Exception as exc:
@@ -1622,7 +1622,7 @@ def _run_loop() -> None:
 
         try:
             _process_job(job)
-        except (OperationalError, DBAPIError, DisconnectionError) as exc:
+        except (OperationalError, DisconnectionError) as exc:
             # DB died mid-job. We can't even bump_attempt_or_fail (that
             # also writes to Postgres). Leave the job in 'uploading'
             # status — when the DB comes back, the operator can re-queue

@@ -328,7 +328,8 @@ def extract_pdf(source: Union[str, Path, bytes, io.IOBase]) -> ExtractionResult:
                     txt = None
                 if txt:
                     chunks.append(txt)
-            full = "\n".join(chunks).strip()
+            # Postgres rejects NUL bytes (broken font maps produce them).
+            full = "\n".join(chunks).replace("\x00", "").strip()
 
         return ExtractionResult(
             text=full,

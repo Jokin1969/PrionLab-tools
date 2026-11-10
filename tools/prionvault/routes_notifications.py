@@ -10,6 +10,7 @@ from flask import jsonify, request, session
 
 from core.decorators import login_required, admin_required
 from . import prionvault_bp
+from ._helpers import _viewer_id
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,23 @@ def _notif_sub_to_dict(row) -> dict:
     if sub.get("topics") and not isinstance(sub["topics"], list):
         sub["topics"] = list(sub["topics"])
     return sub
+
+
+_MAX_SUBS_PER_USER = 20
+
+
+def _notif_email(requested, uemail: str) -> str:
+    """Where a subscription is sent. Only admins may point one at an
+    arbitrary (valid) address; everyone else gets their own account email,
+    so subscriptions can't be used to mail third parties."""
+    import re as _re
+    from flask import has_request_context
+    req = str(requested or "").strip()
+    if not _re.fullmatch(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+", req):
+        req = ""
+    if has_request_context() and session.get("role") != "admin" and uemail:
+        return uemail
+    return req or uemail
 
 
 def _validate_notif_payload(data: dict, uemail: str) -> dict:
@@ -70,9 +88,9 @@ def _validate_notif_payload(data: dict, uemail: str) -> dict:
     if source not in ("pubmed", "flagged"):
         source = "pubmed"
     return {
-        "name":         (data.get("name", "").strip() or "Mi suscripción")[:80],
+        "name":         (str(data.get("name") or "").strip() or "Mi suscripción")[:80],
         "source":       source,
-        "email":        (data.get("email") or "").strip() or uemail,
+        "email":        _notif_email(data.get("email"), uemail),
         "topics":       _json.dumps(topics),
         "freq":         freq,
         "dow":          dow,
@@ -97,7 +115,9 @@ def api_notifications_get():
     from sqlalchemy import text as _t
     from database.config import db as _db
     from core.users import get_user as _get_user
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
     try:
         with _db.engine.connect() as conn:
@@ -125,7 +145,9 @@ def api_notifications_save():
     from database.config import db as _db
     from core.users import get_user as _get_user
     from .services.email_digest import compute_next_send
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
     data = request.get_json(silent=True) or {}
     p = _validate_notif_payload(data, _uemail)
@@ -177,7 +199,9 @@ def api_notifications_test():
     from .services.email_digest import compute_next_send
     import json as _json
 
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     if not smtp_configured():
         return jsonify({"error": "smtp_not_configured",
                         "detail": "SMTP no configurado en el servidor."}), 503
@@ -244,7 +268,9 @@ def api_notifications_timezones():
 def api_notifications_list():
     from sqlalchemy import text as _t
     from database.config import db as _db
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     try:
         with _db.engine.connect() as conn:
             rows = conn.execute(_t(
@@ -263,13 +289,23 @@ def api_notifications_create():
     from database.config import db as _db
     from core.users import get_user as _get_user
     from .services.email_digest import compute_next_send
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
     data = request.get_json(silent=True) or {}
     p = _validate_notif_payload(data, _uemail)
     next_send = compute_next_send({"frequency": p["freq"], "days_of_week": p["days"],
                                    "send_hour": p["hour"], "send_minute": p["minute"],
                                    "user_timezone": p["tz"]})
+    try:
+        with _db.engine.connect() as conn:
+            if (conn.execute(_t("SELECT COUNT(*) FROM prionvault_notification_subscriptions "
+                                "WHERE user_id = :uid"), {"uid": str(_uid)}).scalar() or 0) >= _MAX_SUBS_PER_USER:
+                return jsonify({"error": "too_many",
+                                "detail": f"Máximo {_MAX_SUBS_PER_USER} suscripciones por usuario."}), 400
+    except Exception:
+        logger.exception("notifications: count failed")
     try:
         with _db.engine.begin() as conn:
             new_id = conn.execute(_t("""
@@ -295,7 +331,9 @@ def api_notifications_update(sub_id):
     from database.config import db as _db
     from core.users import get_user as _get_user
     from .services.email_digest import compute_next_send
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     _uemail = (_get_user(session.get("username", "")) or {}).get("email", "")
     data = request.get_json(silent=True) or {}
     p = _validate_notif_payload(data, _uemail)
@@ -330,7 +368,9 @@ def api_notifications_set_enabled(sub_id):
     scheduler indefinitely until resumed. Body: {enabled: bool}."""
     from sqlalchemy import text as _t
     from database.config import db as _db
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     data = request.get_json(silent=True) or {}
     enabled = bool(data.get("enabled", True))
     try:
@@ -352,7 +392,9 @@ def api_notifications_set_enabled(sub_id):
 def api_notifications_delete(sub_id):
     from sqlalchemy import text as _t
     from database.config import db as _db
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     try:
         with _db.engine.begin() as conn:
             result = conn.execute(_t(
@@ -372,7 +414,9 @@ def api_notifications_sub_test(sub_id):
     from sqlalchemy import text as _t
     from database.config import db as _db
     from config import smtp_configured
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     if not smtp_configured():
         return jsonify({"error": "smtp_not_configured",
                         "detail": "SMTP no configurado en el servidor."}), 503
@@ -407,7 +451,9 @@ def api_notifications_sub_preview(sub_id):
     from sqlalchemy import text as _t
     from database.config import db as _db
 
-    _uid = session.get("user_id")
+    _uid = _viewer_id()
+    if not _uid:
+        return jsonify({"error": "no_user"}), 401
     try:
         with _db.engine.connect() as conn:
             row = conn.execute(_t(

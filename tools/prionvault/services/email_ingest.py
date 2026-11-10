@@ -501,6 +501,16 @@ def _process_one(conn: imaplib.IMAP4_SSL, msg_id: bytes, cfg: dict,
         _mark_handled(conn, msg_id, proc_folder)
         return
 
+    # Never answer automatic mail (out-of-office, bounces, our own replies):
+    # replying to an auto-reply starts an endless ping-pong.
+    auto = (msg.get("Auto-Submitted") or "no").strip().lower()
+    if (auto != "no" or msg.get("X-Autoreply") or msg.get("X-Autorespond")
+            or (msg.get("Precedence") or "").strip().lower() in ("bulk", "junk", "auto_reply")
+            or (subject or "").lstrip().lower().startswith("[prionvault]")):
+        logger.info("email_ingest[%s]: skipped automatic message from %s", profile, from_addr)
+        _mark_handled(conn, msg_id, proc_folder)
+        return
+
     bcc = _admin_bcc(from_addr) if cfg["bcc_admins"] else []
     bcc_str = ",".join(bcc) if bcc else None
 

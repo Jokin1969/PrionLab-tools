@@ -1053,6 +1053,14 @@ def accept_final(year: int, by_user=None) -> dict:
             {"y": year}).mappings().first()
         if not rep or not (rep["body"] or "").strip():
             raise ValueError("No hay informe que aceptar.")
+        # Only papers of the selection may be cited: an identifier the AI
+        # made up (or mistyped) must not be imported into the library.
+        allowed = _allowed(_selected_items(year))
+        unknown = sorted({c for c in _cited_ids(rep["body"]) if c not in allowed})
+        if unknown:
+            raise ValueError("El texto cita identificadores que no están entre los artículos seleccionados: "
+                             + ", ".join(unknown) + ". Quítalos del texto o añádelos a la selección "
+                             "(«Añadir por PMID») antes de aceptar.")
         conn.execute(sql_text(
             "UPDATE prionvault_vc_report SET status = 'final', updated_at = NOW() WHERE year = :y"), {"y": year})
         _add_version(conn, year, "final", rep["title"], rep["authors"], rep["body"],
@@ -1107,6 +1115,26 @@ def stop() -> dict:
 _STEPS = {"select": step_select, "themes": step_themes, "write": step_write, "revise": step_revise}
 
 
+def _remember_error(year: int, step: str, error: str) -> None:
+    """The job's outcome lives in this worker's memory; the other gunicorn
+    worker answers half of the status polls. Keep the last error in the DB
+    so a failure is shown whichever worker is asked."""
+    try:
+        _log(year, "last_error", {"error": error, "step": step})
+    except Exception:
+        logger.debug("vc: could not store last_error", exc_info=True)
+
+
+def last_error(year: int) -> str:
+    try:
+        with _get_engine().connect() as conn:
+            return conn.execute(sql_text(
+                "SELECT pipeline #>> '{last_error,error}' FROM prionvault_vc_report WHERE year = :y"),
+                {"y": year}).scalar() or ""
+    except Exception:
+        return ""
+
+
 def start(step: str, year: int, **kwargs) -> Optional[dict]:
     if step not in _STEPS:
         raise ValueError(step)
@@ -1121,9 +1149,11 @@ def start(step: str, year: int, **kwargs) -> Optional[dict]:
         try:
             res = _STEPS[step](year, **kwargs)
             _set(result=res)
+            _remember_error(year, step, "")
         except Exception as exc:
             logger.exception("vc generate %s failed", step)
             _set(last_error=str(exc)[:400])
+            _remember_error(year, step, str(exc)[:400])
         finally:
             _set(running=False, finished_at=datetime.utcnow().isoformat(), phase=None)
 

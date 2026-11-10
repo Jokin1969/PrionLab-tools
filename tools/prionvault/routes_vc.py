@@ -143,7 +143,11 @@ def api_vc_draft_run(year):
 @login_required
 def api_vc_draft_status():
     from .services import vc_generate as g
-    return jsonify(g.get_status())
+    status = g.get_status()
+    year = request.args.get("year", type=int)
+    if year and not status.get("running") and not status.get("last_error"):
+        status["last_error"] = g.last_error(year) or None
+    return jsonify(status)
 
 
 @prionvault_bp.route("/api/vc/draft/stop", methods=["POST"])

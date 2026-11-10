@@ -104,7 +104,8 @@ _state = {
 _lock = threading.Lock()
 _thread: Optional[threading.Thread] = None
 _force = threading.Event()
-_stop  = threading.Event()
+_stop  = threading.Event()          # daemon shutdown only
+_harvest_stop = threading.Event()   # "Parar cosecha": ends the running harvest, not the daemon
 
 
 def _set_state(**kwargs) -> None:
@@ -913,7 +914,8 @@ def _try_enqueue_oa_pdf(meta: dict, by_user: str) -> None:
     # Try Unpaywall first (usually faster)
     if doi:
         try:
-            pdf_bytes = unpaywall.download_pdf(doi)
+            info = unpaywall.find_open_pdf(doi)
+            pdf_bytes = unpaywall.download_pdf(info.pdf_url) if info and info.pdf_url else None
             if pdf_bytes:
                 pdf_content = pdf_bytes
                 pdf_source = "unpaywall"
@@ -926,7 +928,8 @@ def _try_enqueue_oa_pdf(meta: dict, by_user: str) -> None:
             import requests
             pmc_url = f"https://europepmc.org/articles/{pmcid}/pdf"
             resp = requests.get(pmc_url, timeout=15, allow_redirects=True)
-            if resp.status_code == 200 and len(resp.content) > 1000:
+            if resp.status_code == 200 and resp.content[:5] == b"%PDF-" \
+               and len(resp.content) < 80 * 1024 * 1024:
                 pdf_content = resp.content
                 pdf_source = "europe_pmc"
         except Exception as exc:
@@ -1047,8 +1050,7 @@ def harvest_once(query: Optional[str] = None,
         # Batched esummary + UPSERT. Each batch upserts itself; we
         # don't accumulate everything in memory.
         for i in range(0, len(all_pmids), _ESUMMARY_BATCH):
-            if _stop.is_set():
-                _stop.clear()
+            if _harvest_stop.is_set():
                 stopped = True
                 break
             batch = all_pmids[i:i + _ESUMMARY_BATCH]
@@ -1103,10 +1105,16 @@ def harvest_all(min_year: Optional[int] = None,
     Returns a list of per-preset summaries. Used by the daemon and the
     refresh endpoint when preset='all'."""
     summaries = []
-    for name, q in PRESET_QUERIES.items():
-        summary = harvest_once(query=q, query_name=name,
-                               min_year=min_year, max_year=max_year)
-        summaries.append(summary)
+    _harvest_stop.clear()            # a stale request must not kill this run
+    try:
+        for name, q in PRESET_QUERIES.items():
+            if _harvest_stop.is_set():
+                break                # stop means stop: skip the remaining presets
+            summary = harvest_once(query=q, query_name=name,
+                                   min_year=min_year, max_year=max_year)
+            summaries.append(summary)
+    finally:
+        _harvest_stop.clear()
     return summaries
 
 
@@ -1120,7 +1128,7 @@ def request_harvest_now() -> None:
 
 def request_stop_harvest() -> None:
     """Ask the running harvest to stop after the current batch."""
-    _stop.set()
+    _harvest_stop.set()
     _force.clear()
 
 

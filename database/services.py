@@ -323,6 +323,11 @@ class DatabaseHealthService:
                 with raw_conn.cursor() as cur:
                     cur.execute(target)
             finally:
+                # Back to normal before the connection returns to the pool.
+                try:
+                    raw_conn.set_isolation_level(1)
+                except Exception:
+                    pass
                 raw_conn.close()
             logger.info("VACUUM ANALYZE completed on %s", table or "all tables")
             return True

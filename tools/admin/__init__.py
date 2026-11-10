@@ -176,9 +176,22 @@ def send_extension_email():
             continue
         # A personal key per recipient (replaces the shared reader key):
         # traceable, and revocable per user (new key / deactivate user).
-        if send_onboarding_email(email, issue_token(uname)):
+        # Sending a key replaces the user's previous one (only its hash is
+        # stored, so the old key can't be re-sent). If the email does not go
+        # out, put the previous key back so their extension keeps working.
+        previous = u.get("api_token_hash", "")
+        try:
+            ok = send_onboarding_email(email, issue_token(uname))
+        except Exception:
+            logger.exception("onboarding email failed for %s", uname)
+            ok = False
+        if ok:
             sent.append(uname)
         else:
+            try:
+                update_user(uname, {"api_token_hash": previous}, sync=False)
+            except Exception:
+                logger.exception("could not restore the previous key of %s", uname)
             failed.append(uname)
 
     return {"ok": True, "sent": sent, "failed": failed}
@@ -613,7 +626,7 @@ def restore_backup_from_dropbox():
 
     logger = logging.getLogger(__name__)
 
-    filename = request.get_json(silent=True, force=True).get('filename', '').strip()
+    filename = (request.get_json(silent=True, force=True) or {}).get('filename', '').strip()
 
     # Validate filename format (pgdump or csv_export)
     is_pgdump = re.match(r"^pgdump_\d{8}_\d{6}\.sql\.gz$", filename)

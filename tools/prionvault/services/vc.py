@@ -260,6 +260,15 @@ def resolve_ref(ref: dict, by_user=None) -> str:
         surname = re.split(r"[ ,.]", cite.split(". ")[1].strip())[0] if ". " in cite else None
         found = pubmed_search_pmid_by_title(title, author=surname)
         if found:
+            # The last PubMed tiers are loose free-text searches: only accept
+            # the hit when its title really is the cited one.
+            meta = _fetch_meta(None, found)
+            want = set(re.findall(r"\w{3,}", title.lower()))
+            got = set(re.findall(r"\w{3,}", ((meta.title if meta else "") or "").lower()))
+            if not want or len(want & got) / len(want) < 0.75:
+                _set_ref(ref["id"], status="not_found",
+                         note=f"Coincidencia dudosa en PubMed (PMID {found}): revísala y elígela a mano si es correcta.")
+                return "not_found"
             return pick_pmid(ref["id"], found, by_user=by_user,
                              note="Encontrado en PubMed por el título.")
         _set_ref(ref["id"], status="not_found", note="Título no encontrado en PubMed.")

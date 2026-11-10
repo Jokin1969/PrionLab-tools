@@ -390,6 +390,15 @@ def login():
 
 @auth_bp.route("/logout")
 def logout():
+    # A link on another website must not be able to log people out.
+    from urllib.parse import urlsplit
+    ref = request.headers.get("Referer") or ""
+    if ref and urlsplit(ref).netloc.lower() not in (
+            request.host.lower(),
+            (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip().lower()):
+        from config import APP_URL
+        if urlsplit(ref).netloc.lower() != urlsplit(APP_URL or "").netloc.lower():
+            return redirect(url_for("home"))
     session.clear()
     resp = make_response(redirect(url_for("auth.login")))
     resp.delete_cookie("prionlab_lang")

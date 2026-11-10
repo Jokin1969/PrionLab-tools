@@ -674,7 +674,7 @@
       if (_genPoll) return;
       const tick = async () => {
         let s;
-        try { s = await api('/vc/draft/status'); } catch (_) { return; }
+        try { s = await api(`/vc/draft/status?year=${year}`); } catch (_) { return; }
         const box = $('pv-vc-genjob');
         if (box) box.innerHTML = s.running ? `
           <div style="padding:8px 12px;border-radius:8px;background:#eff6ff;color:#1e40af;font-size:12.5px;">
