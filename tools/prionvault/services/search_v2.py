@@ -23,7 +23,7 @@ from sqlalchemy import text as sql_text
 logger = logging.getLogger(__name__)
 
 TS_CONFIG = "pv_search"
-VECTOR_VERSION = 2          # 2 = built with pv_fold() (migration 113)
+VECTOR_VERSION = 3          # 2 = pv_fold() (113); 3 = full re-index after the trigger fix (114)
 
 # ── Field filters in the search box ──────────────────────────────────────────
 
@@ -196,19 +196,19 @@ def ensure_trigger_current() -> None:
     Older migrations (001/007) define the same function with the original
     body; if one of them is ever re-run (forced re-run, or a database where
     it keeps failing and retrying) it silently puts the old body back. Put
-    ours back from migration 113 when that happens."""
+    ours back from migration 114 when that happens."""
     from pathlib import Path
     from ..migrate import _split_sql
     eng = _engine()
     with eng.connect() as conn:
         ok = conn.execute(sql_text(
-            "SELECT bool_or(prosrc LIKE '%search_ver := 2%') FROM pg_proc "
+            f"SELECT bool_or(prosrc LIKE '%search_ver := {VECTOR_VERSION}%') FROM pg_proc "
             "WHERE proname = 'articles_search_vector_update'")).scalar()
     if ok:
         return
-    path = Path(__file__).resolve().parents[3] / "migrations" / "113_search_accent_folding.sql"
+    path = Path(__file__).resolve().parents[3] / "migrations" / "114_search_reindex.sql"
     for stmt in _split_sql(path.read_text(encoding="utf-8")):
-        if "FUNCTION articles_search_vector_update" in stmt:
+        if stmt.lstrip().upper().startswith("CREATE OR REPLACE FUNCTION ARTICLES_SEARCH_VECTOR_UPDATE"):
             raw = eng.raw_connection()
             try:
                 with raw.cursor() as cur:

@@ -125,3 +125,30 @@ def test_search_field_filters_are_parsed():
     assert parse_query("doi:10.1000/x PrP:mutant") == ("doi:10.1000/x PrP:mutant", {})
     assert parse_query("año:veinte prion") == ("año:veinte prion", {})
     assert parse_query("plain words") == ("plain words", {})
+
+
+# ── Self-heal must not put the old search trigger function back ──────────────
+
+def test_self_heal_skips_only_the_search_function_definition():
+    """007 (re-run every few minutes by the schema self-heal) defines the
+    article search trigger function with its original body. That statement
+    must be skipped — but the CREATE TRIGGER that merely references the
+    function must still run, or the trigger is dropped and never re-created."""
+    import pathlib
+    import re
+    pytest.importorskip("sqlalchemy")
+    try:
+        from tools.prionvault.migrate import _split_sql
+    except Exception as exc:
+        pytest.skip(f"migrate not importable: {exc}")
+    src = pathlib.Path(__file__).resolve().parents[1] / "tools" / "prionvault" / "migrate.py"
+    pattern = re.search(r're\.match\(r"([^"]+)",\s*\n?\s*stmt, re\.I\)', src.read_text())
+    assert pattern, "skip rule not found in migrate.py"
+    rx = re.compile(pattern.group(1), re.I)
+    sql = (pathlib.Path(__file__).resolve().parents[1] / "migrations" /
+           "007_articles_columns_repair.sql").read_text()
+    stmts = _split_sql(sql)
+    skipped = [s for s in stmts if rx.match(s)]
+    assert len(skipped) == 1 and "RETURNS trigger" in skipped[0]
+    assert any(s.lstrip().upper().startswith("CREATE TRIGGER ARTICLES_SEARCH_VECTOR_TRG")
+               and not rx.match(s) for s in stmts)

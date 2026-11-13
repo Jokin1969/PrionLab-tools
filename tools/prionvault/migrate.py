@@ -477,6 +477,16 @@ def _heal_listed_migrations(db, out: dict) -> None:
         ok = 0
         fails = []
         for stmt in _split_sql(path.read_text()):
+            # Never re-create the article search trigger FUNCTION from these
+            # old files: its current body (search v2, migrations 112-114)
+            # maintains search_vector2/rank_vector, and the original body in
+            # 001/007 would silently switch that off every cycle.
+            # (Only the CREATE FUNCTION statement — "CREATE TRIGGER … EXECUTE
+            # FUNCTION articles_search_vector_update()" must still run.)
+            if re.match(r"\s*CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+articles_search_vector_update\b",
+                        stmt, re.I):
+                ok += 1
+                continue
             try:
                 with db.engine.begin() as conn:
                     conn.exec_driver_sql("SET LOCAL lock_timeout = '5s'")
@@ -585,7 +595,16 @@ def start_periodic_self_heal(interval_seconds: int = 300) -> threading.Thread:
                 except Exception:
                     pass
             except Exception as exc:
-                logger.exception("periodic self-heal crashed: %s", exc)
+                from sqlalchemy.exc import DBAPIError
+                if isinstance(exc, DBAPIError) and (
+                        exc.connection_invalidated or "server closed the connection" in str(exc)
+                        or "could not connect" in str(exc)):
+                    # Database restarting: nothing to repair in code, try
+                    # again on the next cycle.
+                    logger.warning("periodic self-heal skipped: database connection lost (%s)",
+                                   str(exc).splitlines()[0][:160])
+                else:
+                    logger.exception("periodic self-heal crashed: %s", exc)
             time.sleep(interval_seconds)
 
     th = threading.Thread(target=_loop, name="prionvault-periodic-heal",
