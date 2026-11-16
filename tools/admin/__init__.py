@@ -798,6 +798,23 @@ def api_db_health():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_bp.route("/api/db/size-report")
+@admin_required
+def api_db_size_report():
+    """Read-only: what takes the space (and so the memory) in the database."""
+    from flask import jsonify
+    from database.config import db
+    from database import size_report
+    if not db.is_configured():
+        return jsonify({"success": False, "error": "No hay base de datos configurada."}), 400
+    try:
+        rep = size_report.build_report(db.engine)
+        return jsonify({"success": True, "report": rep, "text": size_report.as_text(rep)})
+    except Exception as e:
+        logger.exception("db size report failed")
+        return jsonify({"success": False, "error": str(e)[:300]}), 500
+
+
 @admin_bp.route("/api/db/tables")
 @admin_required
 def api_db_tables():

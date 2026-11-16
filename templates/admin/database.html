@@ -209,6 +209,43 @@
     </div>
   </section>
 
+  <!-- ── Space report ─────────────────────────────────────────────────────── -->
+  <section class="card mb-1">
+    <div class="card-header-row">
+      <h2 class="card-title">&#128190; Espacio y memoria</h2>
+      <div>
+        <button type="button" class="btn btn--secondary" id="sizeReportBtn">Analizar</button>
+        <button type="button" class="btn btn--secondary" id="sizeReportCopy" style="display:none;">Copiar</button>
+      </div>
+    </div>
+    <p style="color:#666;font-size:.85rem;margin:.25rem 0 .75rem;">
+      Qué ocupa el disco de la base de datos (y, con ello, su memoria): tablas, índices y columnas grandes.
+      Solo lectura, no modifica nada.
+    </p>
+    <pre id="sizeReportOut" style="display:none;max-height:520px;overflow:auto;background:#0f172a;color:#e2e8f0;
+         padding:12px 14px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre;"></pre>
+  </section>
+  <script>
+    (function () {
+      var btn = document.getElementById('sizeReportBtn'), out = document.getElementById('sizeReportOut'),
+          copy = document.getElementById('sizeReportCopy');
+      btn.addEventListener('click', function () {
+        btn.disabled = true; btn.textContent = 'Analizando…';
+        fetch('{{ url_for("admin.api_db_size_report") }}').then(function (r) { return r.json(); }).then(function (d) {
+          out.style.display = 'block';
+          out.textContent = d.success ? d.text : ('Error: ' + (d.error || 'desconocido'));
+          copy.style.display = d.success ? '' : 'none';
+        }).catch(function (e) { out.style.display = 'block'; out.textContent = 'Error: ' + e.message; })
+          .finally(function () { btn.disabled = false; btn.textContent = 'Analizar'; });
+      });
+      copy.addEventListener('click', function () {
+        navigator.clipboard.writeText(out.textContent).then(function () {
+          copy.textContent = 'Copiado'; setTimeout(function () { copy.textContent = 'Copiar'; }, 1500);
+        }).catch(function () { window.getSelection().selectAllChildren(out); });
+      });
+    })();
+  </script>
+
   <!-- ── Index analysis ────────────────────────────────────────────────── -->
   <section class="card mb-1">
     <h2 class="card-title">&#128202; {{ _('Index Usage') }}</h2>
