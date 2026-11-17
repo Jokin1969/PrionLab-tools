@@ -815,6 +815,31 @@ def api_db_size_report():
         return jsonify({"success": False, "error": str(e)[:300]}), 500
 
 
+@admin_bp.route("/api/db/compact-articles", methods=["GET", "POST"])
+@admin_required
+def api_db_compact_articles():
+    """POST starts a VACUUM FULL of `articles` (locks the table while it
+    runs); GET reports its progress."""
+    from flask import jsonify
+    from database.config import db
+    from database import db_cleanup
+    if request.method == "POST":
+        if not db.is_configured():
+            return jsonify({"success": False, "error": "No hay base de datos configurada."}), 400
+        try:
+            from tools.prionvault.services import search_v2
+            pending = search_v2.status().get("pending")
+        except Exception:
+            pending = None
+        if pending:
+            return jsonify({"success": False, "error":
+                            f"Aún se están reindexando {pending} artículos; espera a que termine "
+                            "(vuelve a pulsar Analizar para verlo)."}), 409
+        if not db_cleanup.compact_articles(db.engine):
+            return jsonify({"success": False, "error": "Ya hay una compactación en marcha."}), 409
+    return jsonify({"success": True, "status": db_cleanup.compact_status()})
+
+
 @admin_bp.route("/api/db/tables")
 @admin_required
 def api_db_tables():

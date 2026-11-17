@@ -216,6 +216,8 @@
       <div>
         <button type="button" class="btn btn--secondary" id="sizeReportBtn">Analizar</button>
         <button type="button" class="btn btn--secondary" id="sizeReportCopy" style="display:none;">Copiar</button>
+        <button type="button" class="btn btn--secondary" id="compactBtn"
+                title="Devuelve el espacio muerto de la tabla de artículos (VACUUM FULL). Bloquea PrionVault y PrionRead unos minutos mientras dura.">Compactar artículos</button>
       </div>
     </div>
     <p style="color:#666;font-size:.85rem;margin:.25rem 0 .75rem;">
@@ -237,6 +239,30 @@
           copy.style.display = d.success ? '' : 'none';
         }).catch(function (e) { out.style.display = 'block'; out.textContent = 'Error: ' + e.message; })
           .finally(function () { btn.disabled = false; btn.textContent = 'Analizar'; });
+      });
+      var compact = document.getElementById('compactBtn');
+      function pollCompact() {
+        fetch('{{ url_for("admin.api_db_compact_articles") }}').then(function (r) { return r.json(); }).then(function (d) {
+          var st = d.status || {};
+          out.style.display = 'block';
+          if (st.running) { out.textContent = 'Compactando la tabla de artículos… (no cierres la página; PrionVault estará bloqueado unos minutos)'; setTimeout(pollCompact, 4000); }
+          else {
+            compact.disabled = false;
+            out.textContent = st.error ? ('Error al compactar: ' + st.error)
+              : ('Compactación terminada: ' + st.before_mb + ' MB → ' + st.after_mb + ' MB. Pulsa Analizar para ver el detalle.');
+          }
+        });
+      }
+      compact.addEventListener('click', function () {
+        var ask = window.pvConfirm ? window.pvConfirm : function (m) { return Promise.resolve(window.confirm(m)); };
+        ask('Compactar la tabla de artículos devuelve el espacio muerto, pero BLOQUEA PrionVault y PrionRead mientras dura (unos minutos).\n\nHazlo con una copia de seguridad reciente y en un momento de poco uso. ¿Continuar?').then(function (ok) {
+          if (!ok) return;
+          compact.disabled = true;
+          fetch('{{ url_for("admin.api_db_compact_articles") }}', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d.success) { compact.disabled = false; out.style.display = 'block'; out.textContent = d.error || 'No se pudo iniciar.'; return; }
+            pollCompact();
+          });
+        });
       });
       copy.addEventListener('click', function () {
         navigator.clipboard.writeText(out.textContent).then(function () {

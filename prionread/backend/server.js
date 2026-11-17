@@ -100,7 +100,12 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-sequelize.sync({ alter: true })
+// alter.drop = false: only ADD the columns the models are missing. With plain
+// `alter: true` Sequelize also (1) DROPS every column that is not in its
+// model — `articles` is shared with PrionVault, whose columns (pdf_md5,
+// pdf_size_bytes…) were being wiped on every start — and (2) re-adds each
+// `unique: true` constraint, piling up thousands of duplicate indexes.
+sequelize.sync({ alter: { drop: false } })
   .then(() => {
     console.log('Database models synchronized.');
     app.listen(PORT, () => {

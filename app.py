@@ -649,6 +649,15 @@ def create_app() -> Flask:
         except Exception as e:
             app.logger.warning('OA-PDF fetcher daemon failed to start: %s', e)
 
+        # Remove the duplicate unique constraints PrionRead's ORM piled up
+        # (thousands of identical indexes on users / articles).
+        try:
+            if os.environ.get("DATABASE_URL"):
+                from database.db_cleanup import start_cleanup
+                start_cleanup()
+        except Exception as e:
+            app.logger.warning('DB cleanup failed to start: %s', e)
+
         # Search v2 (migration 112): index the articles that existed
         # before it, in the background and in small batches.
         try:

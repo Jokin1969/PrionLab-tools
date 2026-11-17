@@ -23,7 +23,8 @@ from sqlalchemy import text as sql_text
 logger = logging.getLogger(__name__)
 
 TS_CONFIG = "pv_search"
-VECTOR_VERSION = 3          # 2 = pv_fold() (113); 3 = full re-index after the trigger fix (114)
+VECTOR_VERSION = 4          # 2 = pv_fold() (113); 3 = re-index after the trigger fix (114);
+                            # 4 = original vector without the PDF text (115)
 
 # ── Field filters in the search box ──────────────────────────────────────────
 
@@ -182,8 +183,14 @@ def _engine():
 
 _UPDATE_SQL = """
     UPDATE articles a
-       SET search_vector2 = pv_build_search_vector2(a.title, a.abstract, a.summary_ai,
-                                a.summary_human, a.authors, a.journal, a.extracted_text),
+       SET search_vector  = pv_build_search_vector1(a.title, a.abstract, a.summary_ai,
+                                a.summary_human, a.authors, a.journal),
+           -- rows already at v3 keep their v2 vectors (same value → the big
+           -- value is not rewritten); older or missing ones are built now
+           search_vector2 = CASE WHEN a.search_ver = 3 AND a.search_vector2 IS NOT NULL
+                                 THEN a.search_vector2
+                                 ELSE pv_build_search_vector2(a.title, a.abstract, a.summary_ai,
+                                        a.summary_human, a.authors, a.journal, a.extracted_text) END,
            rank_vector    = pv_build_rank_vector(a.title, a.authors, a.abstract, a.journal),
            search_ver     = :ver
      WHERE a.id = ANY(CAST(:ids AS uuid[]))"""
@@ -196,7 +203,7 @@ def ensure_trigger_current() -> None:
     Older migrations (001/007) define the same function with the original
     body; if one of them is ever re-run (forced re-run, or a database where
     it keeps failing and retrying) it silently puts the old body back. Put
-    ours back from migration 114 when that happens."""
+    ours back from migration 115 when that happens."""
     from pathlib import Path
     from ..migrate import _split_sql
     eng = _engine()
@@ -206,7 +213,7 @@ def ensure_trigger_current() -> None:
             "WHERE proname = 'articles_search_vector_update'")).scalar()
     if ok:
         return
-    path = Path(__file__).resolve().parents[3] / "migrations" / "114_search_reindex.sql"
+    path = Path(__file__).resolve().parents[3] / "migrations" / "115_slim_search_and_indexes.sql"
     for stmt in _split_sql(path.read_text(encoding="utf-8")):
         if stmt.lstrip().upper().startswith("CREATE OR REPLACE FUNCTION ARTICLES_SEARCH_VECTOR_UPDATE"):
             raw = eng.raw_connection()

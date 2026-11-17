@@ -35,6 +35,7 @@ def build_report(engine) -> dict:
                    pg_relation_size(c.oid)       AS heap,
                    COALESCE(pg_total_relation_size(c.reltoastrelid), 0) AS toast,
                    pg_indexes_size(c.oid)        AS indexes,
+                   (SELECT COUNT(*) FROM pg_index i WHERE i.indrelid = c.oid) AS n_indexes,
                    s.n_live_tup AS live, s.n_dead_tup AS dead,
                    GREATEST(s.last_vacuum, s.last_autovacuum) AS last_vacuum
               FROM pg_class c
@@ -46,6 +47,7 @@ def build_report(engine) -> dict:
             out["tables"].append({
                 "name": r["name"], "total_mb": _mb(r["total"]), "rows_mb": _mb(r["heap"]),
                 "toast_mb": _mb(r["toast"]), "indexes_mb": _mb(r["indexes"]),
+                "n_indexes": int(r["n_indexes"] or 0),
                 "live_rows": int(r["live"] or 0), "dead_rows": int(r["dead"] or 0),
                 "last_vacuum": r["last_vacuum"].isoformat(timespec="minutes") if r["last_vacuum"] else None,
             })
@@ -77,6 +79,18 @@ def build_report(engine) -> dict:
             conn.rollback()
             out["notes"].append(f"article column sizes unavailable: {str(exc)[:120]}")
 
+        try:
+            from database.db_cleanup import duplicate_unique_constraints
+            out["duplicate_unique_constraints"] = len(duplicate_unique_constraints(conn))
+        except Exception:
+            conn.rollback()
+        try:
+            out["search_reindex_pending"] = conn.execute(text(
+                "SELECT COUNT(*) FROM articles WHERE search_vector2 IS NULL "
+                "OR search_ver IS DISTINCT FROM (SELECT MAX(search_ver) FROM articles)")).scalar()
+        except Exception:
+            conn.rollback()
+
         for name in ("shared_buffers", "effective_cache_size", "work_mem", "maintenance_work_mem",
                      "max_connections", "server_version"):
             try:
@@ -93,12 +107,14 @@ def build_report(engine) -> dict:
 
 def as_text(rep: dict) -> str:
     """The same report as plain text, easy to copy and paste."""
-    L = [f"Base de datos: {rep.get('database_mb')} MB · artículos: {rep.get('articles', '?')}", "",
+    L = [f"Base de datos: {rep.get('database_mb')} MB · artículos: {rep.get('articles', '?')}",
+         f"Restricciones únicas duplicadas pendientes de limpiar: {rep.get('duplicate_unique_constraints', '?')}"
+         f" · artículos pendientes de reindexar: {rep.get('search_reindex_pending', '?')}", "",
          "TABLAS (MB)  total = filas + valores largos (TOAST) + índices"]
     for t in rep["tables"]:
         dead = (f" · {t['dead_rows']} filas muertas" if t["dead_rows"] else "")
         L.append(f"  {t['name']:<38} total {t['total_mb']:>8}  filas {t['rows_mb']:>7}  "
-                 f"toast {t['toast_mb']:>7}  índices {t['indexes_mb']:>7}  "
+                 f"toast {t['toast_mb']:>7}  índices {t['indexes_mb']:>7} (×{t.get('n_indexes', '?')})  "
                  f"({t['live_rows']} filas{dead}; vacuum {t['last_vacuum'] or 'nunca'})")
     L += ["", "ÍNDICES > 1 MB (usos = veces consultado desde el último reinicio de estadísticas)"]
     for i in rep["indexes"]:
