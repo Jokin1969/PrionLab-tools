@@ -237,11 +237,17 @@ def _try_insert_user(conn, cols: set[str], new_id: str, *,
     cols_sql   = ", ".join(all_cols)
     params     = {c: candidate[c] for c in data_cols}
 
+    # Every attempt runs inside its own SAVEPOINT: a failed INSERT would
+    # otherwise abort the whole transaction, and the retries below (and
+    # the final re-read) would all fail with it — which left users whose
+    # role isn't in PrionRead's enum ('admin' | 'student') without a DB
+    # identity at all.
     def _do_insert():
-        return conn.execute(_text(
-            f"INSERT INTO users ({cols_sql}) VALUES ({placeholders}) "
-            f"ON CONFLICT (email) DO NOTHING"
-        ), params)
+        with conn.begin_nested():
+            return conn.execute(_text(
+                f"INSERT INTO users ({cols_sql}) VALUES ({placeholders}) "
+                f"ON CONFLICT (email) DO NOTHING"
+            ), params)
 
     try:
         _do_insert()
@@ -253,7 +259,8 @@ def _try_insert_user(conn, cols: set[str], new_id: str, *,
         if "role" in msg and ("invalid input value for enum" in msg
                               or "invalid input syntax" in msg):
             inserted = False
-            for variant in (role.capitalize(), role.upper()):
+            # 'student' is PrionRead's name for a non-admin account.
+            for variant in ("student", role.capitalize(), role.upper()):
                 params["role"] = variant
                 try:
                     _do_insert()
@@ -271,10 +278,11 @@ def _try_insert_user(conn, cols: set[str], new_id: str, *,
                 drop_sql  = ", ".join(drop_all)
                 drop_params = {c: candidate[c] for c in drop_data}
                 try:
-                    conn.execute(_text(
-                        f"INSERT INTO users ({drop_sql}) VALUES ({drop_ph}) "
-                        f"ON CONFLICT (email) DO NOTHING"
-                    ), drop_params)
+                    with conn.begin_nested():
+                        conn.execute(_text(
+                            f"INSERT INTO users ({drop_sql}) VALUES ({drop_ph}) "
+                            f"ON CONFLICT (email) DO NOTHING"
+                        ), drop_params)
                 except Exception as exc3:
                     logger.warning("auth: INSERT-without-role failed: %s", exc3)
                     return None
