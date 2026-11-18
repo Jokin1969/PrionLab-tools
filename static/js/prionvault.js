@@ -24377,6 +24377,7 @@
             <li><strong>Título exacto, al instante:</strong> pega el título <strong>entre comillas</strong> y va directo al artículo, sin importar mayúsculas ni signos de puntuación. También sirve un trozo del título entre comillas.</li>
             <li><strong>Dónde coincide:</strong> bajo cada resultado aparece el fragmento del abstract, del resumen IA o del <strong>texto del PDF</strong> donde está el término, resaltado en amarillo.</li>
             <li><strong>¿Quisiste decir…?</strong> si no hay resultados y parece una errata (<code>amiloid</code>), se propone la palabra correcta; un clic repite la búsqueda.</li>
+            <li><strong>Índice de búsqueda:</strong> se mantiene solo. Después de una actualización grande puede estar unos minutos reconstruyéndose en segundo plano; mientras tanto la búsqueda sigue funcionando con el índice anterior.</li>
             <li><strong>Filtros dentro de la caja:</strong> <code>autor:castilla</code>, <code>año:2021</code> o <code>año:2020-2024</code>, <code>revista:nature</code>, <code>titulo:PrPSc</code>. Se combinan entre sí y con palabras sueltas: <code>strain autor:requena año:2018-2022</code>. Con espacios, entre comillas: <code>revista:"acta neuropathol"</code>. También en inglés (<code>author:</code>, <code>year:</code>, <code>journal:</code>, <code>title:</code>).</li>
           </ul>
           <h4>📱 En el móvil</h4>
@@ -24385,7 +24386,8 @@
             <li>El botón <strong>☰</strong> abre el menú lateral (colecciones, tags, herramientas, Ayuda).</li>
             <li>Cada artículo es una <strong>tarjeta</strong>: toca el título para abrir la ficha; abajo están <strong>PDF · DOI · PMID</strong> y tus marcas (bandera, favorito, leído).</li>
             <li>Al bajar por la lista, la segunda fila de botones se pliega para dejar sitio; vuelve al subir un poco.</li>
-            <li>Si marcas casillas, la barra de acciones aparece fija abajo y se desliza de lado.</li>
+            <li>Si marcas casillas, abajo aparece una <strong>línea azul</strong> con el número de seleccionados y el botón <strong>Acciones ▴</strong>: al tocarlo se despliega una hoja con todas las acciones (tags, colección, carrito, email, exportar…); vuelve a tocarlo para plegarla.</li>
+            <li>En tabletas (pantallas medianas) se mantiene la tabla del ordenador, con los márgenes y botones ajustados.</li>
           </ul>
           <h4>📅 Buscar por año</h4>
           <p>A la derecha de los botones T · Au · A · R del buscador está el botón del <strong>calendario</strong>. Actívalo y escribe un año (<code>2026</code>) o un rango (<code>2020-2026</code>, <code>2020 2026</code>): el listado muestra solo los artículos publicados en esos años, en vez de buscar ese número en el texto. Si lo que escribes no es un año, se hace la búsqueda normal.</p>
@@ -24599,6 +24601,9 @@
             <li><strong>🔗 Cribar lista de referencias:</strong> además de bibliografías clásicas ("1. Autor..."), reconoce listados exportados de un chatbot o de un panel de "Fuentes", con marcadores <code>[1] [3] [8] ...</code> al principio de línea seguidos del enlace, extrae el PMID directamente de un enlace <code>pubmed.ncbi.nlm.nih.gov/&lt;pmid&gt;/</code>, y corta correctamente el DOI cuando viene incrustado en la URL de una revista. Además del botón "Importar todos los que faltan", puedes marcar con casilla los artículos concretos que no están en PrionVault y pulsar <strong>"📋 Copiar DOIs seleccionados"</strong> para copiarlos uno por línea sin importarlos de golpe (los artículos sin DOI se omiten de la copia).</li>
           </ul>
 
+          <h4>Avisos y confirmaciones</h4>
+          <p>Las preguntas de confirmación y los avisos (en PrionVault, PrionPacks y las notas de inicio) aparecen ahora como ventanas de la propia aplicación en lugar de las del navegador: <kbd>Esc</kbd> cancela y <kbd>Intro</kbd> acepta. Si la sesión ha caducado, la aplicación lo dice claramente y lleva al inicio de sesión en vez de mostrar un error.</p>
+
           <h4>Resúmenes IA</h4>
           <p><strong>Siempre a partir del PDF:</strong> si el artículo tiene PDF, el resumen IA se hace con su texto completo. Al subir un PDF a mano o encontrarlo con 🔓 se extrae su texto en el momento (con OCR si es un escaneo), y si algún artículo tiene PDF pero aún no su texto, se extrae justo antes de resumir. Si el modal de Resumen IA detecta resúmenes antiguos hechos solo con el abstract aunque el artículo tenía PDF, muestra un aviso con el botón <em>Rehacerlos con el texto completo</em>.</p>
           <p>Al pulsar un número preestablecido (p. ej. "100") en el modal de <strong>Resumen IA</strong> sin seleccionar artículos concretos, se procesan los <strong>últimos artículos añadidos a la biblioteca</strong> que aún no tienen resumen, empezando por los más recientes en darse de alta.</p>
@@ -24628,6 +24633,21 @@
           <p><strong>Control de las copias:</strong> arriba del panel, un recuadro verde, ámbar o rojo indica si las copias se están haciendo bien: fecha de la última copia correcta, frecuencia, próxima copia programada, los problemas detectados y el historial de intentos (programadas, manuales y de recuperación, con su resultado y tamaño). El sistema lo vigila cada hora: si falta una copia (por ejemplo, porque la aplicación se estaba reiniciando a la hora programada) la hace sola, y si una copia falla, no llega a Dropbox o es mucho más pequeña que la anterior, se avisa por email a los administradores. Si hay un problema, aparece además un punto rojo o ámbar junto al botón <strong>Backups</strong> del menú lateral.</p>
           <p><strong>Diagnosticar:</strong> el botón <em>🔎 Diagnosticar</em> del panel revisa paso a paso dónde puede fallar una copia (base de datos, memoria, disco, Dropbox —acceso, espacio, carpeta, escritura—, copias en curso, historial y programador) y muestra cada comprobación en verde o rojo con su explicación. Las copias se escriben por partes, sin cargar la base de datos entera en memoria, y el backup CSV toma una foto coherente de todas las tablas a la vez.</p>
 
+          <h4>💾 Espacio y memoria de la base de datos <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
+          <p>En <strong>Panel de administración → Base de datos → «Espacio y memoria»</strong>. El tamaño de la base de datos determina buena parte del coste del servidor, y aquí se ve qué lo ocupa.</p>
+          <ul>
+            <li><strong>Analizar:</strong> informe de solo lectura con el tamaño total, cada tabla y sus índices, las columnas más pesadas de los artículos y dos contadores de limpieza pendiente (restricciones duplicadas y artículos por reindexar). <strong>Copiar</strong> lo pasa al portapapeles.</li>
+            <li><strong>Limpieza automática:</strong> los índices duplicados que creaba PrionRead en cada arranque se eliminan solos en segundo plano, y el índice de búsqueda antiguo se ha aligerado. No hay que hacer nada: los dos contadores bajan a 0 en unos minutos.</li>
+            <li><strong>Compactar artículos:</strong> devuelve al disco el espacio muerto de la tabla de artículos. <strong>Bloquea PrionVault y PrionRead unos minutos</strong>, así que conviene hacerlo con una copia de seguridad reciente y en un momento de poco uso. Solo se puede lanzar cuando no quedan artículos por reindexar.</li>
+          </ul>
+
+          <h4>Actualizaciones y estado del sistema <span class="pv-help-chip pv-help-chip-admin">Solo admin</span></h4>
+          <ul>
+            <li>La dirección <code>/health</code> de la aplicación muestra la versión desplegada y, en <code>migrations_pending</code>, si queda algún cambio de base de datos sin aplicar (lo normal es una lista vacía).</li>
+            <li>Si un cambio de base de datos falla, los siguientes esperan al próximo arranque en lugar de aplicarse a medias.</li>
+            <li>Si la base de datos se reinicia, las tareas automáticas se saltan esa vuelta y siguen en la siguiente, sin generar errores.</li>
+          </ul>
+
           <h4>Exportar esta Ayuda</h4>
           <p>En la cabecera de este modal, los botones <strong>PDF</strong> y <strong>PPTX</strong> descargan toda esta guía — el PDF con el mismo texto e imágenes que ves aquí, y el PPTX como una presentación de diapositivas (portada, una diapositiva divisoria por pestaña y una por cada apartado, con tablas nativas). Ambos se generan a partir del contenido que ves en cada pestaña, así que siempre están al día.</p>
 
@@ -24639,6 +24659,11 @@
             <li><strong>Límites de uso:</strong> login (10/min, 50/hora); registro y «olvidé mi contraseña» (5/hora); envío de artículos, listas, carrito o informes por email (20/hora y 100/día por usuario); peticiones a Journal Club (10/hora).</li>
             <li><strong>Enlaces:</strong> tras el login solo se redirige a páginas de la propia aplicación, y el enlace que se pasa al visor de Office caduca a las 6 horas.</li>
             <li><strong>Permisos:</strong> en PrionPacks solo un administrador puede borrar packs, gestionar miembros o restaurar copias; manuscritos y referencias solo los edita su autor o un administrador.</li>
+            <li><strong>Contraseñas:</strong> mínimo 8 caracteres y no se admiten las más habituales. Al cambiar la contraseña de una cuenta o desactivarla, sus sesiones abiertas en otros dispositivos se cierran en menos de un minuto, y los enlaces de «olvidé mi contraseña» pendientes dejan de valer.</li>
+            <li><strong>Un email, una cuenta:</strong> no puede haber dos usuarios con el mismo email.</li>
+            <li><strong>Lectores:</strong> una cuenta de lector solo puede entrar en PrionVault, PrionRead, sus notas de inicio y esta Ayuda; el resto de herramientas de PrionLab le están cerradas aunque escriba la dirección a mano.</li>
+            <li><strong>Subidas:</strong> el servidor rechaza archivos de más de 512 MB.</li>
+            <li><strong>Extensión del navegador (versión 1.1.0):</strong> el panel de la extensión solo acepta mensajes de su propia pestaña. Conviene actualizarla con el <code>.zip</code> de <em>Panel de administración → System</em>.</li>
             <li>Cabeceras HTTP de seguridad (<code>X-Frame-Options</code>, <code>X-Content-Type-Options</code>, CSP, Referrer-Policy) y clave de sesión independiente (<code>APP_SECRET_KEY</code>).</li>
           </ul>
         </div>
