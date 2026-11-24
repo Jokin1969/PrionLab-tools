@@ -40,11 +40,13 @@
       }
     }
 
+    let _diag = '';
     async function loadList() {
       const nav = $('pv-vc-years');
       try {
         const r = await api('/vc/reports');
         _reports = r.reports || [];
+        _diag = r.diag || '';
         if (r.status && r.status.running) startPoll();
       } catch (e) {
         nav.innerHTML = `<p style="color:#b91c1c;font-size:12px;">Error: ${esc(e.message)}</p>`;
@@ -342,6 +344,7 @@
           <div style="padding:10px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;
                       font-size:13px;color:#92400e;margin-bottom:12px;">
             Primero carga los informes anteriores: la IA los usa como memoria y modelo de estilo.
+            ${_diag ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;font-family:monospace;">Diagnóstico: ${esc(_diag)}</div>` : ''}
             ${IS_VC_EDITOR ? `<div style="margin-top:8px;"><button type="button" id="pv-vc-setup" style="${btnCss(true)}">
               Cargar informes 2018–2025 y crear sus colecciones</button></div><div id="pv-vc-progress"></div>` : ''}
           </div>` : ''}

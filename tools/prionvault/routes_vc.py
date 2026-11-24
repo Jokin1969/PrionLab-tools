@@ -36,12 +36,44 @@ logger = logging.getLogger(__name__)
 def api_vc_reports():
     from .services import vc
     try:
-        return jsonify({"reports": vc.list_reports(), "status": vc.get_status()})
+        reports = vc.list_reports()
     except Exception as exc:
         if "does not exist" in str(exc):
-            return jsonify({"reports": [], "status": vc.get_status(), "needs_setup": True})
+            # Say WHY the list is empty instead of looking like "no reports".
+            logger.error("vc reports: schema problem: %s", exc)
+            return jsonify({"reports": [], "status": vc.get_status(), "needs_setup": True,
+                            "diag": "Error al leer los informes: " + str(exc)[:300]})
         logger.exception("vc reports failed")
         return jsonify({"error": "internal", "detail": str(exc)[:300]}), 500
+    out = {"reports": reports, "status": vc.get_status()}
+    if not any(r.get("status") != "draft" for r in reports):
+        out["diag"] = _vc_diag()
+    return jsonify(out)
+
+
+def _vc_diag() -> str:
+    """Row counts of the VC tables, shown when no past report is listed so
+    an unexpectedly empty list can be told apart from a display problem."""
+    from sqlalchemy import text as sql_text
+    from .ingestion.queue import _get_engine
+    parts = []
+    try:
+        with _get_engine().connect() as conn:
+            for t in ("prionvault_vc_report", "prionvault_vc_ref", "prionvault_vc_item",
+                      "prionvault_vc_version"):
+                try:
+                    parts.append(f"{t.replace('prionvault_vc_', '')}={conn.execute(sql_text(f'SELECT COUNT(*) FROM {t}')).scalar()}")
+                except Exception as exc:
+                    conn.rollback()
+                    parts.append(f"{t.replace('prionvault_vc_', '')}=ERROR {str(exc)[:80]}")
+            parts.append("años=" + ",".join(str(r[0]) + ":" + str(r[1]) for r in conn.execute(sql_text(
+                "SELECT year, status FROM prionvault_vc_report ORDER BY year"))))
+            parts.append("colecciones VC=" + str(conn.execute(sql_text(
+                "SELECT COUNT(*) FROM prionvault_collection WHERE lower(group_name) = lower('Vigilancia competitiva')")).scalar()))
+            parts.append("artículos=" + str(conn.execute(sql_text("SELECT COUNT(*) FROM articles")).scalar()))
+    except Exception as exc:
+        parts.append("ERROR " + str(exc)[:160])
+    return " · ".join(parts)
 
 
 @prionvault_bp.route("/api/vc/reports/<int:year>", methods=["GET"])
